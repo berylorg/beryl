@@ -503,6 +503,80 @@ fn projection_retains_history_and_finishes_lingering_running_rows() {
 }
 
 #[test]
+fn projection_finishes_only_archived_or_deleted_thread_activity() {
+    for lifecycle_event in [
+        thread_archived as fn(&str) -> TurnStreamEvent,
+        thread_deleted,
+    ] {
+        let mut projection = ToolActivityProjection::default();
+        projection.apply_stream_event(
+            &started(
+                "thread_target",
+                "turn_target",
+                mcp_item("target", "target_tool"),
+            ),
+            Some("Target".to_string()),
+        );
+        projection.apply_stream_event(
+            &started(
+                "thread_other",
+                "turn_other",
+                mcp_item("other", "other_tool"),
+            ),
+            Some("Other".to_string()),
+        );
+
+        assert!(projection.apply_stream_event(&lifecycle_event("thread_other"), None));
+        assert_eq!(
+            row_for_activity(&projection, "target_tool").status,
+            ToolActivityRowStatus::Running
+        );
+        assert_eq!(
+            row_for_activity(&projection, "other_tool").status,
+            ToolActivityRowStatus::FinishedOk
+        );
+
+        assert!(projection.apply_stream_event(&lifecycle_event("thread_target"), None));
+        assert_eq!(
+            row_for_activity(&projection, "target_tool").status,
+            ToolActivityRowStatus::FinishedOk
+        );
+    }
+}
+
+#[test]
+fn projection_ignores_same_and_other_thread_unarchive_activity() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started(
+            "thread_target",
+            "turn_target",
+            mcp_item("target", "target_tool"),
+        ),
+        Some("Target".to_string()),
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_other",
+            "turn_other",
+            mcp_item("other", "other_tool"),
+        ),
+        Some("Other".to_string()),
+    );
+
+    assert!(!projection.apply_stream_event(&thread_unarchived("thread_other"), None));
+    assert!(!projection.apply_stream_event(&thread_unarchived("thread_target"), None));
+    assert_eq!(
+        row_for_activity(&projection, "target_tool").status,
+        ToolActivityRowStatus::Running
+    );
+    assert_eq!(
+        row_for_activity(&projection, "other_tool").status,
+        ToolActivityRowStatus::Running
+    );
+}
+
+#[test]
 fn projection_scopes_visible_rows_to_selected_thread_and_owned_subagents() {
     let mut projection = ToolActivityProjection::default();
 
@@ -1561,6 +1635,24 @@ fn agent_label_updated(thread_id: &str, label: &str) -> TurnStreamEvent {
     TurnStreamEvent::AgentLabelUpdated {
         thread_id: thread_id.to_string(),
         label: label.to_string(),
+    }
+}
+
+fn thread_archived(thread_id: &str) -> TurnStreamEvent {
+    TurnStreamEvent::ThreadArchived {
+        thread_id: thread_id.to_string(),
+    }
+}
+
+fn thread_unarchived(thread_id: &str) -> TurnStreamEvent {
+    TurnStreamEvent::ThreadUnarchived {
+        thread_id: thread_id.to_string(),
+    }
+}
+
+fn thread_deleted(thread_id: &str) -> TurnStreamEvent {
+    TurnStreamEvent::ThreadDeleted {
+        thread_id: thread_id.to_string(),
     }
 }
 

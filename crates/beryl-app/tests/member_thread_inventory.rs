@@ -239,6 +239,99 @@ fn inventory_preserves_optional_fork_parent_metadata() {
 }
 
 #[test]
+fn inventory_reconciliation_keeps_backend_fork_parent_separate_from_orchestration_root() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let execution_target = WorkspaceId::host_windows(r"C:\work\first");
+    let root_id = ConversationThreadId::new("orchestration_root");
+    let phase_child_id = ConversationThreadId::new("phase_child");
+    let backend_only_child_id = ConversationThreadId::new("backend_only_child");
+    let mut state = WorkspaceConversationState::default();
+
+    state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    state.remember_thread(RegisteredConversationThread::new(
+        root_id.clone(),
+        execution_target.clone(),
+        "Root preview",
+        None,
+        1,
+        2,
+    ));
+    state.remember_thread(RegisteredConversationThread::new(
+        phase_child_id.clone(),
+        execution_target.clone(),
+        "Phase child preview",
+        Some("Stale backend summary".to_string()),
+        3,
+        4,
+    ));
+    state.record_thread_as_orchestration_root(&root_id).unwrap();
+    state
+        .record_thread_orchestration_root(&phase_child_id, &root_id)
+        .unwrap();
+
+    let snapshot = member_thread_inventory::build_member_thread_inventory_snapshot(
+        workspace_id,
+        &state,
+        member_thread_inventory::empty_groups_for_workspace_state(&state),
+        vec![
+            summary_with_fork_parent(
+                "phase_child",
+                execution_target.canonical_path(),
+                Some("Fresh backend summary"),
+                "backend_fork_parent",
+                3,
+                8,
+            ),
+            summary_with_fork_parent(
+                "backend_only_child",
+                execution_target.canonical_path(),
+                Some("Backend-only summary"),
+                "backend_fork_parent",
+                5,
+                6,
+            ),
+        ],
+        50,
+    );
+
+    let phase_child = inventory_thread(&snapshot, "phase_child");
+    assert_eq!(
+        phase_child
+            .forked_from_id()
+            .map(ConversationThreadId::as_str),
+        Some("backend_fork_parent")
+    );
+    assert!(state.remember_thread(phase_child.to_registered_thread()));
+    let reconciled_phase_child = state.thread_registration(&phase_child_id).unwrap();
+    assert_eq!(
+        reconciled_phase_child.orchestration_root_thread_id(),
+        Some(&root_id)
+    );
+    assert_eq!(
+        reconciled_phase_child.backend_name(),
+        Some("Fresh backend summary")
+    );
+
+    let backend_only_child = inventory_thread(&snapshot, "backend_only_child");
+    assert_eq!(
+        backend_only_child
+            .forked_from_id()
+            .map(ConversationThreadId::as_str),
+        Some("backend_fork_parent")
+    );
+    assert!(state.remember_thread(backend_only_child.to_registered_thread()));
+    assert!(
+        state
+            .thread_registration(&backend_only_child_id)
+            .unwrap()
+            .orchestration_root_thread_id()
+            .is_none()
+    );
+}
+
+#[test]
 fn inventory_enrichment_fills_missing_fork_parent_from_metadata_read() {
     let cwd = PathBuf::from(r"C:\work\first");
     let mut backend_threads = vec![
@@ -527,6 +620,119 @@ fn inventory_enrichment_rejects_mismatched_metadata_thread_id() {
     assert!(error.contains("thread_child"));
     assert!(error.contains("thread_other"));
     assert_eq!(backend_threads[0].forked_from_id, None);
+}
+
+#[test]
+fn bounded_inventory_enrichment_stops_at_read_budget_and_records_partial_lineage() {
+    let cwd = PathBuf::from(r"C:\work\first");
+    let mut backend_threads = vec![
+        summary("thread_a", cwd.as_path(), Some("A"), 1, 3),
+        summary("thread_b", cwd.as_path(), Some("B"), 2, 4),
+    ];
+    let mut requested = Vec::new();
+
+    let (reads, partial) =
+        member_thread_inventory::enrich_missing_thread_fork_parent_metadata_bounded(
+            &mut backend_threads,
+            1,
+            |thread_id| {
+                requested.push(thread_id.to_string());
+                Ok(summary(thread_id, cwd.as_path(), None, 1, 1))
+            },
+        );
+
+    assert_eq!(reads, 1);
+    assert_eq!(requested, vec!["thread_a"]);
+    let partial = partial.expect("metadata budget exhaustion should be explicit");
+    assert!(!partial.row_coverage_truncated());
+    assert!(partial.lineage_incomplete());
+    assert_eq!(partial.reasons().len(), 1);
+}
+
+#[test]
+fn bounded_inventory_enrichment_does_not_trust_mismatched_metadata_id() {
+    let cwd = PathBuf::from(r"C:\work\first");
+    let mut backend_threads = vec![summary("thread_child", cwd.as_path(), Some("Child"), 2, 20)];
+
+    let (reads, partial) =
+        member_thread_inventory::enrich_missing_thread_fork_parent_metadata_bounded(
+            &mut backend_threads,
+            4,
+            |_| {
+                Ok(summary_with_fork_parent(
+                    "thread_other",
+                    cwd.as_path(),
+                    Some("Other"),
+                    "thread_parent",
+                    3,
+                    30,
+                ))
+            },
+        );
+
+    assert_eq!(reads, 1);
+    assert_eq!(backend_threads[0].forked_from_id, None);
+    let partial = partial.expect("mismatched metadata should make lineage partial");
+    assert!(partial.lineage_incomplete());
+    assert!(partial.reasons()[0].contains("mismatched thread id"));
+}
+
+#[test]
+fn inventory_snapshot_preserves_explicit_partial_coverage() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let first = WorkspaceId::host_windows(r"C:\work\first");
+    let mut state = WorkspaceConversationState::default();
+    state.designate_primary_execution_target(&first).unwrap();
+    let coverage = member_thread_inventory::MemberThreadInventoryCoverage::Partial(
+        member_thread_inventory::MemberThreadInventoryPartialCoverage::new()
+            .with_row_coverage_truncated("result budget exhausted")
+            .with_lineage_incomplete("metadata budget exhausted"),
+    );
+
+    let snapshot =
+        member_thread_inventory::build_member_thread_inventory_snapshot_for_backend_threads_with_coverage(
+            workspace_id,
+            &state,
+            member_thread_inventory::empty_groups_for_workspace_state(&state),
+            vec![member_thread_inventory::MemberThreadInventoryBackendThread::new(
+                RuntimeMode::HostWindows,
+                summary("thread_a", first.canonical_path(), Some("A"), 1, 2),
+            )],
+            50,
+            coverage,
+        );
+
+    let partial = snapshot
+        .coverage()
+        .partial()
+        .expect("snapshot should remain explicitly partial");
+    assert!(partial.row_coverage_truncated());
+    assert!(partial.lineage_incomplete());
+    assert_eq!(partial.reasons().len(), 2);
+}
+
+#[test]
+fn inventory_partial_reasons_are_count_and_byte_bounded_and_counted_as_payload() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let state = WorkspaceConversationState::default();
+    let mut partial = member_thread_inventory::MemberThreadInventoryPartialCoverage::new();
+    for index in 0..20 {
+        partial = partial.with_lineage_incomplete(format!("{index}:{}", "é".repeat(600)));
+    }
+    let snapshot = member_thread_inventory::MemberThreadInventorySnapshot::new_with_coverage(
+        workspace_id,
+        50,
+        member_thread_inventory::MemberThreadInventoryCoverage::Partial(partial),
+        member_thread_inventory::empty_groups_for_workspace_state(&state),
+    );
+
+    let partial = snapshot.coverage().partial().unwrap();
+    assert_eq!(partial.reasons().len(), 8);
+    assert!(partial.reasons().iter().all(|reason| reason.len() <= 512));
+    assert_eq!(
+        snapshot.retained_counts().payload_bytes,
+        partial.reasons().iter().map(String::len).sum::<usize>()
+    );
 }
 
 #[test]
@@ -1182,6 +1388,44 @@ fn failed_inventory_refresh_records_error_without_requeueing() {
     assert!(!inventory.refreshing());
     assert!(!inventory.needs_refresh());
     assert_eq!(inventory.last_error(), Some("backend unavailable"));
+}
+
+#[test]
+fn failed_refresh_preserves_last_partial_snapshot_instead_of_publishing_empty_success() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let first = WorkspaceId::host_windows(r"C:\work\first");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&first)
+        .unwrap();
+    let coverage = member_thread_inventory::MemberThreadInventoryCoverage::Partial(
+        member_thread_inventory::MemberThreadInventoryPartialCoverage::new()
+            .with_row_coverage_truncated("page budget exhausted"),
+    );
+    let snapshot =
+        member_thread_inventory::build_member_thread_inventory_snapshot_for_backend_threads_with_coverage(
+            workspace_id.clone(),
+            &workspace_state,
+            member_thread_inventory::empty_groups_for_workspace_state(&workspace_state),
+            vec![member_thread_inventory::MemberThreadInventoryBackendThread::new(
+                RuntimeMode::HostWindows,
+                summary("thread_existing", first.canonical_path(), Some("Existing"), 1, 2),
+            )],
+            50,
+            coverage,
+        );
+    let mut inventory =
+        member_thread_inventory::MemberThreadInventoryState::new(workspace_id, &workspace_state);
+    let accepted_token = inventory.begin_refresh();
+    assert!(inventory.finish_refresh_for_token(accepted_token, snapshot.clone(), &workspace_state));
+    assert!(inventory.last_error().is_none());
+
+    inventory.mark_refresh_needed();
+    let failed_token = inventory.begin_refresh();
+    assert!(inventory.fail_refresh_for_token(failed_token, "first page timed out"));
+
+    assert_eq!(inventory.snapshot(), &snapshot);
+    assert_eq!(inventory.last_error(), Some("first page timed out"));
 }
 
 #[test]

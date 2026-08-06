@@ -11,5 +11,10 @@ beryl-app.workspace = true
 beryl-backend.workspace = true
 beryl-model.workspace = true
 clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

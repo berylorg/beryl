@@ -6,6 +6,7 @@ use transcript_stream_invalidation::{
     TRANSCRIPT_STREAM_INVALIDATION_MAX_THREADS,
     TRANSCRIPT_STREAM_INVALIDATION_MAX_TURNS_PER_THREAD,
     TRANSCRIPT_STREAM_INVALIDATION_MAX_TURNS_TOTAL, TranscriptStreamInvalidations,
+    stream_event_thread_turn_id,
 };
 
 #[test]
@@ -51,6 +52,23 @@ fn invalidated_discarded_turn_events_are_filtered_by_thread_and_turn_identity() 
             delta: "after reset".to_string(),
         })
     );
+}
+
+#[test]
+fn thread_lifecycle_events_do_not_target_invalidated_turns() {
+    for event in [
+        TurnStreamEvent::ThreadArchived {
+            thread_id: "thread_a".to_string(),
+        },
+        TurnStreamEvent::ThreadUnarchived {
+            thread_id: "thread_a".to_string(),
+        },
+        TurnStreamEvent::ThreadDeleted {
+            thread_id: "thread_a".to_string(),
+        },
+    ] {
+        assert_eq!(stream_event_thread_turn_id(&event), None);
+    }
 }
 
 #[test]

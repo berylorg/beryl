@@ -17,6 +17,9 @@ use crate::{
 
 const THREAD_STATUS_CHANGED_METHOD: &str = "thread/status/changed";
 const THREAD_STARTED_METHOD: &str = "thread/started";
+const THREAD_ARCHIVED_METHOD: &str = "thread/archived";
+const THREAD_UNARCHIVED_METHOD: &str = "thread/unarchived";
+const THREAD_DELETED_METHOD: &str = "thread/deleted";
 const THREAD_CLOSED_METHOD: &str = "thread/closed";
 const TURN_STARTED_METHOD: &str = "turn/started";
 const TURN_COMPLETED_METHOD: &str = "turn/completed";
@@ -339,6 +342,15 @@ pub enum TurnStreamEvent {
     ThreadStarted {
         thread: ThreadSummary,
     },
+    ThreadArchived {
+        thread_id: String,
+    },
+    ThreadUnarchived {
+        thread_id: String,
+    },
+    ThreadDeleted {
+        thread_id: String,
+    },
     AgentLabelUpdated {
         thread_id: String,
         label: String,
@@ -545,7 +557,36 @@ pub(crate) struct ThreadStartParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub developer_instructions: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub dynamic_tools: Vec<DynamicToolSpec>,
+    dynamic_tools: Vec<DynamicToolWireSpec>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum DynamicToolWireSpec {
+    Function(DynamicToolWireFunction),
+    Namespace(DynamicToolWireNamespace),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DynamicToolWireFunction {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    name: String,
+    description: String,
+    input_schema: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    defer_loading: Option<bool>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DynamicToolWireNamespace {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    name: String,
+    description: &'static str,
+    tools: Vec<DynamicToolWireFunction>,
 }
 
 #[derive(Serialize)]
@@ -1109,9 +1150,60 @@ impl ThreadStartParams {
             cwd: Some(path.display().to_string()),
             ephemeral: options.ephemeral,
             developer_instructions: options.developer_instructions,
-            dynamic_tools: options.dynamic_tools,
+            dynamic_tools: normalize_dynamic_tools(options.dynamic_tools),
         }
     }
+}
+
+fn normalize_dynamic_tools(tools: Vec<DynamicToolSpec>) -> Vec<DynamicToolWireSpec> {
+    const NAMESPACE_DESCRIPTION: &str = "Dynamic tools in this namespace.";
+
+    let mut normalized = Vec::new();
+    let mut namespace_indexes = Vec::<(String, usize)>::new();
+
+    for tool in tools {
+        let DynamicToolSpec {
+            name,
+            description,
+            input_schema,
+            namespace,
+            defer_loading,
+        } = tool;
+        let function = DynamicToolWireFunction {
+            kind: "function",
+            name,
+            description,
+            input_schema,
+            defer_loading,
+        };
+
+        let Some(namespace) = namespace else {
+            normalized.push(DynamicToolWireSpec::Function(function));
+            continue;
+        };
+
+        if let Some((_, index)) = namespace_indexes
+            .iter()
+            .find(|(existing_namespace, _)| existing_namespace == &namespace)
+        {
+            let DynamicToolWireSpec::Namespace(namespace_spec) = &mut normalized[*index] else {
+                unreachable!("namespace index must refer to a namespace dynamic tool");
+            };
+            namespace_spec.tools.push(function);
+            continue;
+        }
+
+        let index = normalized.len();
+        namespace_indexes.push((namespace.clone(), index));
+        normalized.push(DynamicToolWireSpec::Namespace(DynamicToolWireNamespace {
+            kind: "namespace",
+            name: namespace,
+            description: NAMESPACE_DESCRIPTION,
+            tools: vec![function],
+        }));
+    }
+
+    normalized
 }
 
 impl ApprovalRequestKind {
@@ -1335,6 +1427,24 @@ pub fn parse_turn_stream_event(
                 thread: params.thread,
             }
         }
+        THREAD_ARCHIVED_METHOD => {
+            let params: ThreadLifecycleNotification = serde_json::from_value(params)?;
+            TurnStreamEvent::ThreadArchived {
+                thread_id: params.thread_id,
+            }
+        }
+        THREAD_UNARCHIVED_METHOD => {
+            let params: ThreadLifecycleNotification = serde_json::from_value(params)?;
+            TurnStreamEvent::ThreadUnarchived {
+                thread_id: params.thread_id,
+            }
+        }
+        THREAD_DELETED_METHOD => {
+            let params: ThreadLifecycleNotification = serde_json::from_value(params)?;
+            TurnStreamEvent::ThreadDeleted {
+                thread_id: params.thread_id,
+            }
+        }
         CODEX_EVENT_COLLAB_AGENT_SPAWN_END_METHOD => {
             let Some(event) = collab_agent_spawn_label_event(&params) else {
                 return Ok(None);
@@ -1471,6 +1581,12 @@ pub fn parse_turn_stream_event(
 #[serde(rename_all = "camelCase")]
 struct ThreadStartedNotification {
     thread: ThreadSummary,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ThreadLifecycleNotification {
+    thread_id: String,
 }
 
 #[derive(Deserialize)]

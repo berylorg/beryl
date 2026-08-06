@@ -21,7 +21,8 @@ mod shell {
 }
 
 use shell::thread_activation::{
-    ExistingThreadActivationBackend, ExistingThreadActivationError, activate_existing_thread_direct,
+    ExistingThreadActivationBackend, ExistingThreadActivationError,
+    activate_existing_thread_direct, activate_existing_thread_direct_with_fork_parent,
 };
 use shell::transcript_history::{
     THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBackend, initial_thread_history_page_options,
@@ -138,6 +139,107 @@ fn direct_activation_rejects_cwd_mismatch_as_rebind() {
 }
 
 #[test]
+fn direct_activation_rejects_backend_identity_mismatch_before_history_load() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+    let mut backend = FakeActivationBackend::new(
+        thread_response("thread_other", r"C:\work\alpha"),
+        Ok(ThreadTurnsListResponse {
+            data: Vec::new(),
+            next_cursor: None,
+            backwards_cursor: None,
+        }),
+    );
+
+    let error = activate_existing_thread_direct(
+        &mut backend,
+        &execution_target,
+        "thread_requested",
+        "Requested thread",
+        Duration::from_secs(5),
+    )
+    .unwrap_err();
+
+    match error {
+        ExistingThreadActivationError::Failed { message } => {
+            assert!(message.contains("thread_requested"));
+            assert!(message.contains("thread_other"));
+        }
+        ExistingThreadActivationError::RequiresRebind { detail } => {
+            panic!("expected identity failure, got rebind: {detail}");
+        }
+    }
+    assert!(backend.turn_calls.is_empty());
+}
+
+#[test]
+fn persisted_phase_child_activation_requires_exact_backend_root_parent() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+    let mut backend = FakeActivationBackend::new(
+        thread_response_with_parent("thread_child", r"C:\work\alpha", Some("other_root")),
+        Ok(ThreadTurnsListResponse {
+            data: Vec::new(),
+            next_cursor: None,
+            backwards_cursor: None,
+        }),
+    );
+
+    let error = activate_existing_thread_direct_with_fork_parent(
+        &mut backend,
+        &execution_target,
+        "thread_child",
+        "Phase child",
+        Some("thread_root"),
+        Duration::from_secs(5),
+    )
+    .unwrap_err();
+
+    match error {
+        ExistingThreadActivationError::Failed { message } => {
+            assert!(message.contains("other_root"));
+            assert!(message.contains("thread_root"));
+        }
+        ExistingThreadActivationError::RequiresRebind { detail } => {
+            panic!("expected lineage failure, got rebind: {detail}");
+        }
+    }
+    assert!(backend.turn_calls.is_empty());
+}
+
+#[test]
+fn persisted_phase_child_activation_rejects_missing_backend_root_parent() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+    let mut backend = FakeActivationBackend::new(
+        thread_response_with_parent("thread_child", r"C:\work\alpha", None),
+        Ok(ThreadTurnsListResponse {
+            data: Vec::new(),
+            next_cursor: None,
+            backwards_cursor: None,
+        }),
+    );
+
+    let error = activate_existing_thread_direct_with_fork_parent(
+        &mut backend,
+        &execution_target,
+        "thread_child",
+        "Phase child",
+        Some("thread_root"),
+        Duration::from_secs(5),
+    )
+    .unwrap_err();
+
+    match error {
+        ExistingThreadActivationError::Failed { message } => {
+            assert!(message.contains("no fork parent"));
+            assert!(message.contains("thread_root"));
+        }
+        ExistingThreadActivationError::RequiresRebind { detail } => {
+            panic!("expected lineage failure, got rebind: {detail}");
+        }
+    }
+    assert!(backend.turn_calls.is_empty());
+}
+
+#[test]
 fn direct_activation_fails_when_initial_history_page_cannot_load() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
     let mut backend = FakeActivationBackend::new(
@@ -228,6 +330,14 @@ impl TranscriptHistoryBackend for FakeActivationBackend {
 }
 
 fn thread_response(thread_id: &str, cwd: &str) -> ThreadSessionResponse {
+    thread_response_with_parent(thread_id, cwd, None)
+}
+
+fn thread_response_with_parent(
+    thread_id: &str,
+    cwd: &str,
+    forked_from_id: Option<&str>,
+) -> ThreadSessionResponse {
     serde_json::from_value(json!({
         "model": "gpt-5.4",
         "modelProvider": "openai",
@@ -236,6 +346,7 @@ fn thread_response(thread_id: &str, cwd: &str) -> ThreadSessionResponse {
             "createdAt": 1,
             "cwd": cwd,
             "ephemeral": false,
+            "forkedFromId": forked_from_id,
             "id": thread_id,
             "modelProvider": "openai",
             "preview": "Activation",

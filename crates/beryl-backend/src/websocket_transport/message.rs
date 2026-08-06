@@ -75,16 +75,22 @@ pub(super) struct WebSocketTextMessageReader<'a> {
     len: usize,
     complete: bool,
     started_at: Instant,
+    deadline: Instant,
     read_wait: Duration,
     fill_buffer_calls: usize,
     payload_chunk_count: usize,
     max_payload_chunk_bytes: usize,
+    transport_error: Option<ManagedWebSocketError>,
     first_frame_after: Option<Duration>,
     first_payload_after: Option<Duration>,
 }
 
 impl<'a> WebSocketTextMessageReader<'a> {
-    pub(super) fn new(transport: &'a mut WebSocketClientTransport, method: &'a str) -> Self {
+    pub(super) fn new(
+        transport: &'a mut WebSocketClientTransport,
+        method: &'a str,
+        deadline: Instant,
+    ) -> Self {
         Self {
             transport,
             method,
@@ -94,10 +100,12 @@ impl<'a> WebSocketTextMessageReader<'a> {
             len: 0,
             complete: false,
             started_at: Instant::now(),
+            deadline,
             read_wait: Duration::ZERO,
             fill_buffer_calls: 0,
             payload_chunk_count: 0,
             max_payload_chunk_bytes: 0,
+            transport_error: None,
             first_frame_after: None,
             first_payload_after: None,
         }
@@ -129,6 +137,10 @@ impl<'a> WebSocketTextMessageReader<'a> {
 
     pub(super) fn max_payload_chunk_bytes(&self) -> usize {
         self.max_payload_chunk_bytes
+    }
+
+    pub(super) fn take_transport_error(&mut self) -> Option<ManagedWebSocketError> {
+        self.transport_error.take()
     }
 
     pub(super) fn text_frame_count(&self) -> usize {
@@ -192,6 +204,7 @@ impl<'a> WebSocketTextMessageReader<'a> {
             let read_started = Instant::now();
             let read = self.transport.read_message_payload_chunk(
                 self.method,
+                self.deadline,
                 &mut self.payload,
                 &mut self.buffer,
             );
@@ -258,7 +271,12 @@ impl Read for WebSocketTextMessageReader<'_> {
                         "received binary WebSocket message",
                     ));
                 }
-                Err(error) => return Err(io::Error::other(error)),
+                Err(error) => {
+                    let kind = error.io_error_kind().unwrap_or(io::ErrorKind::Other);
+                    let message = error.to_string();
+                    self.transport_error = Some(error);
+                    return Err(io::Error::new(kind, message));
+                }
             }
         }
 
@@ -303,6 +321,7 @@ impl WebSocketClientTransport {
     pub(super) fn read_message_payload_chunk(
         &mut self,
         method: &str,
+        deadline: Instant,
         payload: &mut MessagePayload<'_>,
         output: &mut [u8],
     ) -> Result<PayloadRead, ManagedWebSocketError> {
@@ -317,7 +336,7 @@ impl WebSocketClientTransport {
                 final_frame,
             } = &mut payload.state
             {
-                let count = self.read_payload_chunk(*remaining, output)?;
+                let count = self.read_payload_chunk(deadline, *remaining, output)?;
                 *remaining -= count;
                 if *remaining == 0 {
                     if *final_frame {
@@ -336,7 +355,7 @@ impl WebSocketClientTransport {
                 }
             }
 
-            let header = match self.read_header()? {
+            let header = match self.read_header(deadline)? {
                 HeaderRead::Idle => return Ok(PayloadRead::Idle),
                 HeaderRead::Header(header) => header,
             };
@@ -349,15 +368,15 @@ impl WebSocketClientTransport {
 
             if header.opcode().is_control() {
                 payload.note_control_frame();
-                let control = self.read_control_payload(&header)?;
+                let control = self.read_control_payload(deadline, &header)?;
                 match header.opcode() {
                     OpCode::Ping => {
-                        self.write_frame_payload(OpCode::Pong, &control)?;
+                        self.write_frame_payload(OpCode::Pong, &control, Some(deadline))?;
                         return Ok(PayloadRead::Pong);
                     }
                     OpCode::Pong => return Ok(PayloadRead::Pong),
                     OpCode::Close => {
-                        let _ = self.write_close_frame(method);
+                        let _ = self.write_close_frame(method, Some(deadline));
                         return Ok(PayloadRead::Close);
                     }
                     _ => {

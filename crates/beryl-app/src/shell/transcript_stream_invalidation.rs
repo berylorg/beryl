@@ -173,6 +173,9 @@ pub(crate) fn stream_event_thread_turn_id(event: &TurnStreamEvent) -> Option<(&s
             thread_id, turn_id, ..
         } => Some((thread_id.as_str(), turn_id.as_str())),
         TurnStreamEvent::ThreadStarted { .. }
+        | TurnStreamEvent::ThreadArchived { .. }
+        | TurnStreamEvent::ThreadUnarchived { .. }
+        | TurnStreamEvent::ThreadDeleted { .. }
         | TurnStreamEvent::AgentLabelUpdated { .. }
         | TurnStreamEvent::ThreadStatusChanged { .. }
         | TurnStreamEvent::ThreadClosed { .. }

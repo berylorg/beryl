@@ -41,10 +41,52 @@
 //! let _ = (graph_tools, preferences_store);
 //! run_app(bootstrap);
 //! ```
+//!
+//! A bounded acceptance driver can use the public session facade without exposing the
+//! diagnostic protocol internals:
+//!
+//! ```no_run
+//! use std::time::Duration;
+//! use beryl_app::{AcceptanceLaunchMode, AcceptanceLimits, AcceptanceSession, AcceptanceSessionConfig};
+//!
+//! let limits = AcceptanceLimits::new(
+//!     Duration::from_secs(5),
+//!     Duration::from_secs(10),
+//!     Duration::from_secs(60),
+//!     16,
+//!     64 * 1024,
+//!     Duration::from_secs(10),
+//! )?;
+//! let config = AcceptanceSessionConfig::new(
+//!     r"C:\fixture\beryl.exe",
+//!     r"C:\fixture\home",
+//!     AcceptanceLaunchMode::FreshWorkspace,
+//!     Some(r"C:\fixture\workspace".into()),
+//!     r"C:\fixture\evidence\run.json",
+//!     "run-001",
+//!     limits,
+//!     Duration::from_secs(10),
+//! )?;
+//! let session = match AcceptanceSession::start(config) {
+//!     Ok(session) => session,
+//!     Err(mut failure) => {
+//!         let _recovery = failure.retry_cleanup(Duration::from_secs(10))?;
+//!         return Err(failure.into());
+//!     }
+//! };
+//! let mut outcome = session.finish();
+//! if outcome.retained_identity().is_some() {
+//!     let _released = outcome.release_owner_fail_safe_nonblocking();
+//! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
+mod acceptance_digest;
+mod acceptance_session;
 mod appearance;
 mod backend_failure;
 mod beryl_home_dir;
+mod diagnostic_acceptance_gate;
 mod diagnostic_child_control;
 mod diagnostic_child_dynamic_tools;
 mod diagnostic_child_protocol;
@@ -186,6 +228,23 @@ pub fn run_diagnostic_target_stdio(bootstrap: AppBootstrap) {
     shell::run_diagnostic_target_stdio(bootstrap);
 }
 
+pub use acceptance_session::{
+    ACCEPTANCE_EVIDENCE_SCHEMA_VERSION, AcceptanceCleanupAttemptEvidence,
+    AcceptanceCleanupEvidence, AcceptanceCleanupFinalState, AcceptanceDiagnosticStartupCause,
+    AcceptanceDiagnosticStartupCauseKind, AcceptanceEvidence, AcceptanceFinishOutcome,
+    AcceptanceFixtureEvidence, AcceptanceKnownProcessIdentityEvidence, AcceptanceLaunchMode,
+    AcceptanceLimits, AcceptanceLimitsEvidence, AcceptancePayloadEvidence,
+    AcceptanceProcessEvidence, AcceptanceProtocolIdentityRangeEvidence,
+    AcceptancePublicationEvidence, AcceptancePublicationState, AcceptanceRequest,
+    AcceptanceRequestEvidence, AcceptanceResponse, AcceptanceResponseEvidence, AcceptanceSession,
+    AcceptanceSessionConfig, AcceptanceSessionError, AcceptanceSessionStartCause,
+    AcceptanceSessionStartFailure, AcceptanceStartupCleanupOutcome,
+    AcceptanceStartupProcessIdentity, AcceptanceStderrEvidence, CompiledAcceptanceRequest,
+    MAX_ACCEPTANCE_CLEANUP_TIMEOUT, MAX_ACCEPTANCE_EVIDENCE_PATH_BYTES,
+    MAX_ACCEPTANCE_EXPANDED_REQUESTS, MAX_ACCEPTANCE_HOME_PATH_BYTES, MAX_ACCEPTANCE_OUTPUT_BYTES,
+    MAX_ACCEPTANCE_REQUEST_TIMEOUT, MAX_ACCEPTANCE_REQUESTS, MAX_ACCEPTANCE_RUN_ID_BYTES,
+    MAX_ACCEPTANCE_RUNTIME, MAX_ACCEPTANCE_STARTUP_TIMEOUT, compile_acceptance_requests,
+};
 pub use appearance::{
     ActiveThemeProjection, AppearanceButtonSettings, AppearanceButtonStateSettings,
     AppearanceChromeSettings, AppearanceForegroundSettings, AppearanceInputSettings,
@@ -203,6 +262,10 @@ pub use appearance::{
     built_in_theme_supported_properties, built_in_theme_supports_property,
 };
 pub use beryl_home_dir::{BerylHomeDir, BerylHomeDirError};
+pub use diagnostic_acceptance_gate::{
+    DIAGNOSTIC_ACCEPTANCE_STARTUP_GATE_FRAME, DIAGNOSTIC_ACCEPTANCE_STARTUP_READY_FRAME,
+    MAX_DIAGNOSTIC_ACCEPTANCE_STARTUP_GATE_BYTES,
+};
 pub use diagnostic_child_dynamic_tools::{
     BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL,
     DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL, DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,

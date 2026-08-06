@@ -34,6 +34,24 @@ pub(crate) struct WebSocketClientTransport {
     read_codec: Codec,
     write_codec: Codec,
     pending_read: VecDeque<u8>,
+    aborted: bool,
+    #[cfg(feature = "lifecycle-test-support")]
+    write_start_pause: Option<WebSocketWritePause>,
+    #[cfg(feature = "lifecycle-test-support")]
+    write_header_pause: Option<WebSocketWritePause>,
+    #[cfg(feature = "lifecycle-test-support")]
+    control_write_header_pause: Option<WebSocketWritePause>,
+    #[cfg(feature = "lifecycle-test-support")]
+    close_frame_attempts: usize,
+    #[cfg(feature = "lifecycle-test-support")]
+    write_error_after_header: Option<io::ErrorKind>,
+}
+
+#[cfg(feature = "lifecycle-test-support")]
+struct WebSocketWritePause {
+    entered: std::sync::mpsc::SyncSender<()>,
+    release: std::sync::mpsc::Receiver<()>,
+    remaining_writes: usize,
 }
 
 impl WebSocketClientTransport {
@@ -58,6 +76,17 @@ impl WebSocketClientTransport {
             read_codec,
             write_codec: Codec::new(),
             pending_read: stream.pending_read,
+            aborted: false,
+            #[cfg(feature = "lifecycle-test-support")]
+            write_start_pause: None,
+            #[cfg(feature = "lifecycle-test-support")]
+            write_header_pause: None,
+            #[cfg(feature = "lifecycle-test-support")]
+            control_write_header_pause: None,
+            #[cfg(feature = "lifecycle-test-support")]
+            close_frame_attempts: 0,
+            #[cfg(feature = "lifecycle-test-support")]
+            write_error_after_header: None,
         })
     }
 
@@ -65,21 +94,80 @@ impl WebSocketClientTransport {
         &self.endpoint
     }
 
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_after_next_write_header(
+        &mut self,
+        entered: std::sync::mpsc::SyncSender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        self.write_header_pause = Some(WebSocketWritePause {
+            entered,
+            release,
+            remaining_writes: 0,
+        });
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_before_next_write(
+        &mut self,
+        entered: std::sync::mpsc::SyncSender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        self.pause_before_write_after(0, entered, release);
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_before_write_after(
+        &mut self,
+        remaining_writes: usize,
+        entered: std::sync::mpsc::SyncSender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        self.write_start_pause = Some(WebSocketWritePause {
+            entered,
+            release,
+            remaining_writes,
+        });
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_after_next_control_write_header(
+        &mut self,
+        entered: std::sync::mpsc::SyncSender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        self.control_write_header_pause = Some(WebSocketWritePause {
+            entered,
+            release,
+            remaining_writes: 0,
+        });
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn close_frame_attempts(&self) -> usize {
+        self.close_frame_attempts
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn fail_next_write_after_header(&mut self, kind: io::ErrorKind) {
+        self.write_error_after_header = Some(kind);
+    }
+
     pub(crate) fn write_message(
         &mut self,
         method: &str,
         line: &str,
+        deadline: Option<Instant>,
     ) -> Result<(), ManagedBackendError> {
-        self.write_frame_payload(OpCode::Text, line.as_bytes())
+        self.write_frame_payload(OpCode::Text, line.as_bytes(), deadline)
             .map_err(|source| self.transport_error(method, source))
     }
 
-    pub(crate) fn recv_text_message_timeout(
+    pub(crate) fn recv_text_message_until(
         &mut self,
         method: &str,
-        timeout: Duration,
+        deadline: Instant,
     ) -> Result<Option<String>, ManagedBackendError> {
-        self.set_read_timeout(Some(timeout), method)?;
         let receive_started = Instant::now();
         let mut payload = MessagePayload::new(method, WEBSOCKET_TEXT_MESSAGE_BUDGET);
         let mut chunk = [0_u8; READ_CHUNK_BYTES];
@@ -90,7 +178,7 @@ impl WebSocketClientTransport {
 
         loop {
             let was_started = payload.started;
-            match self.read_message_payload_chunk(method, &mut payload, &mut chunk) {
+            match self.read_message_payload_chunk(method, deadline, &mut payload, &mut chunk) {
                 Ok(PayloadRead::Idle) if !saw_message_byte && !payload.started => {
                     return Ok(None);
                 }
@@ -137,14 +225,13 @@ impl WebSocketClientTransport {
         }
     }
 
-    pub(crate) fn recv_text_message_timeout_with_parser<T>(
+    pub(crate) fn recv_text_message_until_with_parser<T>(
         &mut self,
         method: &str,
-        timeout: Duration,
+        deadline: Instant,
         parse: impl FnOnce(&mut dyn Read) -> Result<T, serde_json::Error>,
     ) -> Result<Option<Result<T, serde_json::Error>>, ManagedBackendError> {
-        self.set_read_timeout(Some(timeout), method)?;
-        let mut reader = WebSocketTextMessageReader::new(self, method);
+        let mut reader = WebSocketTextMessageReader::new(self, method, deadline);
 
         let parse_started = Instant::now();
         let prime_started = Instant::now();
@@ -248,12 +335,12 @@ impl WebSocketClientTransport {
                     reader_control_frame_count = reader.control_frame_count(),
                     "stream parser failed while reading backend WebSocket text message"
                 );
-                Err(reader.transport.transport_error(
-                    method,
+                let transport_error = reader.take_transport_error().unwrap_or_else(|| {
                     ManagedWebSocketError::protocol(format!(
                         "failed while streaming WebSocket text message: {source}"
-                    )),
-                ))
+                    ))
+                });
+                Err(reader.transport.transport_error(method, transport_error))
             }
             Err(source) => {
                 debug!(
@@ -285,7 +372,14 @@ impl WebSocketClientTransport {
     }
 
     pub(crate) fn close(&mut self) {
-        let _ = self.write_close_frame("close");
+        if !self.aborted {
+            let _ = self.write_close_frame("close", None);
+        }
+        let _ = self.stream.shutdown(Shutdown::Both);
+    }
+
+    pub(crate) fn abort(&mut self) {
+        self.aborted = true;
         let _ = self.stream.shutdown(Shutdown::Both);
     }
 }
@@ -296,7 +390,7 @@ enum HeaderRead {
 }
 
 impl WebSocketClientTransport {
-    fn read_header(&mut self) -> Result<HeaderRead, ManagedWebSocketError> {
+    fn read_header(&mut self, deadline: Instant) -> Result<HeaderRead, ManagedWebSocketError> {
         let mut bytes = Vec::with_capacity(14);
         loop {
             match self
@@ -307,7 +401,7 @@ impl WebSocketClientTransport {
                 Parsing::Done { value, .. } => return Ok(HeaderRead::Header(value)),
                 Parsing::NeedMore(count) => {
                     for _ in 0..count {
-                        match self.read_header_byte()? {
+                        match self.read_header_byte(deadline)? {
                             Some(byte) => bytes.push(byte),
                             None if bytes.is_empty() => return Ok(HeaderRead::Idle),
                             None => {
@@ -322,24 +416,36 @@ impl WebSocketClientTransport {
         }
     }
 
-    fn read_header_byte(&mut self) -> Result<Option<u8>, ManagedWebSocketError> {
+    fn read_header_byte(&mut self, deadline: Instant) -> Result<Option<u8>, ManagedWebSocketError> {
         if let Some(byte) = self.pending_read.pop_front() {
             return Ok(Some(byte));
         }
 
+        let Some(remaining) = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+        else {
+            return Err(ManagedWebSocketError::deadline_expired());
+        };
+        self.stream
+            .set_read_timeout(Some(remaining))
+            .map_err(ManagedWebSocketError::from_io)?;
         let mut byte = [0_u8; 1];
         match self.stream.read(&mut byte) {
             Ok(0) => Err(ManagedWebSocketError::protocol(
                 "unexpected EOF while reading WebSocket frame header",
             )),
             Ok(_) => Ok(Some(byte[0])),
-            Err(error) if is_timeout_io_error(&error) => Ok(None),
+            Err(error) if is_timeout_io_error(&error) => {
+                Err(ManagedWebSocketError::deadline_expired())
+            }
             Err(error) => Err(ManagedWebSocketError::from_io(error)),
         }
     }
 
     fn read_payload_chunk(
         &mut self,
+        deadline: Instant,
         remaining: usize,
         output: &mut [u8],
     ) -> Result<usize, ManagedWebSocketError> {
@@ -360,29 +466,29 @@ impl WebSocketClientTransport {
             return Ok(written);
         }
 
+        self.set_read_deadline(deadline)?;
         match self.stream.read(&mut output[written..target]) {
             Ok(0) => Err(ManagedWebSocketError::protocol(
                 "unexpected EOF while reading WebSocket frame payload",
             )),
             Ok(count) => Ok(written + count),
             Err(error) if is_timeout_io_error(&error) => {
-                if written > 0 {
-                    Ok(written)
-                } else {
-                    Err(ManagedWebSocketError::protocol(
-                        "timed out while reading WebSocket frame payload",
-                    ))
-                }
+                Err(ManagedWebSocketError::deadline_expired())
             }
             Err(error) => Err(ManagedWebSocketError::from_io(error)),
         }
     }
 
-    fn read_control_payload(&mut self, header: &Header) -> Result<Vec<u8>, ManagedWebSocketError> {
+    fn read_control_payload(
+        &mut self,
+        deadline: Instant,
+        header: &Header,
+    ) -> Result<Vec<u8>, ManagedWebSocketError> {
         let mut payload = vec![0_u8; header.payload_len()];
         let mut offset = 0;
         while offset < payload.len() {
-            let count = self.read_payload_chunk(payload.len() - offset, &mut payload[offset..])?;
+            let count =
+                self.read_payload_chunk(deadline, payload.len() - offset, &mut payload[offset..])?;
             if count == 0 {
                 return Err(ManagedWebSocketError::protocol(
                     "timed out while reading WebSocket control payload",
@@ -393,9 +499,17 @@ impl WebSocketClientTransport {
         Ok(payload)
     }
 
-    fn write_close_frame(&mut self, method: &str) -> Result<(), ManagedBackendError> {
+    fn write_close_frame(
+        &mut self,
+        method: &str,
+        deadline: Option<Instant>,
+    ) -> Result<(), ManagedBackendError> {
+        #[cfg(feature = "lifecycle-test-support")]
+        {
+            self.close_frame_attempts += 1;
+        }
         let code = 1000_u16.to_be_bytes();
-        self.write_frame_payload(OpCode::Close, &code)
+        self.write_frame_payload(OpCode::Close, &code, deadline)
             .map_err(|source| self.transport_error(method, source))
     }
 
@@ -403,7 +517,23 @@ impl WebSocketClientTransport {
         &mut self,
         opcode: OpCode,
         payload: &[u8],
+        deadline: Option<Instant>,
     ) -> Result<(), ManagedWebSocketError> {
+        #[cfg(feature = "lifecycle-test-support")]
+        let write_start_pause_ready = self.write_start_pause.as_mut().is_some_and(|pause| {
+            if pause.remaining_writes == 0 {
+                true
+            } else {
+                pause.remaining_writes -= 1;
+                false
+            }
+        });
+        #[cfg(feature = "lifecycle-test-support")]
+        if write_start_pause_ready && let Some(pause) = self.write_start_pause.take() {
+            let _ = pause.entered.send(());
+            let _ = pause.release.recv();
+        }
+
         let mut header = Header::new(opcode);
         let mut mask = [0_u8; 4];
         getrandom::fill(&mut mask).map_err(ManagedWebSocketError::from_mask_generation)?;
@@ -412,25 +542,103 @@ impl WebSocketClientTransport {
             .set_mask(u32::from_be_bytes(mask))
             .set_payload_len(payload.len());
 
-        let header_bytes = self.write_codec.encode_header(&header);
+        let header_bytes = self.write_codec.encode_header(&header).to_vec();
         let mut masked_payload = payload.to_vec();
         Codec::apply_mask(&header, &mut masked_payload);
+        let mut committed = false;
+        self.write_all_until(&header_bytes, deadline, &mut committed)?;
+        #[cfg(feature = "lifecycle-test-support")]
+        if let Some(pause) = self.write_header_pause.take() {
+            let _ = pause.entered.send(());
+            let _ = pause.release.recv();
+        }
+        #[cfg(feature = "lifecycle-test-support")]
+        if opcode.is_control()
+            && let Some(pause) = self.control_write_header_pause.take()
+        {
+            let _ = pause.entered.send(());
+            let _ = pause.release.recv();
+        }
+        self.write_all_until(&masked_payload, deadline, &mut committed)?;
+        self.set_write_deadline(deadline, committed)?;
         self.stream
-            .write_all(header_bytes)
-            .and_then(|()| self.stream.write_all(&masked_payload))
-            .and_then(|()| self.stream.flush())
+            .flush()
+            .map_err(|error| write_io_error(error, committed))
+    }
+
+    fn write_all_until(
+        &mut self,
+        mut bytes: &[u8],
+        deadline: Option<Instant>,
+        committed: &mut bool,
+    ) -> Result<(), ManagedWebSocketError> {
+        while !bytes.is_empty() {
+            self.set_write_deadline(deadline, *committed)?;
+            match self.stream.write(bytes) {
+                Ok(0) => {
+                    let error = io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "failed to write complete WebSocket frame",
+                    );
+                    return Err(if *committed {
+                        ManagedWebSocketError::from_io_after_write_commit(error)
+                    } else {
+                        ManagedWebSocketError::from_io(error)
+                    });
+                }
+                Ok(written) => {
+                    *committed = true;
+                    bytes = &bytes[written..];
+                }
+                Err(error) if is_timeout_io_error(&error) => {
+                    return Err(if *committed {
+                        ManagedWebSocketError::write_deadline_expired()
+                    } else {
+                        ManagedWebSocketError::deadline_expired()
+                    });
+                }
+                Err(error) => {
+                    return Err(if *committed {
+                        ManagedWebSocketError::from_io_after_write_commit(error)
+                    } else {
+                        ManagedWebSocketError::from_io(error)
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn set_read_deadline(&self, deadline: Instant) -> Result<(), ManagedWebSocketError> {
+        self.stream
+            .set_read_timeout(Some(remaining_until(deadline)?))
             .map_err(ManagedWebSocketError::from_io)
     }
 
-    fn set_read_timeout(
+    fn set_write_deadline(
         &mut self,
-        timeout: Option<Duration>,
-        method: &str,
-    ) -> Result<(), ManagedBackendError> {
-        self.stream
-            .set_read_timeout(timeout)
-            .map_err(ManagedWebSocketError::from_io)
-            .map_err(|source| self.transport_error(method, source))
+        deadline: Option<Instant>,
+        committed: bool,
+    ) -> Result<(), ManagedWebSocketError> {
+        #[cfg(feature = "lifecycle-test-support")]
+        if committed && let Some(kind) = self.write_error_after_header.take() {
+            return Err(ManagedWebSocketError::from_io_after_write_commit(
+                io::Error::new(
+                    kind,
+                    "injected WebSocket timeout-update failure after frame header",
+                ),
+            ));
+        }
+        let timeout = deadline
+            .map(|deadline| remaining_until_write(deadline, committed))
+            .transpose()?;
+        self.stream.set_write_timeout(timeout).map_err(|error| {
+            if committed {
+                ManagedWebSocketError::from_io_after_write_commit(error)
+            } else {
+                ManagedWebSocketError::from_io(error)
+            }
+        })
     }
 
     fn transport_error(&self, method: &str, source: ManagedWebSocketError) -> ManagedBackendError {
@@ -447,6 +655,45 @@ fn is_timeout_io_error(error: &io::Error) -> bool {
         error.kind(),
         io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
     )
+}
+
+fn remaining_until(deadline: Instant) -> Result<Duration, ManagedWebSocketError> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(ManagedWebSocketError::deadline_expired)
+}
+
+fn remaining_until_write(
+    deadline: Instant,
+    committed: bool,
+) -> Result<Duration, ManagedWebSocketError> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| {
+            if committed {
+                ManagedWebSocketError::write_deadline_expired()
+            } else {
+                ManagedWebSocketError::deadline_expired()
+            }
+        })
+}
+
+fn write_io_error(error: io::Error, committed: bool) -> ManagedWebSocketError {
+    if is_timeout_io_error(&error) {
+        if committed {
+            ManagedWebSocketError::write_deadline_expired()
+        } else {
+            ManagedWebSocketError::deadline_expired()
+        }
+    } else {
+        if committed {
+            ManagedWebSocketError::from_io_after_write_commit(error)
+        } else {
+            ManagedWebSocketError::from_io(error)
+        }
+    }
 }
 
 fn elapsed_ms(duration: Duration) -> f64 {

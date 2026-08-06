@@ -45,13 +45,29 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 ## Member-Thread Inventory
 
 - Beryl maintains a bounded UI-facing member-thread inventory snapshot for the active workspace, grouped by available runtime-bound workspace member.
+- A member-thread inventory snapshot is a derived selector projection, not a registry of every persisted GUI registration and not a prerequisite for reopening one exact registered thread.
 - Inventory groups are available explicit members, or the implicit home member when no available explicit member exists and a default runtime is selected.
 - Unavailable explicit members remain visible in member management UI but do not contribute inventory groups.
 - A backend thread summary belongs under a member only when its recorded runtime and working directory exactly match that member's runtime and canonical path.
-- Inventory refresh runs off the `gpui` thread, uses backend-side working-directory filtering and updated-time ordering when available, and atomically publishes complete snapshots to UI state.
-- Inventory refresh may enrich list summaries with metadata-only thread reads to obtain fork parent ids. That enrichment remains part of the background refresh job and must not move backend calls into selector rendering.
+- Inventory refresh runs off the `gpui` thread and requests backend-side working-directory filtering with newest-updated ordering. It must not exhaust a runtime-global thread list and filter it only after retrieval.
+- One refresh has finite aggregate elapsed-time, page-count, result-count, and metadata-read budgets. Every backend request uses only the remaining elapsed-time budget, and reaching a page or result bound stops pagination without issuing another page request.
+- A completed bounded listing publishes its retained rows atomically. If a backend cursor remains, the snapshot is explicitly marked truncated rather than represented as exhaustive.
+- A refresh that accepted at least one trustworthy page may publish one atomic partial snapshot with bounded reasons identifying incomplete row coverage or lineage enrichment. A refresh that accepted no trustworthy page fails and preserves the last usable snapshot instead of replacing it with an empty success.
+- Inventory refresh may enrich list summaries with metadata-only thread reads to obtain fork parent ids. Enrichment shares the refresh's finite metadata-read and elapsed-time budgets, remains off the render path, and stops cleanly when either budget is exhausted.
+- A row whose fork-parent enrichment was unavailable or budget-truncated remains a root/orphan presentation row. Beryl does not synthesize lineage from GUI registrations, orchestration provenance, or neighboring rows.
 - Fork parent metadata does not affect member grouping. A thread remains grouped by its own recorded working directory.
 - Thread rows use the current title precedence before publication so manual titles and backend metadata changes are reflected consistently.
+
+## Startup Selection Recovery
+
+- When persisted workspace state names one active registered thread, Beryl treats that registration only as an exact startup recovery candidate for its recorded execution target and member binding.
+- Startup validates the candidate directly by exact backend thread id through the normal metadata-resume and bounded history activation path. It does not enumerate inventory first, infer a replacement, or require that the candidate appear in the latest selector snapshot.
+- Direct recovery must validate the backend-returned thread id and recorded working directory against the persisted registration's exact runtime target and current workspace-member scope before selecting it.
+- When the candidate is a lifecycle phase child with persisted orchestration-root provenance distinct from its own id, direct recovery also requires backend `forkedFromId` to equal that root. Missing or contradictory backend lineage fails closed. An orchestration root does not require self-parentage.
+- Startup recovery freezes the workspace identity, selected registration, execution target, canonical working directory, member binding, and backend operation generation. A result whose frozen identities no longer match cannot select a thread.
+- The registration may seed selected-thread display state only after direct backend validation succeeds. It never seeds selector inventory, supplies backend fork parentage, or overrides backend lineage.
+- If a persisted active registration is unavailable, out of scope, missing binding metadata, binding-mismatched, or rebind-required, Beryl preserves that identity for explicit repair without presenting it as backend-validated selection. Preflight-invalid registrations issue neither `thread/list` nor activation, leave no substitute selected, and show a bounded repair notice. Exact backend validation failure likewise selects no substitute.
+- Only when no persisted active-thread registration exists may startup use the bounded member-scoped listing to choose the newest exact matching backend row. A truncated listing is still a bounded candidate window, not proof of exhaustive inventory.
 
 ## Thread Selector
 
@@ -79,6 +95,21 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - Branched threads are Beryl-created threads. Their automatic title seed is the clicked turn's ordered user input fragments, not the source title or assistant output.
 - Branch orchestration runs away from the `gpui` thread and does not mutate source transcript projection.
 
+## Lifecycle Phase Threads
+
+- `yield(phase_continue_new_thread)` creates a persistent backend-owned phase thread only after the yielding source turn completes successfully and its foreground turn worker is fully released.
+- The first source in a phase sequence is its orchestration root. Every generated phase thread is forked directly from that root, so inventory and selector lineage form one root with sibling phase children rather than a child chain.
+- The source remains selected and idle while Beryl prepares the child. Conflicting thread and turn controls are unavailable until preparation succeeds, fails, or is invalidated.
+- Beryl forks with inherited turns present, rolls back every inherited user turn in the child, and verifies that the child's effective history is empty before registration or selection. `excludeTurns = true` is not a clean-context operation.
+- A prepared child's backend `forkedFromId` must equal the exact orchestration root id. Selector lineage continues to use only backend-provided fork parent metadata.
+- Lifecycle orchestration provenance may retain the exact root id needed to create later sibling phase threads, but it must not create or override GUI-local fork-parent metadata.
+- The prepared child uses the root's exact runtime target, canonical working directory, and workspace-member binding. Any mismatch fails preparation rather than silently rebinding the child.
+- After preparation succeeds and exact asynchronous identity guards still match, Beryl registers the child as Beryl-created, selects it directly from the verified worker result, schedules inventory refresh, and starts the fixed lifecycle continuation turn.
+- Lifecycle phase children use normal Beryl-created thread title eligibility. They do not inherit or copy the root's GUI-local or backend title.
+- If fork or rollback fails, the source remains selected and idle and Beryl shows a bounded error notice. A forked child left behind by rollback or verification failure is reported as an orphan and made discoverable through inventory refresh.
+- If fork commitment is indeterminate because the response carrying the child id is lost, Beryl warns that an unidentified backend child may exist and refreshes inventory without guessing or automatically selecting a candidate thread.
+- A stale preparation result cannot activate a child in another workspace, member, execution target, source-thread selection, or orchestration sequence. A valid prepared child that can no longer be activated automatically remains backend-owned and discoverable rather than being represented as an active thread.
+
 ## Thread Editing
 
 - Thread editing is a user-initiated source-thread rewrite flow over backend history. It is not an in-place mutation of an existing turn id.
@@ -98,6 +129,7 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 
 - Thread activation depends on exact resume by thread id and bounded paginated history reads.
 - Branching depends on app-server fork and rollback primitives. When unavailable, Beryl must not emulate branching by copying backend history locally.
+- Lifecycle phase-thread creation additionally depends on forked children preserving registered Beryl dynamic tools through full rollback and later turns. Beryl must prove that contract against the targeted app-server before enabling the outcome and must not substitute unrelated `thread/start` threads or GUI-local lineage when it is unavailable.
 - Editing depends on app-server rollback and turn-start primitives. When unavailable or when exact rollback scope cannot be proven, Beryl must not emulate editing locally.
 - On-demand title updates depend on app-server ephemeral-thread creation, turn-start, turn-stream observation, maintenance-thread cleanup, and `thread/name/set`. When those primitives or a backend client for the exact target runtime are unavailable, Beryl must not emulate retitling through GUI-local title metadata.
 - Thread selector and link-thread menus must render from inventory snapshots and stay responsive while refresh or activation work is pending.

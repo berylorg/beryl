@@ -22,6 +22,8 @@ pub(crate) struct SupervisedBackendProcess {
     child: Option<Child>,
     host_process_tree: HostProcessTree,
     wsl_process_group: WslProcessGroup,
+    #[cfg(feature = "lifecycle-test-support")]
+    injected_termination_failures: usize,
 }
 
 impl SupervisedBackendProcess {
@@ -34,6 +36,8 @@ impl SupervisedBackendProcess {
             child: Some(child),
             host_process_tree: HostProcessTree::none(),
             wsl_process_group: WslProcessGroup::none(),
+            #[cfg(feature = "lifecycle-test-support")]
+            injected_termination_failures: 0,
         };
 
         if matches!(process.launch_spec.runtime_mode(), RuntimeMode::HostWindows) {
@@ -79,11 +83,31 @@ impl SupervisedBackendProcess {
         }
     }
 
+    /// Requests termination of the exact owned child without waiting for exit.
+    ///
+    /// The supervisor retains the child and all runtime-boundary ownership so a
+    /// later bounded [`Self::shutdown`] can reap it and release descendants.
+    pub(crate) fn terminate_child_now(&mut self) -> Result<(), ManagedBackendError> {
+        #[cfg(feature = "lifecycle-test-support")]
+        self.fail_injected_termination()?;
+        let launch = self.launch_label();
+        let Some(child) = self.child.as_mut() else {
+            return Ok(());
+        };
+        match child.kill() {
+            Ok(()) => Ok(()),
+            Err(source) if source.kind() == io::ErrorKind::InvalidInput => Ok(()),
+            Err(source) => Err(ManagedBackendError::TerminateProcess { launch, source }),
+        }
+    }
+
     pub(crate) fn shutdown(
         &mut self,
         grace_timeout: Duration,
         kill_timeout: Duration,
     ) -> Result<(), ManagedBackendError> {
+        #[cfg(feature = "lifecycle-test-support")]
+        self.fail_injected_termination()?;
         let Some(mut child) = self.child.take() else {
             self.host_process_tree.release();
             return Ok(());
@@ -100,6 +124,23 @@ impl SupervisedBackendProcess {
                 Err(error)
             }
         }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn inject_termination_failures(&mut self, count: usize) {
+        self.injected_termination_failures = count;
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn fail_injected_termination(&mut self) -> Result<(), ManagedBackendError> {
+        if self.injected_termination_failures == 0 {
+            return Ok(());
+        }
+        self.injected_termination_failures -= 1;
+        Err(ManagedBackendError::TerminateProcess {
+            launch: self.launch_label(),
+            source: io::Error::other("injected managed-process termination refusal"),
+        })
     }
 
     fn try_has_exited(&mut self) -> Result<bool, ManagedBackendError> {

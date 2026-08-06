@@ -108,3 +108,41 @@ fn lifecycle_yield_can_clear_stale_failed_turn() {
     assert!(state.clear_turn("thread_1", "turn_1"));
     assert!(state.apply_terminal_turn("thread_1", "turn_1").is_none());
 }
+
+#[test]
+fn phase_continue_new_thread_suppresses_sound_without_notification() {
+    let mut state = LifecycleYieldState::default();
+
+    assert!(state.record(
+        "thread_1",
+        "turn_1",
+        LifecycleYieldOutcome::PhaseContinueNewThread
+    ));
+
+    let applied = state
+        .apply_terminal_turn("thread_1", "turn_1")
+        .expect("matching terminal turn should consume lifecycle yield");
+    assert!(applied.suppresses_ordinary_end_turn_sound());
+    assert_eq!(applied.lifecycle_notification_candidate(), None);
+}
+
+#[test]
+fn lifecycle_yield_can_clear_all_stale_records_for_finished_worker_thread() {
+    let mut state = LifecycleYieldState::default();
+
+    assert!(state.record(
+        "thread_1",
+        "turn_stale",
+        LifecycleYieldOutcome::PhaseContinueNewThread
+    ));
+    assert!(state.record("thread_2", "turn_2", LifecycleYieldOutcome::PlanComplete));
+
+    state.clear_thread("thread_1");
+
+    assert!(
+        state
+            .apply_terminal_turn("thread_1", "turn_stale")
+            .is_none()
+    );
+    assert!(state.apply_terminal_turn("thread_2", "turn_2").is_some());
+}

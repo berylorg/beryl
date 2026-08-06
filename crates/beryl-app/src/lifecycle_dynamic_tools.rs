@@ -13,6 +13,7 @@ pub enum LifecycleYieldOutcome {
     PhaseNeedsReview,
     BlockedNeedsOperator,
     PhaseContinue,
+    PhaseContinueNewThread,
     PlanComplete,
 }
 
@@ -66,6 +67,7 @@ impl LifecycleYieldOutcome {
             Self::PhaseNeedsReview => "phase_needs_review",
             Self::BlockedNeedsOperator => "blocked_needs_operator",
             Self::PhaseContinue => "phase_continue",
+            Self::PhaseContinueNewThread => "phase_continue_new_thread",
             Self::PlanComplete => "plan_complete",
         }
     }
@@ -210,10 +212,11 @@ impl std::fmt::Display for DynamicLifecycleToolError {
 impl std::error::Error for DynamicLifecycleToolError {}
 
 impl LifecycleYieldOutcome {
-    const SUPPORTED: [&'static str; 4] = [
+    const SUPPORTED: [&'static str; 5] = [
         "phase_needs_review",
         "blocked_needs_operator",
         "phase_continue",
+        "phase_continue_new_thread",
         "plan_complete",
     ];
 }

@@ -157,7 +157,10 @@ fn render_header(
     let mut status = if inventory.refreshing() {
         Some("Refreshing thread list...".to_string())
     } else {
-        inventory.last_error().map(str::to_string)
+        inventory
+            .last_error()
+            .map(str::to_string)
+            .or_else(|| inventory.snapshot().partial_status_message())
     };
     if loaded.selected_runtime().is_none() {
         status = Some("Select a runtime environment before opening existing threads.".to_string());

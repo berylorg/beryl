@@ -237,12 +237,15 @@ fn clamp_chars(text: &str, max_chars: usize) -> String {
     result
 }
 
-fn event_thread_id(event: &TurnStreamEvent) -> Option<&str> {
+pub(crate) fn event_thread_id(event: &TurnStreamEvent) -> Option<&str> {
     match event {
         TurnStreamEvent::ThreadStarted { thread } => Some(thread.id.as_str()),
         TurnStreamEvent::AgentLabelUpdated { thread_id, .. }
         | TurnStreamEvent::ThreadStatusChanged { thread_id, .. }
         | TurnStreamEvent::ThreadClosed { thread_id }
+        | TurnStreamEvent::ThreadArchived { thread_id }
+        | TurnStreamEvent::ThreadUnarchived { thread_id }
+        | TurnStreamEvent::ThreadDeleted { thread_id }
         | TurnStreamEvent::TurnStarted { thread_id, .. }
         | TurnStreamEvent::TurnCompleted { thread_id, .. }
         | TurnStreamEvent::ItemStarted { thread_id, .. }

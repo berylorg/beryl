@@ -10,8 +10,8 @@ use std::{
 
 use beryl_backend::{
     ManagedBackendError, ManagedBackendServer, ManagedBackendSession, ManagedBackendStartupStage,
-    ThreadInfo, ThreadItem, ThreadSummary, WorkspacePathError, canonicalize_host_path,
-    canonicalize_wsl_path,
+    ThreadInfo, ThreadItem, ThreadListBudget, ThreadListCollectionStatus, ThreadListOptions,
+    ThreadSummary, WorkspacePathError, canonicalize_host_path, canonicalize_wsl_path,
 };
 use beryl_model::{
     semantic_graph::SemanticGraph,
@@ -26,7 +26,13 @@ use crate::{WorkspaceGraphRevision, WorkspaceGraphStateSnapshot};
 use super::backend_availability::{BackendUnavailable, BackendUnavailableKind};
 use super::execution_detail::TranscriptImagePathResolver;
 use super::lifecycle::blocked_state_for_error;
-use super::thread_activation::{ExistingThreadActivationError, activate_existing_thread_direct};
+use super::startup_initial_thread_load::{
+    StartupInitialThreadLoadAdapter, route_startup_initial_thread_load,
+};
+use super::thread_activation::{
+    ExistingThreadActivationError, activate_existing_thread_direct,
+    activate_existing_thread_direct_with_fork_parent,
+};
 use super::thread_selection::{
     KnownThreadSelection, ThreadSelectionRequest, resolve_known_thread_selection,
 };
@@ -277,40 +283,22 @@ pub(super) fn open_workspace_worker(
                 return;
             }
 
-            let mut known_threads =
-                if matches!(thread_selection, ThreadSelectionRequest::Exact { .. }) {
-                    let _ = sender.send(WorkspaceUpdate::Detail(
-                        "Opening the selected conversation thread".to_string(),
-                    ));
-                    Vec::new()
-                } else {
-                    let _ = sender.send(WorkspaceUpdate::Detail(
-                        "Loading existing conversation threads for this execution target"
-                            .to_string(),
-                    ));
-                    load_workspace_threads(&mut session, &execution_target, timeout)
+            let initial_thread_load = {
+                let mut adapter = DiscoveryInitialThreadLoad {
+                    session: &mut session,
+                    persistence: &workspace_persistence,
+                    workspace_id: &workspace_id,
+                    execution_target: &execution_target,
+                    cancellation: &cancellation,
+                    timeout,
+                    sender: &sender,
                 };
-            if cancellation.is_cancelled() {
+                route_startup_initial_thread_load(&thread_selection, &mut adapter)
+            };
+            let Some((mut known_threads, selected_thread_history)) = initial_thread_load else {
                 shutdown_cancelled_open_server(&mut server, &execution_target);
                 return;
-            }
-
-            if matches!(thread_selection, ThreadSelectionRequest::Exact { .. })
-                || !known_threads.is_empty()
-            {
-                let _ = sender.send(WorkspaceUpdate::Detail(
-                    "Loading the selected conversation history".to_string(),
-                ));
-            }
-            let selected_thread_history = load_selected_thread_history(
-                &mut session,
-                &workspace_persistence,
-                &workspace_id,
-                &execution_target,
-                &known_threads,
-                &thread_selection,
-                timeout,
-            );
+            };
             if let Some(thread) = selected_thread_history.thread_history.as_ref() {
                 let item_count = thread
                     .turns
@@ -439,19 +427,109 @@ fn load_workspace_surface_seed(
     }
 }
 
+struct DiscoveryInitialThreadLoad<'a> {
+    session: &'a mut ManagedBackendSession,
+    persistence: &'a BerylWorkspacePersistence,
+    workspace_id: &'a BerylWorkspaceId,
+    execution_target: &'a WorkspaceId,
+    cancellation: &'a WorkspaceOpenCancellation,
+    timeout: Duration,
+    sender: &'a mpsc::Sender<WorkspaceUpdate>,
+}
+
+impl DiscoveryInitialThreadLoad<'_> {
+    fn finish(
+        &mut self,
+        known_threads: Vec<ThreadSummary>,
+        request: &ThreadSelectionRequest,
+    ) -> Option<(Vec<ThreadSummary>, SelectedThreadHistory)> {
+        if self.cancellation.is_cancelled() {
+            return None;
+        }
+        if matches!(request, ThreadSelectionRequest::Exact { .. }) || !known_threads.is_empty() {
+            let _ = self.sender.send(WorkspaceUpdate::Detail(
+                "Loading the selected conversation history".to_string(),
+            ));
+        }
+        let selected_thread_history = load_selected_thread_history(
+            self.session,
+            self.persistence,
+            self.workspace_id,
+            self.execution_target,
+            &known_threads,
+            request,
+            self.timeout,
+        );
+        Some((known_threads, selected_thread_history))
+    }
+}
+
+impl StartupInitialThreadLoadAdapter for DiscoveryInitialThreadLoad<'_> {
+    type Output = Option<(Vec<ThreadSummary>, SelectedThreadHistory)>;
+
+    fn activate_exact(&mut self, request: &ThreadSelectionRequest) -> Self::Output {
+        let _ = self.sender.send(WorkspaceUpdate::Detail(
+            "Opening the selected conversation thread".to_string(),
+        ));
+        self.finish(Vec::new(), request)
+    }
+
+    fn persisted_unavailable(&mut self, request: &ThreadSelectionRequest) -> Self::Output {
+        let _ = self.sender.send(WorkspaceUpdate::Detail(
+            "Preserving the persisted conversation thread for explicit repair".to_string(),
+        ));
+        self.finish(Vec::new(), request)
+    }
+
+    fn restore_preferred(&mut self, request: &ThreadSelectionRequest) -> Self::Output {
+        let _ = self.sender.send(WorkspaceUpdate::Detail(
+            "Loading existing conversation threads for this execution target".to_string(),
+        ));
+        let known_threads =
+            load_workspace_threads(self.session, self.execution_target, self.timeout);
+        self.finish(known_threads, request)
+    }
+}
+
 fn load_workspace_threads(
     session: &mut ManagedBackendSession,
     workspace: &WorkspaceId,
     timeout: Duration,
 ) -> Vec<ThreadSummary> {
-    match session.list_threads(timeout) {
-        Ok(mut threads) => {
+    const STARTUP_THREAD_PAGE_LIMIT: u32 = 100;
+    let options = ThreadListOptions::page(STARTUP_THREAD_PAGE_LIMIT)
+        .with_cwd(workspace.canonical_path())
+        .updated_descending();
+    let budget = match ThreadListBudget::new(timeout, 1, STARTUP_THREAD_PAGE_LIMIT as usize) {
+        Ok(budget) => budget,
+        Err(error) => {
+            warn!(
+                workspace = %workspace.display_label(),
+                error = %error,
+                "invalid bounded startup thread discovery budget"
+            );
+            return Vec::new();
+        }
+    };
+
+    match session.list_threads_bounded(options, budget) {
+        Ok(collection) => {
+            if !matches!(collection.status, ThreadListCollectionStatus::Complete) {
+                warn!(
+                    workspace = %workspace.display_label(),
+                    pages_collected = collection.pages_collected,
+                    status = ?collection.status,
+                    "startup thread discovery reached its bounded collection limit"
+                );
+            }
+            let mut threads = collection.data;
             threads.retain(|thread| thread.cwd == workspace.canonical_path());
             threads.sort_by(|left, right| {
                 right
                     .updated_at
                     .cmp(&left.updated_at)
                     .then_with(|| right.created_at.cmp(&left.created_at))
+                    .then_with(|| left.id.cmp(&right.id))
             });
             threads
         }
@@ -459,9 +537,19 @@ fn load_workspace_threads(
             warn!(
                 workspace = %workspace.display_label(),
                 error = %error,
-                "failed to seed known workspace threads"
+                pages_collected = error.pages_collected,
+                "bounded startup thread discovery failed"
             );
-            Vec::new()
+            let mut threads = error.data;
+            threads.retain(|thread| thread.cwd == workspace.canonical_path());
+            threads.sort_by(|left, right| {
+                right
+                    .updated_at
+                    .cmp(&left.updated_at)
+                    .then_with(|| right.created_at.cmp(&left.created_at))
+                    .then_with(|| left.id.cmp(&right.id))
+            });
+            threads
         }
     }
 }
@@ -475,12 +563,29 @@ fn load_selected_thread_history(
     thread_selection: &ThreadSelectionRequest,
     timeout: Duration,
 ) -> SelectedThreadHistory {
-    if let ThreadSelectionRequest::Exact { thread_id, label } = thread_selection {
-        return match activate_existing_thread_direct(
+    if let ThreadSelectionRequest::PersistedActiveRepairRequired { detail, .. } = thread_selection {
+        return SelectedThreadHistory {
+            selected_thread_id: None,
+            thread_session_metadata: None,
+            image_resolver: TranscriptImagePathResolver::default(),
+            thread_history: None,
+            thread_history_window: None,
+            surface_notice: Some(SurfaceNotice::new("Thread requires rebind", detail.clone())),
+        };
+    }
+
+    if let ThreadSelectionRequest::Exact {
+        thread_id,
+        label,
+        expected_forked_from_id,
+    } = thread_selection
+    {
+        return match activate_existing_thread_direct_with_fork_parent(
             session,
             execution_target,
             thread_id,
             label,
+            expected_forked_from_id.as_deref(),
             timeout,
         ) {
             Ok(activation) => SelectedThreadHistory {

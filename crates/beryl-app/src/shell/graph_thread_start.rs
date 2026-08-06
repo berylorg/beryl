@@ -157,6 +157,9 @@ impl ShellView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.reject_lifecycle_phase_thread_transition_action("Thread start unavailable", cx) {
+            return;
+        }
         if self.workspace_receiver.is_some()
             || graph_node_delete_blocked_by_graph_work(
                 self.graph_receiver.is_some(),

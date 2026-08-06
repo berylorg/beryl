@@ -110,6 +110,9 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.reject_lifecycle_phase_thread_transition_action("Thread edit unavailable", cx) {
+            return;
+        }
         if let Some(block) = self.current_conversation_submission_block() {
             self.report_backend_operation_block("Thread edit unavailable", block, cx);
             return;

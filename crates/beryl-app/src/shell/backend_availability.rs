@@ -168,6 +168,7 @@ impl BackendUnavailableKind {
     pub(super) fn from_backend_error(error: &ManagedBackendError) -> Self {
         match error {
             ManagedBackendError::Compatibility(_) => Self::Incompatible,
+            ManagedBackendError::InvalidLaunchOptions { .. } => Self::SpawnFailed,
             ManagedBackendError::Spawn { source, .. }
                 if source.kind() == io::ErrorKind::NotFound =>
             {
@@ -184,6 +185,10 @@ impl BackendUnavailableKind {
             | ManagedBackendError::DecodeBase64Response { .. }
             | ManagedBackendError::SerializeRequest { .. }
             | ManagedBackendError::RequestTimeout { .. }
+            | ManagedBackendError::SessionPoisoned { .. }
+            | ManagedBackendError::StdioWriterStopped { .. }
+            | ManagedBackendError::StdioWriterPanicked
+            | ManagedBackendError::StdioCleanupFailures { .. }
             | ManagedBackendError::ProcessExited { .. }
             | ManagedBackendError::QueryProcessStatus { .. }
             | ManagedBackendError::TerminateProcess { .. }
@@ -203,9 +208,12 @@ impl BackendUnavailableKind {
             | ManagedBackendError::CreateWebSocketTokenFile { .. }
             | ManagedBackendError::WriteWebSocketTokenFile { .. }
             | ManagedBackendError::CleanUpWebSocketTokenFile { .. }
+            | ManagedBackendError::ShutdownProcessAndAuth { .. }
             | ManagedBackendError::ConnectWebSocket { .. }
             | ManagedBackendError::WebSocketTransport { .. }
             | ManagedBackendError::RequestFailed { .. }
+            | ManagedBackendError::ThreadListPageLimitExceeded { .. }
+            | ManagedBackendError::ThreadListCursorRepeated { .. }
             | ManagedBackendError::UnexpectedMessageShape
             | ManagedBackendError::BoundedResourceExceeded { .. }
             | ManagedBackendError::DeserializeNotification { .. }

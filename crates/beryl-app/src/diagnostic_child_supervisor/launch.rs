@@ -6,11 +6,13 @@ use std::{
 use super::DiagnosticChildSupervisorError;
 
 pub(crate) const MAX_DIAGNOSTIC_CHILD_EXECUTABLE_PATH_BYTES: usize = 1024;
+pub(crate) const MAX_DIAGNOSTIC_CHILD_WORKSPACE_PATH_BYTES: usize = 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DiagnosticChildLaunch {
     child_home: PathBuf,
     executable_path: PathBuf,
+    host_workspace: Option<PathBuf>,
 }
 
 impl DiagnosticChildLaunch {
@@ -18,7 +20,13 @@ impl DiagnosticChildLaunch {
         Self {
             child_home: child_home.into(),
             executable_path: executable_path.into(),
+            host_workspace: None,
         }
+    }
+
+    pub(crate) fn with_host_workspace(mut self, host_workspace: impl Into<PathBuf>) -> Self {
+        self.host_workspace = Some(host_workspace.into());
+        self
     }
 
     pub(crate) fn current_executable(child_home: impl Into<PathBuf>) -> Result<Self, io::Error> {
@@ -32,6 +40,49 @@ impl DiagnosticChildLaunch {
     pub(crate) fn executable_path(&self) -> &Path {
         &self.executable_path
     }
+
+    pub(crate) fn host_workspace(&self) -> Option<&Path> {
+        self.host_workspace.as_deref()
+    }
+}
+
+pub(super) fn resolve_host_workspace(
+    path: &Path,
+) -> Result<PathBuf, DiagnosticChildSupervisorError> {
+    let path_label = path.display().to_string();
+    if path_label.trim().is_empty() {
+        return Err(DiagnosticChildSupervisorError::InvalidHostWorkspacePath {
+            path: path.to_path_buf(),
+            reason: "must not be empty",
+        });
+    }
+    if path_label.len() > MAX_DIAGNOSTIC_CHILD_WORKSPACE_PATH_BYTES {
+        return Err(DiagnosticChildSupervisorError::InvalidHostWorkspacePath {
+            path: path.to_path_buf(),
+            reason: "exceeds the diagnostic child workspace path byte limit",
+        });
+    }
+    if !path.is_absolute() {
+        return Err(DiagnosticChildSupervisorError::InvalidHostWorkspacePath {
+            path: path.to_path_buf(),
+            reason: "must be absolute",
+        });
+    }
+
+    let metadata = fs::metadata(path).map_err(|source| {
+        DiagnosticChildSupervisorError::HostWorkspacePathAccess {
+            path: path.to_path_buf(),
+            source,
+        }
+    })?;
+    if !metadata.is_dir() {
+        return Err(DiagnosticChildSupervisorError::InvalidHostWorkspacePath {
+            path: path.to_path_buf(),
+            reason: "must be an existing directory",
+        });
+    }
+
+    Ok(fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()))
 }
 
 pub(super) fn resolve_executable_path(

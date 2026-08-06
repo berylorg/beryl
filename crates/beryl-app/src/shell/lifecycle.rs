@@ -1,9 +1,8 @@
 use std::time::Instant;
 
-use beryl_backend::{HardStopCapabilities, ThreadSummary};
-use beryl_model::conversation::RegisteredConversationThread;
-use beryl_model::workspace::WorkspaceId;
+use beryl_backend::HardStopCapabilities;
 
+use super::thread_selection::backend_unavailable_thread_seed;
 use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
 use super::{
     BlockedState, ConversationSurfaceState, FailureSummary, LoadedWorkspaceState,
@@ -55,6 +54,10 @@ impl ShellView {
 
         match result {
             Ok(opened) => {
+                let backend_reopen_selection_unvalidated = preserved_surface.is_some()
+                    && opened.selected_thread_id.is_none()
+                    && opened.selected_thread_history.is_none()
+                    && opened.surface_notice.is_some();
                 let workspace_backend_state_changed = if intent
                     == super::WorkspaceOpenIntent::UseAsPrimaryMember
                 {
@@ -94,6 +97,9 @@ impl ShellView {
                 let inventory_workspace_state = loaded_workspace.workspace_state.clone();
                 let mut surface = match preserved_surface {
                     Some(mut surface) => {
+                        if backend_reopen_selection_unvalidated {
+                            surface.start_new_thread();
+                        }
                         surface.refresh_after_backend_reopen(
                             &inventory_workspace_state,
                             known_threads.clone(),
@@ -146,7 +152,8 @@ impl ShellView {
                     .backend_servers
                     .insert(opened.execution_target.clone(), opened.server)
                 {
-                    super::spawn_managed_backend_shutdown(
+                    self.shutdown_or_retain_backend_server(
+                        opened.execution_target.clone(),
                         replaced_server,
                         "replacing managed backend for execution target",
                     );
@@ -160,6 +167,7 @@ impl ShellView {
                     cleared_failure: previous_failure,
                     surface,
                 });
+                self.apply_deferred_phase_thread_outcomes_for_current_workspace();
                 if restored_implicit_home_threads {
                     self.persist_current_workspace_state(true);
                 }
@@ -204,7 +212,6 @@ impl ShellView {
                     let surface = preserved_surface.unwrap_or_else(|| {
                         seed_backend_unavailable_surface(
                             &loaded_workspace,
-                            &backend_unavailable.target,
                             backend_unavailable.surface_seed.clone(),
                         )
                     });
@@ -567,11 +574,9 @@ impl ShellView {
 
 fn seed_backend_unavailable_surface(
     loaded_workspace: &LoadedWorkspaceState,
-    execution_target: &WorkspaceId,
     seed: WorkspaceSurfaceSeed,
 ) -> ConversationSurfaceState {
-    let (known_threads, selected_thread_id) =
-        unavailable_surface_thread_seed(loaded_workspace, execution_target);
+    let (known_threads, selected_thread_id) = backend_unavailable_thread_seed();
     ConversationSurfaceState::seeded(
         loaded_workspace.workspace.id().clone(),
         &loaded_workspace.workspace_state,
@@ -588,41 +593,6 @@ fn seed_backend_unavailable_surface(
         seed.graph_revision,
         seed.graph_warning,
     )
-}
-
-fn unavailable_surface_thread_seed(
-    loaded_workspace: &LoadedWorkspaceState,
-    execution_target: &WorkspaceId,
-) -> (Vec<ThreadSummary>, Option<String>) {
-    let Some(thread) = loaded_workspace
-        .workspace_state
-        .active_thread_registration()
-    else {
-        return (Vec::new(), None);
-    };
-    if thread.requires_rebind() || thread.execution_target() != execution_target {
-        return (Vec::new(), None);
-    }
-
-    let summary = thread_summary_from_registration(thread);
-    let selected_thread_id = summary.id.clone();
-    (vec![summary], Some(selected_thread_id))
-}
-
-fn thread_summary_from_registration(thread: &RegisteredConversationThread) -> ThreadSummary {
-    ThreadSummary {
-        id: thread.thread_id().as_str().to_string(),
-        forked_from_id: None,
-        cwd: thread.execution_target().canonical_path().to_path_buf(),
-        preview: thread.preview().to_string(),
-        name: thread.backend_name().map(str::to_string),
-        agent_nickname: None,
-        path: None,
-        created_at: thread.created_at_millis(),
-        updated_at: thread.updated_at_millis(),
-        model_provider: String::new(),
-        ephemeral: false,
-    }
 }
 
 pub(super) fn blocked_state_for_error(

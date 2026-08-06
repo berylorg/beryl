@@ -1,11 +1,17 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     io::{self, BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
-    sync::mpsc::{self, Receiver, RecvTimeoutError},
-    thread,
+    sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError},
+    thread::{self, JoinHandle},
     time::{Duration, Instant},
+};
+
+#[cfg(feature = "lifecycle-test-support")]
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
@@ -21,13 +27,15 @@ use crate::{
     CompatibilityProbe, CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse,
     DynamicToolCallRequest, DynamicToolCallResponse, HardStopCapabilityProbe,
     HardStopCapabilityProbeResult, HardStopCapabilityReport, HardStopTarget, HardStopTargetOutcome,
-    InitializeResponse, JsonRpcError, ModelInfo, ModelListOptions, ModelListResponse,
-    ThreadBranchCapabilities, ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult,
-    ThreadBranchCapabilityReport, ThreadForkOptions, ThreadForkResponse, ThreadListResponse,
-    ThreadLoadedListResponse, ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse,
-    ThreadResumeOptions, ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions,
-    ThreadSummary, ThreadTurnsListOptions, ThreadTurnsListResponse, ThreadUnsubscribeResponse,
-    TurnStartOptions, TurnStartResponse, TurnSteerResponse, TurnStreamEvent, UserInput,
+    InitializeResponse, JsonRpcError, ManagedBackendLaunchOptionsError, ModelInfo,
+    ModelListOptions, ModelListResponse, ThreadBranchCapabilities, ThreadBranchCapabilityProbe,
+    ThreadBranchCapabilityProbeResult, ThreadBranchCapabilityReport, ThreadForkOptions,
+    ThreadForkResponse, ThreadListBudget, ThreadListCollection, ThreadListCollectionStatus,
+    ThreadListResponse, ThreadListTruncationReason, ThreadLoadedListResponse, ThreadReadMetadata,
+    ThreadReadOptions, ThreadReadResponse, ThreadResumeOptions, ThreadRollbackResponse,
+    ThreadSessionResponse, ThreadStartOptions, ThreadSummary, ThreadTurnsListOptions,
+    ThreadTurnsListResponse, ThreadUnsubscribeResponse, TurnStartOptions, TurnStartResponse,
+    TurnSteerResponse, TurnStreamEvent, UserInput,
     dynamic_tool::{is_dynamic_tool_call_method, parse_dynamic_tool_call_request},
     hard_stop::HARD_STOP_CAPABILITY_PROBES,
     managed_process::SupervisedBackendProcess,
@@ -35,6 +43,10 @@ use crate::{
     response_sanitizer::{response_sanitizer_kind, sanitize_json_rpc_message},
     thread_branch::{THREAD_BRANCH_CAPABILITY_PROBES, ThreadForkParams, ThreadRollbackParams},
     thread_history::{ThreadReadParams, ThreadResumeParams, ThreadTurnsListParams},
+    thread_lifecycle::{
+        ThreadArchiveParams, ThreadDeleteParams, ThreadLifecycleEmptyResponse,
+        ThreadUnarchiveParams, ThreadUnarchiveResponse,
+    },
     turn::{
         ThreadStartParams, TurnStartParams, TurnSteerParams, parse_approval_request,
         parse_turn_stream_event,
@@ -61,6 +73,9 @@ const STDIO_PROCESS_CLOSE_GRACE_TIMEOUT: Duration = Duration::from_millis(250);
 const MANAGED_PROCESS_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_ONLY_NOTIFICATION_METHODS: &[&str] = &[
     "thread/started",
+    "thread/archived",
+    "thread/unarchived",
+    "thread/deleted",
     "thread/status/changed",
     "thread/closed",
     "thread/name/updated",
@@ -116,6 +131,18 @@ pub struct ManagedBackendSession {
     pending_message_bytes: usize,
     pending_dynamic_tool_requests: usize,
     next_request_id: u64,
+    last_request_dispatched: bool,
+    poisoned: bool,
+    terminal_cleanup: Option<StdioTerminalCleanup>,
+    #[cfg(feature = "lifecycle-test-support")]
+    transport_close_classification_pause: Option<TransportCloseClassificationPause>,
+}
+
+#[cfg(feature = "lifecycle-test-support")]
+#[derive(Debug)]
+struct TransportCloseClassificationPause {
+    entered: SyncSender<()>,
+    release: Receiver<()>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -160,6 +187,11 @@ pub struct ManagedBackendStartupProgress {
 
 #[derive(Debug, Error)]
 pub enum ManagedBackendError {
+    #[error("managed backend launch options are invalid")]
+    InvalidLaunchOptions {
+        #[from]
+        source: ManagedBackendLaunchOptionsError,
+    },
     #[error("failed to build backend command line")]
     BuildCommandLine {
         #[from]
@@ -216,6 +248,23 @@ pub enum ManagedBackendError {
     },
     #[error("backend request {method} timed out after {timeout:?}")]
     RequestTimeout { method: String, timeout: Duration },
+    #[error(
+        "backend session is terminal after an indeterminate transport write while handling {method}"
+    )]
+    SessionPoisoned { method: String },
+    #[error("supervised backend stdio writer stopped before acknowledging {method}")]
+    StdioWriterStopped { method: String },
+    #[error("supervised backend stdio writer panicked during cleanup")]
+    StdioWriterPanicked,
+    #[error("supervised backend stdio cleanup reported multiple failures: {failures:?}")]
+    StdioCleanupFailures { failures: Vec<ManagedBackendError> },
+    #[error("backend returned {returned} thread-list rows after a page limit of {requested_limit}")]
+    ThreadListPageLimitExceeded {
+        requested_limit: u32,
+        returned: usize,
+    },
+    #[error("backend repeated thread-list cursor {cursor:?} without progress")]
+    ThreadListCursorRepeated { cursor: String },
     #[error("backend process exited while waiting for {method}")]
     ProcessExited { method: String },
     #[error("failed to query managed backend process status for {launch}")]
@@ -310,11 +359,18 @@ pub enum ManagedBackendError {
         #[source]
         source: io::Error,
     },
-    #[error("failed to clean up managed backend WebSocket token file {path}")]
+    #[error("failed to clean up managed backend WebSocket token file {path}: {source}")]
     CleanUpWebSocketTokenFile {
         path: PathBuf,
         #[source]
         source: io::Error,
+    },
+    #[error(
+        "managed backend shutdown failed for both process supervision ({process}) and auth cleanup ({auth})"
+    )]
+    ShutdownProcessAndAuth {
+        process: Box<ManagedBackendError>,
+        auth: Box<ManagedBackendError>,
     },
     #[error("failed to connect to managed backend WebSocket endpoint {endpoint}")]
     ConnectWebSocket {
@@ -357,11 +413,71 @@ pub enum ManagedBackendError {
     Compatibility(#[from] CompatibilityError),
 }
 
+/// A failed bounded thread-list collection with all prior trustworthy pages.
+#[derive(Debug, Error)]
+#[error(
+    "bounded thread listing failed after {pages_collected} successfully collected page(s): {source}"
+)]
+pub struct ThreadListCollectionError {
+    pub data: Vec<ThreadSummary>,
+    pub next_cursor: Option<String>,
+    pub pages_collected: usize,
+    #[source]
+    pub source: ManagedBackendError,
+}
+
+/// The commitment status of a failed `thread/fork` request.
+///
+/// [`Self::NotCommitted`] is returned only when Beryl serialized no request or
+/// when app-server explicitly rejected the request. Every other failure is
+/// [`Self::Indeterminate`], because a child may have been created without its
+/// exact id reaching this client.
+#[derive(Debug, Error)]
+pub enum ThreadForkFailure {
+    #[error("thread/fork definitively did not commit: {source}")]
+    NotCommitted {
+        #[source]
+        source: ManagedBackendError,
+    },
+    #[error("thread/fork may have committed but no child id was returned: {source}")]
+    Indeterminate {
+        #[source]
+        source: ManagedBackendError,
+    },
+}
+
+impl ThreadForkFailure {
+    fn classify(source: ManagedBackendError, dispatched: bool) -> Self {
+        match source {
+            ManagedBackendError::SerializeRequest { .. }
+            | ManagedBackendError::RequestFailed { .. } => Self::NotCommitted { source },
+            _ if !dispatched => Self::NotCommitted { source },
+            _ => Self::Indeterminate { source },
+        }
+    }
+
+    /// Returns the backend error that caused this fork failure.
+    pub fn source_error(&self) -> &ManagedBackendError {
+        match self {
+            Self::NotCommitted { source } | Self::Indeterminate { source } => source,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ManagedWebSocketError {
     message: String,
     io_error_kind: Option<io::ErrorKind>,
     source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    kind: ManagedWebSocketErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ManagedWebSocketErrorKind {
+    Other,
+    DeadlineExpired,
+    WriteDeadlineExpired,
+    WriteFailedAfterCommit,
 }
 
 impl ManagedWebSocketError {
@@ -370,11 +486,43 @@ impl ManagedWebSocketError {
             message: message.into(),
             io_error_kind: None,
             source: None,
+            kind: ManagedWebSocketErrorKind::Other,
         }
     }
 
     pub fn io_error_kind(&self) -> Option<io::ErrorKind> {
         self.io_error_kind
+    }
+
+    pub(crate) fn deadline_expired() -> Self {
+        Self {
+            message: "request deadline expired".to_string(),
+            io_error_kind: Some(io::ErrorKind::TimedOut),
+            source: None,
+            kind: ManagedWebSocketErrorKind::DeadlineExpired,
+        }
+    }
+
+    pub(crate) fn is_deadline_expired(&self) -> bool {
+        self.kind == ManagedWebSocketErrorKind::DeadlineExpired
+    }
+
+    pub(crate) fn write_deadline_expired() -> Self {
+        Self {
+            message: "request deadline expired during a possibly partial WebSocket write"
+                .to_string(),
+            io_error_kind: Some(io::ErrorKind::TimedOut),
+            source: None,
+            kind: ManagedWebSocketErrorKind::WriteDeadlineExpired,
+        }
+    }
+
+    pub(crate) fn is_write_deadline_expired(&self) -> bool {
+        self.kind == ManagedWebSocketErrorKind::WriteDeadlineExpired
+    }
+
+    pub(crate) fn is_write_failed_after_commit(&self) -> bool {
+        self.kind == ManagedWebSocketErrorKind::WriteFailedAfterCommit
     }
 
     pub(crate) fn from_io(source: io::Error) -> Self {
@@ -383,7 +531,14 @@ impl ManagedWebSocketError {
             message: format!("i/o error: {source}"),
             io_error_kind,
             source: Some(Box::new(source)),
+            kind: ManagedWebSocketErrorKind::Other,
         }
+    }
+
+    pub(crate) fn from_io_after_write_commit(source: io::Error) -> Self {
+        let mut error = Self::from_io(source);
+        error.kind = ManagedWebSocketErrorKind::WriteFailedAfterCommit;
+        error
     }
 
     pub(crate) fn from_handshake(source: soketto::handshake::Error) -> Self {
@@ -395,6 +550,7 @@ impl ManagedWebSocketError {
             message: format!("handshake failed: {source}"),
             io_error_kind,
             source: Some(Box::new(source)),
+            kind: ManagedWebSocketErrorKind::Other,
         }
     }
 
@@ -407,6 +563,7 @@ impl ManagedWebSocketError {
             message: format!("frame error: {source}"),
             io_error_kind,
             source: Some(Box::new(source)),
+            kind: ManagedWebSocketErrorKind::Other,
         }
     }
 
@@ -415,6 +572,7 @@ impl ManagedWebSocketError {
             message: format!("failed to generate WebSocket mask: {source}"),
             io_error_kind: None,
             source: Some(Box::new(source)),
+            kind: ManagedWebSocketErrorKind::Other,
         }
     }
 
@@ -423,6 +581,7 @@ impl ManagedWebSocketError {
             message: format!("text message was not valid UTF-8: {source}"),
             io_error_kind: None,
             source: Some(Box::new(source)),
+            kind: ManagedWebSocketErrorKind::Other,
         }
     }
 }
@@ -564,12 +723,130 @@ impl ManagedBackendSession {
         Ok(threads)
     }
 
+    /// Collects `thread/list` pages within one aggregate time, page, and row budget.
+    ///
+    /// Successfully received pages are retained in [`ThreadListCollectionError`]
+    /// if a later request or protocol validation fails.
+    pub fn list_threads_bounded(
+        &mut self,
+        mut options: ThreadListOptions,
+        budget: ThreadListBudget,
+    ) -> Result<ThreadListCollection, ThreadListCollectionError> {
+        let deadline = RequestDeadline::from_timeout(budget.aggregate_timeout());
+        let mut threads = Vec::new();
+        let mut pages_collected = 0;
+        let mut seen_cursors = HashSet::new();
+        if let Some(cursor) = options.cursor.as_ref() {
+            seen_cursors.insert(cursor.clone());
+        }
+
+        loop {
+            if deadline.remaining().is_none() {
+                return Ok(ThreadListCollection {
+                    data: threads,
+                    next_cursor: options.cursor,
+                    pages_collected,
+                    status: ThreadListCollectionStatus::Truncated(
+                        ThreadListTruncationReason::ElapsedTime,
+                    ),
+                });
+            }
+
+            let remaining_results = budget.max_results() - threads.len();
+            let remaining_limit = remaining_results.min(u32::MAX as usize) as u32;
+            let requested_limit = options
+                .limit
+                .unwrap_or(remaining_limit)
+                .min(remaining_limit);
+            options.limit = Some(requested_limit);
+            let request_cursor = options.cursor.clone();
+
+            let response = match self.list_thread_page_until(&options, deadline) {
+                Ok(response) => response,
+                Err(source) => {
+                    return Err(ThreadListCollectionError {
+                        data: threads,
+                        next_cursor: request_cursor,
+                        pages_collected,
+                        source,
+                    });
+                }
+            };
+
+            if response.data.len() > requested_limit as usize {
+                return Err(ThreadListCollectionError {
+                    data: threads,
+                    next_cursor: request_cursor,
+                    pages_collected,
+                    source: ManagedBackendError::ThreadListPageLimitExceeded {
+                        requested_limit,
+                        returned: response.data.len(),
+                    },
+                });
+            }
+
+            if let Some(next_cursor) = response.next_cursor.as_ref()
+                && !seen_cursors.insert(next_cursor.clone())
+            {
+                return Err(ThreadListCollectionError {
+                    data: threads,
+                    next_cursor: request_cursor,
+                    pages_collected,
+                    source: ManagedBackendError::ThreadListCursorRepeated {
+                        cursor: next_cursor.clone(),
+                    },
+                });
+            }
+
+            threads.extend(response.data);
+            pages_collected += 1;
+            options.cursor = response.next_cursor;
+
+            if options.cursor.is_none() {
+                return Ok(ThreadListCollection {
+                    data: threads,
+                    next_cursor: None,
+                    pages_collected,
+                    status: ThreadListCollectionStatus::Complete,
+                });
+            }
+            if threads.len() == budget.max_results() {
+                return Ok(ThreadListCollection {
+                    data: threads,
+                    next_cursor: options.cursor,
+                    pages_collected,
+                    status: ThreadListCollectionStatus::Truncated(
+                        ThreadListTruncationReason::ResultLimit,
+                    ),
+                });
+            }
+            if pages_collected == budget.max_pages() {
+                return Ok(ThreadListCollection {
+                    data: threads,
+                    next_cursor: options.cursor,
+                    pages_collected,
+                    status: ThreadListCollectionStatus::Truncated(
+                        ThreadListTruncationReason::PageLimit,
+                    ),
+                });
+            }
+        }
+    }
+
     pub fn list_thread_page(
         &mut self,
         options: &ThreadListOptions,
         timeout: Duration,
     ) -> Result<ThreadListResponse, ManagedBackendError> {
         self.request("thread/list", options, timeout)
+    }
+
+    fn list_thread_page_until(
+        &mut self,
+        options: &ThreadListOptions,
+        deadline: RequestDeadline,
+    ) -> Result<ThreadListResponse, ManagedBackendError> {
+        self.request_until("thread/list", options, deadline)
     }
 
     pub fn start_thread(
@@ -700,6 +977,35 @@ impl ManagedBackendSession {
             &ThreadForkParams::new(thread_id, options),
             timeout,
         )
+    }
+
+    /// Forks a thread while classifying whether a failed request could have
+    /// created an unidentified backend child.
+    pub fn fork_thread_with_commitment(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<ThreadForkResponse, ThreadForkFailure> {
+        self.fork_thread_with_options_and_commitment(
+            thread_id,
+            ThreadForkOptions::default(),
+            timeout,
+        )
+    }
+
+    /// The commitment-aware counterpart to [`Self::fork_thread_with_options`].
+    ///
+    /// A successful response contains the exact child id. On failure, callers
+    /// must treat [`ThreadForkFailure::Indeterminate`] as a possible committed
+    /// child and must not infer that id from thread inventory results.
+    pub fn fork_thread_with_options_and_commitment(
+        &mut self,
+        thread_id: &str,
+        options: ThreadForkOptions,
+        timeout: Duration,
+    ) -> Result<ThreadForkResponse, ThreadForkFailure> {
+        self.fork_thread_with_options(thread_id, options, timeout)
+            .map_err(|source| ThreadForkFailure::classify(source, self.last_request_dispatched))
     }
 
     pub fn rollback_thread(
@@ -900,6 +1206,40 @@ impl ManagedBackendSession {
         &mut self,
         request: &ApprovalRequest,
     ) -> Result<(), ManagedBackendError> {
+        match self.deny_approval_request_with_deadline(request, None) {
+            Ok(()) => Ok(()),
+            Err(DeadlineTransportError::Backend(error)) => Err(error),
+            Err(DeadlineTransportError::StdioWriteFailed(error)) => {
+                self.poison_after_stdio_write_timeout();
+                Err(error)
+            }
+            Err(DeadlineTransportError::WebSocketWriteFailed(error)) => {
+                self.poison_after_websocket_write_timeout();
+                Err(error)
+            }
+            Err(
+                DeadlineTransportError::DeadlineExpired
+                | DeadlineTransportError::StdioWriteExpired
+                | DeadlineTransportError::WebSocketWriteExpired,
+            ) => {
+                unreachable!("unbounded response expired")
+            }
+        }
+    }
+
+    fn deny_approval_request_until(
+        &mut self,
+        request: &ApprovalRequest,
+        deadline: Instant,
+    ) -> Result<(), DeadlineTransportError> {
+        self.deny_approval_request_with_deadline(request, Some(deadline))
+    }
+
+    fn deny_approval_request_with_deadline(
+        &mut self,
+        request: &ApprovalRequest,
+        deadline: Option<Instant>,
+    ) -> Result<(), DeadlineTransportError> {
         let result = match request.kind() {
             ApprovalRequestKind::CommandExecution | ApprovalRequestKind::FileChange => {
                 json!({ "decision": "cancel" })
@@ -912,7 +1252,12 @@ impl ManagedBackendSession {
                 })
             }
         };
-        self.write_server_response(request.method(), request.request_id(), &result)
+        self.write_server_response_with_deadline(
+            request.method(),
+            request.request_id(),
+            &result,
+            deadline,
+        )
     }
 
     pub fn respond_dynamic_tool_call(
@@ -935,6 +1280,51 @@ impl ManagedBackendSession {
         )
     }
 
+    /// Moves one persistent thread into app-server archived storage, attempting
+    /// to archive its spawned descendants as well.
+    pub fn archive_thread(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<(), ManagedBackendError> {
+        let _: ThreadLifecycleEmptyResponse = self.request(
+            "thread/archive",
+            &ThreadArchiveParams::new(thread_id),
+            timeout,
+        )?;
+        Ok(())
+    }
+
+    /// Restores one archived persistent thread to active storage and returns its
+    /// [`crate::ThreadInfo`] value without resuming it or starting a turn.
+    pub fn unarchive_thread(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<crate::ThreadInfo, ManagedBackendError> {
+        self.request::<ThreadUnarchiveResponse>(
+            "thread/unarchive",
+            &ThreadUnarchiveParams::new(thread_id),
+            timeout,
+        )
+        .map(|response| response.thread)
+    }
+
+    /// Physically removes one persistent active or archived thread and its
+    /// spawned descendants.
+    pub fn delete_thread(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<(), ManagedBackendError> {
+        let _: ThreadLifecycleEmptyResponse = self.request(
+            "thread/delete",
+            &ThreadDeleteParams::new(thread_id),
+            timeout,
+        )?;
+        Ok(())
+    }
+
     pub fn next_turn_stream_event(
         &mut self,
         idle_timeout: Duration,
@@ -945,11 +1335,14 @@ impl ManagedBackendSession {
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
                 return Ok(None);
             };
+            if remaining.is_zero() {
+                return Ok(None);
+            }
 
             let message = if let Some(message) = self.pop_pending_message() {
                 message
             } else {
-                match self.recv_message_timeout("turn stream", remaining, None)? {
+                match self.recv_message_until("turn stream", deadline, None)? {
                     Some(message) => message,
                     None => return Ok(None),
                 }
@@ -1016,16 +1409,24 @@ impl ManagedBackendSession {
     }
 
     pub fn shutdown(&mut self) -> Result<(), ManagedBackendError> {
-        self.transport.close();
-
-        if let Some(process) = self.process.as_mut() {
-            process.shutdown(
-                STDIO_PROCESS_CLOSE_GRACE_TIMEOUT,
-                MANAGED_PROCESS_KILL_TIMEOUT,
-            )?;
+        if let Some(cleanup) = self.terminal_cleanup.as_mut() {
+            return cleanup.finish();
         }
 
-        Ok(())
+        self.transport.close();
+        let mut failures = Vec::new();
+        if let Some(process) = self.process.as_mut() {
+            if let Err(error) = process.shutdown(
+                STDIO_PROCESS_CLOSE_GRACE_TIMEOUT,
+                MANAGED_PROCESS_KILL_TIMEOUT,
+            ) {
+                failures.push(error);
+            }
+        }
+        if let Err(error) = self.transport.join_stdio_writer() {
+            failures.push(error);
+        }
+        finish_stdio_cleanup(failures)
     }
 
     fn launch(launch_spec: BackendLaunchSpec) -> Result<Self, ManagedBackendError> {
@@ -1035,16 +1436,21 @@ impl ManagedBackendSession {
         if let Some(cwd) = command_line.cwd() {
             command.current_dir(cwd);
         }
+        Self::launch_command(launch_spec, command)
+    }
+
+    fn launch_command(
+        launch_spec: BackendLaunchSpec,
+        mut command: Command,
+    ) -> Result<Self, ManagedBackendError> {
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
+        let program = command.get_program().to_string_lossy().into_owned();
 
         let child = command
             .spawn()
-            .map_err(|source| ManagedBackendError::Spawn {
-                program: command_line.program().to_string(),
-                source,
-            })?;
+            .map_err(|source| ManagedBackendError::Spawn { program, source })?;
         let mut process = SupervisedBackendProcess::new(launch_spec.clone(), child)?;
 
         let stdin = process
@@ -1070,14 +1476,168 @@ impl ManagedBackendSession {
             launch_spec,
             process: Some(process),
             transport: BackendClientTransport::Stdio {
-                stdin: Some(stdin),
+                writer: Some(SupervisedStdioWriter::spawn(stdin)),
                 messages,
             },
             pending_messages: VecDeque::new(),
             pending_message_bytes: 0,
             pending_dynamic_tool_requests: 0,
             next_request_id: 1,
+            last_request_dispatched: false,
+            poisoned: false,
+            terminal_cleanup: None,
+            #[cfg(feature = "lifecycle-test-support")]
+            transport_close_classification_pause: None,
         })
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn launch_test_command(
+        launch_spec: BackendLaunchSpec,
+        command: Command,
+    ) -> Result<Self, ManagedBackendError> {
+        Self::launch_command(launch_spec, command)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn stdio_cleanup_finished_for_test(&self) -> bool {
+        self.terminal_cleanup
+            .as_ref()
+            .is_some_and(StdioTerminalCleanup::is_finished)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn stdio_cleanup_retained_for_test(&self) -> bool {
+        self.terminal_cleanup
+            .as_ref()
+            .is_some_and(StdioTerminalCleanup::is_retained)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn stdio_writer_finished_for_test(&self) -> bool {
+        self.terminal_cleanup
+            .as_ref()
+            .is_some_and(StdioTerminalCleanup::writer_finished)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn next_request_id_for_test(&self) -> u64 {
+        self.next_request_id
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn websocket_close_frame_attempts_for_test(&self) -> Option<usize> {
+        self.transport.websocket_close_frame_attempts()
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn fail_next_websocket_write_after_header_for_test(
+        &mut self,
+        kind: io::ErrorKind,
+    ) -> bool {
+        match &mut self.transport {
+            BackendClientTransport::WebSocket(transport) => {
+                transport.fail_next_write_after_header(kind);
+                true
+            }
+            BackendClientTransport::Stdio { .. } => false,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn stdio_write_count_for_test(&self) -> usize {
+        self.terminal_cleanup
+            .as_ref()
+            .map_or(0, StdioTerminalCleanup::write_count)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn inject_process_termination_failures_for_test(&mut self, count: usize) -> bool {
+        let Some(process) = self.process.as_mut() else {
+            return false;
+        };
+        process.inject_termination_failures(count);
+        true
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn fail_next_stdio_write_after_bytes_for_test(&mut self, bytes: usize) -> bool {
+        self.transport.fail_next_stdio_write_after_bytes(bytes)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_websocket_after_next_write_header_for_test(
+        &mut self,
+        entered: SyncSender<()>,
+        release: Receiver<()>,
+    ) -> bool {
+        match &mut self.transport {
+            BackendClientTransport::WebSocket(transport) => {
+                transport.pause_after_next_write_header(entered, release);
+                true
+            }
+            BackendClientTransport::Stdio { .. } => false,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_websocket_before_next_write_for_test(
+        &mut self,
+        entered: SyncSender<()>,
+        release: Receiver<()>,
+    ) -> bool {
+        match &mut self.transport {
+            BackendClientTransport::WebSocket(transport) => {
+                transport.pause_before_next_write(entered, release);
+                true
+            }
+            BackendClientTransport::Stdio { .. } => false,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_websocket_before_write_after_for_test(
+        &mut self,
+        skipped_writes: usize,
+        entered: SyncSender<()>,
+        release: Receiver<()>,
+    ) -> bool {
+        match &mut self.transport {
+            BackendClientTransport::WebSocket(transport) => {
+                transport.pause_before_write_after(skipped_writes, entered, release);
+                true
+            }
+            BackendClientTransport::Stdio { .. } => false,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_websocket_after_next_control_write_header_for_test(
+        &mut self,
+        entered: SyncSender<()>,
+        release: Receiver<()>,
+    ) -> bool {
+        match &mut self.transport {
+            BackendClientTransport::WebSocket(transport) => {
+                transport.pause_after_next_control_write_header(entered, release);
+                true
+            }
+            BackendClientTransport::Stdio { .. } => false,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_before_next_transport_close_classification_for_test(
+        &mut self,
+        entered: SyncSender<()>,
+        release: Receiver<()>,
+    ) -> bool {
+        if !self.transport.is_websocket() {
+            return false;
+        }
+        self.transport_close_classification_pause =
+            Some(TransportCloseClassificationPause { entered, release });
+        true
     }
 
     pub(crate) fn connect_websocket_uninitialized(
@@ -1095,6 +1655,11 @@ impl ManagedBackendSession {
             pending_message_bytes: 0,
             pending_dynamic_tool_requests: 0,
             next_request_id: 1,
+            last_request_dispatched: false,
+            poisoned: false,
+            terminal_cleanup: None,
+            #[cfg(feature = "lifecycle-test-support")]
+            transport_close_classification_pause: None,
         })
     }
 
@@ -1439,8 +2004,17 @@ impl ManagedBackendSession {
         params: &impl Serialize,
         timeout: Duration,
     ) -> Result<R, ManagedBackendError> {
+        self.request_until(method, params, RequestDeadline::from_timeout(timeout))
+    }
+
+    fn request_until<R: DeserializeOwned>(
+        &mut self,
+        method: &str,
+        params: &impl Serialize,
+        deadline: RequestDeadline,
+    ) -> Result<R, ManagedBackendError> {
         let request_started = Instant::now();
-        match self.request_json(method, params, timeout)? {
+        match self.request_json_until(method, params, deadline)? {
             JsonRpcRequestOutcome::Result(result) => {
                 let deserialize_started = Instant::now();
                 let response = serde_json::from_value(result).map_err(|source| {
@@ -1481,11 +2055,21 @@ impl ManagedBackendSession {
         params: &impl Serialize,
         timeout: Duration,
     ) -> Result<JsonRpcRequestOutcome, ManagedBackendError> {
+        self.request_json_until(method, params, RequestDeadline::from_timeout(timeout))
+    }
+
+    fn request_json_until(
+        &mut self,
+        method: &str,
+        params: &impl Serialize,
+        deadline: RequestDeadline,
+    ) -> Result<JsonRpcRequestOutcome, ManagedBackendError> {
+        self.last_request_dispatched = false;
+        self.ensure_usable(method)?;
         let request_id = self.next_request_id;
-        self.next_request_id += 1;
         let request_started = Instant::now();
 
-        let write_metrics = self.write_message(
+        let write_metrics = match self.write_message_until(
             method,
             &JsonRpcRequest {
                 jsonrpc: "2.0",
@@ -1493,9 +2077,43 @@ impl ManagedBackendSession {
                 method,
                 params,
             },
-        )?;
+            deadline.expires_at,
+        ) {
+            Ok(metrics) => {
+                self.next_request_id += 1;
+                self.last_request_dispatched = true;
+                metrics
+            }
+            Err(DeadlineTransportError::StdioWriteExpired) => {
+                self.next_request_id += 1;
+                self.last_request_dispatched = true;
+                self.poison_after_stdio_write_timeout();
+                return Err(deadline.timeout_error(method));
+            }
+            Err(DeadlineTransportError::StdioWriteFailed(error)) => {
+                self.next_request_id += 1;
+                self.last_request_dispatched = true;
+                self.poison_after_stdio_write_timeout();
+                return Err(error);
+            }
+            Err(DeadlineTransportError::WebSocketWriteExpired) => {
+                self.next_request_id += 1;
+                self.last_request_dispatched = true;
+                self.poison_after_websocket_write_timeout();
+                return Err(deadline.timeout_error(method));
+            }
+            Err(DeadlineTransportError::WebSocketWriteFailed(error)) => {
+                self.next_request_id += 1;
+                self.last_request_dispatched = true;
+                self.poison_after_websocket_write_timeout();
+                return Err(error);
+            }
+            Err(DeadlineTransportError::DeadlineExpired) => {
+                return Err(deadline.timeout_error(method));
+            }
+            Err(DeadlineTransportError::Backend(error)) => return Err(error),
+        };
 
-        let deadline = Instant::now() + timeout;
         let response_wait_started = Instant::now();
         let mut interleaved_notification_count = 0_usize;
         let mut interleaved_server_request_count = 0_usize;
@@ -1503,25 +2121,17 @@ impl ManagedBackendSession {
         let mut deferred_dynamic_tool_request_count = 0_usize;
         let mut out_of_order_response_count = 0_usize;
         loop {
-            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-                return Err(ManagedBackendError::RequestTimeout {
-                    method: method.to_string(),
-                    timeout,
-                });
-            };
+            if deadline.remaining().is_none() {
+                return Err(deadline.timeout_error(method));
+            }
 
-            let message = match self.recv_message_timeout(
+            let message = match self.recv_message_until(
                 method,
-                remaining,
+                deadline.expires_at,
                 Some(ExpectedJsonRpcResponse { method, request_id }),
             )? {
                 Some(message) => message,
-                None => {
-                    return Err(ManagedBackendError::RequestTimeout {
-                        method: method.to_string(),
-                        timeout,
-                    });
-                }
+                None => return Err(deadline.timeout_error(method)),
             };
 
             match message {
@@ -1642,7 +2252,29 @@ impl ManagedBackendSession {
                             approval_payload = %request.pretty_params(),
                             "denying backend approval request received while waiting for another response"
                         );
-                        self.deny_approval_request(&request)?;
+                        match self.deny_approval_request_until(&request, deadline.expires_at) {
+                            Ok(()) => {}
+                            Err(DeadlineTransportError::StdioWriteExpired) => {
+                                self.poison_after_stdio_write_timeout();
+                                return Err(deadline.timeout_error(method));
+                            }
+                            Err(DeadlineTransportError::StdioWriteFailed(error)) => {
+                                self.poison_after_stdio_write_timeout();
+                                return Err(error);
+                            }
+                            Err(DeadlineTransportError::WebSocketWriteExpired) => {
+                                self.poison_after_websocket_write_timeout();
+                                return Err(deadline.timeout_error(method));
+                            }
+                            Err(DeadlineTransportError::WebSocketWriteFailed(error)) => {
+                                self.poison_after_websocket_write_timeout();
+                                return Err(error);
+                            }
+                            Err(DeadlineTransportError::DeadlineExpired) => {
+                                return Err(deadline.timeout_error(method));
+                            }
+                            Err(DeadlineTransportError::Backend(error)) => return Err(error),
+                        }
                     } else if is_dynamic_tool_call_method(&request_method) {
                         deferred_dynamic_tool_request_count += 1;
                         self.push_pending_message(
@@ -1753,17 +2385,53 @@ impl ManagedBackendSession {
         method: &str,
         message: &impl Serialize,
     ) -> Result<MessageWriteMetrics, ManagedBackendError> {
+        match self.write_message_with_deadline(method, message, None) {
+            Ok(metrics) => Ok(metrics),
+            Err(DeadlineTransportError::Backend(error)) => Err(error),
+            Err(DeadlineTransportError::StdioWriteFailed(error)) => {
+                self.poison_after_stdio_write_timeout();
+                Err(error)
+            }
+            Err(DeadlineTransportError::WebSocketWriteFailed(error)) => {
+                self.poison_after_websocket_write_timeout();
+                Err(error)
+            }
+            Err(
+                DeadlineTransportError::DeadlineExpired
+                | DeadlineTransportError::StdioWriteExpired
+                | DeadlineTransportError::WebSocketWriteExpired,
+            ) => {
+                unreachable!("unbounded write expired")
+            }
+        }
+    }
+
+    fn write_message_until(
+        &mut self,
+        method: &str,
+        message: &impl Serialize,
+        deadline: Instant,
+    ) -> Result<MessageWriteMetrics, DeadlineTransportError> {
+        self.write_message_with_deadline(method, message, Some(deadline))
+    }
+
+    fn write_message_with_deadline(
+        &mut self,
+        method: &str,
+        message: &impl Serialize,
+        deadline: Option<Instant>,
+    ) -> Result<MessageWriteMetrics, DeadlineTransportError> {
         let serialize_started = Instant::now();
         let line = serde_json::to_string(message).map_err(|source| {
-            ManagedBackendError::SerializeRequest {
+            DeadlineTransportError::Backend(ManagedBackendError::SerializeRequest {
                 method: method.to_string(),
                 source,
-            }
+            })
         })?;
         let serialize = serialize_started.elapsed();
         let bytes = line.len();
         let transport_started = Instant::now();
-        self.transport.write_message(method, &line)?;
+        self.transport.write_message(method, &line, deadline)?;
         Ok(MessageWriteMetrics {
             serialize,
             transport: transport_started.elapsed(),
@@ -1777,34 +2445,82 @@ impl ManagedBackendSession {
         request_id: &Value,
         result: &T,
     ) -> Result<(), ManagedBackendError> {
-        self.write_message(
+        match self.write_server_response_with_deadline(method, request_id, result, None) {
+            Ok(()) => Ok(()),
+            Err(DeadlineTransportError::Backend(error)) => Err(error),
+            Err(DeadlineTransportError::StdioWriteFailed(error)) => {
+                self.poison_after_stdio_write_timeout();
+                Err(error)
+            }
+            Err(DeadlineTransportError::WebSocketWriteFailed(error)) => {
+                self.poison_after_websocket_write_timeout();
+                Err(error)
+            }
+            Err(
+                DeadlineTransportError::DeadlineExpired
+                | DeadlineTransportError::StdioWriteExpired
+                | DeadlineTransportError::WebSocketWriteExpired,
+            ) => {
+                unreachable!("unbounded response expired")
+            }
+        }
+    }
+
+    fn write_server_response_with_deadline<T: Serialize + ?Sized>(
+        &mut self,
+        method: &str,
+        request_id: &Value,
+        result: &T,
+        deadline: Option<Instant>,
+    ) -> Result<(), DeadlineTransportError> {
+        self.write_message_with_deadline(
             method,
             &JsonRpcServerResponse {
                 jsonrpc: "2.0",
                 id: request_id,
                 result,
             },
+            deadline,
         )
         .map(|_| ())
     }
 
-    fn recv_message_timeout(
+    fn recv_message_until(
         &mut self,
         method: &str,
-        timeout: Duration,
+        deadline: Instant,
         expected_response: Option<ExpectedJsonRpcResponse<'_>>,
     ) -> Result<Option<IncomingMessage>, ManagedBackendError> {
-        let received = match self
+        let received = self
             .transport
-            .recv_message_timeout(method, timeout, expected_response)
-        {
+            .recv_message_until(method, deadline, expected_response);
+        #[cfg(feature = "lifecycle-test-support")]
+        self.pause_before_transport_close_classification_for_test(&received);
+        let received = match received {
             Ok(received) => received,
-            Err(ManagedBackendError::TransportClosed { .. }) if self.child_exited() => {
+            Err(DeadlineTransportError::DeadlineExpired) => return Ok(None),
+            Err(
+                DeadlineTransportError::StdioWriteExpired
+                | DeadlineTransportError::StdioWriteFailed(_),
+            ) => {
+                unreachable!("receive path cannot report a write deadline")
+            }
+            Err(DeadlineTransportError::WebSocketWriteExpired) => {
+                self.poison_after_websocket_write_timeout();
+                return Ok(None);
+            }
+            Err(DeadlineTransportError::WebSocketWriteFailed(error)) => {
+                self.poison_after_websocket_write_timeout();
+                return Err(error);
+            }
+            Err(DeadlineTransportError::Backend(ManagedBackendError::TransportClosed {
+                ..
+            })) if self.child_exited() => {
                 return Err(ManagedBackendError::ProcessExited {
                     method: method.to_string(),
                 });
             }
-            Err(error) => return Err(error),
+            Err(DeadlineTransportError::Backend(error)) => return Err(error),
         };
 
         match received {
@@ -1824,6 +2540,62 @@ impl ManagedBackendSession {
         self.process
             .as_mut()
             .is_some_and(SupervisedBackendProcess::has_exited)
+    }
+
+    fn ensure_usable(&self, method: &str) -> Result<(), ManagedBackendError> {
+        if self.poisoned {
+            Err(ManagedBackendError::SessionPoisoned {
+                method: method.to_string(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn poison_after_stdio_write_timeout(&mut self) {
+        let Some(writer) = self.transport.take_stdio_writer() else {
+            return;
+        };
+        self.poisoned = true;
+        let mut failures = Vec::new();
+        let Some(mut process) = self.process.take() else {
+            failures.push(ManagedBackendError::ProcessExited {
+                method: "stdio write cleanup".to_string(),
+            });
+            self.terminal_cleanup = Some(StdioTerminalCleanup::spawn(None, writer, failures));
+            return;
+        };
+        if let Err(error) = process.terminate_child_now() {
+            failures.push(error);
+        }
+        self.terminal_cleanup = Some(StdioTerminalCleanup::spawn(Some(process), writer, failures));
+    }
+
+    fn poison_after_websocket_write_timeout(&mut self) {
+        if self.transport.is_websocket() {
+            self.poisoned = true;
+            self.transport.abort_websocket();
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn pause_before_transport_close_classification_for_test(
+        &mut self,
+        received: &Result<Option<IncomingMessage>, DeadlineTransportError>,
+    ) {
+        if !matches!(
+            received,
+            Err(DeadlineTransportError::Backend(
+                ManagedBackendError::TransportClosed { .. }
+            ))
+        ) {
+            return;
+        }
+        let Some(pause) = self.transport_close_classification_pause.take() else {
+            return;
+        };
+        let _ = pause.entered.send(());
+        let _ = pause.release.recv();
     }
 }
 
@@ -2016,108 +2788,712 @@ struct MessageWriteMetrics {
     bytes: usize,
 }
 
+#[derive(Clone, Copy)]
+struct RequestDeadline {
+    expires_at: Instant,
+    timeout: Duration,
+}
+
+impl RequestDeadline {
+    fn from_timeout(timeout: Duration) -> Self {
+        Self {
+            expires_at: Instant::now() + timeout,
+            timeout,
+        }
+    }
+
+    fn remaining(self) -> Option<Duration> {
+        self.expires_at
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+    }
+
+    fn timeout_error(self, method: &str) -> ManagedBackendError {
+        ManagedBackendError::RequestTimeout {
+            method: method.to_string(),
+            timeout: self.timeout,
+        }
+    }
+}
+
+enum DeadlineTransportError {
+    DeadlineExpired,
+    StdioWriteExpired,
+    StdioWriteFailed(ManagedBackendError),
+    WebSocketWriteExpired,
+    WebSocketWriteFailed(ManagedBackendError),
+    Backend(ManagedBackendError),
+}
+
+impl From<ManagedBackendError> for DeadlineTransportError {
+    fn from(error: ManagedBackendError) -> Self {
+        Self::Backend(error)
+    }
+}
+
+#[derive(Debug)]
+struct SupervisedStdioWriter {
+    commands: Option<SyncSender<StdioWriterCommand>>,
+    join: Option<JoinHandle<()>>,
+    #[cfg(feature = "lifecycle-test-support")]
+    finished: Arc<AtomicBool>,
+    #[cfg(feature = "lifecycle-test-support")]
+    write_count: Arc<AtomicUsize>,
+    #[cfg(feature = "lifecycle-test-support")]
+    fail_after_bytes: Arc<AtomicUsize>,
+}
+
+enum StdioWriterCommand {
+    Write {
+        method: String,
+        bytes: Vec<u8>,
+        acknowledgment: SyncSender<Result<(), StdioWriterFailure>>,
+    },
+}
+
+struct StdioWriterFailure {
+    error: ManagedBackendError,
+    committed: bool,
+}
+
+impl SupervisedStdioWriter {
+    fn spawn(mut stdin: ChildStdin) -> Self {
+        let (commands, receiver) = mpsc::sync_channel(1);
+        #[cfg(feature = "lifecycle-test-support")]
+        let finished = Arc::new(AtomicBool::new(false));
+        #[cfg(feature = "lifecycle-test-support")]
+        let thread_finished = Arc::clone(&finished);
+        #[cfg(feature = "lifecycle-test-support")]
+        let write_count = Arc::new(AtomicUsize::new(0));
+        #[cfg(feature = "lifecycle-test-support")]
+        let thread_write_count = Arc::clone(&write_count);
+        #[cfg(feature = "lifecycle-test-support")]
+        let fail_after_bytes = Arc::new(AtomicUsize::new(usize::MAX));
+        #[cfg(feature = "lifecycle-test-support")]
+        let thread_fail_after_bytes = Arc::clone(&fail_after_bytes);
+        let join = thread::spawn(move || {
+            while let Ok(StdioWriterCommand::Write {
+                method,
+                bytes,
+                acknowledgment,
+            }) = receiver.recv()
+            {
+                #[cfg(feature = "lifecycle-test-support")]
+                thread_write_count.fetch_add(1, Ordering::SeqCst);
+                let result = write_stdio_message(
+                    &mut stdin,
+                    &method,
+                    &bytes,
+                    #[cfg(feature = "lifecycle-test-support")]
+                    &thread_fail_after_bytes,
+                );
+                let _ = acknowledgment.send(result);
+            }
+            #[cfg(feature = "lifecycle-test-support")]
+            thread_finished.store(true, Ordering::SeqCst);
+        });
+        Self {
+            commands: Some(commands),
+            join: Some(join),
+            #[cfg(feature = "lifecycle-test-support")]
+            finished,
+            #[cfg(feature = "lifecycle-test-support")]
+            write_count,
+            #[cfg(feature = "lifecycle-test-support")]
+            fail_after_bytes,
+        }
+    }
+
+    fn write_message(
+        &mut self,
+        method: &str,
+        line: &str,
+        deadline: Option<Instant>,
+    ) -> Result<(), DeadlineTransportError> {
+        let Some(commands) = self.commands.as_ref() else {
+            return Err(ManagedBackendError::SessionPoisoned {
+                method: method.to_string(),
+            }
+            .into());
+        };
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            return Err(DeadlineTransportError::DeadlineExpired);
+        }
+
+        let mut bytes = line.as_bytes().to_vec();
+        bytes.push(b'\n');
+        let (acknowledgment, result) = mpsc::sync_channel(1);
+        match commands.try_send(StdioWriterCommand::Write {
+            method: method.to_string(),
+            bytes,
+            acknowledgment,
+        }) {
+            Ok(()) => {}
+            Err(TrySendError::Disconnected(_)) => {
+                return Err(ManagedBackendError::StdioWriterStopped {
+                    method: method.to_string(),
+                }
+                .into());
+            }
+            Err(TrySendError::Full(_)) => {
+                return Err(ManagedBackendError::SessionPoisoned {
+                    method: method.to_string(),
+                }
+                .into());
+            }
+        }
+
+        match deadline {
+            Some(deadline) => {
+                let Some(remaining) = deadline
+                    .checked_duration_since(Instant::now())
+                    .filter(|remaining| !remaining.is_zero())
+                else {
+                    self.poison();
+                    return Err(DeadlineTransportError::StdioWriteExpired);
+                };
+                match result.recv_timeout(remaining) {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(failure)) if failure.committed => {
+                        Err(DeadlineTransportError::StdioWriteFailed(failure.error))
+                    }
+                    Ok(Err(failure)) => Err(DeadlineTransportError::Backend(failure.error)),
+                    Err(RecvTimeoutError::Timeout) => {
+                        self.poison();
+                        Err(DeadlineTransportError::StdioWriteExpired)
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        Err(ManagedBackendError::StdioWriterStopped {
+                            method: method.to_string(),
+                        }
+                        .into())
+                    }
+                }
+            }
+            None => match result
+                .recv()
+                .map_err(|_| ManagedBackendError::StdioWriterStopped {
+                    method: method.to_string(),
+                })? {
+                Ok(()) => Ok(()),
+                Err(failure) if failure.committed => {
+                    Err(DeadlineTransportError::StdioWriteFailed(failure.error))
+                }
+                Err(failure) => Err(DeadlineTransportError::Backend(failure.error)),
+            },
+        }
+    }
+
+    fn poison(&mut self) {
+        drop(self.commands.take());
+    }
+
+    fn close(&mut self) {
+        drop(self.commands.take());
+    }
+
+    fn join(&mut self) -> Result<(), ManagedBackendError> {
+        self.close();
+        let Some(join) = self.join.take() else {
+            return Ok(());
+        };
+        join.join()
+            .map_err(|_| ManagedBackendError::StdioWriterPanicked)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn is_finished(&self) -> bool {
+        self.finished.load(Ordering::SeqCst)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn write_count(&self) -> usize {
+        self.write_count.load(Ordering::SeqCst)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn fail_next_write_after_bytes(&self, bytes: usize) {
+        self.fail_after_bytes.store(bytes, Ordering::SeqCst);
+    }
+}
+
+fn write_stdio_message(
+    stdin: &mut ChildStdin,
+    method: &str,
+    mut bytes: &[u8],
+    #[cfg(feature = "lifecycle-test-support")] fail_after_bytes: &AtomicUsize,
+) -> Result<(), StdioWriterFailure> {
+    let mut committed = false;
+    while !bytes.is_empty() {
+        #[cfg(feature = "lifecycle-test-support")]
+        let write_bytes = {
+            let remaining = fail_after_bytes.load(Ordering::SeqCst);
+            if remaining == 0 {
+                return Err(StdioWriterFailure {
+                    error: ManagedBackendError::WriteRequest {
+                        method: method.to_string(),
+                        source: io::Error::new(
+                            io::ErrorKind::BrokenPipe,
+                            "injected stdio write failure after byte commitment",
+                        ),
+                    },
+                    committed,
+                });
+            }
+            &bytes[..bytes.len().min(remaining)]
+        };
+        #[cfg(not(feature = "lifecycle-test-support"))]
+        let write_bytes = bytes;
+        match stdin.write(write_bytes) {
+            Ok(0) => {
+                return Err(StdioWriterFailure {
+                    error: ManagedBackendError::WriteRequest {
+                        method: method.to_string(),
+                        source: io::Error::new(
+                            io::ErrorKind::WriteZero,
+                            "failed to write complete stdio request",
+                        ),
+                    },
+                    committed,
+                });
+            }
+            Ok(written) => {
+                committed = true;
+                #[cfg(feature = "lifecycle-test-support")]
+                if fail_after_bytes.load(Ordering::SeqCst) != usize::MAX {
+                    fail_after_bytes.fetch_sub(written, Ordering::SeqCst);
+                }
+                bytes = &bytes[written..];
+            }
+            Err(source) => {
+                return Err(StdioWriterFailure {
+                    error: ManagedBackendError::WriteRequest {
+                        method: method.to_string(),
+                        source,
+                    },
+                    committed,
+                });
+            }
+        }
+    }
+    stdin.flush().map_err(|source| StdioWriterFailure {
+        error: ManagedBackendError::WriteRequest {
+            method: method.to_string(),
+            source,
+        },
+        committed,
+    })
+}
+
+impl Drop for SupervisedStdioWriter {
+    fn drop(&mut self) {
+        if let Err(error) = self.join() {
+            warn!(%error, "failed to join supervised backend stdio writer");
+        }
+    }
+}
+
+#[derive(Debug)]
+struct StdioTerminalCleanup {
+    state: Option<StdioTerminalCleanupState>,
+}
+
+#[derive(Debug)]
+enum StdioTerminalCleanupState {
+    Running(JoinHandle<StdioCleanupOutcome>),
+    Retained {
+        process: Option<SupervisedBackendProcess>,
+        writer: Option<SupervisedStdioWriter>,
+    },
+    Finished,
+}
+
+#[derive(Debug)]
+enum StdioCleanupOutcome {
+    Complete(Vec<ManagedBackendError>),
+    Retry {
+        process: Option<SupervisedBackendProcess>,
+        writer: SupervisedStdioWriter,
+        failures: Vec<ManagedBackendError>,
+    },
+}
+
+impl StdioTerminalCleanup {
+    fn spawn(
+        process: Option<SupervisedBackendProcess>,
+        writer: SupervisedStdioWriter,
+        failures: Vec<ManagedBackendError>,
+    ) -> Self {
+        Self {
+            state: Some(StdioTerminalCleanupState::Running(
+                spawn_stdio_cleanup_attempt(process, writer, failures),
+            )),
+        }
+    }
+
+    fn finish(&mut self) -> Result<(), ManagedBackendError> {
+        loop {
+            match self
+                .state
+                .take()
+                .unwrap_or(StdioTerminalCleanupState::Finished)
+            {
+                StdioTerminalCleanupState::Running(join) => {
+                    let outcome = join
+                        .join()
+                        .map_err(|_| ManagedBackendError::StdioWriterPanicked)?;
+                    return self.accept_outcome(outcome);
+                }
+                StdioTerminalCleanupState::Retained {
+                    process,
+                    writer: Some(writer),
+                } => {
+                    self.state = Some(StdioTerminalCleanupState::Running(
+                        spawn_stdio_cleanup_attempt(process, writer, Vec::new()),
+                    ));
+                }
+                StdioTerminalCleanupState::Retained { writer: None, .. }
+                | StdioTerminalCleanupState::Finished => {
+                    self.state = Some(StdioTerminalCleanupState::Finished);
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    fn accept_outcome(&mut self, outcome: StdioCleanupOutcome) -> Result<(), ManagedBackendError> {
+        match outcome {
+            StdioCleanupOutcome::Complete(failures) => {
+                self.state = Some(StdioTerminalCleanupState::Finished);
+                finish_stdio_cleanup(failures)
+            }
+            StdioCleanupOutcome::Retry {
+                process,
+                writer,
+                failures,
+            } => {
+                self.state = Some(StdioTerminalCleanupState::Retained {
+                    process,
+                    writer: Some(writer),
+                });
+                finish_stdio_cleanup(failures)
+            }
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn is_finished(&self) -> bool {
+        matches!(self.state, Some(StdioTerminalCleanupState::Finished))
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn is_retained(&self) -> bool {
+        matches!(
+            self.state,
+            Some(StdioTerminalCleanupState::Retained {
+                writer: Some(_),
+                ..
+            })
+        )
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn writer_finished(&self) -> bool {
+        match self.state.as_ref() {
+            Some(StdioTerminalCleanupState::Retained {
+                writer: Some(writer),
+                ..
+            }) => writer.is_finished(),
+            Some(StdioTerminalCleanupState::Finished) => true,
+            Some(StdioTerminalCleanupState::Running(_))
+            | Some(StdioTerminalCleanupState::Retained { writer: None, .. })
+            | None => false,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn write_count(&self) -> usize {
+        match self.state.as_ref() {
+            Some(StdioTerminalCleanupState::Retained {
+                writer: Some(writer),
+                ..
+            }) => writer.write_count(),
+            Some(StdioTerminalCleanupState::Running(_))
+            | Some(StdioTerminalCleanupState::Retained { writer: None, .. })
+            | Some(StdioTerminalCleanupState::Finished)
+            | None => 0,
+        }
+    }
+}
+
+impl Drop for StdioTerminalCleanup {
+    fn drop(&mut self) {
+        let mut state = self
+            .state
+            .take()
+            .unwrap_or(StdioTerminalCleanupState::Finished);
+        if let StdioTerminalCleanupState::Running(join) = state {
+            state = match join.join() {
+                Ok(StdioCleanupOutcome::Complete(failures)) => {
+                    if let Err(error) = finish_stdio_cleanup(failures) {
+                        warn!(%error, "terminal backend stdio cleanup failed during drop");
+                    }
+                    return;
+                }
+                Ok(StdioCleanupOutcome::Retry {
+                    process,
+                    writer,
+                    failures,
+                }) => {
+                    if let Err(error) = finish_stdio_cleanup(failures) {
+                        warn!(%error, "terminal backend stdio cleanup attempt failed during drop");
+                    }
+                    StdioTerminalCleanupState::Retained {
+                        process,
+                        writer: Some(writer),
+                    }
+                }
+                Err(_) => {
+                    warn!("terminal backend stdio cleanup worker panicked during drop");
+                    return;
+                }
+            };
+        }
+
+        if let StdioTerminalCleanupState::Retained {
+            mut process,
+            mut writer,
+        } = state
+        {
+            if let Some(process) = process.as_mut()
+                && let Err(error) = process.shutdown(Duration::ZERO, MANAGED_PROCESS_KILL_TIMEOUT)
+            {
+                warn!(%error, "final bounded backend process cleanup attempt failed");
+            }
+            // Keep the exact supervisor ownership live while the writer joins.
+            // If the OS repeatedly refuses termination, final destruction may
+            // block here rather than detach either the child or the writer.
+            if let Some(writer) = writer.as_mut()
+                && let Err(error) = writer.join()
+            {
+                warn!(%error, "failed to join terminal backend stdio writer during drop");
+            }
+            drop(process);
+        }
+    }
+}
+
+fn spawn_stdio_cleanup_attempt(
+    mut process: Option<SupervisedBackendProcess>,
+    mut writer: SupervisedStdioWriter,
+    mut failures: Vec<ManagedBackendError>,
+) -> JoinHandle<StdioCleanupOutcome> {
+    thread::spawn(move || {
+        if let Some(process_ref) = process.as_mut()
+            && let Err(error) = process_ref.shutdown(Duration::ZERO, MANAGED_PROCESS_KILL_TIMEOUT)
+        {
+            failures.push(error);
+            return StdioCleanupOutcome::Retry {
+                process,
+                writer,
+                failures,
+            };
+        }
+        drop(process);
+        if let Err(error) = writer.join() {
+            failures.push(error);
+        }
+        StdioCleanupOutcome::Complete(failures)
+    })
+}
+
+fn finish_stdio_cleanup(mut failures: Vec<ManagedBackendError>) -> Result<(), ManagedBackendError> {
+    match failures.len() {
+        0 => Ok(()),
+        1 => Err(failures.pop().expect("one cleanup failure must exist")),
+        _ => Err(ManagedBackendError::StdioCleanupFailures { failures }),
+    }
+}
+
 enum BackendClientTransport {
     Stdio {
-        stdin: Option<ChildStdin>,
+        writer: Option<SupervisedStdioWriter>,
         messages: Receiver<Result<IncomingMessage, ManagedBackendError>>,
     },
     WebSocket(WebSocketClientTransport),
 }
 
 impl BackendClientTransport {
-    fn write_message(&mut self, method: &str, line: &str) -> Result<(), ManagedBackendError> {
+    fn write_message(
+        &mut self,
+        method: &str,
+        line: &str,
+        deadline: Option<Instant>,
+    ) -> Result<(), DeadlineTransportError> {
         match self {
-            Self::Stdio { stdin, .. } => {
-                let Some(stdin) = stdin.as_mut() else {
-                    return Err(ManagedBackendError::TransportClosed {
+            Self::Stdio { writer, .. } => {
+                let Some(writer) = writer.as_mut() else {
+                    return Err(ManagedBackendError::SessionPoisoned {
                         method: method.to_string(),
-                    });
+                    }
+                    .into());
                 };
-                let mut bytes = line.as_bytes().to_vec();
-                bytes.push(b'\n');
-                stdin
-                    .write_all(&bytes)
-                    .and_then(|()| stdin.flush())
-                    .map_err(|source| ManagedBackendError::WriteRequest {
-                        method: method.to_string(),
-                        source,
-                    })
+                writer.write_message(method, line, deadline)
             }
-            Self::WebSocket(transport) => transport.write_message(method, line),
+            Self::WebSocket(transport) => match transport.write_message(method, line, deadline) {
+                Ok(()) => Ok(()),
+                Err(ManagedBackendError::WebSocketTransport { source, .. })
+                    if source.is_write_deadline_expired() =>
+                {
+                    Err(DeadlineTransportError::WebSocketWriteExpired)
+                }
+                Err(ManagedBackendError::WebSocketTransport { source, .. })
+                    if source.is_deadline_expired() =>
+                {
+                    Err(DeadlineTransportError::DeadlineExpired)
+                }
+                Err(error @ ManagedBackendError::WebSocketTransport { .. })
+                    if matches!(
+                        &error,
+                        ManagedBackendError::WebSocketTransport { source, .. }
+                            if source.is_write_failed_after_commit()
+                    ) =>
+                {
+                    Err(DeadlineTransportError::WebSocketWriteFailed(error))
+                }
+                Err(error) => Err(DeadlineTransportError::Backend(error)),
+            },
         }
     }
 
-    fn recv_message_timeout(
+    fn recv_message_until(
         &mut self,
         method: &str,
-        timeout: Duration,
+        deadline: Instant,
         expected_response: Option<ExpectedJsonRpcResponse<'_>>,
-    ) -> Result<Option<IncomingMessage>, ManagedBackendError> {
+    ) -> Result<Option<IncomingMessage>, DeadlineTransportError> {
         match self {
-            Self::Stdio { messages, .. } => match messages.recv_timeout(timeout) {
-                Ok(message) => message.map(Some),
-                Err(RecvTimeoutError::Timeout) => Ok(None),
-                Err(RecvTimeoutError::Disconnected) => Err(ManagedBackendError::TransportClosed {
-                    method: method.to_string(),
-                }),
-            },
+            Self::Stdio { messages, .. } => {
+                let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                    return Err(DeadlineTransportError::DeadlineExpired);
+                };
+                if remaining.is_zero() {
+                    return Err(DeadlineTransportError::DeadlineExpired);
+                }
+                match messages.recv_timeout(remaining) {
+                    Ok(message) => message.map(Some).map_err(DeadlineTransportError::Backend),
+                    Err(RecvTimeoutError::Timeout) => Err(DeadlineTransportError::DeadlineExpired),
+                    Err(RecvTimeoutError::Disconnected) => {
+                        Err(ManagedBackendError::TransportClosed {
+                            method: method.to_string(),
+                        }
+                        .into())
+                    }
+                }
+            }
             Self::WebSocket(transport) => {
                 if let Some((expected, sanitizer_kind)) = expected_response.and_then(|expected| {
                     response_sanitizer_kind(expected.method).map(|kind| (expected, kind))
                 }) {
-                    return match transport.recv_text_message_timeout_with_parser(
+                    return match transport.recv_text_message_until_with_parser(
                         method,
-                        timeout,
+                        deadline,
                         |reader| {
                             sanitize_json_rpc_message(sanitizer_kind, expected.request_id, reader)
                         },
-                    )? {
-                        Some(Ok(sanitized)) => {
-                            let sanitized_response_bytes =
-                                sanitized_value_byte_len(&sanitized.value);
-                            let parse_started = Instant::now();
-                            let incoming = parse_incoming_value(sanitized.value).map(Some);
-                            let sanitized_response_parse = parse_started.elapsed();
-                            debug!(
-                                target: "beryl_backend::backend_metrics",
-                                method = expected.method,
-                                request_id = expected.request_id,
-                                sanitizer_kind = ?sanitizer_kind,
-                                sanitized_response_bytes,
-                                sanitizer_turn_count = sanitized.stats.turn_count,
-                                sanitizer_item_count = sanitized.stats.item_count,
-                                sanitizer_image_result_removed_count =
-                                    sanitized.stats.image_result_removed_count,
-                                sanitizer_total_ms =
-                                    elapsed_ms(sanitized.stats.total_sanitize),
-                                sanitizer_result_ms =
-                                    elapsed_ms(sanitized.stats.result_sanitize),
-                                sanitizer_turn_array_ms =
-                                    elapsed_ms(sanitized.stats.turn_array_sanitize),
-                                sanitizer_item_array_ms =
-                                    elapsed_ms(sanitized.stats.item_array_sanitize),
-                                sanitizer_image_result_skip_ms =
-                                    elapsed_ms(sanitized.stats.image_result_skip),
-                                sanitizer_image_result_skip_max_ms =
-                                    elapsed_ms(sanitized.stats.image_result_skip_max),
-                                sanitized_response_parse_ms =
-                                    elapsed_ms(sanitized_response_parse),
-                                "parsed sanitized backend JSON-RPC response metrics"
-                            );
-                            incoming
+                    ) {
+                        Err(ManagedBackendError::WebSocketTransport { source, .. })
+                            if source.is_write_deadline_expired() =>
+                        {
+                            Err(DeadlineTransportError::WebSocketWriteExpired)
                         }
-                        Some(Err(source)) => Err(ManagedBackendError::SanitizeResponse {
-                            method: expected.method.to_string(),
-                            source,
-                        }),
-                        None => Ok(None),
+                        Err(ManagedBackendError::WebSocketTransport { source, .. })
+                            if source.is_deadline_expired() =>
+                        {
+                            Err(DeadlineTransportError::DeadlineExpired)
+                        }
+                        Err(error @ ManagedBackendError::WebSocketTransport { .. })
+                            if matches!(
+                                &error,
+                                ManagedBackendError::WebSocketTransport { source, .. }
+                                    if source.is_write_failed_after_commit()
+                            ) =>
+                        {
+                            Err(DeadlineTransportError::WebSocketWriteFailed(error))
+                        }
+                        Err(error) => Err(DeadlineTransportError::Backend(error)),
+                        Ok(received) => match received {
+                            Some(Ok(sanitized)) => {
+                                let sanitized_response_bytes =
+                                    sanitized_value_byte_len(&sanitized.value);
+                                let parse_started = Instant::now();
+                                let incoming = parse_incoming_value(sanitized.value).map(Some);
+                                let sanitized_response_parse = parse_started.elapsed();
+                                debug!(
+                                    target: "beryl_backend::backend_metrics",
+                                    method = expected.method,
+                                    request_id = expected.request_id,
+                                    sanitizer_kind = ?sanitizer_kind,
+                                    sanitized_response_bytes,
+                                    sanitizer_turn_count = sanitized.stats.turn_count,
+                                    sanitizer_item_count = sanitized.stats.item_count,
+                                    sanitizer_image_result_removed_count =
+                                        sanitized.stats.image_result_removed_count,
+                                    sanitizer_total_ms =
+                                        elapsed_ms(sanitized.stats.total_sanitize),
+                                    sanitizer_result_ms =
+                                        elapsed_ms(sanitized.stats.result_sanitize),
+                                    sanitizer_turn_array_ms =
+                                        elapsed_ms(sanitized.stats.turn_array_sanitize),
+                                    sanitizer_item_array_ms =
+                                        elapsed_ms(sanitized.stats.item_array_sanitize),
+                                    sanitizer_image_result_skip_ms =
+                                        elapsed_ms(sanitized.stats.image_result_skip),
+                                    sanitizer_image_result_skip_max_ms =
+                                        elapsed_ms(sanitized.stats.image_result_skip_max),
+                                    sanitized_response_parse_ms =
+                                        elapsed_ms(sanitized_response_parse),
+                                    "parsed sanitized backend JSON-RPC response metrics"
+                                );
+                                incoming.map_err(DeadlineTransportError::Backend)
+                            }
+                            Some(Err(source)) => Err(DeadlineTransportError::Backend(
+                                ManagedBackendError::SanitizeResponse {
+                                    method: expected.method.to_string(),
+                                    source,
+                                },
+                            )),
+                            None => Ok(None),
+                        },
                     };
                 }
 
-                match transport.recv_text_message_timeout(method, timeout)? {
-                    Some(text) => {
+                match transport.recv_text_message_until(method, deadline) {
+                    Err(ManagedBackendError::WebSocketTransport { source, .. })
+                        if source.is_write_deadline_expired() =>
+                    {
+                        Err(DeadlineTransportError::WebSocketWriteExpired)
+                    }
+                    Err(ManagedBackendError::WebSocketTransport { source, .. })
+                        if source.is_deadline_expired() =>
+                    {
+                        Err(DeadlineTransportError::DeadlineExpired)
+                    }
+                    Err(error @ ManagedBackendError::WebSocketTransport { .. })
+                        if matches!(
+                            &error,
+                            ManagedBackendError::WebSocketTransport { source, .. }
+                                if source.is_write_failed_after_commit()
+                        ) =>
+                    {
+                        Err(DeadlineTransportError::WebSocketWriteFailed(error))
+                    }
+                    Err(error) => Err(DeadlineTransportError::Backend(error)),
+                    Ok(Some(text)) => {
                         let parse_started = Instant::now();
-                        let incoming = parse_incoming_message(&text).map(Some);
+                        let incoming = parse_incoming_message(&text)
+                            .map(Some)
+                            .map_err(DeadlineTransportError::Backend);
                         debug!(
                             method,
                             response_bytes = text.len(),
@@ -2126,7 +3502,7 @@ impl BackendClientTransport {
                         );
                         incoming
                     }
-                    None => Ok(None),
+                    Ok(None) => Ok(None),
                 }
             }
         }
@@ -2134,12 +3510,63 @@ impl BackendClientTransport {
 
     fn close(&mut self) {
         match self {
-            Self::Stdio { stdin, .. } => {
-                drop(stdin.take());
+            Self::Stdio { writer, .. } => {
+                if let Some(writer) = writer.as_mut() {
+                    writer.close();
+                }
             }
             Self::WebSocket(transport) => {
                 transport.close();
             }
+        }
+    }
+
+    fn abort_websocket(&mut self) {
+        if let Self::WebSocket(transport) = self {
+            transport.abort();
+        }
+    }
+
+    fn take_stdio_writer(&mut self) -> Option<SupervisedStdioWriter> {
+        match self {
+            Self::Stdio { writer, .. } => writer.take(),
+            Self::WebSocket(_) => None,
+        }
+    }
+
+    fn join_stdio_writer(&mut self) -> Result<(), ManagedBackendError> {
+        match self {
+            Self::Stdio { writer, .. } => match writer.as_mut() {
+                Some(writer) => writer.join(),
+                None => Ok(()),
+            },
+            Self::WebSocket(_) => Ok(()),
+        }
+    }
+
+    fn is_websocket(&self) -> bool {
+        matches!(self, Self::WebSocket(_))
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn websocket_close_frame_attempts(&self) -> Option<usize> {
+        match self {
+            Self::WebSocket(transport) => Some(transport.close_frame_attempts()),
+            Self::Stdio { .. } => None,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn fail_next_stdio_write_after_bytes(&mut self, bytes: usize) -> bool {
+        match self {
+            Self::Stdio {
+                writer: Some(writer),
+                ..
+            } => {
+                writer.fail_next_write_after_bytes(bytes);
+                true
+            }
+            Self::Stdio { writer: None, .. } | Self::WebSocket(_) => false,
         }
     }
 }

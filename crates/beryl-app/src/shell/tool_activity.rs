@@ -377,6 +377,16 @@ impl ToolActivityProjection {
                 turn_id,
                 item: ThreadItem::AgentMessage(item),
             } => self.apply_subagent_handoff_activity(thread_id, turn_id, item),
+            TurnStreamEvent::ItemCompleted {
+                item:
+                    ThreadItem::UserMessage(_)
+                    | ThreadItem::Reasoning(_)
+                    | ThreadItem::CommandExecution(_)
+                    | ThreadItem::FileChange(_)
+                    | ThreadItem::ImageGeneration(_)
+                    | ThreadItem::Generic(_),
+                ..
+            } => false,
             TurnStreamEvent::ThreadStarted { thread } => self
                 .apply_thread_agent_nickname(thread.id.as_str(), thread.agent_nickname.as_deref()),
             TurnStreamEvent::AgentLabelUpdated { thread_id, label } => {
@@ -388,13 +398,29 @@ impl ToolActivityProjection {
                     None => false,
                 }
             }
-            TurnStreamEvent::ThreadClosed { thread_id } => {
+            TurnStreamEvent::ThreadClosed { thread_id }
+            | TurnStreamEvent::ThreadArchived { thread_id }
+            | TurnStreamEvent::ThreadDeleted { thread_id } => {
                 self.finish_running_for_thread(thread_id, ToolActivityRowStatus::FinishedOk)
             }
+            TurnStreamEvent::ThreadUnarchived { .. } => false,
             TurnStreamEvent::ProtocolError { .. } => {
                 self.finish_all_running(ToolActivityRowStatus::FinishedError)
             }
-            _ => false,
+            TurnStreamEvent::TurnStarted { .. }
+            | TurnStreamEvent::ThreadStatusChanged { .. }
+            | TurnStreamEvent::ItemStarted { .. }
+            | TurnStreamEvent::AgentMessageDelta { .. }
+            | TurnStreamEvent::ReasoningSummaryPartAdded { .. }
+            | TurnStreamEvent::ReasoningSummaryTextDelta { .. }
+            | TurnStreamEvent::ReasoningTextDelta { .. }
+            | TurnStreamEvent::CommandExecutionOutputDelta { .. }
+            | TurnStreamEvent::FileChangeOutputDelta { .. }
+            | TurnStreamEvent::TokenUsageUpdated { .. }
+            | TurnStreamEvent::AccountRateLimitsUpdated { .. }
+            | TurnStreamEvent::ThreadNameUpdated { .. }
+            | TurnStreamEvent::ApprovalRequested(..)
+            | TurnStreamEvent::DynamicToolCallRequested(..) => false,
         }
     }
 

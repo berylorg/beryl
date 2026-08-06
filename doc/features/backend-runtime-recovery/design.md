@@ -30,6 +30,8 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 
 - Opening the workspace shell requires only GUI-owned workspace state.
 - Successful startup does not require backend launch, compatibility probing, or backend thread enumeration.
+- Reopening one persisted active conversation thread uses exact backend validation by its registered id and binding. It does not depend on completing or exhausting backend thread enumeration.
+- Backend thread enumeration used for startup candidates or selector inventory is member-scoped and bounded end to end. Exhaustion, truncation, or failure of that background projection must not erase a separately validated exact active-thread recovery result.
 - If the current primary runtime target cannot launch or probe during startup, Beryl still opens the workspace, keeps workspace/member management available, and disables conversation operations for that target.
 - Workspace selection, workspace picker interaction, default-runtime selection, member attachment, member detachment, and primary-member selection remain available while the primary runtime target is backend-unavailable.
 - Composer submission, new-thread creation, existing-thread activation, thread selector activation, inventory refresh, title generation, backend-derived model/reasoning status, backend-derived context status, context compaction, and turn-control interactions are disabled for the affected backend-unavailable target.

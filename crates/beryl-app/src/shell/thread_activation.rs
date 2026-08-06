@@ -56,6 +56,27 @@ pub(crate) fn activate_existing_thread_direct<B>(
 where
     B: ExistingThreadActivationBackend,
 {
+    activate_existing_thread_direct_with_fork_parent(
+        backend,
+        execution_target,
+        thread_id,
+        label,
+        None,
+        timeout,
+    )
+}
+
+pub(crate) fn activate_existing_thread_direct_with_fork_parent<B>(
+    backend: &mut B,
+    execution_target: &WorkspaceId,
+    thread_id: &str,
+    label: &str,
+    expected_forked_from_id: Option<&str>,
+    timeout: Duration,
+) -> Result<ExistingThreadActivation, ExistingThreadActivationError>
+where
+    B: ExistingThreadActivationBackend,
+{
     let activation_started = Instant::now();
     let resume_started = Instant::now();
     let response = backend
@@ -79,7 +100,9 @@ where
     let session_metadata = response.metadata();
     let mut thread = response.thread;
     let summary = thread.summary();
+    validate_thread_identity(&summary, thread_id, label)?;
     validate_thread_execution_target(&summary, execution_target, label)?;
+    validate_thread_fork_parent(&summary, expected_forked_from_id, label)?;
 
     let page_options = initial_thread_history_page_options();
     let history_read_started = Instant::now();
@@ -128,6 +151,46 @@ where
         thread,
         session_metadata,
         history_window,
+    })
+}
+
+fn validate_thread_identity(
+    summary: &ThreadSummary,
+    requested_thread_id: &str,
+    label: &str,
+) -> Result<(), ExistingThreadActivationError> {
+    if summary.id == requested_thread_id {
+        return Ok(());
+    }
+
+    Err(ExistingThreadActivationError::Failed {
+        message: format!(
+            "Beryl requested thread {label:?} with backend id {requested_thread_id}, but app-server returned thread {}.",
+            summary.id
+        ),
+    })
+}
+
+fn validate_thread_fork_parent(
+    summary: &ThreadSummary,
+    expected_forked_from_id: Option<&str>,
+    label: &str,
+) -> Result<(), ExistingThreadActivationError> {
+    let Some(expected_forked_from_id) = expected_forked_from_id else {
+        return Ok(());
+    };
+    if summary.forked_from_id.as_deref() == Some(expected_forked_from_id) {
+        return Ok(());
+    }
+
+    let actual = summary
+        .forked_from_id
+        .as_deref()
+        .unwrap_or("no fork parent");
+    Err(ExistingThreadActivationError::Failed {
+        message: format!(
+            "Beryl cannot recover lifecycle phase thread {label:?}: app-server records {actual} as its fork parent instead of orchestration root {expected_forked_from_id}."
+        ),
     })
 }
 

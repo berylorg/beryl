@@ -314,6 +314,32 @@ fn backend_unavailable_workspace_surface_disables_backend_controls() {
 }
 
 #[test]
+fn fresh_backend_unavailable_and_disconnect_recovery_fail_closed() {
+    let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let open_selection_source = include_str!("../src/shell/thread_open_selection.rs");
+    let finish_workspace_open_body =
+        rust_function_body(lifecycle_source, "fn finish_workspace_open");
+    let unavailable_seed_body =
+        rust_function_body(lifecycle_source, "fn seed_backend_unavailable_surface");
+    let disconnect_recovery_body =
+        rust_function_body(open_selection_source, "fn recovery_thread_for_target");
+
+    assert!(finish_workspace_open_body.contains("preserved_surface.unwrap_or_else"));
+    assert!(finish_workspace_open_body.contains("backend_reopen_selection_unvalidated"));
+    assert_order(
+        finish_workspace_open_body,
+        "surface.start_new_thread()",
+        "surface.refresh_after_backend_reopen(",
+    );
+    assert!(unavailable_seed_body.contains("backend_unavailable_thread_seed()"));
+    assert!(!unavailable_seed_body.contains("active_thread_registration"));
+    assert!(
+        disconnect_recovery_body.contains("persisted_active_thread_disconnect_selection_request")
+    );
+    assert!(!disconnect_recovery_body.contains("ThreadSelectionRequest::exact"));
+}
+
+#[test]
 fn backend_unavailable_commands_gate_before_mutating_drafts_or_threads() {
     let shell_source = include_str!("../src/shell.rs");
     let lifecycle_source = include_str!("../src/shell/lifecycle.rs");

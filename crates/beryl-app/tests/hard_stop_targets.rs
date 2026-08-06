@@ -272,6 +272,128 @@ fn projection_removes_completed_command_execution_process_handles() {
     );
 }
 
+#[test]
+fn projection_removes_only_archived_or_deleted_thread_targets() {
+    for lifecycle_event in [
+        thread_archived as fn(&str) -> TurnStreamEvent,
+        thread_deleted,
+    ] {
+        let mut projection = HardStopTargetProjection::default();
+        projection.set_capabilities(HardStopCapabilities::new(true, true));
+        projection.apply_stream_event(&turn_started("thread_parent", "turn_parent"));
+        for (child_thread_id, child_turn_id, item_id, process_id) in [
+            (
+                "thread_target",
+                "turn_target",
+                "agent_target",
+                "proc_target",
+            ),
+            ("thread_other", "turn_other", "agent_other", "proc_other"),
+        ] {
+            projection.apply_stream_event(&started(
+                "thread_parent",
+                "turn_parent",
+                collab_spawn_item_for(item_id, child_thread_id),
+            ));
+            projection.apply_stream_event(&turn_started(child_thread_id, child_turn_id));
+            projection.apply_stream_event(&started(
+                child_thread_id,
+                child_turn_id,
+                command_item_with_process("cmd", Some(process_id)),
+            ));
+        }
+
+        assert!(projection.apply_stream_event(&lifecycle_event("thread_other")));
+        let targets = selected_parent_targets(&projection);
+        assert!(
+            targets
+                .targets
+                .contains(&HardStopTarget::turn("thread_target", "turn_target"))
+        );
+        assert!(
+            targets
+                .targets
+                .contains(&HardStopTarget::command_execution("proc_target"))
+        );
+        assert!(
+            !targets
+                .targets
+                .contains(&HardStopTarget::turn("thread_other", "turn_other"))
+        );
+
+        assert!(projection.apply_stream_event(&lifecycle_event("thread_target")));
+        let targets = selected_parent_targets(&projection);
+        assert!(
+            !targets
+                .targets
+                .contains(&HardStopTarget::turn("thread_target", "turn_target"))
+        );
+        assert!(
+            !targets
+                .targets
+                .contains(&HardStopTarget::command_execution("proc_target"))
+        );
+    }
+}
+
+#[test]
+fn projection_ignores_same_and_other_thread_unarchive_events() {
+    let mut projection = HardStopTargetProjection::default();
+    projection.set_capabilities(HardStopCapabilities::new(true, true));
+    projection.apply_stream_event(&turn_started("thread_parent", "turn_parent"));
+    for (child_thread_id, child_turn_id, item_id, process_id) in [
+        (
+            "thread_target",
+            "turn_target",
+            "agent_target",
+            "proc_target",
+        ),
+        ("thread_other", "turn_other", "agent_other", "proc_other"),
+    ] {
+        projection.apply_stream_event(&started(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for(item_id, child_thread_id),
+        ));
+        projection.apply_stream_event(&turn_started(child_thread_id, child_turn_id));
+        projection.apply_stream_event(&started(
+            child_thread_id,
+            child_turn_id,
+            command_item_with_process("cmd", Some(process_id)),
+        ));
+    }
+
+    assert!(!projection.apply_stream_event(&thread_unarchived("thread_other")));
+    assert!(!projection.apply_stream_event(&thread_unarchived("thread_target")));
+    let targets = selected_parent_targets(&projection);
+    for (thread_id, turn_id, process_id) in [
+        ("thread_target", "turn_target", "proc_target"),
+        ("thread_other", "turn_other", "proc_other"),
+    ] {
+        assert!(
+            targets
+                .targets
+                .contains(&HardStopTarget::turn(thread_id, turn_id))
+        );
+        assert!(
+            targets
+                .targets
+                .contains(&HardStopTarget::command_execution(process_id))
+        );
+    }
+}
+
+fn selected_parent_targets(
+    projection: &HardStopTargetProjection,
+) -> status_line::SelectedTurnHardStopTargets {
+    projection
+        .selected_turn_targets(Some(&CancellableActiveTurn::ordinary(
+            "thread_parent",
+            "turn_parent",
+        )))
+        .expect("selected parent turn should have a hard-stop projection")
+}
+
 fn started(thread_id: &str, turn_id: &str, item: ThreadItem) -> TurnStreamEvent {
     TurnStreamEvent::ItemStarted {
         thread_id: thread_id.to_string(),
@@ -297,6 +419,24 @@ fn turn_started(thread_id: &str, turn_id: &str) -> TurnStreamEvent {
             items: Vec::new(),
             error: None,
         },
+    }
+}
+
+fn thread_archived(thread_id: &str) -> TurnStreamEvent {
+    TurnStreamEvent::ThreadArchived {
+        thread_id: thread_id.to_string(),
+    }
+}
+
+fn thread_unarchived(thread_id: &str) -> TurnStreamEvent {
+    TurnStreamEvent::ThreadUnarchived {
+        thread_id: thread_id.to_string(),
+    }
+}
+
+fn thread_deleted(thread_id: &str) -> TurnStreamEvent {
+    TurnStreamEvent::ThreadDeleted {
+        thread_id: thread_id.to_string(),
     }
 }
 

@@ -21,7 +21,7 @@ mod thread_title;
 use thread_title::{
     ThreadTitleBackend, ThreadTitleCancellation, ThreadTitleCandidate, ThreadTitleResult,
     ThreadTitleTask, ThreadTitleTaskOutcome, ThreadTitleUpdate, cancel_all_thread_title_tasks,
-    run_thread_title_attempt, run_thread_title_attempt_with_cancellation,
+    event_thread_id, run_thread_title_attempt, run_thread_title_attempt_with_cancellation,
     thread_title_repair_candidate,
 };
 
@@ -88,6 +88,47 @@ fn title_worker_fails_when_generation_turn_fails() {
     assert!(matches!(result, ThreadTitleResult::Failed { .. }));
     assert!(backend.set_names.is_empty());
     assert_eq!(backend.unsubscribed, vec!["maintenance_thread".to_string()]);
+}
+
+#[test]
+fn title_worker_ignores_maintenance_thread_lifecycle_events() {
+    let candidate = candidate();
+    let mut backend = FakeTitleBackend::with_turn(in_progress_title_turn());
+    for event in [
+        TurnStreamEvent::ThreadArchived {
+            thread_id: "maintenance_thread".to_string(),
+        },
+        TurnStreamEvent::ThreadUnarchived {
+            thread_id: "maintenance_thread".to_string(),
+        },
+        TurnStreamEvent::ThreadDeleted {
+            thread_id: "maintenance_thread".to_string(),
+        },
+        TurnStreamEvent::TurnCompleted {
+            thread_id: "maintenance_thread".to_string(),
+            turn: completed_title_turn("Useful Title").turn,
+        },
+    ] {
+        assert_eq!(event_thread_id(&event), Some("maintenance_thread"));
+        backend.events.push_back(Ok(Some(event)));
+    }
+
+    assert_eq!(
+        run_thread_title_attempt(
+            &mut backend,
+            &workspace(),
+            candidate,
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+        ),
+        ThreadTitleResult::Applied {
+            title: "Useful Title".to_string()
+        }
+    );
+    assert_eq!(
+        backend.set_names,
+        vec![("target_thread".to_string(), "Useful Title".to_string())]
+    );
 }
 
 #[test]

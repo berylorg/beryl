@@ -81,6 +81,33 @@ fn request_frame_serialization_uses_newline_delimited_json() {
 }
 
 #[test]
+fn request_frame_limit_counts_the_trailing_newline_exactly() {
+    let empty = request_frame(
+        "boundary",
+        DiagnosticChildCommand::StartTurn,
+        json!({ "text": "" }),
+    )
+    .unwrap();
+    let payload_bytes = MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES - empty.len();
+    let exact = request_frame(
+        "boundary",
+        DiagnosticChildCommand::StartTurn,
+        json!({ "text": "x".repeat(payload_bytes) }),
+    )
+    .unwrap();
+    assert_eq!(exact.len(), MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES);
+    assert!(exact.ends_with(b"\n"));
+
+    let error = request_frame(
+        "boundary",
+        DiagnosticChildCommand::StartTurn,
+        json!({ "text": "x".repeat(payload_bytes + 1) }),
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), "frame_too_large");
+}
+
+#[test]
 fn response_frames_keep_matching_ids_and_errors() {
     let response =
         DiagnosticProtocolResponse::error(Some("req-4".to_string()), "bad_request", "message");
@@ -92,6 +119,52 @@ fn response_frames_keep_matching_ids_and_errors() {
     let error = parsed.into_result().unwrap_err();
     assert_eq!(error.kind(), "bad_request");
     assert_eq!(error.message(), "message");
+}
+
+#[test]
+fn version_one_response_envelope_has_no_extension_fields() {
+    let success = response_frame(DiagnosticProtocolResponse::success(
+        "success",
+        json!({ "value": true }),
+    ));
+    let error = response_frame(DiagnosticProtocolResponse::error(
+        Some("error".to_string()),
+        "shell_timeout",
+        "timed out",
+    ));
+
+    let success: serde_json::Value = serde_json::from_slice(&success).unwrap();
+    let error: serde_json::Value = serde_json::from_slice(&error).unwrap();
+    assert_eq!(
+        success
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["id", "ok", "result"]
+    );
+    assert_eq!(
+        error
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["id", "ok", "error"]
+    );
+    assert!(success.get("liveness").is_none());
+    assert!(error.get("liveness").is_none());
+}
+
+#[test]
+fn version_one_response_parser_rejects_top_level_liveness_extensions() {
+    let frame = br#"{"id":"req","ok":false,"error":{"kind":"shell_timeout","message":"timed out"},"liveness":{}}"#;
+
+    assert_eq!(
+        parse_response_frame(frame).unwrap_err().kind(),
+        "invalid_json"
+    );
 }
 
 #[test]

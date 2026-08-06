@@ -2,6 +2,7 @@ mod state;
 mod thread_metadata;
 mod token_usage;
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::{error::Error, fmt};
 
@@ -46,6 +47,12 @@ pub struct RegisteredConversationThread {
     beryl_created: bool,
     #[serde(
         default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_optional_orchestration_root_thread_id"
+    )]
+    orchestration_root_thread_id: Option<ConversationThreadId>,
+    #[serde(
+        default,
         rename = "automatic_title_generation_state",
         alias = "automatic_title_generation_attempted",
         deserialize_with = "deserialize_thread_automatic_title_generation_state"
@@ -80,6 +87,22 @@ pub enum WorkspaceConversationStateError {
     },
     EmptyThreadTitle,
     EmptyRebindRequirement,
+    EmptyOrchestrationRootThreadId,
+    ConflictingOrchestrationRootAssignment {
+        thread_id: ConversationThreadId,
+        existing_root_thread_id: ConversationThreadId,
+        requested_root_thread_id: ConversationThreadId,
+    },
+    MissingOrchestrationRootRegistration {
+        root_thread_id: ConversationThreadId,
+    },
+    OrchestrationRootNotSelfIdentified {
+        root_thread_id: ConversationThreadId,
+        recorded_root_thread_id: Option<ConversationThreadId>,
+    },
+    DuplicateRegisteredConversationThreadId {
+        thread_id: ConversationThreadId,
+    },
     WorkspaceMemberOverlap {
         existing_member_id: WorkspaceMemberId,
         existing_path: String,
@@ -204,11 +227,49 @@ impl<'de> Deserialize<'de> for WorkspaceConversationState {
             active_thread: wire.active_thread,
         };
         state.normalize_unavailable_primary_after_deserialize();
+        state
+            .validate_orchestration_root_provenance()
+            .map_err(serde::de::Error::custom)?;
         Ok(state)
     }
 }
 
 impl WorkspaceConversationState {
+    fn validate_orchestration_root_provenance(
+        &self,
+    ) -> Result<(), WorkspaceConversationStateError> {
+        let mut registered_thread_ids = BTreeSet::new();
+        for thread in &self.threads {
+            if !registered_thread_ids.insert(thread.thread_id().clone()) {
+                return Err(
+                    WorkspaceConversationStateError::DuplicateRegisteredConversationThreadId {
+                        thread_id: thread.thread_id().clone(),
+                    },
+                );
+            }
+        }
+
+        for thread in &self.threads {
+            let Some(root_thread_id) = thread.orchestration_root_thread_id() else {
+                continue;
+            };
+            let root = self.thread_registration(root_thread_id).ok_or_else(|| {
+                WorkspaceConversationStateError::MissingOrchestrationRootRegistration {
+                    root_thread_id: root_thread_id.clone(),
+                }
+            })?;
+            if root.orchestration_root_thread_id() != Some(root_thread_id) {
+                return Err(
+                    WorkspaceConversationStateError::OrchestrationRootNotSelfIdentified {
+                        root_thread_id: root_thread_id.clone(),
+                        recorded_root_thread_id: root.orchestration_root_thread_id().cloned(),
+                    },
+                );
+            }
+        }
+        Ok(())
+    }
+
     fn normalize_unavailable_primary_after_deserialize(&mut self) {
         let Some(primary_id) = self.primary_explicit_member_id.as_ref() else {
             return;
@@ -249,6 +310,7 @@ impl RegisteredConversationThread {
             rebind_required: None,
             token_usage_snapshot: None,
             beryl_created: false,
+            orchestration_root_thread_id: None,
             automatic_title_generation_state: ThreadAutomaticTitleGenerationState::NotStarted,
             created_at_millis,
             updated_at_millis,
@@ -317,6 +379,25 @@ impl RegisteredConversationThread {
 
     pub fn beryl_created(&self) -> bool {
         self.beryl_created
+    }
+
+    /// Returns the lifecycle orchestration root recorded for this thread.
+    ///
+    /// This provenance is independent from backend fork-parent metadata.
+    pub fn orchestration_root_thread_id(&self) -> Option<&ConversationThreadId> {
+        self.orchestration_root_thread_id.as_ref()
+    }
+
+    fn record_orchestration_root_thread_id(
+        &mut self,
+        root_thread_id: ConversationThreadId,
+    ) -> bool {
+        if self.orchestration_root_thread_id.as_ref() == Some(&root_thread_id) {
+            return false;
+        }
+
+        self.orchestration_root_thread_id = Some(root_thread_id);
+        true
     }
 
     pub fn automatic_title_generation_attempted(&self) -> bool {
@@ -567,6 +648,49 @@ impl fmt::Display for WorkspaceConversationStateError {
             }
             Self::EmptyThreadTitle => write!(f, "conversation thread title must not be empty"),
             Self::EmptyRebindRequirement => write!(f, "thread rebind detail must not be empty"),
+            Self::EmptyOrchestrationRootThreadId => {
+                write!(
+                    f,
+                    "orchestration root conversation thread id must not be empty"
+                )
+            }
+            Self::ConflictingOrchestrationRootAssignment {
+                thread_id,
+                existing_root_thread_id,
+                requested_root_thread_id,
+            } => write!(
+                f,
+                "conversation thread {} already records orchestration root {}; cannot replace it with {}",
+                thread_id.as_str(),
+                existing_root_thread_id.as_str(),
+                requested_root_thread_id.as_str()
+            ),
+            Self::MissingOrchestrationRootRegistration { root_thread_id } => write!(
+                f,
+                "orchestration root conversation thread {} is not registered",
+                root_thread_id.as_str()
+            ),
+            Self::OrchestrationRootNotSelfIdentified {
+                root_thread_id,
+                recorded_root_thread_id,
+            } => match recorded_root_thread_id {
+                Some(recorded_root_thread_id) => write!(
+                    f,
+                    "orchestration root conversation thread {} records {} instead of itself",
+                    root_thread_id.as_str(),
+                    recorded_root_thread_id.as_str()
+                ),
+                None => write!(
+                    f,
+                    "orchestration root conversation thread {} is not self-identified",
+                    root_thread_id.as_str()
+                ),
+            },
+            Self::DuplicateRegisteredConversationThreadId { thread_id } => write!(
+                f,
+                "conversation thread {} is registered more than once",
+                thread_id.as_str()
+            ),
             Self::WorkspaceMemberOverlap {
                 existing_member_id,
                 existing_path,
@@ -587,6 +711,24 @@ fn normalize_optional_title(value: Option<String>) -> Option<String> {
         let value = value.trim().to_string();
         (!value.is_empty()).then_some(value)
     })
+}
+
+fn deserialize_optional_orchestration_root_thread_id<'de, D>(
+    deserializer: D,
+) -> Result<Option<ConversationThreadId>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let root_thread_id = Option::<ConversationThreadId>::deserialize(deserializer)?;
+    if root_thread_id
+        .as_ref()
+        .is_some_and(|thread_id| thread_id.as_str().trim().is_empty())
+    {
+        return Err(serde::de::Error::custom(
+            "orchestration root conversation thread id must not be empty",
+        ));
+    }
+    Ok(root_thread_id)
 }
 
 fn deserialize_thread_automatic_title_generation_state<'de, D>(

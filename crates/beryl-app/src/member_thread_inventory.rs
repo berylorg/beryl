@@ -13,6 +13,8 @@ use beryl_model::{
 use tracing::warn;
 
 pub(crate) const MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS: usize = 2048;
+const MEMBER_THREAD_INVENTORY_MAX_PARTIAL_REASONS: usize = 8;
+const MEMBER_THREAD_INVENTORY_MAX_PARTIAL_REASON_BYTES: usize = 512;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum MemberThreadInventoryMemberKey {
@@ -30,7 +32,93 @@ pub(crate) enum MemberThreadInventoryMemberKind {
 pub(crate) struct MemberThreadInventorySnapshot {
     workspace_id: BerylWorkspaceId,
     refreshed_at_millis: u64,
+    coverage: MemberThreadInventoryCoverage,
     groups: Vec<MemberThreadInventoryGroup>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MemberThreadInventoryPartialCoverage {
+    row_coverage_truncated: bool,
+    lineage_incomplete: bool,
+    reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) enum MemberThreadInventoryCoverage {
+    #[default]
+    Complete,
+    Partial(MemberThreadInventoryPartialCoverage),
+}
+
+impl MemberThreadInventoryPartialCoverage {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn with_row_coverage_truncated(mut self, reason: impl Into<String>) -> Self {
+        self.row_coverage_truncated = true;
+        self.push_reason(reason);
+        self
+    }
+
+    pub(crate) fn with_lineage_incomplete(mut self, reason: impl Into<String>) -> Self {
+        self.lineage_incomplete = true;
+        self.push_reason(reason);
+        self
+    }
+
+    pub(crate) fn row_coverage_truncated(&self) -> bool {
+        self.row_coverage_truncated
+    }
+
+    pub(crate) fn lineage_incomplete(&self) -> bool {
+        self.lineage_incomplete
+    }
+
+    pub(crate) fn reasons(&self) -> &[String] {
+        &self.reasons
+    }
+
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.row_coverage_truncated |= other.row_coverage_truncated;
+        self.lineage_incomplete |= other.lineage_incomplete;
+        for reason in other.reasons {
+            self.push_reason(reason);
+        }
+    }
+
+    fn push_reason(&mut self, reason: impl Into<String>) {
+        let mut reason = reason.into();
+        truncate_string_to_utf8_boundary(
+            &mut reason,
+            MEMBER_THREAD_INVENTORY_MAX_PARTIAL_REASON_BYTES,
+        );
+        if self.reasons.len() < MEMBER_THREAD_INVENTORY_MAX_PARTIAL_REASONS
+            && !self.reasons.contains(&reason)
+        {
+            self.reasons.push(reason);
+        }
+    }
+}
+
+fn truncate_string_to_utf8_boundary(value: &mut String, max_bytes: usize) {
+    if value.len() <= max_bytes {
+        return;
+    }
+    let mut boundary = max_bytes;
+    while !value.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    value.truncate(boundary);
+}
+
+impl MemberThreadInventoryCoverage {
+    pub(crate) fn partial(&self) -> Option<&MemberThreadInventoryPartialCoverage> {
+        match self {
+            Self::Complete => None,
+            Self::Partial(partial) => Some(partial),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,18 +193,35 @@ impl MemberThreadInventorySnapshot {
         Self {
             workspace_id,
             refreshed_at_millis: 0,
+            coverage: MemberThreadInventoryCoverage::Complete,
             groups: empty_groups_for_workspace_state(workspace_state),
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn new(
         workspace_id: BerylWorkspaceId,
         refreshed_at_millis: u64,
         groups: Vec<MemberThreadInventoryGroup>,
     ) -> Self {
+        Self::new_with_coverage(
+            workspace_id,
+            refreshed_at_millis,
+            MemberThreadInventoryCoverage::Complete,
+            groups,
+        )
+    }
+
+    pub(crate) fn new_with_coverage(
+        workspace_id: BerylWorkspaceId,
+        refreshed_at_millis: u64,
+        coverage: MemberThreadInventoryCoverage,
+        groups: Vec<MemberThreadInventoryGroup>,
+    ) -> Self {
         Self {
             workspace_id,
             refreshed_at_millis,
+            coverage,
             groups,
         }
     }
@@ -131,6 +236,28 @@ impl MemberThreadInventorySnapshot {
 
     pub(crate) fn refreshed_at_millis(&self) -> u64 {
         self.refreshed_at_millis
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn coverage(&self) -> &MemberThreadInventoryCoverage {
+        &self.coverage
+    }
+
+    pub(crate) fn partial_status_message(&self) -> Option<String> {
+        let partial = self.coverage.partial()?;
+        let scope = match (
+            partial.row_coverage_truncated(),
+            partial.lineage_incomplete(),
+        ) {
+            (true, true) => "Thread rows and lineage are incomplete.",
+            (true, false) => "Thread rows are incomplete.",
+            (false, true) => "Thread lineage is incomplete.",
+            (false, false) => "Thread inventory is incomplete.",
+        };
+        match partial.reasons().first() {
+            Some(reason) => Some(format!("{scope} {reason}")),
+            None => Some(scope.to_string()),
+        }
     }
 
     pub(crate) fn retained_counts(&self) -> MemberThreadInventoryRetainedCounts {
@@ -164,7 +291,11 @@ impl MemberThreadInventorySnapshot {
                         })
                         .sum::<usize>()
             })
-            .sum();
+            .sum::<usize>()
+            + self
+                .coverage
+                .partial()
+                .map_or(0, |partial| partial.reasons().iter().map(String::len).sum());
         MemberThreadInventoryRetainedCounts {
             groups: self.groups.len(),
             threads,
@@ -526,6 +657,10 @@ impl MemberThreadInventoryBackendThread {
     pub(crate) fn summary(&self) -> &ThreadSummary {
         &self.summary
     }
+
+    pub(crate) fn summary_mut(&mut self) -> &mut ThreadSummary {
+        &mut self.summary
+    }
 }
 
 #[allow(dead_code)]
@@ -557,8 +692,26 @@ pub(crate) fn build_member_thread_inventory_snapshot_for_backend_threads(
     workspace_id: BerylWorkspaceId,
     workspace_state: &WorkspaceConversationState,
     members: Vec<MemberThreadInventoryGroup>,
+    backend_threads: Vec<MemberThreadInventoryBackendThread>,
+    refreshed_at_millis: u64,
+) -> MemberThreadInventorySnapshot {
+    build_member_thread_inventory_snapshot_for_backend_threads_with_coverage(
+        workspace_id,
+        workspace_state,
+        members,
+        backend_threads,
+        refreshed_at_millis,
+        MemberThreadInventoryCoverage::Complete,
+    )
+}
+
+pub(crate) fn build_member_thread_inventory_snapshot_for_backend_threads_with_coverage(
+    workspace_id: BerylWorkspaceId,
+    workspace_state: &WorkspaceConversationState,
+    members: Vec<MemberThreadInventoryGroup>,
     mut backend_threads: Vec<MemberThreadInventoryBackendThread>,
     refreshed_at_millis: u64,
+    coverage: MemberThreadInventoryCoverage,
 ) -> MemberThreadInventorySnapshot {
     dedupe_backend_threads_by_runtime_thread_and_cwd(&mut backend_threads);
     let mut groups = members
@@ -586,10 +739,15 @@ pub(crate) fn build_member_thread_inventory_snapshot_for_backend_threads(
         .collect::<Vec<_>>();
 
     groups.sort_by(|left, right| member_group_sort_key(left).cmp(&member_group_sort_key(right)));
-    MemberThreadInventorySnapshot::new(workspace_id, refreshed_at_millis, groups)
+    MemberThreadInventorySnapshot::new_with_coverage(
+        workspace_id,
+        refreshed_at_millis,
+        coverage,
+        groups,
+    )
 }
 
-fn dedupe_backend_threads_by_runtime_thread_and_cwd(
+pub(crate) fn dedupe_backend_threads_by_runtime_thread_and_cwd(
     backend_threads: &mut Vec<MemberThreadInventoryBackendThread>,
 ) {
     let mut seen = HashSet::new();
@@ -602,6 +760,7 @@ fn dedupe_backend_threads_by_runtime_thread_and_cwd(
     });
 }
 
+#[allow(dead_code)]
 pub(crate) fn prepare_backend_threads_for_member_thread_inventory<R>(
     backend_threads: &mut Vec<ThreadSummary>,
     members: &[MemberThreadInventoryGroup],
@@ -615,6 +774,7 @@ where
     enrich_missing_thread_fork_parent_metadata(backend_threads, read_metadata)
 }
 
+#[allow(dead_code)]
 pub(crate) fn retain_backend_threads_for_inventory_members(
     backend_threads: &mut Vec<ThreadSummary>,
     members: &[MemberThreadInventoryGroup],
@@ -628,6 +788,7 @@ pub(crate) fn retain_backend_threads_for_inventory_members(
     });
 }
 
+#[allow(dead_code)]
 pub(crate) fn truncate_backend_threads_for_member_thread_inventory(
     backend_threads: &mut Vec<ThreadSummary>,
 ) {
@@ -682,6 +843,7 @@ pub(crate) fn truncate_scoped_backend_threads_for_member_thread_inventory(
     backend_threads.truncate(MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS);
 }
 
+#[allow(dead_code)]
 pub(crate) fn enrich_missing_thread_fork_parent_metadata<R>(
     backend_threads: &mut [ThreadSummary],
     mut read_metadata: R,
@@ -719,6 +881,74 @@ where
     }
 
     Ok(())
+}
+
+pub(crate) fn enrich_missing_thread_fork_parent_metadata_bounded<R>(
+    backend_threads: &mut [ThreadSummary],
+    max_reads: usize,
+    mut read_metadata: R,
+) -> (usize, Option<MemberThreadInventoryPartialCoverage>)
+where
+    R: FnMut(&str) -> Result<ThreadSummary, ThreadForkParentMetadataReadError>,
+{
+    let mut reads = 0;
+    let mut partial = MemberThreadInventoryPartialCoverage::new();
+    let mut incomplete = false;
+
+    for thread in backend_threads
+        .iter_mut()
+        .filter(|thread| thread.forked_from_id.is_none())
+    {
+        if reads == max_reads {
+            incomplete = true;
+            partial = partial.with_lineage_incomplete(
+                "Fork-parent metadata-read budget was exhausted before all retained rows were enriched.",
+            );
+            break;
+        }
+        reads += 1;
+
+        let metadata = match read_metadata(&thread.id) {
+            Ok(metadata) => metadata,
+            Err(ThreadForkParentMetadataReadError::ThreadUnavailable(message)) => {
+                incomplete = true;
+                partial = partial.with_lineage_incomplete(format!(
+                    "Fork-parent metadata for {} was unavailable: {message}",
+                    thread.id
+                ));
+                continue;
+            }
+            Err(ThreadForkParentMetadataReadError::Fatal(message)) => {
+                incomplete = true;
+                partial = partial.with_lineage_incomplete(message);
+                break;
+            }
+        };
+
+        if metadata.id != thread.id {
+            incomplete = true;
+            partial = partial.with_lineage_incomplete(format!(
+                "Metadata-only thread/read for {} returned mismatched thread id {}; the result was not trusted.",
+                thread.id, metadata.id
+            ));
+            break;
+        }
+        if metadata.cwd != thread.cwd {
+            incomplete = true;
+            partial = partial.with_lineage_incomplete(format!(
+                "Metadata-only thread/read for {} returned mismatched working directory {}; the result was not trusted.",
+                thread.id,
+                metadata.cwd.display()
+            ));
+            break;
+        }
+
+        if metadata.forked_from_id.is_some() {
+            thread.forked_from_id = metadata.forked_from_id;
+        }
+    }
+
+    (reads, incomplete.then_some(partial))
 }
 
 impl ThreadForkParentMetadataReadError {

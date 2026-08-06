@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use beryl_model::workspace::RuntimeMode;
 use serde::{Deserialize, Serialize, de};
@@ -168,6 +168,81 @@ pub struct ThreadListResponse {
     pub next_cursor: Option<String>,
     #[serde(default)]
     pub backwards_cursor: Option<String>,
+}
+
+/// Immutable finite limits for collecting multiple `thread/list` pages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThreadListBudget {
+    aggregate_timeout: Duration,
+    max_pages: usize,
+    max_results: usize,
+}
+
+impl ThreadListBudget {
+    pub fn new(
+        aggregate_timeout: Duration,
+        max_pages: usize,
+        max_results: usize,
+    ) -> Result<Self, ThreadListBudgetError> {
+        if aggregate_timeout.is_zero() {
+            return Err(ThreadListBudgetError::ZeroAggregateTimeout);
+        }
+        if max_pages == 0 {
+            return Err(ThreadListBudgetError::ZeroMaxPages);
+        }
+        if max_results == 0 {
+            return Err(ThreadListBudgetError::ZeroMaxResults);
+        }
+
+        Ok(Self {
+            aggregate_timeout,
+            max_pages,
+            max_results,
+        })
+    }
+
+    pub fn aggregate_timeout(self) -> Duration {
+        self.aggregate_timeout
+    }
+
+    pub fn max_pages(self) -> usize {
+        self.max_pages
+    }
+
+    pub fn max_results(self) -> usize {
+        self.max_results
+    }
+}
+
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+pub enum ThreadListBudgetError {
+    #[error("thread-list aggregate timeout must be greater than zero")]
+    ZeroAggregateTimeout,
+    #[error("thread-list maximum page count must be greater than zero")]
+    ZeroMaxPages,
+    #[error("thread-list maximum result count must be greater than zero")]
+    ZeroMaxResults,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThreadListCollection {
+    pub data: Vec<ThreadSummary>,
+    pub next_cursor: Option<String>,
+    pub pages_collected: usize,
+    pub status: ThreadListCollectionStatus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThreadListCollectionStatus {
+    Complete,
+    Truncated(ThreadListTruncationReason),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThreadListTruncationReason {
+    ElapsedTime,
+    PageLimit,
+    ResultLimit,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

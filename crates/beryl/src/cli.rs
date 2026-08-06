@@ -46,6 +46,13 @@ pub struct BootstrapCli {
         help = "Run as a diagnostic child target using newline-delimited JSON over stdio"
     )]
     diagnostic_target_stdio: bool,
+
+    #[arg(
+        long = "diagnostic-acceptance-startup-gate",
+        requires = "diagnostic_target_stdio",
+        hide = true
+    )]
+    diagnostic_acceptance_startup_gate: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -121,6 +128,10 @@ impl BootstrapCli {
 
     pub fn diagnostic_target_stdio(&self) -> bool {
         self.diagnostic_target_stdio
+    }
+
+    pub fn diagnostic_acceptance_startup_gate(&self) -> bool {
+        self.diagnostic_acceptance_startup_gate
     }
 
     pub fn resolve_workspace(&self) -> Result<Option<WorkspaceId>> {

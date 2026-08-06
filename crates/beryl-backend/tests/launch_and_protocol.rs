@@ -6,21 +6,31 @@ use std::{
     time::Duration,
 };
 
+#[cfg(unix)]
+use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
 use beryl_backend::{
     BackendLaunchSpec, BackendTransport, BackendWebSocketEndpoint, CompatibilityError,
     CompatibilityProbe, CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse,
     DynamicToolCallResponse, DynamicToolSpec, HardStopCapabilityProbe, HardStopTarget,
     HardStopTargetOutcome, InitializeResponse, ManagedBackendAuthMaterial,
-    ManagedBackendClientOptions, ManagedBackendError, ManagedBackendSession,
+    ManagedBackendClientOptions, ManagedBackendError, ManagedBackendLaunchOptions,
+    ManagedBackendLaunchOptionsError, ManagedBackendServer, ManagedBackendSession,
     ManagedBackendStartupProgress, ManagedBackendStartupStage, ManagedWebSocketError,
     ModelListOptions, ModelListResponse, NonSteerableTurnKind, SortDirection,
-    ThreadBranchCapabilityProbe, ThreadForkOptions, ThreadListOptions, ThreadListResponse,
-    ThreadLoadedListResponse, ThreadSortKey, ThreadStartOptions, ThreadStatus, TurnStartOptions,
-    TurnStatus, TurnStreamEvent, UserInput, active_turn_not_steerable_error,
+    ThreadBranchCapabilityProbe, ThreadForkFailure, ThreadForkOptions, ThreadListOptions,
+    ThreadListResponse, ThreadLoadedListResponse, ThreadSortKey, ThreadStartOptions, ThreadStatus,
+    TurnStartOptions, TurnStatus, TurnStreamEvent, UserInput, active_turn_not_steerable_error,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket, accept_hdr};
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+use beryl_backend::{
+    combine_lifecycle_test_shutdown_results, launch_and_probe_lifecycle_test_with_options,
+    spawn_lifecycle_test_server,
+};
 
 #[test]
 fn host_windows_compatibility_stdio_launch_is_explicit() {
@@ -106,6 +116,135 @@ fn host_windows_managed_websocket_launch_uses_loopback_and_token_file() {
         ]
     );
     assert_eq!(command.cwd(), Some(&PathBuf::from(r"C:\work\beryl")));
+}
+
+#[test]
+fn host_windows_exact_program_is_used_directly_for_stdio_and_websocket() {
+    let program = PathBuf::from(r"C:\Program Files\Codex\codex.exe");
+    let options = ManagedBackendLaunchOptions::with_exact_host_windows_program(program.clone())
+        .expect("absolute Unicode exact program should be accepted");
+
+    let stdio = BackendLaunchSpec::managed_stdio_with_options(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        options.clone(),
+    )
+    .expect("Host Windows stdio launch should accept an exact program");
+    let stdio_command = stdio
+        .command_line()
+        .expect("Host Windows stdio command line should build");
+    assert_eq!(stdio_command.program(), program.to_str().unwrap());
+    assert_eq!(
+        stdio_command.args(),
+        &[
+            "app-server".to_string(),
+            "--listen".to_string(),
+            "stdio://".to_string(),
+        ]
+    );
+    assert_eq!(stdio_command.cwd(), Some(&PathBuf::from(r"C:\work\beryl")));
+
+    let websocket = BackendLaunchSpec::managed_websocket_with_options(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        BackendWebSocketEndpoint::loopback(49152),
+        r"C:\tmp\beryl-token.txt",
+        options,
+    )
+    .expect("Host Windows WebSocket launch should accept an exact program");
+    let websocket_command = websocket
+        .command_line()
+        .expect("Host Windows WebSocket command line should build");
+    assert_eq!(websocket_command.program(), program.to_str().unwrap());
+    assert_eq!(
+        websocket_command.args(),
+        &[
+            "app-server".to_string(),
+            "--listen".to_string(),
+            "ws://127.0.0.1:49152".to_string(),
+            "--ws-auth".to_string(),
+            "capability-token".to_string(),
+            "--ws-token-file".to_string(),
+            r"C:\tmp\beryl-token.txt".to_string(),
+        ]
+    );
+    assert_eq!(
+        websocket_command.cwd(),
+        Some(&PathBuf::from(r"C:\work\beryl"))
+    );
+}
+
+#[test]
+fn exact_host_windows_program_rejects_empty_and_relative_paths() {
+    assert!(matches!(
+        ManagedBackendLaunchOptions::with_exact_host_windows_program(""),
+        Err(ManagedBackendLaunchOptionsError::EmptyExactHostWindowsProgram)
+    ));
+    assert!(matches!(
+        ManagedBackendLaunchOptions::with_exact_host_windows_program("codex.exe"),
+        Err(ManagedBackendLaunchOptionsError::RelativeExactHostWindowsProgram { .. })
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn exact_host_windows_program_rejects_non_unicode_paths_when_representable() {
+    let program = PathBuf::from(OsString::from_vec(vec![b'/', 0xff]));
+
+    assert!(matches!(
+        ManagedBackendLaunchOptions::with_exact_host_windows_program(program),
+        Err(ManagedBackendLaunchOptionsError::NonUnicodeExactHostWindowsProgram { .. })
+    ));
+}
+
+#[test]
+fn exact_host_windows_program_is_rejected_for_wsl_before_managed_server_setup() {
+    let options = ManagedBackendLaunchOptions::with_exact_host_windows_program(
+        r"C:\Program Files\Codex\codex.exe",
+    )
+    .expect("absolute Unicode exact program should be accepted");
+
+    let error = ManagedBackendServer::launch_with_options(
+        RuntimeMode::WslLinux {
+            distro_name: "Ubuntu".to_string(),
+        },
+        "/work/beryl",
+        options,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        ManagedBackendError::InvalidLaunchOptions {
+            source: ManagedBackendLaunchOptionsError::ExactHostWindowsProgramUnsupportedRuntime {
+                runtime_mode: RuntimeMode::WslLinux { .. }
+            }
+        }
+    ));
+}
+
+#[cfg(windows)]
+#[test]
+fn nonexistent_exact_host_windows_program_is_preserved_in_spawn_error() {
+    let program = std::env::temp_dir().join("beryl phase2 nonexistent codex.exe");
+    let program_text = program.to_str().unwrap().to_string();
+    let options = ManagedBackendLaunchOptions::with_exact_host_windows_program(program)
+        .expect("temporary-directory target should be an absolute Unicode path");
+    let launch = BackendLaunchSpec::managed_stdio_with_options(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        options,
+    )
+    .expect("Host Windows stdio launch should accept an exact program");
+
+    let error = ManagedBackendSession::launch_and_probe(launch, Duration::from_millis(100))
+        .expect_err("nonexistent exact program should fail to spawn");
+
+    assert!(matches!(
+        &error,
+        ManagedBackendError::Spawn { program, .. } if program == &program_text
+    ));
+    assert!(error.to_string().contains(&program_text));
 }
 
 #[test]
@@ -696,7 +835,7 @@ fn websocket_turn_start_serializes_disabled_developer_instructions_as_hidden_res
 }
 
 #[test]
-fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() {
+fn websocket_thread_start_normalizes_dynamic_tools_and_developer_instructions() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
         expect_initialized(&mut socket);
@@ -712,30 +851,65 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
                 "developerInstructions": "Use project-specific review instructions.",
                 "dynamicTools": [
                     {
-                        "name": "apply_graph_patch",
-                        "description": "Apply a bounded semantic graph patch.",
-                        "inputSchema": {
-                            "type": "object",
-                            "required": ["ops"],
-                            "properties": {
-                                "ops": {
-                                    "type": "array"
+                        "type": "namespace",
+                        "name": "beryl",
+                        "description": "Dynamic tools in this namespace.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "apply_graph_patch",
+                                "description": "Apply a bounded semantic graph patch.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "required": ["ops"],
+                                    "properties": {
+                                        "ops": {
+                                            "type": "array"
+                                        }
+                                    }
+                                },
+                                "deferLoading": true
+                            },
+                            {
+                                "type": "function",
+                                "name": "read_graph",
+                                "description": "Read a bounded workspace graph summary.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {},
+                                    "additionalProperties": false
                                 }
                             }
-                        },
-                        "namespace": "beryl",
-                        "deferLoading": true
+                        ]
                     },
                     {
-                        "name": "status",
-                        "description": "Read diagnostic child process lifecycle status.",
+                        "type": "function",
+                        "name": "workspace_status",
+                        "description": "Read workspace status.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {},
                             "additionalProperties": false
                         },
-                        "namespace": "beryl_diagnostic",
                         "deferLoading": false
+                    },
+                    {
+                        "type": "namespace",
+                        "name": "beryl_diagnostic",
+                        "description": "Dynamic tools in this namespace.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "status",
+                                "description": "Read diagnostic child process lifecycle status.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {},
+                                    "additionalProperties": false
+                                },
+                                "deferLoading": false
+                            }
+                        ]
                     }
                 ]
             })
@@ -800,6 +974,18 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
                 )
                 .with_dynamic_tool(
                     DynamicToolSpec::new(
+                        "workspace_status",
+                        "Read workspace status.",
+                        json!({
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": false
+                        }),
+                    )
+                    .with_defer_loading(false),
+                )
+                .with_dynamic_tool(
+                    DynamicToolSpec::new(
                         "status",
                         "Read diagnostic child process lifecycle status.",
                         json!({
@@ -810,6 +996,18 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
                     )
                     .with_namespace("beryl_diagnostic")
                     .with_defer_loading(false),
+                )
+                .with_dynamic_tool(
+                    DynamicToolSpec::new(
+                        "read_graph",
+                        "Read a bounded workspace graph summary.",
+                        json!({
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": false
+                        }),
+                    )
+                    .with_namespace("beryl"),
                 ),
             Duration::from_secs(2),
         )
@@ -876,6 +1074,308 @@ fn websocket_thread_start_omits_developer_instructions_when_unset() {
         .unwrap();
 
     assert_eq!(response.thread.summary().id, "thread_1");
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_resume_and_unsubscribe_remain_separate_from_persistent_lifecycle_calls() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/resume"));
+        assert_eq!(
+            request["params"],
+            json!({ "threadId": "thread_persistent" })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "result": {
+                        "thread": {
+                            "createdAt": 1,
+                            "cwd": "C:/work/beryl",
+                            "ephemeral": false,
+                            "id": "thread_persistent",
+                            "modelProvider": "openai",
+                            "preview": "Persistent thread",
+                            "status": { "type": "idle" },
+                            "turns": [],
+                            "updatedAt": 2
+                        }
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/unsubscribe"));
+        assert_eq!(
+            request["params"],
+            json!({ "threadId": "thread_persistent" })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "result": { "status": "unsubscribed" }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let resumed = client
+        .resume_thread("thread_persistent", Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(resumed.thread.summary().id, "thread_persistent");
+    let unsubscribe = client
+        .unsubscribe_thread("thread_persistent", Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(
+        unsubscribe.status,
+        beryl_backend::ThreadUnsubscribeStatus::Unsubscribed
+    );
+
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_lifecycle_requests_preserve_exact_wire_shapes_and_notifications() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/archive"));
+        assert_eq!(
+            request["params"],
+            json!({ "threadId": "thread_persistent" })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "method": "thread/archived",
+                    "params": { "threadId": "thread_persistent" }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        socket
+            .send(Message::text(
+                json!({ "jsonrpc": "2.0", "id": 2, "result": {} }).to_string(),
+            ))
+            .unwrap();
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(3));
+        assert_eq!(request["method"], json!("thread/unarchive"));
+        assert_eq!(
+            request["params"],
+            json!({ "threadId": "thread_persistent" })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "method": "thread/unarchived",
+                    "params": { "threadId": "thread_persistent" }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "result": {
+                        "thread": {
+                            "createdAt": 1,
+                            "cwd": "C:/work/beryl",
+                            "ephemeral": false,
+                            "id": "thread_persistent",
+                            "modelProvider": "openai",
+                            "preview": "Lifecycle thread",
+                            "status": { "type": "notLoaded" },
+                            "turns": [],
+                            "updatedAt": 2
+                        }
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(4));
+        assert_eq!(request["method"], json!("thread/delete"));
+        assert_eq!(
+            request["params"],
+            json!({ "threadId": "thread_persistent" })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "method": "thread/deleted",
+                    "params": { "threadId": "thread_persistent" }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        socket
+            .send(Message::text(
+                json!({ "jsonrpc": "2.0", "id": 4, "result": {} }).to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    client
+        .archive_thread("thread_persistent", Duration::from_secs(2))
+        .unwrap();
+    let restored = client
+        .unarchive_thread("thread_persistent", Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(restored.summary().id, "thread_persistent");
+    assert_eq!(restored.status, ThreadStatus::NotLoaded);
+    client
+        .delete_thread("thread_persistent", Duration::from_secs(2))
+        .unwrap();
+
+    assert_eq!(
+        client
+            .next_turn_stream_event(Duration::from_millis(10))
+            .unwrap(),
+        Some(TurnStreamEvent::ThreadArchived {
+            thread_id: "thread_persistent".to_string(),
+        })
+    );
+    assert_eq!(
+        client
+            .next_turn_stream_event(Duration::from_millis(10))
+            .unwrap(),
+        Some(TurnStreamEvent::ThreadUnarchived {
+            thread_id: "thread_persistent".to_string(),
+        })
+    );
+    assert_eq!(
+        client
+            .next_turn_stream_event(Duration::from_millis(10))
+            .unwrap(),
+        Some(TurnStreamEvent::ThreadDeleted {
+            thread_id: "thread_persistent".to_string(),
+        })
+    );
+
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_archive_preserves_json_rpc_errors() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/archive"));
+        assert_eq!(request["params"], json!({ "threadId": "thread_active" }));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": {
+                        "code": -32000,
+                        "message": "thread cannot be archived while active"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let error = client
+        .archive_thread("thread_active", Duration::from_secs(2))
+        .unwrap_err();
+    let ManagedBackendError::RequestFailed { method, error } = error else {
+        panic!("expected thread/archive request failure");
+    };
+    assert_eq!(method, "thread/archive");
+    assert_eq!(error.code, -32000);
+    assert_eq!(error.message, "thread cannot be archived while active");
+
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_unarchive_rejects_malformed_response() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/unarchive"));
+        assert_eq!(request["params"], json!({ "threadId": "thread_archived" }));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "result": { "thread": { "id": "thread_archived" } }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let error = client
+        .unarchive_thread("thread_archived", Duration::from_secs(2))
+        .unwrap_err();
+    let ManagedBackendError::DeserializeResponse { method, .. } = error else {
+        panic!("expected malformed thread/unarchive response");
+    };
+    assert_eq!(method, "thread/unarchive");
+
     server.join().unwrap();
 }
 
@@ -1063,6 +1563,158 @@ fn websocket_thread_fork_metadata_only_sets_exclude_turns() {
         .unwrap();
     assert_eq!(fork.thread.summary().id, "thread_branch");
     assert!(fork.thread.turns.is_empty());
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_fork_commitment_preserves_explicit_rejection() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/fork"));
+        assert_eq!(request["params"], json!({ "threadId": "thread_source" }));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": { "code": -32602, "message": "fork is rejected" }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let error = client
+        .fork_thread_with_commitment("thread_source", Duration::from_secs(2))
+        .expect_err("explicit JSON-RPC rejection must not be indeterminate");
+    let ThreadForkFailure::NotCommitted { source } = error else {
+        panic!("expected definitive thread/fork failure");
+    };
+    assert!(matches!(
+        source,
+        ManagedBackendError::RequestFailed { ref method, ref error }
+            if method == "thread/fork" && error.code == -32602
+    ));
+
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_fork_commitment_timeout_is_indeterminate() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/fork"));
+        thread::sleep(Duration::from_millis(100));
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let error = client
+        .fork_thread_with_commitment("thread_source", Duration::from_millis(20))
+        .expect_err("lost fork response must be indeterminate");
+    let ThreadForkFailure::Indeterminate { source } = error else {
+        panic!("expected indeterminate thread/fork failure");
+    };
+    assert!(matches!(
+        source,
+        ManagedBackendError::RequestTimeout { ref method, .. } if method == "thread/fork"
+    ));
+
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_fork_commitment_transport_loss_is_indeterminate() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/fork"));
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let error = client
+        .fork_thread_with_commitment("thread_source", Duration::from_secs(2))
+        .expect_err("transport loss after fork dispatch must be indeterminate");
+    let ThreadForkFailure::Indeterminate { source } = error else {
+        panic!("expected indeterminate thread/fork failure");
+    };
+    assert!(matches!(
+        source,
+        ManagedBackendError::WebSocketTransport { ref method, .. } if method == "thread/fork"
+    ));
+
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_fork_commitment_malformed_response_is_indeterminate() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/fork"));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "result": { "thread": { "id": "unparseable_child" } }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let error = client
+        .fork_thread_with_commitment("thread_source", Duration::from_secs(2))
+        .expect_err("an unparseable fork result cannot identify a child safely");
+    let ThreadForkFailure::Indeterminate { source } = error else {
+        panic!("expected indeterminate thread/fork failure");
+    };
+    assert!(matches!(
+        source,
+        ManagedBackendError::DeserializeResponse { ref method, .. } if method == "thread/fork"
+    ));
+
     server.join().unwrap();
 }
 
@@ -1800,6 +2452,11 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
         assert!(
             opt_out_methods
                 .iter()
+                .any(|method| method.as_str() == Some("thread/deleted"))
+        );
+        assert!(
+            opt_out_methods
+                .iter()
                 .any(|method| method.as_str() == Some("item/completed"))
         );
 
@@ -2400,6 +3057,261 @@ fn managed_backend_startup_progress_exposes_ordered_operator_steps() {
     assert_eq!(progress.detail(), Some("thread/list"));
 }
 
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+#[test]
+fn guarded_probe_returns_initialized_session_and_preserves_server_identity() {
+    let (endpoint, fake_server) = spawn_fake_app_server_accepting_any_auth(|mut socket| {
+        serve_successful_compatibility_probe(&mut socket);
+    });
+    let mut server = spawn_lifecycle_test_server(endpoint).unwrap();
+    let process_id = server.process_id().expect("test server process id");
+    let token_file = managed_server_token_file(&server);
+    let mut progress = Vec::new();
+
+    let (session, report) = server
+        .connect_and_probe_with_progress(Duration::from_secs(2), |update| {
+            progress.push((update.stage(), update.detail().map(str::to_owned)));
+        })
+        .expect("guarded probe should succeed");
+
+    assert!(session.process_id().is_none());
+    assert_eq!(server.process_id(), Some(process_id));
+    assert!(server.is_process_alive());
+    assert_eq!(report.method_successes().len(), 12);
+    assert_eq!(
+        progress.first().map(|(stage, _)| *stage),
+        Some(ManagedBackendStartupStage::InitializeHandshake)
+    );
+    assert_eq!(
+        progress.last().map(|(stage, _)| *stage),
+        Some(ManagedBackendStartupStage::Ready)
+    );
+    assert_eq!(
+        progress
+            .iter()
+            .filter(|(stage, _)| *stage == ManagedBackendStartupStage::VerifyRequiredMethods)
+            .count(),
+        12
+    );
+
+    drop(session);
+    server.shutdown().expect("explicit shutdown should succeed");
+    assert_token_file_absent(&token_file);
+    wait_for_windows_process_exit(process_id, Duration::from_secs(2))
+        .expect("managed test process should be reaped");
+    fake_server.join().unwrap();
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+#[test]
+fn compound_probe_uses_canonical_orchestration_with_options_and_complete_progress() {
+    let (endpoint, fake_server) = spawn_fake_app_server_accepting_any_auth(|mut socket| {
+        serve_successful_compatibility_probe(&mut socket);
+    });
+    let exact_program = r"C:\fixture\codex.exe";
+    let options = ManagedBackendLaunchOptions::with_exact_host_windows_program(exact_program)
+        .expect("absolute fixture program should be accepted");
+    let mut progress = Vec::new();
+
+    let (mut server, session, report) = launch_and_probe_lifecycle_test_with_options(
+        endpoint,
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        options,
+        Duration::from_secs(2),
+        |update| progress.push((update.stage(), update.detail().map(str::to_owned))),
+    )
+    .expect("canonical compound orchestration should succeed");
+
+    let command_line = server.launch_spec().command_line().unwrap();
+    assert_eq!(command_line.program(), exact_program);
+    assert_eq!(command_line.cwd(), Some(&PathBuf::from(r"C:\work\beryl")));
+    assert_eq!(
+        server.launch_spec().runtime_mode(),
+        &RuntimeMode::HostWindows
+    );
+    assert_eq!(server.launch_spec().cwd(), Path::new(r"C:\work\beryl"));
+    assert!(session.process_id().is_none());
+    assert_eq!(session.launch_spec(), server.launch_spec());
+    assert_eq!(report.initialize().user_agent, "codex-cli 0.125.0");
+    assert_eq!(report.initialize().codex_home, "C:/Users/example/.codex");
+    assert_eq!(report.compatibility().platform_family(), "windows");
+    assert_eq!(report.compatibility().platform_os(), "windows");
+    assert!(report.compatibility().requires_method_probes());
+    assert_eq!(report.config_defaults().model, None);
+    assert_eq!(report.config_defaults().model_reasoning_effort, None);
+    assert!(report.model_list().is_empty());
+    assert_eq!(
+        report
+            .method_successes()
+            .iter()
+            .map(|success| success.probe().method())
+            .collect::<Vec<_>>(),
+        [
+            "config/read",
+            "model/list",
+            "thread/list",
+            "thread/compact/start",
+            "thread/loaded/list",
+            "thread/name/set",
+            "thread/read",
+            "thread/resume",
+            "thread/unsubscribe",
+            "thread/turns/list",
+            "turn/interrupt",
+            "turn/steer",
+        ]
+    );
+    assert!(report.thread_branch_capabilities().thread_branching());
+    assert_eq!(progress, expected_compound_probe_progress());
+
+    let process_id = server.process_id().expect("test server process id");
+    let token_file = managed_server_token_file(&server);
+    drop(session);
+    server.shutdown().expect("explicit shutdown should succeed");
+    assert_token_file_absent(&token_file);
+    wait_for_windows_process_exit(process_id, Duration::from_secs(2))
+        .expect("managed test process should be reaped");
+    fake_server.join().unwrap();
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+#[test]
+fn shutdown_combination_retains_process_and_auth_failures() {
+    let process_error = ManagedBackendError::ShutdownTimeout {
+        launch: "process-fixture".to_string(),
+        timeout: Duration::from_secs(1),
+    };
+    let auth_error = ManagedBackendError::CleanUpWebSocketTokenFile {
+        path: PathBuf::from(r"C:\fixture\token.txt"),
+        source: std::io::Error::other("auth-fixture"),
+    };
+
+    let error = combine_lifecycle_test_shutdown_results(Err(process_error), Err(auth_error))
+        .expect_err("two failures must remain a combined shutdown error");
+    let display = error.to_string();
+    let ManagedBackendError::ShutdownProcessAndAuth { process, auth } = error else {
+        panic!("expected the typed combined shutdown error");
+    };
+
+    assert!(matches!(
+        *process,
+        ManagedBackendError::ShutdownTimeout { ref launch, .. } if launch == "process-fixture"
+    ));
+    assert!(matches!(
+        *auth,
+        ManagedBackendError::CleanUpWebSocketTokenFile { ref path, .. }
+            if path == &PathBuf::from(r"C:\fixture\token.txt")
+    ));
+    assert!(display.contains("process-fixture"));
+    assert!(display.contains(r"C:\fixture\token.txt"));
+    assert!(display.contains("auth-fixture"));
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+#[test]
+fn guarded_probe_connect_failure_retains_server_for_explicit_cleanup() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    drop(listener);
+
+    let mut server = spawn_lifecycle_test_server(endpoint).unwrap();
+    let process_id = server.process_id().expect("test server process id");
+    let token_file = managed_server_token_file(&server);
+    let error = server
+        .connect_and_probe(Duration::from_millis(150))
+        .expect_err("closed listener must fail the bounded connection");
+
+    assert!(matches!(
+        error,
+        ManagedBackendError::ConnectWebSocket { .. }
+    ));
+    assert_eq!(server.process_id(), Some(process_id));
+    assert!(server.is_process_alive());
+    server.shutdown().expect("explicit shutdown should succeed");
+    assert_token_file_absent(&token_file);
+    wait_for_windows_process_exit(process_id, Duration::from_secs(2))
+        .expect("managed test process should be reaped");
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+#[test]
+fn guarded_probe_initialize_failure_retains_server_for_explicit_cleanup() {
+    let (endpoint, fake_server) = spawn_fake_app_server_accepting_any_auth(|mut socket| {
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("initialize"));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "userAgent": "codex-cli incompatible",
+                        "codexHome": "/home/example/.codex",
+                        "platformFamily": "unix",
+                        "platformOs": "linux"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let mut server = spawn_lifecycle_test_server(endpoint).unwrap();
+    let process_id = server.process_id().expect("test server process id");
+    let token_file = managed_server_token_file(&server);
+
+    let error = server
+        .connect_and_probe(Duration::from_secs(2))
+        .expect_err("runtime mismatch must fail initialize compatibility");
+
+    assert!(matches!(error, ManagedBackendError::Compatibility(_)));
+    assert_eq!(server.process_id(), Some(process_id));
+    server.shutdown().expect("explicit shutdown should succeed");
+    assert_token_file_absent(&token_file);
+    wait_for_windows_process_exit(process_id, Duration::from_secs(2))
+        .expect("managed test process should be reaped");
+    fake_server.join().unwrap();
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+#[test]
+fn guarded_probe_required_method_failure_retains_server_for_explicit_cleanup() {
+    let (endpoint, fake_server) = spawn_fake_app_server_accepting_any_auth(|mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("config/read"));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": { "code": -32601, "message": "method not found" }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let mut server = spawn_lifecycle_test_server(endpoint).unwrap();
+    let process_id = server.process_id().expect("test server process id");
+    let token_file = managed_server_token_file(&server);
+
+    let error = server
+        .connect_and_probe(Duration::from_secs(2))
+        .expect_err("required method rejection must fail compatibility");
+
+    assert!(matches!(
+        error,
+        ManagedBackendError::RequestFailed { ref method, .. } if method == "config/read"
+    ));
+    assert_eq!(server.process_id(), Some(process_id));
+    server.shutdown().expect("explicit shutdown should succeed");
+    assert_token_file_absent(&token_file);
+    wait_for_windows_process_exit(process_id, Duration::from_secs(2))
+        .expect("managed test process should be reaped");
+    fake_server.join().unwrap();
+}
+
 fn websocket_test_launch(endpoint: BackendWebSocketEndpoint) -> BackendLaunchSpec {
     BackendLaunchSpec::managed_websocket(
         RuntimeMode::HostWindows,
@@ -2440,6 +3352,143 @@ where
     });
 
     (endpoint, server)
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+fn spawn_fake_app_server_accepting_any_auth<F>(
+    handler: F,
+) -> (BackendWebSocketEndpoint, thread::JoinHandle<()>)
+where
+    F: FnOnce(WebSocket<TcpStream>) + Send + 'static,
+{
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let socket = accept_hdr(
+            stream,
+            |request: &tungstenite::handshake::server::Request, response| {
+                assert!(request.headers().get("authorization").is_some());
+                Ok(response)
+            },
+        )
+        .unwrap();
+        handler(socket);
+    });
+
+    (endpoint, server)
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+fn managed_server_token_file(server: &ManagedBackendServer) -> PathBuf {
+    let BackendTransport::ManagedWebSocket(config) = server.launch_spec().transport() else {
+        panic!("managed server must retain a managed WebSocket launch spec");
+    };
+    config.backend_token_file_path().to_path_buf()
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+fn serve_successful_compatibility_probe(socket: &mut WebSocket<TcpStream>) {
+    expect_initialize(socket, 1);
+    expect_initialized(socket);
+
+    for request_id in 2..=15 {
+        let request = read_json(socket);
+        let result = match request["method"].as_str().unwrap() {
+            "config/read" => Some(json!({ "config": {} })),
+            "model/list" | "thread/list" | "thread/loaded/list" => Some(json!({ "data": [] })),
+            "thread/unsubscribe" => Some(json!({ "status": "unsubscribed" })),
+            _ => None,
+        };
+        let response = match result {
+            Some(result) => json!({ "jsonrpc": "2.0", "id": request_id, "result": result }),
+            None => json!({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": { "code": -32000, "message": "probe target does not exist" }
+            }),
+        };
+        socket.send(Message::text(response.to_string())).unwrap();
+    }
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+fn expected_compound_probe_progress() -> Vec<(ManagedBackendStartupStage, Option<String>)> {
+    let mut progress = vec![
+        (ManagedBackendStartupStage::LaunchProcess, None),
+        (ManagedBackendStartupStage::InitializeHandshake, None),
+        (ManagedBackendStartupStage::ValidateRuntime, None),
+    ];
+    for method in [
+        "config/read",
+        "model/list",
+        "thread/list",
+        "thread/compact/start",
+        "thread/loaded/list",
+        "thread/name/set",
+        "thread/read",
+        "thread/resume",
+        "thread/unsubscribe",
+        "thread/turns/list",
+        "turn/interrupt",
+        "turn/steer",
+    ] {
+        progress.push((
+            ManagedBackendStartupStage::VerifyRequiredMethods,
+            Some(method.to_string()),
+        ));
+    }
+    progress.push((ManagedBackendStartupStage::Ready, None));
+    progress
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+fn assert_token_file_absent(path: &Path) {
+    match std::fs::metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => panic!("failed to verify token file {path:?} is absent: {error}"),
+        Ok(_) => panic!("managed token file {path:?} remains after explicit shutdown"),
+    }
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+fn wait_for_windows_process_exit(process_id: u32, timeout: Duration) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        if !windows_process_is_running(process_id)? {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    if windows_process_is_running(process_id)? {
+        Err(format!("process {process_id} survived explicit shutdown"))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+fn windows_process_is_running(process_id: u32) -> Result<bool, String> {
+    let status = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "try {{ Get-Process -Id {process_id} -ErrorAction Stop | Out-Null; exit 0 }} catch {{ if ($_.FullyQualifiedErrorId -eq 'NoProcessFoundForGivenId,Microsoft.PowerShell.Commands.GetProcessCommand') {{ exit 1 }} [Console]::Error.WriteLine($_.Exception.Message); exit 2 }}"
+            ),
+        ])
+        .status()
+        .map_err(|error| format!("failed to query process {process_id}: {error}"))?;
+    match status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        Some(code) => Err(format!(
+            "process query for {process_id} exited with unexpected status {code}"
+        )),
+        None => Err(format!(
+            "process query for {process_id} exited without a canonical status code"
+        )),
+    }
 }
 
 fn expect_initialize(socket: &mut WebSocket<TcpStream>, request_id: u64) {

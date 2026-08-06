@@ -37,6 +37,16 @@
 //!     .unwrap();
 //! conversation.remember_thread(thread);
 //! conversation
+//!     .record_thread_as_orchestration_root(&ConversationThreadId::new("thread_1"))
+//!     .unwrap();
+//! assert_eq!(
+//!     conversation
+//!         .thread_registration(&ConversationThreadId::new("thread_1"))
+//!         .unwrap()
+//!         .orchestration_root_thread_id(),
+//!     Some(&ConversationThreadId::new("thread_1")),
+//! );
+//! conversation
 //!     .record_thread_token_usage_snapshot(
 //!         &ConversationThreadId::new("thread_1"),
 //!         ConversationThreadTokenUsageSnapshot::new(

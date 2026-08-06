@@ -33,6 +33,108 @@ impl BackendCommandLineError {
     }
 }
 
+/// Validated launch customization for a Beryl-managed backend process.
+///
+/// By default, Host Windows launches resolve `codex` through `PATH`. Callers
+/// that need a known executable may opt into an absolute exact Host Windows
+/// program path with [`Self::with_exact_host_windows_program`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ManagedBackendLaunchOptions {
+    exact_host_windows_program: Option<PathBuf>,
+}
+
+/// An invalid managed backend launch customization.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ManagedBackendLaunchOptionsError {
+    #[error("the exact Host Windows backend program must not be empty")]
+    EmptyExactHostWindowsProgram,
+    #[error("the exact Host Windows backend program must be absolute: {path:?}")]
+    RelativeExactHostWindowsProgram { path: PathBuf },
+    #[error("the exact Host Windows backend program must be Unicode: {path:?}")]
+    NonUnicodeExactHostWindowsProgram { path: PathBuf },
+    #[error("an exact Host Windows backend program is unsupported for runtime {runtime_mode:?}")]
+    ExactHostWindowsProgramUnsupportedRuntime { runtime_mode: RuntimeMode },
+}
+
+impl ManagedBackendLaunchOptions {
+    /// Selects an absolute Host Windows executable instead of resolving `codex`
+    /// through `PATH`.
+    pub fn with_exact_host_windows_program(
+        program: impl Into<PathBuf>,
+    ) -> Result<Self, ManagedBackendLaunchOptionsError> {
+        let program = program.into();
+        validate_exact_host_windows_program(&program)?;
+
+        Ok(Self {
+            exact_host_windows_program: Some(program),
+        })
+    }
+
+    /// Returns the configured exact Host Windows executable, if any.
+    pub fn exact_host_windows_program(&self) -> Option<&Path> {
+        self.exact_host_windows_program.as_deref()
+    }
+
+    /// Verifies that this customization is valid for `runtime_mode`.
+    pub fn validate_for_runtime(
+        &self,
+        runtime_mode: &RuntimeMode,
+    ) -> Result<(), ManagedBackendLaunchOptionsError> {
+        let Some(program) = &self.exact_host_windows_program else {
+            return Ok(());
+        };
+        validate_exact_host_windows_program(program)?;
+
+        if !matches!(runtime_mode, RuntimeMode::HostWindows) {
+            return Err(
+                ManagedBackendLaunchOptionsError::ExactHostWindowsProgramUnsupportedRuntime {
+                    runtime_mode: runtime_mode.clone(),
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    fn selected_host_windows_program(&self) -> Result<String, ManagedBackendLaunchOptionsError> {
+        self.exact_host_windows_program
+            .as_ref()
+            .map(|program| {
+                program.to_str().map(str::to_owned).ok_or_else(|| {
+                    ManagedBackendLaunchOptionsError::NonUnicodeExactHostWindowsProgram {
+                        path: program.clone(),
+                    }
+                })
+            })
+            .transpose()
+            .map(|program| program.unwrap_or_else(|| "codex".to_string()))
+    }
+}
+
+fn validate_exact_host_windows_program(
+    program: &Path,
+) -> Result<(), ManagedBackendLaunchOptionsError> {
+    if program.as_os_str().is_empty() {
+        return Err(ManagedBackendLaunchOptionsError::EmptyExactHostWindowsProgram);
+    }
+    if !program.is_absolute() {
+        return Err(
+            ManagedBackendLaunchOptionsError::RelativeExactHostWindowsProgram {
+                path: program.to_path_buf(),
+            },
+        );
+    }
+    if program.to_str().is_none() {
+        return Err(
+            ManagedBackendLaunchOptionsError::NonUnicodeExactHostWindowsProgram {
+                path: program.to_path_buf(),
+            },
+        );
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BackendTransport {
     ManagedStdio,
@@ -55,6 +157,7 @@ pub struct BackendWebSocketEndpoint {
 pub struct BackendLaunchSpec {
     runtime_mode: RuntimeMode,
     cwd: PathBuf,
+    host_windows_program: String,
     transport: BackendTransport,
     runtime_cleanup: Option<BackendRuntimeCleanup>,
 }
@@ -72,17 +175,38 @@ pub(crate) struct WslProcessGroupCleanup {
 
 impl BackendLaunchSpec {
     pub fn managed_stdio(runtime_mode: RuntimeMode, cwd: impl Into<PathBuf>) -> Self {
-        Self::new(runtime_mode, cwd.into(), BackendTransport::ManagedStdio)
+        Self::managed_stdio_with_options(runtime_mode, cwd, ManagedBackendLaunchOptions::default())
+            .expect("default managed backend launch options must be valid")
     }
 
-    fn new(runtime_mode: RuntimeMode, cwd: PathBuf, transport: BackendTransport) -> Self {
+    pub fn managed_stdio_with_options(
+        runtime_mode: RuntimeMode,
+        cwd: impl Into<PathBuf>,
+        options: ManagedBackendLaunchOptions,
+    ) -> Result<Self, ManagedBackendLaunchOptionsError> {
+        Self::new(
+            runtime_mode,
+            cwd.into(),
+            BackendTransport::ManagedStdio,
+            options,
+        )
+    }
+
+    fn new(
+        runtime_mode: RuntimeMode,
+        cwd: PathBuf,
+        transport: BackendTransport,
+        options: ManagedBackendLaunchOptions,
+    ) -> Result<Self, ManagedBackendLaunchOptionsError> {
+        options.validate_for_runtime(&runtime_mode)?;
         let runtime_cleanup = BackendRuntimeCleanup::for_runtime_mode(&runtime_mode);
-        Self {
+        Ok(Self {
             runtime_mode,
             cwd,
+            host_windows_program: options.selected_host_windows_program()?,
             transport,
             runtime_cleanup,
-        }
+        })
     }
 
     pub fn managed_stdio_for_workspace(workspace: WorkspaceId) -> Self {
@@ -92,12 +216,40 @@ impl BackendLaunchSpec {
         )
     }
 
+    pub fn managed_stdio_for_workspace_with_options(
+        workspace: WorkspaceId,
+        options: ManagedBackendLaunchOptions,
+    ) -> Result<Self, ManagedBackendLaunchOptionsError> {
+        Self::managed_stdio_with_options(
+            workspace.runtime_mode().clone(),
+            workspace.canonical_path().to_path_buf(),
+            options,
+        )
+    }
+
     pub fn managed_websocket(
         runtime_mode: RuntimeMode,
         cwd: impl Into<PathBuf>,
         endpoint: BackendWebSocketEndpoint,
         backend_token_file_path: impl Into<PathBuf>,
     ) -> Self {
+        Self::managed_websocket_with_options(
+            runtime_mode,
+            cwd,
+            endpoint,
+            backend_token_file_path,
+            ManagedBackendLaunchOptions::default(),
+        )
+        .expect("default managed backend launch options must be valid")
+    }
+
+    pub fn managed_websocket_with_options(
+        runtime_mode: RuntimeMode,
+        cwd: impl Into<PathBuf>,
+        endpoint: BackendWebSocketEndpoint,
+        backend_token_file_path: impl Into<PathBuf>,
+        options: ManagedBackendLaunchOptions,
+    ) -> Result<Self, ManagedBackendLaunchOptionsError> {
         Self::new(
             runtime_mode,
             cwd.into(),
@@ -105,6 +257,7 @@ impl BackendLaunchSpec {
                 endpoint,
                 backend_token_file_path,
             )),
+            options,
         )
     }
 
@@ -134,9 +287,9 @@ impl BackendLaunchSpec {
         )
     }
 
-    pub(crate) fn launch_program_label(&self) -> &'static str {
+    pub(crate) fn launch_program_label(&self) -> &str {
         match &self.runtime_mode {
-            RuntimeMode::HostWindows => "codex",
+            RuntimeMode::HostWindows => &self.host_windows_program,
             RuntimeMode::WslLinux { .. } => "wsl.exe",
         }
     }
@@ -145,7 +298,7 @@ impl BackendLaunchSpec {
         match &self.transport {
             BackendTransport::ManagedStdio => match &self.runtime_mode {
                 RuntimeMode::HostWindows => Ok(BackendCommandLine::new(
-                    "codex",
+                    self.host_windows_program.clone(),
                     managed_stdio_codex_args(),
                     Some(self.cwd.clone()),
                 )),
@@ -170,7 +323,7 @@ impl BackendLaunchSpec {
             },
             BackendTransport::ManagedWebSocket(config) => match &self.runtime_mode {
                 RuntimeMode::HostWindows => Ok(BackendCommandLine::new(
-                    "codex",
+                    self.host_windows_program.clone(),
                     managed_websocket_codex_args(config),
                     Some(self.cwd.clone()),
                 )),

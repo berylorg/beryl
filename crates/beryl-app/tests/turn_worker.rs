@@ -50,6 +50,8 @@ mod shell {
     pub(super) mod graph;
     #[path = "../../src/shell/graph_worker.rs"]
     pub(super) mod graph_worker;
+    #[path = "../../src/shell/liveness_diagnostics.rs"]
+    pub(crate) mod liveness_diagnostics;
     #[path = "../../src/shell/thread_activation.rs"]
     pub(super) mod thread_activation;
     #[path = "../../src/shell/thread_selection.rs"]
@@ -178,6 +180,58 @@ fn stream_status_after_completion_ends_without_waiting_for_idle_grace() {
 
     assert_eq!(emitted.len(), 2);
     assert_eq!(backend.polls, vec![idle_poll, completion_grace]);
+}
+
+#[test]
+fn stream_completion_requires_exact_thread_and_turn_before_idle_can_finish() {
+    let idle_poll = Duration::from_secs(10);
+    let completion_grace = Duration::from_millis(500);
+    let mut backend = FakeTurnStreamBackend::new([
+        Ok(Some(turn_completed("thread_1", "turn_2"))),
+        Ok(Some(TurnStreamEvent::ThreadStatusChanged {
+            thread_id: "thread_1".to_string(),
+            status: ThreadStatus::Idle,
+        })),
+        Ok(Some(turn_completed("thread_2", "turn_1"))),
+        Ok(Some(TurnStreamEvent::ThreadStatusChanged {
+            thread_id: "thread_1".to_string(),
+            status: ThreadStatus::Idle,
+        })),
+        Ok(Some(turn_completed("thread_1", "turn_1"))),
+        Ok(Some(TurnStreamEvent::ThreadStatusChanged {
+            thread_id: "thread_1".to_string(),
+            status: ThreadStatus::Idle,
+        })),
+    ]);
+    let mut emitted = Vec::new();
+
+    stream_active_turn_events(
+        &mut backend,
+        "thread_1",
+        "turn_1",
+        idle_poll,
+        completion_grace,
+        unexpected_dynamic_tool_call,
+        |_| panic!("test did not expect a lifecycle yield"),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(emitted.len(), 6);
+    assert_eq!(
+        backend.polls,
+        vec![
+            idle_poll,
+            idle_poll,
+            idle_poll,
+            idle_poll,
+            idle_poll,
+            completion_grace
+        ]
+    );
 }
 
 #[test]
@@ -603,6 +657,64 @@ fn stream_lifecycle_yield_captures_correlated_outcome() {
 }
 
 #[test]
+fn stream_phase_continue_new_thread_yield_keeps_exact_source_turn() {
+    let idle_poll = Duration::from_secs(10);
+    let completion_grace = Duration::from_millis(500);
+    let request = dynamic_tool_call_request_with_identity(
+        "thread_1",
+        "turn_1",
+        "call_1",
+        YIELD_TOOL,
+        json!({
+            "outcome": "phase_continue_new_thread"
+        }),
+    );
+    let mut backend = FakeTurnStreamBackend::new([
+        Ok(Some(TurnStreamEvent::DynamicToolCallRequested(
+            request.clone(),
+        ))),
+        Ok(Some(turn_completed("thread_1", "turn_1"))),
+        Ok(None),
+    ]);
+    let root = unique_temp_dir();
+    fs::create_dir_all(&root).unwrap();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("lifecycle_yield").unwrap();
+    let mut lifecycle_yields = Vec::new();
+
+    stream_active_turn_events(
+        &mut backend,
+        "thread_1",
+        "turn_1",
+        idle_poll,
+        completion_grace,
+        |request| {
+            handle_beryl_dynamic_tool_call(&service, &workspace_id, request, |_| {
+                panic!("lifecycle yield must not publish a graph update")
+            })
+        },
+        |yielded| lifecycle_yields.push(yielded),
+        |_| Ok(()),
+    )
+    .unwrap();
+
+    assert_eq!(lifecycle_yields.len(), 1);
+    assert_eq!(lifecycle_yields[0].thread_id, "thread_1");
+    assert_eq!(lifecycle_yields[0].turn_id, "turn_1");
+    assert_eq!(
+        lifecycle_yields[0].outcome,
+        LifecycleYieldOutcome::PhaseContinueNewThread
+    );
+    assert_eq!(
+        response_json(&backend.dynamic_tool_responses[0].1)["result"]["outcome"],
+        "phase_continue_new_thread"
+    );
+
+    root.close().unwrap();
+}
+
+#[test]
 fn stream_malformed_lifecycle_yield_fails_without_capture() {
     let idle_poll = Duration::from_secs(10);
     let completion_grace = Duration::from_millis(500);
@@ -663,7 +775,7 @@ fn stream_duplicate_lifecycle_yield_keeps_first_outcome() {
         "call_1",
         YIELD_TOOL,
         json!({
-            "outcome": "phase_continue"
+            "outcome": "phase_continue_new_thread"
         }),
     );
     let second = dynamic_tool_call_request_with_identity(
@@ -715,7 +827,7 @@ fn stream_duplicate_lifecycle_yield_keeps_first_outcome() {
     assert_eq!(lifecycle_yields.len(), 1);
     assert_eq!(
         lifecycle_yields[0].outcome,
-        LifecycleYieldOutcome::PhaseContinue
+        LifecycleYieldOutcome::PhaseContinueNewThread
     );
     assert_eq!(backend.dynamic_tool_responses.len(), 2);
     assert_eq!(backend.dynamic_tool_responses[0].0, first);

@@ -300,6 +300,7 @@ fn lifecycle_yield_tool_spec_accepts_only_outcome() {
             "phase_needs_review",
             "blocked_needs_operator",
             "phase_continue",
+            "phase_continue_new_thread",
             "plan_complete"
         ])
     );
@@ -470,6 +471,26 @@ fn lifecycle_yield_call_accepts_supported_outcome() {
     assert!(dispatch.response().success);
     assert_eq!(payload["ok"], true);
     assert_eq!(payload["result"]["outcome"], "phase_continue");
+}
+
+#[test]
+fn lifecycle_yield_call_accepts_phase_continue_new_thread() {
+    let request = dynamic_tool_request(
+        YIELD_TOOL,
+        json!({
+            "outcome": "phase_continue_new_thread"
+        }),
+    );
+    let dispatch = dispatch_beryl_lifecycle_dynamic_tool_call_with_metadata(&request);
+    let payload = response_json(dispatch.response());
+
+    assert_eq!(
+        dispatch.outcome(),
+        Some(LifecycleYieldOutcome::PhaseContinueNewThread)
+    );
+    assert!(dispatch.response().success);
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["result"]["outcome"], "phase_continue_new_thread");
 }
 
 #[test]

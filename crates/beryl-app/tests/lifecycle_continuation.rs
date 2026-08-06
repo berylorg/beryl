@@ -13,12 +13,13 @@ mod notifications;
 #[path = "../src/shell/pending_turn_input.rs"]
 mod pending_turn_input;
 
-use beryl_backend::TurnStartOptions;
+use beryl_backend::{TurnStartOptions, TurnStatus};
 use beryl_model::workspace::WorkspaceId;
 use execution_detail::UserInputFragment;
 use lifecycle_continuation::{
     PHASE_CONTINUE_RESUME_TEXT, context_compaction_queue_failure_message,
-    pending_turn_queue_should_wait_for_compaction, phase_continue_request,
+    pending_turn_queue_should_wait_for_compaction, phase_continue_new_thread_handoff,
+    phase_continue_request, take_phase_continue_new_thread_handoff_for_finished_worker,
 };
 use lifecycle_yield::LifecycleYieldState;
 use pending_turn_input::PendingTurnInputQueue;
@@ -39,11 +40,75 @@ fn non_continue_yields_do_not_request_auto_resume() {
     for outcome in [
         LifecycleYieldOutcome::PhaseNeedsReview,
         LifecycleYieldOutcome::BlockedNeedsOperator,
+        LifecycleYieldOutcome::PhaseContinueNewThread,
         LifecycleYieldOutcome::PlanComplete,
     ] {
         let lifecycle_yield = terminal_lifecycle_yield(outcome);
         assert_eq!(phase_continue_request(&lifecycle_yield), None);
     }
+}
+
+#[test]
+fn phase_continue_new_thread_stages_exact_completed_source_handoff() {
+    let lifecycle_yield = terminal_lifecycle_yield(LifecycleYieldOutcome::PhaseContinueNewThread);
+
+    let handoff = phase_continue_new_thread_handoff(&lifecycle_yield, TurnStatus::Completed)
+        .expect("completed phase continuation should stage a handoff");
+
+    assert_eq!(handoff.source_thread_id(), "thread_1");
+    assert_eq!(handoff.source_turn_id(), "turn_1");
+    assert_eq!(handoff.resume_fragment().text, PHASE_CONTINUE_RESUME_TEXT);
+}
+
+#[test]
+fn phase_continue_new_thread_does_not_stage_failed_or_interrupted_source() {
+    for status in [TurnStatus::Failed, TurnStatus::Interrupted] {
+        let lifecycle_yield =
+            terminal_lifecycle_yield(LifecycleYieldOutcome::PhaseContinueNewThread);
+
+        assert_eq!(
+            phase_continue_new_thread_handoff(&lifecycle_yield, status),
+            None
+        );
+    }
+}
+
+#[test]
+fn phase_continue_new_thread_handoff_requires_matching_finished_worker_source() {
+    let lifecycle_yield = terminal_lifecycle_yield(LifecycleYieldOutcome::PhaseContinueNewThread);
+    let handoff = phase_continue_new_thread_handoff(&lifecycle_yield, TurnStatus::Completed);
+    let mut pending = handoff;
+
+    assert_eq!(
+        take_phase_continue_new_thread_handoff_for_finished_worker(
+            &mut pending,
+            Some("other_thread"),
+        ),
+        None
+    );
+    assert_eq!(pending, None);
+
+    let lifecycle_yield = terminal_lifecycle_yield(LifecycleYieldOutcome::PhaseContinueNewThread);
+    let mut pending = phase_continue_new_thread_handoff(&lifecycle_yield, TurnStatus::Completed);
+    let handoff =
+        take_phase_continue_new_thread_handoff_for_finished_worker(&mut pending, Some("thread_1"))
+            .expect("matching finished worker should consume the handoff");
+
+    assert_eq!(handoff.source_thread_id(), "thread_1");
+    assert_eq!(handoff.source_turn_id(), "turn_1");
+    assert_eq!(pending, None);
+}
+
+#[test]
+fn phase_continue_new_thread_handoff_clears_when_worker_fails() {
+    let lifecycle_yield = terminal_lifecycle_yield(LifecycleYieldOutcome::PhaseContinueNewThread);
+    let mut pending = phase_continue_new_thread_handoff(&lifecycle_yield, TurnStatus::Completed);
+
+    assert_eq!(
+        take_phase_continue_new_thread_handoff_for_finished_worker(&mut pending, None),
+        None
+    );
+    assert_eq!(pending, None);
 }
 
 #[test]

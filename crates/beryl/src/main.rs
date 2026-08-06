@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use beryl::cli::BootstrapCli;
+use beryl::diagnostic_startup_gate::enforce_diagnostic_acceptance_startup_gate;
 use beryl_app::{AppBootstrap, run_app, run_diagnostic_target_stdio};
 use beryl_model::workspace::WorkspaceId;
 use tracing::info;
@@ -9,6 +10,12 @@ use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
     let cli = BootstrapCli::parse_from_env();
+    if cli.diagnostic_acceptance_startup_gate() {
+        enforce_diagnostic_acceptance_startup_gate(
+            std::io::stdin().lock(),
+            std::io::stdout().lock(),
+        )?;
+    }
     init_tracing();
     run(cli)
 }

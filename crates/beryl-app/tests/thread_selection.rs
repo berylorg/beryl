@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use beryl_backend::ThreadSummary;
 use beryl_model::conversation::{
-    ConversationThreadId, RegisteredConversationThread, WorkspaceConversationState,
+    ConversationThreadId, ConversationThreadMemberBinding, RegisteredConversationThread,
+    WorkspaceConversationState,
 };
 use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::{
@@ -16,7 +17,9 @@ mod thread_selection;
 
 use thread_selection::{
     GraphThreadRefAvailability, KnownThreadSelection, ThreadSelectionRequest,
-    graph_thread_ref_availability, resolve_known_thread_selection,
+    backend_unavailable_thread_seed, graph_thread_ref_availability,
+    persisted_active_thread_disconnect_selection_request, persisted_active_thread_recovery_target,
+    persisted_active_thread_selection_request, resolve_known_thread_selection,
 };
 
 #[test]
@@ -51,6 +54,309 @@ fn preferred_thread_selection_can_fall_back_to_the_first_known_thread() {
             strict: false,
         }
     );
+}
+
+#[test]
+fn persisted_active_thread_becomes_exact_recovery_for_its_recorded_target() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_a");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    workspace_state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target.clone(),
+        "Persisted preview",
+        Some("Persisted title".to_string()),
+        1,
+        2,
+    ));
+    workspace_state.activate_thread(&thread_id).unwrap();
+
+    assert_eq!(
+        persisted_active_thread_selection_request(&workspace_state, &execution_target),
+        Some(ThreadSelectionRequest::Exact {
+            thread_id: "thread_a".to_string(),
+            label: "Persisted title".to_string(),
+            expected_forked_from_id: None,
+        })
+    );
+}
+
+#[test]
+fn persisted_phase_child_recovery_requires_backend_root_parent() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let root_id = ConversationThreadId::new("thread_root");
+    let child_id = ConversationThreadId::new("thread_child");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    for thread_id in [&root_id, &child_id] {
+        workspace_state.remember_thread(RegisteredConversationThread::new(
+            thread_id.clone(),
+            execution_target.clone(),
+            format!("{} preview", thread_id.as_str()),
+            None,
+            1,
+            2,
+        ));
+    }
+    workspace_state
+        .record_thread_as_orchestration_root(&root_id)
+        .unwrap();
+    workspace_state
+        .record_thread_orchestration_root(&child_id, &root_id)
+        .unwrap();
+    workspace_state.activate_thread(&child_id).unwrap();
+
+    assert_eq!(
+        persisted_active_thread_selection_request(&workspace_state, &execution_target),
+        Some(ThreadSelectionRequest::Exact {
+            thread_id: "thread_child".to_string(),
+            label: "thread_child preview".to_string(),
+            expected_forked_from_id: Some("thread_root".to_string()),
+        })
+    );
+}
+
+#[test]
+fn disconnect_recovery_preserves_phase_child_root_validation() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let root_id = ConversationThreadId::new("thread_root");
+    let child_id = ConversationThreadId::new("thread_child");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    for thread_id in [&root_id, &child_id] {
+        workspace_state.remember_thread(RegisteredConversationThread::new(
+            thread_id.clone(),
+            execution_target.clone(),
+            format!("{} preview", thread_id.as_str()),
+            None,
+            1,
+            2,
+        ));
+    }
+    workspace_state
+        .record_thread_as_orchestration_root(&root_id)
+        .unwrap();
+    workspace_state
+        .record_thread_orchestration_root(&child_id, &root_id)
+        .unwrap();
+    workspace_state.activate_thread(&child_id).unwrap();
+
+    assert_eq!(
+        persisted_active_thread_disconnect_selection_request(
+            &workspace_state,
+            &execution_target,
+            child_id.as_str(),
+        ),
+        Some(ThreadSelectionRequest::Exact {
+            thread_id: "thread_child".to_string(),
+            label: "thread_child preview".to_string(),
+            expected_forked_from_id: Some("thread_root".to_string()),
+        })
+    );
+    assert_eq!(
+        persisted_active_thread_disconnect_selection_request(
+            &workspace_state,
+            &execution_target,
+            "different_surface_thread",
+        ),
+        None
+    );
+}
+
+#[test]
+fn backend_unavailable_seed_never_selects_unvalidated_persisted_identity() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_unavailable");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    workspace_state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target,
+        "Persisted preview",
+        None,
+        1,
+        2,
+    ));
+    workspace_state.activate_thread(&thread_id).unwrap();
+
+    let (known_threads, selected_thread_id) = backend_unavailable_thread_seed();
+
+    assert!(known_threads.is_empty());
+    assert_eq!(selected_thread_id, None);
+    assert_eq!(workspace_state.active_thread(), Some(&thread_id));
+}
+
+#[test]
+fn binding_mismatch_requires_repair_instead_of_disconnect_recovery() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_mismatch");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    workspace_state.remember_thread(
+        RegisteredConversationThread::new(
+            thread_id.clone(),
+            execution_target.clone(),
+            "Persisted preview",
+            None,
+            1,
+            2,
+        )
+        .with_member_binding(ConversationThreadMemberBinding::implicit_home(
+            execution_target.clone(),
+        )),
+    );
+    workspace_state.activate_thread(&thread_id).unwrap();
+
+    let selection = persisted_active_thread_disconnect_selection_request(
+        &workspace_state,
+        &execution_target,
+        thread_id.as_str(),
+    )
+    .unwrap();
+    let ThreadSelectionRequest::PersistedActiveRepairRequired { detail, .. } = selection else {
+        panic!("mismatched binding must remain repair-required");
+    };
+    assert!(detail.contains("no longer matches"));
+    assert_eq!(workspace_state.active_thread(), Some(&thread_id));
+}
+
+#[test]
+fn persisted_active_thread_is_not_recovered_for_another_target() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_a");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    workspace_state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target,
+        "Persisted preview",
+        None,
+        1,
+        2,
+    ));
+    workspace_state.activate_thread(&thread_id).unwrap();
+
+    assert_eq!(
+        persisted_active_thread_selection_request(
+            &workspace_state,
+            &WorkspaceId::host_windows(r"C:\work\other"),
+        ),
+        None
+    );
+}
+
+#[test]
+fn persisted_active_thread_routes_startup_to_its_non_primary_member() {
+    let primary_target = WorkspaceId::host_windows(r"C:\work\primary");
+    let active_target = WorkspaceId::host_windows(r"C:\work\phase");
+    let thread_id = ConversationThreadId::new("thread_phase");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&primary_target)
+        .unwrap();
+    workspace_state
+        .attach_execution_target(&active_target)
+        .unwrap();
+    workspace_state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        active_target.clone(),
+        "Phase preview",
+        None,
+        1,
+        2,
+    ));
+    workspace_state.activate_thread(&thread_id).unwrap();
+
+    assert_eq!(
+        persisted_active_thread_recovery_target(&workspace_state),
+        Some(active_target)
+    );
+}
+
+#[test]
+fn legacy_registration_without_member_binding_is_not_exact_startup_authority() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_a");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    workspace_state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target,
+        "Persisted preview",
+        None,
+        1,
+        2,
+    ));
+    workspace_state.activate_thread(&thread_id).unwrap();
+    let mut value = serde_json::to_value(workspace_state).unwrap();
+    value["threads"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("member_binding");
+    let workspace_state: WorkspaceConversationState = serde_json::from_value(value).unwrap();
+
+    assert_eq!(
+        persisted_active_thread_recovery_target(&workspace_state),
+        None
+    );
+    let selection = persisted_active_thread_disconnect_selection_request(
+        &workspace_state,
+        &WorkspaceId::host_windows(r"C:\work\beryl"),
+        thread_id.as_str(),
+    )
+    .unwrap();
+    let ThreadSelectionRequest::PersistedActiveRepairRequired { detail, .. } = selection else {
+        panic!("missing binding must remain repair-required");
+    };
+    assert!(detail.contains("does not include an exact workspace-member binding"));
+}
+
+#[test]
+fn explicit_rebind_requirement_blocks_disconnect_exact_recovery() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_rebind");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    workspace_state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target.clone(),
+        "Persisted preview",
+        None,
+        1,
+        2,
+    ));
+    workspace_state.activate_thread(&thread_id).unwrap();
+    workspace_state
+        .mark_thread_rebind_required(&thread_id, "Original member detached")
+        .unwrap();
+
+    let selection = persisted_active_thread_disconnect_selection_request(
+        &workspace_state,
+        &execution_target,
+        thread_id.as_str(),
+    )
+    .unwrap();
+    let ThreadSelectionRequest::PersistedActiveRepairRequired { detail, .. } = selection else {
+        panic!("explicit rebind must remain repair-required");
+    };
+    assert!(detail.contains("Original member detached"));
 }
 
 #[test]

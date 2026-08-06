@@ -483,6 +483,8 @@ fn render_member_list(
         list = list.child(status_row(shell, "Refreshing thread list..."));
     } else if let Some(error) = surface.member_thread_inventory().last_error() {
         list = list.child(status_row(shell, error));
+    } else if let Some(status) = snapshot.partial_status_message() {
+        list = list.child(status_row(shell, &status));
     }
 
     for (index, group) in snapshot.groups().iter().enumerate() {
@@ -526,6 +528,12 @@ fn render_thread_list(
         list = list.child(status_row(shell, "Refreshing thread list..."));
     } else if let Some(error) = surface.member_thread_inventory().last_error() {
         list = list.child(status_row(shell, error));
+    } else if let Some(status) = surface
+        .member_thread_inventory()
+        .snapshot()
+        .partial_status_message()
+    {
+        list = list.child(status_row(shell, &status));
     }
 
     if group.threads().is_empty() {

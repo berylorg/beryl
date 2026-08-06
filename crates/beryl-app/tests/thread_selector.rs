@@ -511,6 +511,7 @@ fn thread_selector_selected_thread_builds_exact_activation_request() {
         ThreadSelectionRequest::Exact {
             thread_id: "thread_a".to_string(),
             label: "Thread thread_a".to_string(),
+            expected_forked_from_id: None,
         }
     );
 }

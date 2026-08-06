@@ -30,7 +30,11 @@ mod diagnostic_child_protocol;
 mod diagnostic_child_control;
 
 mod diagnostic_child_supervisor {
-    use std::{fmt, io, path::PathBuf, time::Duration};
+    use std::{
+        fmt, io,
+        path::PathBuf,
+        time::{Duration, Instant},
+    };
 
     use serde_json::Value;
 
@@ -42,6 +46,7 @@ mod diagnostic_child_supervisor {
     #[derive(Default)]
     pub(crate) struct DiagnosticChildSupervisor {
         identity: Option<DiagnosticChildIdentity>,
+        request_count: usize,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -188,10 +193,24 @@ mod diagnostic_child_supervisor {
             if self.identity.is_none() {
                 return Err(DiagnosticChildSupervisorError::ProtocolEof);
             }
+            self.request_count += 1;
             Ok(serde_json::json!({
                 "command": command.as_str(),
                 "params": params,
             }))
+        }
+
+        pub(crate) fn request_until(
+            &mut self,
+            command: DiagnosticChildCommand,
+            params: Value,
+            _deadline: Instant,
+        ) -> Result<Value, DiagnosticChildSupervisorError> {
+            self.request(command, params, Duration::ZERO)
+        }
+
+        pub(crate) fn request_count(&self) -> usize {
+            self.request_count
         }
     }
 
@@ -285,11 +304,14 @@ use diagnostic_child_dynamic_tools::{
     DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL, DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
     DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL, DIAGNOSTIC_CHILD_START_TOOL,
     DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
-    DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL, beryl_diagnostic_child_dynamic_tool_specs,
-    dispatch_beryl_diagnostic_child_dynamic_tool_call,
+    DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL, DiagnosticAcceptanceOperation,
+    beryl_diagnostic_child_dynamic_tool_specs, compile_diagnostic_acceptance_operation,
+    diagnostic_wait_deadline, dispatch_beryl_diagnostic_child_dynamic_tool_call,
+    execute_diagnostic_wait_for_state,
 };
 use diagnostic_child_supervisor::DiagnosticChildSupervisor;
 use serde_json::{Value, json};
+use std::time::{Duration, Instant};
 
 #[test]
 fn diagnostic_child_read_before_start_returns_not_running_failure() {
@@ -775,8 +797,8 @@ fn diagnostic_wait_state_accepts_backend_unavailable_predicate() {
     assert!(response.success);
     assert_eq!(payload["result"]["status"], "timeout");
     assert_eq!(payload["result"]["predicate"], "backend_unavailable");
-    assert_eq!(payload["result"]["uiState"]["command"], "read_ui_state");
-    assert_eq!(payload["result"]["uiState"]["params"]["limit"], 64);
+    assert!(payload["result"].get("uiState").is_none());
+    assert_eq!(supervisor.request_count(), 0);
 
     child.close().unwrap();
     root.close().unwrap();
@@ -796,7 +818,7 @@ fn diagnostic_stop_turn_arguments_match_exact_thread_and_turn_identity() {
 }
 
 #[test]
-fn diagnostic_child_wait_for_state_polls_ui_state_until_timeout() {
+fn diagnostic_child_wait_for_state_checks_zero_deadline_before_polling() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
     let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
@@ -825,11 +847,193 @@ fn diagnostic_child_wait_for_state_polls_ui_state_until_timeout() {
     assert!(response.success);
     assert_eq!(payload["result"]["status"], "timeout");
     assert_eq!(payload["result"]["predicate"], "ready");
-    assert_eq!(payload["result"]["uiState"]["command"], "read_ui_state");
-    assert_eq!(payload["result"]["uiState"]["params"]["limit"], 64);
+    assert!(payload["result"].get("uiState").is_none());
+    assert_eq!(supervisor.request_count(), 0);
 
     child.close().unwrap();
     root.close().unwrap();
+}
+
+#[test]
+fn canonical_wait_polls_until_every_identity_guard_matches() {
+    let operation = compile_diagnostic_acceptance_operation(
+        "wait_for_state",
+        &json!({
+            "predicate": "selected_thread_active",
+            "timeoutMs": 100,
+            "pollIntervalMs": 25,
+            "workspaceId": "workspace-1",
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+        }),
+    )
+    .unwrap();
+    let DiagnosticAcceptanceOperation::WaitForState { arguments, .. } = operation else {
+        panic!("wait operation must compile as a supervisor operation");
+    };
+    let states = [
+        json!({
+            "selectedWorkspaceId": "wrong-workspace",
+            "selectedThreadId": "thread-1",
+            "turnState": {
+                "selectedThreadState": "working",
+                "cancellableActiveTurn": { "turnId": "turn-1" },
+            },
+        }),
+        json!({
+            "selectedWorkspaceId": "workspace-1",
+            "selectedThreadId": "thread-1",
+            "turnState": {
+                "selectedThreadState": "working",
+                "cancellableActiveTurn": { "turnId": "turn-1" },
+            },
+        }),
+    ];
+    let mut states = states.into_iter();
+    let mut poll_count = 0;
+    let result = execute_diagnostic_wait_for_state(
+        &arguments,
+        Instant::now() + Duration::from_millis(100),
+        |_limit, deadline| {
+            assert!(deadline > Instant::now());
+            poll_count += 1;
+            Ok::<_, ()>(states.next().expect("fixture has one state per poll"))
+        },
+    )
+    .unwrap();
+
+    assert_eq!(poll_count, 2);
+    assert_eq!(result["status"], "matched");
+    assert_eq!(result["uiState"]["selectedWorkspaceId"], "workspace-1");
+}
+
+#[test]
+fn canonical_wait_sleeping_through_deadline_retains_latest_ui_state() {
+    let operation = compile_diagnostic_acceptance_operation(
+        "wait_for_state",
+        &json!({
+            "predicate": "ready",
+            "timeoutMs": 100,
+            "pollIntervalMs": 100,
+        }),
+    )
+    .unwrap();
+    let DiagnosticAcceptanceOperation::WaitForState { arguments, .. } = operation else {
+        panic!("wait operation must compile as a supervisor operation");
+    };
+    let deadline = Instant::now() + Duration::from_millis(50);
+    let mut poll_count = 0;
+    let result =
+        execute_diagnostic_wait_for_state(&arguments, deadline, |_limit, poll_deadline| {
+            assert_eq!(poll_deadline, deadline);
+            poll_count += 1;
+            Ok::<_, ()>(json!({ "ready": false, "snapshot": "latest" }))
+        })
+        .unwrap();
+
+    assert_eq!(poll_count, 1);
+    assert_eq!(result["status"], "timeout");
+    assert_eq!(result["uiState"]["snapshot"], "latest");
+}
+
+#[test]
+fn canonical_wait_deadline_expiring_poll_retains_prior_ui_state() {
+    let operation = compile_diagnostic_acceptance_operation(
+        "wait_for_state",
+        &json!({
+            "predicate": "ready",
+            "timeoutMs": 100,
+            "pollIntervalMs": 3,
+        }),
+    )
+    .unwrap();
+    let DiagnosticAcceptanceOperation::WaitForState { arguments, .. } = operation else {
+        panic!("wait operation must compile as a supervisor operation");
+    };
+    let deadline = Instant::now() + Duration::from_millis(40);
+    let mut poll_count = 0;
+    let result =
+        execute_diagnostic_wait_for_state(&arguments, deadline, |_limit, poll_deadline| {
+            assert_eq!(poll_deadline, deadline);
+            poll_count += 1;
+            if poll_count == 1 {
+                return Ok(json!({ "ready": false, "snapshot": "prior" }));
+            }
+            std::thread::sleep(
+                poll_deadline.saturating_duration_since(Instant::now()) + Duration::from_millis(5),
+            );
+            Err("request deadline")
+        })
+        .unwrap();
+
+    assert_eq!(poll_count, 2);
+    assert_eq!(result["status"], "timeout");
+    assert_eq!(result["uiState"]["snapshot"], "prior");
+}
+
+#[test]
+fn canonical_wait_propagates_request_error_before_deadline() {
+    let operation = compile_diagnostic_acceptance_operation(
+        "wait_for_state",
+        &json!({
+            "predicate": "ready",
+            "timeoutMs": 100,
+            "pollIntervalMs": 25,
+        }),
+    )
+    .unwrap();
+    let DiagnosticAcceptanceOperation::WaitForState { arguments, .. } = operation else {
+        panic!("wait operation must compile as a supervisor operation");
+    };
+    let deadline = Instant::now() + Duration::from_millis(100);
+    let error = execute_diagnostic_wait_for_state(&arguments, deadline, |_limit, poll_deadline| {
+        assert_eq!(poll_deadline, deadline);
+        Err::<Value, _>("pre-deadline failure")
+    })
+    .unwrap_err();
+
+    assert_eq!(error, "pre-deadline failure");
+}
+
+#[test]
+fn canonical_wait_deadline_uses_the_earliest_nested_effective_or_runtime_bound() {
+    let started = Instant::now();
+    assert_eq!(
+        diagnostic_wait_deadline(
+            started,
+            Duration::from_millis(25),
+            Duration::from_millis(50),
+            started + Duration::from_millis(75),
+        ),
+        started + Duration::from_millis(25)
+    );
+    assert_eq!(
+        diagnostic_wait_deadline(
+            started,
+            Duration::from_millis(75),
+            Duration::from_millis(25),
+            started + Duration::from_millis(50),
+        ),
+        started + Duration::from_millis(25)
+    );
+    assert_eq!(
+        diagnostic_wait_deadline(
+            started,
+            Duration::from_millis(75),
+            Duration::from_millis(50),
+            started + Duration::from_millis(10),
+        ),
+        started + Duration::from_millis(10)
+    );
+    assert_eq!(
+        diagnostic_wait_deadline(
+            started,
+            Duration::ZERO,
+            Duration::from_millis(50),
+            started + Duration::from_millis(75),
+        ),
+        started
+    );
 }
 
 fn tool_request(tool: &str, arguments: Value) -> DynamicToolCallRequest {

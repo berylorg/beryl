@@ -844,6 +844,9 @@ impl ExecutionDetailState {
                     );
                 }
                 TurnStreamEvent::ThreadStarted { .. } => {}
+                TurnStreamEvent::ThreadArchived { .. } => {}
+                TurnStreamEvent::ThreadUnarchived { .. } => {}
+                TurnStreamEvent::ThreadDeleted { .. } => {}
                 TurnStreamEvent::AgentLabelUpdated { .. } => {}
                 TurnStreamEvent::TokenUsageUpdated { .. } => {}
                 TurnStreamEvent::AccountRateLimitsUpdated { .. } => {}
@@ -869,6 +872,9 @@ fn stream_event_matches_active_turn(turn: &TurnExecutionRecord, event: &TurnStre
         TurnStreamEvent::AgentLabelUpdated { thread_id, .. }
         | TurnStreamEvent::ThreadStatusChanged { thread_id, .. }
         | TurnStreamEvent::ThreadClosed { thread_id }
+        | TurnStreamEvent::ThreadArchived { thread_id }
+        | TurnStreamEvent::ThreadUnarchived { thread_id }
+        | TurnStreamEvent::ThreadDeleted { thread_id }
         | TurnStreamEvent::ThreadNameUpdated { thread_id, .. } => {
             turn.thread_id.as_deref() == Some(thread_id.as_str())
         }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "System Design Docs"
+  short_description: "Write internal system design docs."
+  default_prompt: "Use system-design-docs when creating or updating doc/systems/<system>/design.md for internal cross-feature or cross-package architecture."

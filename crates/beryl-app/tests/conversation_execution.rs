@@ -637,6 +637,44 @@ fn execution_detail_ignores_events_from_non_active_turns() {
 }
 
 #[test]
+fn execution_detail_ignores_matching_thread_lifecycle_events() {
+    let mut state = ExecutionDetailState::default();
+    state.begin_turn("Continue working".to_string());
+    assert_eq!(
+        state.apply_stream_event(TurnStreamEvent::TurnStarted {
+            thread_id: "thread_1".to_string(),
+            turn: TurnInfo {
+                id: "turn_1".to_string(),
+                status: TurnStatus::InProgress,
+                items: Vec::new(),
+                error: None,
+            },
+        }),
+        Some(0)
+    );
+
+    for event in [
+        TurnStreamEvent::ThreadArchived {
+            thread_id: "thread_1".to_string(),
+        },
+        TurnStreamEvent::ThreadUnarchived {
+            thread_id: "thread_1".to_string(),
+        },
+        TurnStreamEvent::ThreadDeleted {
+            thread_id: "thread_1".to_string(),
+        },
+    ] {
+        assert_eq!(state.apply_stream_event(event), Some(0));
+    }
+
+    let turn = &state.turns()[0];
+    assert_eq!(turn.status, TurnExecutionStatus::Running);
+    assert_eq!(turn.thread_id.as_deref(), Some("thread_1"));
+    assert_eq!(turn.turn_id.as_deref(), Some("turn_1"));
+    assert!(turn.items.is_empty());
+}
+
+#[test]
 fn execution_detail_loads_selected_thread_history() {
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "approvalPolicy": "never",

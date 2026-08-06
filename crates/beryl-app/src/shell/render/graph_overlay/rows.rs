@@ -376,18 +376,20 @@ fn render_graph_thread_ref_row(
     let availability =
         graph_thread_ref_availability(workspace_state, thread_ref, implicit_home_execution_target);
     let invalid_reason = availability.reason().map(str::to_string);
+    let transition_active = shell.lifecycle_phase_thread_transition_active();
+    let row_openable = availability.is_openable() && !transition_active;
     let normal_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRef);
     let normal_text_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRefText);
     let meta_text_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRefMeta);
     let invalid_style = graph_role_style(shell, BerylThemeRole::GraphRowInvalid);
     let invalid_text_style = graph_role_style(shell, BerylThemeRole::GraphRowInvalidText);
     let hover_style = graph_role_style(shell, BerylThemeRole::GraphRowHover);
-    let row_surface_style = if availability.is_openable() {
+    let row_surface_style = if row_openable {
         normal_style
     } else {
         invalid_style
     };
-    let row_text_style = if availability.is_openable() {
+    let row_text_style = if row_openable {
         normal_text_style
     } else {
         invalid_text_style
@@ -407,20 +409,22 @@ fn render_graph_thread_ref_row(
                 .bg(row_surface_style.background)
                 .border_1()
                 .border_color(row_surface_style.border)
-                .cursor_pointer()
-                .hover(move |style| style.bg(hover_style.background))
                 .p_3()
-                .on_click(cx.listener(move |view, event, window, cx| {
-                    view.select_graph_thread_ref(
-                        thread_ref_id.clone(),
-                        thread_id.clone(),
-                        execution_target.clone(),
-                        label.clone(),
-                        event,
-                        window,
-                        cx,
-                    );
-                }))
+                .when(row_openable, |this| {
+                    this.cursor_pointer()
+                        .hover(move |style| style.bg(hover_style.background))
+                        .on_click(cx.listener(move |view, event, window, cx| {
+                            view.select_graph_thread_ref(
+                                thread_ref_id.clone(),
+                                thread_id.clone(),
+                                execution_target.clone(),
+                                label.clone(),
+                                event,
+                                window,
+                                cx,
+                            );
+                        }))
+                })
                 .child(
                     div()
                         .flex()

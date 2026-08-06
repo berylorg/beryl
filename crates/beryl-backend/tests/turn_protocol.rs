@@ -788,6 +788,48 @@ fn thread_closed_notification_parses_from_turn_stream() {
 }
 
 #[test]
+fn thread_lifecycle_notifications_preserve_the_exact_thread_identity() {
+    let archived = parse_turn_stream_event(
+        "thread/archived",
+        Some(json!({ "threadId": "thread_archived" })),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        archived,
+        TurnStreamEvent::ThreadArchived {
+            thread_id: "thread_archived".to_string(),
+        }
+    );
+
+    let unarchived = parse_turn_stream_event(
+        "thread/unarchived",
+        Some(json!({ "threadId": "thread_unarchived" })),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        unarchived,
+        TurnStreamEvent::ThreadUnarchived {
+            thread_id: "thread_unarchived".to_string(),
+        }
+    );
+
+    let deleted = parse_turn_stream_event(
+        "thread/deleted",
+        Some(json!({ "threadId": "thread_deleted" })),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        deleted,
+        TurnStreamEvent::ThreadDeleted {
+            thread_id: "thread_deleted".to_string(),
+        }
+    );
+}
+
+#[test]
 fn thread_started_notification_preserves_agent_nickname_metadata() {
     let event = parse_turn_stream_event(
         "thread/started",

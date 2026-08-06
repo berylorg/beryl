@@ -60,6 +60,8 @@ mod shell {
     pub(super) mod graph;
     #[path = "../../src/shell/graph_worker.rs"]
     pub(super) mod graph_worker;
+    #[path = "../../src/shell/liveness_diagnostics.rs"]
+    pub(crate) mod liveness_diagnostics;
     #[path = "../../src/shell/thread_activation.rs"]
     pub(super) mod thread_activation;
     #[path = "../../src/shell/thread_selection.rs"]

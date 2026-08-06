@@ -256,8 +256,13 @@ impl WorkspaceConversationState {
                 && member.canonical_path() == execution_target.canonical_path()
         }) {
             let member_id = member.id().clone();
+            let replaces_implicit_home =
+                !self.has_available_explicit_members() && self.default_runtime.is_some();
             let member_changed = self.mark_explicit_member_available(&member_id)?;
-            return Ok(changed || member_changed);
+            let rebound_implicit_home = replaces_implicit_home
+                && member_changed
+                && self.mark_implicit_home_threads_rebind_required();
+            return Ok(changed || member_changed || rebound_implicit_home);
         }
 
         self.ensure_no_member_overlap(
@@ -295,6 +300,8 @@ impl WorkspaceConversationState {
 
     pub fn remember_thread(&mut self, thread: RegisteredConversationThread) -> bool {
         let mut thread = thread;
+        // Backend-derived registrations must never create or replace GUI-owned lifecycle provenance.
+        thread.orchestration_root_thread_id = None;
         if thread.member_binding.is_none() {
             thread.member_binding = self.binding_for_execution_target(thread.execution_target());
         }
@@ -335,6 +342,9 @@ impl WorkspaceConversationState {
             if existing.beryl_created() {
                 thread.mark_beryl_created();
             }
+            thread
+                .orchestration_root_thread_id
+                .clone_from(&existing.orchestration_root_thread_id);
             if thread.backend_name().is_some() {
                 thread.ignored_backend_name_for_automatic_title = None;
             } else if thread.ignored_backend_name_for_automatic_title().is_none() {
@@ -403,6 +413,77 @@ impl WorkspaceConversationState {
             })?
             .mark_beryl_created();
         Ok(changed)
+    }
+
+    /// Records a registered thread as the root of its lifecycle orchestration sequence.
+    pub fn record_thread_as_orchestration_root(
+        &mut self,
+        thread_id: &ConversationThreadId,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        if thread_id.as_str().trim().is_empty() {
+            return Err(WorkspaceConversationStateError::EmptyOrchestrationRootThreadId);
+        }
+
+        let thread = self.thread_registration_mut(thread_id).ok_or_else(|| {
+            WorkspaceConversationStateError::MissingThread {
+                thread_id: thread_id.clone(),
+            }
+        })?;
+        match thread.orchestration_root_thread_id() {
+            None => Ok(thread.record_orchestration_root_thread_id(thread_id.clone())),
+            Some(existing_root_thread_id) if existing_root_thread_id == thread_id => Ok(false),
+            Some(existing_root_thread_id) => Err(
+                WorkspaceConversationStateError::ConflictingOrchestrationRootAssignment {
+                    thread_id: thread_id.clone(),
+                    existing_root_thread_id: existing_root_thread_id.clone(),
+                    requested_root_thread_id: thread_id.clone(),
+                },
+            ),
+        }
+    }
+
+    /// Records the lifecycle orchestration root for a registered phase thread.
+    ///
+    /// This provenance is separate from backend fork-parent metadata.
+    pub fn record_thread_orchestration_root(
+        &mut self,
+        thread_id: &ConversationThreadId,
+        root_thread_id: &ConversationThreadId,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        if root_thread_id.as_str().trim().is_empty() {
+            return Err(WorkspaceConversationStateError::EmptyOrchestrationRootThreadId);
+        }
+
+        let root = self.thread_registration(root_thread_id).ok_or_else(|| {
+            WorkspaceConversationStateError::MissingOrchestrationRootRegistration {
+                root_thread_id: root_thread_id.clone(),
+            }
+        })?;
+        if root.orchestration_root_thread_id() != Some(root_thread_id) {
+            return Err(
+                WorkspaceConversationStateError::OrchestrationRootNotSelfIdentified {
+                    root_thread_id: root_thread_id.clone(),
+                    recorded_root_thread_id: root.orchestration_root_thread_id().cloned(),
+                },
+            );
+        }
+
+        let thread = self.thread_registration_mut(thread_id).ok_or_else(|| {
+            WorkspaceConversationStateError::MissingThread {
+                thread_id: thread_id.clone(),
+            }
+        })?;
+        match thread.orchestration_root_thread_id() {
+            None => Ok(thread.record_orchestration_root_thread_id(root_thread_id.clone())),
+            Some(existing_root_thread_id) if existing_root_thread_id == root_thread_id => Ok(false),
+            Some(existing_root_thread_id) => Err(
+                WorkspaceConversationStateError::ConflictingOrchestrationRootAssignment {
+                    thread_id: thread_id.clone(),
+                    existing_root_thread_id: existing_root_thread_id.clone(),
+                    requested_root_thread_id: root_thread_id.clone(),
+                },
+            ),
+        }
     }
 
     pub fn mark_thread_automatic_title_generation_started(
@@ -677,7 +758,13 @@ impl WorkspaceConversationState {
         let mut changed = false;
 
         for thread in &mut self.threads {
-            if thread.execution_target() != execution_target {
+            if thread.execution_target() != execution_target
+                || thread
+                    .member_binding
+                    .as_ref()
+                    .and_then(ConversationThreadMemberBinding::explicit_member_id)
+                    != Some(member_id)
+            {
                 continue;
             }
 

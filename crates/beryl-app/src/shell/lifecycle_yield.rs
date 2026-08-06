@@ -59,6 +59,10 @@ impl LifecycleYieldState {
             .is_some()
     }
 
+    pub(super) fn clear_thread(&mut self, thread_id: &str) {
+        self.pending.retain(|key, _| key.thread_id != thread_id);
+    }
+
     pub(super) fn clear_all(&mut self) {
         self.pending.clear();
     }
@@ -78,6 +82,10 @@ impl TerminalLifecycleYield {
         self.thread_id.as_str()
     }
 
+    pub(super) fn turn_id(&self) -> &str {
+        self.turn_id.as_str()
+    }
+
     pub(super) fn outcome(&self) -> LifecycleYieldOutcome {
         self.outcome
     }
@@ -87,6 +95,7 @@ impl TerminalLifecycleYield {
             self.outcome,
             LifecycleYieldOutcome::BlockedNeedsOperator
                 | LifecycleYieldOutcome::PhaseContinue
+                | LifecycleYieldOutcome::PhaseContinueNewThread
                 | LifecycleYieldOutcome::PlanComplete
         )
     }
@@ -99,7 +108,9 @@ impl TerminalLifecycleYield {
                 LifecycleNotificationKind::OperatorAttention
             }
             LifecycleYieldOutcome::PlanComplete => LifecycleNotificationKind::PlanComplete,
-            LifecycleYieldOutcome::PhaseNeedsReview | LifecycleYieldOutcome::PhaseContinue => {
+            LifecycleYieldOutcome::PhaseNeedsReview
+            | LifecycleYieldOutcome::PhaseContinue
+            | LifecycleYieldOutcome::PhaseContinueNewThread => {
                 return None;
             }
         };

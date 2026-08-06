@@ -17,6 +17,9 @@ use crate::diagnostic_child_protocol::{
     DiagnosticProtocolResponse, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, parse_request_frame,
     read_bounded_line_bytes, write_response_frame,
 };
+use crate::shell::liveness_diagnostics::{
+    LivenessCategory, LivenessFlags, LivenessTransition, ShellLivenessDiagnostics, shared_liveness,
+};
 
 const DIAGNOSTIC_TARGET_REQUEST_QUEUE_CAPACITY: usize = 16;
 const DIAGNOSTIC_TARGET_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -25,9 +28,10 @@ const DIAGNOSTIC_TARGET_REQUEST_CANCELLED: u8 = 1;
 const DIAGNOSTIC_TARGET_REQUEST_CLAIMED: u8 = 2;
 
 #[derive(Clone)]
-struct DiagnosticTargetShellRequestSender {
+pub(crate) struct DiagnosticTargetShellRequestSender {
     sender: SyncSender<DiagnosticTargetShellRequest>,
     response_timeout: Duration,
+    diagnostics: Arc<ShellLivenessDiagnostics>,
 }
 
 pub(crate) enum DiagnosticTargetShellRequest {
@@ -39,6 +43,7 @@ pub(crate) struct DiagnosticTargetCommandRequest {
     request: DiagnosticProtocolRequest,
     response_sender: SyncSender<DiagnosticProtocolResponse>,
     control: Arc<DiagnosticTargetRequestControl>,
+    diagnostics: Arc<ShellLivenessDiagnostics>,
 }
 
 struct DiagnosticTargetRequestControl {
@@ -51,6 +56,7 @@ pub(crate) fn spawn_diagnostic_target_stdio_server() -> Receiver<DiagnosticTarge
     let shell_sender = DiagnosticTargetShellRequestSender {
         sender,
         response_timeout: DIAGNOSTIC_TARGET_RESPONSE_TIMEOUT,
+        diagnostics: Arc::clone(shared_liveness()),
     };
     thread::spawn(move || {
         run_diagnostic_target_stdio_loop(shell_sender, io::stdin(), io::stdout());
@@ -64,16 +70,31 @@ impl DiagnosticTargetCommandRequest {
     }
 
     pub(crate) fn try_claim(&self) -> bool {
-        self.control.try_claim()
+        let claimed = self.control.try_claim();
+        self.diagnostics.record(
+            if claimed {
+                LivenessTransition::DiagnosticClaim
+            } else {
+                LivenessTransition::DiagnosticExpired
+            },
+            LivenessCategory::DiagnosticControl,
+            LivenessFlags::default(),
+        );
+        claimed
     }
 
     pub(crate) fn respond(self, response: DiagnosticProtocolResponse) {
+        self.diagnostics.record(
+            LivenessTransition::DiagnosticResponse,
+            LivenessCategory::DiagnosticControl,
+            LivenessFlags::default(),
+        );
         let _ = self.response_sender.send(response);
     }
 }
 
 impl DiagnosticTargetShellRequestSender {
-    fn request(&self, request: DiagnosticProtocolRequest) -> DiagnosticProtocolResponse {
+    pub(crate) fn request(&self, request: DiagnosticProtocolRequest) -> DiagnosticProtocolResponse {
         let request_id = request.id().to_string();
         let (response_sender, response_receiver) = mpsc::sync_channel(1);
         let control = Arc::new(DiagnosticTargetRequestControl::new(self.response_timeout));
@@ -81,11 +102,14 @@ impl DiagnosticTargetShellRequestSender {
             request,
             response_sender,
             control: control.clone(),
+            diagnostics: Arc::clone(&self.diagnostics),
         });
 
+        let accounting = self.diagnostics.diagnostic_enqueue_begin();
         match self.sender.try_send(shell_request) {
-            Ok(()) => {}
+            Ok(()) => accounting.commit(),
             Err(TrySendError::Full(_)) => {
+                accounting.rollback(true);
                 return DiagnosticProtocolResponse::error(
                     Some(request_id),
                     "shell_busy",
@@ -93,6 +117,7 @@ impl DiagnosticTargetShellRequestSender {
                 );
             }
             Err(TrySendError::Disconnected(_)) => {
+                accounting.rollback(false);
                 return DiagnosticProtocolResponse::error(
                     Some(request_id),
                     "shell_unavailable",
@@ -105,6 +130,11 @@ impl DiagnosticTargetShellRequestSender {
             Ok(response) => response,
             Err(_) => {
                 control.cancel();
+                self.diagnostics.record(
+                    LivenessTransition::DiagnosticTimeout,
+                    LivenessCategory::DiagnosticControl,
+                    LivenessFlags::default(),
+                );
                 DiagnosticProtocolResponse::error(
                     Some(request_id),
                     "shell_timeout",
@@ -115,7 +145,12 @@ impl DiagnosticTargetShellRequestSender {
     }
 
     fn shutdown(&self) {
-        let _ = self.sender.try_send(DiagnosticTargetShellRequest::Shutdown);
+        let accounting = self.diagnostics.diagnostic_enqueue_begin();
+        match self.sender.try_send(DiagnosticTargetShellRequest::Shutdown) {
+            Ok(()) => accounting.commit(),
+            Err(TrySendError::Full(_)) => accounting.rollback(true),
+            Err(TrySendError::Disconnected(_)) => accounting.rollback(false),
+        }
     }
 }
 
@@ -152,7 +187,7 @@ impl DiagnosticTargetRequestControl {
     }
 }
 
-fn run_diagnostic_target_stdio_loop(
+pub(crate) fn run_diagnostic_target_stdio_loop(
     shell_sender: DiagnosticTargetShellRequestSender,
     input: impl Read,
     mut output: impl Write,
@@ -168,6 +203,17 @@ fn run_diagnostic_target_stdio_loop(
             Ok(BoundedLineRead::Line(line)) => match parse_request_frame(&line) {
                 Ok(Some(request)) if request.command() == DiagnosticChildCommand::Handshake => {
                     Some(handshake_response(request.id()))
+                }
+                Ok(Some(request)) if request.command() == DiagnosticChildCommand::ReadLiveness => {
+                    shell_sender.diagnostics.record(
+                        LivenessTransition::DiagnosticRead,
+                        LivenessCategory::DiagnosticControl,
+                        LivenessFlags::default(),
+                    );
+                    Some(DiagnosticProtocolResponse::success(
+                        request.id(),
+                        shell_sender.diagnostics.snapshot_value(),
+                    ))
                 }
                 Ok(Some(request)) => Some(shell_sender.request(request)),
                 Ok(None) => None,
@@ -206,5 +252,25 @@ fn handshake_response(request_id: &str) -> DiagnosticProtocolResponse {
             "protocol": DIAGNOSTIC_CHILD_PROTOCOL_NAME,
             "protocolVersion": DIAGNOSTIC_CHILD_PROTOCOL_VERSION,
         }),
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn diagnostic_target_request_channel_for_test(
+    capacity: usize,
+    response_timeout: Duration,
+    diagnostics: Arc<ShellLivenessDiagnostics>,
+) -> (
+    DiagnosticTargetShellRequestSender,
+    Receiver<DiagnosticTargetShellRequest>,
+) {
+    let (sender, receiver) = mpsc::sync_channel(capacity);
+    (
+        DiagnosticTargetShellRequestSender {
+            sender,
+            response_timeout,
+            diagnostics,
+        },
+        receiver,
     )
 }

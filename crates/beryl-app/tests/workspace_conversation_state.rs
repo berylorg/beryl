@@ -1027,6 +1027,126 @@ fn activity_auto_shows_for_accepted_parent_turn_and_hides_when_it_ends() {
 }
 
 #[test]
+fn workspace_state_persists_independent_orchestration_root_sequences() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let workspace_id = BerylWorkspaceId::new("orchestration_provenance").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Provenance", 42);
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let first_root = ConversationThreadId::new("first_root");
+    let first_child = ConversationThreadId::new("first_child");
+    let second_root = ConversationThreadId::new("second_root");
+    let second_child = ConversationThreadId::new("second_child");
+    let ordinary_thread = ConversationThreadId::new("ordinary_thread");
+    let mut state = WorkspaceConversationState::default();
+
+    persistence.save_workspace_manifest(&manifest).unwrap();
+    state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    for thread_id in [
+        &first_root,
+        &first_child,
+        &second_root,
+        &second_child,
+        &ordinary_thread,
+    ] {
+        state.remember_thread(RegisteredConversationThread::new(
+            thread_id.clone(),
+            execution_target.clone(),
+            format!("{} preview", thread_id.as_str()),
+            None,
+            1,
+            2,
+        ));
+    }
+    state
+        .record_thread_as_orchestration_root(&first_root)
+        .unwrap();
+    state
+        .record_thread_orchestration_root(&first_child, &first_root)
+        .unwrap();
+    state
+        .record_thread_as_orchestration_root(&second_root)
+        .unwrap();
+    state
+        .record_thread_orchestration_root(&second_child, &second_root)
+        .unwrap();
+    persistence
+        .save_workspace_state(&workspace_id, &state)
+        .unwrap();
+
+    let loaded = persistence.load_workspace_state(&workspace_id).unwrap();
+    assert_orchestration_roots_after_reload(
+        &loaded,
+        &first_root,
+        &first_child,
+        &second_root,
+        &second_child,
+        &ordinary_thread,
+    );
+    persistence
+        .save_workspace_state(&workspace_id, &loaded)
+        .unwrap();
+    let reopened = persistence.load_workspace_state(&workspace_id).unwrap();
+    assert_orchestration_roots_after_reload(
+        &reopened,
+        &first_root,
+        &first_child,
+        &second_root,
+        &second_child,
+        &ordinary_thread,
+    );
+
+    root.close().unwrap();
+}
+
+fn assert_orchestration_roots_after_reload(
+    state: &WorkspaceConversationState,
+    first_root: &ConversationThreadId,
+    first_child: &ConversationThreadId,
+    second_root: &ConversationThreadId,
+    second_child: &ConversationThreadId,
+    ordinary_thread: &ConversationThreadId,
+) {
+    assert_eq!(
+        state
+            .thread_registration(first_root)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(first_root)
+    );
+    assert_eq!(
+        state
+            .thread_registration(first_child)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(first_root)
+    );
+    assert_eq!(
+        state
+            .thread_registration(second_root)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(second_root)
+    );
+    assert_eq!(
+        state
+            .thread_registration(second_child)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(second_root)
+    );
+    assert!(
+        state
+            .thread_registration(ordinary_thread)
+            .unwrap()
+            .orchestration_root_thread_id()
+            .is_none()
+    );
+}
+
+#[test]
 fn activity_auto_shows_during_selected_thread_context_compaction() {
     assert!(WorkspaceActivityPanelMode::Auto.panel_visible(false, true));
     assert!(WorkspaceActivityPanelMode::Auto.panel_visible(true, true));

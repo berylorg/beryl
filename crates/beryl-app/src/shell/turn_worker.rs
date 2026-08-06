@@ -28,6 +28,9 @@ use tracing::{debug, warn};
 
 use super::execution_detail::{TranscriptImagePathResolver, UserInputFragment};
 use super::graph::GraphMutationUpdate;
+use super::liveness_diagnostics::{
+    LivenessCategory, LivenessFlags, LivenessTransition, shared_liveness,
+};
 use super::thread_activation::{ExistingThreadActivationError, activate_existing_thread_direct};
 use super::thread_title::ThreadTitleCandidate;
 use super::transcript_history::TranscriptHistoryWindow;
@@ -148,14 +151,30 @@ impl ShellDynamicToolRequestSender {
             control: control.clone(),
         };
         match self.sender.try_send(shell_request) {
-            Ok(()) => {}
+            Ok(()) => {
+                shared_liveness().record(
+                    LivenessTransition::ShellToolEnqueue,
+                    LivenessCategory::ShellDynamicTool,
+                    LivenessFlags::default(),
+                );
+            }
             Err(TrySendError::Full(_)) => {
+                shared_liveness().record(
+                    LivenessTransition::ShellToolBusy,
+                    LivenessCategory::ShellDynamicTool,
+                    LivenessFlags::default(),
+                );
                 return diagnostic_bridge_unavailable_response(
                     request,
                     "Beryl live shell dynamic tool request bridge is busy.",
                 );
             }
             Err(TrySendError::Disconnected(_)) => {
+                shared_liveness().record(
+                    LivenessTransition::ShellToolBusy,
+                    LivenessCategory::ShellDynamicTool,
+                    LivenessFlags::default(),
+                );
                 return diagnostic_bridge_unavailable_response(
                     request,
                     "Beryl shell stopped receiving live shell dynamic tool requests.",
@@ -166,6 +185,11 @@ impl ShellDynamicToolRequestSender {
             Ok(response) => response,
             Err(_) => {
                 control.cancel();
+                shared_liveness().record(
+                    LivenessTransition::ShellToolTimeout,
+                    LivenessCategory::ShellDynamicTool,
+                    LivenessFlags::default(),
+                );
                 diagnostic_bridge_unavailable_response(
                     request,
                     "Timed out waiting for Beryl shell dynamic tool response.",
@@ -221,10 +245,25 @@ impl ShellDynamicToolRequest {
     }
 
     pub(crate) fn try_claim(&self) -> bool {
-        self.control.try_claim()
+        let claimed = self.control.try_claim();
+        shared_liveness().record(
+            if claimed {
+                LivenessTransition::ShellToolClaim
+            } else {
+                LivenessTransition::ShellToolExpired
+            },
+            LivenessCategory::ShellDynamicTool,
+            LivenessFlags::default(),
+        );
+        claimed
     }
 
     pub(crate) fn respond(self, response: DynamicToolCallResponse) {
+        shared_liveness().record(
+            LivenessTransition::ShellToolResponse,
+            LivenessCategory::ShellDynamicTool,
+            LivenessFlags::default(),
+        );
         let _ = self.response_sender.send(response);
     }
 }
@@ -556,7 +595,41 @@ fn send_turn_worker_update(
     sender: &SyncSender<TurnWorkerUpdate>,
     update: TurnWorkerUpdate,
 ) -> Result<(), ()> {
+    let (category, flags) = turn_worker_update_liveness(&update);
+    shared_liveness().record(LivenessTransition::TurnUpdateEnqueue, category, flags);
     sender.send(update).map_err(|_| ())
+}
+
+fn turn_worker_update_liveness(update: &TurnWorkerUpdate) -> (LivenessCategory, LivenessFlags) {
+    match update {
+        TurnWorkerUpdate::ThreadActivated { .. } => (
+            LivenessCategory::ThreadActivatedUpdate,
+            LivenessFlags::default(),
+        ),
+        TurnWorkerUpdate::ThreadTitleEligible { .. } => (
+            LivenessCategory::ThreadTitleEligibleUpdate,
+            LivenessFlags::default(),
+        ),
+        TurnWorkerUpdate::GraphMutationFinished(_) => (
+            LivenessCategory::GraphMutationUpdate,
+            LivenessFlags::default(),
+        ),
+        TurnWorkerUpdate::LifecycleYieldAccepted(_) => (
+            LivenessCategory::LifecycleYieldAcceptedUpdate,
+            LivenessFlags {
+                lifecycle_yield_accepted: true,
+                ..LivenessFlags::default()
+            },
+        ),
+        TurnWorkerUpdate::Event(_) => (LivenessCategory::TurnEventUpdate, LivenessFlags::default()),
+        TurnWorkerUpdate::Finished(_) => (
+            LivenessCategory::FinishedUpdate,
+            LivenessFlags {
+                finished: true,
+                ..LivenessFlags::default()
+            },
+        ),
+    }
 }
 
 pub(super) fn backend_input_for_user_input_fragments(
@@ -651,7 +724,20 @@ where
             idle_poll_interval
         };
 
-        let event = match backend.next_turn_stream_event(event_timeout) {
+        let next_event = backend.next_turn_stream_event(event_timeout);
+        match &next_event {
+            Ok(Some(event)) => record_turn_event_ingress(event, active_thread_id, active_turn_id),
+            Ok(None) => {
+                shared_liveness().record(
+                    LivenessTransition::TurnEventIngress,
+                    LivenessCategory::StreamIdle,
+                    LivenessFlags::default(),
+                );
+            }
+            Err(_) => {}
+        }
+
+        let event = match next_event {
             Ok(Some(TurnStreamEvent::ProtocolError { error })) => {
                 return Err(format!(
                     "Beryl received a protocol error while streaming the turn: {}",
@@ -693,7 +779,8 @@ where
 
         if matches!(
             &event,
-            TurnStreamEvent::TurnCompleted { turn, .. } if turn.id == active_turn_id
+            TurnStreamEvent::TurnCompleted { thread_id, turn }
+                if thread_id == active_thread_id && turn.id == active_turn_id
         ) {
             saw_turn_completion = true;
         }
@@ -714,6 +801,50 @@ where
     }
 
     Ok(())
+}
+
+fn record_turn_event_ingress(
+    event: &TurnStreamEvent,
+    active_thread_id: &str,
+    active_turn_id: &str,
+) {
+    let category = match event {
+        TurnStreamEvent::ThreadStarted { .. } => LivenessCategory::ThreadStarted,
+        TurnStreamEvent::ThreadArchived { .. } => LivenessCategory::ThreadArchived,
+        TurnStreamEvent::ThreadUnarchived { .. } => LivenessCategory::ThreadUnarchived,
+        TurnStreamEvent::ThreadDeleted { .. } => LivenessCategory::ThreadDeleted,
+        TurnStreamEvent::AgentLabelUpdated { .. } => LivenessCategory::AgentLabelUpdated,
+        TurnStreamEvent::ThreadStatusChanged { .. } => LivenessCategory::ThreadStatusChanged,
+        TurnStreamEvent::ThreadClosed { .. } => LivenessCategory::ThreadClosed,
+        TurnStreamEvent::TurnStarted { .. } => LivenessCategory::TurnStarted,
+        TurnStreamEvent::TurnCompleted { .. } => LivenessCategory::TurnCompleted,
+        TurnStreamEvent::ItemStarted { .. } => LivenessCategory::ItemStarted,
+        TurnStreamEvent::ItemCompleted { .. } => LivenessCategory::ItemCompleted,
+        TurnStreamEvent::AgentMessageDelta { .. } => LivenessCategory::AgentMessageDelta,
+        TurnStreamEvent::ReasoningSummaryPartAdded { .. } => LivenessCategory::ReasoningSummaryPart,
+        TurnStreamEvent::ReasoningSummaryTextDelta { .. } => {
+            LivenessCategory::ReasoningSummaryDelta
+        }
+        TurnStreamEvent::ReasoningTextDelta { .. } => LivenessCategory::ReasoningTextDelta,
+        TurnStreamEvent::CommandExecutionOutputDelta { .. } => LivenessCategory::CommandOutputDelta,
+        TurnStreamEvent::FileChangeOutputDelta { .. } => LivenessCategory::FileChangeOutputDelta,
+        TurnStreamEvent::TokenUsageUpdated { .. } => LivenessCategory::TokenUsage,
+        TurnStreamEvent::AccountRateLimitsUpdated { .. } => LivenessCategory::AccountRateLimits,
+        TurnStreamEvent::ThreadNameUpdated { .. } => LivenessCategory::ThreadName,
+        TurnStreamEvent::ApprovalRequested(_) => LivenessCategory::ApprovalRequest,
+        TurnStreamEvent::DynamicToolCallRequested(_) => LivenessCategory::DynamicToolCall,
+        TurnStreamEvent::ProtocolError { .. } => LivenessCategory::ProtocolError,
+    };
+    let flags = match event {
+        TurnStreamEvent::TurnCompleted { thread_id, turn } => LivenessFlags {
+            exact_thread_match: thread_id == active_thread_id,
+            exact_turn_match: turn.id == active_turn_id,
+            terminal: true,
+            ..LivenessFlags::default()
+        },
+        _ => LivenessFlags::default(),
+    };
+    shared_liveness().record(LivenessTransition::TurnEventIngress, category, flags);
 }
 
 fn run_thread_activation_worker(

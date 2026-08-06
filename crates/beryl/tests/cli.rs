@@ -16,6 +16,7 @@ fn default_parse_uses_picker_default_timeout_and_default_home() {
     assert_eq!(cli.beryl_home_dir(), None);
     assert!(!cli.memory_milestones());
     assert!(!cli.diagnostic_target_stdio());
+    assert!(!cli.diagnostic_acceptance_startup_gate());
 }
 
 #[test]
@@ -101,6 +102,24 @@ fn diagnostic_target_stdio_accepts_explicit_beryl_home() {
 
     assert!(cli.diagnostic_target_stdio());
     assert_eq!(cli.beryl_home_dir(), Some(Path::new("child-home")));
+}
+
+#[test]
+fn hidden_acceptance_gate_requires_diagnostic_target_and_stays_out_of_help() {
+    let error = parse(&["--diagnostic-acceptance-startup-gate"]).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
+
+    let cli = parse(&[
+        "--diagnostic-target-stdio",
+        "--diagnostic-acceptance-startup-gate",
+        "--beryl-home-dir",
+        "child-home",
+    ])
+    .unwrap();
+    assert!(cli.diagnostic_acceptance_startup_gate());
+
+    let help = parse(&["--help"]).unwrap_err().to_string();
+    assert!(!help.contains("diagnostic-acceptance-startup-gate"));
 }
 
 #[test]

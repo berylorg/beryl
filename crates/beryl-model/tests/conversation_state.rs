@@ -823,6 +823,336 @@ fn legacy_thread_records_without_token_usage_snapshot_deserialize() {
 }
 
 #[test]
+fn orchestration_root_provenance_round_trips_and_omits_unrelated_threads() {
+    let root_id = ConversationThreadId::new("thread_root");
+    let child_id = ConversationThreadId::new("thread_child");
+    let unrelated_id = ConversationThreadId::new("thread_unrelated");
+    let mut state = WorkspaceConversationState::default();
+    state.remember_thread(registered_thread(root_id.clone()));
+    state.remember_thread(registered_thread(child_id.clone()));
+    state.remember_thread(registered_thread(unrelated_id.clone()));
+    state.record_thread_as_orchestration_root(&root_id).unwrap();
+    state
+        .record_thread_orchestration_root(&child_id, &root_id)
+        .unwrap();
+
+    let serialized = serde_json::to_value(&state).unwrap();
+    let threads = serialized["threads"].as_array().unwrap();
+    assert!(threads.iter().any(|thread| {
+        thread["thread_id"] == "thread_root"
+            && thread["orchestration_root_thread_id"] == "thread_root"
+    }));
+    assert!(threads.iter().any(|thread| {
+        thread["thread_id"] == "thread_child"
+            && thread["orchestration_root_thread_id"] == "thread_root"
+    }));
+    assert!(threads.iter().any(|thread| {
+        thread["thread_id"] == "thread_unrelated"
+            && thread.get("orchestration_root_thread_id").is_none()
+    }));
+
+    let restored: WorkspaceConversationState = serde_json::from_value(serialized).unwrap();
+    assert_eq!(
+        restored
+            .thread_registration(&root_id)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(&root_id)
+    );
+    assert_eq!(
+        restored
+            .thread_registration(&child_id)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(&root_id)
+    );
+    assert!(
+        restored
+            .thread_registration(&unrelated_id)
+            .unwrap()
+            .orchestration_root_thread_id()
+            .is_none()
+    );
+}
+
+#[test]
+fn legacy_thread_without_orchestration_root_provenance_deserializes() {
+    let legacy_json = r#"{
+        "threads": [
+            {
+                "thread_id": "thread_1",
+                "execution_target": {
+                    "runtime_mode": "HostWindows",
+                    "canonical_path": "C:\\work\\beryl"
+                },
+                "preview": "Legacy preview",
+                "created_at_millis": 1,
+                "updated_at_millis": 2
+            }
+        ]
+    }"#;
+
+    let state: WorkspaceConversationState = serde_json::from_str(legacy_json).unwrap();
+    let thread = state
+        .thread_registration(&ConversationThreadId::new("thread_1"))
+        .unwrap();
+
+    assert!(thread.orchestration_root_thread_id().is_none());
+}
+
+#[test]
+fn orchestration_root_provenance_tracks_independent_root_sequences() {
+    let first_root = ConversationThreadId::new("thread_root_one");
+    let first_child = ConversationThreadId::new("thread_child_one");
+    let second_root = ConversationThreadId::new("thread_root_two");
+    let second_child = ConversationThreadId::new("thread_child_two");
+    let mut state = WorkspaceConversationState::default();
+    for thread_id in [&first_root, &first_child, &second_root, &second_child] {
+        state.remember_thread(registered_thread(thread_id.clone()));
+    }
+
+    state
+        .record_thread_as_orchestration_root(&first_root)
+        .unwrap();
+    state
+        .record_thread_orchestration_root(&first_child, &first_root)
+        .unwrap();
+    state
+        .record_thread_as_orchestration_root(&second_root)
+        .unwrap();
+    state
+        .record_thread_orchestration_root(&second_child, &second_root)
+        .unwrap();
+
+    assert_eq!(
+        state
+            .thread_registration(&first_child)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(&first_root)
+    );
+    assert_eq!(
+        state
+            .thread_registration(&second_child)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(&second_root)
+    );
+}
+
+#[test]
+fn reconciliation_preserves_orchestration_root_when_backend_registration_omits_it() {
+    let root_id = ConversationThreadId::new("thread_root");
+    let child_id = ConversationThreadId::new("thread_child");
+    let mut state = WorkspaceConversationState::default();
+    state.remember_thread(registered_thread(root_id.clone()));
+    state.remember_thread(registered_thread(child_id.clone()));
+    state.record_thread_as_orchestration_root(&root_id).unwrap();
+    state
+        .record_thread_orchestration_root(&child_id, &root_id)
+        .unwrap();
+
+    assert!(!state.remember_thread(registered_thread(child_id.clone())));
+    assert_eq!(
+        state
+            .thread_registration(&child_id)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(&root_id)
+    );
+}
+
+#[test]
+fn reconciliation_ignores_incoming_orchestration_root_conflicts_and_seeds() {
+    let root_id = ConversationThreadId::new("thread_root");
+    let child_id = ConversationThreadId::new("thread_child");
+    let other_id = ConversationThreadId::new("thread_other");
+    let fresh_id = ConversationThreadId::new("thread_fresh");
+    let mut state = WorkspaceConversationState::default();
+    for thread_id in [&root_id, &child_id, &other_id] {
+        state.remember_thread(registered_thread(thread_id.clone()));
+    }
+    state.record_thread_as_orchestration_root(&root_id).unwrap();
+    state
+        .record_thread_orchestration_root(&child_id, &root_id)
+        .unwrap();
+
+    assert!(
+        !state.remember_thread(registered_thread_with_persisted_root(
+            child_id.clone(),
+            other_id.clone(),
+        ))
+    );
+    assert!(state.remember_thread(registered_thread_with_persisted_root(
+        fresh_id.clone(),
+        other_id,
+    )));
+    assert_eq!(
+        state
+            .thread_registration(&child_id)
+            .unwrap()
+            .orchestration_root_thread_id(),
+        Some(&root_id)
+    );
+    assert!(
+        state
+            .thread_registration(&fresh_id)
+            .unwrap()
+            .orchestration_root_thread_id()
+            .is_none()
+    );
+}
+
+#[test]
+fn direct_registered_thread_deserialization_rejects_blank_orchestration_root() {
+    let mut value =
+        serde_json::to_value(registered_thread(ConversationThreadId::new("thread_1"))).unwrap();
+    value["orchestration_root_thread_id"] = serde_json::Value::String("  ".to_string());
+
+    assert!(serde_json::from_value::<RegisteredConversationThread>(value).is_err());
+}
+
+#[test]
+fn workspace_deserialization_rejects_unknown_non_self_and_cyclic_roots() {
+    let root_id = ConversationThreadId::new("thread_root");
+    let child_id = ConversationThreadId::new("thread_child");
+    let mut state = WorkspaceConversationState::default();
+    state.remember_thread(registered_thread(root_id.clone()));
+    state.remember_thread(registered_thread(child_id.clone()));
+    state.record_thread_as_orchestration_root(&root_id).unwrap();
+    state
+        .record_thread_orchestration_root(&child_id, &root_id)
+        .unwrap();
+    let valid = serde_json::to_value(state).unwrap();
+
+    let mut unknown = valid.clone();
+    set_persisted_root(&mut unknown, "thread_child", "missing_root");
+    assert!(serde_json::from_value::<WorkspaceConversationState>(unknown).is_err());
+
+    let mut non_self = valid.clone();
+    set_persisted_root(&mut non_self, "thread_root", "thread_child");
+    assert!(serde_json::from_value::<WorkspaceConversationState>(non_self).is_err());
+
+    let mut cycle = valid;
+    set_persisted_root(&mut cycle, "thread_root", "thread_child");
+    set_persisted_root(&mut cycle, "thread_child", "thread_root");
+    assert!(serde_json::from_value::<WorkspaceConversationState>(cycle).is_err());
+}
+
+#[test]
+fn workspace_deserialization_rejects_duplicate_registered_thread_ids() {
+    let root_id = ConversationThreadId::new("thread_root");
+    let mut root_state = WorkspaceConversationState::default();
+    root_state.remember_thread(registered_thread(root_id.clone()));
+    root_state
+        .record_thread_as_orchestration_root(&root_id)
+        .unwrap();
+    let mut duplicate_root = serde_json::to_value(root_state).unwrap();
+    let conflicting_root = duplicate_root["threads"][0].clone();
+    let mut conflicting_root = conflicting_root;
+    conflicting_root
+        .as_object_mut()
+        .unwrap()
+        .remove("orchestration_root_thread_id");
+    duplicate_root["threads"]
+        .as_array_mut()
+        .unwrap()
+        .push(conflicting_root);
+    assert!(serde_json::from_value::<WorkspaceConversationState>(duplicate_root).is_err());
+
+    let ordinary_id = ConversationThreadId::new("thread_ordinary");
+    let mut ordinary_state = WorkspaceConversationState::default();
+    ordinary_state.remember_thread(registered_thread(ordinary_id));
+    let mut duplicate_ordinary = serde_json::to_value(ordinary_state).unwrap();
+    let ordinary = duplicate_ordinary["threads"][0].clone();
+    duplicate_ordinary["threads"]
+        .as_array_mut()
+        .unwrap()
+        .push(ordinary);
+    assert!(serde_json::from_value::<WorkspaceConversationState>(duplicate_ordinary).is_err());
+}
+
+#[test]
+fn orchestration_root_provenance_rejects_empty_root_identity() {
+    let thread_id = ConversationThreadId::new("thread_1");
+    let mut state = WorkspaceConversationState::default();
+    state.remember_thread(registered_thread(thread_id.clone()));
+
+    assert!(matches!(
+        state.record_thread_orchestration_root(&thread_id, &ConversationThreadId::new("  ")),
+        Err(WorkspaceConversationStateError::EmptyOrchestrationRootThreadId)
+    ));
+}
+
+#[test]
+fn orchestration_root_assignment_is_immutable_and_requires_a_self_identified_root() {
+    let root_id = ConversationThreadId::new("thread_root");
+    let child_id = ConversationThreadId::new("thread_child");
+    let other_id = ConversationThreadId::new("thread_other");
+    let mut state = WorkspaceConversationState::default();
+    for thread_id in [&root_id, &child_id, &other_id] {
+        state.remember_thread(registered_thread(thread_id.clone()));
+    }
+
+    assert!(state.record_thread_as_orchestration_root(&root_id).unwrap());
+    assert!(!state.record_thread_as_orchestration_root(&root_id).unwrap());
+    assert!(
+        state
+            .record_thread_orchestration_root(&child_id, &root_id)
+            .unwrap()
+    );
+    assert!(
+        !state
+            .record_thread_orchestration_root(&child_id, &root_id)
+            .unwrap()
+    );
+    assert!(matches!(
+        state.record_thread_orchestration_root(&child_id, &other_id),
+        Err(WorkspaceConversationStateError::OrchestrationRootNotSelfIdentified { .. })
+    ));
+    assert!(matches!(
+        state.record_thread_orchestration_root(&child_id, &ConversationThreadId::new("missing")),
+        Err(WorkspaceConversationStateError::MissingOrchestrationRootRegistration { .. })
+    ));
+    assert!(matches!(
+        state.record_thread_as_orchestration_root(&child_id),
+        Err(WorkspaceConversationStateError::ConflictingOrchestrationRootAssignment { .. })
+    ));
+}
+
+#[test]
+fn orchestration_root_cycle_attempts_reject_before_mutation() {
+    let first_id = ConversationThreadId::new("thread_first");
+    let second_id = ConversationThreadId::new("thread_second");
+    let mut state = WorkspaceConversationState::default();
+    state.remember_thread(registered_thread(first_id.clone()));
+    state.remember_thread(registered_thread(second_id.clone()));
+
+    assert!(matches!(
+        state.record_thread_orchestration_root(&first_id, &second_id),
+        Err(WorkspaceConversationStateError::OrchestrationRootNotSelfIdentified { .. })
+    ));
+    assert!(matches!(
+        state.record_thread_orchestration_root(&second_id, &first_id),
+        Err(WorkspaceConversationStateError::OrchestrationRootNotSelfIdentified { .. })
+    ));
+    assert!(
+        state
+            .thread_registration(&first_id)
+            .unwrap()
+            .orchestration_root_thread_id()
+            .is_none()
+    );
+    assert!(
+        state
+            .thread_registration(&second_id)
+            .unwrap()
+            .orchestration_root_thread_id()
+            .is_none()
+    );
+}
+
+#[test]
 fn legacy_attempted_automatic_title_generation_without_title_deserializes_as_retryable() {
     let legacy_json = r#"{
         "threads": [
@@ -994,7 +1324,7 @@ fn returning_unavailable_member_restores_matching_thread_binding() {
 }
 
 #[test]
-fn reattaching_same_target_after_detach_restores_matching_thread_binding() {
+fn reattaching_same_target_after_detach_keeps_explicit_rebind_required() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
     let thread_id = ConversationThreadId::new("thread_1");
     let mut state = WorkspaceConversationState::default();
@@ -1021,16 +1351,16 @@ fn reattaching_same_target_after_detach_restores_matching_thread_binding() {
 
     state.attach_execution_target(&execution_target).unwrap();
 
-    let restored_member_id = state.primary_explicit_member().unwrap().id().clone();
-    assert_ne!(restored_member_id, original_member_id);
+    let replacement_member_id = state.primary_explicit_member().unwrap().id().clone();
+    assert_ne!(replacement_member_id, original_member_id);
     let thread = state.thread_registration(&thread_id).unwrap();
-    assert!(!thread.requires_rebind());
+    assert!(thread.requires_rebind());
     assert!(matches!(
         thread.member_binding(),
         Some(ConversationThreadMemberBinding::Explicit {
             member_id: bound_member_id,
             execution_target: bound_target,
-        }) if bound_member_id == &restored_member_id && bound_target == &execution_target
+        }) if bound_member_id == &original_member_id && bound_target == &execution_target
     ));
 }
 
@@ -1122,4 +1452,34 @@ fn token_usage_snapshot(
         model_context_window,
         observed_at_millis,
     )
+}
+
+fn registered_thread(thread_id: ConversationThreadId) -> RegisteredConversationThread {
+    RegisteredConversationThread::new(
+        thread_id,
+        WorkspaceId::host_windows(r"C:\work\beryl"),
+        "Preview",
+        None,
+        1,
+        2,
+    )
+}
+
+fn registered_thread_with_persisted_root(
+    thread_id: ConversationThreadId,
+    root_thread_id: ConversationThreadId,
+) -> RegisteredConversationThread {
+    let mut value = serde_json::to_value(registered_thread(thread_id)).unwrap();
+    value["orchestration_root_thread_id"] =
+        serde_json::Value::String(root_thread_id.as_str().to_string());
+    serde_json::from_value(value).unwrap()
+}
+
+fn set_persisted_root(value: &mut serde_json::Value, thread_id: &str, root_thread_id: &str) {
+    let threads = value["threads"].as_array_mut().unwrap();
+    let thread = threads
+        .iter_mut()
+        .find(|thread| thread["thread_id"] == thread_id)
+        .unwrap();
+    thread["orchestration_root_thread_id"] = serde_json::Value::String(root_thread_id.to_string());
 }

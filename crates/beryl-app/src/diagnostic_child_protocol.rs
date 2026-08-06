@@ -17,6 +17,7 @@ pub(crate) const READ_MEDIA_EVENTS_COMMAND: &str = "read_media_events";
 pub(crate) const READ_TRANSCRIPT_FRAME_METRICS_COMMAND: &str = "read_transcript_frame_metrics";
 pub(crate) const READ_SETTINGS_WINDOW_COMMAND: &str = "read_settings_window";
 pub(crate) const READ_UI_STATE_COMMAND: &str = "read_ui_state";
+pub(crate) const READ_LIVENESS_COMMAND: &str = "read_liveness";
 pub(crate) const LIST_WORKSPACE_THREADS_COMMAND: &str = "list_workspace_threads";
 pub(crate) const CREATE_NEW_THREAD_COMMAND: &str = "create_new_thread";
 pub(crate) const START_TURN_COMMAND: &str = "start_turn";
@@ -52,6 +53,7 @@ pub(crate) enum DiagnosticChildCommand {
     ReadTranscriptFrameMetrics,
     ReadSettingsWindow,
     ReadUiState,
+    ReadLiveness,
     ListWorkspaceThreads,
     CreateNewThread,
     StartTurn,
@@ -140,6 +142,7 @@ impl DiagnosticChildCommand {
             Self::ReadTranscriptFrameMetrics => READ_TRANSCRIPT_FRAME_METRICS_COMMAND,
             Self::ReadSettingsWindow => READ_SETTINGS_WINDOW_COMMAND,
             Self::ReadUiState => READ_UI_STATE_COMMAND,
+            Self::ReadLiveness => READ_LIVENESS_COMMAND,
             Self::ListWorkspaceThreads => LIST_WORKSPACE_THREADS_COMMAND,
             Self::CreateNewThread => CREATE_NEW_THREAD_COMMAND,
             Self::StartTurn => START_TURN_COMMAND,
@@ -169,6 +172,7 @@ impl TryFrom<&str> for DiagnosticChildCommand {
             READ_TRANSCRIPT_FRAME_METRICS_COMMAND => Ok(Self::ReadTranscriptFrameMetrics),
             READ_SETTINGS_WINDOW_COMMAND => Ok(Self::ReadSettingsWindow),
             READ_UI_STATE_COMMAND => Ok(Self::ReadUiState),
+            READ_LIVENESS_COMMAND => Ok(Self::ReadLiveness),
             LIST_WORKSPACE_THREADS_COMMAND => Ok(Self::ListWorkspaceThreads),
             CREATE_NEW_THREAD_COMMAND => Ok(Self::CreateNewThread),
             START_TURN_COMMAND => Ok(Self::StartTurn),
@@ -305,7 +309,12 @@ pub(crate) fn request_frame(
         "command": command.as_str(),
         "params": params,
     });
-    serialize_frame(&frame)
+    serialize_frame(&frame).map_err(|error| match error {
+        DiagnosticProtocolError::ResponseTooLarge { limit } => {
+            DiagnosticProtocolError::FrameTooLarge { limit }
+        }
+        error => error,
+    })
 }
 
 pub(crate) fn write_response_frame(

@@ -8,6 +8,7 @@ use crate::{
     BerylThemeRole,
     shell::{
         ConversationSurfaceState, ShellRenderFrame, ShellView,
+        phase_thread_transition::PHASE_THREAD_TRANSITION_BUSY_MESSAGE,
         transcript_branch_menu_state::{
             TranscriptBranchAction, TranscriptThreadTitleUpdateDisabledReason,
             TranscriptThreadTitleUpdateMenuEntry,
@@ -76,7 +77,8 @@ pub(super) fn render_transcript_branch_menu(
 ) -> Option<AnyElement> {
     let menu = surface.transcript_branch_menu().active()?;
     let entity = cx.entity();
-    let branch_target_available = menu.branch_target().is_some();
+    let lifecycle_transition_active = shell.lifecycle_phase_thread_transition_active();
+    let branch_target_available = menu.branch_target().is_some() && !lifecycle_transition_active;
     let edit_entry = menu.edit_entry().cloned();
     let title_update_entry = menu.title_update_entry().cloned();
     let image_target_available = menu.image_target().is_some();
@@ -115,7 +117,7 @@ pub(super) fn render_transcript_branch_menu(
                             .gap_1()
                             .child(menu_header(shell, "Turn"))
                             .when_some(edit_entry, |this, entry| {
-                                this.child(edit_row(shell, entry, cx))
+                                this.child(edit_row(shell, entry, lifecycle_transition_active, cx))
                             })
                             .when_some(title_update_entry, |this, entry| {
                                 this.child(thread_title_update_row(shell, entry, cx))
@@ -170,8 +172,12 @@ fn save_image_as_row(
 fn edit_row(
     shell: &ShellRenderFrame<'_>,
     entry: TranscriptEditMenuEntry,
+    lifecycle_transition_active: bool,
     cx: &mut Context<ShellView>,
 ) -> AnyElement {
+    if lifecycle_transition_active {
+        return disabled_lifecycle_edit_row(shell).into_any_element();
+    }
     if let Some(reason) = entry.disabled_reason() {
         return disabled_edit_row(shell, reason).into_any_element();
     }
@@ -183,6 +189,17 @@ fn edit_row(
         cx.listener(ShellView::edit_transcript_turn_from_menu),
     )
     .into_any_element()
+}
+
+fn disabled_lifecycle_edit_row(shell: &ShellRenderFrame<'_>) -> impl IntoElement {
+    let tooltip = TranscriptTurnMenuTooltip {
+        message: PHASE_THREAD_TRANSITION_BUSY_MESSAGE,
+        background: shell.popup_surface_background(),
+        border: shell.surface_border(),
+        foreground: shell.general_ui_foreground(),
+    };
+    disabled_secondary_button(shell, "transcript-edit-message-row", "Edit message")
+        .tooltip(move |_, cx| build_transcript_turn_menu_tooltip(tooltip.clone(), cx))
 }
 
 fn disabled_edit_row(

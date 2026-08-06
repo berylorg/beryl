@@ -4,7 +4,7 @@ mod backend_availability;
 use std::{io, time::Duration};
 
 use backend_availability::BackendUnavailableKind;
-use beryl_backend::{CompatibilityError, ManagedBackendError};
+use beryl_backend::{CompatibilityError, ManagedBackendError, ManagedBackendLaunchOptionsError};
 
 #[test]
 fn backend_error_classification_distinguishes_missing_executable_from_spawn_failure() {
@@ -61,4 +61,54 @@ fn backend_error_classification_groups_probe_and_transport_failures() {
         BackendUnavailableKind::ProbeFailed.diagnostic_label(),
         "probe_failed"
     );
+}
+
+#[test]
+fn backend_error_classification_covers_new_launch_and_combined_shutdown_failures() {
+    let invalid_options = ManagedBackendError::InvalidLaunchOptions {
+        source: ManagedBackendLaunchOptionsError::EmptyExactHostWindowsProgram,
+    };
+    let combined_shutdown = ManagedBackendError::ShutdownProcessAndAuth {
+        process: Box::new(ManagedBackendError::ProcessExited {
+            method: "shutdown".to_string(),
+        }),
+        auth: Box::new(ManagedBackendError::RequestTimeout {
+            method: "auth cleanup".to_string(),
+            timeout: Duration::from_secs(1),
+        }),
+    };
+
+    assert_eq!(
+        BackendUnavailableKind::from_backend_error(&invalid_options),
+        BackendUnavailableKind::SpawnFailed
+    );
+    assert_eq!(
+        BackendUnavailableKind::from_backend_error(&combined_shutdown),
+        BackendUnavailableKind::ProbeFailed
+    );
+}
+
+#[test]
+fn backend_error_classification_groups_session_and_stdio_failures_with_probe_failures() {
+    let errors = [
+        ManagedBackendError::SessionPoisoned {
+            method: "config/read".to_string(),
+        },
+        ManagedBackendError::StdioWriterStopped {
+            method: "config/read".to_string(),
+        },
+        ManagedBackendError::StdioWriterPanicked,
+        ManagedBackendError::StdioCleanupFailures {
+            failures: vec![ManagedBackendError::ProcessExited {
+                method: "shutdown".to_string(),
+            }],
+        },
+    ];
+
+    for error in &errors {
+        assert_eq!(
+            BackendUnavailableKind::from_backend_error(error),
+            BackendUnavailableKind::ProbeFailed
+        );
+    }
 }

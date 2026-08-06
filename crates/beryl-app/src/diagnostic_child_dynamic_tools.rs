@@ -69,6 +69,41 @@ const MAX_CHILD_MEDIA_EVENT_LIMIT: usize = 128;
 const DEFAULT_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 32;
 const MAX_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 64;
 
+#[derive(Clone, Debug)]
+pub(crate) enum DiagnosticAcceptanceOperation {
+    Request {
+        command: DiagnosticChildCommand,
+        params: Value,
+    },
+    WaitForState {
+        arguments: DiagnosticWaitForStateArguments,
+        params: Value,
+    },
+}
+
+pub(crate) fn compile_diagnostic_acceptance_operation(
+    operation: &str,
+    arguments: &Value,
+) -> Result<DiagnosticAcceptanceOperation, String> {
+    if operation == DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL {
+        let arguments = parse_arguments::<DiagnosticWaitForStateArguments>(arguments)
+            .and_then(|arguments| {
+                arguments.normalized().map_err(|message| {
+                    DiagnosticChildDynamicToolError::new("invalid_arguments", message)
+                })
+            })
+            .map_err(|error| error.message)?;
+        let params = serde_json::to_value(&arguments).map_err(|error| {
+            format!("could not serialize normalized wait_for_state arguments: {error}")
+        })?;
+        return Ok(DiagnosticAcceptanceOperation::WaitForState { arguments, params });
+    }
+
+    let (command, params) =
+        child_command_and_params_for_tool(operation, arguments).map_err(|error| error.message)?;
+    Ok(DiagnosticAcceptanceOperation::Request { command, params })
+}
+
 pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
     vec![
         diagnostic_child_tool_spec(
@@ -348,7 +383,8 @@ fn diagnostic_child_tool_result(
         | DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL
         | DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL => {
             ensure_child_running(supervisor)?;
-            let (command, params) = child_command_and_params(request)?;
+            let (command, params) =
+                child_command_and_params_for_tool(request.tool(), request.arguments())?;
             supervisor
                 .request(command, params, DIAGNOSTIC_CHILD_REQUEST_TIMEOUT)
                 .map_err(map_supervisor_error)
@@ -360,122 +396,123 @@ fn diagnostic_child_tool_result(
     }
 }
 
-fn child_command_and_params(
-    request: &DynamicToolCallRequest,
+fn child_command_and_params_for_tool(
+    tool: &str,
+    arguments: &Value,
 ) -> Result<(DiagnosticChildCommand, Value), DiagnosticChildDynamicToolError> {
-    match request.tool() {
+    match tool {
         DIAGNOSTIC_CHILD_READ_PROCESS_TOOL => {
-            parse_arguments::<EmptyArguments>(request.arguments())?;
+            parse_arguments::<EmptyArguments>(arguments)?;
             Ok((DiagnosticChildCommand::ReadProcess, json!({})))
         }
         DIAGNOSTIC_CHILD_READ_MEMORY_TOOL => {
-            parse_arguments::<EmptyArguments>(request.arguments())?;
+            parse_arguments::<EmptyArguments>(arguments)?;
             Ok((DiagnosticChildCommand::ReadMemory, json!({})))
         }
         DIAGNOSTIC_CHILD_READ_RENDERER_TOOL => {
-            let arguments = parse_arguments::<ReadRendererArguments>(request.arguments())?;
-            if arguments.prepare_window.unwrap_or(false) {
+            let parsed = parse_arguments::<ReadRendererArguments>(arguments)?;
+            if parsed.prepare_window.unwrap_or(false) {
                 Ok((DiagnosticChildCommand::PrepareRendererWindow, json!({})))
             } else {
                 Ok((DiagnosticChildCommand::ReadRenderer, json!({})))
             }
         }
         DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL => {
-            parse_arguments::<EmptyArguments>(request.arguments())?;
+            parse_arguments::<EmptyArguments>(arguments)?;
             Ok((DiagnosticChildCommand::PrepareRendererWindow, json!({})))
         }
         DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL => {
-            parse_arguments::<EmptyArguments>(request.arguments())?;
+            parse_arguments::<EmptyArguments>(arguments)?;
             Ok((DiagnosticChildCommand::ReadRetainedState, json!({})))
         }
         DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL => Ok((
             DiagnosticChildCommand::ReadVisibleMedia,
             limited_read_params(
-                request.arguments(),
+                arguments,
                 DEFAULT_CHILD_VISIBLE_MEDIA_LIMIT,
                 MAX_CHILD_VISIBLE_MEDIA_LIMIT,
             )?,
         )),
         DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL => Ok((
             DiagnosticChildCommand::ReadMediaEvents,
-            media_events_params(request.arguments())?,
+            media_events_params(arguments)?,
         )),
         DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL => Ok((
             DiagnosticChildCommand::ReadTranscriptFrameMetrics,
-            transcript_frame_metrics_params(request.arguments())?,
+            transcript_frame_metrics_params(arguments)?,
         )),
         DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL => {
-            parse_arguments::<EmptyArguments>(request.arguments())?;
+            parse_arguments::<EmptyArguments>(arguments)?;
             Ok((DiagnosticChildCommand::ReadSettingsWindow, json!({})))
         }
         DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL => {
-            let arguments = parse_arguments::<DiagnosticThreadListArguments>(request.arguments())?;
+            let parsed = parse_arguments::<DiagnosticThreadListArguments>(arguments)?;
             Ok((
                 DiagnosticChildCommand::ListWorkspaceThreads,
-                json!({ "limit": arguments.normalized_limit() }),
+                json!({ "limit": parsed.normalized_limit() }),
             ))
         }
         DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL => {
-            parse_arguments::<EmptyArguments>(request.arguments())?;
+            parse_arguments::<EmptyArguments>(arguments)?;
             Ok((DiagnosticChildCommand::CreateNewThread, json!({})))
         }
         DIAGNOSTIC_CHILD_START_TURN_TOOL => {
-            let arguments = parse_arguments::<DiagnosticStartTurnArguments>(request.arguments())?;
-            let text = arguments.validated_text().map_err(|message| {
+            let parsed = parse_arguments::<DiagnosticStartTurnArguments>(arguments)?;
+            let text = parsed.validated_text().map_err(|message| {
                 DiagnosticChildDynamicToolError::new("invalid_arguments", message)
             })?;
             Ok((DiagnosticChildCommand::StartTurn, json!({ "text": text })))
         }
         DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL => {
-            let arguments = parse_arguments::<DiagnosticStopTurnArguments>(request.arguments())?;
-            arguments.validate().map_err(|message| {
+            let parsed = parse_arguments::<DiagnosticStopTurnArguments>(arguments)?;
+            parsed.validate().map_err(|message| {
                 DiagnosticChildDynamicToolError::new("invalid_arguments", message)
             })?;
             Ok((
                 DiagnosticChildCommand::SoftStopTurn,
                 json!({
-                    "expectedThreadId": arguments.expected_thread_id,
-                    "expectedTurnId": arguments.expected_turn_id,
+                    "expectedThreadId": parsed.expected_thread_id,
+                    "expectedTurnId": parsed.expected_turn_id,
                 }),
             ))
         }
         DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL => {
-            let arguments = parse_arguments::<DiagnosticStopTurnArguments>(request.arguments())?;
-            arguments.validate().map_err(|message| {
+            let parsed = parse_arguments::<DiagnosticStopTurnArguments>(arguments)?;
+            parsed.validate().map_err(|message| {
                 DiagnosticChildDynamicToolError::new("invalid_arguments", message)
             })?;
             Ok((
                 DiagnosticChildCommand::HardStopTurn,
                 json!({
-                    "expectedThreadId": arguments.expected_thread_id,
-                    "expectedTurnId": arguments.expected_turn_id,
+                    "expectedThreadId": parsed.expected_thread_id,
+                    "expectedTurnId": parsed.expected_turn_id,
                 }),
             ))
         }
         DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL => gui_control_child_command(
             DiagnosticChildCommand::ReadUiState,
             READ_UI_STATE_TOOL,
-            request.arguments(),
+            arguments,
         ),
         DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL => gui_control_child_command(
             DiagnosticChildCommand::SwitchWorkspace,
             SWITCH_WORKSPACE_TOOL,
-            request.arguments(),
+            arguments,
         ),
         DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL => gui_control_child_command(
             DiagnosticChildCommand::SwitchThread,
             SWITCH_THREAD_TOOL,
-            request.arguments(),
+            arguments,
         ),
         DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL => gui_control_child_command(
             DiagnosticChildCommand::ScrollTranscript,
             SCROLL_TRANSCRIPT_TOOL,
-            request.arguments(),
+            arguments,
         ),
         DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL => gui_control_child_command(
             DiagnosticChildCommand::ClosePopups,
             CLOSE_POPUPS_TOOL,
-            request.arguments(),
+            arguments,
         ),
         other => Err(DiagnosticChildDynamicToolError::new(
             "unsupported_tool",
@@ -526,23 +563,86 @@ fn wait_for_state_result(
         .normalized()
         .map_err(|message| DiagnosticChildDynamicToolError::new("invalid_arguments", message))?;
     let started = Instant::now();
-    let deadline = started + arguments.timeout();
+    let deadline = diagnostic_wait_deadline(
+        started,
+        arguments.timeout(),
+        arguments.timeout(),
+        started + arguments.timeout(),
+    );
+    execute_diagnostic_wait_for_state(&arguments, deadline, |limit, deadline| {
+        supervisor.request_until(
+            DiagnosticChildCommand::ReadUiState,
+            json!({ "limit": limit }),
+            deadline,
+        )
+    })
+    .map_err(map_supervisor_error)
+}
+
+pub(crate) fn diagnostic_wait_deadline(
+    started: Instant,
+    normalized_wait_timeout: Duration,
+    effective_operation_timeout: Duration,
+    runtime_deadline: Instant,
+) -> Instant {
+    (started + normalized_wait_timeout)
+        .min(started + effective_operation_timeout)
+        .min(runtime_deadline)
+}
+
+pub(crate) fn execute_diagnostic_wait_for_state<E>(
+    arguments: &DiagnosticWaitForStateArguments,
+    deadline: Instant,
+    mut read_ui_state: impl FnMut(usize, Instant) -> Result<Value, E>,
+) -> Result<Value, E> {
+    let started = Instant::now();
+    let mut latest_ui_state = None;
 
     loop {
-        let latest = supervisor
-            .request(
-                DiagnosticChildCommand::ReadUiState,
-                json!({ "limit": arguments.visible_row_limit() }),
-                DIAGNOSTIC_CHILD_REQUEST_TIMEOUT,
-            )
-            .map_err(map_supervisor_error)?;
+        let now = Instant::now();
+        if now >= deadline {
+            return Ok(wait_result(
+                "timeout",
+                arguments,
+                started.elapsed(),
+                latest_ui_state,
+            ));
+        }
+        match read_ui_state(arguments.visible_row_limit(), deadline) {
+            Ok(latest) => latest_ui_state = Some(latest),
+            Err(error) => {
+                if Instant::now() >= deadline {
+                    return Ok(wait_result(
+                        "timeout",
+                        arguments,
+                        started.elapsed(),
+                        latest_ui_state,
+                    ));
+                }
+                return Err(error);
+            }
+        }
 
-        if wait_predicate_matches(&arguments, &latest) {
+        if Instant::now() >= deadline {
+            return Ok(wait_result(
+                "timeout",
+                arguments,
+                started.elapsed(),
+                latest_ui_state,
+            ));
+        }
+
+        if wait_predicate_matches(
+            arguments,
+            latest_ui_state
+                .as_ref()
+                .expect("successful wait poll records its bounded UI state"),
+        ) {
             return Ok(wait_result(
                 "matched",
-                &arguments,
+                arguments,
                 started.elapsed(),
-                latest,
+                latest_ui_state,
             ));
         }
 
@@ -550,9 +650,9 @@ fn wait_for_state_result(
         if now >= deadline {
             return Ok(wait_result(
                 "timeout",
-                &arguments,
+                arguments,
                 started.elapsed(),
-                latest,
+                latest_ui_state,
             ));
         }
 
@@ -565,21 +665,27 @@ fn wait_for_state_result(
     }
 }
 
-fn wait_result(
+pub(crate) fn wait_result(
     status: &str,
     arguments: &DiagnosticWaitForStateArguments,
     elapsed: Duration,
-    ui_state: Value,
+    ui_state: Option<Value>,
 ) -> Value {
-    json!({
+    let mut result = json!({
         "status": status,
         "predicate": arguments.predicate,
         "elapsedMs": elapsed.as_millis(),
-        "uiState": ui_state,
-    })
+    });
+    if let Some(ui_state) = ui_state {
+        result["uiState"] = ui_state;
+    }
+    result
 }
 
-fn wait_predicate_matches(arguments: &DiagnosticWaitForStateArguments, ui_state: &Value) -> bool {
+pub(crate) fn wait_predicate_matches(
+    arguments: &DiagnosticWaitForStateArguments,
+    ui_state: &Value,
+) -> bool {
     if !wait_target_identity_matches(arguments, ui_state) {
         return false;
     }
@@ -632,7 +738,7 @@ fn wait_predicate_matches(arguments: &DiagnosticWaitForStateArguments, ui_state:
     }
 }
 
-fn wait_target_identity_matches(
+pub(crate) fn wait_target_identity_matches(
     arguments: &DiagnosticWaitForStateArguments,
     ui_state: &Value,
 ) -> bool {

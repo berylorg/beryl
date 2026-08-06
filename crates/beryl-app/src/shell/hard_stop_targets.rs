@@ -97,14 +97,33 @@ impl HardStopTargetProjection {
             TurnStreamEvent::TurnCompleted { thread_id, turn } => {
                 self.finish_turn(thread_id, &turn.id)
             }
-            TurnStreamEvent::ThreadStatusChanged { thread_id, status }
-                if matches!(status, ThreadStatus::Idle) =>
-            {
-                self.finish_thread(thread_id)
+            TurnStreamEvent::ThreadStatusChanged { thread_id, status } => {
+                if matches!(status, ThreadStatus::Idle) {
+                    self.finish_thread(thread_id)
+                } else {
+                    false
+                }
             }
-            TurnStreamEvent::ThreadClosed { thread_id } => self.finish_thread(thread_id),
+            TurnStreamEvent::ThreadClosed { thread_id }
+            | TurnStreamEvent::ThreadArchived { thread_id }
+            | TurnStreamEvent::ThreadDeleted { thread_id } => self.finish_thread(thread_id),
+            TurnStreamEvent::ThreadUnarchived { .. } => false,
             TurnStreamEvent::ProtocolError { .. } => self.clear_active_targets(),
-            _ => false,
+            TurnStreamEvent::ThreadStarted { .. }
+            | TurnStreamEvent::AgentLabelUpdated { .. }
+            | TurnStreamEvent::ItemStarted { .. }
+            | TurnStreamEvent::ItemCompleted { .. }
+            | TurnStreamEvent::AgentMessageDelta { .. }
+            | TurnStreamEvent::ReasoningSummaryPartAdded { .. }
+            | TurnStreamEvent::ReasoningSummaryTextDelta { .. }
+            | TurnStreamEvent::ReasoningTextDelta { .. }
+            | TurnStreamEvent::CommandExecutionOutputDelta { .. }
+            | TurnStreamEvent::FileChangeOutputDelta { .. }
+            | TurnStreamEvent::TokenUsageUpdated { .. }
+            | TurnStreamEvent::AccountRateLimitsUpdated { .. }
+            | TurnStreamEvent::ThreadNameUpdated { .. }
+            | TurnStreamEvent::ApprovalRequested(..)
+            | TurnStreamEvent::DynamicToolCallRequested(..) => false,
         }
     }
 

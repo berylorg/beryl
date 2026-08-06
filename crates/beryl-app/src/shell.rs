@@ -7,6 +7,7 @@ use std::{
     rc::Rc,
     sync::{
         Arc, Mutex,
+        atomic::AtomicBool,
         mpsc::{self, Receiver, RecvTimeoutError, TryRecvError},
     },
     thread,
@@ -20,8 +21,8 @@ use beryl_backend::{
     TurnStartOptions, list_wsl_distros,
 };
 use beryl_model::conversation::{
-    ConversationThreadId, ConversationThreadTokenUsageSnapshot, RegisteredConversationThread,
-    WorkspaceConversationState,
+    ConversationThreadId, ConversationThreadTokenUsageSnapshot, ConversationTurnId,
+    RegisteredConversationThread, WorkspaceConversationState,
 };
 use beryl_model::semantic_graph::{SemanticGraph, SemanticNodeId, SoftLinkId, ThreadRefId};
 use beryl_model::workspace::{
@@ -83,8 +84,8 @@ use crate::gui_control_dynamic_tools::{
     scroll_transcript_tool_response, switch_thread_tool_response, ui_state_tool_response,
 };
 use crate::member_thread_inventory::{
-    MemberThreadInventoryEvent, MemberThreadInventoryMemberKey, MemberThreadInventoryMemberKind,
-    MemberThreadInventoryState, resolved_thread_title,
+    MemberThreadInventoryCoverage, MemberThreadInventoryEvent, MemberThreadInventoryMemberKey,
+    MemberThreadInventoryMemberKind, MemberThreadInventoryState, resolved_thread_title,
 };
 use crate::memory_diagnostics::{self, MemoryMilestone, RetainedStateSnapshot};
 use crate::settings_dynamic_tools::is_beryl_settings_dynamic_tool;
@@ -98,6 +99,10 @@ use crate::theme_dynamic_tools::is_beryl_theme_dynamic_tool;
 use crate::{
     AppBootstrap, GuiPreferences, WorkspaceActivityPanelMode, WorkspaceGraphRevision,
     WorkspaceGraphUpkeepPolicy, WorkspaceUiState,
+};
+use liveness_diagnostics::{
+    LivenessCategory, LivenessFlags, LivenessPollGuard, LivenessStage, LivenessTransition,
+    LivenessTransitionGuard, PollScheduleLane, PollSchedulerState, shared_liveness,
 };
 
 use self::backend_availability::{BackendAvailabilityRecord, BackendUnavailable};
@@ -398,16 +403,28 @@ mod layout;
 mod lifecycle;
 mod lifecycle_continuation;
 mod lifecycle_yield;
+pub(crate) mod liveness_diagnostics;
+mod liveness_scheduler;
 mod member_thread_inventory;
 mod notification_policy;
 mod notification_policy_adapter;
 mod notifications;
 mod pending_turn_input;
+mod phase_thread_preparation_core;
+mod phase_thread_preparation_worker;
+mod phase_thread_transition;
+mod phase_thread_transition_activation;
+mod phase_thread_transition_applicator;
+mod phase_thread_transition_deferred;
+mod phase_thread_transition_guard;
+mod phase_thread_transition_lifecycle;
+mod phase_thread_workspace_deletion;
 mod platform_attention;
 mod render;
 mod render_theme;
 mod semantic_thread_start;
 mod settings;
+mod startup_initial_thread_load;
 mod status_line;
 mod status_operation;
 mod status_operation_state;
@@ -417,6 +434,7 @@ mod syntax_highlighting;
 mod theme_candidates;
 mod thread_activation;
 mod thread_history_worker;
+mod thread_open_selection;
 mod thread_selection;
 mod thread_selector;
 mod thread_title;
@@ -514,7 +532,9 @@ use graph_worker::{
 use hard_stop::HardStopUpdate;
 use hard_stop_targets::HardStopTargetProjection;
 use lifecycle_continuation::{
-    PhaseContinueRequest, pending_turn_queue_should_wait_for_compaction, phase_continue_request,
+    PhaseContinueNewThreadHandoff, PhaseContinueRequest,
+    pending_turn_queue_should_wait_for_compaction, phase_continue_new_thread_handoff,
+    phase_continue_request, take_phase_continue_new_thread_handoff_for_finished_worker,
 };
 use lifecycle_yield::{LifecycleYieldState, TerminalLifecycleYield};
 use member_thread_inventory::MemberThreadInventoryUpdate;
@@ -530,6 +550,32 @@ use notifications::{
 use pending_turn_input::{
     PendingActiveTurnSteeringQueue, PendingActiveTurnSteeringSubmissionPlan, PendingTurnInputQueue,
     PendingTurnInputSubmissionPlan,
+};
+use phase_thread_preparation_core::{
+    PhaseThreadCleanupOutcome, PhaseThreadPreparationRequest, PhaseThreadPreparationRequestParts,
+    PhaseThreadPreparationResult,
+};
+use phase_thread_preparation_worker::spawn_phase_thread_preparation_worker;
+use phase_thread_transition::{
+    PHASE_THREAD_TRANSITION_BUSY_MESSAGE, PhaseThreadCompletionDecision, PhaseThreadCompletionKind,
+    PhaseThreadContinuationStartDecision, PhaseThreadCurrentIdentity, PhaseThreadPreparationPoll,
+    PhaseThreadPreparationTask, PhaseThreadTransitionOwner, bounded_phase_thread_notice_detail,
+    guard_phase_thread_preparation_result, phase_thread_request_registrations_are_available,
+    reduce_phase_thread_completion, reduce_phase_thread_continuation_start,
+    reduce_phase_thread_disconnect,
+};
+use phase_thread_transition_applicator::{
+    PhaseThreadCompletionHost, PhaseThreadSourceQueueHost, PreparedPhaseThreadActivation,
+    apply_deferred_prepared_registration, apply_phase_thread_completion,
+    fail_accepted_source_pending_input,
+};
+use phase_thread_transition_deferred::{
+    DeferredPhaseThreadOutcome, PreparedPhaseThreadRegistration,
+};
+use phase_thread_workspace_deletion::{
+    PhaseThreadWorkspaceDeletionDrain, PhaseThreadWorkspaceDeletionHost,
+    PhaseThreadWorkspaceDeletionPoll, ReleasedPhaseThreadWorkspaceDeletionOutcomes,
+    complete_phase_thread_workspace_deletion, poll_phase_thread_workspace_deletion,
 };
 use platform_attention::PlatformAttentionMonitor;
 use settings::{SharedActiveThemeProjection, SharedGuiPreferences};
@@ -547,6 +593,7 @@ use thread_history_worker::{
 };
 use thread_selection::{
     ThreadSelectionRequest, exact_thread_selection_request, graph_thread_ref_availability,
+    persisted_active_thread_recovery_target,
 };
 use thread_selector::{
     ThreadSelectorActivationTarget, ThreadSelectorColumnKey, ThreadSelectorState,
@@ -809,6 +856,7 @@ pub(super) struct ShellView {
     gui_preferences: SharedGuiPreferences,
     state: ShellState,
     backend_servers: HashMap<WorkspaceId, ManagedBackendServer>,
+    phase_thread_retained_backend_servers: Vec<(WorkspaceId, ManagedBackendServer)>,
     workspace_open_cancellation: Option<WorkspaceOpenCancellation>,
     discovery_receiver: Option<Receiver<DiscoveryUpdate>>,
     workspace_receiver: Option<Receiver<WorkspaceUpdate>>,
@@ -832,24 +880,28 @@ pub(super) struct ShellView {
     thread_title_update_receivers: Vec<ThreadTitleTask>,
     status_operation_receiver: Option<Receiver<StatusOperationUpdate>>,
     pending_lifecycle_phase_continue: Option<PhaseContinueRequest>,
+    pending_lifecycle_phase_continue_new_thread: Option<PhaseContinueNewThreadHandoff>,
+    phase_continue_new_thread_handoff: Option<PhaseContinueNewThreadHandoff>,
+    phase_thread_transition: PhaseThreadTransitionOwner,
     account_rate_limits_receiver: Option<Receiver<AccountRateLimitsUpdate>>,
     turn_stop_receiver: Option<Receiver<TurnStopUpdate>>,
     hard_stop_receiver: Option<Receiver<HardStopUpdate>>,
     theme_candidate_install_receiver: Option<ThemeCandidateInstallTask>,
     tool_activity_nickname_resolver: ToolActivityNicknameResolver,
     workspace_picker_action_receiver: Option<Receiver<WorkspacePickerActionUpdate>>,
+    phase_thread_workspace_deletion: Option<PhaseThreadWorkspaceDeletionDrain>,
     workspace_runtime_selector_distro_receiver:
         Option<Receiver<WorkspaceRuntimeSelectorDistroUpdate>>,
     workspace_title_receiver: Option<Receiver<WorkspaceTitleUpdate>>,
     application_shutdown_receiver: Option<Receiver<ApplicationShutdownUpdate>>,
+    application_shutdown_phase_deadline: Option<Instant>,
     workspace_persistence_queue: WorkspacePersistenceQueue,
     workspace_member_attach_pending_workspace_id: Option<BerylWorkspaceId>,
     pending_workspace_title_candidate: Option<WorkspaceTitleCandidate>,
     workspace_persistence_pending_last_poll: bool,
     status_model_cache: StatusModelListCache,
     last_backend_liveness_poll_at: Option<Instant>,
-    frame_poll_scheduled: bool,
-    ready_idle_poll_scheduled: bool,
+    poll_scheduler: Arc<Mutex<PollSchedulerState>>,
     host_path_input: Entity<SingleLineInput>,
     wsl_distro_input: Entity<SingleLineInput>,
     wsl_path_input: Entity<SingleLineInput>,
@@ -998,6 +1050,7 @@ impl Drop for ShellView {
     fn drop(&mut self) {
         self.cancel_thread_title_workers();
         self.cancel_workspace_open();
+        self.phase_thread_transition.cancel_all(Instant::now());
     }
 }
 
@@ -1053,6 +1106,10 @@ fn spawn_application_shutdown_worker(
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let mut errors = Vec::new();
+        if let Err(error) = workspace_persistence_flush.wait(pending_open_timeout) {
+            errors.push(error);
+        }
+
         for server in active_servers {
             if let Err(error) = shutdown_managed_backend_server(server, "application shutdown") {
                 errors.push(error);
@@ -1063,10 +1120,6 @@ fn spawn_application_shutdown_worker(
             && let Err(error) =
                 wait_for_pending_workspace_open_shutdown(receiver, pending_open_timeout)
         {
-            errors.push(error);
-        }
-
-        if let Err(error) = workspace_persistence_flush.wait(pending_open_timeout) {
             errors.push(error);
         }
 
@@ -1318,6 +1371,7 @@ struct AppliedStreamEvent {
     title_candidate: Option<CompletedTurnTitleCandidate>,
     turn_completion_sound: Option<TurnCompletionSoundCandidate>,
     lifecycle_yield: Option<TerminalLifecycleYield>,
+    phase_continue_new_thread_handoff: Option<PhaseContinueNewThreadHandoff>,
 }
 
 struct ActiveTurnSteeringTarget {
@@ -4048,7 +4102,7 @@ impl ConversationSurfaceState {
             beryl_backend::TurnStreamEvent::TurnCompleted { thread_id, turn }
                 if turn.is_terminal() =>
             {
-                Some((thread_id.clone(), turn.id.clone()))
+                Some((thread_id.clone(), turn.id.clone(), turn.status))
             }
             _ => None,
         };
@@ -4089,7 +4143,7 @@ impl ConversationSurfaceState {
                 self.cancel_transcript_edit_mode();
             }
         }
-        if let Some((thread_id, turn_id)) = terminal_turn.as_ref() {
+        if let Some((thread_id, turn_id, _)) = terminal_turn.as_ref() {
             self.status_line_operations
                 .finish_turn_stop_request_for_target(thread_id, turn_id);
         }
@@ -4098,10 +4152,16 @@ impl ConversationSurfaceState {
         let Some(turn_index) = self.execution_details.apply_stream_event(event) else {
             return AppliedStreamEvent::default();
         };
-        let lifecycle_yield = terminal_turn.as_ref().and_then(|(thread_id, turn_id)| {
+        let lifecycle_yield = terminal_turn.as_ref().and_then(|(thread_id, turn_id, _)| {
             self.lifecycle_yields
                 .apply_terminal_turn(thread_id, turn_id)
         });
+        let phase_continue_new_thread_handoff =
+            terminal_turn.as_ref().and_then(|(_, _, status)| {
+                lifecycle_yield
+                    .as_ref()
+                    .and_then(|yielded| phase_continue_new_thread_handoff(yielded, *status))
+            });
         if let Some(thread_id) = selected_thread_completed_turn {
             self.mark_selected_turn_finished_idle(&thread_id);
         }
@@ -4118,11 +4178,12 @@ impl ConversationSurfaceState {
             .is_some_and(TerminalLifecycleYield::suppresses_ordinary_end_turn_sound);
         AppliedStreamEvent {
             title_candidate: self.completed_turn_title_candidate(turn_index),
-            turn_completion_sound: terminal_turn.and_then(|(thread_id, turn_id)| {
+            turn_completion_sound: terminal_turn.and_then(|(thread_id, turn_id, _)| {
                 (!suppresses_ordinary_end_turn_sound)
                     .then(|| TurnCompletionSoundCandidate::new(Some(thread_id), Some(turn_id)))
             }),
             lifecycle_yield,
+            phase_continue_new_thread_handoff,
         }
     }
 
@@ -4590,6 +4651,7 @@ impl ShellView {
                 detail: "Preparing startup discovery".to_string(),
             }),
             backend_servers: HashMap::new(),
+            phase_thread_retained_backend_servers: Vec::new(),
             workspace_open_cancellation: None,
             discovery_receiver: None,
             workspace_receiver: None,
@@ -4613,23 +4675,27 @@ impl ShellView {
             thread_title_update_receivers: Vec::new(),
             status_operation_receiver: None,
             pending_lifecycle_phase_continue: None,
+            pending_lifecycle_phase_continue_new_thread: None,
+            phase_continue_new_thread_handoff: None,
+            phase_thread_transition: PhaseThreadTransitionOwner::default(),
             account_rate_limits_receiver: None,
             turn_stop_receiver: None,
             hard_stop_receiver: None,
             theme_candidate_install_receiver: None,
             tool_activity_nickname_resolver: ToolActivityNicknameResolver::default(),
             workspace_picker_action_receiver: None,
+            phase_thread_workspace_deletion: None,
             workspace_runtime_selector_distro_receiver: None,
             workspace_title_receiver: None,
             application_shutdown_receiver: None,
+            application_shutdown_phase_deadline: None,
             workspace_persistence_queue,
             workspace_member_attach_pending_workspace_id: None,
             pending_workspace_title_candidate: None,
             workspace_persistence_pending_last_poll: false,
             status_model_cache: StatusModelListCache::default(),
             last_backend_liveness_poll_at: None,
-            frame_poll_scheduled: false,
-            ready_idle_poll_scheduled: false,
+            poll_scheduler: Arc::new(Mutex::new(PollSchedulerState::default())),
             host_path_input,
             wsl_distro_input,
             wsl_path_input,
@@ -4897,25 +4963,54 @@ impl ShellView {
     pub(super) fn shutdown_all_backend_servers_in_background(&mut self, reason: &'static str) {
         self.tool_activity_nickname_resolver.reset();
         self.account_rate_limits_receiver = None;
-        for (_, server) in self.backend_servers.drain() {
+        let servers = self.backend_servers.drain().collect::<Vec<_>>();
+        for (target, server) in servers {
+            self.shutdown_or_retain_backend_server(target, server, reason);
+        }
+    }
+
+    pub(super) fn shutdown_or_retain_backend_server(
+        &mut self,
+        target: WorkspaceId,
+        server: ManagedBackendServer,
+        reason: &'static str,
+    ) {
+        if self.phase_thread_transition.owns_execution_target(&target) {
+            self.phase_thread_retained_backend_servers
+                .push((target, server));
+        } else {
             spawn_managed_backend_shutdown(server, reason);
         }
     }
 
+    pub(super) fn release_phase_thread_retained_backend_servers_if_unowned(&mut self) {
+        if self.application_shutdown_phase_deadline.is_some() {
+            return;
+        }
+        let retained = std::mem::take(&mut self.phase_thread_retained_backend_servers);
+        for (target, server) in retained {
+            if self.phase_thread_transition.owns_execution_target(&target) {
+                self.phase_thread_retained_backend_servers
+                    .push((target, server));
+            } else {
+                spawn_managed_backend_shutdown(
+                    server,
+                    "phase-thread preparation ownership completed",
+                );
+            }
+        }
+    }
+
     fn begin_application_shutdown(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.application_shutdown_receiver.is_some() {
+        if self.application_shutdown_receiver.is_some()
+            || self.application_shutdown_phase_deadline.is_some()
+        {
             self.schedule_poll_if_needed(window, cx);
             return;
         }
 
         self.cancel_thread_title_workers();
         self.cancel_workspace_open();
-        let active_servers = self
-            .backend_servers
-            .drain()
-            .map(|(_, server)| server)
-            .collect();
-        let workspace_receiver = self.workspace_receiver.take();
         self.discovery_receiver = None;
         self.graph_receiver = None;
         self.graph_thread_start_receiver = None;
@@ -4932,23 +5027,21 @@ impl ShellView {
         self.turn_steering_receivers.clear();
         self.status_operation_receiver = None;
         self.pending_lifecycle_phase_continue = None;
+        self.pending_lifecycle_phase_continue_new_thread = None;
+        self.phase_continue_new_thread_handoff = None;
         self.account_rate_limits_receiver = None;
         self.turn_stop_receiver = None;
         self.hard_stop_receiver = None;
         self.tool_activity_nickname_resolver.reset();
         self.workspace_picker_action_receiver = None;
+        self.complete_phase_thread_workspace_deletion();
         self.workspace_runtime_selector_distro_receiver = None;
         self.workspace_title_receiver = None;
         self.pending_workspace_title_candidate = None;
 
-        let timeout = self.bootstrap.probe_timeout() + APP_SHUTDOWN_OPEN_WORKER_GRACE_TIMEOUT;
-        let workspace_persistence_flush = self.workspace_persistence_queue.flush();
-        self.application_shutdown_receiver = Some(spawn_application_shutdown_worker(
-            active_servers,
-            workspace_receiver,
-            workspace_persistence_flush,
-            timeout,
-        ));
+        let deadline = Instant::now() + self.phase_thread_preparation_retention_timeout();
+        self.phase_thread_transition.cancel_all(deadline);
+        self.application_shutdown_phase_deadline = Some(deadline);
         self.schedule_poll_if_needed(window, cx);
         cx.notify();
     }
@@ -4971,17 +5064,24 @@ impl ShellView {
         self.turn_steering_receivers.clear();
         self.status_operation_receiver = None;
         self.pending_lifecycle_phase_continue = None;
+        self.pending_lifecycle_phase_continue_new_thread = None;
+        self.phase_continue_new_thread_handoff = None;
+        self.cancel_phase_thread_preparation();
         self.account_rate_limits_receiver = None;
         self.turn_stop_receiver = None;
         self.hard_stop_receiver = None;
         self.tool_activity_nickname_resolver.reset();
         self.workspace_picker_action_receiver = None;
+        self.complete_phase_thread_workspace_deletion();
         self.workspace_title_receiver = None;
         self.workspace_member_attach_pending_workspace_id = None;
         self.pending_workspace_title_candidate = None;
         self.status_model_cache = StatusModelListCache::default();
         self.last_backend_liveness_poll_at = None;
-        self.ready_idle_poll_scheduled = false;
+        self.poll_scheduler
+            .lock()
+            .expect("poll scheduler mutex poisoned")
+            .cancel(PollScheduleLane::ReadyIdle);
     }
 
     fn begin_discovery(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -5176,6 +5276,9 @@ impl ShellView {
         self.cancel_thread_title_workers();
         self.status_operation_receiver = None;
         self.pending_lifecycle_phase_continue = None;
+        self.pending_lifecycle_phase_continue_new_thread = None;
+        self.phase_continue_new_thread_handoff = None;
+        self.cancel_phase_thread_preparation();
         self.account_rate_limits_receiver = None;
         self.turn_stop_receiver = None;
         self.hard_stop_receiver = None;
@@ -5224,99 +5327,10 @@ impl ShellView {
         cx.notify();
     }
 
-    fn schedule_poll_if_needed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.has_frame_poll_work() {
-            if !self.frame_poll_scheduled {
-                let window_handle = window.window_handle();
-                self.frame_poll_scheduled = true;
-                cx.spawn(move |view: WeakEntity<Self>, cx: &mut AsyncApp| {
-                    let mut cx = cx.clone();
-                    async move {
-                        cx.background_executor().timer(FRAME_POLL_INTERVAL).await;
-                        let _ = cx.update_window(window_handle, |_, window, cx| {
-                            let _ = view.update(cx, |view, cx| {
-                                view.frame_poll_scheduled = false;
-                                view.poll(window, cx);
-                            });
-                        });
-                    }
-                })
-                .detach();
-            }
-            return;
-        }
-
-        if self.has_ready_maintenance_poll_work() && !self.ready_idle_poll_scheduled {
-            let window_handle = window.window_handle();
-            self.ready_idle_poll_scheduled = true;
-            cx.spawn(move |view: WeakEntity<Self>, cx: &mut AsyncApp| {
-                let mut cx = cx.clone();
-                async move {
-                    cx.background_executor()
-                        .timer(READY_IDLE_POLL_INTERVAL)
-                        .await;
-                    let _ = cx.update_window(window_handle, |_, window, cx| {
-                        let _ = view.update(cx, |view, cx| {
-                            view.ready_idle_poll_scheduled = false;
-                            view.poll(window, cx);
-                        });
-                    });
-                }
-            })
-            .detach();
-        }
-    }
-
     fn has_frame_poll_work(&self) -> bool {
-        self.discovery_receiver.is_some()
-            || self.workspace_receiver.is_some()
-            || self.graph_receiver.is_some()
-            || self.graph_thread_start_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
-            || self.member_thread_inventory_receiver.is_some()
-            || self.thread_activation_receiver.is_some()
-            || self.thread_history_page_receiver.is_some()
-            || self.composer_image_label_scan_receiver.is_some()
-            || self.composer_image_asset_receiver.is_some()
-            || self.turn_receiver.is_some()
-            || self.shell_tool_receiver.is_some()
-            || self.diagnostic_target_receiver.is_some()
-            || !self.turn_steering_receivers.is_empty()
-            || self.composer_image_delivery_receiver.is_some()
-            || !self.thread_title_receivers.is_empty()
-            || !self.thread_title_update_receivers.is_empty()
-            || self.status_operation_receiver.is_some()
-            || self.account_rate_limits_receiver.is_some()
-            || self.turn_stop_receiver.is_some()
-            || self.hard_stop_receiver.is_some()
-            || self.theme_candidate_install_receiver.is_some()
+        self.phase_thread_transition.has_poll_work()
             || self.dynamic_theme_durable_receiver.is_some()
-            || self.workspace_picker_action_receiver.is_some()
-            || self.workspace_runtime_selector_distro_receiver.is_some()
-            || self.workspace_title_receiver.is_some()
-            || self.application_shutdown_receiver.is_some()
-            || self.pending_workspace_title_candidate.is_some()
-            || self.workspace_persistence_pending_last_poll
-            || self.workspace_persistence_queue.has_pending_work()
-            || self
-                .loaded_workspace()
-                .is_some_and(|loaded| loaded.workspace_picker.delete_hold_active())
-            || self
-                .conversation_surface()
-                .is_some_and(|surface| surface.status_line_operations().hard_stop_hold_active())
-            || self
-                .conversation_surface()
-                .is_some_and(|surface| surface.graph_thread_link_menu().delete_hold_active())
-    }
-
-    fn has_ready_maintenance_poll_work(&self) -> bool {
-        matches!(self.state, ShellState::Ready(_))
-            && (self
-                .conversation_surface()
-                .is_some_and(|surface| surface.member_thread_inventory().needs_refresh())
-                || self.tool_activity_nickname_resolver.has_retry_work()
-                || !self.backend_servers.is_empty())
+            || self.scheduler_has_frame_poll_work()
     }
 
     fn poll_workspace_persistence_pending_state(&mut self) -> bool {
@@ -5345,7 +5359,8 @@ impl ShellView {
                 || !self.turn_steering_receivers.is_empty()
                 || !self.thread_title_receivers.is_empty()
                 || !self.thread_title_update_receivers.is_empty()
-                || self.pending_lifecycle_phase_continue.is_some(),
+                || self.pending_lifecycle_phase_continue.is_some()
+                || self.phase_thread_transition.blocks_controls(),
             inventory_work: self.member_thread_inventory_receiver.is_some(),
             image_work: self.composer_image_label_scan_receiver.is_some()
                 || self.composer_image_asset_receiver.is_some()
@@ -5357,7 +5372,7 @@ impl ShellView {
             title_work: self.workspace_title_receiver.is_some()
                 || self.pending_workspace_title_candidate.is_some(),
             member_work: self.workspace_member_attach_pending_workspace_id.is_some(),
-            picker_work: self.workspace_picker_action_receiver.is_some(),
+            picker_work: self.workspace_picker_action_in_flight(),
             persistence_work: self.workspace_persistence_queue.has_pending_work()
                 || self.settings_state.has_pending_graph_upkeep_save(),
         };
@@ -5374,7 +5389,19 @@ impl ShellView {
     }
 
     fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.record_liveness_shell_state();
+        let _poll_guard = LivenessPollGuard::enter(shared_liveness());
         if self.poll_application_shutdown_updates(cx) {
+            self.schedule_poll_if_needed(window, cx);
+            return;
+        }
+        if self.application_shutdown_phase_deadline.is_some() {
+            let updated = self.poll_phase_thread_preparation_updates(window, cx);
+            self.schedule_poll_if_needed(window, cx);
+            if updated {
+                self.notify_transcript_panel(cx);
+                cx.notify();
+            }
             return;
         }
 
@@ -5394,6 +5421,8 @@ impl ShellView {
         updated |= self.poll_diagnostic_target_requests(window, cx);
         updated |= self.poll_shell_dynamic_tool_requests(window, cx);
         updated |= self.poll_turn_updates(window, cx);
+        updated |= self.poll_phase_thread_preparation_updates(window, cx);
+        updated |= self.poll_phase_thread_workspace_deletion();
         updated |= self.poll_turn_steering_updates();
         updated |= self.poll_composer_image_delivery_updates(cx);
         updated |= self.poll_thread_title_updates();
@@ -5445,6 +5474,34 @@ impl ShellView {
     }
 
     fn poll_application_shutdown_updates(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.application_shutdown_phase_deadline.is_some() {
+            if self.phase_thread_transition.has_poll_work() {
+                return false;
+            }
+
+            self.application_shutdown_phase_deadline = None;
+            let mut active_servers = self
+                .backend_servers
+                .drain()
+                .map(|(_, server)| server)
+                .collect::<Vec<_>>();
+            active_servers.extend(
+                self.phase_thread_retained_backend_servers
+                    .drain(..)
+                    .map(|(_, server)| server),
+            );
+            let workspace_receiver = self.workspace_receiver.take();
+            let timeout = self.bootstrap.probe_timeout() + APP_SHUTDOWN_OPEN_WORKER_GRACE_TIMEOUT;
+            let workspace_persistence_flush = self.workspace_persistence_queue.flush();
+            self.application_shutdown_receiver = Some(spawn_application_shutdown_worker(
+                active_servers,
+                workspace_receiver,
+                workspace_persistence_flush,
+                timeout,
+            ));
+            return true;
+        }
+
         let Some(receiver) = self.application_shutdown_receiver.as_ref() else {
             return false;
         };
@@ -5544,10 +5601,14 @@ impl ShellView {
                         outcome.workspace_ui_state,
                         startup_warning,
                     );
+                    let open_target =
+                        persisted_active_thread_recovery_target(&loaded.workspace_state)
+                            .map(RetryTarget::Workspace)
+                            .unwrap_or(RetryTarget::WorkspacePrimary);
                     window.set_window_title(&format!("Beryl - {}", workspace.title()));
                     if loaded.selected_runtime().is_some() {
                         self.state = ShellState::WorkspaceLoaded(loaded);
-                        self.begin_open_target(RetryTarget::WorkspacePrimary, window, cx);
+                        self.begin_open_target(open_target, window, cx);
                     } else {
                         self.state = ShellState::WorkspaceIdle(IdleWorkspaceState::new(loaded));
                     }
@@ -5836,6 +5897,7 @@ impl ShellView {
     }
 
     fn poll_turn_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let _stage_guard = shared_liveness().enter_stage(LivenessStage::TurnUpdates);
         let mut updated = false;
         let poll_started_at = Instant::now();
         let mut processed_updates = 0usize;
@@ -5865,6 +5927,8 @@ impl ShellView {
                     self.turn_receiver = None;
                     self.shell_tool_receiver = None;
                     self.pending_lifecycle_phase_continue = None;
+                    self.pending_lifecycle_phase_continue_new_thread = None;
+                    self.phase_continue_new_thread_handoff = None;
                     let sound_candidate = self.handle_turn_worker_stopped();
                     self.finish_transcript_edit_replacement_turn(
                         edit_replacement_failed_before_start,
@@ -5879,6 +5943,45 @@ impl ShellView {
                     break;
                 }
             };
+
+            let (update_category, update_flags) = match &update {
+                TurnWorkerUpdate::ThreadActivated { .. } => (
+                    LivenessCategory::ThreadActivatedUpdate,
+                    LivenessFlags::default(),
+                ),
+                TurnWorkerUpdate::ThreadTitleEligible { .. } => (
+                    LivenessCategory::ThreadTitleEligibleUpdate,
+                    LivenessFlags::default(),
+                ),
+                TurnWorkerUpdate::GraphMutationFinished(_) => (
+                    LivenessCategory::GraphMutationUpdate,
+                    LivenessFlags::default(),
+                ),
+                TurnWorkerUpdate::LifecycleYieldAccepted(_) => (
+                    LivenessCategory::LifecycleYieldAcceptedUpdate,
+                    LivenessFlags {
+                        lifecycle_yield_accepted: true,
+                        ..LivenessFlags::default()
+                    },
+                ),
+                TurnWorkerUpdate::Event(_) => {
+                    (LivenessCategory::TurnEventUpdate, LivenessFlags::default())
+                }
+                TurnWorkerUpdate::Finished(_) => (
+                    LivenessCategory::FinishedUpdate,
+                    LivenessFlags {
+                        finished: true,
+                        ..LivenessFlags::default()
+                    },
+                ),
+            };
+            let _apply_guard = LivenessTransitionGuard::enter(
+                shared_liveness(),
+                LivenessTransition::TurnUpdateApplyEnter,
+                LivenessTransition::TurnUpdateApplyExit,
+                update_category,
+                update_flags,
+            );
 
             match update {
                 TurnWorkerUpdate::ThreadActivated {
@@ -6016,6 +6119,9 @@ impl ShellView {
                     {
                         self.pending_lifecycle_phase_continue = Some(request);
                     }
+                    if let Some(handoff) = applied_stream_event.phase_continue_new_thread_handoff {
+                        self.pending_lifecycle_phase_continue_new_thread = Some(handoff);
+                    }
                     if let Some(candidate) = applied_stream_event.turn_completion_sound {
                         self.play_end_turn_sound_if_attention_triggered(candidate, window, cx);
                     }
@@ -6038,6 +6144,16 @@ impl ShellView {
                             .is_some_and(|replacement| !replacement.turn_started);
                     self.turn_receiver = None;
                     self.shell_tool_receiver = None;
+                    self.phase_continue_new_thread_handoff =
+                        take_phase_continue_new_thread_handoff_for_finished_worker(
+                            &mut self.pending_lifecycle_phase_continue_new_thread,
+                            pending_thread_id.as_deref(),
+                        );
+                    if let Some(thread_id) = pending_thread_id.as_deref()
+                        && let Some(surface) = self.conversation_surface_mut()
+                    {
+                        surface.lifecycle_yields.clear_thread(thread_id);
+                    }
                     let sound_candidate = self.finish_turn_worker(outcome);
                     if failure_message.is_some() {
                         self.pending_lifecycle_phase_continue = None;
@@ -6049,12 +6165,17 @@ impl ShellView {
                         cx,
                     );
                     if let Some(thread_id) = pending_thread_id {
-                        match self.pending_lifecycle_phase_continue.take() {
-                            Some(request) if request.thread_id() == thread_id => {
-                                self.begin_lifecycle_phase_continue(request, window, cx);
-                            }
-                            Some(_) | None => {
-                                self.begin_pending_turn_input_queue_for_thread(&thread_id);
+                        if let Some(handoff) = self.phase_continue_new_thread_handoff.take() {
+                            self.pending_lifecycle_phase_continue = None;
+                            self.begin_lifecycle_phase_thread_preparation(handoff, window, cx);
+                        } else {
+                            match self.pending_lifecycle_phase_continue.take() {
+                                Some(request) if request.thread_id() == thread_id => {
+                                    self.begin_lifecycle_phase_continue(request, window, cx);
+                                }
+                                Some(_) | None => {
+                                    self.begin_pending_turn_input_queue_for_thread(&thread_id);
+                                }
                             }
                         }
                     }
@@ -6076,6 +6197,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        let _stage_guard = shared_liveness().enter_stage(LivenessStage::ShellDynamicTool);
         let mut processed_updates = 0usize;
         let poll_started_at = Instant::now();
         loop {
@@ -6096,6 +6218,13 @@ impl ShellView {
                     if !request.try_claim() {
                         continue;
                     }
+                    let _handler_guard = LivenessTransitionGuard::enter(
+                        shared_liveness(),
+                        LivenessTransition::ShellToolHandlerEnter,
+                        LivenessTransition::ShellToolHandlerExit,
+                        LivenessCategory::ShellDynamicTool,
+                        LivenessFlags::default(),
+                    );
                     if is_beryl_diagnostic_child_dynamic_tool(request.request()) {
                         self.spawn_diagnostic_child_dynamic_tool_worker(request);
                         continue;
@@ -6163,6 +6292,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        let _stage_guard = shared_liveness().enter_stage(LivenessStage::DiagnosticTarget);
         let mut processed_updates = 0usize;
         let poll_started_at = Instant::now();
         loop {
@@ -6172,6 +6302,10 @@ impl ShellView {
                 return false;
             }
 
+            let Some(accounting) = shared_liveness().try_diagnostic_dequeue_begin() else {
+                return false;
+            };
+
             let next_request = match self.diagnostic_target_receiver.as_ref() {
                 Some(receiver) => receiver.try_recv(),
                 None => return false,
@@ -6179,10 +6313,18 @@ impl ShellView {
 
             match next_request {
                 Ok(DiagnosticTargetShellRequest::Execute(request)) => {
+                    accounting.commit();
                     processed_updates = processed_updates.saturating_add(1);
                     if !request.try_claim() {
                         continue;
                     }
+                    let _handler_guard = LivenessTransitionGuard::enter(
+                        shared_liveness(),
+                        LivenessTransition::DiagnosticHandlerEnter,
+                        LivenessTransition::DiagnosticHandlerExit,
+                        LivenessCategory::DiagnosticControl,
+                        LivenessFlags::default(),
+                    );
                     let response = self.handle_diagnostic_target_protocol_request(
                         request.request(),
                         window,
@@ -6191,6 +6333,7 @@ impl ShellView {
                     request.respond(response);
                 }
                 Ok(DiagnosticTargetShellRequest::Shutdown) => {
+                    accounting.commit();
                     self.diagnostic_target_receiver = None;
                     cx.quit();
                     return true;
@@ -7280,6 +7423,7 @@ impl ShellView {
         let restored = loaded.finish_implicit_home_path_resolution(&runtime, result);
         if restored {
             self.persist_current_workspace_state(true);
+            self.apply_deferred_phase_thread_outcomes_for_current_workspace();
         }
         cx.notify();
     }
@@ -7340,6 +7484,9 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.lifecycle_phase_thread_transition_active() {
+            return;
+        }
         if self.thread_history_page_receiver.is_some()
             || self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
@@ -7695,7 +7842,7 @@ impl ShellView {
             return true;
         }
 
-        if self.workspace_picker_action_receiver.is_some() {
+        if self.workspace_picker_action_in_flight() {
             return true;
         }
 
@@ -7704,6 +7851,7 @@ impl ShellView {
             self.block_if_app_state_unavailable(window, cx);
             return true;
         };
+        self.invalidate_phase_thread_for_accepted_workspace_replacement(true);
         self.workspace_picker_action_receiver = Some(spawn_switch_workspace_worker(
             app_state.startup_persistence,
             app_state.workspace_persistence,
@@ -7728,7 +7876,7 @@ impl ShellView {
             return true;
         }
 
-        if self.workspace_picker_action_receiver.is_some() {
+        if self.workspace_picker_action_in_flight() {
             return true;
         }
 
@@ -7737,6 +7885,7 @@ impl ShellView {
             self.block_if_app_state_unavailable(window, cx);
             return true;
         };
+        self.invalidate_phase_thread_for_accepted_workspace_replacement(true);
         self.workspace_picker_action_receiver = Some(spawn_create_workspace_worker(
             app_state.startup_persistence,
             app_state.workspace_persistence,
@@ -7768,11 +7917,12 @@ impl ShellView {
             return;
         }
 
-        if self.workspace_picker_action_receiver.is_some() {
+        if self.workspace_picker_action_in_flight() {
             return;
         }
 
-        if active_workspace_id == workspace_id {
+        let deletes_active_workspace = active_workspace_id == workspace_id;
+        if deletes_active_workspace {
             self.cancel_thread_title_workers();
         }
 
@@ -7780,14 +7930,25 @@ impl ShellView {
             self.block_if_app_state_unavailable(window, cx);
             return;
         };
-        self.workspace_picker_action_receiver = Some(spawn_delete_workspace_worker(
-            app_state.startup_persistence,
-            app_state.workspace_persistence,
-            workspace_id,
-            active_workspace_id,
-            self.workspace_persistence_queue.flush(),
-            self.bootstrap.probe_timeout(),
-        ));
+        if deletes_active_workspace {
+            let retention_deadline =
+                Instant::now() + self.phase_thread_preparation_retention_timeout();
+            self.phase_thread_workspace_deletion = Some(PhaseThreadWorkspaceDeletionDrain::accept(
+                workspace_id,
+                &mut self.phase_thread_transition,
+                retention_deadline,
+            ));
+            self.poll_phase_thread_workspace_deletion();
+        } else {
+            self.workspace_picker_action_receiver = Some(spawn_delete_workspace_worker(
+                app_state.startup_persistence,
+                app_state.workspace_persistence,
+                workspace_id,
+                active_workspace_id,
+                self.workspace_persistence_queue.flush(),
+                self.bootstrap.probe_timeout(),
+            ));
+        }
         self.schedule_poll_if_needed(window, cx);
         cx.notify();
     }
@@ -7951,7 +8112,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.workspace_picker_action_receiver.is_some() {
+        if self.workspace_picker_action_in_flight() {
             return;
         }
 
@@ -8027,7 +8188,7 @@ impl ShellView {
                 )
             })
             .unwrap_or(false);
-        let workspace_action_in_flight = self.workspace_picker_action_receiver.is_some();
+        let workspace_action_in_flight = self.workspace_picker_action_in_flight();
         let now = Instant::now();
         let mut completed_workspace_id = None;
         let mut updated = false;
@@ -8084,6 +8245,7 @@ impl ShellView {
             Err(mpsc::TryRecvError::Empty) => false,
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.workspace_picker_action_receiver = None;
+                self.complete_phase_thread_workspace_deletion();
                 warn!("workspace picker action worker stopped before returning a result");
                 true
             }
@@ -8113,50 +8275,6 @@ impl ShellView {
                 }
                 warn!("runtime selector WSL distro worker stopped before returning a result");
                 true
-            }
-        }
-    }
-
-    fn finish_workspace_picker_action(
-        &mut self,
-        update: WorkspacePickerActionUpdate,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match update {
-            WorkspacePickerActionUpdate::Created(Ok(opened)) => {
-                self.finish_workspace_picker_opened_workspace(opened, window, cx);
-            }
-            WorkspacePickerActionUpdate::Created(Err(message)) => {
-                warn!(
-                    error = %message,
-                    "failed to create a fresh semantic workspace from the picker"
-                );
-            }
-            WorkspacePickerActionUpdate::Switched(Ok(opened)) => {
-                self.finish_workspace_picker_opened_workspace(opened, window, cx);
-            }
-            WorkspacePickerActionUpdate::Switched(Err(message)) => {
-                warn!(
-                    error = %message,
-                    "failed to switch semantic workspaces from the picker"
-                );
-            }
-            WorkspacePickerActionUpdate::Deleted {
-                workspace_id,
-                result: Ok(outcome),
-            } => {
-                self.finish_workspace_picker_deleted_workspace(&workspace_id, outcome, window, cx);
-            }
-            WorkspacePickerActionUpdate::Deleted {
-                workspace_id,
-                result: Err(message),
-            } => {
-                warn!(
-                    workspace_id = workspace_id.as_str(),
-                    error = %message,
-                    "failed to delete Beryl workspace from the picker"
-                );
             }
         }
     }
@@ -9625,6 +9743,9 @@ impl ShellView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.reject_lifecycle_phase_thread_transition_action("Thread selector unavailable", cx) {
+            return;
+        }
         let changed = self
             .conversation_surface_mut()
             .is_some_and(|surface| surface.select_thread_selector_member(column_index, member_key));
@@ -9641,6 +9762,9 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.reject_lifecycle_phase_thread_transition_action("Thread selector unavailable", cx) {
+            return;
+        }
         let should_activate = event.click_count() >= 2;
         let changed = self
             .conversation_surface_mut()
@@ -9675,6 +9799,17 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> ThreadActivationStart {
+        if self.lifecycle_phase_thread_transition_active() {
+            self.set_phase_thread_transition_notice(
+                "Thread activation unavailable",
+                PHASE_THREAD_TRANSITION_BUSY_MESSAGE,
+            );
+            cx.notify();
+            return ThreadActivationStart::Rejected {
+                kind: "lifecycle_phase_thread_transition",
+                message: PHASE_THREAD_TRANSITION_BUSY_MESSAGE.to_string(),
+            };
+        }
         if self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
@@ -9834,6 +9969,9 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.reject_lifecycle_phase_thread_transition_action("Graph thread unavailable", cx) {
+            return;
+        }
         if self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
@@ -10103,6 +10241,17 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let prospective = self.workspace_shell_state().map(|loaded| {
+            let mut state = loaded.workspace_state.clone();
+            let result = state.select_runtime(runtime.clone());
+            (state, result)
+        });
+        if prospective.as_ref().is_some_and(|(state, result)| {
+            matches!(result, Ok(true))
+                && self.prospective_workspace_state_invalidates_phase_thread(state)
+        }) {
+            self.cancel_phase_thread_preparation();
+        }
         let result = {
             let Some(loaded) = self.workspace_shell_state_mut() else {
                 return;
@@ -10114,6 +10263,7 @@ impl ShellView {
         match result {
             Ok(true) => {
                 self.persist_current_workspace_state(true);
+                self.apply_deferred_phase_thread_outcomes_for_current_workspace();
                 self.reset_member_thread_inventory_for_workspace_state();
                 if !self.begin_primary_workspace_open_if_selected(window, cx) {
                     self.begin_implicit_home_path_resolution_if_needed(cx);
@@ -10240,6 +10390,17 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let prospective = self.workspace_shell_state().map(|loaded| {
+            let mut state = loaded.workspace_state.clone();
+            let result = apply_workspace_member_attachment(&mut state, &execution_target);
+            (state, result)
+        });
+        if prospective.as_ref().is_some_and(|(state, result)| {
+            matches!(result, Ok(true))
+                && self.prospective_workspace_state_invalidates_phase_thread(state)
+        }) {
+            self.cancel_phase_thread_preparation();
+        }
         let result = {
             let Some(loaded) = self.workspace_shell_state_mut() else {
                 return;
@@ -10254,6 +10415,7 @@ impl ShellView {
                     loaded.clear_implicit_home_path_resolution();
                 }
                 self.persist_current_workspace_state(true);
+                self.apply_deferred_phase_thread_outcomes_for_current_workspace();
                 self.reset_member_thread_inventory_for_workspace_state();
                 let _ = self.begin_primary_workspace_open_if_selected(window, cx);
             }
@@ -10474,6 +10636,7 @@ impl ShellView {
         match result {
             Ok(true) => {
                 self.persist_current_workspace_state(true);
+                self.apply_deferred_phase_thread_outcomes_for_current_workspace();
                 self.reset_member_thread_inventory_for_workspace_state();
                 let _ = self.begin_primary_workspace_open_if_selected(window, cx);
             }
@@ -10528,6 +10691,17 @@ impl ShellView {
     }
 
     fn detach_workspace_member(&mut self, member_id: WorkspaceMemberId, cx: &mut Context<Self>) {
+        let prospective = self.workspace_shell_state().map(|loaded| {
+            let mut state = loaded.workspace_state.clone();
+            let result = apply_workspace_member_detach(&mut state, &member_id);
+            (state, result)
+        });
+        if prospective.as_ref().is_some_and(|(state, result)| {
+            matches!(result, Ok(true))
+                && self.prospective_workspace_state_invalidates_phase_thread(state)
+        }) {
+            self.cancel_phase_thread_preparation();
+        }
         let (result, restored) = {
             let Some(loaded) = self.workspace_shell_state_mut() else {
                 return;
@@ -10546,6 +10720,7 @@ impl ShellView {
         match result {
             Ok(true) => {
                 self.persist_current_workspace_state(true);
+                self.apply_deferred_phase_thread_outcomes_for_current_workspace();
                 self.reset_member_thread_inventory_for_workspace_state();
                 self.begin_implicit_home_path_resolution_if_needed(cx);
             }
@@ -10649,6 +10824,9 @@ impl ShellView {
     }
 
     fn start_new_thread(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if self.reject_lifecycle_phase_thread_transition_action("New thread unavailable", cx) {
+            return;
+        }
         if self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()
@@ -11652,6 +11830,9 @@ impl ShellView {
     }
 
     fn queue_turn_from_composer(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.reject_lifecycle_phase_thread_transition_action("Composer unavailable", cx) {
+            return false;
+        }
         if self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()
@@ -12272,6 +12453,9 @@ impl ShellView {
         expected_turn_id: String,
         fragments: Vec<SteeringInputFragment>,
     ) -> bool {
+        if self.lifecycle_phase_thread_transition_active() {
+            return false;
+        }
         if self.turn_steering_receivers.len() >= MAX_CONCURRENT_TURN_STEERING_TASKS {
             return self.queue_steering_fragments_for_next_turn(
                 thread_id,
@@ -12379,6 +12563,9 @@ impl ShellView {
     }
 
     fn begin_pending_turn_input_queue_for_thread(&mut self, thread_id: &str) -> bool {
+        if self.lifecycle_phase_thread_transition_active() {
+            return false;
+        }
         if self.conversation_surface().is_some_and(|surface| {
             pending_turn_queue_should_wait_for_compaction(
                 surface.context_compaction_thread_id(),
@@ -12716,6 +12903,9 @@ impl ShellView {
     }
 
     pub(crate) fn backend_controls_disabled_message(&self) -> Option<String> {
+        if self.lifecycle_phase_thread_transition_active() {
+            return Some(PHASE_THREAD_TRANSITION_BUSY_MESSAGE.to_string());
+        }
         match &self.state {
             ShellState::Blocked(blocked) if blocked.surface.is_some() => {
                 Some(blocked.summary.clone())
@@ -12733,6 +12923,9 @@ impl ShellView {
     }
 
     pub(crate) fn new_thread_controls_disabled_message(&self) -> Option<String> {
+        if self.lifecycle_phase_thread_transition_active() {
+            return Some(PHASE_THREAD_TRANSITION_BUSY_MESSAGE.to_string());
+        }
         if let ShellState::Blocked(blocked) = &self.state
             && blocked.surface.is_some()
         {
@@ -12743,6 +12936,9 @@ impl ShellView {
     }
 
     pub(crate) fn thread_selector_controls_disabled_message(&self) -> Option<String> {
+        if self.lifecycle_phase_thread_transition_active() {
+            return Some(PHASE_THREAD_TRANSITION_BUSY_MESSAGE.to_string());
+        }
         match &self.state {
             ShellState::Blocked(blocked) if blocked.surface.is_some() => {
                 Some(blocked.summary.clone())
@@ -12777,81 +12973,6 @@ impl ShellView {
             WorkspaceUiState::default(),
             None,
         )
-    }
-
-    fn preferred_thread_id_for_target(&self, execution_target: &WorkspaceId) -> Option<String> {
-        match &self.state {
-            ShellState::Ready(ready) if &ready.execution_target == execution_target => {
-                ready.surface.selected_thread_id().map(str::to_string)
-            }
-            ShellState::BackendUnavailable(unavailable)
-                if &unavailable.execution_target == execution_target =>
-            {
-                unavailable.surface.selected_thread_id().map(str::to_string)
-            }
-            ShellState::Blocked(blocked) if matches!(&blocked.target, RetryTarget::Workspace(target) if target == execution_target) => {
-                blocked
-                    .surface
-                    .as_ref()
-                    .and_then(|surface| surface.selected_thread_id().map(str::to_string))
-            }
-            _ => self
-                .workspace_shell_state()
-                .and_then(|loaded| loaded.workspace_state.active_thread_registration())
-                .filter(|thread| {
-                    thread.execution_target() == execution_target && !thread.requires_rebind()
-                })
-                .map(|thread| thread.thread_id().as_str().to_string()),
-        }
-    }
-
-    fn thread_selection_for_open_target(&self, target: &RetryTarget) -> ThreadSelectionRequest {
-        if let Some((thread_id, label)) = self.recovery_thread_for_target(target) {
-            return ThreadSelectionRequest::exact(thread_id, label);
-        }
-
-        let preferred_thread_id = match target {
-            RetryTarget::Workspace(execution_target) => {
-                self.preferred_thread_id_for_target(execution_target)
-            }
-            RetryTarget::WorkspacePrimary => self
-                .workspace_shell_state()
-                .and_then(|loaded| loaded.workspace_state.active_thread())
-                .map(|thread_id| thread_id.as_str().to_string()),
-            RetryTarget::Startup | RetryTarget::HostPath(_) | RetryTarget::WslPath { .. } => None,
-        };
-        ThreadSelectionRequest::RestorePreferred(preferred_thread_id)
-    }
-
-    fn recovery_thread_for_target(&self, target: &RetryTarget) -> Option<(String, String)> {
-        let RetryTarget::Workspace(execution_target) = target else {
-            return None;
-        };
-        let ShellState::Blocked(blocked) = &self.state else {
-            return None;
-        };
-        if !blocked.disconnect
-            || !matches!(&blocked.target, RetryTarget::Workspace(target) if target == execution_target)
-        {
-            return None;
-        }
-
-        let workspace_state = blocked
-            .loaded_workspace
-            .as_ref()
-            .map(|loaded| &loaded.workspace_state);
-        blocked.surface.as_ref().and_then(|surface| {
-            let thread = surface.selected_thread()?;
-            let label = workspace_state
-                .and_then(|workspace_state| {
-                    surface.selected_thread_display_label(workspace_state, execution_target)
-                })
-                .unwrap_or_else(|| {
-                    normalized_thread_name(thread.name.as_deref())
-                        .unwrap_or_else(|| "Untitled thread".to_string())
-                });
-            Some((thread.id.clone(), label))
-        })
     }
 
     fn preserved_surface_for_open_target(
@@ -13260,6 +13381,7 @@ impl ShellView {
                 "protocol": crate::diagnostic_child_protocol::DIAGNOSTIC_CHILD_PROTOCOL_NAME,
                 "protocolVersion": crate::diagnostic_child_protocol::DIAGNOSTIC_CHILD_PROTOCOL_VERSION,
             })),
+            DiagnosticChildCommand::ReadLiveness => Ok(shared_liveness().snapshot_value()),
             DiagnosticChildCommand::ReadProcess => {
                 parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
                     request.params(),
@@ -13535,7 +13657,7 @@ impl ShellView {
                 backend_work_receivers: self.backend_work_receiver_count(),
                 thread_activation_pending: self.thread_activation_receiver.is_some(),
                 turn_stream_pending: self.turn_receiver.is_some(),
-                workspace_transition_pending: self.workspace_picker_action_receiver.is_some()
+                workspace_transition_pending: self.workspace_picker_action_in_flight()
                     || self.workspace_receiver.is_some()
                     || matches!(self.state, ShellState::Opening(_)),
             },
@@ -13775,6 +13897,10 @@ impl ShellView {
                 "refreshing": false,
                 "refreshNeeded": unavailable.surface.member_thread_inventory().needs_refresh(),
                 "lastError": null,
+                "coverage": "unavailable",
+                "rowCoverageTruncated": false,
+                "lineageIncomplete": false,
+                "partialReasons": [],
                 "refreshedAtMillis": unavailable
                     .surface
                     .member_thread_inventory()
@@ -13799,6 +13925,10 @@ impl ShellView {
                 "refreshing": false,
                 "refreshNeeded": false,
                 "lastError": null,
+                "coverage": "not_ready",
+                "rowCoverageTruncated": false,
+                "lineageIncomplete": false,
+                "partialReasons": [],
                 "refreshedAtMillis": 0,
                 "groupCount": 0,
                 "threadCount": 0,
@@ -13892,6 +14022,23 @@ impl ShellView {
         let last_error = inventory
             .last_error()
             .map(|error| bounded_control_string(error.to_string()));
+        let (coverage, row_coverage_truncated, lineage_incomplete, partial_reasons) =
+            match snapshot.coverage() {
+                MemberThreadInventoryCoverage::Complete => {
+                    ("complete", false, false, Vec::<String>::new())
+                }
+                MemberThreadInventoryCoverage::Partial(partial) => (
+                    "partial",
+                    partial.row_coverage_truncated(),
+                    partial.lineage_incomplete(),
+                    partial
+                        .reasons()
+                        .iter()
+                        .cloned()
+                        .map(bounded_control_string)
+                        .collect(),
+                ),
+            };
         let ui_state = self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT);
 
         json!({
@@ -13904,6 +14051,10 @@ impl ShellView {
             "refreshing": refreshing,
             "refreshNeeded": refresh_needed,
             "lastError": last_error,
+            "coverage": coverage,
+            "rowCoverageTruncated": row_coverage_truncated,
+            "lineageIncomplete": lineage_incomplete,
+            "partialReasons": partial_reasons,
             "refreshedAtMillis": refreshed_at_millis,
             "groupCount": group_count,
             "threadCount": thread_count,
@@ -14049,6 +14200,12 @@ impl ShellView {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Result<&'static str, (&'static str, String)> {
+        if self.lifecycle_phase_thread_transition_active() {
+            return Err((
+                "lifecycle_phase_thread_transition",
+                PHASE_THREAD_TRANSITION_BUSY_MESSAGE.to_string(),
+            ));
+        }
         if self.conversation_surface().is_none() {
             return Err((
                 "not_ready",
@@ -14128,7 +14285,7 @@ impl ShellView {
             });
         }
 
-        if self.workspace_picker_action_receiver.is_some()
+        if self.workspace_picker_action_in_flight()
             || self.workspace_receiver.is_some()
             || matches!(self.state, ShellState::Opening(_))
         {
@@ -14171,6 +14328,7 @@ impl ShellView {
                 "Beryl app state is unavailable for workspace switching.".to_string(),
             ));
         };
+        self.invalidate_phase_thread_for_accepted_workspace_replacement(true);
         self.workspace_picker_action_receiver = Some(spawn_switch_workspace_worker(
             app_state.startup_persistence,
             app_state.workspace_persistence,
@@ -14451,7 +14609,7 @@ impl ShellView {
             self.account_rate_limits_receiver.is_some(),
             self.turn_stop_receiver.is_some(),
             self.hard_stop_receiver.is_some(),
-            self.workspace_picker_action_receiver.is_some(),
+            self.workspace_picker_action_in_flight(),
             self.workspace_title_receiver.is_some(),
             self.application_shutdown_receiver.is_some(),
             self.tool_activity_nickname_resolver.has_active_worker(),

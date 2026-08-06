@@ -576,6 +576,9 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.reject_lifecycle_phase_thread_transition_action("Context unavailable", cx) {
+            return;
+        }
         let (thread_id, available) = self
             .conversation_surface()
             .map(|surface| {
@@ -631,6 +634,12 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<CancellableActiveTurn, (&'static str, String)> {
+        if self.reject_lifecycle_phase_thread_transition_action("Turn stop unavailable", cx) {
+            return Err((
+                "lifecycle_phase_thread_transition",
+                super::phase_thread_transition::PHASE_THREAD_TRANSITION_BUSY_MESSAGE.to_string(),
+            ));
+        }
         if self.turn_stop_receiver.is_some() || self.hard_stop_receiver.is_some() {
             return Err((
                 "turn_stop_pending",
@@ -767,6 +776,9 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.reject_lifecycle_phase_thread_transition_action("Hard stop unavailable", cx) {
+            return;
+        }
         if self.turn_stop_receiver.is_some() || self.hard_stop_receiver.is_some() {
             return;
         }
@@ -1274,6 +1286,12 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<SelectedTurnHardStopTargets, (&'static str, String)> {
+        if self.reject_lifecycle_phase_thread_transition_action("Hard stop unavailable", cx) {
+            return Err((
+                "lifecycle_phase_thread_transition",
+                super::phase_thread_transition::PHASE_THREAD_TRANSITION_BUSY_MESSAGE.to_string(),
+            ));
+        }
         if self.turn_stop_receiver.is_some() || self.hard_stop_receiver.is_some() {
             return Err((
                 "turn_stop_pending",
