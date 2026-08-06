@@ -1,108 +1,102 @@
 ---
 name: project-doc-authority
-description: Maintain authoritative project documentation hierarchies. Use when Codex must decide where feature, system, package or subproject, additional project-declared, root or parent, plan, rework, research, failure, dependency, API, module, or process rules belong; route and reconcile design authority; preserve Goals/Decisions design structure; reconcile contradictions; or determine which document controls implementation.
+description: Maintain project documentation authority. Use when deciding or reconciling where feature, system, package or subproject, additional project-declared, root or parent, plan, rework, research, failure, dependency, API, module, or process rules belong; preserving Goals/Decisions structure; resolving contradictions; or identifying what controls implementation.
 ---
 
 # Project Doc Authority
 
 ## Core Rule
 
-Use this default authority model unless the project explicitly declares a different one:
+Use this authority model unless the project explicitly declares another:
 
-1. Project instructions and skills define process and documentation taxonomy. Project-declared root or parent authority docs may refine that taxonomy when they exist.
-2. Additional project-declared authorities may own facts within a bounded semantic domain not
-   covered by the default feature, system, or package layers. Each declaration must name its owning
-   docs, scope, consumers, and conflict relationship to the default layers.
+1. Project instructions and skills define documentation taxonomy; they and agent instructions define process. Explicit project root or parent authorities may refine the taxonomy.
+2. Additional project-declared authorities own only declared bounded facts and define their relationship to default layers.
 3. Feature docs at `doc/features/<feature>/design.md` own user-visible product contracts for one feature.
 4. System docs at `doc/systems/<system>/design.md` own internal cross-feature or cross-package technical architecture.
-5. Workspace-project, package, or subproject `doc/design.md` files own that artifact's public boundary contract.
+5. Workspace-project, package, or subproject `doc/design.md` owns that artifact's public boundary contract.
 6. Rework trackers under `doc/rework/<name>/REWORK.md` own temporary replacement state and must point at target-state design docs.
 7. Root `doc/plan.md` owns implementation sequencing and must derive from design authority.
 8. Code must derive from `doc/plan.md` and must not contradict design docs.
 
-Skills and agent instructions define process. Design docs define target state. Plans define execution order. Exploration memory and failure notes support reasoning but do not override design authority.
+Design docs define target state; plans define execution order.
+
+Exploration memory and failure notes support reasoning but never override design authority.
 
 ## Default Vocabulary
 
 - Workspace project: an independently packageable, deployable, or reusable local artifact such as a package, service, library, app, or plugin.
 - Subproject: a non-root workspace project.
-- Aggregating directory: a directory that is not itself a workspace project but contains workspace projects.
-- Module: a language-level implementation module or source file that is not independently packageable.
+- Aggregating directory: a directory containing workspace projects but not itself one.
+- Module: a language-level module or source file that is not independently packageable.
 
 Use project-specific vocabulary when it exists, but keep these ownership distinctions.
 
 ## Design Docs
 
-When a project convention requires package-level design docs, each workspace project must include a design spec at `doc/design.md`.
+When project convention requires package design docs, every workspace project must have `doc/design.md`.
 
-Aggregating directories may omit `doc/`, but may include a shared `doc/design.md` when the project explicitly uses parent docs for decisions across child workspace projects.
+An aggregating directory may omit `doc/`; shared `doc/design.md` is allowed only when the project explicitly uses it for decisions across child workspace projects.
 
-A workspace project's `doc/design.md` may define only:
+A workspace-project design may define only:
 
-- Decisions about that workspace project itself.
-- The workspace project's public boundary contract: guarantees, requirements, valid inputs, and valid outputs.
-- Assumptions or constraints about APIs it consumes from dependencies.
+- Decisions about itself.
+- Its public boundary guarantees, requirements, valid inputs, and valid outputs.
+- Assumptions or constraints about dependency APIs it consumes.
 
-It must not define internal policy for dependencies, architecture or behavior policy for consumers, or decisions justified by unrelated systems outside the workspace project. `## Non-goals` is exempt from this scope limit.
+It must not set dependency-internal policy, consumer architecture or behavior, or decisions justified by unrelated systems outside the workspace project. `## Non-goals` is exempt from this scope limit.
 
 ## Design Structure
 
-Every authoritative `design.md` governed by this taxonomy uses this structure:
+Every authoritative `design.md` governed by this taxonomy has:
 
-1. First mandatory section: `# Goals`.
-2. Optional section under goals: `## Non-goals`.
-3. Second mandatory section: `# Decisions`.
+1. `# Goals` first.
+2. Optional `## Non-goals` under goals.
+3. `# Decisions` second.
 
-State goals as the high-level problem the feature, system, package, or project authority exists to solve: what, not how. Put only target-state design decisions under `# Decisions`. Exclude migration steps, transitional work, historical notes, current-state excuses, and implementation diary content.
+State goals as the high-level problem the authority solves: what, not how. Put only target-state design decisions under `# Decisions`; exclude migration or transition steps, history, current-state excuses, and implementation diaries.
 
 ## Feature Docs
 
-Use `doc/features/<feature>/design.md` for feature-owned authority when a product feature owns user-visible behavior.
+It may define product behavior, UI contracts, user-visible state, visible async and failure behavior, disabled states, acceptance rules, and which systems or packages implement the feature.
 
-Feature docs may define product behavior, UI contracts, user-visible state, visible async behavior, visible failure behavior, disabled states, acceptance rules, and which systems or packages implement the feature.
+It must not define internal cross-package architecture, storage models, provider or backend mechanics, lifecycle state machines, or package-private details.
 
-Feature docs must not define internal cross-package architecture, storage models, provider/backend mechanics, lifecycle state machines, or package-private implementation details.
+For user-visible behavior, feature docs outrank system and package docs, which must satisfy rather than duplicate feature contracts.
 
-Feature docs outrank system and package docs for user-visible behavior. System and package docs must satisfy feature contracts without duplicating them.
-
-Supplemental feature files, including split docs and mockups, are authoritative only when linked from the feature `design.md` with their intended role.
+Split feature docs, mockups, and other supplements are authoritative only when the feature `design.md` links them and states their role.
 
 ## Additional Authorities
 
-Use an additional project-declared authority when a bounded body of truth is neither user-visible
-product behavior nor implementation architecture and cannot be owned honestly by one package.
+Use an additional project-declared authority only for bounded truth that is neither user-visible product behavior nor implementation architecture and cannot honestly belong to one package.
 
-The declaration must identify the owning documents, precise semantic boundary, expected consumers,
-and relationship to feature, system, and package authority. The additional authority owns only its
-declared facts; dependent docs must not silently redefine them. If a consumer requires those facts
-to change, update or explicitly reconcile the additional authority before dependent design or code.
+Its declaration must identify owning documents, precise semantic boundary, expected consumers, and conflict relationship to feature, system, and package authority. It owns only those facts; dependent docs must not silently redefine them. If a consumer needs a declared fact changed, update or explicitly reconcile this authority before dependent design or code.
 
 ## System Docs
 
-Use `doc/systems/<system>/design.md` for internal architecture shared across features, packages, subprojects, or runtime boundaries.
+It may define cross-package responsibility splits, canonical internal concepts, dataflow, storage and projection policy, consistency and lifecycle rules, retry/cancellation/recovery behavior, backend or provider integration policy, and shared performance or security constraints.
 
-System docs may define cross-package responsibility splits, canonical internal concepts, dataflow, storage and projection policy, consistency rules, lifecycle rules, retry/cancellation/recovery behavior, backend or provider integration policy, and shared performance or security constraints.
-
-System docs must satisfy feature-owned user-visible contracts. System docs outrank package docs for cross-package technical invariants, while package docs still own package-local public boundaries and private implementation details.
+System docs must satisfy feature-owned user-visible contracts. They outrank package docs for cross-package technical invariants; package docs retain package-local public boundaries and private implementation details.
 
 ## Contract Placement
 
-Keep a contract in a workspace project's `doc/design.md` only when that project's boundary owns it.
+Place each contract by asking who owns the fact:
 
-If a contract sets shared technical rules between peer workspace projects, sibling workspace projects, parent-level orchestration, or anything not owned by one workspace project's boundary, put it in the owning system doc.
+- User-visible product behavior belongs to the feature doc.
+- Internal technical rules shared across features, peer or sibling projects, parent-level orchestration, runtime boundaries, or anything no single project boundary owns belong to the system doc.
+- One workspace project's boundary contract belongs to its `doc/design.md`.
+- Bounded non-product, non-architecture truth that no package can own belongs to a declared additional authority.
+- Temporary replacement progress belongs to the rework tracker, which points to target-state design authority.
+- Implementation order belongs to root `doc/plan.md`, derived from design authority.
+- Root or parent docs own a contract only when the project explicitly assigns them that role.
 
-If a contract defines user-visible product behavior, put it in the owning feature doc.
-
-Use project-declared root or parent authority docs only when the project explicitly assigns that role.
-
-Do not duplicate shared rules in children unless needed to define child-owned behavior.
+Do not duplicate shared rules in child docs unless needed to define child-owned behavior.
 
 ## Parent Consultation
 
-When working on a workspace project, consult relevant feature docs, system docs, package docs, and any project-declared parent or root authority docs before implementing or changing child docs. This is a workflow rule; do not add reminders such as "consult parent design" or "inherits parent contract" to design docs unless the operator explicitly asks for that wording.
+Before implementing in a workspace project or changing child docs, consult relevant feature, system, package, and project-declared parent or root authority docs. This is a workflow rule; do not add reminders such as "consult parent design" or "inherits parent contract" to design docs unless the operator explicitly asks for that wording.
 
 ## Conflict Handling
 
-If an operator request, plan, implementation, test, or note contradicts design or plan authority, stop and ask the operator to resolve the contradiction unless the task explicitly includes updating the authoritative docs first.
+If an operator request, plan, implementation, test, or note contradicts design or plan authority, stop and ask the operator to resolve it unless the task explicitly updates the authoritative docs first.
 
-Design docs must not contradict themselves or each other. When a conflict is discovered, fix the authority chain before relying on lower-level docs or code.
+Design docs must not contradict themselves or each other. Fix any conflict in the authority chain before relying on lower-level docs or code.

@@ -144,8 +144,12 @@ ordinary-startup constructor, or compatibility mount is permitted.
   inference. Final verification was safely interrupted after the focused cross-boundary gate passed
   and while the default full library suite was running; rerun that default suite, the full
   `test-faults` suite, both library checks, formatting, diff hygiene, and a fresh independent Phase 86
-  completion review. No task-owned Cargo, nextest, or test process remains. The corrected environment
-  diagnosis remains in `doc/failures/windows-cargo-nextest-build-stall.md`.
+  completion review. A fresh default-suite rerun was stopped safely during compilation at the
+  Operator's request before producing a test result; none of the remaining six gates completed, and
+  no task-owned Cargo, nextest, rustc, or test process remains. Resume with the default full library
+  suite, then the `test-faults` suite, both checks, formatting, diff hygiene, and the fresh completion
+  review. The corrected environment diagnosis remains in
+  `doc/failures/windows-cargo-nextest-build-stall.md`.
 
 # Phase 87: Split Oversized Verification And Failure-Orchestration Sources (pending)
 

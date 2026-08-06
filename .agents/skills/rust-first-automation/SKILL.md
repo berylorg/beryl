@@ -1,15 +1,16 @@
 ---
 name: rust-first-automation
-description: Choose and implement Rust instead of shell for complex Beryl automation. Use when planning, creating, replacing, extending, or reviewing benchmark and evidence harnesses, build or release tooling, migrations, code generators, data transforms, process orchestration, resumable workflows, or scripts in Beryl and its owned dependency forks that involve structured state, schemas, hashing, atomic publication, replay, concurrency, multiple child processes, long runtimes, or multi-stage error handling. Also use when an existing PowerShell, Bash, or Nushell script is growing beyond a simple one-shot command or thin launcher.
+description: Choose and implement Rust instead of shell for complex project automation. Use when planning, creating, replacing, extending, or reviewing benchmark and evidence harnesses, build or release tooling, migrations, code generators, data transforms, process orchestration, resumable workflows, or scripts in projects that use or explicitly permit Rust and that involve structured state, schemas, hashing, atomic publication, replay, concurrency, multiple child processes, long runtimes, or multi-stage error handling. Also use when an existing PowerShell, Bash, or Nushell script is growing beyond a simple one-shot command or thin launcher.
 ---
 
 # Rust First Automation
 
 ## Default
 
-Use Rust for complex project automation in Beryl and its owned dependency forks. Keep shell code
-for short, straight-line commands and thin launchers whose failures are immediate and whose state
-does not outlive the process.
+Use Rust for complex project automation when the project already uses Rust or project authority has
+explicitly selected Rust for tooling. Do not introduce a Rust toolchain into another project without
+the Operator's approval. Keep shell code for short, straight-line commands and thin launchers whose
+failures are immediate and whose state does not outlive the process.
 
 Do not replace ordinary investigation commands or simple filesystem and tool invocations with a
 Rust program. Complexity and protocol responsibility, not line count alone, determine the

@@ -29,30 +29,24 @@ Track readiness and the latest resumable milestone so later sessions can continu
 Treat `doc/plan.md` as a sliding execution window, not a historical ledger:
 
 - Keep the active `wip` phase detailed enough to execute and verify.
-- Represent every known future acceptance boundary as a `pending` phase so work cannot disappear
-  from the plan. Keep only the few near-term phases detailed; express later phases as a heading and
-  concise acceptance-boundary summary until they approach activation.
+- Keep every known future acceptance boundary as a `pending` phase. Detail only the few near-term phases; until activation approaches, later phases need only a heading and concise boundary summary.
 - Retain at most the immediately preceding `finished` phase as a short outcome.
-- Compact a phase immediately after its completion review succeeds. Remove its task checklist,
-  investigation narrative, incremental results, and test-by-test history before further
-  implementation begins, while retaining a concise verification result or durable evidence link in
-  the phase outcome.
+- Immediately after successful completion review and before more implementation, compact the phase: remove its checklist, investigation narrative, incremental results, and test history, retaining a concise verification result or durable evidence link.
 - Remove any older finished-phase outcome when a newer phase finishes.
-- Before deleting material investigation or invalidated-approach history during compaction,
-  preserve it through the applicable project research-memory or failure-record authority. Link the
-  resulting record when useful; do not duplicate its body in the root plan.
+- Before compaction deletes material investigation or invalidated-approach history, preserve it through the applicable project research-memory or failure-record authority. Link it when useful; do not duplicate it in the plan.
 
-If another active skill or project authority constrains planning scope, inputs, sequencing, or continuation, reflect those constraints in `doc/plan.md` without redefining that authority's file format or domain-specific workflow.
+Reflect planning scope, input, sequencing, or continuation constraints from another active skill or project authority in `doc/plan.md` without redefining its format or workflow.
 
 ## Planning Workflow
 
-1. Read the controlling feature, system, package or subproject, API, rework, and design docs, plus any project-declared root or parent authority docs.
-2. Stop if the requested work contradicts design authority.
-3. Define scope from the authoritative docs.
-4. Split implementation into small coherent phases.
-5. Mark the active phase `wip`; leave future phases `pending`.
-6. Include phase tasks, edge cases, verification, and resumable milestone details.
-7. Before stopping on a blocker, write the issue into the relevant phase.
+1. Read the controlling feature, system, package or subproject, API, rework, and design docs, plus project-declared root or parent authorities.
+2. Stop if the request contradicts design authority; otherwise derive scope from it.
+3. Split the work into small coherent phases.
+4. Mark the active phase `wip` and future phases `pending`.
+5. Include phase tasks, edge cases, verification, and resumable milestone details.
+6. Record any blocker in its phase before stopping.
+
+Before creating a plan, authoring or revising scope or phase content, or reviewing authoring completeness, read [Plan Authoring Template and Edge-Case Prompts](references/plan-authoring.md) in full as normative. Status-only updates, blocker recording, phase compaction, and clearing use this file alone.
 
 Hacks, migration adapters, and untracked workarounds require explicit operator approval before they appear in the plan or code.
 
@@ -66,7 +60,7 @@ A phase may contain a tightly coupled task cluster only when no constituent task
 independently implemented, verified, reviewed, or resumed. If any constituent task can cross one
 of those boundaries independently, make it a separate phase.
 
-Do not pack multiple hard tasks into a single phase just because they share a feature, package, or milestone. If a phase would require broad investigation, multiple independent code paths, or several verification strategies, split it.
+Do not pack multiple hard tasks into one phase because they share a feature, package, or milestone. Split phases requiring broad investigation, independent code paths, or several verification strategies.
 
 Do not create numbered implementation sequences, subphases, tranche items, or checkpoint items
 inside a phase as substitutes for real phases. Any item substantial enough to carry its own status,
@@ -87,20 +81,6 @@ continuing. Do not append it to the active phase or broaden that phase's accepta
 minor implementation details within the active phase only when they remain necessary to its existing
 acceptance boundary and do not create an independently implementable, verifiable, reviewable, or
 resumable unit.
-
-## Edge-Case Checklist
-
-During planning, derive an explicit edge-case checklist from relevant design docs and contracts. Pay special attention when work:
-
-- Creates new state from existing state: copy, fork, clone, import, restore, resume, retry, migration, or template flows.
-- Combines ownership boundaries: local, remote, persisted, generated, cached, or user-authored state.
-- Has precedence, fallback, inheritance, defaulting, or override rules.
-- Runs asynchronously, in the background, or across sessions or processes.
-- Depends on optional, stale, partial, missing, or externally supplied metadata.
-- Must preserve identity, ordering, provenance, permissions, or user intent.
-- Has cleanup, cancellation, rollback, or partial-failure behavior.
-
-For each identified interaction, include a verification case or state why no additional verification is needed.
 
 ## Execution Rules
 
