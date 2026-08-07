@@ -31,25 +31,28 @@ Show bounded live and recent backend activity for the selected conversation with
 - When the workspace is on a pending new-thread draft, visible activity is empty rather than stale rows from the previous selection.
 - Activity state is keyed by backend thread id, turn id, and item id so lifecycle updates remain exact across overlapping threads and subagents.
 - A completed multi-agent v2 `subAgentActivity` record keeps the parent event's backend thread, turn, and item identity for correlation, retention, and selected-parent visibility, while its agent label is attributed to the exact child `agentThreadId` carried by that event.
-- A v2 lifecycle record with a valid child attribution keeps its agent label empty until that child thread's backend nickname resolves through the ordinary metadata path. It must not render the child thread id or `agentPath` as a fallback label.
+- A v2 lifecycle record with a valid child attribution uses its exact non-empty `agentPath` as the child display label immediately. The path is presentation metadata only; the exact child `agentThreadId` remains the correlation and ownership key.
 - Completed-only v2 lifecycle records report the completed collaboration operation; they do not synthesize a running child lifecycle or imply that the child turn has completed.
 - Running activity is retained until terminal state. Completed activity may be pruned by deterministic row, byte, and selected-thread retention windows.
-- Background metadata resolution for unresolved subagent names is bounded, cancellable, and lower priority than foreground turn streaming.
+- Activity presentation does not issue background metadata requests to resolve backend-generated subagent nicknames.
 
 ## Row Presentation
 
 - Each activity item renders as one fixed-height single-line row shaped as `Agent <agent label> Activity <activity display value>`.
-- Rows sort running records before finished records, then newest start time first within each group.
+- Running parent-thread records sort first, with the active `Main` row at the top. Running child-thread records follow in stable first-active order: each child keeps its relative active position until its running activity ends, rows compact when an earlier child finishes, and a newly active child appends to the active child group.
+- Finished records follow all running records and sort by newest completion first.
 - Running, finished-ok, and finished-error rows show themed status marker discs.
 - `Agent` and `Activity` labels use muted status-label styling. Values use status-value styling.
 - Row text does not wrap. Long agent labels and activity display values truncate within available width.
 - Parent-thread activity may use `Main` without model or reasoning metadata.
-- Observed subagent child-thread rows use backend-provided subagent nicknames after resolution.
-- If exact child-thread model metadata is known, a resolved subagent label may append `nickname (model)`. If exact reasoning effort is also known, it may append `nickname (model/reasoning)`.
-- If exact model metadata is unavailable, a resolved subagent remains nickname-only.
+- Observed multi-agent v2 child-thread rows use the exact non-empty protocol `agentPath`, including its `/root/...` hierarchy.
+- A malformed v2 child record whose required `agentPath` is missing or blank keeps an empty agent label; it does not fall back to a legacy label, nickname, or thread id.
+- Pathless legacy child-thread rows use the fixed label `Subagent`; backend-generated nicknames are not displayed.
+- If exact child-thread model metadata is known, a child label may append `agentPath (model)` or `Subagent (model)`. If exact reasoning effort is also known, it may append `agentPath (model/reasoning)` or `Subagent (model/reasoning)`.
+- If exact model metadata is unavailable, the child label remains path-only or `Subagent`.
 - Known non-subagent thread display labels may be shown only when they are real user-facing labels rather than generated from backend ids, and they do not receive subagent model/reasoning suffixes.
-- Backend thread ids are correlation keys and must not render as fallback agent labels. Unresolved subagent rows keep the agent value empty until nickname resolution succeeds.
-- Missing model or reasoning metadata is not inferred from defaults, model-list metadata, thread ids, or nicknames.
+- Backend thread ids are correlation keys and must not render as fallback agent labels. Agent paths do not replace thread ids for attribution, ownership, or lifecycle correlation.
+- Missing model or reasoning metadata is not inferred from defaults, model-list metadata, thread ids, agent paths, or nicknames.
 
 ## Activity Display Values
 
@@ -69,5 +72,4 @@ Show bounded live and recent backend activity for the selected conversation with
 
 - Activity rendering reads the current selected-thread activity projection and does not synchronously query `codex app-server`.
 - Exact subagent model/reasoning metadata may come from normalized activity events or later read-only metadata responses.
-- Beryl may resolve unresolved subagent nicknames through independent backend maintenance client sessions that issue metadata-only `thread/read` requests outside render paths.
-- Beryl must not use `thread/resume` merely to decorate activity rows unless a later design explicitly accepts the load and subscription side effects.
+- Beryl does not issue `thread/read` or `thread/resume` requests merely to decorate activity rows with backend-generated subagent nicknames.

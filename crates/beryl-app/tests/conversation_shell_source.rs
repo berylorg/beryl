@@ -134,6 +134,20 @@ fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
 }
 
 #[test]
+fn activity_rows_use_projection_identity_instead_of_viewport_index() {
+    let render_source = include_str!("../src/shell/render/conversation.rs");
+    let panel_body = rust_function_body(render_source, "fn render_tool_activity_panel");
+    let row_body = rust_function_body(render_source, "fn render_tool_activity_row");
+
+    assert!(panel_body.contains("for (_, row) in rows"));
+    assert!(panel_body.contains("row.stable_identity().clone()"));
+    assert!(render_source.contains("stable_identity: SharedString"));
+    assert!(row_body.contains("ElementId::from(("));
+    assert!(!row_body.contains("tool-activity-row\", index"));
+    assert!(!row_body.contains("index: usize"));
+}
+
+#[test]
 fn startup_toolbar_leading_label_stays_single_line_in_shared_strip_height() {
     let common_source = include_str!("../src/shell/render/common.rs");
     let startup_frame_body = rust_function_body(common_source, "pub(super) fn startup_shell_frame");
@@ -264,6 +278,35 @@ fn conversation_input_changes_notify_shell_for_composer_remeasurement() {
     assert!(note_measurement_body.contains("composer_image_atom_revision.wrapping_add(1)"));
     assert!(handler_body.contains("TextInputEvent::InlineAtomClicked"));
     assert!(handler_body.contains("open_composer_image_marker_menu"));
+}
+
+#[test]
+fn selected_thread_mutations_sync_activity_projection_without_stream_ingress() {
+    let shell_source = include_str!("../src/shell.rs");
+    let setter_body = rust_function_body(shell_source, "fn set_selected_thread_index");
+    let select_body = rust_function_body(shell_source, "fn select_thread_by_id");
+    let upsert_body = rust_function_body(shell_source, "fn upsert_selected_thread");
+    let new_thread_body = rust_function_body(shell_source, "fn start_new_thread(&mut self)");
+    let reopen_body = rust_function_body(shell_source, "fn refresh_after_backend_reopen");
+
+    assert_eq!(shell_source.matches("self.selected_thread =").count(), 1);
+    assert_order(
+        setter_body,
+        "self.selected_thread = selected_thread",
+        ".set_selected_thread_id(selected_thread_id.as_deref())",
+    );
+    assert!(select_body.contains("self.set_selected_thread_index(selected_thread)"));
+    assert!(upsert_body.contains("self.set_selected_thread_index(Some(index))"));
+    assert!(upsert_body.contains("self.set_selected_thread_index(Some(0))"));
+    assert!(new_thread_body.contains("self.set_selected_thread_index(None)"));
+    assert!(reopen_body.contains("let selected_thread = self.selected_thread"));
+    let reopen_after_activity_clear = reopen_body
+        .split_once("self.tool_activity.clear_all()")
+        .expect("backend reopen must clear retained activity")
+        .1;
+    assert!(
+        reopen_after_activity_clear.contains("self.set_selected_thread_index(selected_thread)")
+    );
 }
 
 #[test]

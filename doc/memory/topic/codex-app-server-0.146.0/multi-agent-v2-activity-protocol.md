@@ -6,7 +6,9 @@ The August 2026 repeated-yield acceptance trace appeared to lose Beryl subagent 
 
 At exact CAS 0.146.0, the multi-agent v2 `spawn`, `send`, `followup`, and `interrupt` paths emit only a completed `subAgentActivity` item after success. The item carries `id`, `kind`, `agentThreadId`, and `agentPath`; `kind` is `started`, `interacted`, or `interrupted`. Failed operations emit no such activity. `wait_agent` remains a legacy `collabAgentToolCall` started/completed flow, and v1 remains legacy.
 
-The app-server v2 event mapping turns those core events into `ThreadItem::SubAgentActivity` only as completed items. Beryl must correlate v2 activity by `agentThreadId`, keep `thread/read` nickname resolution, and never render `agentPath` as a nickname. It must not infer model or reasoning effort, and an `interacted` event cannot distinguish `send` from `followup`. Legacy collaboration activity remains supported alongside v2.
+The app-server v2 event mapping turns those core events into `ThreadItem::SubAgentActivity` only as completed items. Beryl must correlate v2 activity by `agentThreadId`. It must not infer model or reasoning effort, and an `interacted` event cannot distinguish `send` from `followup`. Legacy collaboration activity remains supported alongside v2.
+
+The original investigation predated the Activity presentation decision and therefore did not make `agentPath` a display label. That conclusion is superseded by `subagent-display-identity.md` and the Activity feature authority: Activity now displays each exact non-empty v2 `agentPath`, performs no Activity-only `thread/read` nickname resolution, keeps malformed v2 path labels empty, and uses fixed `Subagent` only for pathless legacy activity. This changes presentation, not the completed-only protocol or thread-id correlation contract above.
 
 # Sources
 

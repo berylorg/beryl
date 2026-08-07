@@ -17,53 +17,6 @@ use tool_activity::{
 };
 
 #[test]
-fn projection_keeps_session_history_sorted_by_running_state_and_start_time() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started("thread_main", "turn_1", mcp_item("mcp_1", "read_file")),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started("thread_main", "turn_2", command_item("mcp_1")),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started("thread_child", "turn_1", resource_item("resource_1")),
-        None,
-    );
-
-    let rows = projection.rows();
-    assert_eq!(rows.len(), 3);
-    assert_eq!(rows[0].agent_label, "");
-    assert_eq!(rows[0].tool_display_value, "file:///workspace/state");
-    assert_eq!(rows[0].status, ToolActivityRowStatus::Running);
-    assert_eq!(rows[1].tool_display_value, "dir");
-    assert_eq!(rows[1].status, ToolActivityRowStatus::Running);
-    assert_eq!(rows[2].agent_label, "Main");
-    assert_eq!(rows[2].tool_display_value, "read_file");
-    assert_eq!(rows[2].status, ToolActivityRowStatus::Running);
-
-    projection.apply_stream_event(
-        &completed(
-            "thread_main",
-            "turn_1",
-            mcp_item_with_status("mcp_1", "read_file", "completed"),
-        ),
-        Some("Main".to_string()),
-    );
-
-    let rows = projection.rows();
-    assert_eq!(rows.len(), 3);
-    assert_eq!(rows[0].tool_display_value, "file:///workspace/state");
-    assert_eq!(rows[0].status, ToolActivityRowStatus::Running);
-    assert_eq!(rows[1].tool_display_value, "dir");
-    assert_eq!(rows[1].status, ToolActivityRowStatus::Running);
-    assert_eq!(rows[2].tool_display_value, "read_file");
-    assert_eq!(rows[2].status, ToolActivityRowStatus::FinishedOk);
-}
-
-#[test]
 fn projection_classifies_completed_items_from_raw_status() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
@@ -100,6 +53,56 @@ fn projection_classifies_completed_items_from_raw_status() {
 }
 
 #[test]
+fn projection_row_identity_includes_thread_turn_and_item() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_a", "turn_a", command_item("shared_item")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_b", "turn_b", command_item("shared_item")),
+        Some("Main".to_string()),
+    );
+
+    let rows = projection.rows();
+    assert_eq!(rows.len(), 2);
+    assert_ne!(rows[0].stable_identity(), rows[1].stable_identity());
+}
+
+#[test]
+fn projection_row_identity_survives_active_to_finished_resorting() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_main", "turn_1", command_item("first")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_main", "turn_1", command_item("second")),
+        Some("Main".to_string()),
+    );
+
+    let first_identity = row_for_activity(&projection, "dir")
+        .stable_identity()
+        .clone();
+    projection.apply_stream_event(
+        &completed(
+            "thread_main",
+            "turn_1",
+            command_item_with_status("first", "completed"),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let first_row = projection
+        .rows()
+        .iter()
+        .find(|row| row.item_id() == "first")
+        .expect("finished activity row should remain visible");
+    assert_eq!(first_row.stable_identity(), &first_identity);
+    assert_eq!(projection.rows()[0].item_id(), "second");
+}
+
+#[test]
 fn projection_retained_counts_report_records_rows_and_visible_indexes() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
@@ -112,6 +115,8 @@ fn projection_retained_counts_report_records_rows_and_visible_indexes() {
     assert_eq!(counts.rows, 1);
     assert_eq!(counts.visible_thread_indexes, 1);
     assert_eq!(counts.label_count, 0);
+    assert_eq!(counts.multi_agent_v2_child_threads, 0);
+    assert_eq!(counts.multi_agent_v2_path_associations, 0);
     assert_eq!(counts.visible_thread_index_maps, 1);
     assert!(counts.record_payload_bytes > 0);
     assert!(counts.row_payload_bytes > 0);
@@ -306,55 +311,6 @@ fn projection_shows_single_diffless_file_change_path() {
             }
         ])),
         "Patching src/lib.rs, +0 -0"
-    );
-}
-
-#[test]
-fn projection_shows_reasoning_lifecycle_and_summary_updates() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &reasoning_summary_part_added("thread_main", "turn_1", "reasoning_1", 0),
-        Some("Main".to_string()),
-    );
-    assert_eq!(projection.rows().len(), 1);
-    assert_eq!(projection.rows()[0].agent_label, "Main");
-    assert_eq!(projection.rows()[0].tool_display_value, "reasoning");
-    assert_eq!(projection.rows()[0].status, ToolActivityRowStatus::Running);
-
-    projection.apply_stream_event(
-        &reasoning_summary_delta(
-            "thread_main",
-            "turn_1",
-            "reasoning_1",
-            0,
-            "Checking options",
-        ),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &reasoning_summary_delta("thread_main", "turn_1", "reasoning_1", 0, " carefully."),
-        Some("Main".to_string()),
-    );
-    assert_eq!(
-        projection.rows()[0].tool_display_value,
-        "reasoning: Checking options carefully."
-    );
-
-    projection.apply_stream_event(
-        &started("thread_main", "turn_2", command_item("cmd_1")),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started("thread_main", "turn_1", reasoning_item("reasoning_1")),
-        Some("Main".to_string()),
-    );
-
-    let rows = projection.rows();
-    assert_eq!(rows[0].tool_display_value, "dir");
-    assert_eq!(
-        rows[1].tool_display_value,
-        "reasoning: Checking options carefully."
     );
 }
 
@@ -577,132 +533,6 @@ fn projection_ignores_same_and_other_thread_unarchive_activity() {
 }
 
 #[test]
-fn projection_scopes_visible_rows_to_selected_thread_and_owned_subagents() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started("thread_child_a", "turn_child_a", command_item("cmd_a")),
-        Some("Child A".to_string()),
-    );
-    projection.apply_stream_event(
-        &started(
-            "thread_parent_a",
-            "turn_parent_a",
-            collab_spawn_item_for("agent_a", "thread_child_a"),
-        ),
-        Some("Main A".to_string()),
-    );
-    projection.apply_stream_event(
-        &started(
-            "thread_parent_b",
-            "turn_parent_b",
-            collab_spawn_item_for("agent_b", "thread_child_b"),
-        ),
-        Some("Main B".to_string()),
-    );
-    projection.apply_stream_event(
-        &started("thread_child_b", "turn_child_b", command_item("cmd_b")),
-        Some("Child B".to_string()),
-    );
-    projection.apply_stream_event(
-        &started(
-            "thread_other",
-            "turn_other",
-            mcp_item("mcp_other", "search"),
-        ),
-        Some("Other".to_string()),
-    );
-
-    let parent_a_rows = projection.rows_for_selected_thread(Some("thread_parent_a"));
-    assert_eq!(parent_a_rows.len(), 2);
-    assert_eq!(parent_a_rows[0].agent_label, "Main A");
-    assert_eq!(parent_a_rows[0].tool_display_value, "spawnAgent");
-    assert_eq!(parent_a_rows[1].agent_label, "Child A");
-    assert_eq!(parent_a_rows[1].tool_display_value, "dir");
-    assert_eq!(
-        projection.row_count_for_selected_thread(Some("thread_parent_a")),
-        2
-    );
-    let parent_a_window = projection.rows_for_selected_thread_window(Some("thread_parent_a"), 1..8);
-    assert_eq!(parent_a_window.len(), 1);
-    assert_eq!(parent_a_window[0].0, 1);
-    assert_eq!(parent_a_window[0].1.agent_label, "Child A");
-
-    let parent_b_rows = projection.rows_for_selected_thread(Some("thread_parent_b"));
-    assert_eq!(parent_b_rows.len(), 2);
-    assert_eq!(parent_b_rows[0].agent_label, "Child B");
-    assert_eq!(parent_b_rows[0].tool_display_value, "dir");
-    assert_eq!(parent_b_rows[1].agent_label, "Main B");
-    assert_eq!(parent_b_rows[1].tool_display_value, "spawnAgent");
-
-    let child_a_rows = projection.rows_for_selected_thread(Some("thread_child_a"));
-    assert_eq!(child_a_rows.len(), 1);
-    assert_eq!(child_a_rows[0].agent_label, "Child A");
-    assert_eq!(child_a_rows[0].tool_display_value, "dir");
-
-    assert!(projection.rows_for_selected_thread(None).is_empty());
-    assert!(projection.rows_for_selected_thread(Some("")).is_empty());
-    assert_eq!(projection.row_count_for_selected_thread(None), 0);
-    assert_eq!(projection.row_count_for_selected_thread(Some("")), 0);
-    assert!(
-        projection
-            .rows_for_selected_thread_window(None, 0..2)
-            .is_empty()
-    );
-    assert_eq!(projection.rows().len(), 5);
-
-    let parent_a_rows_after_switch = projection.rows_for_selected_thread(Some("thread_parent_a"));
-    assert_eq!(parent_a_rows_after_switch.len(), 2);
-    assert_eq!(parent_a_rows_after_switch[1].agent_label, "Child A");
-}
-
-#[test]
-fn projection_returns_bounded_selected_thread_row_windows() {
-    let mut projection = ToolActivityProjection::default();
-
-    for index in 0..12 {
-        let command = format!("cmd {index}");
-        projection.apply_stream_event(
-            &started(
-                "thread_main",
-                format!("turn_{index}").as_str(),
-                command_item_with_command(format!("cmd_{index}").as_str(), &command, "inProgress"),
-            ),
-            Some("Main".to_string()),
-        );
-    }
-    projection.apply_stream_event(
-        &started("thread_other", "turn_other", command_item("cmd_other")),
-        Some("Other".to_string()),
-    );
-
-    assert_eq!(
-        projection.row_count_for_selected_thread(Some("thread_main")),
-        12
-    );
-    assert_eq!(projection.rows().len(), 13);
-
-    let window = projection.rows_for_selected_thread_window(Some("thread_main"), 2..5);
-    assert_eq!(window.len(), 3);
-    assert_eq!(
-        window.iter().map(|(index, _)| *index).collect::<Vec<_>>(),
-        vec![2, 3, 4]
-    );
-    assert_eq!(
-        window
-            .iter()
-            .map(|(_, row)| row.tool_display_value.as_str())
-            .collect::<Vec<_>>(),
-        vec!["cmd 9", "cmd 8", "cmd 7"]
-    );
-
-    let oversized_window = projection.rows_for_selected_thread_window(Some("thread_main"), 10..40);
-    assert_eq!(oversized_window.len(), 2);
-    assert_eq!(oversized_window[0].0, 10);
-    assert_eq!(oversized_window[1].0, 11);
-}
-
-#[test]
 fn projection_prunes_completed_rows_by_global_row_budget_but_keeps_running() {
     let mut projection = ToolActivityProjection::default();
 
@@ -844,12 +674,7 @@ fn projection_prunes_subagent_maps_when_retained_rows_no_longer_reference_them()
         &started("thread_child", "turn_child", command_item("cmd_child")),
         None,
     );
-    let metadata = thread_read_metadata(
-        "thread_child",
-        Some("Hooke"),
-        Some("gpt-5.5"),
-        Some("xhigh"),
-    );
+    let metadata = thread_read_metadata("thread_child", None, Some("gpt-5.5"), Some("xhigh"));
     projection.apply_thread_read_metadata([&metadata]);
     projection.apply_stream_event(
         &turn_completed_with_status("thread_parent", "turn_parent", TurnStatus::Completed),
@@ -869,8 +694,6 @@ fn projection_prunes_subagent_maps_when_retained_rows_no_longer_reference_them()
     assert_eq!(counts.root_turn_links, 0);
     assert_eq!(counts.subagent_metadata_count, 0);
     assert_eq!(counts.label_count, 0);
-    assert!(projection.subagent_metadata_resolution_targets().is_empty());
-    assert!(projection.unresolved_subagent_thread_ids().is_empty());
     assert!(
         projection
             .rows()
@@ -930,188 +753,6 @@ fn projection_truncates_large_ingress_payloads() {
 }
 
 #[test]
-fn projection_makes_preexisting_child_rows_visible_after_ownership_arrives() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_child")),
-        Some("Child".to_string()),
-    );
-    assert!(
-        projection
-            .rows_for_selected_thread(Some("thread_parent"))
-            .is_empty()
-    );
-
-    projection.apply_stream_event(
-        &started(
-            "thread_parent",
-            "turn_parent",
-            collab_spawn_item("agent_parent"),
-        ),
-        Some("Main".to_string()),
-    );
-
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    assert_eq!(parent_rows.len(), 2);
-    assert_eq!(parent_rows[0].agent_label, "Main");
-    assert_eq!(parent_rows[0].tool_display_value, "spawnAgent");
-    assert_eq!(parent_rows[1].agent_label, "Child");
-    assert_eq!(parent_rows[1].tool_display_value, "dir");
-}
-
-#[test]
-fn projection_includes_child_reasoning_before_and_after_ownership_arrives() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started(
-            "thread_child",
-            "turn_child",
-            reasoning_item("reasoning_child"),
-        ),
-        None,
-    );
-    assert!(
-        projection
-            .rows_for_selected_thread(Some("thread_parent"))
-            .is_empty()
-    );
-
-    projection.apply_stream_event(
-        &started(
-            "thread_parent",
-            "turn_parent",
-            collab_spawn_item("agent_parent"),
-        ),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &reasoning_summary_delta(
-            "thread_child",
-            "turn_child",
-            "reasoning_child",
-            0,
-            "Inspecting child context.",
-        ),
-        None,
-    );
-    projection.apply_stream_event(
-        &started(
-            "thread_child",
-            "turn_child_2",
-            reasoning_item("reasoning_child_2"),
-        ),
-        None,
-    );
-
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    assert_eq!(parent_rows.len(), 3);
-    assert_eq!(parent_rows[0].agent_label, "");
-    assert_eq!(parent_rows[0].tool_display_value, "reasoning");
-    assert_eq!(parent_rows[1].agent_label, "Main");
-    assert_eq!(parent_rows[1].tool_display_value, "spawnAgent");
-    assert_eq!(parent_rows[2].agent_label, "");
-    assert_eq!(
-        parent_rows[2].tool_display_value,
-        "reasoning: Inspecting child context."
-    );
-}
-
-#[test]
-fn projection_repairs_child_reasoning_rows_when_nickname_resolves() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started("thread_parent", "turn_parent", collab_spawn_item("agent_1")),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started(
-            "thread_child",
-            "turn_child",
-            reasoning_item("reasoning_child"),
-        ),
-        None,
-    );
-
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    assert_eq!(parent_rows[0].agent_label, "");
-    assert_eq!(parent_rows[0].tool_display_value, "reasoning");
-
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    let reasoning_row = parent_rows
-        .iter()
-        .find(|row| row.tool_display_value == "reasoning")
-        .expect("child reasoning row should remain visible");
-    assert_eq!(reasoning_row.agent_label, "Hooke");
-}
-
-#[test]
-fn projection_keeps_observed_subagent_empty_until_metadata_nickname_resolves() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started("thread_parent", "turn_parent", collab_spawn_item("agent_1")),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    assert_eq!(parent_rows.len(), 2);
-    assert_eq!(parent_rows[0].agent_label, "");
-    assert_eq!(parent_rows[0].tool_display_value, "dir");
-    assert_eq!(parent_rows[1].agent_label, "Main");
-    assert_eq!(parent_rows[1].tool_display_value, "spawnAgent");
-    assert_eq!(
-        projection.unresolved_subagent_thread_ids(),
-        vec!["thread_child".to_string()]
-    );
-
-    let mut display_summary = thread_summary("thread_child", None);
-    display_summary.name = Some("Research".to_string());
-    projection.apply_thread_summary_agent_labels([&display_summary]);
-
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "");
-    assert_eq!(
-        projection.unresolved_subagent_thread_ids(),
-        vec!["thread_child".to_string()]
-    );
-
-    let nickname_summary = thread_summary("thread_child", Some("Hooke"));
-    projection.apply_thread_summary_agent_labels([&nickname_summary]);
-
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible after nickname");
-    assert_eq!(child_row.agent_label, "Hooke");
-    assert!(projection.unresolved_subagent_thread_ids().is_empty());
-
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child_2", mcp_item("mcp_2", "search")),
-        None,
-    );
-    let future_child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "search")
-        .expect("future child row should use cached nickname");
-    assert_eq!(future_child_row.agent_label, "Hooke");
-}
-
-#[test]
 fn projection_ignores_backend_thread_id_fallback_agent_labels() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
@@ -1144,343 +785,6 @@ fn projection_ignores_backend_thread_id_fallback_agent_labels() {
 }
 
 #[test]
-fn projection_uses_subagent_nickname_updates_for_child_thread_rows() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-    assert_eq!(projection.rows()[0].agent_label, "");
-
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "Hooke");
-
-    projection.apply_stream_event(
-        &started("thread_parent", "turn_parent", collab_spawn_item("agent_1")),
-        Some("Main".to_string()),
-    );
-
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "Hooke");
-
-    projection.apply_stream_event(
-        &completed(
-            "thread_child",
-            "turn_child",
-            command_item_with_status("cmd_1", "completed"),
-        ),
-        Some("thread:thread_child".to_string()),
-    );
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible after completion");
-    assert_eq!(child_row.agent_label, "Hooke");
-    assert_eq!(child_row.status, ToolActivityRowStatus::FinishedOk);
-
-    let parent_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "spawnAgent")
-        .expect("parent collab row should remain visible");
-    assert_eq!(parent_row.agent_label, "Main");
-}
-
-#[test]
-fn projection_uses_collab_spawn_label_updates_for_child_thread_rows() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-    assert_eq!(projection.rows()[0].agent_label, "");
-
-    projection.apply_stream_event(&agent_label_updated("thread_child", "Gauss"), None);
-
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "Gauss");
-
-    projection.apply_stream_event(
-        &completed(
-            "thread_child",
-            "turn_child",
-            command_item_with_status("cmd_1", "completed"),
-        ),
-        Some("thread:thread_child".to_string()),
-    );
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible after completion");
-    assert_eq!(child_row.agent_label, "Gauss");
-}
-
-#[test]
-fn projection_applies_activity_model_metadata_when_nickname_resolves() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started(
-            "thread_parent",
-            "turn_parent",
-            collab_spawn_item_with_runtime_metadata(
-                "agent_1",
-                &["thread_child"],
-                Some("gpt-5.5"),
-                None,
-            ),
-        ),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "");
-    let parent_row = row_for_activity(&projection, "spawnAgent");
-    assert_eq!(parent_row.agent_label, "Main");
-
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "Hooke (gpt-5.5)");
-}
-
-#[test]
-fn projection_applies_activity_model_and_reasoning_metadata_when_nickname_resolves() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started(
-            "thread_parent",
-            "turn_parent",
-            collab_spawn_item_with_runtime_metadata(
-                "agent_1",
-                &["thread_child"],
-                Some("gpt-5.5"),
-                Some("xhigh"),
-            ),
-        ),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-
-    assert_eq!(row_for_activity(&projection, "dir").agent_label, "");
-
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "Hooke (gpt-5.5/xhigh)");
-}
-
-#[test]
-fn projection_keeps_activity_metadata_without_model_as_nickname_only() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started(
-            "thread_parent",
-            "turn_parent",
-            collab_spawn_item_with_runtime_metadata(
-                "agent_1",
-                &["thread_child"],
-                None,
-                Some("xhigh"),
-            ),
-        ),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "Hooke");
-}
-
-#[test]
-fn projection_applies_activity_metadata_to_multiple_receiver_threads() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started(
-            "thread_parent",
-            "turn_parent",
-            collab_spawn_item_with_runtime_metadata(
-                "agent_1",
-                &["thread_child_a", "thread_child_b"],
-                Some("gpt-5.5"),
-                Some("xhigh"),
-            ),
-        ),
-        Some("Main".to_string()),
-    );
-    projection.apply_stream_event(
-        &started(
-            "thread_child_a",
-            "turn_child_a",
-            command_item_with_command("cmd_a", "whoami", "inProgress"),
-        ),
-        None,
-    );
-    projection.apply_stream_event(
-        &started(
-            "thread_child_b",
-            "turn_child_b",
-            command_item_with_command("cmd_b", "hostname", "inProgress"),
-        ),
-        None,
-    );
-
-    projection.apply_stream_event(&thread_started("thread_child_a", Some("Hooke")), None);
-    projection.apply_stream_event(&thread_started("thread_child_b", Some("Noether")), None);
-
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    let child_a = parent_rows
-        .iter()
-        .find(|row| row.tool_display_value == "whoami")
-        .expect("first child row should remain visible under parent");
-    let child_b = parent_rows
-        .iter()
-        .find(|row| row.tool_display_value == "hostname")
-        .expect("second child row should remain visible under parent");
-    let parent = parent_rows
-        .iter()
-        .find(|row| row.tool_display_value == "spawnAgent")
-        .expect("parent collab row should remain visible");
-
-    assert_eq!(child_a.agent_label, "Hooke (gpt-5.5/xhigh)");
-    assert_eq!(child_b.agent_label, "Noether (gpt-5.5/xhigh)");
-    assert_eq!(parent.agent_label, "Main");
-}
-
-#[test]
-fn projection_repairs_child_rows_from_thread_summary_agent_nicknames() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-    assert_eq!(projection.rows()[0].agent_label, "");
-
-    let child_summary = thread_summary("thread_child", Some("Hooke"));
-    projection.apply_thread_summary_agent_labels([&child_summary]);
-
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "Hooke");
-
-    projection.apply_stream_event(
-        &completed(
-            "thread_child",
-            "turn_child",
-            command_item_with_status("cmd_1", "completed"),
-        ),
-        Some("thread:thread_child".to_string()),
-    );
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible after completion");
-    assert_eq!(child_row.agent_label, "Hooke");
-}
-
-#[test]
-fn projection_formats_subagent_read_metadata_nickname_without_model() {
-    let mut projection = observed_child_projection();
-
-    let metadata = thread_read_metadata("thread_child", Some("Hooke"), None, None);
-    projection.apply_thread_read_metadata([&metadata]);
-
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "Hooke");
-    assert!(projection.subagent_metadata_resolution_targets().is_empty());
-}
-
-#[test]
-fn projection_requests_runtime_metadata_for_already_named_subagent_once() {
-    let mut projection = observed_child_projection();
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-
-    let targets = projection.subagent_metadata_resolution_targets();
-    assert_eq!(targets.len(), 1);
-    assert_eq!(targets[0].thread_id, "thread_child");
-    assert!(!targets[0].requires_nickname);
-
-    let metadata = thread_read_metadata("thread_child", None, None, None);
-    projection.apply_thread_read_metadata([&metadata]);
-
-    assert!(projection.subagent_metadata_resolution_targets().is_empty());
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "Hooke");
-}
-
-#[test]
-fn projection_formats_subagent_read_metadata_with_model() {
-    let mut projection = observed_child_projection();
-
-    let metadata = thread_read_metadata("thread_child", Some("Hooke"), Some("gpt-5.5"), None);
-    projection.apply_thread_read_metadata([&metadata]);
-
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "Hooke (gpt-5.5)");
-}
-
-#[test]
-fn projection_formats_subagent_read_metadata_with_model_and_reasoning() {
-    let mut projection = observed_child_projection();
-
-    let metadata = thread_read_metadata(
-        "thread_child",
-        Some("Hooke"),
-        Some("gpt-5.5"),
-        Some("xhigh"),
-    );
-    projection.apply_thread_read_metadata([&metadata]);
-
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "Hooke (gpt-5.5/xhigh)");
-}
-
-#[test]
-fn projection_keeps_subagent_read_metadata_unresolved_when_nickname_is_absent() {
-    let mut projection = observed_child_projection();
-
-    let metadata = thread_read_metadata("thread_child", None, Some("gpt-5.5"), Some("xhigh"));
-    projection.apply_thread_read_metadata([&metadata]);
-
-    let child_row = row_for_activity(&projection, "dir");
-    assert_eq!(child_row.agent_label, "");
-    assert_eq!(
-        projection.unresolved_subagent_thread_ids(),
-        vec!["thread_child".to_string()]
-    );
-}
-
-#[test]
 fn projection_does_not_suffix_non_subagent_display_labels_with_model_metadata() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
@@ -1497,112 +801,630 @@ fn projection_does_not_suffix_non_subagent_display_labels_with_model_metadata() 
 }
 
 #[test]
-fn projection_uses_thread_summary_display_label_for_non_subagent_when_nickname_is_absent() {
+fn projection_uses_exact_nested_v2_path_and_exact_metadata_suffix() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "subagent_child",
+                "interacted",
+                Some("thread_child"),
+                Some("/root/planner/reviewer"),
+            ),
+        ),
+        Some("Main".to_string()),
     );
+    projection.apply_thread_read_metadata([&thread_read_metadata(
+        "thread_child",
+        None,
+        Some("gpt-5.5"),
+        Some("xhigh"),
+    )]);
 
-    let mut child_summary = thread_summary("thread_child", None);
-    child_summary.name = Some("Research".to_string());
-    projection.apply_thread_summary_agent_labels([&child_summary]);
-
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "Research");
-
-    let child_summary = thread_summary("thread_child", Some("Hooke"));
-    projection.apply_thread_summary_agent_labels([&child_summary]);
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible after nickname");
-    assert_eq!(child_row.agent_label, "Hooke");
-
-    let mut later_display_summary = thread_summary("thread_child", None);
-    later_display_summary.name = Some("Renamed Thread".to_string());
-    projection.apply_thread_summary_agent_labels([&later_display_summary]);
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible after display update");
-    assert_eq!(child_row.agent_label, "Hooke");
+    assert_eq!(
+        row_for_activity(&projection, "interacted").agent_label,
+        "/root/planner/reviewer (gpt-5.5/xhigh)"
+    );
 }
 
 #[test]
-fn projection_keeps_thread_metadata_nickname_above_later_activity_labels() {
+fn projection_uses_subagent_for_pathless_legacy_children() {
     let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-    let child_summary = thread_summary("thread_child", Some("Hooke"));
-    projection.apply_thread_summary_agent_labels([&child_summary]);
-
     projection.apply_stream_event(
         &started(
             "thread_parent",
             "turn_parent",
-            collab_spawn_item_with_agent_label("agent_1", "thread_child", "thread:thread_child"),
+            collab_spawn_item("spawn_child"),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("cmd_child")),
+        None,
+    );
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, "Subagent");
+}
+
+#[test]
+fn projection_orders_running_main_then_stable_active_children_and_reactivation() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_parent", "turn_main", command_item("main")),
+        Some("Main".to_string()),
+    );
+    for (child, item) in [("thread_child_a", "child_a"), ("thread_child_b", "child_b")] {
+        projection.apply_stream_event(
+            &started(
+                "thread_parent",
+                "turn_main",
+                collab_spawn_item_for(format!("spawn_{item}").as_str(), child),
+            ),
+            Some("Main".to_string()),
+        );
+        projection.apply_stream_event(
+            &started(child, format!("turn_{item}").as_str(), mcp_item(item, item)),
+            None,
+        );
+    }
+
+    let visible = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert_eq!(visible[0].agent_label, "Main");
+    assert_eq!(
+        visible
+            .iter()
+            .filter(|row| row.agent_label == "Subagent")
+            .map(|row| row.tool_display_value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["child_a", "child_b"]
+    );
+
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_child_a", "turn_child_a", TurnStatus::Completed),
+        None,
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_child_a",
+            "turn_child_a_2",
+            mcp_item("child_a_2", "child_a_2"),
+        ),
+        None,
+    );
+    assert_eq!(
+        projection
+            .rows_for_selected_thread(Some("thread_parent"))
+            .iter()
+            .filter(
+                |row| row.agent_label == "Subagent" && row.status == ToolActivityRowStatus::Running
+            )
+            .map(|row| row.tool_display_value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["child_b", "child_a_2"]
+    );
+}
+
+#[test]
+fn projection_rebuilds_retained_parent_activity_as_main_after_thread_switch() {
+    let mut projection = ToolActivityProjection::default();
+    projection.set_selected_thread_id(Some("thread_other"));
+    projection.apply_stream_event(
+        &started("thread_parent", "turn_parent", command_item("main_command")),
+        None,
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for("spawn_child", "thread_child"),
+        ),
+        None,
+    );
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", mcp_item("child", "child")),
+        None,
+    );
+
+    assert!(
+        projection
+            .rows_for_selected_thread(Some("thread_other"))
+            .is_empty()
+    );
+    projection.set_selected_thread_id(Some("thread_parent"));
+
+    let visible = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert_eq!(visible[0].tool_display_value, "dir");
+    assert_eq!(visible[0].agent_label, "Main");
+    assert_eq!(visible[0].status, ToolActivityRowStatus::Running);
+    assert_eq!(visible[1].agent_label, "Main");
+    assert_eq!(visible[2].agent_label, "Subagent");
+    assert_eq!(visible[2].tool_display_value, "child");
+}
+
+#[test]
+fn projection_orders_terminal_rows_by_newest_completion_with_key_ties() {
+    let mut projection = ToolActivityProjection::default();
+    for item in ["a", "b"] {
+        projection.apply_stream_event(
+            &started("thread_parent", "turn_parent", command_item(item)),
+            Some("Main".to_string()),
+        );
+    }
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            command_item_with_status("a", "completed"),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            command_item_with_status("b", "completed"),
         ),
         Some("Main".to_string()),
     );
 
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "Hooke");
+    assert_eq!(
+        projection
+            .rows()
+            .iter()
+            .map(tool_activity::ToolActivityRow::item_id)
+            .collect::<Vec<_>>(),
+        vec!["b", "a"]
+    );
+
+    let mut tied = ToolActivityProjection::default();
+    for item in ["b", "a"] {
+        tied.apply_stream_event(
+            &started("thread_parent", "turn_parent", command_item(item)),
+            Some("Main".to_string()),
+        );
+    }
+    tied.apply_stream_event(
+        &turn_completed_with_status("thread_parent", "turn_parent", TurnStatus::Completed),
+        None,
+    );
+    assert_eq!(
+        tied.rows()
+            .iter()
+            .map(tool_activity::ToolActivityRow::item_id)
+            .collect::<Vec<_>>(),
+        vec!["a", "b"]
+    );
 }
 
 #[test]
-fn projection_attributes_completed_v2_activity_to_the_child_without_changing_parent_visibility() {
+fn projection_scopes_nested_v2_children_and_labels_operational_and_handoff_rows_by_path() {
     let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("child_command")),
+        Some("Main".to_string()),
+    );
+    assert!(
+        projection
+            .rows_for_selected_thread(Some("thread_parent"))
+            .is_empty()
+    );
 
-    for kind in ["started", "interacted", "interrupted"] {
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "child_link",
+                "started",
+                Some("thread_child"),
+                Some("/root/planner"),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_child",
+            "turn_child",
+            subagent_activity_item_with_path(
+                "grandchild_link",
+                "interacted",
+                Some("thread_grandchild"),
+                Some("/root/planner/reviewer"),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_grandchild",
+            "turn_grandchild",
+            command_item("grandchild_command"),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_child",
+            "turn_child",
+            final_answer_item("child_handoff", "child handoff"),
+        ),
+        None,
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_grandchild",
+            "turn_grandchild",
+            final_answer_item("grandchild_handoff", "nested handoff text"),
+        ),
+        None,
+    );
+
+    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert_eq!(
+        parent_rows
+            .iter()
+            .filter(|row| row.tool_display_value == "dir")
+            .map(|row| row.agent_label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["/root/planner", "/root/planner/reviewer"]
+    );
+    assert_eq!(
+        parent_rows
+            .iter()
+            .find(|row| row.item_id() == "child_handoff")
+            .map(|row| row.agent_label.as_str()),
+        Some("/root/planner")
+    );
+    assert_eq!(
+        parent_rows
+            .iter()
+            .find(|row| row.item_id() == "grandchild_handoff")
+            .map(|row| row.agent_label.as_str()),
+        Some("/root/planner/reviewer")
+    );
+    assert!(
+        parent_rows.iter().any(|row| {
+            row.tool_display_value == "started" && row.agent_label == "/root/planner"
+        })
+    );
+    assert!(parent_rows.iter().any(|row| {
+        row.tool_display_value == "interacted" && row.agent_label == "/root/planner/reviewer"
+    }));
+    assert_eq!(
+        projection
+            .rows_for_selected_thread_window(Some("thread_parent"), 1..3)
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn projection_keeps_v2_agent_paths_exact_for_valid_then_malformed_records() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "child_link",
+                "started",
+                Some("thread_child"),
+                Some("/root/first"),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("child_command")),
+        None,
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "child_missing_path",
+                "interacted",
+                Some("thread_child"),
+                None,
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert_eq!(
+        row_for_activity(&projection, "started").agent_label,
+        "/root/first"
+    );
+    assert_eq!(row_for_activity(&projection, "interacted").agent_label, "");
+    assert_eq!(
+        row_for_activity(&projection, "dir").agent_label,
+        "/root/first"
+    );
+}
+
+#[test]
+fn projection_keeps_v2_agent_paths_exact_for_malformed_then_valid_records() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "child_missing_path",
+                "started",
+                Some("thread_child"),
+                None,
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("child_command")),
+        None,
+    );
+    assert_eq!(row_for_activity(&projection, "started").agent_label, "");
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, "");
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "child_valid_path",
+                "interacted",
+                Some("thread_child"),
+                Some("/root/later"),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert_eq!(row_for_activity(&projection, "started").agent_label, "");
+    assert_eq!(
+        row_for_activity(&projection, "dir").agent_label,
+        "/root/later"
+    );
+    assert_eq!(
+        row_for_activity(&projection, "interacted").agent_label,
+        "/root/later"
+    );
+}
+
+#[test]
+fn projection_retains_distinct_overlimit_v2_agent_paths_exactly() {
+    let mut projection = ToolActivityProjection::default();
+    let path_a = format!(
+        "/root/first/{}",
+        "a".repeat(ACTIVITY_LABEL_DISPLAY_BYTE_LIMIT)
+    );
+    let path_b = format!(
+        "/root/second/{}",
+        "b".repeat(ACTIVITY_LABEL_DISPLAY_BYTE_LIMIT)
+    );
+
+    for (item_id, child_thread_id, agent_path) in [
+        ("child_first", "thread_first", path_a.as_str()),
+        ("child_second", "thread_second", path_b.as_str()),
+    ] {
         projection.apply_stream_event(
             &completed(
                 "thread_parent",
                 "turn_parent",
-                subagent_activity_item(
-                    format!("subagent_{kind}").as_str(),
-                    kind,
-                    Some("thread_child"),
+                subagent_activity_item_with_path(
+                    item_id,
+                    "interacted",
+                    Some(child_thread_id),
+                    Some(agent_path),
                 ),
             ),
             Some("Main".to_string()),
         );
     }
 
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    assert_eq!(parent_rows.len(), 3);
-    assert!(parent_rows.iter().all(|row| row.agent_label.is_empty()));
+    let rows = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert_eq!(rows.len(), 2);
     assert_eq!(
-        parent_rows
-            .iter()
-            .map(|row| row.tool_display_value.as_str())
-            .collect::<Vec<_>>(),
-        vec!["interrupted", "interacted", "started"]
+        row_for_activity(&projection, "interacted").agent_label,
+        path_b
+    );
+    assert!(rows.iter().any(|row| row.agent_label == path_a));
+    assert!(rows.iter().any(|row| row.agent_label == path_b));
+    assert!(projection.retained_counts().record_payload_bytes >= path_a.len() + path_b.len());
+}
+
+#[test]
+fn projection_keeps_multiple_child_rows_in_one_epoch_until_all_finish_then_reactivates() {
+    let mut projection = ToolActivityProjection::default();
+    for (child, item) in [("thread_a", "a"), ("thread_b", "b")] {
+        projection.apply_stream_event(
+            &started(
+                "thread_parent",
+                "turn_parent",
+                collab_spawn_item_for(item, child),
+            ),
+            Some("Main".to_string()),
+        );
+        projection.apply_stream_event(&started(child, "turn_child", mcp_item(item, item)), None);
+    }
+    projection.apply_stream_event(
+        &started("thread_a", "turn_child", mcp_item("a_second", "a_second")),
+        None,
     );
     assert_eq!(
         projection
-            .rows_for_selected_thread(Some("thread_child"))
+            .rows_for_selected_thread(Some("thread_parent"))
+            .iter()
+            .filter(|row| {
+                row.agent_label == "Subagent" && row.status == ToolActivityRowStatus::Running
+            })
+            .map(|row| row.tool_display_value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "a_second", "b"]
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_a",
+            "turn_child",
+            mcp_item_with_status("a", "a", "completed"),
+        ),
+        None,
+    );
+    assert_eq!(
+        projection
+            .rows_for_selected_thread(Some("thread_parent"))
+            .iter()
+            .filter(|row| {
+                row.agent_label == "Subagent" && row.status == ToolActivityRowStatus::Running
+            })
+            .map(|row| row.tool_display_value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a_second", "b"]
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_a",
+            "turn_child",
+            mcp_item_with_status("a_second", "a_second", "completed"),
+        ),
+        None,
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_a",
+            "turn_child_2",
+            mcp_item("a_reactivated", "a_reactivated"),
+        ),
+        None,
+    );
+    assert_eq!(
+        projection
+            .rows_for_selected_thread(Some("thread_parent"))
+            .iter()
+            .filter(|row| {
+                row.agent_label == "Subagent" && row.status == ToolActivityRowStatus::Running
+            })
+            .map(|row| row.tool_display_value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["b", "a_reactivated"]
+    );
+}
+
+#[test]
+fn projection_v2_completed_replay_stays_finished_parent_visible_and_formats_metadata() {
+    let mut projection = ToolActivityProjection::default();
+    let v2 = completed(
+        "thread_parent",
+        "turn_parent",
+        subagent_activity_item_with_path(
+            "child_link",
+            "interacted",
+            Some("thread_child"),
+            Some("/root/research"),
+        ),
+    );
+    projection.apply_stream_event(&v2, Some("Main".to_string()));
+    projection.apply_stream_event(&v2, Some("Main".to_string()));
+    let row = row_for_activity(&projection, "interacted");
+    assert_eq!(row.status, ToolActivityRowStatus::FinishedOk);
+    assert_eq!(row.agent_label, "/root/research");
+    assert_eq!(
+        projection
+            .rows_for_selected_thread(Some("thread_parent"))
             .len(),
-        0
+        1
     );
 
-    projection.apply_stream_event(&thread_started("thread_child", Some("Noether")), None);
+    projection.apply_thread_read_metadata([&thread_read_metadata(
+        "thread_child",
+        None,
+        Some("gpt-5.5"),
+        None,
+    )]);
+    assert_eq!(
+        row_for_activity(&projection, "interacted").agent_label,
+        "/root/research (gpt-5.5)"
+    );
+    projection.apply_thread_read_metadata([&thread_read_metadata(
+        "thread_child",
+        None,
+        None,
+        Some("high"),
+    )]);
+    assert_eq!(
+        row_for_activity(&projection, "interacted").agent_label,
+        "/root/research (gpt-5.5/high)"
+    );
+}
 
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    assert!(parent_rows.iter().all(|row| row.agent_label == "Noether"));
+#[test]
+fn projection_legacy_metadata_suffix_and_per_record_v2_path_retention_are_bounded() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for("legacy", "thread_legacy"),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_legacy",
+            "turn_legacy",
+            command_item("legacy_command"),
+        ),
+        None,
+    );
+    projection.apply_thread_read_metadata([&thread_read_metadata(
+        "thread_legacy",
+        None,
+        Some("gpt-5.5"),
+        Some("high"),
+    )]);
+    assert_eq!(
+        row_for_activity(&projection, "dir").agent_label,
+        "Subagent (gpt-5.5/high)"
+    );
+
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "v2_link",
+                "interacted",
+                Some("thread_v2"),
+                Some("/root/retained"),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    let before = projection.retained_counts();
+    assert!(before.payload_bytes >= "/root/retained".len() + "thread_v2".len());
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 12 {
+        add_completed_command(&mut projection, "thread_other", index, "completed");
+    }
+    let after = projection.retained_counts();
+    assert_eq!(after.parent_thread_links, 1);
+    assert_eq!(after.root_turn_links, 1);
+    assert!(after.payload_bytes < before.payload_bytes + ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET);
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_legacy", "turn_legacy", TurnStatus::Completed),
+        None,
+    );
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_parent", "turn_parent", TurnStatus::Completed),
+        None,
+    );
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 1 {
+        add_completed_command(&mut projection, "thread_post_legacy", index, "completed");
+    }
+    let reclaimed = projection.retained_counts();
+    assert_eq!(reclaimed.parent_thread_links, 0);
+    assert_eq!(reclaimed.root_turn_links, 0);
+    assert_eq!(reclaimed.subagent_metadata_count, 0);
 }
 
 #[test]
@@ -1619,10 +1441,6 @@ fn projection_keeps_malformed_v2_activity_on_the_parent_without_a_child_label() 
 
     let row = row_for_activity(&projection, "interacted");
     assert_eq!(row.agent_label, "Main");
-    assert_eq!(
-        projection.unresolved_subagent_thread_ids(),
-        Vec::<String>::new()
-    );
 }
 
 #[test]
@@ -1644,31 +1462,102 @@ fn projection_keeps_legacy_collaboration_activity_on_main() {
 }
 
 #[test]
-fn projection_keeps_completed_v2_same_key_replay_idempotent() {
-    let mut projection = ToolActivityProjection::default();
-    let event = completed(
-        "thread_parent",
-        "turn_parent",
-        subagent_activity_item("subagent_1", "interacted", Some("thread_child")),
-    );
-
-    assert!(projection.apply_stream_event(&event, Some("Main".to_string())));
-    assert!(!projection.apply_stream_event(&event, Some("Main".to_string())));
-
-    assert_eq!(projection.rows().len(), 1);
-    assert_eq!(projection.rows()[0].agent_label, "");
-    assert_eq!(projection.rows()[0].tool_display_value, "interacted");
-    assert_eq!(projection.retained_counts().parent_thread_links, 1);
-}
-
-#[test]
-fn projection_attributes_nested_v2_lifecycle_activity_to_each_exact_child() {
+fn projection_keeps_pathless_v2_child_labels_empty_but_legacy_children_as_subagent() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
         &completed(
             "thread_parent",
             "turn_parent",
-            subagent_activity_item("subagent_child", "interacted", Some("thread_child")),
+            subagent_activity_item_with_path(
+                "v2_missing_path",
+                "interacted",
+                Some("thread_v2_child"),
+                None,
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    let v2 = row_for_activity(&projection, "interacted");
+    assert_eq!(v2.agent_label, "");
+    assert_eq!(v2.status, ToolActivityRowStatus::FinishedOk);
+    assert_eq!(
+        projection
+            .rows_for_selected_thread(Some("thread_parent"))
+            .len(),
+        1
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_v2_child",
+            "turn_v2_child",
+            command_item("v2_child_command"),
+        ),
+        None,
+    );
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, "");
+
+    projection.apply_stream_event(
+        &started(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for("legacy", "thread_legacy"),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_legacy",
+            "turn_legacy",
+            mcp_item("legacy_command", "legacy_tool"),
+        ),
+        None,
+    );
+    assert_eq!(
+        row_for_activity(&projection, "legacy_tool").agent_label,
+        "Subagent"
+    );
+}
+
+#[test]
+fn projection_upgrades_mixed_legacy_child_rows_and_ignores_later_malformed_v2_paths() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for("legacy_spawn", "thread_child"),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("child_command")),
+        None,
+    );
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, "Subagent");
+
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "valid_v2",
+                "started",
+                Some("thread_child"),
+                Some("/root/mixed"),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "malformed_v2",
+                "interacted",
+                Some("thread_child"),
+                Some("   "),
+            ),
         ),
         Some("Main".to_string()),
     );
@@ -1676,55 +1565,356 @@ fn projection_attributes_nested_v2_lifecycle_activity_to_each_exact_child() {
         &completed(
             "thread_child",
             "turn_child",
-            subagent_activity_item(
-                "subagent_grandchild",
-                "interrupted",
-                Some("thread_grandchild"),
-            ),
+            final_answer_item("child_handoff", "mixed handoff"),
         ),
-        Some("Main".to_string()),
+        None,
     );
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-    projection.apply_stream_event(&thread_started("thread_grandchild", Some("Noether")), None);
 
-    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
-    assert_eq!(parent_rows.len(), 2);
-    assert!(
-        parent_rows
-            .iter()
-            .any(|row| row.tool_display_value == "interacted" && row.agent_label == "Hooke")
+    assert_eq!(
+        row_for_activity(&projection, "dir").agent_label,
+        "/root/mixed"
     );
-    assert!(
-        parent_rows
+    assert_eq!(row_for_activity(&projection, "interacted").agent_label, "");
+    assert_eq!(
+        projection
+            .rows()
             .iter()
-            .any(|row| row.tool_display_value == "interrupted" && row.agent_label == "Noether")
+            .find(|row| row.item_id() == "child_handoff")
+            .map(|row| row.agent_label.as_str()),
+        Some("/root/mixed")
     );
 }
 
 #[test]
-fn projection_applies_runtime_metadata_to_v2_child_attribution_after_resolution() {
+fn projection_prunes_completed_child_derived_state_while_main_stays_running() {
     let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_parent", "turn_main", command_item("main")),
+        Some("Main".to_string()),
+    );
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 12 {
+        let child = format!("thread_child_{index}");
+        projection.apply_stream_event(
+            &completed(
+                "thread_parent",
+                "turn_main",
+                subagent_activity_item_with_path(
+                    format!("child_link_{index}").as_str(),
+                    "interacted",
+                    Some(child.as_str()),
+                    Some(format!("/root/{index}").as_str()),
+                ),
+            ),
+            Some("Main".to_string()),
+        );
+    }
+
+    let counts = projection.retained_counts();
+    assert_eq!(counts.records, ACTIVITY_COMPLETED_ROW_BUDGET + 1);
+    assert!(counts.parent_thread_links <= ACTIVITY_COMPLETED_ROW_BUDGET);
+    assert!(counts.root_turn_links <= ACTIVITY_COMPLETED_ROW_BUDGET);
+    assert!(counts.subagent_metadata_count <= ACTIVITY_COMPLETED_ROW_BUDGET);
+    assert!(counts.multi_agent_v2_child_threads <= ACTIVITY_COMPLETED_ROW_BUDGET);
+    assert!(counts.multi_agent_v2_path_associations <= ACTIVITY_COMPLETED_ROW_BUDGET);
+    assert!(counts.payload_bytes < ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET * 2);
+    assert_eq!(projection.rows()[0].agent_label, "Main");
+    assert_eq!(
+        projection
+            .rows_for_selected_thread(Some("thread_parent"))
+            .first()
+            .map(|row| row.agent_label.as_str()),
+        Some("Main")
+    );
+}
+
+#[test]
+fn projection_charges_and_reclaims_v2_path_association_around_retained_child_rows() {
+    let mut projection = ToolActivityProjection::default();
+    let child_thread_id = "thread_child";
+    let agent_path = "/root/retained/child";
+    projection.apply_stream_event(
+        &started("thread_parent", "turn_main", mcp_item("main", "main")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_main",
+            subagent_activity_item_with_path(
+                "child_link",
+                "started",
+                Some(child_thread_id),
+                Some(agent_path),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started(child_thread_id, "turn_child", command_item("child_command")),
+        None,
+    );
+
+    let associated = projection.retained_counts();
+    assert_eq!(associated.multi_agent_v2_child_threads, 1);
+    assert_eq!(
+        associated.multi_agent_v2_child_thread_bytes,
+        child_thread_id.len()
+    );
+    assert_eq!(associated.multi_agent_v2_path_associations, 1);
+    assert_eq!(
+        associated.multi_agent_v2_path_association_bytes,
+        child_thread_id.len() + agent_path.len()
+    );
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, agent_path);
+
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 12 {
+        add_completed_command(&mut projection, "thread_other", index, "completed");
+    }
+    let retained_for_running_child = projection.retained_counts();
+    assert_eq!(
+        retained_for_running_child.multi_agent_v2_path_associations,
+        1
+    );
+    assert!(
+        projection
+            .rows()
+            .iter()
+            .all(|row| row.item_id() != "child_link")
+    );
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, agent_path);
+
+    projection.apply_stream_event(
+        &turn_completed_with_status(child_thread_id, "turn_child", TurnStatus::Completed),
+        None,
+    );
+    for index in ACTIVITY_COMPLETED_ROW_BUDGET + 12..ACTIVITY_COMPLETED_ROW_BUDGET * 2 + 24 {
+        add_completed_command(&mut projection, "thread_other", index, "completed");
+    }
+
+    let reclaimed = projection.retained_counts();
+    assert_eq!(reclaimed.multi_agent_v2_child_threads, 0);
+    assert_eq!(reclaimed.multi_agent_v2_child_thread_bytes, 0);
+    assert_eq!(reclaimed.multi_agent_v2_path_associations, 0);
+    assert_eq!(reclaimed.multi_agent_v2_path_association_bytes, 0);
+    assert_eq!(reclaimed.parent_thread_links, 0);
+    assert_eq!(reclaimed.root_turn_links, 0);
+    assert_eq!(projection.rows()[0].agent_label, "Main");
+    assert_eq!(projection.rows()[0].status, ToolActivityRowStatus::Running);
+}
+
+#[test]
+fn projection_charges_a_shared_v2_path_association_once() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("child_command")),
+        None,
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_child",
+            "turn_child",
+            mcp_item("child_mcp", "child_mcp"),
+        ),
+        None,
+    );
+    let agent_path = format!(
+        "/root/{}",
+        "x".repeat(ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET / 3)
+    );
     projection.apply_stream_event(
         &completed(
             "thread_parent",
             "turn_parent",
-            subagent_activity_item("subagent_1", "interacted", Some("thread_child")),
+            subagent_activity_item_with_path(
+                "v2_child_link",
+                "started",
+                Some("thread_child"),
+                Some(agent_path.as_str()),
+            ),
         ),
         Some("Main".to_string()),
     );
-    let metadata = thread_read_metadata(
-        "thread_child",
-        Some("Hooke"),
-        Some("gpt-5.5"),
-        Some("xhigh"),
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_child", "turn_child", TurnStatus::Completed),
+        None,
     );
 
-    projection.apply_thread_read_metadata([&metadata]);
+    let retained = projection.retained_counts();
+    assert_eq!(retained.records, 3);
+    assert_eq!(retained.multi_agent_v2_child_threads, 1);
+    assert_eq!(retained.multi_agent_v2_path_associations, 1);
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, agent_path);
+    assert_eq!(
+        row_for_activity(&projection, "child_mcp").agent_label,
+        agent_path
+    );
+}
+
+#[test]
+fn projection_prunes_completed_child_row_with_oversized_v2_path_association() {
+    let mut projection = ToolActivityProjection::default();
+    let agent_path = format!(
+        "/root/{}",
+        "x".repeat(ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET)
+    );
+    projection.apply_stream_event(
+        &started("thread_parent", "turn_main", mcp_item("main", "main")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("child_command")),
+        None,
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_main",
+            subagent_activity_item_with_path(
+                "child_link",
+                "started",
+                Some("thread_child"),
+                Some(agent_path.as_str()),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
 
     assert_eq!(
-        row_for_activity(&projection, "interacted").agent_label,
-        "Hooke (gpt-5.5/xhigh)"
+        projection
+            .retained_counts()
+            .multi_agent_v2_path_associations,
+        1
     );
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, agent_path);
+    assert!(
+        projection
+            .rows()
+            .iter()
+            .all(|row| row.item_id() != "child_link")
+    );
+
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_child", "turn_child", TurnStatus::Completed),
+        None,
+    );
+
+    let reclaimed = projection.retained_counts();
+    assert_eq!(reclaimed.records, 1);
+    assert_eq!(reclaimed.multi_agent_v2_child_threads, 0);
+    assert_eq!(reclaimed.multi_agent_v2_path_associations, 0);
+    assert_eq!(reclaimed.parent_thread_links, 0);
+    assert_eq!(projection.rows()[0].tool_display_value, "main");
+    assert_eq!(projection.rows()[0].status, ToolActivityRowStatus::Running);
+}
+
+#[test]
+fn projection_does_not_retain_v2_identity_for_a_legacy_receiver_reference() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for("legacy_spawn", "thread_child"),
+        ),
+        Some("Main".to_string()),
+    );
+    let agent_path = format!(
+        "/root/{}",
+        "x".repeat(ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET / 2)
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_path(
+                "v2_child_link",
+                "interacted",
+                Some("thread_child"),
+                Some(agent_path.as_str()),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let retained = projection.retained_counts();
+    assert_eq!(retained.records, 1);
+    assert_eq!(retained.parent_thread_links, 1);
+    assert_eq!(retained.multi_agent_v2_child_threads, 0);
+    assert_eq!(retained.multi_agent_v2_child_thread_bytes, 0);
+    assert_eq!(retained.multi_agent_v2_path_associations, 0);
+    assert_eq!(retained.multi_agent_v2_path_association_bytes, 0);
+    assert_eq!(projection.rows()[0].tool_display_value, "spawnAgent");
+    assert_eq!(projection.rows()[0].agent_label, "Main");
+    assert!(
+        projection
+            .rows()
+            .iter()
+            .all(|row| row.item_id() != "v2_child_link")
+    );
+}
+
+#[test]
+fn projection_does_not_retain_v2_identity_for_an_ancestor_reference() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("child_command")),
+        None,
+    );
+    let agent_path = format!(
+        "/root/{}",
+        "x".repeat(ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET)
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_root",
+            "turn_root",
+            subagent_activity_item_with_path(
+                "v2_child_link",
+                "started",
+                Some("thread_child"),
+                Some(agent_path.as_str()),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_child",
+            "turn_child",
+            collab_spawn_item_for("legacy_grandchild", "thread_grandchild"),
+        ),
+        None,
+    );
+    projection.apply_stream_event(
+        &started(
+            "thread_grandchild",
+            "turn_grandchild",
+            command_item("grandchild_command"),
+        ),
+        None,
+    );
+    assert_eq!(
+        projection
+            .retained_counts()
+            .multi_agent_v2_path_associations,
+        1
+    );
+
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_child", "turn_child", TurnStatus::Completed),
+        None,
+    );
+
+    let retained = projection.retained_counts();
+    assert_eq!(retained.records, 1);
+    assert_eq!(retained.parent_thread_links, 2);
+    assert_eq!(retained.multi_agent_v2_child_threads, 0);
+    assert_eq!(retained.multi_agent_v2_path_associations, 0);
+    assert_eq!(
+        row_for_activity(&projection, "dir").tool_display_value,
+        "dir"
+    );
+    assert_eq!(row_for_activity(&projection, "dir").agent_label, "Subagent");
 }
 
 #[test]
@@ -1738,8 +1928,6 @@ fn projection_prunes_v2_ownership_with_its_completed_lifecycle_record() {
         ),
         Some("Main".to_string()),
     );
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-
     for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 10 {
         add_completed_command(&mut projection, "thread_other", index, "completed");
     }
@@ -1748,14 +1936,47 @@ fn projection_prunes_v2_ownership_with_its_completed_lifecycle_record() {
     assert_eq!(counts.parent_thread_links, 0);
     assert_eq!(counts.root_turn_links, 0);
     assert_eq!(counts.subagent_metadata_count, 0);
+    assert_eq!(counts.multi_agent_v2_child_threads, 0);
+    assert_eq!(counts.multi_agent_v2_path_associations, 0);
     assert_eq!(counts.label_count, 0);
-    assert!(projection.subagent_metadata_resolution_targets().is_empty());
-    assert!(projection.unresolved_subagent_thread_ids().is_empty());
     assert!(
         projection
             .rows()
             .iter()
             .all(|row| row.tool_display_value != "interacted")
+    );
+}
+
+#[test]
+fn projection_charges_legacy_receiver_identity_bytes_while_main_stays_running() {
+    let mut projection = ToolActivityProjection::default();
+    projection.set_selected_thread_id(Some("thread_parent"));
+    projection.apply_stream_event(
+        &started("thread_parent", "turn_parent", command_item("main")),
+        Some("Main".to_string()),
+    );
+    let oversized_receiver_id =
+        "child_".to_string() + &"x".repeat(ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET);
+
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for("legacy_spawn", &oversized_receiver_id),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert_eq!(projection.retained_counts().records, 1);
+    assert_eq!(projection.retained_counts().parent_thread_links, 0);
+    let visible = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert_eq!(visible.len(), 1);
+    assert_eq!(visible[0].agent_label, "Main");
+    assert_eq!(visible[0].status, ToolActivityRowStatus::Running);
+    assert!(
+        visible
+            .iter()
+            .all(|row| row.tool_display_value != "spawnAgent")
     );
 }
 
@@ -1788,9 +2009,10 @@ fn projection_prunes_completed_v2_activity_with_an_oversized_child_identity() {
 fn projection_keeps_selected_v2_activity_at_the_completed_identity_byte_boundary() {
     let mut projection = ToolActivityProjection::default();
     projection.set_selected_thread_id(Some("thread_parent"));
-    let fixed_payload_bytes = "Main".len() + "interacted".len();
+    let fixed_payload_bytes =
+        "Main".len() + "interacted".len() + "main/research".len().saturating_mul(2);
     let child_id_bytes =
-        ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET.saturating_sub(fixed_payload_bytes) / 2;
+        ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET.saturating_sub(fixed_payload_bytes) / 4;
     let child_id = "x".repeat(child_id_bytes);
 
     projection.apply_stream_event(
@@ -1813,9 +2035,10 @@ fn projection_keeps_selected_v2_activity_at_the_completed_identity_byte_boundary
 fn projection_applies_selected_v2_identity_budget_newest_first_and_prunes_old_ownership() {
     let mut projection = ToolActivityProjection::default();
     projection.set_selected_thread_id(Some("thread_parent"));
-    let fixed_payload_bytes = "Main".len() + "interacted".len();
+    let fixed_payload_bytes =
+        "Main".len() + "interacted".len() + "main/research".len().saturating_mul(2);
     let child_id_bytes =
-        ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET.saturating_sub(fixed_payload_bytes) / 2;
+        ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET.saturating_sub(fixed_payload_bytes) / 4;
     let child_a = "a".repeat(child_id_bytes);
     let child_b = "b".repeat(child_id_bytes);
 
@@ -1827,7 +2050,6 @@ fn projection_applies_selected_v2_identity_budget_newest_first_and_prunes_old_ow
         ),
         Some("Main".to_string()),
     );
-    projection.apply_stream_event(&thread_started(&child_a, Some("Old")), None);
     projection.apply_stream_event(
         &completed(
             "thread_parent",
@@ -1847,52 +2069,6 @@ fn projection_applies_selected_v2_identity_budget_newest_first_and_prunes_old_ow
             .map(|row| row.tool_display_value.as_str())
             .collect::<Vec<_>>(),
         vec!["interacted"]
-    );
-    assert_eq!(
-        projection.unresolved_subagent_thread_ids(),
-        vec![child_b.clone()]
-    );
-}
-
-#[test]
-fn projection_requires_thread_metadata_nickname_for_v2_subject_after_legacy_metadata() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started(
-            "thread_parent",
-            "turn_parent",
-            collab_spawn_item_with_agent_label(
-                "legacy_agent",
-                "thread_child",
-                "Legacy activity label",
-            ),
-        ),
-        Some("Main".to_string()),
-    );
-    let metadata = thread_read_metadata("thread_child", None, Some("gpt-5.5"), Some("xhigh"));
-    projection.apply_thread_read_metadata([&metadata]);
-    projection.apply_stream_event(
-        &completed(
-            "thread_parent",
-            "turn_parent",
-            subagent_activity_item("subagent_v2", "interacted", Some("thread_child")),
-        ),
-        Some("Main".to_string()),
-    );
-
-    assert_eq!(row_for_activity(&projection, "interacted").agent_label, "");
-    assert_eq!(
-        projection.subagent_metadata_resolution_targets(),
-        vec![tool_activity::ToolActivitySubagentMetadataTarget {
-            thread_id: "thread_child".to_string(),
-            requires_nickname: true,
-        }]
-    );
-
-    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
-    assert_eq!(
-        row_for_activity(&projection, "interacted").agent_label,
-        "Hooke (gpt-5.5/xhigh)"
     );
 }
 
@@ -1915,7 +2091,6 @@ fn diagnostic_sample_projects_recognized_v2_kinds_with_immediate_parent_identity
         ),
         Some("Main".to_string()),
     );
-    projection.apply_stream_event(&thread_started("thread_grandchild", Some("Noether")), None);
     projection.apply_stream_event(
         &completed(
             "thread_parent",
@@ -1946,10 +2121,8 @@ fn diagnostic_sample_projects_recognized_v2_kinds_with_immediate_parent_identity
     );
     assert_eq!(sample.records[0].lifecycle_kind, "interrupted");
     assert_eq!(sample.records[0].row_status, "finished_ok");
-    assert_eq!(sample.records[0].nickname_resolution_state, "resolved");
     assert_eq!(sample.records[1].parent_thread_id, "thread_parent");
     assert_eq!(sample.records[1].lifecycle_kind, "started");
-    assert_eq!(sample.records[1].nickname_resolution_state, "unresolved");
     assert!(
         projection
             .multi_agent_v2_activity_diagnostic_sample(None)
@@ -2045,10 +2218,6 @@ fn diagnostic_sample_reports_finished_error_and_not_applicable_without_child_ide
     assert_eq!(sample.records.len(), 1);
     assert_eq!(sample.records[0].row_status, "finished_error");
     assert_eq!(sample.records[0].child_thread_id, None);
-    assert_eq!(
-        sample.records[0].nickname_resolution_state,
-        "not_applicable"
-    );
 }
 
 #[test]
@@ -2141,8 +2310,8 @@ fn diagnostic_sample_preserves_whitespace_identity_and_omits_overbound_child() {
 
 #[test]
 fn diagnostic_sample_enforces_utf8_identity_byte_boundary_without_normalization() {
-    let at_limit = "é".repeat(256);
-    let over_limit = "é".repeat(257);
+    let at_limit = "\u{00e9}".repeat(256);
+    let over_limit = format!("{at_limit}x");
     let mut projection = ToolActivityProjection::default();
     projection.set_selected_thread_id(Some(&at_limit));
     projection.apply_stream_event(
@@ -2228,12 +2397,6 @@ fn turn_completed_with_status(
             items: Vec::new(),
             error: None,
         },
-    }
-}
-
-fn thread_started(thread_id: &str, agent_nickname: Option<&str>) -> TurnStreamEvent {
-    TurnStreamEvent::ThreadStarted {
-        thread: thread_summary(thread_id, agent_nickname),
     }
 }
 
@@ -2373,6 +2536,16 @@ fn command_item_with_command(item_id: &str, command: &str, status: &str) -> Thre
     .unwrap()
 }
 
+fn final_answer_item(item_id: &str, text: &str) -> ThreadItem {
+    serde_json::from_value(json!({
+        "id": item_id,
+        "type": "agentMessage",
+        "phase": "final_answer",
+        "text": text
+    }))
+    .unwrap()
+}
+
 fn projected_command_display_value(command: &str) -> String {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
@@ -2493,27 +2666,14 @@ fn collab_spawn_item_with_runtime_metadata(
     serde_json::from_value(item).unwrap()
 }
 
-fn collab_spawn_item_with_agent_label(
-    item_id: &str,
-    receiver_thread_id: &str,
-    label: &str,
-) -> ThreadItem {
-    serde_json::from_value(json!({
-        "id": item_id,
-        "type": "collabAgentToolCall",
-        "agentsStates": {
-            receiver_thread_id: {"agentNickname": label}
-        },
-        "receiverThreadIds": [receiver_thread_id],
-        "senderThreadId": "thread_parent",
-        "status": "inProgress",
-        "tool": "spawnAgent"
-    }))
-    .unwrap()
-}
-
 fn subagent_activity_item(item_id: &str, kind: &str, agent_thread_id: Option<&str>) -> ThreadItem {
-    subagent_activity_item_with_status(item_id, kind, agent_thread_id, "completed")
+    subagent_activity_item_with_path_and_status(
+        item_id,
+        kind,
+        agent_thread_id,
+        Some("main/research"),
+        "completed",
+    )
 }
 
 fn subagent_activity_item_with_status(
@@ -2522,15 +2682,48 @@ fn subagent_activity_item_with_status(
     agent_thread_id: Option<&str>,
     status: &str,
 ) -> ThreadItem {
+    subagent_activity_item_with_path_and_status(
+        item_id,
+        kind,
+        agent_thread_id,
+        Some("main/research"),
+        status,
+    )
+}
+
+fn subagent_activity_item_with_path(
+    item_id: &str,
+    kind: &str,
+    agent_thread_id: Option<&str>,
+    agent_path: Option<&str>,
+) -> ThreadItem {
+    subagent_activity_item_with_path_and_status(
+        item_id,
+        kind,
+        agent_thread_id,
+        agent_path,
+        "completed",
+    )
+}
+
+fn subagent_activity_item_with_path_and_status(
+    item_id: &str,
+    kind: &str,
+    agent_thread_id: Option<&str>,
+    agent_path: Option<&str>,
+    status: &str,
+) -> ThreadItem {
     let mut item = json!({
         "id": item_id,
         "type": "subAgentActivity",
         "kind": kind,
-        "agentPath": "main/research",
         "status": status,
     });
     if let Some(agent_thread_id) = agent_thread_id {
         item["agentThreadId"] = json!(agent_thread_id);
+    }
+    if let Some(agent_path) = agent_path {
+        item["agentPath"] = json!(agent_path);
     }
     serde_json::from_value(item).unwrap()
 }

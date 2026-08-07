@@ -10,8 +10,8 @@ use std::fmt;
 use crate::{
     DynamicToolCallRequest, DynamicToolSpec, JsonRpcError, ProtocolPhase, ThreadSummary,
     activity::{
-        ToolActivityAgentLabel, ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent,
-        ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource,
+        ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent, ToolActivityFileChangeSummary,
+        ToolActivityLifecycle, ToolActivitySource,
     },
 };
 
@@ -914,13 +914,6 @@ impl ThreadItem {
         }
     }
 
-    fn agent_label_updates(&self) -> Vec<ToolActivityAgentLabel> {
-        match self {
-            Self::Generic(item) => item.agent_label_updates(),
-            _ => Vec::new(),
-        }
-    }
-
     fn receiver_thread_ids(&self) -> Vec<String> {
         match self {
             Self::Generic(item) if item.item_type == "collabAgentToolCall" => {
@@ -962,41 +955,6 @@ impl GenericThreadItem {
             self.model.as_deref(),
             self.reasoning_effort.as_deref(),
         )
-    }
-
-    fn agent_label_updates(&self) -> Vec<ToolActivityAgentLabel> {
-        if self.item_type != "collabAgentToolCall" {
-            return Vec::new();
-        }
-
-        let mut updates = Vec::new();
-        for (key, state) in &self.agents_states {
-            let Some(label) = non_empty_string(state.agent_nickname.clone()) else {
-                continue;
-            };
-            let thread_id = non_empty_string(state.thread_id.clone())
-                .or_else(|| {
-                    self.receiver_thread_ids
-                        .iter()
-                        .find(|thread_id| thread_id.as_str() == key.as_str())
-                        .cloned()
-                })
-                .or_else(|| {
-                    (self.receiver_thread_ids.len() == 1)
-                        .then(|| self.receiver_thread_ids[0].clone())
-                })
-                .or_else(|| non_empty_string(Some(key.clone())));
-
-            push_agent_label_update(&mut updates, thread_id, label);
-        }
-
-        if let Some(label) = non_empty_string(self.agent_nickname.clone()) {
-            for thread_id in &self.receiver_thread_ids {
-                push_agent_label_update(&mut updates, Some(thread_id.clone()), label.clone());
-            }
-        }
-
-        updates
     }
 }
 
@@ -1127,8 +1085,7 @@ impl TurnStreamEvent {
             .with_file_change_summary(item.file_change_summary())
             .with_collab_agent_spawn_metadata(item.collab_agent_spawn_metadata())
             .with_receiver_thread_ids(item.receiver_thread_ids())
-            .with_sub_agent_activity_path(item.sub_agent_activity_path())
-            .with_agent_label_updates(item.agent_label_updates()),
+            .with_sub_agent_activity_path(item.sub_agent_activity_path()),
         )
     }
 
@@ -1710,28 +1667,6 @@ fn joined_non_empty_text(parts: &[String]) -> Option<String> {
         }
     }
     non_empty_string(Some(text))
-}
-
-fn push_agent_label_update(
-    updates: &mut Vec<ToolActivityAgentLabel>,
-    thread_id: Option<String>,
-    label: String,
-) {
-    let Some(thread_id) = non_empty_string(thread_id) else {
-        return;
-    };
-    let Some(label) = non_empty_string(Some(label)) else {
-        return;
-    };
-
-    if let Some(update) = updates
-        .iter_mut()
-        .find(|update| update.thread_id == thread_id)
-    {
-        update.label = label;
-    } else {
-        updates.push(ToolActivityAgentLabel::new(thread_id, label));
-    }
 }
 
 fn string_field(value: &Value, field: &str) -> Option<String> {

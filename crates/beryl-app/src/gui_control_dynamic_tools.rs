@@ -146,7 +146,6 @@ pub(crate) struct MultiAgentV2ActivitySample {
     pub child_thread_id: Option<String>,
     pub lifecycle_kind: String,
     pub row_status: String,
-    pub nickname_resolution_state: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

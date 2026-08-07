@@ -228,7 +228,6 @@ fn ui_state_response_serializes_content_free_diagnostic_fields_in_camel_case() {
                     child_thread_id: Some("thread_child".to_string()),
                     lifecycle_kind: "interacted".to_string(),
                     row_status: "finished_ok".to_string(),
-                    nickname_resolution_state: "resolved".to_string(),
                 }],
                 ..Default::default()
             },

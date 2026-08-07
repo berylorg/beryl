@@ -1194,7 +1194,6 @@ fn tool_activity_normalizes_operational_item_started_notifications() {
         );
         assert_eq!(activity.receiver_thread_ids, expected.receiver_thread_ids);
         assert!(activity.collab_agent_spawn_metadata.is_none());
-        assert!(activity.agent_label_updates.is_empty());
     }
 }
 
@@ -1317,7 +1316,6 @@ fn collab_agent_tool_activity_does_not_invent_labels_from_status_states() {
         }),
     );
 
-    assert!(activity.agent_label_updates.is_empty());
     assert!(activity.collab_agent_spawn_metadata.is_none());
     assert_eq!(
         activity.receiver_thread_ids,
@@ -1335,7 +1333,7 @@ fn subagent_activity_completed_items_normalize_all_protocol_kinds() {
                 "type": "subAgentActivity",
                 "kind": kind,
                 "agentThreadId": "thread_child",
-                "agentPath": "main/research",
+                "agentPath": "/root/research/nested_child",
             }),
         );
 
@@ -1351,10 +1349,9 @@ fn subagent_activity_completed_items_normalize_all_protocol_kinds() {
         );
         assert_eq!(
             activity.sub_agent_activity_path.as_deref(),
-            Some("main/research")
+            Some("/root/research/nested_child")
         );
         assert!(activity.collab_agent_spawn_metadata.is_none());
-        assert!(activity.agent_label_updates.is_empty());
     }
 }
 
@@ -1391,7 +1388,48 @@ fn subagent_activity_is_completed_only_and_ignores_blank_child_ids() {
         let activity = parse_tool_activity("item/completed", item);
         assert_eq!(activity.lifecycle, ToolActivityLifecycle::Completed);
         assert!(activity.receiver_thread_ids.is_empty());
+        assert_eq!(
+            activity.sub_agent_activity_path.as_deref(),
+            Some("main/research")
+        );
     }
+}
+
+#[test]
+fn subagent_activity_treats_blank_paths_as_pathless_without_trimming_real_paths() {
+    for agent_path in [None, Some(""), Some(" \t ")] {
+        let mut item = json!({
+            "id": "subagent_completed",
+            "type": "subAgentActivity",
+            "kind": "started",
+            "agentThreadId": "thread_child",
+        });
+        if let Some(agent_path) = agent_path {
+            item["agentPath"] = json!(agent_path);
+        }
+
+        let activity = parse_tool_activity("item/completed", item);
+        assert!(activity.sub_agent_activity_path.is_none());
+        assert_eq!(
+            activity.receiver_thread_ids,
+            vec!["thread_child".to_string()]
+        );
+    }
+
+    let activity = parse_tool_activity(
+        "item/completed",
+        json!({
+            "id": "subagent_completed",
+            "type": "subAgentActivity",
+            "kind": "started",
+            "agentThreadId": "thread_child",
+            "agentPath": "  /root/research/nested_child  ",
+        }),
+    );
+    assert_eq!(
+        activity.sub_agent_activity_path.as_deref(),
+        Some("  /root/research/nested_child  ")
+    );
 }
 
 #[test]
@@ -1490,44 +1528,6 @@ fn tool_activity_ignores_spawn_model_metadata_on_non_collab_items() {
     );
 
     assert_eq!(activity.source, ToolActivitySource::DynamicToolCall);
-    assert!(activity.collab_agent_spawn_metadata.is_none());
-}
-
-#[test]
-fn collab_agent_tool_activity_extracts_legacy_agent_label_updates() {
-    let activity = parse_tool_activity(
-        "item/started",
-        json!({
-            "id": "agent_1",
-            "type": "collabAgentToolCall",
-            "agentsStates": {
-                "thread_child": {"agentNickname": "Hooke"},
-                "agent_state_2": {"threadId": "thread_other", "nickname": "Noether"}
-            },
-            "receiverThreadIds": ["thread_child", "thread_other"],
-            "senderThreadId": "thread_parent",
-            "status": "inProgress",
-            "tool": "spawnAgent"
-        }),
-    );
-
-    assert_eq!(activity.agent_label_updates.len(), 2);
-    assert!(
-        activity
-            .agent_label_updates
-            .iter()
-            .any(|update| { update.thread_id == "thread_child" && update.label == "Hooke" })
-    );
-    assert!(
-        activity
-            .agent_label_updates
-            .iter()
-            .any(|update| { update.thread_id == "thread_other" && update.label == "Noether" })
-    );
-    assert_eq!(
-        activity.receiver_thread_ids,
-        vec!["thread_child".to_string(), "thread_other".to_string()]
-    );
     assert!(activity.collab_agent_spawn_metadata.is_none());
 }
 

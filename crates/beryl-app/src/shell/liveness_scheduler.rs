@@ -298,7 +298,6 @@ impl ShellView {
             && (self
                 .conversation_surface()
                 .is_some_and(|surface| surface.member_thread_inventory().needs_refresh())
-                || self.tool_activity_nickname_resolver.has_retry_work()
                 || !self.backend_servers.is_empty())
     }
 

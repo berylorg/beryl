@@ -469,7 +469,6 @@ mod thread_selector;
 mod thread_title;
 mod token_usage_snapshot;
 mod tool_activity;
-mod tool_activity_nickname;
 mod transcript_anchor;
 mod transcript_branch_core;
 mod transcript_branch_menu;
@@ -632,10 +631,6 @@ use thread_title::{
     spawn_thread_title_worker,
 };
 use tool_activity::ToolActivityProjection;
-use tool_activity_nickname::{
-    ToolActivityNicknameOutcome, ToolActivityNicknamePoll, ToolActivityNicknameResolutionTarget,
-    ToolActivityNicknameResolver,
-};
 use transcript_anchor::{
     TranscriptSubmitAnchor, TranscriptSubmitAnchorSnapshot, release_forced_submit_anchor,
     transcript_list_item_count,
@@ -916,7 +911,6 @@ pub(super) struct ShellView {
     turn_stop_receiver: Option<Receiver<TurnStopUpdate>>,
     hard_stop_receiver: Option<Receiver<HardStopUpdate>>,
     theme_candidate_install_receiver: Option<ThemeCandidateInstallTask>,
-    tool_activity_nickname_resolver: ToolActivityNicknameResolver,
     workspace_picker_action_receiver: Option<Receiver<WorkspacePickerActionUpdate>>,
     phase_thread_workspace_deletion: Option<PhaseThreadWorkspaceDeletionDrain>,
     workspace_runtime_selector_distro_receiver:
@@ -2129,7 +2123,7 @@ impl ConversationSurfaceState {
         } else if let Some(thread_id) = selected_thread_id {
             state.select_thread_by_id(&thread_id);
         } else {
-            state.selected_thread = None;
+            state.set_selected_thread_index(None);
             state.selected_thread_status = None;
         }
 
@@ -2147,6 +2141,13 @@ impl ConversationSurfaceState {
 
     fn selected_thread_id(&self) -> Option<&str> {
         self.selected_thread().map(|thread| thread.id.as_str())
+    }
+
+    fn set_selected_thread_index(&mut self, selected_thread: Option<usize>) {
+        self.selected_thread = selected_thread;
+        let selected_thread_id = self.selected_thread_id().map(str::to_string);
+        self.tool_activity
+            .set_selected_thread_id(selected_thread_id.as_deref());
     }
 
     fn record_lifecycle_yield(&mut self, yielded: AcceptedLifecycleYield) -> bool {
@@ -2484,12 +2485,6 @@ impl ConversationSurfaceState {
     fn tool_activity_row_count(&self) -> usize {
         self.tool_activity
             .row_count_for_selected_thread(self.selected_thread_id())
-    }
-
-    fn tool_activity_subagent_metadata_targets(
-        &self,
-    ) -> Vec<tool_activity::ToolActivitySubagentMetadataTarget> {
-        self.tool_activity.subagent_metadata_resolution_targets()
     }
 
     fn tool_activity_row_window(
@@ -3225,19 +3220,20 @@ impl ConversationSurfaceState {
                     {
                         self.known_threads
                             .insert(0, previous_selected_thread.unwrap());
-                        self.selected_thread = Some(0);
+                        self.set_selected_thread_index(Some(0));
                     }
                 } else if let Some(previous_selected_thread) = previous_selected_thread {
-                    self.selected_thread = self
+                    let selected_thread = self
                         .known_threads
                         .iter()
                         .position(|thread| thread.id == previous_selected_thread.id);
+                    self.set_selected_thread_index(selected_thread);
                     if self.selected_thread.is_none() {
                         self.known_threads.insert(0, previous_selected_thread);
-                        self.selected_thread = Some(0);
+                        self.set_selected_thread_index(Some(0));
                     }
                 } else {
-                    self.selected_thread = None;
+                    self.set_selected_thread_index(None);
                     self.selected_thread_status = None;
                 }
             }
@@ -3246,7 +3242,9 @@ impl ConversationSurfaceState {
         if let Some(notice) = notice {
             self.set_notice(notice);
         }
+        let selected_thread = self.selected_thread;
         self.tool_activity.clear_all();
+        self.set_selected_thread_index(selected_thread);
         self.hard_stop_targets.clear_all();
         self.hard_stop_targets
             .set_capabilities(hard_stop_capabilities);
@@ -3517,7 +3515,7 @@ impl ConversationSurfaceState {
     }
 
     fn start_new_thread(&mut self) {
-        self.selected_thread = None;
+        self.set_selected_thread_index(None);
         self.selected_thread_status = None;
         self.sync_thread_selector_active_thread();
         self.execution_details.reset();
@@ -4257,10 +4255,11 @@ impl ConversationSurfaceState {
 
     fn select_thread_by_id(&mut self, thread_id: &str) {
         let previous_thread_id = self.selected_thread_id().map(str::to_string);
-        self.selected_thread = self
+        let selected_thread = self
             .known_threads
             .iter()
             .position(|thread| thread.id == thread_id);
+        self.set_selected_thread_index(selected_thread);
         if previous_thread_id.as_deref() != self.selected_thread_id() {
             self.selected_thread_status = None;
             self.cancel_transcript_edit_mode();
@@ -4277,7 +4276,7 @@ impl ConversationSurfaceState {
             .position(|known| known.id == thread.id)
         {
             self.known_threads[index] = thread;
-            self.selected_thread = Some(index);
+            self.set_selected_thread_index(Some(index));
             if previous_thread_id.as_deref() != self.selected_thread_id() {
                 self.selected_thread_status = None;
                 self.cancel_transcript_edit_mode();
@@ -4288,7 +4287,7 @@ impl ConversationSurfaceState {
         }
 
         self.known_threads.insert(0, thread);
-        self.selected_thread = Some(0);
+        self.set_selected_thread_index(Some(0));
         if previous_thread_id.as_deref() != self.selected_thread_id() {
             self.selected_thread_status = None;
             self.cancel_transcript_edit_mode();
@@ -4301,7 +4300,7 @@ impl ConversationSurfaceState {
         self.known_threads = bounded_known_threads(known_threads, [active_thread_id.to_string()]);
         self.select_thread_by_id(active_thread_id);
         if self.selected_thread.is_none() {
-            self.selected_thread = (!self.known_threads.is_empty()).then_some(0);
+            self.set_selected_thread_index((!self.known_threads.is_empty()).then_some(0));
         }
         self.apply_known_thread_agent_labels();
     }
@@ -4312,11 +4311,12 @@ impl ConversationSurfaceState {
         let previous_selected_thread_id = selected_thread_id;
         self.known_threads =
             bounded_known_threads(std::mem::take(&mut self.known_threads), pinned_thread_ids);
-        self.selected_thread = previous_selected_thread_id.and_then(|thread_id| {
+        let selected_thread = previous_selected_thread_id.and_then(|thread_id| {
             self.known_threads
                 .iter()
                 .position(|thread| thread.id == thread_id)
         });
+        self.set_selected_thread_index(selected_thread);
     }
 
     fn mark_selected_turn_finished_idle(&mut self, active_thread_id: &str) -> bool {
@@ -4711,7 +4711,6 @@ impl ShellView {
             turn_stop_receiver: None,
             hard_stop_receiver: None,
             theme_candidate_install_receiver: None,
-            tool_activity_nickname_resolver: ToolActivityNicknameResolver::default(),
             workspace_picker_action_receiver: None,
             phase_thread_workspace_deletion: None,
             workspace_runtime_selector_distro_receiver: None,
@@ -4961,7 +4960,6 @@ impl ShellView {
         execution_target: &WorkspaceId,
         reason: &'static str,
     ) {
-        self.tool_activity_nickname_resolver.reset();
         self.account_rate_limits_receiver = None;
         let Some(server) = self.backend_servers.remove(execution_target) else {
             return;
@@ -4990,7 +4988,6 @@ impl ShellView {
     }
 
     pub(super) fn shutdown_all_backend_servers_in_background(&mut self, reason: &'static str) {
-        self.tool_activity_nickname_resolver.reset();
         self.account_rate_limits_receiver = None;
         let servers = self.backend_servers.drain().collect::<Vec<_>>();
         for (target, server) in servers {
@@ -5061,7 +5058,6 @@ impl ShellView {
         self.account_rate_limits_receiver = None;
         self.turn_stop_receiver = None;
         self.hard_stop_receiver = None;
-        self.tool_activity_nickname_resolver.reset();
         self.workspace_picker_action_receiver = None;
         self.complete_phase_thread_workspace_deletion();
         self.workspace_runtime_selector_distro_receiver = None;
@@ -5099,7 +5095,6 @@ impl ShellView {
         self.account_rate_limits_receiver = None;
         self.turn_stop_receiver = None;
         self.hard_stop_receiver = None;
-        self.tool_activity_nickname_resolver.reset();
         self.workspace_picker_action_receiver = None;
         self.complete_phase_thread_workspace_deletion();
         self.workspace_title_receiver = None;
@@ -5464,13 +5459,11 @@ impl ShellView {
         updated |= self.poll_status_operation_hold(window, cx);
         updated |= self.poll_graph_node_action_menu_hold(window, cx);
         updated |= self.poll_workspace_picker_delete_hold(window, cx);
-        updated |= self.poll_tool_activity_nickname_updates();
         updated |= self.poll_workspace_picker_action_updates(window, cx);
         updated |= self.poll_workspace_runtime_selector_distro_updates();
         updated |= self.poll_workspace_title_updates(window, cx);
         updated |= self.poll_workspace_persistence_pending_state();
         updated |= self.begin_member_thread_inventory_refresh_if_needed();
-        updated |= self.begin_tool_activity_nickname_resolution_if_needed(window, cx);
         updated |= self.begin_composer_image_label_scan_if_needed(window, cx);
 
         let should_poll_backend_liveness = matches!(self.state, ShellState::Ready(_))
@@ -6374,80 +6367,6 @@ impl ShellView {
                 }
             }
         }
-    }
-
-    fn poll_tool_activity_nickname_updates(&mut self) -> bool {
-        let outcomes = match self.tool_activity_nickname_resolver.poll() {
-            ToolActivityNicknamePoll::Finished(outcomes) => outcomes,
-            ToolActivityNicknamePoll::Idle | ToolActivityNicknamePoll::Pending => {
-                return false;
-            }
-        };
-
-        let resolved_metadata = outcomes
-            .into_iter()
-            .filter_map(|outcome| match outcome {
-                ToolActivityNicknameOutcome::Resolved { metadata } => Some(metadata),
-                ToolActivityNicknameOutcome::Unresolved {
-                    thread_id: _thread_id,
-                    message: _message,
-                } => None,
-            })
-            .collect::<Vec<_>>();
-        if resolved_metadata.is_empty() {
-            return false;
-        }
-
-        self.conversation_surface_mut().is_some_and(|surface| {
-            surface
-                .tool_activity
-                .apply_thread_read_metadata(resolved_metadata.iter())
-        })
-    }
-
-    fn begin_tool_activity_nickname_resolution_if_needed(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        if self.tool_activity_nickname_resolver.has_active_worker() {
-            return false;
-        }
-
-        let resolution_targets = self
-            .conversation_surface()
-            .map(ConversationSurfaceState::tool_activity_subagent_metadata_targets)
-            .map(|targets| {
-                targets
-                    .into_iter()
-                    .map(|target| ToolActivityNicknameResolutionTarget {
-                        thread_id: target.thread_id,
-                        requires_nickname: target.requires_nickname,
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        self.tool_activity_nickname_resolver.retain_retry_threads(
-            resolution_targets
-                .iter()
-                .map(|target| target.thread_id.as_str()),
-        );
-        if resolution_targets.is_empty() {
-            return false;
-        }
-
-        let Some(connector) = self.backend_client_connector() else {
-            return false;
-        };
-        let started = self.tool_activity_nickname_resolver.begin_if_needed(
-            resolution_targets,
-            connector,
-            self.bootstrap.probe_timeout(),
-        );
-        if started {
-            self.schedule_poll_if_needed(window, cx);
-        }
-        started
     }
 
     fn poll_turn_steering_updates(&mut self) -> bool {
@@ -13856,7 +13775,6 @@ impl ShellView {
                             child_thread_id: record.child_thread_id,
                             lifecycle_kind: record.lifecycle_kind.to_string(),
                             row_status: record.row_status.to_string(),
-                            nickname_resolution_state: record.nickname_resolution_state.to_string(),
                         })
                         .collect(),
                     multi_agent_v2_activity_sample_truncated: sample.truncated,
@@ -14665,7 +14583,6 @@ impl ShellView {
             self.workspace_picker_action_in_flight(),
             self.workspace_title_receiver.is_some(),
             self.application_shutdown_receiver.is_some(),
-            self.tool_activity_nickname_resolver.has_active_worker(),
         ]
         .into_iter()
         .filter(|active| *active)
@@ -14686,7 +14603,6 @@ impl ShellView {
             self.account_rate_limits_receiver.is_some(),
             self.turn_stop_receiver.is_some(),
             self.hard_stop_receiver.is_some(),
-            self.tool_activity_nickname_resolver.has_active_worker(),
         ]
         .into_iter()
         .filter(|active| *active)

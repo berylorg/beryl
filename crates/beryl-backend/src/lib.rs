@@ -152,8 +152,8 @@ mod websocket_transport;
 pub mod lifecycle_test_support;
 
 pub use activity::{
-    ToolActivityAgentLabel, ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent,
-    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource,
+    ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent, ToolActivityFileChangeSummary,
+    ToolActivityLifecycle, ToolActivitySource,
 };
 pub use auth::ManagedBackendAuthMaterial;
 pub use command::{

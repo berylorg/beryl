@@ -1,9 +1,9 @@
 use std::time::Instant;
 
 use gpui::{
-    AnyElement, AnyView, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Window, anchored, canvas, div, img,
-    prelude::*, px, relative, rgba,
+    AnyElement, AnyView, Context, CursorStyle, DispatchPhase, ElementId, Entity, KeyDownEvent,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, SharedString, Window,
+    anchored, canvas, div, img, prelude::*, px, relative, rgba,
 };
 
 use crate::shell::{
@@ -1733,10 +1733,10 @@ fn render_tool_activity_panel(
                 .h(row_window.top_spacer_height)
                 .min_h(row_window.top_spacer_height),
         );
-    for (index, row) in rows {
+    for (_, row) in rows {
         row_list = row_list.child(render_tool_activity_row(
             shell,
-            index,
+            row.stable_identity().clone(),
             row.agent_label.clone(),
             row.tool_display_value.clone(),
             row.status,
@@ -1853,13 +1853,16 @@ fn render_tool_activity_resize_handle(
 
 fn render_tool_activity_row(
     shell: &ShellRenderFrame<'_>,
-    index: usize,
+    stable_identity: SharedString,
     agent_label: String,
     tool_display_value: String,
     status: ToolActivityRowStatus,
 ) -> impl IntoElement {
     div()
-        .id(("tool-activity-row", index))
+        .id(ElementId::from((
+            ElementId::from("tool-activity-row"),
+            stable_identity,
+        )))
         .h(px(layout::TOOL_ACTIVITY_ROW_HEIGHT))
         .min_h(px(layout::TOOL_ACTIVITY_ROW_HEIGHT))
         .w_full()

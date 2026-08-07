@@ -22,12 +22,6 @@ pub enum ToolActivitySource {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ToolActivityAgentLabel {
-    pub thread_id: String,
-    pub label: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolActivityFileChangeSummary {
     pub file_count: usize,
     pub additions: usize,
@@ -63,16 +57,6 @@ pub struct ToolActivityEvent {
     pub collab_agent_spawn_metadata: Option<ToolActivityCollabAgentSpawnMetadata>,
     pub receiver_thread_ids: Vec<String>,
     pub sub_agent_activity_path: Option<String>,
-    pub agent_label_updates: Vec<ToolActivityAgentLabel>,
-}
-
-impl ToolActivityAgentLabel {
-    pub(crate) fn new(thread_id: impl Into<String>, label: impl Into<String>) -> Self {
-        Self {
-            thread_id: thread_id.into(),
-            label: label.into(),
-        }
-    }
 }
 
 impl ToolActivityCollabAgentSpawnMetadata {
@@ -139,7 +123,6 @@ impl ToolActivityEvent {
             collab_agent_spawn_metadata: None,
             receiver_thread_ids: Vec::new(),
             sub_agent_activity_path: None,
-            agent_label_updates: Vec::new(),
         }
     }
 
@@ -224,15 +207,7 @@ impl ToolActivityEvent {
     }
 
     pub(crate) fn with_sub_agent_activity_path(mut self, agent_path: Option<&str>) -> Self {
-        self.sub_agent_activity_path = non_empty(agent_path).map(str::to_string);
-        self
-    }
-
-    pub(crate) fn with_agent_label_updates(
-        mut self,
-        agent_label_updates: Vec<ToolActivityAgentLabel>,
-    ) -> Self {
-        self.agent_label_updates = agent_label_updates;
+        self.sub_agent_activity_path = non_blank_preserving(agent_path);
         self
     }
 }
@@ -249,5 +224,11 @@ fn non_blank(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn non_blank_preserving(value: Option<&str>) -> Option<String> {
+    value
+        .filter(|value| !value.trim().is_empty())
         .map(str::to_string)
 }

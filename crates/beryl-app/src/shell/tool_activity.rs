@@ -11,6 +11,7 @@ use beryl_backend::{
     TurnStreamEvent,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId};
+use gpui::SharedString;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -22,8 +23,10 @@ const MULTI_AGENT_V2_DIAGNOSTIC_IDENTITY_FIELD_BYTE_LIMIT: usize = 512;
 pub(super) struct ToolActivityProjection {
     records: Vec<ToolActivityRecord>,
     rows: Vec<ToolActivityRow>,
-    agent_labels_by_thread: HashMap<String, AgentLabel>,
+    agent_labels_by_thread: HashMap<String, String>,
     runtime_metadata_by_subagent_thread: HashMap<String, SubagentRuntimeMetadata>,
+    multi_agent_v2_child_threads: HashSet<String>,
+    multi_agent_v2_agent_path_by_child: HashMap<String, String>,
     parent_thread_by_child: HashMap<String, String>,
     root_turn_by_child_thread: HashMap<String, ToolActivityRootTurnKey>,
     visible_row_indexes_by_thread: HashMap<String, Vec<usize>>,
@@ -34,9 +37,20 @@ pub(super) struct ToolActivityProjection {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct ToolActivityRow {
     key: ToolActivityKey,
+    stable_identity: SharedString,
     pub(super) agent_label: String,
     pub(super) tool_display_value: String,
     pub(super) status: ToolActivityRowStatus,
+}
+
+impl ToolActivityRow {
+    pub(super) fn item_id(&self) -> &str {
+        self.key.item_id.as_str()
+    }
+
+    pub(super) fn stable_identity(&self) -> &SharedString {
+        &self.stable_identity
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,12 +58,6 @@ pub(super) enum ToolActivityRowStatus {
     Running,
     FinishedOk,
     FinishedError,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct ToolActivitySubagentMetadataTarget {
-    pub(super) thread_id: String,
-    pub(super) requires_nickname: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,9 +69,12 @@ struct ToolActivityRecord {
     tool_display_value: String,
     status: ToolActivityRowStatus,
     start_order: u64,
+    active_epoch: Option<u64>,
+    completion_order: Option<u64>,
     reasoning_summary_parts: Vec<String>,
     receiver_thread_ids: Vec<String>,
     multi_agent_v2_lifecycle_kind: Option<MultiAgentV2LifecycleKind>,
+    multi_agent_v2_agent_path: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -81,7 +92,6 @@ pub(super) struct MultiAgentV2ActivityDiagnostic {
     pub(super) child_thread_id: Option<String>,
     pub(super) lifecycle_kind: &'static str,
     pub(super) row_status: &'static str,
-    pub(super) nickname_resolution_state: &'static str,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -109,29 +119,22 @@ struct ToolActivityRootTurnKey {
     turn_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct AgentLabel {
-    value: String,
-    priority: AgentLabelPriority,
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct SubagentRuntimeMetadata {
     model: Option<String>,
     reasoning_effort: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum AgentLabelPriority {
-    ActivityMetadata,
-    ThreadDisplayLabel,
-    ThreadMetadataNickname,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct ReceiverThreadOwnershipChange {
     changed: bool,
     requires_row_rebuild: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ChargedMultiAgentV2PresentationIdentity {
+    child_threads: HashSet<String>,
+    agent_paths: HashSet<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -144,6 +147,10 @@ pub(super) struct ToolActivityRetainedCounts {
     pub(super) reasoning_summary_bytes: usize,
     pub(super) subagent_metadata_count: usize,
     pub(super) subagent_metadata_bytes: usize,
+    pub(super) multi_agent_v2_child_threads: usize,
+    pub(super) multi_agent_v2_child_thread_bytes: usize,
+    pub(super) multi_agent_v2_path_associations: usize,
+    pub(super) multi_agent_v2_path_association_bytes: usize,
     pub(super) parent_thread_links: usize,
     pub(super) parent_thread_link_bytes: usize,
     pub(super) root_turn_links: usize,
@@ -164,6 +171,8 @@ impl Default for ToolActivityProjection {
             rows: Vec::new(),
             agent_labels_by_thread: HashMap::new(),
             runtime_metadata_by_subagent_thread: HashMap::new(),
+            multi_agent_v2_child_threads: HashSet::new(),
+            multi_agent_v2_agent_path_by_child: HashMap::new(),
             parent_thread_by_child: HashMap::new(),
             root_turn_by_child_thread: HashMap::new(),
             visible_row_indexes_by_thread: HashMap::new(),
@@ -218,7 +227,7 @@ impl ToolActivityProjection {
             left.status
                 .sort_rank()
                 .cmp(&right.status.sort_rank())
-                .then_with(|| right.start_order.cmp(&left.start_order))
+                .then_with(|| right.completion_order.cmp(&left.completion_order))
                 .then_with(|| left.key.thread_id.cmp(&right.key.thread_id))
                 .then_with(|| left.key.turn_id.cmp(&right.key.turn_id))
                 .then_with(|| left.key.item_id.cmp(&right.key.item_id))
@@ -260,29 +269,13 @@ impl ToolActivityProjection {
                 break;
             }
             identity_bytes = identity_bytes.saturating_add(record_identity_bytes);
-            let child_thread_id = record.activity_subject_thread_id.clone();
-            let nickname_resolution_state = match child_thread_id.as_deref() {
-                None => "not_applicable",
-                Some(thread_id)
-                    if self
-                        .agent_labels_by_thread
-                        .get(thread_id)
-                        .is_some_and(|label| {
-                            label.priority == AgentLabelPriority::ThreadMetadataNickname
-                        }) =>
-                {
-                    "resolved"
-                }
-                Some(_) => "unresolved",
-            };
             sample.records.push(MultiAgentV2ActivityDiagnostic {
                 parent_thread_id: record.key.thread_id.clone(),
                 parent_turn_id: record.key.turn_id.clone(),
                 parent_item_id: record.key.item_id.clone(),
-                child_thread_id,
+                child_thread_id: record.activity_subject_thread_id.clone(),
                 lifecycle_kind: kind.diagnostic_label(),
                 row_status: record.status.diagnostic_label(),
-                nickname_resolution_state,
             });
         }
         sample
@@ -323,6 +316,10 @@ impl ToolActivityProjection {
                         .iter()
                         .map(String::len)
                         .sum::<usize>()
+                    + record
+                        .multi_agent_v2_agent_path
+                        .as_ref()
+                        .map_or(0, String::len)
             })
             .sum::<usize>();
         let row_payload_bytes = self
@@ -339,7 +336,7 @@ impl ToolActivityProjection {
         let label_payload_bytes = self
             .agent_labels_by_thread
             .iter()
-            .map(|(thread_id, label)| thread_id.len() + label.value.len())
+            .map(|(thread_id, label)| thread_id.len() + label.len())
             .sum::<usize>();
         let metadata_payload_bytes = self
             .runtime_metadata_by_subagent_thread
@@ -349,6 +346,16 @@ impl ToolActivityProjection {
                     + metadata.model.as_ref().map_or(0, String::len)
                     + metadata.reasoning_effort.as_ref().map_or(0, String::len)
             })
+            .sum::<usize>();
+        let multi_agent_v2_child_thread_bytes = self
+            .multi_agent_v2_child_threads
+            .iter()
+            .map(String::len)
+            .sum::<usize>();
+        let multi_agent_v2_path_association_bytes = self
+            .multi_agent_v2_agent_path_by_child
+            .iter()
+            .map(|(thread_id, agent_path)| thread_id.len() + agent_path.len())
             .sum::<usize>();
         let parent_payload_bytes = self
             .parent_thread_by_child
@@ -385,6 +392,10 @@ impl ToolActivityProjection {
             reasoning_summary_bytes,
             subagent_metadata_count: self.runtime_metadata_by_subagent_thread.len(),
             subagent_metadata_bytes: metadata_payload_bytes,
+            multi_agent_v2_child_threads: self.multi_agent_v2_child_threads.len(),
+            multi_agent_v2_child_thread_bytes,
+            multi_agent_v2_path_associations: self.multi_agent_v2_agent_path_by_child.len(),
+            multi_agent_v2_path_association_bytes,
             parent_thread_links: self.parent_thread_by_child.len(),
             parent_thread_link_bytes: parent_payload_bytes,
             root_turn_links: self.root_turn_by_child_thread.len(),
@@ -399,47 +410,14 @@ impl ToolActivityProjection {
                 .saturating_add(row_payload_bytes)
                 .saturating_add(label_payload_bytes)
                 .saturating_add(metadata_payload_bytes)
+                .saturating_add(multi_agent_v2_child_thread_bytes)
+                .saturating_add(multi_agent_v2_path_association_bytes)
                 .saturating_add(parent_payload_bytes)
                 .saturating_add(root_turn_payload_bytes)
                 .saturating_add(visible_thread_index_key_bytes)
                 .saturating_add(visible_thread_index_bytes)
                 .saturating_add(selected_thread_id_bytes),
         }
-    }
-
-    #[allow(dead_code)]
-    pub(super) fn unresolved_subagent_thread_ids(&self) -> Vec<String> {
-        let mut thread_ids = self
-            .parent_thread_by_child
-            .keys()
-            .filter(|thread_id| !self.has_resolved_subagent_label(thread_id))
-            .cloned()
-            .collect::<Vec<_>>();
-        thread_ids.sort();
-        thread_ids
-    }
-
-    pub(super) fn subagent_metadata_resolution_targets(
-        &self,
-    ) -> Vec<ToolActivitySubagentMetadataTarget> {
-        let mut targets = self
-            .parent_thread_by_child
-            .keys()
-            .filter_map(|thread_id| {
-                let requires_nickname = self.requires_subagent_nickname_resolution(thread_id);
-                let requires_runtime_metadata = !self
-                    .runtime_metadata_by_subagent_thread
-                    .contains_key(thread_id);
-                (requires_nickname || requires_runtime_metadata).then(|| {
-                    ToolActivitySubagentMetadataTarget {
-                        thread_id: thread_id.clone(),
-                        requires_nickname,
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-        targets.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
-        targets
     }
 
     pub(super) fn rows_for_selected_thread_window(
@@ -473,6 +451,7 @@ impl ToolActivityProjection {
             return false;
         }
         self.last_selected_thread_id = selected_thread_id;
+        self.rebuild_rows();
         true
     }
 
@@ -511,11 +490,14 @@ impl ToolActivityProjection {
                     | ThreadItem::Generic(_),
                 ..
             } => false,
-            TurnStreamEvent::ThreadStarted { thread } => self
-                .apply_thread_agent_nickname(thread.id.as_str(), thread.agent_nickname.as_deref()),
-            TurnStreamEvent::AgentLabelUpdated { thread_id, label } => {
-                self.apply_thread_agent_nickname(thread_id.as_str(), Some(label.as_str()))
+            TurnStreamEvent::ThreadStarted { thread } => {
+                let changed = self.note_thread_summary_agent_labels(thread);
+                if changed {
+                    self.rebuild_rows();
+                }
+                changed
             }
+            TurnStreamEvent::AgentLabelUpdated { .. } => false,
             TurnStreamEvent::TurnCompleted { thread_id, turn } => {
                 match final_status_from_turn_status(turn.status) {
                     Some(status) => self.finish_running_for_turn(thread_id, &turn.id, status),
@@ -594,6 +576,8 @@ impl ToolActivityProjection {
         let changed = !self.records.is_empty()
             || !self.agent_labels_by_thread.is_empty()
             || !self.runtime_metadata_by_subagent_thread.is_empty()
+            || !self.multi_agent_v2_child_threads.is_empty()
+            || !self.multi_agent_v2_agent_path_by_child.is_empty()
             || !self.parent_thread_by_child.is_empty()
             || !self.root_turn_by_child_thread.is_empty()
             || !self.visible_row_indexes_by_thread.is_empty()
@@ -602,6 +586,8 @@ impl ToolActivityProjection {
         self.rows.clear();
         self.agent_labels_by_thread.clear();
         self.runtime_metadata_by_subagent_thread.clear();
+        self.multi_agent_v2_child_threads.clear();
+        self.multi_agent_v2_agent_path_by_child.clear();
         self.parent_thread_by_child.clear();
         self.root_turn_by_child_thread.clear();
         self.visible_row_indexes_by_thread.clear();
@@ -614,11 +600,19 @@ impl ToolActivityProjection {
         thread_id: &str,
         status: ToolActivityRowStatus,
     ) -> bool {
+        let completion_order = self
+            .records
+            .iter()
+            .any(|record| {
+                record.key.thread_id == thread_id && record.status == ToolActivityRowStatus::Running
+            })
+            .then(|| self.next_start_order());
         let mut changed = false;
         for record in &mut self.records {
             if record.key.thread_id == thread_id && record.status == ToolActivityRowStatus::Running
             {
                 record.status = status;
+                record.completion_order = completion_order;
                 changed = true;
             }
         }
@@ -635,7 +629,6 @@ impl ToolActivityProjection {
         execution_target: Option<&WorkspaceId>,
     ) -> bool {
         let ownership_changed = self.apply_receiver_thread_ownership_updates(&activity);
-        let labels_changed = self.apply_agent_label_updates(&activity);
         let explicit_agent_label = explicit_agent_label_for_activity(&activity, agent_label);
         let key = ToolActivityKey::from_activity(&activity);
         let activity_changed = match activity.lifecycle {
@@ -656,9 +649,7 @@ impl ToolActivityProjection {
                 )
             }
         };
-        if !activity_changed && labels_changed {
-            self.rebuild_rows();
-        } else if ownership_changed.changed && !activity_changed {
+        if ownership_changed.changed && !activity_changed {
             if ownership_changed.requires_row_rebuild {
                 self.rebuild_rows();
             } else {
@@ -666,7 +657,7 @@ impl ToolActivityProjection {
                 self.rebuild_visible_row_indexes();
             }
         }
-        ownership_changed.changed || labels_changed || activity_changed
+        ownership_changed.changed || activity_changed
     }
 
     fn start_activity(
@@ -676,7 +667,16 @@ impl ToolActivityProjection {
         explicit_agent_label: Option<String>,
         execution_target: Option<&WorkspaceId>,
     ) -> bool {
-        if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
+        if let Some(index) = self.records.iter().position(|existing| existing.key == key) {
+            let reactivated = self.records[index].status != ToolActivityRowStatus::Running;
+            let reactivation_order = reactivated.then(|| {
+                let start_order = self.next_start_order();
+                (
+                    start_order,
+                    self.active_epoch_for_thread(activity.thread_id.as_str(), start_order),
+                )
+            });
+            let existing = &mut self.records[index];
             let mut changed = false;
             let source = ToolActivityRecordSource::from(activity.source);
             if existing.source != source {
@@ -685,11 +685,17 @@ impl ToolActivityProjection {
             }
             if existing.status != ToolActivityRowStatus::Running {
                 existing.status = ToolActivityRowStatus::Running;
+                let (start_order, active_epoch) =
+                    reactivation_order.expect("reactivated records receive an epoch");
+                existing.start_order = start_order;
+                existing.active_epoch = Some(active_epoch);
+                existing.completion_order = None;
                 changed = true;
             }
             changed |= merge_activity_subject_thread_id(existing, &activity);
             changed |= merge_receiver_thread_ids(existing, &activity);
             changed |= merge_multi_agent_v2_lifecycle_kind(existing, &activity);
+            changed |= merge_multi_agent_v2_agent_path(existing, &activity);
             changed |= apply_reasoning_summary_detail(existing, &activity);
             let display_value =
                 activity_display_value_for_record(existing, &activity, execution_target);
@@ -738,6 +744,7 @@ impl ToolActivityProjection {
             changed |= merge_activity_subject_thread_id(existing, &activity);
             changed |= merge_receiver_thread_ids(existing, &activity);
             changed |= merge_multi_agent_v2_lifecycle_kind(existing, &activity);
+            changed |= merge_multi_agent_v2_agent_path(existing, &activity);
             changed |= apply_reasoning_summary_detail(existing, &activity);
             let display_value =
                 activity_display_value_for_record(existing, &activity, execution_target);
@@ -775,6 +782,15 @@ impl ToolActivityProjection {
         turn_id: &str,
         status: ToolActivityRowStatus,
     ) -> bool {
+        let completion_order = self
+            .records
+            .iter()
+            .any(|record| {
+                record.key.thread_id == thread_id
+                    && record.key.turn_id == turn_id
+                    && record.status == ToolActivityRowStatus::Running
+            })
+            .then(|| self.next_start_order());
         let mut changed = false;
         for record in &mut self.records {
             if record.key.thread_id == thread_id
@@ -782,6 +798,7 @@ impl ToolActivityProjection {
                 && record.status == ToolActivityRowStatus::Running
             {
                 record.status = status;
+                record.completion_order = completion_order;
                 changed = true;
             }
         }
@@ -792,10 +809,16 @@ impl ToolActivityProjection {
     }
 
     fn finish_all_running(&mut self, status: ToolActivityRowStatus) -> bool {
+        let completion_order = self
+            .records
+            .iter()
+            .any(|record| record.status == ToolActivityRowStatus::Running)
+            .then(|| self.next_start_order());
         let mut changed = false;
         for record in &mut self.records {
             if record.status == ToolActivityRowStatus::Running {
                 record.status = status;
+                record.completion_order = completion_order;
                 changed = true;
             }
         }
@@ -813,7 +836,10 @@ impl ToolActivityProjection {
         status: ToolActivityRowStatus,
         execution_target: Option<&WorkspaceId>,
     ) -> bool {
-        if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
+        if let Some(index) = self.records.iter().position(|existing| existing.key == key) {
+            let completion_order = (self.records[index].status == ToolActivityRowStatus::Running)
+                .then(|| self.next_start_order());
+            let existing = &mut self.records[index];
             let mut changed = false;
             let source = ToolActivityRecordSource::from(activity.source);
             if existing.source != source {
@@ -822,11 +848,13 @@ impl ToolActivityProjection {
             }
             if existing.status != status {
                 existing.status = status;
+                existing.completion_order = completion_order.or(existing.completion_order);
                 changed = true;
             }
             changed |= merge_activity_subject_thread_id(existing, &activity);
             changed |= merge_receiver_thread_ids(existing, &activity);
             changed |= merge_multi_agent_v2_lifecycle_kind(existing, &activity);
+            changed |= merge_multi_agent_v2_agent_path(existing, &activity);
             changed |= apply_reasoning_summary_detail(existing, &activity);
             let tool_display_value =
                 activity_display_value_for_record(existing, &activity, execution_target);
@@ -877,7 +905,10 @@ impl ToolActivityProjection {
         };
         let tool_display_value = subagent_handoff_display_value(item.text.as_bytes().len());
 
-        if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
+        if let Some(index) = self.records.iter().position(|existing| existing.key == key) {
+            let completion_order = (self.records[index].status == ToolActivityRowStatus::Running)
+                .then(|| self.next_start_order());
+            let existing = &mut self.records[index];
             let mut changed = false;
             if existing.source != ToolActivityRecordSource::SubagentHandoff {
                 existing.source = ToolActivityRecordSource::SubagentHandoff;
@@ -892,6 +923,7 @@ impl ToolActivityProjection {
             }
             if existing.status != ToolActivityRowStatus::FinishedOk {
                 existing.status = ToolActivityRowStatus::FinishedOk;
+                existing.completion_order = completion_order.or(existing.completion_order);
                 changed = true;
             }
             if !existing.reasoning_summary_parts.is_empty() {
@@ -904,6 +936,7 @@ impl ToolActivityProjection {
             return changed;
         }
 
+        let completion_order = self.next_start_order();
         let record = ToolActivityRecord {
             key,
             source: ToolActivityRecordSource::SubagentHandoff,
@@ -911,10 +944,13 @@ impl ToolActivityProjection {
             explicit_agent_label: None,
             tool_display_value,
             status: ToolActivityRowStatus::FinishedOk,
-            start_order: self.next_start_order(),
+            start_order: completion_order,
+            active_epoch: None,
+            completion_order: Some(completion_order),
             reasoning_summary_parts: Vec::new(),
             receiver_thread_ids: Vec::new(),
             multi_agent_v2_lifecycle_kind: None,
+            multi_agent_v2_agent_path: None,
         };
         self.records.push(record);
         self.rebuild_rows();
@@ -929,34 +965,28 @@ impl ToolActivityProjection {
         status: ToolActivityRowStatus,
         execution_target: Option<&WorkspaceId>,
     ) -> ToolActivityRecord {
+        let start_order = self.next_start_order();
+        let active_epoch = (status == ToolActivityRowStatus::Running)
+            .then(|| self.active_epoch_for_thread(activity.thread_id.as_str(), start_order));
         let mut record = ToolActivityRecord {
             source: ToolActivityRecordSource::from(activity.source),
             activity_subject_thread_id: activity_subject_thread_id_for_activity(&activity),
             explicit_agent_label,
             tool_display_value: tool_activity_display_value(&activity, execution_target),
             status,
-            start_order: self.next_start_order(),
+            start_order,
+            active_epoch,
+            completion_order: (status != ToolActivityRowStatus::Running).then_some(start_order),
             reasoning_summary_parts: Vec::new(),
             receiver_thread_ids: receiver_thread_ids_for_activity(&activity),
             multi_agent_v2_lifecycle_kind: multi_agent_v2_lifecycle_kind_for_activity(&activity),
+            multi_agent_v2_agent_path: multi_agent_v2_agent_path_for_activity(&activity),
             key,
         };
         apply_reasoning_summary_detail(&mut record, &activity);
         record.tool_display_value =
             activity_display_value_for_record(&record, &activity, execution_target);
         record
-    }
-
-    fn apply_agent_label_updates(&mut self, activity: &ToolActivityEvent) -> bool {
-        let mut changed = false;
-        for update in &activity.agent_label_updates {
-            changed |= self.note_agent_label(
-                update.thread_id.as_str(),
-                Some(update.label.as_str()),
-                AgentLabelPriority::ActivityMetadata,
-            );
-        }
-        changed
     }
 
     fn apply_receiver_thread_ownership_updates(
@@ -978,6 +1008,9 @@ impl ToolActivityProjection {
                 thread_id: parent_thread_id.to_string(),
                 turn_id: activity.turn_id.clone(),
             });
+        let is_multi_agent_v2_lifecycle =
+            multi_agent_v2_lifecycle_kind_for_activity(activity).is_some();
+        let multi_agent_v2_agent_path = multi_agent_v2_agent_path_for_activity(activity);
 
         let mut change = ReceiverThreadOwnershipChange::default();
         for receiver_thread_id in receiver_thread_ids_for_activity(activity) {
@@ -993,12 +1026,23 @@ impl ToolActivityProjection {
             if previous_root_turn.as_ref() != Some(&root_turn) {
                 change.changed = true;
             }
-            if self
-                .agent_labels_by_thread
-                .get(&receiver_thread_id)
-                .is_some_and(|label| label.priority == AgentLabelPriority::ThreadDisplayLabel)
-            {
-                change.requires_row_rebuild = true;
+            if is_multi_agent_v2_lifecycle {
+                if self
+                    .multi_agent_v2_child_threads
+                    .insert(receiver_thread_id.clone())
+                {
+                    change.changed = true;
+                    change.requires_row_rebuild = true;
+                }
+                if let Some(agent_path) = multi_agent_v2_agent_path.as_ref() {
+                    let previous_path = self
+                        .multi_agent_v2_agent_path_by_child
+                        .insert(receiver_thread_id.clone(), agent_path.clone());
+                    if previous_path.as_ref() != Some(agent_path) {
+                        change.changed = true;
+                        change.requires_row_rebuild = true;
+                    }
+                }
             }
             if self.note_activity_subagent_runtime_metadata(
                 receiver_thread_id.as_str(),
@@ -1011,36 +1055,15 @@ impl ToolActivityProjection {
         change
     }
 
-    fn apply_thread_agent_nickname(
-        &mut self,
-        thread_id: &str,
-        agent_nickname: Option<&str>,
-    ) -> bool {
-        let changed = self.note_agent_label(
-            thread_id,
-            agent_nickname,
-            AgentLabelPriority::ThreadMetadataNickname,
-        );
-        if changed {
-            self.rebuild_rows();
-        }
-        changed
-    }
-
     fn note_thread_summary_agent_labels(&mut self, thread: &ThreadSummary) -> bool {
-        let mut changed = self.note_agent_label(
-            thread.id.as_str(),
-            thread.agent_nickname.as_deref(),
-            AgentLabelPriority::ThreadMetadataNickname,
-        );
-        if !self.is_observed_subagent_thread(&thread.id) {
-            changed |= self.note_agent_label(
-                thread.id.as_str(),
-                thread.name.as_deref().or(Some(thread.preview.as_str())),
-                AgentLabelPriority::ThreadDisplayLabel,
-            );
-        }
-        changed
+        (!self.is_observed_subagent_thread(&thread.id))
+            .then(|| {
+                self.note_thread_display_label(
+                    thread.id.as_str(),
+                    thread.name.as_deref().or(Some(thread.preview.as_str())),
+                )
+            })
+            .unwrap_or(false)
     }
 
     fn note_subagent_runtime_metadata(
@@ -1119,12 +1142,7 @@ impl ToolActivityProjection {
         true
     }
 
-    fn note_agent_label(
-        &mut self,
-        thread_id: &str,
-        label: Option<&str>,
-        priority: AgentLabelPriority,
-    ) -> bool {
+    fn note_thread_display_label(&mut self, thread_id: &str, label: Option<&str>) -> bool {
         let Some(thread_id) = non_blank_str(thread_id) else {
             return false;
         };
@@ -1140,20 +1158,12 @@ impl ToolActivityProjection {
         }
         let label = truncate_label_payload(label);
 
-        if let Some(previous) = self.agent_labels_by_thread.get(thread_id)
-            && (previous.priority > priority
-                || (previous.priority == priority && previous.value == label))
-        {
+        if self.agent_labels_by_thread.get(thread_id) == Some(&label) {
             return false;
         }
 
-        self.agent_labels_by_thread.insert(
-            thread_id.to_string(),
-            AgentLabel {
-                value: label,
-                priority,
-            },
-        );
+        self.agent_labels_by_thread
+            .insert(thread_id.to_string(), label);
         true
     }
 
@@ -1181,6 +1191,7 @@ impl ToolActivityProjection {
         let mut keep = vec![false; self.records.len()];
         let mut retained_completed_rows = 0usize;
         let mut retained_completed_bytes = 0usize;
+        let mut retained_identity = self.running_multi_agent_v2_presentation_identity();
 
         for (index, record) in self.records.iter().enumerate() {
             if record.status == ToolActivityRowStatus::Running {
@@ -1191,8 +1202,8 @@ impl ToolActivityProjection {
         let mut protected_indexes = protected_indexes.into_iter().collect::<Vec<_>>();
         protected_indexes.sort_by(|left, right| {
             self.records[*right]
-                .start_order
-                .cmp(&self.records[*left].start_order)
+                .completion_order
+                .cmp(&self.records[*left].completion_order)
                 .then_with(|| {
                     self.records[*left]
                         .key
@@ -1214,7 +1225,9 @@ impl ToolActivityProjection {
         });
         for index in protected_indexes {
             let record = &self.records[index];
-            let record_bytes = completed_record_display_payload_bytes(record);
+            let mut candidate_identity = retained_identity.clone();
+            let record_bytes =
+                self.completed_record_display_payload_bytes(record, &mut candidate_identity);
             if retained_completed_rows < ACTIVITY_COMPLETED_ROW_BUDGET
                 && retained_completed_bytes.saturating_add(record_bytes)
                     <= ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET
@@ -1222,6 +1235,7 @@ impl ToolActivityProjection {
                 keep[index] = true;
                 retained_completed_rows = retained_completed_rows.saturating_add(1);
                 retained_completed_bytes = retained_completed_bytes.saturating_add(record_bytes);
+                retained_identity = candidate_identity;
             }
         }
 
@@ -1238,8 +1252,8 @@ impl ToolActivityProjection {
 
         let mut groups = groups.into_iter().collect::<Vec<_>>();
         groups.sort_by(|(left_key, left_indexes), (right_key, right_indexes)| {
-            let left_latest = latest_start_order(&self.records, left_indexes);
-            let right_latest = latest_start_order(&self.records, right_indexes);
+            let left_latest = latest_completion_order(&self.records, left_indexes);
+            let right_latest = latest_completion_order(&self.records, right_indexes);
             right_latest
                 .cmp(&left_latest)
                 .then_with(|| left_key.cmp(right_key))
@@ -1248,8 +1262,8 @@ impl ToolActivityProjection {
         for (_, mut indexes) in groups {
             indexes.sort_by(|left, right| {
                 self.records[*right]
-                    .start_order
-                    .cmp(&self.records[*left].start_order)
+                    .completion_order
+                    .cmp(&self.records[*left].completion_order)
                     .then_with(|| {
                         self.records[*left]
                             .key
@@ -1271,10 +1285,13 @@ impl ToolActivityProjection {
             });
 
             let group_rows = indexes.len();
-            let group_bytes = indexes
-                .iter()
-                .map(|index| completed_record_display_payload_bytes(&self.records[*index]))
-                .sum::<usize>();
+            let mut group_identity = retained_identity.clone();
+            let group_bytes = indexes.iter().fold(0usize, |bytes, index| {
+                bytes.saturating_add(self.completed_record_display_payload_bytes(
+                    &self.records[*index],
+                    &mut group_identity,
+                ))
+            });
             if retained_completed_rows.saturating_add(group_rows) <= ACTIVITY_COMPLETED_ROW_BUDGET
                 && retained_completed_bytes.saturating_add(group_bytes)
                     <= ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET
@@ -1284,6 +1301,7 @@ impl ToolActivityProjection {
                 }
                 retained_completed_rows = retained_completed_rows.saturating_add(group_rows);
                 retained_completed_bytes = retained_completed_bytes.saturating_add(group_bytes);
+                retained_identity = group_identity;
                 continue;
             }
 
@@ -1291,7 +1309,11 @@ impl ToolActivityProjection {
                 if retained_completed_rows >= ACTIVITY_COMPLETED_ROW_BUDGET {
                     break;
                 }
-                let record_bytes = completed_record_display_payload_bytes(&self.records[index]);
+                let mut candidate_identity = retained_identity.clone();
+                let record_bytes = self.completed_record_display_payload_bytes(
+                    &self.records[index],
+                    &mut candidate_identity,
+                );
                 if retained_completed_bytes.saturating_add(record_bytes)
                     > ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET
                 {
@@ -1300,6 +1322,7 @@ impl ToolActivityProjection {
                 keep[index] = true;
                 retained_completed_rows = retained_completed_rows.saturating_add(1);
                 retained_completed_bytes = retained_completed_bytes.saturating_add(record_bytes);
+                retained_identity = candidate_identity;
             }
         }
 
@@ -1312,11 +1335,73 @@ impl ToolActivityProjection {
     }
 
     fn completed_display_payload_bytes(&self) -> usize {
+        let mut charged_identity = self.running_multi_agent_v2_presentation_identity();
         self.records
             .iter()
             .filter(|record| record.status != ToolActivityRowStatus::Running)
-            .map(completed_record_display_payload_bytes)
+            .map(|record| {
+                self.completed_record_display_payload_bytes(record, &mut charged_identity)
+            })
             .sum()
+    }
+
+    fn completed_record_display_payload_bytes(
+        &self,
+        record: &ToolActivityRecord,
+        charged_identity: &mut ChargedMultiAgentV2PresentationIdentity,
+    ) -> usize {
+        completed_record_display_payload_bytes(record).saturating_add(
+            self.charge_multi_agent_v2_presentation_identity(record, charged_identity),
+        )
+    }
+
+    fn running_multi_agent_v2_presentation_identity(
+        &self,
+    ) -> ChargedMultiAgentV2PresentationIdentity {
+        let mut charged_identity = ChargedMultiAgentV2PresentationIdentity::default();
+        for record in self
+            .records
+            .iter()
+            .filter(|record| record.status == ToolActivityRowStatus::Running)
+        {
+            self.charge_multi_agent_v2_presentation_identity(record, &mut charged_identity);
+        }
+        charged_identity
+    }
+
+    fn charge_multi_agent_v2_presentation_identity(
+        &self,
+        record: &ToolActivityRecord,
+        charged_identity: &mut ChargedMultiAgentV2PresentationIdentity,
+    ) -> usize {
+        let child_thread_id = record
+            .multi_agent_v2_lifecycle_kind
+            .map(|_| record.activity_subject_thread_id.as_deref())
+            .unwrap_or_else(|| Some(record.key.thread_id.as_str()));
+        let Some(child_thread_id) = child_thread_id
+            .filter(|thread_id| self.multi_agent_v2_child_threads.contains(*thread_id))
+        else {
+            return 0;
+        };
+
+        let mut bytes = 0usize;
+        if charged_identity
+            .child_threads
+            .insert(child_thread_id.to_string())
+        {
+            bytes = bytes.saturating_add(child_thread_id.len());
+        }
+        let supports_agent_path = record.multi_agent_v2_lifecycle_kind.is_none()
+            || record.multi_agent_v2_agent_path.is_some();
+        if supports_agent_path
+            && charged_identity
+                .agent_paths
+                .insert(child_thread_id.to_string())
+            && let Some(agent_path) = self.multi_agent_v2_agent_path_by_child.get(child_thread_id)
+        {
+            bytes = bytes.saturating_add(child_thread_id.len() + agent_path.len());
+        }
+        bytes
     }
 
     fn protected_selected_completed_record_indexes(&self) -> HashSet<usize> {
@@ -1333,7 +1418,7 @@ impl ToolActivityProjection {
                 record.status != ToolActivityRowStatus::Running
                     && self.record_is_visible_for_thread(record, selected_thread_id)
             })
-            .map(|(index, record)| (index, record.start_order))
+            .map(|(index, record)| (index, record.completion_order.unwrap_or_default()))
             .collect::<Vec<_>>();
         indexes.sort_by(|(left_index, left_order), (right_index, right_order)| {
             right_order
@@ -1425,10 +1510,22 @@ impl ToolActivityProjection {
     fn prune_derived_state(&mut self) {
         let mut referenced_threads = HashSet::new();
         let mut required_child_links = HashSet::new();
-        let mut active_parent_threads = HashSet::new();
         let mut retained_record_child_links = HashSet::new();
+        let mut retained_v2_child_sources = HashSet::new();
+        let mut retained_v2_path_sources = HashSet::new();
+        let mut retained_non_lifecycle_threads = HashSet::new();
 
         for record in &self.records {
+            if record.multi_agent_v2_lifecycle_kind.is_some() {
+                if let Some(subject_thread_id) = record.activity_subject_thread_id.as_ref() {
+                    retained_v2_child_sources.insert(subject_thread_id.clone());
+                    if record.multi_agent_v2_agent_path.is_some() {
+                        retained_v2_path_sources.insert(subject_thread_id.clone());
+                    }
+                }
+            } else {
+                retained_non_lifecycle_threads.insert(record.key.thread_id.clone());
+            }
             self.collect_thread_reference(
                 record.key.thread_id.as_str(),
                 &mut referenced_threads,
@@ -1444,15 +1541,11 @@ impl ToolActivityProjection {
                 referenced_threads.insert(subject_thread_id.clone());
                 referenced_threads.insert(record.key.thread_id.clone());
             }
-            if record.status == ToolActivityRowStatus::Running {
-                active_parent_threads.insert(record.key.thread_id.clone());
-            }
         }
 
         self.parent_thread_by_child.retain(|child, parent| {
-            let keep = required_child_links.contains(child)
-                || retained_record_child_links.contains(child)
-                || active_parent_threads.contains(parent);
+            let keep =
+                required_child_links.contains(child) || retained_record_child_links.contains(child);
             if keep {
                 referenced_threads.insert(child.clone());
                 referenced_threads.insert(parent.clone());
@@ -1465,6 +1558,16 @@ impl ToolActivityProjection {
             .retain(|thread_id, _| referenced_threads.contains(thread_id));
         self.runtime_metadata_by_subagent_thread
             .retain(|thread_id, _| referenced_threads.contains(thread_id));
+        self.multi_agent_v2_child_threads.retain(|thread_id| {
+            retained_v2_child_sources.contains(thread_id)
+                || retained_non_lifecycle_threads.contains(thread_id)
+        });
+        self.multi_agent_v2_agent_path_by_child
+            .retain(|thread_id, _| {
+                self.multi_agent_v2_child_threads.contains(thread_id)
+                    && (retained_v2_path_sources.contains(thread_id)
+                        || retained_non_lifecycle_threads.contains(thread_id))
+            });
     }
 
     fn collect_thread_reference(
@@ -1493,22 +1596,23 @@ impl ToolActivityProjection {
     }
 
     fn rebuild_rows(&mut self) {
+        self.prune_derived_state();
         self.prune_retained_records();
         self.prune_derived_state();
         let mut records = self.records.clone();
         records.sort_by(|left, right| {
-            left.status
-                .sort_rank()
-                .cmp(&right.status.sort_rank())
-                .then_with(|| right.start_order.cmp(&left.start_order))
-                .then_with(|| left.key.thread_id.cmp(&right.key.thread_id))
-                .then_with(|| left.key.turn_id.cmp(&right.key.turn_id))
-                .then_with(|| left.key.item_id.cmp(&right.key.item_id))
+            compare_activity_records(
+                left,
+                right,
+                self.is_main_activity_record(left),
+                self.is_main_activity_record(right),
+            )
         });
         self.rows = records
             .into_iter()
             .map(|record| ToolActivityRow {
                 agent_label: self.agent_label_for_record(&record),
+                stable_identity: record.key.stable_identity(),
                 key: record.key,
                 tool_display_value: record.tool_display_value,
                 status: record.status,
@@ -1521,6 +1625,25 @@ impl ToolActivityProjection {
         let order = self.next_start_order;
         self.next_start_order = self.next_start_order.saturating_add(1);
         order
+    }
+
+    fn active_epoch_for_thread(&self, thread_id: &str, fresh_epoch: u64) -> u64 {
+        self.records
+            .iter()
+            .filter(|record| {
+                record.status == ToolActivityRowStatus::Running
+                    && active_thread_id_for_record(record) == thread_id
+            })
+            .filter_map(|record| record.active_epoch)
+            .min()
+            .unwrap_or(fresh_epoch)
+    }
+
+    fn is_main_activity_record(&self, record: &ToolActivityRecord) -> bool {
+        self.last_selected_thread_id.as_deref() == Some(active_thread_id_for_record(record))
+            || (record.explicit_agent_label.as_deref() == Some("Main")
+                && !self.is_observed_subagent_thread(record.key.thread_id.as_str())
+                && record.activity_subject_thread_id.is_none())
     }
 
     fn visible_row_indexes_for_selected_thread(
@@ -1572,83 +1695,61 @@ impl ToolActivityProjection {
     }
 
     fn agent_label_for_record(&self, record: &ToolActivityRecord) -> String {
-        if let Some(subject_thread_id) = record.activity_subject_thread_id.as_deref() {
-            return self.resolved_subagent_agent_label(subject_thread_id);
+        if record.multi_agent_v2_lifecycle_kind.is_some()
+            && let Some(subject_thread_id) = record.activity_subject_thread_id.as_deref()
+        {
+            let Some(agent_path) = record.multi_agent_v2_agent_path.as_deref() else {
+                return String::new();
+            };
+            return self.multi_agent_v2_agent_label(subject_thread_id, agent_path);
+        }
+        if self.last_selected_thread_id.as_deref() == Some(active_thread_id_for_record(record)) {
+            return "Main".to_string();
+        }
+        let thread_id = record.key.thread_id.as_str();
+        if self.is_observed_subagent_thread(thread_id) {
+            if let Some(agent_path) = self.multi_agent_v2_agent_path_by_child.get(thread_id) {
+                return self.multi_agent_v2_agent_label(thread_id, agent_path);
+            }
+            if self.multi_agent_v2_child_threads.contains(thread_id) {
+                return String::new();
+            }
+            return self.subagent_agent_label(thread_id, "Subagent");
         }
         if record.explicit_agent_label.as_deref() == Some("Main") {
             return "Main".to_string();
         }
-
-        let thread_id = record.key.thread_id.as_str();
-        let stored_label = self.agent_labels_by_thread.get(thread_id);
-        if let Some(stored_label) = stored_label
-            && stored_label.priority == AgentLabelPriority::ThreadMetadataNickname
-        {
-            return self.display_agent_label_for_thread(thread_id, &stored_label.value);
-        }
         if let Some(explicit_agent_label) = record.explicit_agent_label.as_ref() {
-            return self.display_agent_label_for_thread(thread_id, explicit_agent_label);
+            return explicit_agent_label.clone();
         }
-        if let Some(stored_label) = stored_label {
-            match stored_label.priority {
-                AgentLabelPriority::ActivityMetadata => {
-                    return self.display_agent_label_for_thread(thread_id, &stored_label.value);
-                }
-                AgentLabelPriority::ThreadDisplayLabel
-                    if !self.is_observed_subagent_thread(thread_id) =>
-                {
-                    return stored_label.value.clone();
-                }
-                AgentLabelPriority::ThreadDisplayLabel
-                | AgentLabelPriority::ThreadMetadataNickname => {}
-            }
-        }
-
-        String::new()
-    }
-
-    fn resolved_subagent_agent_label(&self, thread_id: &str) -> String {
         self.agent_labels_by_thread
             .get(thread_id)
-            .filter(|label| label.priority == AgentLabelPriority::ThreadMetadataNickname)
-            .map(|label| self.display_agent_label_for_thread(thread_id, &label.value))
+            .cloned()
             .unwrap_or_default()
     }
 
-    fn display_agent_label_for_thread(&self, thread_id: &str, label: &str) -> String {
-        if !self.is_observed_subagent_thread(thread_id) {
-            return label.to_string();
+    fn subagent_agent_label(&self, thread_id: &str, label: &str) -> String {
+        if label.is_empty() {
+            return String::new();
         }
-        let Some(metadata) = self.runtime_metadata_by_subagent_thread.get(thread_id) else {
-            return label.to_string();
-        };
-        format_subagent_agent_label(label, metadata)
-    }
-
-    fn has_resolved_subagent_label(&self, thread_id: &str) -> bool {
-        self.agent_labels_by_thread
+        self.runtime_metadata_by_subagent_thread
             .get(thread_id)
-            .is_some_and(|label| {
-                matches!(
-                    label.priority,
-                    AgentLabelPriority::ActivityMetadata
-                        | AgentLabelPriority::ThreadMetadataNickname
-                )
-            })
+            .map_or_else(
+                || label.to_string(),
+                |metadata| format_subagent_agent_label(label, metadata),
+            )
     }
 
-    fn requires_subagent_nickname_resolution(&self, thread_id: &str) -> bool {
-        if self
-            .records
-            .iter()
-            .any(|record| record.activity_subject_thread_id.as_deref() == Some(thread_id))
-        {
-            return !self
-                .agent_labels_by_thread
-                .get(thread_id)
-                .is_some_and(|label| label.priority == AgentLabelPriority::ThreadMetadataNickname);
+    fn multi_agent_v2_agent_label(&self, thread_id: &str, agent_path: &str) -> String {
+        if agent_path.is_empty() {
+            return String::new();
         }
-        !self.has_resolved_subagent_label(thread_id)
+        self.runtime_metadata_by_subagent_thread
+            .get(thread_id)
+            .map_or_else(
+                || agent_path.to_string(),
+                |metadata| format_multi_agent_v2_agent_label(agent_path, metadata),
+            )
     }
 
     fn is_observed_subagent_thread(&self, thread_id: &str) -> bool {
@@ -1663,6 +1764,19 @@ impl ToolActivityKey {
             turn_id: activity.turn_id.clone(),
             item_id: activity.item_id.clone(),
         }
+    }
+
+    fn stable_identity(&self) -> SharedString {
+        format!(
+            "thread:{}:{}:turn:{}:{}:item:{}:{}",
+            self.thread_id.len(),
+            self.thread_id,
+            self.turn_id.len(),
+            self.turn_id,
+            self.item_id.len(),
+            self.item_id,
+        )
+        .into()
     }
 }
 
@@ -1705,28 +1819,59 @@ impl ToolActivityRowStatus {
     }
 }
 
-fn latest_start_order(records: &[ToolActivityRecord], indexes: &[usize]) -> u64 {
+fn compare_activity_records(
+    left: &ToolActivityRecord,
+    right: &ToolActivityRecord,
+    left_is_main: bool,
+    right_is_main: bool,
+) -> std::cmp::Ordering {
+    left.status
+        .sort_rank()
+        .cmp(&right.status.sort_rank())
+        .then_with(|| match (left.status, right.status) {
+            (ToolActivityRowStatus::Running, ToolActivityRowStatus::Running) => right_is_main
+                .cmp(&left_is_main)
+                .then_with(|| left.active_epoch.cmp(&right.active_epoch))
+                .then_with(|| left.start_order.cmp(&right.start_order)),
+            _ => right.completion_order.cmp(&left.completion_order),
+        })
+        .then_with(|| left.key.thread_id.cmp(&right.key.thread_id))
+        .then_with(|| left.key.turn_id.cmp(&right.key.turn_id))
+        .then_with(|| left.key.item_id.cmp(&right.key.item_id))
+}
+
+fn active_thread_id_for_record(record: &ToolActivityRecord) -> &str {
+    record
+        .activity_subject_thread_id
+        .as_deref()
+        .unwrap_or(record.key.thread_id.as_str())
+}
+
+fn latest_completion_order(records: &[ToolActivityRecord], indexes: &[usize]) -> u64 {
     indexes
         .iter()
-        .map(|index| records[*index].start_order)
+        .filter_map(|index| records[*index].completion_order)
         .max()
         .unwrap_or_default()
 }
 
 fn completed_record_display_payload_bytes(record: &ToolActivityRecord) -> usize {
-    let activity_subject_and_receiver_identity_bytes = record
+    let activity_subject_identity_bytes = record
         .activity_subject_thread_id
         .as_ref()
-        .map_or(0, |activity_subject_thread_id| {
-            activity_subject_thread_id.len()
-                + record
-                    .receiver_thread_ids
-                    .iter()
-                    .map(String::len)
-                    .sum::<usize>()
-        });
-    activity_subject_and_receiver_identity_bytes
+        .map_or(0, String::len);
+    let receiver_identity_bytes = record
+        .receiver_thread_ids
+        .iter()
+        .map(String::len)
+        .sum::<usize>();
+    activity_subject_identity_bytes
+        + receiver_identity_bytes
         + record.explicit_agent_label.as_ref().map_or(0, String::len)
+        + record
+            .multi_agent_v2_agent_path
+            .as_ref()
+            .map_or(0, String::len)
         + record.tool_display_value.len()
         + record
             .reasoning_summary_parts
@@ -1754,6 +1899,20 @@ fn format_subagent_agent_label(label: &str, metadata: &SubagentRuntimeMetadata) 
         format!("{label} ({model})")
     };
     truncate_label_payload(&label)
+}
+
+fn format_multi_agent_v2_agent_label(
+    agent_path: &str,
+    metadata: &SubagentRuntimeMetadata,
+) -> String {
+    let Some(model) = metadata.model.as_deref() else {
+        return agent_path.to_string();
+    };
+    if let Some(reasoning_effort) = metadata.reasoning_effort.as_deref() {
+        format!("{agent_path} ({model}/{reasoning_effort})")
+    } else {
+        format!("{agent_path} ({model})")
+    }
 }
 
 fn is_fallback_agent_label_for_thread(label: &str, thread_id: &str) -> bool {
@@ -2050,6 +2209,16 @@ fn multi_agent_v2_lifecycle_kind_for_activity(
     }
 }
 
+fn multi_agent_v2_agent_path_for_activity(activity: &ToolActivityEvent) -> Option<String> {
+    multi_agent_v2_lifecycle_kind_for_activity(activity)?;
+    activity_subject_thread_id_for_activity(activity)?;
+    activity
+        .sub_agent_activity_path
+        .as_deref()
+        .and_then(non_blank_str)
+        .map(str::to_string)
+}
+
 fn merge_multi_agent_v2_lifecycle_kind(
     record: &mut ToolActivityRecord,
     activity: &ToolActivityEvent,
@@ -2064,6 +2233,20 @@ fn merge_multi_agent_v2_lifecycle_kind(
         return false;
     }
     record.multi_agent_v2_lifecycle_kind = Some(merged);
+    true
+}
+
+fn merge_multi_agent_v2_agent_path(
+    record: &mut ToolActivityRecord,
+    activity: &ToolActivityEvent,
+) -> bool {
+    let Some(incoming) = multi_agent_v2_agent_path_for_activity(activity) else {
+        return false;
+    };
+    if record.multi_agent_v2_agent_path.as_ref() == Some(&incoming) {
+        return false;
+    }
+    record.multi_agent_v2_agent_path = Some(incoming);
     true
 }
 
