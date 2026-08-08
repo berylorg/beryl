@@ -50,6 +50,7 @@ Show bounded live and recent backend activity for the selected conversation with
 - Pathless legacy child-thread rows use the fixed label `Subagent`; backend-generated nicknames are not displayed.
 - If exact child-thread model metadata is known, a child label may append `agentPath (model)` or `Subagent (model)`. If exact reasoning effort is also known, it may append `agentPath (model/reasoning)` or `Subagent (model/reasoning)`.
 - If exact model metadata is unavailable, the child label remains path-only or `Subagent`.
+- Conditional model/reasoning formatting remains supported intentionally so a future CAS protocol version that supplies exact child runtime metadata through activity events or a genuinely read-only metadata response can decorate existing and later child rows without changing the presentation contract.
 - Known non-subagent thread display labels may be shown only when they are real user-facing labels rather than generated from backend ids, and they do not receive subagent model/reasoning suffixes.
 - Backend thread ids are correlation keys and must not render as fallback agent labels. Agent paths do not replace thread ids for attribution, ownership, or lifecycle correlation.
 - Missing model or reasoning metadata is not inferred from defaults, model-list metadata, thread ids, agent paths, or nicknames.
@@ -72,4 +73,5 @@ Show bounded live and recent backend activity for the selected conversation with
 
 - Activity rendering reads the current selected-thread activity projection and does not synchronously query `codex app-server`.
 - Exact subagent model/reasoning metadata may come from normalized activity events or later read-only metadata responses.
-- Beryl does not issue `thread/read` or `thread/resume` requests merely to decorate activity rows with backend-generated subagent nicknames.
+- Beryl does not issue `thread/read` requests merely to decorate activity rows with backend-generated subagent nicknames.
+- Beryl does not issue `thread/resume` or another activation or subscription operation solely to discover child model/reasoning metadata or decorate Activity rows. When no exact event or genuinely read-only metadata source provides those values, the suffix remains absent.
