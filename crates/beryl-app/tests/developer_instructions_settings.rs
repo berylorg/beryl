@@ -23,6 +23,9 @@ pub use beryl_app::{
     validate_notification_sound_path,
 };
 
+#[path = "../src/build_identity.rs"]
+mod build_identity;
+
 #[allow(dead_code)]
 #[path = "../src/shell/settings.rs"]
 mod settings;

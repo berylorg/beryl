@@ -4808,7 +4808,7 @@ impl ShellView {
             disconnect: false,
             surface: None,
         });
-        window.set_window_title("Beryl");
+        window.set_window_title(&crate::build_identity::native_window_title("Beryl"));
         cx.notify();
         true
     }
@@ -5118,7 +5118,7 @@ impl ShellView {
         self.state = ShellState::Discovering(DiscoveringState {
             detail: "Loading Beryl startup state".to_string(),
         });
-        window.set_window_title("Beryl");
+        window.set_window_title(&crate::build_identity::native_window_title("Beryl"));
 
         let startup_persistence = app_state.startup_persistence;
         let workspace_persistence = app_state.workspace_persistence;
@@ -5321,7 +5321,10 @@ impl ShellView {
             progress: None,
             previous_failure,
         });
-        window.set_window_title(&format!("Beryl - {}", target.workspace_label()));
+        window.set_window_title(&crate::build_identity::native_window_title(&format!(
+            "Beryl - {}",
+            target.workspace_label()
+        )));
 
         let timeout = self.bootstrap.probe_timeout();
         let cancellation = WorkspaceOpenCancellation::new();
@@ -5627,7 +5630,10 @@ impl ShellView {
                         persisted_active_thread_recovery_target(&loaded.workspace_state)
                             .map(RetryTarget::Workspace)
                             .unwrap_or(RetryTarget::WorkspacePrimary);
-                    window.set_window_title(&format!("Beryl - {}", workspace.title()));
+                    window.set_window_title(&crate::build_identity::native_window_title(&format!(
+                        "Beryl - {}",
+                        workspace.title()
+                    )));
                     if loaded.selected_runtime().is_some() {
                         self.state = ShellState::WorkspaceLoaded(loaded);
                         self.begin_open_target(open_target, window, cx);
@@ -5737,7 +5743,9 @@ impl ShellView {
                         opening
                             .loaded_workspace
                             .set_resolved_implicit_home_path_from_target(&workspace);
-                        window.set_window_title(&format!("Beryl - {}", workspace.display_label()));
+                        window.set_window_title(&crate::build_identity::native_window_title(
+                            &format!("Beryl - {}", workspace.display_label()),
+                        ));
                         updated = true;
                     }
                 }
@@ -7180,7 +7188,9 @@ impl ShellView {
                         .is_some_and(|target| target == &old_workspace_id);
                     if loaded.workspace.id() == &old_workspace_id {
                         loaded.replace_manifest_for_rename(&old_workspace_id, manifest.clone());
-                        window.set_window_title(&format!("Beryl - {}", loaded.workspace.title()));
+                        window.set_window_title(&crate::build_identity::native_window_title(
+                            &format!("Beryl - {}", loaded.workspace.title()),
+                        ));
                         active_workspace_updated = true;
                     } else if let Some(existing) = loaded
                         .known_workspaces
@@ -8234,7 +8244,10 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) {
         self.clear_background_activity();
-        window.set_window_title(&format!("Beryl - {}", opened.workspace.title()));
+        window.set_window_title(&crate::build_identity::native_window_title(&format!(
+            "Beryl - {}",
+            opened.workspace.title()
+        )));
         self.settings_state
             .set_graph_workspace_target(opened.workspace.id().clone(), opened.graph_upkeep_policy);
         self.sync_settings_window_model(cx);
@@ -8273,7 +8286,10 @@ impl ShellView {
         if let Some(replacement) = outcome.replacement_workspace {
             let workspace_state = outcome.replacement_workspace_state.unwrap_or_default();
             self.clear_background_activity();
-            window.set_window_title(&format!("Beryl - {}", replacement.title()));
+            window.set_window_title(&crate::build_identity::native_window_title(&format!(
+                "Beryl - {}",
+                replacement.title()
+            )));
             self.settings_state.set_graph_workspace_target(
                 replacement.id().clone(),
                 outcome.replacement_graph_upkeep_policy.unwrap_or_default(),

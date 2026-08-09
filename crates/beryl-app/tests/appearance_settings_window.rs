@@ -35,6 +35,9 @@ use gpui_settings_window::{
     SettingsWindowModel, SettingsWindowOpenDisposition, open_settings_window,
 };
 
+#[path = "../src/build_identity.rs"]
+mod build_identity;
+
 #[allow(dead_code)]
 #[path = "../src/shell/settings.rs"]
 mod settings;
@@ -1483,6 +1486,19 @@ fn settings_window_options_map_active_theme_to_visual_theme() {
     assert_eq!(theme.primary_button.font_weight, 650);
     assert_eq!(theme.primary_button.normal.background.to_hex(), "#404142");
     assert_eq!(theme.secondary_button.font_weight, 550);
+}
+
+#[test]
+fn settings_window_options_include_the_embedded_build_identity_in_the_title() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    assert_eq!(
+        state.window_options().title(),
+        format!(
+            "Beryl Settings \u{00b7} {}",
+            build_identity::build_identity()
+        )
+    );
 }
 
 #[test]

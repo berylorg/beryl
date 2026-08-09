@@ -20,7 +20,7 @@ fn bootstrap_defaults_to_startup_resolution() {
         bootstrap.beryl_home_dir().unwrap(),
         BerylHomeDir::from_environment().unwrap()
     );
-    assert_eq!(bootstrap.window_title(), "Beryl");
+    assert_native_window_title(&bootstrap.window_title(), "Beryl");
 }
 
 #[test]
@@ -36,9 +36,9 @@ fn bootstrap_can_target_a_specific_workspace() {
     let bootstrap = AppBootstrap::new(Some(workspace.clone()));
 
     assert_eq!(bootstrap.initial_workspace(), Some(&workspace));
-    assert_eq!(
-        bootstrap.window_title(),
-        "Beryl - host-windows C:\\work\\beryl"
+    assert_native_window_title(
+        &bootstrap.window_title(),
+        "Beryl - host-windows C:\\work\\beryl",
     );
 }
 
@@ -141,4 +141,26 @@ fn unique_leaf(label: &str) -> String {
 
 fn cleanup_temp_dir(root: tempdir_support::TestTempDir) {
     let _ = root.close();
+}
+
+fn assert_native_window_title(title: &str, base_title: &str) {
+    let build_id = title
+        .strip_prefix(&format!("{base_title} \u{00b7} "))
+        .expect("window title should retain its base label and build identity suffix");
+
+    assert!(
+        build_id == "unknown"
+            || build_id
+                .strip_suffix("-dirty")
+                .unwrap_or(build_id)
+                .bytes()
+                .count()
+                == 12
+                && build_id
+                    .strip_suffix("-dirty")
+                    .unwrap_or(build_id)
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')),
+        "build identity should be unknown or a lowercase twelve-hex commit with an optional dirty suffix: {build_id}"
+    );
 }

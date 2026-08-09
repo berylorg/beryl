@@ -986,7 +986,7 @@ impl SettingsState {
     }
 
     fn window_options_for_active_theme(active: &ActiveThemeProjection) -> SettingsWindowOptions {
-        SettingsWindowOptions::new("Beryl Settings")
+        SettingsWindowOptions::new(crate::build_identity::native_window_title("Beryl Settings"))
             .with_saved_color_swatches(Self::saved_color_swatches_for_active_theme(active))
             .with_text_input_undo_byte_limit(SETTINGS_TEXT_INPUT_UNDO_BYTE_LIMIT)
             .with_visual_theme(settings_window_theme(active))

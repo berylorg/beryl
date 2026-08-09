@@ -86,6 +86,7 @@ mod acceptance_session;
 mod appearance;
 mod backend_failure;
 mod beryl_home_dir;
+mod build_identity;
 mod diagnostic_acceptance_gate;
 mod diagnostic_child_control;
 mod diagnostic_child_dynamic_tools;
@@ -213,10 +214,12 @@ impl AppBootstrap {
     }
 
     pub fn window_title(&self) -> String {
-        self.initial_workspace
+        let base_title = self
+            .initial_workspace
             .as_ref()
             .map(|workspace| format!("Beryl - {}", workspace.display_label()))
-            .unwrap_or_else(|| "Beryl".to_string())
+            .unwrap_or_else(|| "Beryl".to_string());
+        build_identity::native_window_title(&base_title)
     }
 }
 

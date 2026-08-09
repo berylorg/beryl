@@ -26,6 +26,9 @@ pub use beryl_app::{
 use beryl_model::workspace::{BerylWorkspaceId, BerylWorkspaceManifest};
 use gpui_settings_window::SettingsFieldKind;
 
+#[path = "../src/build_identity.rs"]
+mod build_identity;
+
 #[allow(dead_code)]
 #[path = "../src/shell/settings.rs"]
 mod settings;

@@ -21,6 +21,11 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 
 ## Global Window Rules
 
+- Every Beryl-owned application window title ends with the immutable build identifier suffix ` · <build-id>`.
+- When build metadata identifies a Git commit, `<build-id>` is the first 12 lowercase hexadecimal characters of that commit. A build produced from a locally modified worktree appends `-dirty`.
+- Release or automation builds may inject the source commit at build time and that injected value takes precedence over local repository discovery. When neither injected nor local Git metadata is available, `<build-id>` is `unknown`.
+- The build identifier is resolved at compile time. Beryl does not invoke Git at runtime, and workspace changes or other runtime title updates preserve the same suffix.
+- The main application-window title retains its application and optional workspace label before the suffix. The Settings application-window title is `Beryl Settings · <build-id>`.
 - The main workspace window includes a toolbar strip anchored to the top edge of the OS window.
 - A top-level auxiliary window, such as the settings window, may define its own dedicated chrome and does not inherit the main workspace toolbar strip.
 - When a window includes a toolbar strip, that strip stretches horizontally with the OS window and does not automatically resize vertically.
