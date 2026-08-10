@@ -1,12 +1,9 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::Arc;
 
 use beryl_backend::{
     CheckedSteeringUserMessage, OrderedTurnStreamRejection, OrderedTurnStreamSubmitCause,
     SteeringUserMessageAbandonReason, SteeringUserMessageSelection, SteeringUserMessageSource,
-    StreamedInputDescriptor, StreamedInputHeader, StreamedInputSource, StreamedInputSourceError,
-    StreamedTextPage, StreamedTextSourceId,
 };
-use beryl_home_store::HomeStore;
 use beryl_state::{AssetOwner, BerylState};
 
 use super::{ActiveSteeringLifecycle, BrokerReply, Ingester};
@@ -20,63 +17,14 @@ use crate::cas_projection::{
         DelayedSteeringLifecyclePermitError,
     },
     input_replay::{
-        AcceptedInputReplayContext, AcceptedInputReplayFactory, AcceptedInputReplaySource,
+        AcceptedInputReplayContext, AcceptedInputReplayFactory,
         decode_accepted_input_steering_correlation, point_limit,
     },
 };
 
-struct AcceptedSteeringReplaySource {
-    home: Arc<HomeStore>,
-    replay_cancellation: ProjectionCancellationToken,
-    source: AcceptedInputReplaySource,
-}
+mod replay;
 
-impl AcceptedSteeringReplaySource {
-    fn new(
-        home: Arc<HomeStore>,
-        broker_cancelled: Arc<AtomicBool>,
-        source: AcceptedInputReplaySource,
-    ) -> Self {
-        Self {
-            home,
-            replay_cancellation: ProjectionCancellationToken::from_shared_flag(broker_cancelled),
-            source,
-        }
-    }
-}
-
-impl StreamedInputSource for AcceptedSteeringReplaySource {
-    fn header(&self) -> StreamedInputHeader {
-        self.source.header()
-    }
-
-    fn begin_pass(&mut self) -> Result<StreamedInputHeader, StreamedInputSourceError> {
-        self.source
-            .begin_pass(&self.home, &self.replay_cancellation)
-    }
-
-    fn next_descriptor(
-        &mut self,
-    ) -> Result<Option<StreamedInputDescriptor>, StreamedInputSourceError> {
-        self.source
-            .next_descriptor(&self.home, &self.replay_cancellation)
-    }
-
-    fn read_text_page(
-        &mut self,
-        source_id: StreamedTextSourceId,
-        start: u64,
-        max_utf8_bytes: usize,
-    ) -> Result<StreamedTextPage, StreamedInputSourceError> {
-        self.source.read_text_page(
-            &self.home,
-            &self.replay_cancellation,
-            source_id,
-            start,
-            max_utf8_bytes,
-        )
-    }
-}
+use replay::AcceptedSteeringReplaySource;
 
 impl Ingester {
     pub(super) fn select_steering_user_message(
@@ -545,9 +493,4 @@ impl Ingester {
 }
 
 #[cfg(all(test, feature = "test-faults"))]
-mod tests {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/unit/provider_broker_steering_user.rs"
-    ));
-}
+mod tests;

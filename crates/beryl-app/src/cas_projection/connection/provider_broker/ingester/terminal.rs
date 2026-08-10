@@ -146,7 +146,11 @@ impl Ingester {
         let limit = point_limit();
         let (home_generation, storage) = match self.publish_source_activation(&permit, limit) {
             Ok(authority) => authority,
-            Err(()) => return self.failed_normal_terminal_permit(permit, terminal),
+            Err(error) if error.authority().is_some() => {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
+            Err(_) => return self.failed_normal_terminal_permit(permit, terminal),
         };
         let target = match LiveSourceTarget::resolve(
             &self.home,

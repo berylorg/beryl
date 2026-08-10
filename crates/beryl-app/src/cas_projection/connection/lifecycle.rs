@@ -134,6 +134,22 @@ impl ProjectionConnection {
         self.forwarding_hub.detach_inert_recovering_poison()
     }
 
+    pub(in crate::cas_projection::connection) fn mark_forwarding_epoch_inert_in_place_for_adoption_failure(
+        &self,
+    ) {
+        if let Some(epoch) = self.forwarding_hub.mark_inert_in_place_recovering_poison() {
+            epoch.request_ingester_cancel();
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection::connection) fn forwarding_epoch_is_inert_and_attached_after_adoption_failure_for_test(
+        &self,
+    ) -> bool {
+        self.forwarding_hub
+            .is_inert_and_attached_recovering_poison_for_test()
+    }
+
     #[cfg(test)]
     pub(in crate::cas_projection) fn poison_forwarding_epoch_barrier_for_test(&self) {
         self.forwarding_hub.poison_epoch_barrier_for_test();
@@ -1016,6 +1032,19 @@ impl ProjectionConnection {
         self.current_router()
             .expect("attached test connection retains its router")
             .poison_state_for_test();
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn pause_stable_driver_before_next_cycle_for_test(
+        &self,
+    ) -> super::driver::DriverPreCyclePauseController {
+        let connection_generation = self.identity_observation().connection_generation();
+        self.with_runtime(|runtime| {
+            Ok(runtime
+                .driver
+                .pause_before_next_cycle_for_test(connection_generation))
+        })
+        .expect("an attached test connection retains its stable driver")
     }
 
     #[cfg(feature = "test-faults")]

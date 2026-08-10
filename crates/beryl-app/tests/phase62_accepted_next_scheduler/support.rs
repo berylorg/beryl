@@ -1,6 +1,13 @@
-use std::{thread, time::Instant};
+use std::{
+    panic::{AssertUnwindSafe, catch_unwind},
+    thread,
+    time::Instant,
+};
 
-use beryl_app::input_admission::prepare_accepted_input_admission;
+use beryl_app::{
+    cas_projection::{PersistentFailureNotificationStatus, RunningSessionRecoverySupervisor},
+    input_admission::prepare_accepted_input_admission,
+};
 use beryl_home_store::{
     HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
@@ -24,7 +31,10 @@ pub use server::{AUTHORIZATION, NormalTerminalServer, SUBMITTED_TEXT, TIMEOUT};
 
 #[path = "support/execution.rs"]
 mod execution;
-pub use execution::{CheckoutProvider, SessionSlot, UnavailableProvider, ready_provider};
+pub use execution::{
+    CheckoutProvider, ReadyProviderFactory, SessionSlot, UnavailableProvider, ready_provider,
+    supervised_ready_provider,
+};
 
 mod records {
     include!(concat!(
@@ -121,14 +131,25 @@ pub fn install_next_records(
 }
 
 pub fn admit_runtime_next_input(fixture: &mut crate::syndic::Fixture, seed: u8) -> NextRecordIds {
+    let ids = seed_runtime_next_input_without_wake(fixture, seed);
+    fixture.store.notify_scheduled_ordinary_execution_ready();
+    ids
+}
+
+pub fn seed_runtime_next_input_without_wake(
+    fixture: &mut crate::syndic::Fixture,
+    seed: u8,
+) -> NextRecordIds {
     let active = fixture.submit_text("phase62 non-steerable predecessor");
     let source = fixture.activate_without_terminal(active);
     fixture.mark_active_unknown_terminal(active, &source);
     let ids = admit_runtime_awaiting_terminal_input(fixture, seed);
     fixture.advance_clock_to(62_102);
     fixture.complete_active_without_assistant(active, &source);
-    fixture.store.validate_registered_domains().unwrap();
-    fixture.store.notify_scheduled_ordinary_execution_ready();
+    {
+        let command_home = fixture.store.live_home_command().unwrap();
+        command_home.home().validate_registered_domains().unwrap();
+    }
     ids
 }
 
@@ -136,76 +157,81 @@ pub fn admit_runtime_awaiting_terminal_input(
     fixture: &mut crate::syndic::Fixture,
     seed: u8,
 ) -> NextRecordIds {
-    let thread = fixture.thread;
-    let parent = fixture
-        .storage
-        .thread(&fixture.store, thread, point_limit())
-        .unwrap()
-        .and_then(|thread| thread.committed_tail())
-        .expect("runtime next-turn fixture has completed parent history");
-    let content = PreparedContent::composer(
-        &ComposerPayload::new(vec![ComposerAtom::text(SUBMITTED_TEXT).unwrap()]).unwrap(),
-    )
-    .unwrap();
-    let (_, content_records) = records::prepared_content_records(&content);
-    let mut content_batch = FixtureBatch::new();
-    for record in content_records {
-        content_batch.put(record).unwrap();
-    }
-    execute_syndic_contribution(&fixture.store, fixture.storage, content_batch);
-
-    let current = fixture
-        .storage
-        .current_draft(&fixture.store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) =
-        DraftPayloadUpdate::prepare(&current, &content, time(62_100)).unwrap()
-    else {
-        panic!("runtime next-turn fixture must replace the empty draft")
-    };
-    execute_contribution(
-        &fixture.store,
-        fixture
+    let (thread, parent, accepted_input, prepared) = {
+        let command_home = fixture.store.live_home_command().unwrap();
+        let home = command_home.home();
+        let thread = fixture.thread;
+        let parent = fixture
             .storage
-            .update_draft_payload(fixture.storage.revision(&fixture.store).unwrap(), update),
-    );
+            .thread(home, thread, point_limit())
+            .unwrap()
+            .and_then(|thread| thread.committed_tail())
+            .expect("runtime next-turn fixture has completed parent history");
+        let content = PreparedContent::composer(
+            &ComposerPayload::new(vec![ComposerAtom::text(SUBMITTED_TEXT).unwrap()]).unwrap(),
+        )
+        .unwrap();
+        let (_, content_records) = records::prepared_content_records(&content);
+        let mut content_batch = FixtureBatch::new();
+        for record in content_records {
+            content_batch.put(record).unwrap();
+        }
+        execute_syndic_contribution(home, fixture.storage, content_batch);
 
-    let current = fixture
-        .storage
-        .current_draft(&fixture.store, thread, point_limit())
-        .unwrap()
+        let current = fixture
+            .storage
+            .current_draft(home, thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let DraftPayloadUpdateDecision::Update(update) =
+            DraftPayloadUpdate::prepare(&current, &content, time(62_100)).unwrap()
+        else {
+            panic!("runtime next-turn fixture must replace the empty draft")
+        };
+        execute_contribution(
+            home,
+            fixture
+                .storage
+                .update_draft_payload(fixture.storage.revision(home).unwrap(), update),
+        );
+
+        let current = fixture
+            .storage
+            .current_draft(home, thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let gate = fixture
+            .storage
+            .input_gate(home, thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let next_draft = SyndicDraftId::from_bytes([seed.wrapping_add(10); 16]);
+        let admission = AcceptedInputAdmission::new(
+            thread,
+            current.thread().revision(),
+            current.draft().id(),
+            current.draft().revision(),
+            current.draft().content(),
+            gate.revision(),
+            next_draft,
+            None,
+            time(62_101),
+        );
+        let accepted_input = admission.accepted_input_id();
+        let prepared = prepare_accepted_input_admission(
+            home,
+            fixture.storage,
+            fixture.state.assets(),
+            admission,
+        )
         .unwrap();
-    let gate = fixture
-        .storage
-        .input_gate(&fixture.store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let next_draft = SyndicDraftId::from_bytes([seed.wrapping_add(10); 16]);
-    let admission = AcceptedInputAdmission::new(
-        thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
-        next_draft,
-        None,
-        time(62_101),
-    );
-    let accepted_input = admission.accepted_input_id();
-    let prepared = prepare_accepted_input_admission(
-        &fixture.store,
-        fixture.storage,
-        fixture.state.assets(),
-        admission,
-    )
-    .unwrap();
+        home.validate_registered_domains().unwrap();
+        (thread, parent, accepted_input, prepared)
+    };
     fixture
         .store
         .execute_accepted_input_admission(prepared)
         .unwrap();
-    fixture.store.validate_registered_domains().unwrap();
 
     NextRecordIds {
         thread,
@@ -242,12 +268,15 @@ fn execute_contribution(store: &HomeStore, contribution: beryl_home_store::Mutat
     store.execute(command).unwrap();
 }
 
-pub fn recover_home_generation_before_promotion(
-    store: &HomeStore,
+pub fn fail_home_generation_before_promotion(
+    supervisor: &RunningSessionRecoverySupervisor,
     storage: SyndicStorage,
     faults: &FaultController,
     ids: &NextRecordIds,
 ) {
+    let service = supervisor.acquire().unwrap();
+    let live = service.live_home_command().unwrap();
+    let store = live.home();
     let accepted = storage
         .accepted_input(store, ids.accepted_input, point_limit())
         .unwrap()
@@ -259,14 +288,14 @@ pub fn recover_home_generation_before_promotion(
         .add(storage.fixture_contribution(storage.revision(store).unwrap(), batch))
         .unwrap();
 
-    faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(store.execute(command).is_err());
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(store.verify_health().is_err());
+    faults.panic_next(FaultPoint::BeforeCommit);
+    assert!(catch_unwind(AssertUnwindSafe(|| store.execute(command))).is_err());
     assert_eq!(store.health().state(), HomeHealthState::Failed);
-    store.recover_same_home().unwrap();
-    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    drop(live);
+    assert!(matches!(
+        service.persistent_failure_notification().notify(),
+        PersistentFailureNotificationStatus::Signaled | PersistentFailureNotificationStatus::Joined
+    ));
 }
 
 pub fn accepted_route_state(

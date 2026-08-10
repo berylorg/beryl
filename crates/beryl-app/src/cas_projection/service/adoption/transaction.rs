@@ -1,16 +1,8 @@
 use std::sync::Arc;
 
-#[cfg(test)]
-use beryl_model::BerylHomeId;
 use beryl_state::BerylState;
 
-#[cfg(test)]
-use super::LATE_AUTHORITY_BEFORE_ADOPTION_COMMIT;
-use super::{
-    ConnectionAdoptionState, PersistentFailureServiceAdoptionReason, ProjectionConnectionService,
-    ServiceAdoptionAttempt, UnpublishedProjectionConnectionService,
-};
-use crate::cas_projection::{
+use super::super::super::{
     connection::{
         ConnectionEpochAdoptionBarrier, ConnectionReplacementContext, ProjectionConnection,
     },
@@ -20,6 +12,19 @@ use crate::cas_projection::{
     },
     service_config::{ProjectionPreactivationRecoveryHold, ProjectionWorkerPermitError},
     service_startup::ServiceStartupGate,
+};
+use super::{
+    ConnectionAdoptionState, PersistentFailureServiceAdoptionReason, ProjectionConnectionService,
+    ServiceAdoptionAttempt, UnpublishedProjectionConnectionService,
+};
+
+#[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
+pub(super) use test_support::{
+    panic_after_old_ingester_join_if_armed, pause_before_commit_if_armed,
+    retain_late_authority_before_commit_if_armed,
 };
 
 impl ServiceAdoptionAttempt {
@@ -32,13 +37,13 @@ impl ServiceAdoptionAttempt {
         self.connection_states
             .resize_with(self.connections.len(), || ConnectionAdoptionState::Stable);
         self.replacement_candidate_holds
-            .try_reserve_exact(self.metadata.candidate_count)
+            .try_reserve_exact(self.metadata.candidate_count())
             .map_err(|_| PersistentFailureServiceAdoptionReason::ReplacementCapacityUnavailable)?;
         self.failed_candidate_permits
-            .try_reserve_exact(self.metadata.candidate_count)
+            .try_reserve_exact(self.metadata.candidate_count())
             .map_err(|_| PersistentFailureServiceAdoptionReason::ReplacementCapacityUnavailable)?;
         self.old_candidate_holds
-            .try_reserve_exact(self.metadata.candidate_count)
+            .try_reserve_exact(self.metadata.candidate_count())
             .map_err(|_| PersistentFailureServiceAdoptionReason::ReplacementCapacityUnavailable)?;
         self.connection_check_scratch
             .try_reserve_exact(self.connections.len())
@@ -103,10 +108,38 @@ impl ServiceAdoptionAttempt {
         };
         let workers = service.workers.clone();
         for (index, connection) in self.connections.iter().enumerate() {
+            #[cfg(test)]
+            let connection_generation = connection.identity_observation().connection_generation();
+            #[cfg(test)]
+            if self
+                .replacement_resource_failure
+                .as_mut()
+                .is_some_and(|selector| {
+                    selector.take_worker_capacity_for_connection(connection_generation)
+                })
+            {
+                return Err(PersistentFailureServiceAdoptionReason::ReplacementCapacityUnavailable);
+            }
             let pair = workers
                 .try_acquire_pair()
                 .map_err(map_worker_permit_error)?;
-            match connection.prepare_replacement_epoch(&context, pair) {
+            #[cfg(test)]
+            let broker_spawn_failure =
+                self.replacement_resource_failure
+                    .as_mut()
+                    .is_some_and(|selector| {
+                        selector.take_broker_spawn_for_connection(connection_generation)
+                    });
+            #[cfg(test)]
+            let prepared = if broker_spawn_failure {
+                connection
+                    .prepare_replacement_epoch_with_broker_spawn_failure_for_test(&context, pair)
+            } else {
+                connection.prepare_replacement_epoch(&context, pair)
+            };
+            #[cfg(not(test))]
+            let prepared = connection.prepare_replacement_epoch(&context, pair);
+            match prepared {
                 Ok(prepared) => {
                     self.connection_states[index] = ConnectionAdoptionState::Prepared(prepared);
                 }
@@ -117,7 +150,7 @@ impl ServiceAdoptionAttempt {
                 }
             }
         }
-        for _ in 0..self.metadata.candidate_count {
+        for _ in 0..self.metadata.candidate_count() {
             let permit = workers
                 .try_acquire_scheduled_ordinary_or_arm()
                 .map_err(map_worker_permit_error)?;
@@ -139,15 +172,15 @@ impl ServiceAdoptionAttempt {
             .topology
             .as_ref()
             .expect("adoption topology is checked out before connection validation");
-        if topology.group_count() != self.metadata.group_count
-            || topology.candidate_count() != self.metadata.candidate_count
-            || topology.retained_connection_count() != self.metadata.connection_count
-            || topology.connection_owner_count() != self.metadata.connection_count
-            || topology.local_disposition_count() != self.metadata.local_disposition_count
+        if topology.group_count() != self.metadata.group_count()
+            || topology.candidate_count() != self.metadata.candidate_count()
+            || topology.retained_connection_count() != self.metadata.connection_count()
+            || topology.connection_owner_count() != self.metadata.connection_count()
+            || topology.local_disposition_count() != self.metadata.local_disposition_count()
         {
             return Err(PersistentFailureServiceAdoptionReason::ConnectionSetMismatch);
         }
-        if self.connections.len() != self.metadata.connection_count {
+        if self.connections.len() != self.metadata.connection_count() {
             return Err(PersistentFailureServiceAdoptionReason::ConnectionSetMismatch);
         }
         sort_connections(&mut self.connections);
@@ -170,6 +203,7 @@ impl ServiceAdoptionAttempt {
         self.inert_attachments
             .try_reserve_exact(maximum_inert_attachment_count)
             .map_err(|_| PersistentFailureServiceAdoptionReason::ReplacementCapacityUnavailable)?;
+        self.inert_attachment_limit = Some(maximum_inert_attachment_count);
         for owner in topology.connection_owners() {
             let retained = owner.stable_connection_for_inert_failure();
             if !contains_connection(&self.connections, retained) {
@@ -351,28 +385,6 @@ fn map_worker_permit_error(
     _error: ProjectionWorkerPermitError,
 ) -> PersistentFailureServiceAdoptionReason {
     PersistentFailureServiceAdoptionReason::ReplacementCapacityUnavailable
-}
-
-#[cfg(test)]
-pub(super) fn retain_late_authority_before_commit_if_armed(
-    home_id: BerylHomeId,
-    inventory: &PersistentFailureRecoveryInventory,
-) {
-    let armed = {
-        let mut slot = LATE_AUTHORITY_BEFORE_ADOPTION_COMMIT
-            .get_or_init(|| std::sync::Mutex::new(None))
-            .lock()
-            .expect("the adoption late-authority test hook is usable");
-        if *slot == Some(home_id) {
-            slot.take();
-            true
-        } else {
-            false
-        }
-    };
-    if armed {
-        inventory.retain_late_adoption_authority_for_test();
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

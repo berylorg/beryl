@@ -20,7 +20,7 @@ fn service_shutdown_after_reservation_waits_for_exact_promotion() {
     );
     let session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             execution.runtime_id(),
             CasProcessGeneration::new(62_009).unwrap(),

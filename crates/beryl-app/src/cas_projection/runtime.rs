@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use beryl_backend::ManagedBackendProbeReport;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-faults"))]
 use beryl_backend::{BackendConfigDefaults, CompatibilityProbeSet, ThreadBranchCapabilities};
 use beryl_model::{CasProcessGeneration, RuntimeId};
 
@@ -36,7 +36,7 @@ impl AdmittedProjectionSession {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     pub(super) const fn from_lifecycle_test_connection(
         connection: Arc<ProjectionConnection>,
         lifecycle_facts: LifecycleTestCompatibilityFacts,
@@ -65,7 +65,7 @@ impl AdmittedProjectionSession {
     pub const fn compatibility_report(&self) -> &ManagedBackendProbeReport {
         match &self.compatibility_evidence {
             SessionCompatibilityEvidence::Production(report) => report,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-faults"))]
             SessionCompatibilityEvidence::LifecycleTest(_) => {
                 panic!("lifecycle-test session has no production compatibility report")
             }
@@ -226,11 +226,11 @@ impl AdmittedProjectionSession {
 #[derive(Debug)]
 enum SessionCompatibilityEvidence {
     Production(ManagedBackendProbeReport),
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     LifecycleTest(LifecycleTestCompatibilityFacts),
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-faults"))]
 #[derive(Debug)]
 pub(super) struct LifecycleTestCompatibilityFacts {
     probe_successes: CompatibilityProbeSet,
@@ -238,7 +238,7 @@ pub(super) struct LifecycleTestCompatibilityFacts {
     thread_branch_capabilities: ThreadBranchCapabilities,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-faults"))]
 impl LifecycleTestCompatibilityFacts {
     pub(super) const fn new(
         probe_successes: CompatibilityProbeSet,

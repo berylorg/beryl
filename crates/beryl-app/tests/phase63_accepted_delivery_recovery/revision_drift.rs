@@ -131,7 +131,10 @@ fn work_neutral_revision_drift_preserves_the_pass_floor_without_self_retry() {
         (attempts.attempts() == vec![first.thread]).then_some(())
     });
 
-    rewrite_current_gate(&service, storage, first.thread);
+    {
+        let command_home = service.live_home_command().unwrap();
+        rewrite_current_gate(command_home.home(), storage, first.thread);
+    }
     attempts.release_first();
     wait_until(
         "work-neutral drift advances from the physical floor",
@@ -162,7 +165,10 @@ fn execution_ready_drift_restarts_the_complete_recovered_scan() {
         (attempts.attempts() == vec![first.thread]).then_some(())
     });
 
-    rewrite_current_gate(&service, storage, first.thread);
+    {
+        let command_home = service.live_home_command().unwrap();
+        rewrite_current_gate(command_home.home(), storage, first.thread);
+    }
     service.notify_scheduled_ordinary_execution_ready();
     attempts.release_first();
     wait_until(

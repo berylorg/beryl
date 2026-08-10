@@ -219,53 +219,60 @@ impl Fixture {
     pub fn accept_text(&mut self, text: &str) -> SyndicAcceptedInputId {
         let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
         let content = PreparedContent::composer(&payload).unwrap();
-        stage_prepared_content(&self.store, self.storage, &content);
-        let current = self
-            .storage
-            .current_draft(&self.store, self.thread, point_limit())
-            .unwrap()
+        let update_at = self.tick();
+        let admitted_at = self.tick();
+        let (accepted_input_id, prepared) = {
+            let command_home = self.store.live_home_command().unwrap();
+            let home = command_home.home();
+            stage_prepared_content(home, self.storage, &content);
+            let current = self
+                .storage
+                .current_draft(home, self.thread, point_limit())
+                .unwrap()
+                .unwrap();
+            let DraftPayloadUpdateDecision::Update(update) =
+                DraftPayloadUpdate::prepare(&current, &content, update_at).unwrap()
+            else {
+                panic!("fixture accepted input must change the draft")
+            };
+            execute(
+                home,
+                self.storage
+                    .update_draft_payload(self.storage.revision(home).unwrap(), update),
+            );
+            let current = self
+                .storage
+                .current_draft(home, self.thread, point_limit())
+                .unwrap()
+                .unwrap();
+            let gate = self
+                .storage
+                .input_gate(home, self.thread, point_limit())
+                .unwrap()
+                .unwrap();
+            let next_draft = SyndicDraftId::from_bytes([self.next_draft; 16]);
+            self.next_draft = self.next_draft.checked_add(1).unwrap();
+            let admission = AcceptedInputAdmission::new(
+                self.thread,
+                current.thread().revision(),
+                current.draft().id(),
+                current.draft().revision(),
+                current.draft().content(),
+                gate.revision(),
+                next_draft,
+                None,
+                admitted_at,
+            );
+            let accepted_input_id = admission.accepted_input_id();
+            let prepared = prepare_accepted_input_admission(
+                home,
+                self.storage,
+                self.state.assets(),
+                admission,
+            )
             .unwrap();
-        let DraftPayloadUpdateDecision::Update(update) =
-            DraftPayloadUpdate::prepare(&current, &content, self.tick()).unwrap()
-        else {
-            panic!("fixture accepted input must change the draft")
+            (accepted_input_id, prepared)
         };
-        execute(
-            &self.store,
-            self.storage
-                .update_draft_payload(self.storage.revision(&self.store).unwrap(), update),
-        );
-        let current = self
-            .storage
-            .current_draft(&self.store, self.thread, point_limit())
-            .unwrap()
-            .unwrap();
-        let gate = self
-            .storage
-            .input_gate(&self.store, self.thread, point_limit())
-            .unwrap()
-            .unwrap();
-        let next_draft = SyndicDraftId::from_bytes([self.next_draft; 16]);
-        self.next_draft = self.next_draft.checked_add(1).unwrap();
-        let admission = AcceptedInputAdmission::new(
-            self.thread,
-            current.thread().revision(),
-            current.draft().id(),
-            current.draft().revision(),
-            current.draft().content(),
-            gate.revision(),
-            next_draft,
-            None,
-            self.tick(),
-        );
-        let accepted_input_id = admission.accepted_input_id();
-        let prepared = prepare_accepted_input_admission(
-            &self.store,
-            self.storage,
-            self.state.assets(),
-            admission,
-        )
-        .unwrap();
         self.store
             .execute_accepted_input_admission(prepared)
             .unwrap();
@@ -278,21 +285,26 @@ impl Fixture {
         content: ContentReference,
         asset_reference_set: Option<SealedAssetReferenceSetProof>,
     ) -> SubmittedTurn {
-        let current = self
-            .storage
-            .current_draft(&self.store, thread, point_limit())
-            .unwrap()
-            .unwrap();
-        let DraftPayloadUpdateDecision::Update(update) =
-            DraftPayloadUpdate::prepare_reference(&current, content, self.tick()).unwrap()
-        else {
-            panic!("fixture submission must change the draft")
-        };
-        execute(
-            &self.store,
-            self.storage
-                .update_draft_payload(self.storage.revision(&self.store).unwrap(), update),
-        );
+        let updated_at = self.tick();
+        {
+            let command_home = self.store.live_home_command().unwrap();
+            let home = command_home.home();
+            let current = self
+                .storage
+                .current_draft(home, thread, point_limit())
+                .unwrap()
+                .unwrap();
+            let DraftPayloadUpdateDecision::Update(update) =
+                DraftPayloadUpdate::prepare_reference(&current, content, updated_at).unwrap()
+            else {
+                panic!("fixture submission must change the draft")
+            };
+            execute(
+                home,
+                self.storage
+                    .update_draft_payload(self.storage.revision(home).unwrap(), update),
+            );
+        }
         let submission = self.prepare_current_submission_on(thread, asset_reference_set);
         self.execute_submission(submission)
     }
@@ -300,10 +312,11 @@ impl Fixture {
     fn execute_submission(&self, submission: IdleSubmission) -> SubmittedTurn {
         let turn = submission.submitted_turn_id();
         let user_item = submission.user_item_id();
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         let command =
-            idle_submission_command(&self.store, self.storage, self.state.assets(), submission)
-                .unwrap();
-        self.store.execute(command).unwrap();
+            idle_submission_command(home, self.storage, self.state.assets(), submission).unwrap();
+        home.execute(command).unwrap();
         SubmittedTurn { turn, user_item }
     }
 
@@ -314,22 +327,27 @@ impl Fixture {
         asset_reference_set: Option<SealedAssetReferenceSetProof>,
     ) -> IdleSubmission {
         let content = PreparedContent::composer(&payload).unwrap();
-        stage_prepared_content(&self.store, self.storage, &content);
-        let current = self
-            .storage
-            .current_draft(&self.store, thread, point_limit())
-            .unwrap()
-            .unwrap();
-        let DraftPayloadUpdateDecision::Update(update) =
-            DraftPayloadUpdate::prepare(&current, &content, self.tick()).unwrap()
-        else {
-            panic!("fixture submission must change the draft")
-        };
-        execute(
-            &self.store,
-            self.storage
-                .update_draft_payload(self.storage.revision(&self.store).unwrap(), update),
-        );
+        let updated_at = self.tick();
+        {
+            let command_home = self.store.live_home_command().unwrap();
+            let home = command_home.home();
+            stage_prepared_content(home, self.storage, &content);
+            let current = self
+                .storage
+                .current_draft(home, thread, point_limit())
+                .unwrap()
+                .unwrap();
+            let DraftPayloadUpdateDecision::Update(update) =
+                DraftPayloadUpdate::prepare(&current, &content, updated_at).unwrap()
+            else {
+                panic!("fixture submission must change the draft")
+            };
+            execute(
+                home,
+                self.storage
+                    .update_draft_payload(self.storage.revision(home).unwrap(), update),
+            );
+        }
         self.prepare_current_submission_on(thread, asset_reference_set)
     }
 
@@ -338,14 +356,17 @@ impl Fixture {
         thread: SyndicThreadId,
         asset_reference_set: Option<SealedAssetReferenceSetProof>,
     ) -> IdleSubmission {
+        let submitted_at = self.tick();
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         let current = self
             .storage
-            .current_draft(&self.store, thread, point_limit())
+            .current_draft(home, thread, point_limit())
             .unwrap()
             .unwrap();
         let gate = self
             .storage
-            .input_gate(&self.store, thread, point_limit())
+            .input_gate(home, thread, point_limit())
             .unwrap()
             .unwrap();
         let next_draft = SyndicDraftId::from_bytes([self.next_draft; 16]);
@@ -362,14 +383,15 @@ impl Fixture {
             next_draft,
             user_item,
             asset_reference_set,
-            self.tick(),
+            submitted_at,
         )
     }
 
     pub fn selected_path(&self, thread: SyndicThreadId) -> SelectedPathProof {
+        let command_home = self.store.live_home_command().unwrap();
         let thread = self
             .storage
-            .thread(&self.store, thread, point_limit())
+            .thread(command_home.home(), thread, point_limit())
             .unwrap()
             .unwrap();
         SelectedPathProof::new(
@@ -380,11 +402,13 @@ impl Fixture {
     }
 
     pub fn retire_current_binding(&mut self, thread: SyndicThreadId) {
-        let current = self
-            .storage
-            .current_binding(&self.store, thread, point_limit())
-            .unwrap()
-            .unwrap();
+        let current = {
+            let command_home = self.store.live_home_command().unwrap();
+            self.storage
+                .current_binding(command_home.home(), thread, point_limit())
+                .unwrap()
+                .unwrap()
+        };
         let source = self.native_source(thread);
         let usable = source.binding();
         let stale = StaleCasBinding::new(
@@ -399,10 +423,12 @@ impl Fixture {
             self.tick(),
         )
         .unwrap();
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         execute(
-            &self.store,
+            home,
             self.storage.publish_stale_binding(
-                self.storage.revision(&self.store).unwrap(),
+                self.storage.revision(home).unwrap(),
                 PublishStaleBinding::new(
                     thread,
                     current.binding().revision(),
@@ -414,13 +440,15 @@ impl Fixture {
     }
 
     pub fn native_source(&self, thread: SyndicThreadId) -> NativeProjectionSource {
+        let selected_path = self.selected_path(thread);
+        let command_home = self.store.live_home_command().unwrap();
         let plan = self
             .storage
             .prepare_native_projection(
-                &self.store,
+                command_home.home(),
                 &NativeProjectionRequest::new(
                     thread,
-                    self.selected_path(thread),
+                    selected_path,
                     execution_binding(),
                     exact::tool_profile(),
                 ),
@@ -439,17 +467,21 @@ impl Fixture {
 
     pub fn create_child_pending(&mut self, text: &str) -> SyndicThreadId {
         self.finish_transcript(self.thread);
-        let tail = self
-            .storage
-            .thread_tail(&self.store, self.thread, point_limit())
-            .unwrap()
-            .unwrap();
+        let tail = {
+            let command_home = self.store.live_home_command().unwrap();
+            self.storage
+                .thread_tail(command_home.home(), self.thread, point_limit())
+                .unwrap()
+                .unwrap()
+        };
         let child = SyndicThreadId::from_bytes([220; 16]);
         let created_at = tail.last_activity_at();
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         execute(
-            &self.store,
+            home,
             self.storage.create_thread(
-                self.storage.revision(&self.store).unwrap(),
+                self.storage.revision(home).unwrap(),
                 CreateThread::from_tail(
                     child,
                     SyndicDraftId::from_bytes([221; 16]),
@@ -459,6 +491,7 @@ impl Fixture {
                 .unwrap(),
             ),
         );
+        drop(command_home);
         self.submit_text_on(child, text);
         child
     }
@@ -472,10 +505,12 @@ impl Fixture {
     pub fn create_ordinary(&mut self, seed: u8) -> SyndicThreadId {
         let thread = SyndicThreadId::from_bytes([seed; 16]);
         let created_at = self.tick();
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         execute(
-            &self.store,
+            home,
             self.storage.create_thread(
-                self.storage.revision(&self.store).unwrap(),
+                self.storage.revision(home).unwrap(),
                 CreateThread::ordinary(
                     thread,
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
@@ -488,10 +523,12 @@ impl Fixture {
     }
 
     pub fn advance_unrelated_syndic_revision(&self, seed: u8) {
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         execute(
-            &self.store,
+            home,
             self.storage.create_thread(
-                self.storage.revision(&self.store).unwrap(),
+                self.storage.revision(home).unwrap(),
                 CreateThread::ordinary(
                     SyndicThreadId::from_bytes([seed; 16]),
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),

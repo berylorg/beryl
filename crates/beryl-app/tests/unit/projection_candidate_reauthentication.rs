@@ -73,12 +73,4 @@ mod projection_candidate_reauthentication {
             "/tests/unit/projection_candidate_reauthentication/stable_read.rs"
         ));
     }
-
-    mod running_session_recovery {
-        use super::*;
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/unit/projection_candidate_reauthentication/running_session_recovery.rs"
-        ));
-    }
 }

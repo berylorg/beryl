@@ -5,7 +5,7 @@ use beryl_stream::SendError;
 use super::*;
 
 fn no_op_command() -> DriverCommand {
-    test_driver_command(Box::new(|_, _, _| {}))
+    test_driver_command(Box::new(|_, _, _| DriverOperationDisposition::Settled))
 }
 
 #[test]
@@ -25,7 +25,10 @@ fn command_queue_backpressures_at_exact_capacity_and_reuses_its_ring() {
     let ownership_observer = Arc::downgrade(&ownership);
     let retained_ownership = Arc::clone(&ownership);
     drop(ownership);
-    let overflow = test_driver_command(Box::new(move |_, _, _| drop(retained_ownership)));
+    let overflow = test_driver_command(Box::new(move |_, _, _| {
+        drop(retained_ownership);
+        DriverOperationDisposition::Settled
+    }));
     let returned = match sender.send_timeout(overflow, Duration::from_millis(5)) {
         Err(SendError::Timeout(returned)) => returned,
         Ok(()) => panic!("the one-over command must not enter the full queue"),

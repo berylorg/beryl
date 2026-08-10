@@ -64,6 +64,8 @@ pub(in crate::cas_projection) struct PreparedConnectionEpochError {
     ingester_worker: Option<ProjectionWorkerPermit>,
     router: Option<Arc<EventRouter>>,
     broker_failure: Option<Box<dyn std::error::Error + Send + 'static>>,
+    #[cfg(test)]
+    broker_spawn_resources_retained: bool,
 }
 
 pub(in crate::cas_projection) struct BoundConnectionEpoch {
@@ -173,6 +175,25 @@ impl ProjectionConnection {
         context: &ConnectionReplacementContext,
         workers: ProjectionWorkerPermitPair,
     ) -> Result<PreparedConnectionEpoch, PreparedConnectionEpochError> {
+        self.prepare_replacement_epoch_inner(context, workers, false)
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn prepare_replacement_epoch_with_broker_spawn_failure_for_test(
+        self: &Arc<Self>,
+        context: &ConnectionReplacementContext,
+        workers: ProjectionWorkerPermitPair,
+    ) -> Result<PreparedConnectionEpoch, PreparedConnectionEpochError> {
+        self.prepare_replacement_epoch_inner(context, workers, true)
+    }
+
+    fn prepare_replacement_epoch_inner(
+        self: &Arc<Self>,
+        context: &ConnectionReplacementContext,
+        workers: ProjectionWorkerPermitPair,
+        #[cfg(test)] broker_spawn_failure: bool,
+        #[cfg(not(test))] _broker_spawn_failure: bool,
+    ) -> Result<PreparedConnectionEpoch, PreparedConnectionEpochError> {
         let (driver_worker, ingester_worker) = workers.into_parts();
         let router = match EventRouter::new_with_process(
             self.runtime_id(),
@@ -192,9 +213,42 @@ impl ProjectionConnection {
                     ingester_worker: Some(ingester_worker),
                     router: None,
                     broker_failure: None,
+                    #[cfg(test)]
+                    broker_spawn_resources_retained: false,
                 });
             }
         };
+        #[cfg(test)]
+        let prepared = if broker_spawn_failure {
+            ProviderBroker::prepare_replacement_with_spawn_failure_for_test(
+                Arc::clone(&context.home),
+                context.home_id,
+                context.home_generation,
+                Arc::clone(&self.authority),
+                Arc::clone(&router),
+                Arc::clone(&context.stop),
+                Arc::clone(&context.compaction),
+                context.commands.clone(),
+                context.failure_notification.clone(),
+                ingester_worker,
+                Arc::clone(&context.startup),
+            )
+        } else {
+            ProviderBroker::prepare_with_startup_gate(
+                Arc::clone(&context.home),
+                context.home_id,
+                context.home_generation,
+                Arc::clone(&self.authority),
+                Arc::clone(&router),
+                Arc::clone(&context.stop),
+                Arc::clone(&context.compaction),
+                context.commands.clone(),
+                context.failure_notification.clone(),
+                ingester_worker,
+                Arc::clone(&context.startup),
+            )
+        };
+        #[cfg(not(test))]
         let prepared = ProviderBroker::prepare_with_startup_gate(
             Arc::clone(&context.home),
             context.home_id,
@@ -216,6 +270,9 @@ impl ProjectionConnection {
         } = match prepared {
             Ok(prepared) => prepared,
             Err(error) => {
+                #[cfg(test)]
+                let broker_spawn_resources_retained =
+                    error.retains_complete_unstarted_resources_for_test();
                 let message = error.to_string();
                 return Err(PreparedConnectionEpochError {
                     connection: Arc::clone(self),
@@ -224,6 +281,8 @@ impl ProjectionConnection {
                     ingester_worker: None,
                     router: Some(router),
                     broker_failure: Some(Box::new(error)),
+                    #[cfg(test)]
+                    broker_spawn_resources_retained,
                 });
             }
         };
@@ -358,6 +417,22 @@ impl ProjectionConnection {
         }
         InertConnectionEpochAttachment { endpoint }
     }
+
+    /// Terminalizes this stable core without allocating or detaching its epoch owner.
+    pub(in crate::cas_projection) fn make_adoption_inert_retaining_epoch_in_place(
+        &self,
+        cut: PersistentFailureCutIdentity,
+    ) {
+        self.disable_stable_driver_for_adoption(cut);
+        self.mark_forwarding_epoch_inert_in_place_for_adoption_failure();
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn forwarding_epoch_is_inert_and_attached_for_test(
+        &self,
+    ) -> bool {
+        self.forwarding_epoch_is_inert_and_attached_after_adoption_failure_for_test()
+    }
 }
 
 impl PreparedConnectionEpoch {
@@ -428,6 +503,11 @@ impl PreparedConnectionEpochError {
 
     pub(in crate::cas_projection) fn dispose_after_adoption_failure(self) {
         drop(self);
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn broker_spawn_resources_retained_for_test(&self) -> bool {
+        self.broker_spawn_resources_retained
     }
 }
 

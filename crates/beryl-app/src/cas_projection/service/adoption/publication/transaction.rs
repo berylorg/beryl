@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
-use super::{
-    RecoveredServicePublicationReason, RecoveryServicePublicationAttempt,
-    ReplacementWorkerPublicationState,
-};
-use crate::cas_projection::{
-    ProjectionConnectionServiceCloseError,
+use super::super::super::super::{
     connection::{
         CandidateSetRecoveryPublicationFailure, ConnectionEpochIdentity,
         RecoveredConnectionPublicationReason,
     },
     persistent_failure::PersistentFailureOldServiceEpochRetirementReason,
-    service::adoption::ConnectionAdoptionState,
     service_supervisor::RunningServiceSlot,
+};
+use super::super::super::ProjectionConnectionServiceCloseError;
+use super::super::ConnectionAdoptionState;
+use super::{
+    RecoveredServicePublicationReason, RecoveryServicePublicationAttempt,
+    ReplacementWorkerPublicationState,
 };
 
 impl RecoveryServicePublicationAttempt {

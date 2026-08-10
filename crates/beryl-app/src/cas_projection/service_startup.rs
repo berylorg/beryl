@@ -84,6 +84,20 @@ impl ServiceStartupGate {
             .is_ok_and(|state| *state == ServiceStartupState::Closed)
     }
 
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn is_open_for_test(&self) -> bool {
+        self.state
+            .lock()
+            .is_ok_and(|state| *state == ServiceStartupState::Open)
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn is_cancelled_for_test(&self) -> bool {
+        self.state
+            .lock()
+            .is_ok_and(|state| *state == ServiceStartupState::Cancelled)
+    }
+
     pub(in crate::cas_projection) fn lock_for_publication(
         &self,
     ) -> Result<ServiceStartupPublicationGuard<'_>, ()> {

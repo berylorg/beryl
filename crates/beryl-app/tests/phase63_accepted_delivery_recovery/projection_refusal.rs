@@ -8,7 +8,7 @@ use beryl_model::{CasProcessGeneration, RuntimeId};
 use syndic_storage::AcceptedRouteEffectiveState;
 
 use crate::{
-    app_support::promote_installed_next,
+    app_support::{promote_installed_next, reopen_registered},
     phase62_support::{
         AUTHORIZATION, NormalTerminalServer, SessionSlot, TIMEOUT, accepted_route_state,
         execution_binding, install_next_records, open_registered_home, ready_provider, wait_until,
@@ -58,7 +58,7 @@ fn assert_unsupported_projection_fails_closed(
     let connector =
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = service
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             runtime_id,
             CasProcessGeneration::new(process_generation).unwrap(),
@@ -75,10 +75,6 @@ fn assert_unsupported_projection_fails_closed(
         (diagnostics.fatal() && diagnostics.workers_active() == 0).then_some(diagnostics)
     });
     assert!(diagnostics.workers_started() >= 1);
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::Promoted
-    );
     wait_until("refused projection returns its session", || {
         slot.is_ready().then_some(())
     });
@@ -89,5 +85,11 @@ fn assert_unsupported_projection_fails_closed(
     ));
     server.join();
     assert!(!slot.is_ready());
+    let (reopened, reopened_storage, _) = reopen_registered(directory.path());
+    assert_eq!(
+        accepted_route_state(&reopened, reopened_storage, &ids),
+        AcceptedRouteEffectiveState::Promoted
+    );
+    reopened.close().unwrap();
     drop(directory);
 }

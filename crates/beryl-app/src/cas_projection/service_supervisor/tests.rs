@@ -22,13 +22,17 @@ use crate::cas_projection::{
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
 };
 
+include!("tests/phase93.rs");
+
 struct FactoryProbe {
     epochs: Arc<AtomicUsize>,
+    provider_issues: Arc<AtomicUsize>,
     provider_shutdowns: Arc<AtomicUsize>,
     factory_shutdowns: Arc<AtomicUsize>,
 }
 
 struct ProviderProbe {
+    issues: Arc<AtomicUsize>,
     shutdowns: Arc<AtomicUsize>,
 }
 
@@ -42,6 +46,7 @@ impl ScheduledOrdinaryExecutionProviderFactory for FactoryProbe {
     > {
         self.epochs.fetch_add(1, Ordering::SeqCst);
         Ok(Box::new(ProviderProbe {
+            issues: Arc::clone(&self.provider_issues),
             shutdowns: Arc::clone(&self.provider_shutdowns),
         }))
     }
@@ -61,6 +66,7 @@ impl ScheduledOrdinaryExecutionProvider for ProviderProbe {
         &mut self,
         admission: ScheduledOrdinaryAdmission,
     ) -> Result<ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryAdmissionError> {
+        self.issues.fetch_add(1, Ordering::SeqCst);
         Ok(admission.decline(ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady))
     }
 
@@ -75,6 +81,7 @@ struct Fixture {
     state: BerylState,
     supervisor: RunningSessionRecoverySupervisor,
     epochs: Arc<AtomicUsize>,
+    provider_issues: Arc<AtomicUsize>,
     provider_shutdowns: Arc<AtomicUsize>,
     factory_shutdowns: Arc<AtomicUsize>,
 }
@@ -91,6 +98,7 @@ impl Fixture {
         SyndicStorage::register(&mut home).unwrap();
         let state = BerylState::register(&mut home).unwrap();
         let epochs = Arc::new(AtomicUsize::new(0));
+        let provider_issues = Arc::new(AtomicUsize::new(0));
         let provider_shutdowns = Arc::new(AtomicUsize::new(0));
         let factory_shutdowns = Arc::new(AtomicUsize::new(0));
         let supervisor = RunningSessionRecoverySupervisor::start(
@@ -98,6 +106,7 @@ impl Fixture {
             ProjectionServiceConfig::try_new(8, 4).unwrap(),
             Box::new(FactoryProbe {
                 epochs: Arc::clone(&epochs),
+                provider_issues: Arc::clone(&provider_issues),
                 provider_shutdowns: Arc::clone(&provider_shutdowns),
                 factory_shutdowns: Arc::clone(&factory_shutdowns),
             }),
@@ -109,6 +118,7 @@ impl Fixture {
             state,
             supervisor,
             epochs,
+            provider_issues,
             provider_shutdowns,
             factory_shutdowns,
         }
@@ -139,6 +149,9 @@ fn successful_same_generation_verification_preserves_current_service() {
     let service_pointer = std::ptr::from_ref::<ProjectionConnectionService>(&*before);
     let service_generation = before.service_generation();
     let home_generation = before.home_generation();
+    let verification_pauses_before = before
+        .accepted_input_scheduler_diagnostics()
+        .verification_pauses();
     let verification = fixture.faults.block_next(FaultPoint::BeforeVerification);
     let settings = fixture.state.settings();
     let update = SettingUpdate::new(
@@ -177,7 +190,7 @@ fn successful_same_generation_verification_preserves_current_service() {
         before
             .accepted_input_scheduler_diagnostics()
             .verification_pauses()
-            == 1
+            > verification_pauses_before
     });
     let paused_scheduler = before.accepted_input_scheduler_diagnostics();
     assert!(!paused_scheduler.fatal());
@@ -264,10 +277,11 @@ fn failed_verification_completes_provider_waiter_before_command_drain() {
         .verification_join(&home, service.home_id(), home_generation)
         .unwrap();
     fixture.faults.fail_next(FaultPoint::BeforeVerification);
-    assert_eq!(
+    assert!(matches!(
         service.persistent_failure_notification().notify(),
         PersistentFailureNotificationStatus::VerificationSignaled
-    );
+            | PersistentFailureNotificationStatus::VerificationJoined
+    ));
     assert_eq!(
         join.settle_after_operation(),
         Err(crate::cas_projection::LiveCommandAdmissionError::Closed)
@@ -281,8 +295,9 @@ fn failed_verification_completes_provider_waiter_before_command_drain() {
     );
 
     drop((permit, home, service));
-    wait_until(|| fixture.supervisor.diagnostics().recovery_cycles() == 1);
-    fixture.supervisor.shutdown().unwrap();
+    wait_until(|| fixture.supervisor.diagnostics().terminal_failures() == 1);
+    assert!(fixture.supervisor.acquire().is_err());
+    assert!(fixture.supervisor.shutdown().is_err());
 }
 
 #[test]
@@ -395,42 +410,6 @@ fn shutdown_completes_provider_waiter_before_service_drain() {
     verification.release();
     drop((permit, home, service));
     shutdown.join().unwrap().unwrap();
-}
-
-#[test]
-fn two_sequential_failed_generations_publish_on_the_same_retained_home() {
-    let fixture = Fixture::new();
-    let initial = fixture.supervisor.acquire().unwrap();
-    let home_id = initial.home_id();
-    let retained_home = initial.retained_home_for_recovery();
-    let retained_home_pointer = Arc::as_ptr(&retained_home);
-    let mut home_generation = initial.home_generation();
-    let mut service_generation = initial.service_generation();
-    drop((retained_home, initial));
-
-    for cycle in 1..=2 {
-        fail_current_generation(&fixture, cycle);
-        wait_until(|| fixture.supervisor.diagnostics().recovery_cycles() == cycle);
-
-        let recovered = fixture.supervisor.acquire().unwrap();
-        let current_home = recovered.retained_home_for_recovery();
-        assert_eq!(recovered.home_id(), home_id);
-        assert_eq!(Arc::as_ptr(&current_home), retained_home_pointer);
-        assert!(recovered.home_generation() > home_generation);
-        assert!(recovered.service_generation() > service_generation);
-        home_generation = recovered.home_generation();
-        service_generation = recovered.service_generation();
-        drop((current_home, recovered));
-        assert_eq!(fixture.epochs.load(Ordering::SeqCst), cycle as usize + 1);
-        assert_eq!(
-            fixture.provider_shutdowns.load(Ordering::SeqCst),
-            cycle as usize
-        );
-    }
-
-    fixture.supervisor.shutdown().unwrap();
-    assert_eq!(fixture.provider_shutdowns.load(Ordering::SeqCst), 3);
-    assert_eq!(fixture.factory_shutdowns.load(Ordering::SeqCst), 1);
 }
 
 #[test]

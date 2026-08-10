@@ -1,14 +1,14 @@
-use super::super::ServiceAdoptionAttempt;
-use super::ProjectionCandidateReauthenticationReason;
-#[cfg(test)]
-use super::test_support::CandidateReauthenticationFactFault;
-use crate::cas_projection::{
+use super::super::super::super::{
     connection::{
         PendingProjectionLeaseOwner, StableProjectionConnectionObservation,
         registry::LoadedRegistryRecoveryObservation,
     },
     persistent_failure::{PendingProjectionGroupIdentity, PendingProjectionWitness},
 };
+use super::super::ServiceAdoptionAttempt;
+use super::ProjectionCandidateReauthenticationReason;
+#[cfg(test)]
+use super::test_support::CandidateReauthenticationFactFault;
 
 pub(super) fn validate_candidate(
     attempt: &ServiceAdoptionAttempt,

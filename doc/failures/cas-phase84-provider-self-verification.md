@@ -43,6 +43,56 @@ The same join applies when the exact provider epoch is already `verifying` befor
 reconciliation point-read itself observes a later `verifying` epoch, the committer joins that new
 completion and repeats the same read while retaining the original batch or build frontier.
 
+## Invalidated Blanket Preparation Retry
+
+Phase 86 briefly wrapped ordinary provider preparation in one generic verification helper. After
+`VerifiedCurrent`, it retained every successful preparation but retried every error. That was not a
+valid reconciliation boundary: `VerifiedCurrent` proves the exact flight completed, but does not
+classify cancellation, lifecycle, source, frame, or staging errors as retryable. Applying the helper
+to provider begin could also redispatch a non-idempotent staging command.
+
+Scoped architectural review and actual broker-path tests established the required split. Provider
+begin holds one witness around health, generation, and storage reacquisition, repeats only that
+read-only authority point read after verified completion, and dispatches the generated observation
+identity exactly once through the existing stage committer. Provider seal retains its exact source
+permit, observation identity, route, and frontier; it reopens and repeats preparation only for a
+typed health-gate ambiguity, while unrelated errors retain their original disposition. The source
+publication permit remains the synchronized cancellation and target-retirement fence throughout
+preparation and publication.
+
+Completion review found the same blanket policy still present in source activation and checked-user
+preparation: heterogeneous errors had been collapsed to `()`, and any error concurrent with
+`VerifiedCurrent` was retried. The first typed correction also carried the pre-verification
+`SyndicStorage` handle into later source-event publication and opened an unnecessary second join
+against the already completed flight. Real-path faults showed one durable activation dispatch but
+no visible continuation events, followed by `Unavailable` from the retired flight.
+
+Source activation now carries typed authority, health-gate, domain, record, publication, and target
+failures. Each durability-sensitive command dispatches once. After verified completion, the owner
+reacquires the exact current storage handle and performs the reconciliation point read directly; it
+joins again only when that read itself reports a new exact same-generation `verifying` epoch. The
+fresh handle continues into checked-user preparation and publication. Direct activation callers
+preserve authority loss separately from ordinary target failure instead of collapsing the new type.
+
+A final review found two remaining provenance collapses. Source activation asked the publication
+permit for an `Option` generation and then resampled mutable home health to guess why it was absent;
+provider begin similarly reduced identity, generation, reacquisition, registration, poison, and
+storage-health failures to `Option`. Both could mask a non-health failure concurrent with verified
+completion or invalidate a target after the home had already returned healthy. The permit now
+matches its immutable retained generation directly, and provider begin uses a typed authority-read
+error. After verified completion both paths perform one direct fresh read; only a newly carried
+exact same-generation `verifying` gate opens another join.
+
+Provider-seal preparation applies the same boundary to the carried storage error itself: only
+`verifying` at the ingester's immutable expected generation is ambiguous. `Failed`, `Reopening`,
+foreign-generation health gates, and non-health failures keep their original disposition and may
+not reopen or repeat preparation after `VerifiedCurrent`.
+
+Helper-only tests were insufficient because they could encode the invalid retry policy without
+exercising durable staging or target ownership. Focused coverage must drive the real broker begin
+and seal paths and prove exact identity and route reuse, no staging redispatch, typed terminal
+completion before permit drain, exact acknowledgement, and no target invalidation.
+
 ## Durable Rule
 
 When one process owner has sole authority to verify shared storage health, mounted workers may

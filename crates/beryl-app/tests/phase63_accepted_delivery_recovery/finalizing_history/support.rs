@@ -81,26 +81,28 @@ pub(super) fn finalizing_fixture(seed: u8, queue_successor: bool) -> FinalizingF
     let predecessor = fixture.submit_text(SUBMITTED_TEXT);
     fixture.activate_without_terminal(predecessor);
 
-    let source = startup_source(&fixture.store, fixture.storage);
+    let command_home = fixture.store.live_home_command().unwrap();
+    let home = command_home.home();
+    let source = startup_source(home, fixture.storage);
     let DeliveryRecoveryCase::Active(active) = fixture
         .storage
-        .classify_delivery_recovery(&fixture.store, &source, point_limit())
+        .classify_delivery_recovery(home, &source, point_limit())
         .unwrap()
     else {
         panic!("finalizing-history fixture must begin with active authority")
     };
     let observed_at = time(63_600 + u64::from(seed));
     execute(
-        &fixture.store,
+        home,
         fixture.storage.abandon_active_binding(
-            fixture.storage.revision(&fixture.store).unwrap(),
+            fixture.storage.revision(home).unwrap(),
             active
                 .generic_abandonment("phase63 durable finalizing-history cut", observed_at)
                 .unwrap(),
         ),
     );
     publish_source_less_terminal(
-        &fixture.store,
+        home,
         fixture.storage,
         fixture.thread,
         predecessor.turn,
@@ -109,12 +111,12 @@ pub(super) fn finalizing_fixture(seed: u8, queue_successor: bool) -> FinalizingF
 
     let state = fixture
         .storage
-        .turn_state(&fixture.store, predecessor.turn, point_limit())
+        .turn_state(home, predecessor.turn, point_limit())
         .unwrap()
         .unwrap();
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(home, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -132,23 +134,17 @@ pub(super) fn finalizing_fixture(seed: u8, queue_successor: bool) -> FinalizingF
     );
     let head = fixture
         .storage
-        .transcript_view_head(&fixture.store, fixture.thread, point_limit())
+        .transcript_view_head(home, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
 
-    let successor = queue_successor.then(|| {
-        admit_successor(
-            &fixture.store,
-            fixture.storage,
-            fixture.thread,
-            predecessor.turn,
-        )
-    });
+    let successor = queue_successor
+        .then(|| admit_successor(home, fixture.storage, fixture.thread, predecessor.turn));
     let runtime_id = crate::syndic::execution_binding().runtime_id();
-    let cut_source = startup_source(&fixture.store, fixture.storage);
+    let cut_source = startup_source(home, fixture.storage);
     assert!(matches!(
         fixture.storage.classify_delivery_recovery(
-            &fixture.store,
+            home,
             &cut_source,
             point_limit(),
         ),
@@ -158,7 +154,8 @@ pub(super) fn finalizing_fixture(seed: u8, queue_successor: bool) -> FinalizingF
             ..
         }) if thread_id == fixture.thread && turn_id == predecessor.turn
     ));
-    fixture.store.validate_registered_domains().unwrap();
+    home.validate_registered_domains().unwrap();
+    drop(command_home);
     let thread = fixture.thread;
     let (directory, service) = fixture.into_service();
     service.close().unwrap();
@@ -316,10 +313,12 @@ pub(super) fn prepare_steering_draft(fixture: &crate::syndic::Fixture) {
         &ComposerPayload::new(vec![ComposerAtom::text(STEERING_TEXT).unwrap()]).unwrap(),
     )
     .unwrap();
-    stage_prepared_content(&fixture.store, fixture.storage, &prepared);
+    let command_home = fixture.store.live_home_command().unwrap();
+    let home = command_home.home();
+    stage_prepared_content(home, fixture.storage, &prepared);
     let current = fixture
         .storage
-        .current_draft(&fixture.store, fixture.thread, point_limit())
+        .current_draft(home, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let DraftPayloadUpdateDecision::Update(update) =
@@ -328,10 +327,10 @@ pub(super) fn prepare_steering_draft(fixture: &crate::syndic::Fixture) {
         panic!("single-owner steering fixture must change the draft")
     };
     execute(
-        &fixture.store,
+        home,
         fixture
             .storage
-            .update_draft_payload(fixture.storage.revision(&fixture.store).unwrap(), update),
+            .update_draft_payload(fixture.storage.revision(home).unwrap(), update),
     );
 }
 
@@ -340,61 +339,69 @@ pub(super) fn admit_and_wait_for_steering(
     turn: SyndicTurnId,
 ) -> SyndicAcceptedInputId {
     crate::phase62_support::wait_until("single-owner turn becomes steerable", || {
+        let command_home = fixture.store.live_home_command().ok()?;
+        let home = command_home.home();
         let gate = fixture
             .storage
-            .input_gate(&fixture.store, fixture.thread, point_limit())
+            .input_gate(home, fixture.thread, point_limit())
             .ok()
             .flatten()?;
         let state = fixture
             .storage
-            .turn_state(&fixture.store, turn, point_limit())
+            .turn_state(home, turn, point_limit())
             .ok()
             .flatten()?;
         (gate.state() == &InputGateState::Steerable(turn) && state.source_event_count() >= 3)
             .then_some(())
     });
-    let current = fixture
-        .storage
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
+    let (accepted_input, prepared) = {
+        let command_home = fixture.store.live_home_command().unwrap();
+        let home = command_home.home();
+        let current = fixture
+            .storage
+            .current_draft(home, fixture.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let gate = fixture
+            .storage
+            .input_gate(home, fixture.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let state = fixture
+            .storage
+            .turn_state(home, turn, point_limit())
+            .unwrap()
+            .unwrap();
+        let admission = AcceptedInputAdmission::new(
+            fixture.thread,
+            current.thread().revision(),
+            current.draft().id(),
+            current.draft().revision(),
+            current.draft().content(),
+            gate.revision(),
+            SyndicDraftId::from_bytes([249; 16]),
+            None,
+            state.updated_at().max(current.draft().updated_at()),
+        );
+        let accepted_input = admission.accepted_input_id();
+        let prepared = prepare_accepted_input_admission(
+            home,
+            fixture.storage,
+            fixture.state.assets(),
+            admission,
+        )
         .unwrap();
-    let gate = fixture
-        .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let state = fixture
-        .storage
-        .turn_state(&fixture.store, turn, point_limit())
-        .unwrap()
-        .unwrap();
-    let admission = AcceptedInputAdmission::new(
-        fixture.thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
-        SyndicDraftId::from_bytes([249; 16]),
-        None,
-        state.updated_at().max(current.draft().updated_at()),
-    );
-    let accepted_input = admission.accepted_input_id();
-    let prepared = prepare_accepted_input_admission(
-        &fixture.store,
-        fixture.storage,
-        fixture.state.assets(),
-        admission,
-    )
-    .unwrap();
+        (accepted_input, prepared)
+    };
     fixture
         .store
         .execute_accepted_input_admission(prepared)
         .unwrap();
     crate::phase62_support::wait_until("single-owner steering delivery claim", || {
+        let command_home = fixture.store.live_home_command().ok()?;
         fixture
             .storage
-            .delivering_steering_input(&fixture.store, accepted_input, point_limit())
+            .delivering_steering_input(command_home.home(), accepted_input, point_limit())
             .ok()
             .flatten()
             .map(|_| ())

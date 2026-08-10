@@ -1,19 +1,260 @@
 #[path = "provider_broker_checked_user/support.rs"]
 mod support;
 
+use std::sync::{
+    Arc, Mutex, OnceLock,
+    atomic::{AtomicUsize, Ordering},
+};
+
 use beryl_backend::{
     NormalTurnTerminalStatus, OrderedTurnStreamRejection, OrderedTurnStreamSubmitCause,
     UserMessageEchoLifecycle,
 };
-use beryl_home_store::test_faults::{FaultController, FaultPoint};
+use beryl_home_store::{
+    HomeCommand, HomeHealthState,
+    test_faults::{FaultController, FaultPoint},
+};
 use beryl_model::{CasItemId, CasTurnId};
 use syndic_storage::{
     BindingState, CasItemSource, CasTurnSource, InputGateState, ProviderFrameOrdinalV1,
     ProviderItemLifecycle, SourceEventPayload, SourceEventSequence, TurnEndStatus,
     TurnIncompleteReason, TurnLifecycle, TurnTerminalOutcome,
 };
+use beryl_state::{
+    ApplySettings, BerylState, ExpectedSettingRevision, SettingKey, SettingUpdate, SettingValue,
+};
 
 use support::*;
+
+struct CheckedUserPreparationObservation {
+    home_id: beryl_model::BerylHomeId,
+    lifecycle: UserMessageEchoLifecycle,
+    preparation_attempts: AtomicUsize,
+    activation_dispatches: AtomicUsize,
+}
+
+static CHECKED_USER_PREPARATION_OBSERVATIONS: OnceLock<
+    Mutex<Vec<Arc<CheckedUserPreparationObservation>>>,
+> = OnceLock::new();
+
+struct SourceActivationAuthorityHook {
+    home_id: beryl_model::BerylHomeId,
+    attempts: AtomicUsize,
+    fail_non_health: std::sync::atomic::AtomicBool,
+    paused: std::sync::mpsc::SyncSender<()>,
+    resume: Mutex<std::sync::mpsc::Receiver<()>>,
+}
+
+static SOURCE_ACTIVATION_AUTHORITY_HOOKS: OnceLock<
+    Mutex<Vec<Arc<SourceActivationAuthorityHook>>>,
+> = OnceLock::new();
+
+struct SourceActivationAuthorityController {
+    hook: Arc<SourceActivationAuthorityHook>,
+    paused: std::sync::mpsc::Receiver<()>,
+    resume: std::sync::mpsc::SyncSender<()>,
+}
+
+struct CheckedUserPreparationController {
+    observation: Arc<CheckedUserPreparationObservation>,
+}
+
+impl CheckedUserPreparationController {
+    fn install(
+        home_id: beryl_model::BerylHomeId,
+        lifecycle: UserMessageEchoLifecycle,
+    ) -> Self {
+        let observation = Arc::new(CheckedUserPreparationObservation {
+            home_id,
+            lifecycle,
+            preparation_attempts: AtomicUsize::new(0),
+            activation_dispatches: AtomicUsize::new(0),
+        });
+        CHECKED_USER_PREPARATION_OBSERVATIONS
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .unwrap()
+            .push(Arc::clone(&observation));
+        Self { observation }
+    }
+
+    fn preparation_attempts(&self) -> usize {
+        self.observation
+            .preparation_attempts
+            .load(Ordering::SeqCst)
+    }
+
+    fn activation_dispatches(&self) -> usize {
+        self.observation
+            .activation_dispatches
+            .load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for CheckedUserPreparationController {
+    fn drop(&mut self) {
+        let Some(observations) = CHECKED_USER_PREPARATION_OBSERVATIONS.get() else {
+            return;
+        };
+        observations
+            .lock()
+            .unwrap()
+            .retain(|candidate| !Arc::ptr_eq(candidate, &self.observation));
+    }
+}
+
+impl SourceActivationAuthorityController {
+    fn install(home_id: beryl_model::BerylHomeId) -> Self {
+        let (paused_sender, paused) = std::sync::mpsc::sync_channel(0);
+        let (resume, resume_receiver) = std::sync::mpsc::sync_channel(0);
+        let hook = Arc::new(SourceActivationAuthorityHook {
+            home_id,
+            attempts: AtomicUsize::new(0),
+            fail_non_health: std::sync::atomic::AtomicBool::new(false),
+            paused: paused_sender,
+            resume: Mutex::new(resume_receiver),
+        });
+        SOURCE_ACTIVATION_AUTHORITY_HOOKS
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .unwrap()
+            .push(Arc::clone(&hook));
+        Self {
+            hook,
+            paused,
+            resume,
+        }
+    }
+
+    fn wait_until_paused(&self) {
+        self.paused
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("source activation authority did not reach the deterministic barrier");
+    }
+
+    fn fail_next_with_non_health_error(&self) {
+        self.hook.fail_non_health.store(true, Ordering::SeqCst);
+    }
+
+    fn release(&self) {
+        self.resume.send(()).unwrap();
+    }
+
+    fn attempts(&self) -> usize {
+        self.hook.attempts.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for SourceActivationAuthorityController {
+    fn drop(&mut self) {
+        let Some(hooks) = SOURCE_ACTIVATION_AUTHORITY_HOOKS.get() else {
+            return;
+        };
+        hooks
+            .lock()
+            .unwrap()
+            .retain(|candidate| !Arc::ptr_eq(candidate, &self.hook));
+    }
+}
+
+pub(in crate::cas_projection::connection::provider_broker::ingester) fn pause_source_activation_authority_and_take_non_health_failure(
+    home_id: beryl_model::BerylHomeId,
+) -> bool {
+    let hook = SOURCE_ACTIVATION_AUTHORITY_HOOKS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|hook| hook.home_id == home_id)
+        .cloned();
+    let Some(hook) = hook else {
+        return false;
+    };
+    if hook.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+        hook.paused.send(()).unwrap();
+        hook.resume.lock().unwrap().recv().unwrap();
+    }
+    hook.fail_non_health.swap(false, Ordering::SeqCst)
+}
+
+pub(in crate::cas_projection::connection::provider_broker::ingester) fn record_checked_user_preparation_attempt(
+    home_id: beryl_model::BerylHomeId,
+    lifecycle: UserMessageEchoLifecycle,
+) {
+    if let Some(observation) = checked_user_preparation_observation(home_id, Some(lifecycle)) {
+        observation
+            .preparation_attempts
+            .fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+pub(in crate::cas_projection::connection::provider_broker::ingester) fn record_source_activation_dispatch(
+    home_id: beryl_model::BerylHomeId,
+) {
+    if let Some(observation) = checked_user_preparation_observation(home_id, None) {
+        observation
+            .activation_dispatches
+            .fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+fn checked_user_preparation_observation(
+    home_id: beryl_model::BerylHomeId,
+    lifecycle: Option<UserMessageEchoLifecycle>,
+) -> Option<Arc<CheckedUserPreparationObservation>> {
+    CHECKED_USER_PREPARATION_OBSERVATIONS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|observation| {
+            observation.home_id == home_id
+                && lifecycle.is_none_or(|lifecycle| observation.lifecycle == lifecycle)
+        })
+        .cloned()
+}
+
+fn enter_verifying(fixture: &CheckedUserFixture, faults: &FaultController) {
+    let state = BerylState::reacquire(&fixture.home).unwrap();
+    let settings = state.settings();
+    let update = SettingUpdate::new(
+        SettingKey::DraftAutosaveInterval,
+        ExpectedSettingRevision::Absent,
+        SettingValue::draft_autosave_interval_seconds(1),
+    );
+    let mut command = HomeCommand::new(fixture.home.home_revision().unwrap());
+    command
+        .add(settings.apply(
+            settings.revision(&fixture.home).unwrap(),
+            ApplySettings::new(vec![update]).unwrap(),
+        ))
+        .unwrap();
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    fixture.home.execute(command).unwrap_err();
+    assert_eq!(fixture.home.health().state(), HomeHealthState::Verifying);
+}
+
+fn attach_successful_supervisor(
+    fixture: &CheckedUserFixture,
+) -> (std::thread::JoinHandle<()>, Arc<AtomicUsize>) {
+    let (signal, receiver) = std::sync::mpsc::sync_channel(1);
+    fixture
+        .failure_notification
+        .attach_recovery_supervisor(signal)
+        .unwrap();
+    let home = Arc::clone(&fixture.home);
+    let notification = fixture.failure_notification.clone();
+    let signals = Arc::new(AtomicUsize::new(0));
+    let observed_signals = Arc::clone(&signals);
+    let worker = std::thread::spawn(move || {
+        receiver.recv().unwrap();
+        observed_signals.fetch_add(1, Ordering::SeqCst);
+        home.verify_health().unwrap();
+        let completed = notification.publish_verified_current_completion().unwrap();
+        notification.finish_completed_recovery_supervisor_flight(completed, true);
+    });
+    (worker, signals)
+}
 
 #[test]
 fn checked_user_acknowledgements_follow_exact_activation_and_same_item_publication() {
@@ -262,6 +503,170 @@ fn checked_user_publication_barrier_holds_one_real_permit_and_releases_it() {
     );
     assert_eq!(released.checked_user_publications().publications(), 1);
 
+    fixture.close();
+}
+
+#[test]
+fn checked_user_preserves_non_health_activation_authority_failure_after_verified_current() {
+    let faults = FaultController::new();
+    let mut fixture = CheckedUserFixture::with_faults(230, faults.clone());
+    let observation = CheckedUserPreparationController::install(
+        fixture.home.home_id(),
+        UserMessageEchoLifecycle::Started,
+    );
+    let authority = SourceActivationAuthorityController::install(fixture.home.home_id());
+    let (supervisor, verification_signals) = attach_successful_supervisor(&fixture);
+    let message = fixture.checked_message(
+        UserMessageEchoLifecycle::Started,
+        CasItemId::new("checked-user-item-230").unwrap(),
+    );
+    let mut sink = fixture.sink.take().unwrap();
+    let (returned_sink, result) = std::thread::scope(|scope| {
+        let worker = scope.spawn(move || {
+            let result = sink.submit(
+                beryl_backend::OrderedTurnStreamOperation::CheckedUserMessage(message),
+            );
+            (sink, result)
+        });
+        authority.wait_until_paused();
+        authority.fail_next_with_non_health_error();
+        enter_verifying(&fixture, &faults);
+        authority.release();
+        worker.join().unwrap()
+    });
+    fixture.sink = Some(returned_sink);
+    assert!(matches!(
+        result,
+        Ok(beryl_backend::OrderedTurnStreamCompletion::Applied)
+    ));
+    supervisor.join().unwrap();
+    fixture.storage = syndic_storage::SyndicStorage::reacquire(&fixture.home).unwrap();
+
+    assert_eq!(verification_signals.load(Ordering::SeqCst), 1);
+    assert_eq!(authority.attempts(), 1);
+    assert_eq!(observation.activation_dispatches(), 0);
+    assert_eq!(observation.preparation_attempts(), 0);
+    assert_eq!(
+        fixture.registration.terminal_reason(),
+        Some(
+            crate::cas_projection::connection::router::LiveEventTargetCloseReason::SourcePublicationFailed
+        )
+    );
+    assert_eq!(
+        fixture
+            .storage
+            .turn_state(&fixture.home, fixture.turn_id, point_limit())
+            .unwrap()
+            .unwrap()
+            .source_event_count(),
+        0
+    );
+    assert_eq!(fixture.broker_snapshot().submitted(), 1);
+    assert_eq!(fixture.broker_snapshot().acked(), 1);
+    assert_eq!(fixture.commands.active_command_count_for_test(), 0);
+
+    drop(authority);
+    drop(observation);
+    fixture.close();
+}
+
+#[test]
+fn checked_user_activation_reconciles_health_gate_without_redispatch() {
+    let faults = FaultController::new();
+    let mut fixture = CheckedUserFixture::with_faults(226, faults.clone());
+    let observation = CheckedUserPreparationController::install(
+        fixture.home.home_id(),
+        UserMessageEchoLifecycle::Started,
+    );
+    faults.fail_next_in_scope(
+        FaultPoint::AfterPersist,
+        syndic_storage::test_faults::active_cas_turn_fault_scope(),
+    );
+    let (supervisor, verification_signals) = attach_successful_supervisor(&fixture);
+    let cas_item_id = CasItemId::new("checked-user-item-226").unwrap();
+
+    fixture.submit_checked(UserMessageEchoLifecycle::Started, cas_item_id);
+    supervisor.join().unwrap();
+    fixture.storage = syndic_storage::SyndicStorage::reacquire(&fixture.home).unwrap();
+
+    assert_eq!(verification_signals.load(Ordering::SeqCst), 1);
+    assert_eq!(observation.activation_dispatches(), 1);
+    assert_eq!(fixture.registration.terminal_reason(), None);
+    assert_eq!(observation.preparation_attempts(), 1);
+    assert_eq!(
+        fixture
+            .storage
+            .turn_state(&fixture.home, fixture.turn_id, point_limit())
+            .unwrap()
+            .unwrap()
+            .source_event_count(),
+        2
+    );
+    assert_eq!(fixture.broker_snapshot().submitted(), 1);
+    assert_eq!(fixture.broker_snapshot().acked(), 1);
+    assert_eq!(fixture.commands.active_command_count_for_test(), 0);
+
+    drop(observation);
+    fixture.close();
+}
+
+#[test]
+fn checked_user_non_health_failure_concurrent_with_verified_current_is_not_retried() {
+    let faults = FaultController::new();
+    let mut fixture = CheckedUserFixture::with_faults(227, faults.clone());
+    let cas_item_id = CasItemId::new("checked-user-item-227").unwrap();
+    fixture.submit_checked(UserMessageEchoLifecycle::Started, cas_item_id.clone());
+    let active_before = fixture
+        .storage
+        .active_cas_turn(&fixture.home, fixture.snapshot_id, point_limit())
+        .unwrap();
+    let observation = CheckedUserPreparationController::install(
+        fixture.home.home_id(),
+        UserMessageEchoLifecycle::Started,
+    );
+    let (supervisor, verification_signals) = attach_successful_supervisor(&fixture);
+
+    fixture.submit_checked_while_publication_paused(
+        UserMessageEchoLifecycle::Started,
+        cas_item_id,
+        |fixture| enter_verifying(fixture, &faults),
+    );
+    supervisor.join().unwrap();
+
+    assert_eq!(verification_signals.load(Ordering::SeqCst), 1);
+    assert_eq!(observation.activation_dispatches(), 0);
+    assert_eq!(observation.preparation_attempts(), 1);
+    assert_eq!(
+        fixture.registration.terminal_reason(),
+        Some(
+            crate::cas_projection::connection::router::LiveEventTargetCloseReason::SourcePublicationFailed
+        )
+    );
+    assert_eq!(
+        fixture
+            .storage
+            .active_cas_turn(&fixture.home, fixture.snapshot_id, point_limit())
+            .unwrap(),
+        active_before
+    );
+    assert_eq!(
+        fixture.canonical_item().provider_lifecycle(),
+        ProviderItemLifecycle::Started
+    );
+    assert_eq!(
+        fixture
+            .storage
+            .turn_state(&fixture.home, fixture.turn_id, point_limit())
+            .unwrap()
+            .unwrap()
+            .source_event_count(),
+        2
+    );
+    assert_eq!(fixture.broker_snapshot().submitted(), 2);
+    assert_eq!(fixture.broker_snapshot().acked(), 2);
+    assert_eq!(fixture.commands.active_command_count_for_test(), 0);
+
+    drop(observation);
     fixture.close();
 }
 

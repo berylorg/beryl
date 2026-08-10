@@ -1321,15 +1321,21 @@ Prefer CAS-native thread continuation, resume, and fork lineage whenever exact b
   of its permanently closed old master gate and epoch command queue. The one-shot control names the
   exact failure cut and the command frontier sealed when that gate closed, so later ordinary queue
   traffic cannot starve or overtake it. The driver settles already-dispatched work without issuing
-  another request, rejects every not-yet-dispatched old-epoch command through that frontier,
+  another request, explicitly rejects every not-yet-dispatched old-epoch command through that
+  frontier with one typed cut-correlated nondispatch completion, and lets each owning scheduler
+  worker surrender before the driver parks. This completion performs no durable accepted-input
+  mutation and arms no retry; scheduler quiescence joins every old worker before the recovery
+  inventory seals and before adoption begins. No live old-epoch command crosses adoption.
+  The driver
   finishes the synchronous acknowledgement of any already-selected ordered observation, selects no
   later stream observation once the control is pending, and then parks without backend work. Old
   ordered ingesters must be terminal, ownership-clean, explicitly joined, and unable to acknowledge
   another operation before commit. The join result returns the exact old ingester admission and
   terminal receipt into the attempt-owned old-epoch attachment; neither is dropped or released to
-  the old pool. Cancellation or detached thread-handle drop is not that proof. A command admitted
-  from an epoch carries that epoch identity and is rejected at dequeue if the stable slot no longer
-  names it.
+  the old pool. Cancellation or detached thread-handle drop is not that proof. Every command carries
+  its admitting epoch. Ordinary dequeue validates that identity under the stable adoption-slot
+  execution guard; an unexpected mismatch receives the same typed nondispatch completion before
+  provider work as a defensive invariant, never silent drop or cross-epoch execution.
 - The capacity-one slot remains part of the stable core across successfully published service
   generations; only each cut-bound control message and its park token are one-shot. Successful
   publication returns the slot empty and eligible only for a later strictly newer failure cut.
@@ -1609,6 +1615,12 @@ Prefer CAS-native thread continuation, resume, and fork lineage whenever exact b
   authority also proves its compact asset-owner participant committed atomically. Scheduler wake
   follows exact acceptance. An unresolved read or successful command without the exact receipt
   fails the service closed, without requiring one fragile app mutex across every route publisher.
+- Exact failed-home command-frontier rejection is process-local attempt settlement, not a durable
+  lifecycle transition. Its typed cut-correlated nondispatch completion returns the scheduled worker
+  to persistent-failure surrender without changing the accepted input, pending turn, immutable
+  receipt, registry token, or retry eligibility. Scheduler shutdown waits for that surrender and
+  joins the worker before recovery inventory sealing; only later successful recovery publication
+  may reconstruct execution from the retained durable provenance.
 - Durable `Retryable` means only that exact evidence proves the prior attempt did not dispatch and
   that another attempt is not forbidden. It does not itself authorize an immediate or timed retry.
   `Admitted` work is eligible in an ordinary scheduler pass; `Retryable` work is eligible only in a

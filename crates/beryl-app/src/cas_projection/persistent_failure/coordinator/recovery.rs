@@ -18,6 +18,27 @@ pub(in crate::cas_projection::persistent_failure) use terminal::{
 pub(in crate::cas_projection) struct PendingProjectionAdoptionCheckout {
     topology: Option<PendingProjectionAdoptionTopology>,
     fence: Option<PersistentFailureAdoptionFence>,
+    #[cfg(test)]
+    adversary: Option<super::test_support::AdversarialQuarantineTopologyForTest>,
+    #[cfg(test)]
+    secondary_inventory: Option<crate::cas_projection::PersistentFailureRecoveryInventory>,
+    #[cfg(test)]
+    secondary_topology: Option<PendingProjectionAdoptionTopology>,
+    #[cfg(test)]
+    secondary_fence: Option<PersistentFailureAdoptionFence>,
+    #[cfg(test)]
+    secondary_cut: Option<PersistentFailureCutIdentity>,
+    #[cfg(test)]
+    secondary_connections: Vec<Arc<ProjectionConnection>>,
+    #[cfg(test)]
+    secondary_inert_attachments:
+        Vec<crate::cas_projection::connection::InertConnectionEpochAttachment>,
+    #[cfg(test)]
+    reached_owner_count: usize,
+    #[cfg(test)]
+    adversary_applied: bool,
+    #[cfg(test)]
+    secondary_terminalized: bool,
 }
 
 /// Non-cloneable witness that the exact quarantine remains isolated from late publication.
@@ -55,6 +76,217 @@ impl PendingProjectionAdoptionCheckout {
                 .take()
                 .expect("adoption checkout retains its terminal publication fence"),
         )
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn take_parts(
+        &mut self,
+    ) -> (
+        PendingProjectionAdoptionTopology,
+        PersistentFailureAdoptionFence,
+    ) {
+        (
+            self.topology
+                .take()
+                .expect("adoption checkout retains the normalized quarantine topology"),
+            self.fence
+                .take()
+                .expect("adoption checkout retains its terminal publication fence"),
+        )
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn apply_adversarial_topology_for_test(
+        &mut self,
+        primary_topology: &mut PendingProjectionAdoptionTopology,
+        primary_cut: PersistentFailureCutIdentity,
+    ) -> Result<(), PersistentFailurePendingProjectionQuarantineReason> {
+        let Some(adversary) = self.adversary.take() else {
+            return Ok(());
+        };
+        self.adversary_applied = true;
+        match adversary {
+            super::test_support::AdversarialQuarantineTopologyForTest::RetiredConnectionOwner => {
+                if primary_topology.connection_owner_count() != 1 {
+                    return Err(
+                        PersistentFailurePendingProjectionQuarantineReason::ConnectionIdentityMismatch,
+                    );
+                }
+                let connection =
+                    primary_topology.connection_owners()[0].stable_connection_for_inert_failure();
+                match connection.retire_authority_for_recovery_test() {
+                    Ok(crate::cas_projection::connection::ConnectionRetirementOutcome::FailureRetained(
+                        cut,
+                    )) if cut == primary_cut => {}
+                    Ok(_) => {
+                        return Err(
+                            PersistentFailurePendingProjectionQuarantineReason::ConnectionUnavailable,
+                        );
+                    }
+                    Err(_) => {
+                        return Err(
+                            PersistentFailurePendingProjectionQuarantineReason::ConnectionUnavailable,
+                        );
+                    }
+                }
+                self.reached_owner_count = 1;
+                Ok(())
+            }
+            super::test_support::AdversarialQuarantineTopologyForTest::ExtraConnectionOwner(
+                secondary,
+            ) => {
+                let mut secondary_topology = self.checkout_secondary_for_test(secondary)?;
+                let mut secondary_owners =
+                    secondary_topology.take_connection_owners_for_adversarial_test();
+                if primary_topology.connection_owner_count() != 1 || secondary_owners.len() != 1 {
+                    return Err(
+                        PersistentFailurePendingProjectionQuarantineReason::ConnectionIdentityMismatch,
+                    );
+                }
+                let mut primary_owners =
+                    primary_topology.take_connection_owners_for_adversarial_test();
+                primary_owners.append(&mut secondary_owners);
+                let displaced =
+                    primary_topology.replace_connection_owners_for_adversarial_test(primary_owners);
+                debug_assert!(displaced.is_empty());
+                self.reached_owner_count = 2;
+                self.secondary_topology = Some(secondary_topology);
+                Ok(())
+            }
+            super::test_support::AdversarialQuarantineTopologyForTest::ForeignFailureCutOwner(
+                secondary,
+            ) => {
+                let mut secondary_topology = self.checkout_secondary_for_test(secondary)?;
+                let secondary_owners =
+                    secondary_topology.take_connection_owners_for_adversarial_test();
+                if primary_topology.connection_owner_count() != 1 || secondary_owners.len() != 1 {
+                    return Err(
+                        PersistentFailurePendingProjectionQuarantineReason::ConnectionIdentityMismatch,
+                    );
+                }
+                let primary_owners = primary_topology
+                    .replace_connection_owners_for_adversarial_test(secondary_owners);
+                let displaced = secondary_topology
+                    .replace_connection_owners_for_adversarial_test(primary_owners);
+                debug_assert!(displaced.is_empty());
+                self.reached_owner_count = 2;
+                self.secondary_topology = Some(secondary_topology);
+                Ok(())
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn checkout_secondary_for_test(
+        &mut self,
+        secondary: crate::cas_projection::PersistentFailurePendingProjectionQuarantine,
+    ) -> Result<PendingProjectionAdoptionTopology, PersistentFailurePendingProjectionQuarantineReason>
+    {
+        let inventory = secondary.into_inventory();
+        let cut = inventory.cut_identity();
+        self.secondary_inventory = Some(inventory);
+        let checkout = self
+            .secondary_inventory
+            .as_ref()
+            .expect("the adversarial checkout retains its secondary inventory")
+            .checkout_pending_quarantine_for_adoption()?;
+        let (topology, fence) = checkout.into_parts();
+        self.secondary_connections = topology
+            .connection_owners()
+            .iter()
+            .map(|owner| Arc::clone(owner.stable_connection_for_inert_failure()))
+            .collect();
+        self.secondary_inert_attachments = Vec::with_capacity(self.secondary_connections.len());
+        self.secondary_cut = Some(cut);
+        self.secondary_fence = Some(fence);
+        Ok(topology)
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) const fn adversary_was_applied_for_test(&self) -> bool {
+        self.adversary_applied
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn reached_owner_count_for_test(&self) -> usize {
+        self.reached_owner_count
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn retained_owner_count_for_test(&self) -> usize {
+        self.secondary_topology
+            .as_ref()
+            .map_or(0, PendingProjectionAdoptionTopology::connection_owner_count)
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn secondary_connection_count_for_test(&self) -> usize {
+        self.secondary_connections.len()
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn secondary_inert_attachment_count_for_test(&self) -> usize {
+        self.secondary_inert_attachments.len()
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn secondary_inventory_reescrow_is_disarmed_for_test(
+        &self,
+    ) -> bool {
+        self.secondary_inventory
+            .as_ref()
+            .is_none_or(crate::cas_projection::PersistentFailureRecoveryInventory::reescrow_is_disarmed_for_test)
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn secondary_connections_are_inert_for_test(&self) -> bool {
+        self.secondary_connections
+            .iter()
+            .all(|connection| connection.forwarding_epoch_is_inert_and_detached_for_test())
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn owns_secondary_connection_for_test(
+        &self,
+        candidate: &Arc<ProjectionConnection>,
+    ) -> bool {
+        self.secondary_connections
+            .iter()
+            .any(|connection| Arc::ptr_eq(connection, candidate))
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn make_adversarial_connections_inert_for_test(&mut self) {
+        if self.secondary_terminalized {
+            return;
+        }
+        if let Some(cut) = self.secondary_cut {
+            for connection in &self.secondary_connections {
+                let attachment = connection.make_adoption_inert_in_place(cut);
+                if !attachment.is_empty() {
+                    self.secondary_inert_attachments.push(attachment);
+                }
+            }
+        }
+        if let Some(inventory) = self.secondary_inventory.as_mut() {
+            inventory.disarm_reescrow_after_terminal_inert();
+        }
+        self.secondary_terminalized = true;
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn dispose_adversarial_connections_for_test(&mut self) -> bool {
+        self.make_adversarial_connections_inert_for_test();
+        let mut failed = false;
+        for attachment in self.secondary_inert_attachments.drain(..) {
+            failed |= attachment.dispose_after_adoption_failure().is_err();
+        }
+        for connection in &self.secondary_connections {
+            failed |= connection
+                .dispose_inert_driver_after_adoption_failure()
+                .is_err();
+        }
+        failed
     }
 }
 
@@ -147,362 +379,4 @@ impl PersistentFailureRecoveryDrain {
     }
 }
 
-impl CoordinatorState {
-    fn take_recovery_drain(&mut self) -> PersistentFailureRecoveryDrain {
-        PersistentFailureRecoveryDrain {
-            retained_connections: std::mem::take(&mut self.retained_connections),
-            retained_results: std::mem::take(&mut self.retained_results),
-            retained_projections: std::mem::take(&mut self.retained_projections),
-            retained_target_projections: std::mem::take(&mut self.retained_target_projections),
-            retained_reacquisition_anchors: std::mem::take(
-                &mut self.retained_reacquisition_anchors,
-            ),
-            retained_raw_loaded_leases: std::mem::take(&mut self.retained_raw_loaded_leases),
-            retained_raw_quarantined_anchors: std::mem::take(
-                &mut self.retained_raw_quarantined_anchors,
-            ),
-            retained_raw_reacquisition_reservations: std::mem::take(
-                &mut self.retained_raw_reacquisition_reservations,
-            ),
-            retained_promotion_reservations: std::mem::take(
-                &mut self.retained_promotion_reservations,
-            ),
-            retained_cleanup_owners: std::mem::take(&mut self.retained_cleanup_owners),
-        }
-    }
-}
-
-impl PersistentFailureCoordinator {
-    pub(in crate::cas_projection::persistent_failure) fn checkout_pending_quarantine_for_adoption(
-        &self,
-        identity: PersistentFailureCutIdentity,
-    ) -> Result<PendingProjectionAdoptionCheckout, PersistentFailurePendingProjectionQuarantineReason>
-    {
-        let escrow = PendingProjectionAdoptionEscrow::new();
-        let mut state = self.state.0.lock().map_err(|_| {
-            PersistentFailurePendingProjectionQuarantineReason::RetentionUnavailable
-        })?;
-        if state.phase != PersistentFailureCutState::Finished
-            || state.failure_generation != Some(identity.failure_generation)
-            || self.service_generation != identity.service_generation
-            || state.late_publication_count != 0
-        {
-            return Err(PersistentFailurePendingProjectionQuarantineReason::CutIdentityMismatch);
-        }
-        let previous = std::mem::replace(
-            &mut state.pending_quarantine,
-            PendingQuarantineStage::AdoptionCheckedOut(Arc::clone(&escrow)),
-        );
-        let PendingQuarantineStage::Installed(authority) = previous else {
-            state.pending_quarantine = previous;
-            return Err(PersistentFailurePendingProjectionQuarantineReason::InventoryNotPromotable);
-        };
-        if authority.reason.is_some()
-            || !matches!(
-                &authority.topology,
-                PendingProjectionQuarantineOwnedTopology::Normalized { .. }
-            )
-        {
-            state.pending_quarantine = PendingQuarantineStage::Installed(authority);
-            return Err(PersistentFailurePendingProjectionQuarantineReason::InventoryNotPromotable);
-        }
-        let PendingProjectionQuarantineOwnedTopology::Normalized {
-            groups,
-            connection_owners,
-            remainder,
-            pending_local_dispositions,
-            settled_disposition_count,
-        } = authority.topology
-        else {
-            unreachable!("the adoption checkout validated normalized quarantine topology")
-        };
-        Ok(PendingProjectionAdoptionCheckout {
-            topology: Some(PendingProjectionAdoptionTopology::from_normalized(
-                groups,
-                connection_owners,
-                remainder,
-                pending_local_dispositions,
-                settled_disposition_count,
-            )),
-            fence: Some(PersistentFailureAdoptionFence::new(escrow)),
-        })
-    }
-
-    pub(in crate::cas_projection::persistent_failure) fn commit_pending_quarantine_adoption<R>(
-        &self,
-        identity: PersistentFailureCutIdentity,
-        fence: &PersistentFailureAdoptionFence,
-        commit: impl FnOnce() -> R,
-    ) -> Result<R, PersistentFailurePendingProjectionQuarantineReason> {
-        let escrow = fence.escrow();
-        let mut state = self.state.0.lock().map_err(|_| {
-            PersistentFailurePendingProjectionQuarantineReason::RetentionUnavailable
-        })?;
-        let late = escrow.late.lock().map_err(|_| {
-            PersistentFailurePendingProjectionQuarantineReason::RetentionUnavailable
-        })?;
-        if state.phase != PersistentFailureCutState::Finished
-            || state.failure_generation != Some(identity.failure_generation)
-            || self.service_generation != identity.service_generation
-            || state.late_publication_count != 0
-            || !matches!(
-                &state.pending_quarantine,
-                PendingQuarantineStage::AdoptionCheckedOut(current)
-                    if Arc::ptr_eq(current, escrow)
-            )
-            || late.publications.counts() != Default::default()
-            || !late.authorities.is_empty()
-        {
-            return Err(PersistentFailurePendingProjectionQuarantineReason::LatePublication);
-        }
-        state.pending_quarantine = PendingQuarantineStage::Adopted(Arc::clone(escrow));
-        Ok(commit())
-    }
-
-    /// Atomically retires the old-cut publication fence after every old source is quiescent.
-    /// Process publication must later consume the returned witness outside these locks.
-    #[allow(dead_code, reason = "Phase 86 consumes the Phase 82 publication fence")]
-    pub(in crate::cas_projection::persistent_failure) fn retire_pending_quarantine_adoption(
-        &self,
-        identity: PersistentFailureCutIdentity,
-        fence: PersistentFailureAdoptionFence,
-    ) -> Result<
-        PersistentFailureAdoptionRetirementWitness,
-        PersistentFailureAdoptionFenceRetirementError,
-    > {
-        let validation = (|| {
-            let escrow = fence.escrow();
-            let mut state = self.state.0.lock().map_err(|_| {
-                PersistentFailurePendingProjectionQuarantineReason::RetentionUnavailable
-            })?;
-            let late = escrow.late.lock().map_err(|_| {
-                PersistentFailurePendingProjectionQuarantineReason::RetentionUnavailable
-            })?;
-            if state.phase != PersistentFailureCutState::Finished
-                || state.failure_generation != Some(identity.failure_generation)
-                || self.service_generation != identity.service_generation
-                || state.late_publication_count != 0
-                || !matches!(
-                    &state.pending_quarantine,
-                    PendingQuarantineStage::Adopted(current) if Arc::ptr_eq(current, escrow)
-                )
-                || late.publications.counts() != Default::default()
-                || !late.authorities.is_empty()
-            {
-                return Err(PersistentFailurePendingProjectionQuarantineReason::LatePublication);
-            }
-            state.pending_quarantine = PendingQuarantineStage::AdoptionRetired(Arc::clone(escrow));
-            Ok(())
-        })();
-        match validation {
-            Ok(()) => Ok(PersistentFailureAdoptionRetirementWitness {
-                cut: identity,
-                escrow: fence.escrow,
-            }),
-            Err(reason) => Err(PersistentFailureAdoptionFenceRetirementError { reason, fence }),
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection::persistent_failure) fn retain_late_adoption_authority_for_test(
-        &self,
-        identity: PersistentFailureCutIdentity,
-    ) {
-        let authority = PendingProjectionQuarantineAuthority {
-            topology: PendingProjectionQuarantineOwnedTopology::Inert {
-                drain: PersistentFailureRecoveryDrain::default(),
-            },
-            reason: Some(PersistentFailurePendingProjectionQuarantineReason::LatePublication),
-        };
-        let _ = self.install_pending_quarantine(identity, authority);
-    }
-
-    pub(in crate::cas_projection::persistent_failure) fn checkout_recovery_drain(
-        &self,
-        identity: PersistentFailureCutIdentity,
-        sealed_counts: PersistentFailureRecoveryInventoryCounts,
-    ) -> Result<PersistentFailureRecoveryDrain, PersistentFailureRecoveryDrainError> {
-        let mut state = self
-            .state
-            .0
-            .lock()
-            .map_err(|_| PersistentFailureRecoveryDrainError::Poisoned)?;
-        if state.phase != PersistentFailureCutState::Finished
-            || state.failure_generation != Some(identity.failure_generation)
-            || self.service_generation != identity.service_generation
-            || state.sealed_counts != Some(sealed_counts)
-            || state.recovery_inventory_counts() != sealed_counts
-            || state.late_publication_count != 0
-            || !state.pending_quarantine.is_available()
-        {
-            return Err(PersistentFailureRecoveryDrainError::NotStable);
-        }
-        state.pending_quarantine = PendingQuarantineStage::ConversionCheckedOut;
-        Ok(state.take_recovery_drain())
-    }
-
-    pub(in crate::cas_projection::persistent_failure) fn install_pending_quarantine(
-        &self,
-        identity: PersistentFailureCutIdentity,
-        mut authority: PendingProjectionQuarantineAuthority,
-    ) -> Option<PersistentFailurePendingProjectionQuarantineReason> {
-        let (mut state, retention_poisoned) = match self.state.0.lock() {
-            Ok(state) => (state, false),
-            Err(poison) => (poison.into_inner(), true),
-        };
-        let mut reason = authority.reason;
-        if retention_poisoned {
-            reason.get_or_insert(
-                PersistentFailurePendingProjectionQuarantineReason::RetentionUnavailable,
-            );
-        }
-        if state.phase != PersistentFailureCutState::Finished
-            || state.failure_generation != Some(identity.failure_generation)
-            || self.service_generation != identity.service_generation
-            || !matches!(
-                &state.pending_quarantine,
-                PendingQuarantineStage::ConversionCheckedOut
-            )
-        {
-            reason.get_or_insert(
-                PersistentFailurePendingProjectionQuarantineReason::CutIdentityMismatch,
-            );
-        }
-        let late_drain = (state.recovery_inventory_counts() != Default::default())
-            .then(|| state.take_recovery_drain());
-        if state.late_publication_count != 0 || late_drain.is_some() {
-            reason
-                .get_or_insert(PersistentFailurePendingProjectionQuarantineReason::LatePublication);
-        }
-        authority.reason = reason;
-        let previous = std::mem::replace(
-            &mut state.pending_quarantine,
-            PendingQuarantineStage::Available,
-        );
-        state.pending_quarantine = match previous {
-            PendingQuarantineStage::ConversionCheckedOut | PendingQuarantineStage::Available => {
-                PendingQuarantineStage::Installed(authority)
-            }
-            PendingQuarantineStage::Installed(existing) => {
-                PendingQuarantineStage::Conflicted(vec![existing, authority])
-            }
-            PendingQuarantineStage::AdoptionCheckedOut(escrow) => {
-                escrow.retain_authority(authority);
-                PendingQuarantineStage::AdoptionCheckedOut(escrow)
-            }
-            PendingQuarantineStage::Adopted(escrow) => {
-                escrow.retain_authority(authority);
-                PendingQuarantineStage::Adopted(escrow)
-            }
-            PendingQuarantineStage::AdoptionRetired(escrow) => {
-                escrow.retain_authority(authority);
-                PendingQuarantineStage::AdoptionRetired(escrow)
-            }
-            PendingQuarantineStage::TerminalDispositionCheckedOut(escrow) => {
-                escrow.retain_authority(authority);
-                PendingQuarantineStage::TerminalDispositionCheckedOut(escrow)
-            }
-            PendingQuarantineStage::TerminalDispositionComplete(escrow) => {
-                escrow.retain_authority(authority);
-                PendingQuarantineStage::TerminalDispositionComplete(escrow)
-            }
-            PendingQuarantineStage::Conflicted(mut authorities) => {
-                authorities.push(authority);
-                PendingQuarantineStage::Conflicted(authorities)
-            }
-        };
-        if let Some(late_drain) = late_drain {
-            state.pending_quarantine.retain_late_drain(late_drain);
-        }
-        reason
-    }
-
-    pub(in crate::cas_projection::persistent_failure) fn pending_quarantine_metadata(
-        &self,
-    ) -> PersistentFailurePendingProjectionQuarantineMetadata {
-        let (state, retention_poisoned) = match self.state.0.lock() {
-            Ok(state) => (state, false),
-            Err(poison) => (poison.into_inner(), true),
-        };
-        let (authorities, conflicted): (&[_], bool) = match &state.pending_quarantine {
-            PendingQuarantineStage::Available
-            | PendingQuarantineStage::ConversionCheckedOut
-            | PendingQuarantineStage::AdoptionCheckedOut(_)
-            | PendingQuarantineStage::Adopted(_)
-            | PendingQuarantineStage::AdoptionRetired(_)
-            | PendingQuarantineStage::TerminalDispositionCheckedOut(_)
-            | PendingQuarantineStage::TerminalDispositionComplete(_) => {
-                return PersistentFailurePendingProjectionQuarantineMetadata {
-                    late_publication_count: state.late_publication_count,
-                    ..Default::default()
-                };
-            }
-            PendingQuarantineStage::Installed(authority) => {
-                (std::slice::from_ref(authority), false)
-            }
-            PendingQuarantineStage::Conflicted(authorities) => (authorities, true),
-        };
-        let mut group_count = 0usize;
-        let mut candidate_count = 0usize;
-        let mut retained_connection_count = 0usize;
-        let mut local_disposition_count = 0usize;
-        let mut authority_promotable = !conflicted;
-        for authority in authorities {
-            authority_promotable &= authority.reason.is_none();
-            let (groups, candidates, connections, dispositions) = match &authority.topology {
-                PendingProjectionQuarantineOwnedTopology::Normalized {
-                    groups,
-                    connection_owners,
-                    remainder,
-                    pending_local_dispositions,
-                    settled_disposition_count,
-                } => {
-                    authority_promotable &=
-                        connection_owners.iter().all(|owner| owner.is_promotable());
-                    (
-                        groups.len(),
-                        groups.iter().map(|group| group.candidates.len()).sum(),
-                        remainder.retained_connections.len(),
-                        remainder
-                            .local_disposition_count()
-                            .checked_add(pending_local_dispositions.len())
-                            .expect("bounded pending local disposition counts fit in memory")
-                            .checked_add(*settled_disposition_count)
-                            .expect("bounded normalized disposition counts fit in memory"),
-                    )
-                }
-                PendingProjectionQuarantineOwnedTopology::Inert { drain } => (
-                    0,
-                    0,
-                    drain.retained_connections.len(),
-                    drain
-                        .local_disposition_count()
-                        .checked_add(drain.retained_projections.len())
-                        .expect("bounded inert disposition counts fit in memory"),
-                ),
-            };
-            group_count = group_count
-                .checked_add(groups)
-                .expect("bounded quarantine group counts fit in memory");
-            candidate_count = candidate_count
-                .checked_add(candidates)
-                .expect("bounded quarantine candidate counts fit in memory");
-            retained_connection_count = retained_connection_count
-                .checked_add(connections)
-                .expect("bounded retained connection counts fit in memory");
-            local_disposition_count = local_disposition_count
-                .checked_add(dispositions)
-                .expect("bounded local disposition counts fit in memory");
-        }
-        PersistentFailurePendingProjectionQuarantineMetadata {
-            group_count,
-            candidate_count,
-            retained_connection_count,
-            local_disposition_count,
-            late_publication_count: state.late_publication_count,
-            promotable: authority_promotable
-                && state.late_publication_count == 0
-                && !retention_poisoned,
-        }
-    }
-}
+mod core;

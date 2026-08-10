@@ -11,31 +11,31 @@ use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use crate::{
     cas_projection::{
+        PendingTurnActivation,
         connection::{
+            ConnectionRegistryAuthority, EventRouter, ProviderBroker, ProviderBrokerControl,
+            TargetTurnRegistration,
             provider_broker::RunningProviderBrokerIngester,
             registry::LoadedThreadKey,
             router::{LiveEventTargetCloseReason, TargetRegistration},
-            ConnectionRegistryAuthority, EventRouter, ProviderBroker, ProviderBrokerControl,
-            TargetTurnRegistration,
         },
         service_config::ProjectionWorkerPool,
         service_registry::ProjectionServiceConnectionRegistry,
         test_faults::{
-            install_checked_user_publication_barrier_for_key,
             CheckedUserPublicationBarrierController, ProviderBrokerSnapshot,
+            install_checked_user_publication_barrier_for_key,
         },
-        PendingTurnActivation,
     },
     conversation_tools::ConversationToolRegistry,
     input_admission::idle_submission_command,
 };
 use beryl_backend::{
-    lifecycle_test_support::checked_user_message, CheckedUserMessage, OrderedTurnStreamCompletion,
-    OrderedTurnStreamOperation, OrderedTurnStreamSink, UserMessageEchoLifecycle,
+    CheckedUserMessage, OrderedTurnStreamCompletion, OrderedTurnStreamOperation,
+    OrderedTurnStreamSink, UserMessageEchoLifecycle, lifecycle_test_support::checked_user_message,
 };
 use beryl_home_store::{
-    test_faults::FaultController, CursorReadLimits, HomeCommand, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore,
+    CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    test_faults::FaultController,
 };
 use beryl_model::{
     CasItemId, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding,
@@ -44,13 +44,13 @@ use beryl_model::{
 };
 use beryl_state::BerylState;
 use syndic_storage::{
-    empty_selected_path_digest, ActivateBinding, BindingState, CanonicalItemKind, CasLineageProof,
-    CasRepresentedPrefixProof, ComposerAtom, ComposerPayload, ContentAppend, ContentBuild,
-    ContentReference, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission,
-    NativeCasLineage, PreparedContent, ProviderFrameOrdinalV1, ProviderItemFrameV1,
-    ProviderItemLifecycle, ProviderItemObservationV1, ProviderItemV1,
-    ProviderLifecycleTimestampMsV1, PublishValidBinding, SelectedPathProof, SourceEventRecord,
-    SourceEventSequence, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnItemOrdinal,
+    ActivateBinding, BindingState, CanonicalItemKind, CasLineageProof, CasRepresentedPrefixProof,
+    ComposerAtom, ComposerPayload, ContentAppend, ContentBuild, ContentReference, CreateThread,
+    DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission, NativeCasLineage,
+    PreparedContent, ProviderFrameOrdinalV1, ProviderItemFrameV1, ProviderItemLifecycle,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1, PublishValidBinding,
+    SelectedPathProof, SourceEventRecord, SourceEventSequence, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp, TurnItemOrdinal, empty_selected_path_digest,
 };
 
 pub(super) use frame::{assert_user_message_frame, read_provider_frame};
@@ -65,7 +65,7 @@ pub(super) struct CheckedUserFixture {
     pub(super) home: Arc<HomeStore>,
     pub(super) storage: SyndicStorage,
     worker_pool: ProjectionWorkerPool,
-    sink: Option<Box<dyn OrderedTurnStreamSink>>,
+    pub(super) sink: Option<Box<dyn OrderedTurnStreamSink>>,
     pub(super) broker: Option<Arc<ProviderBrokerControl>>,
     ingester: Option<RunningProviderBrokerIngester>,
     pub(super) commands: crate::cas_projection::persistent_failure::LiveCommandAuthorizer,
@@ -439,7 +439,7 @@ impl CheckedUserFixture {
         )
     }
 
-    fn checked_message(
+    pub(super) fn checked_message(
         &self,
         lifecycle: UserMessageEchoLifecycle,
         item_id: CasItemId,

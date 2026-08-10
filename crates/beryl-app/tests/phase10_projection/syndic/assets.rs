@@ -48,13 +48,15 @@ impl Fixture {
         assets: &[(AssetId, PathBuf)],
         atoms: &[Result<&str, (ImageLabelOrdinal, usize)>],
     ) -> SubmittedTurn {
-        let draft = self
-            .storage
-            .current_draft(&self.store, self.thread, point_limit())
-            .unwrap()
-            .unwrap()
-            .draft()
-            .id();
+        let draft = {
+            let command_home = self.store.live_home_command().unwrap();
+            self.storage
+                .current_draft(command_home.home(), self.thread, point_limit())
+                .unwrap()
+                .unwrap()
+                .draft()
+                .id()
+        };
         let mut payload_atoms = Vec::with_capacity(atoms.len());
         let mut references = Vec::new();
         for atom in atoms {
@@ -94,16 +96,22 @@ impl Fixture {
         );
         let turn = submission.submitted_turn_id();
         let user_item = submission.user_item_id();
-        let command =
-            idle_submission_command(&self.store, self.storage, self.state.assets(), submission)
-                .unwrap();
-        self.store.execute(command).unwrap();
+        let command_home = self.store.live_home_command().unwrap();
+        let command = idle_submission_command(
+            command_home.home(),
+            self.storage,
+            self.state.assets(),
+            submission,
+        )
+        .unwrap();
+        command_home.home().execute(command).unwrap();
         SubmittedTurn { turn, user_item }
     }
 
     pub fn publish_asset_metadata(&mut self, bytes: &[u8]) -> (AssetId, PathBuf) {
-        let sidecar = self
-            .store
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
+        let sidecar = home
             .admit_sidecar(
                 SidecarNamespace::new("images").unwrap(),
                 bytes,
@@ -116,7 +124,7 @@ impl Fixture {
             NonZeroU64::new(sidecar.address().length()).unwrap(),
         );
         let assets = self.state.assets();
-        let revision = assets.revision(&self.store).unwrap();
+        let revision = assets.revision(home).unwrap();
         let metadata = assets
             .publish_metadata(
                 revision,
@@ -129,9 +137,9 @@ impl Fixture {
                 ),
             )
             .unwrap();
-        let mut command = HomeCommand::new(self.store.home_revision().unwrap());
+        let mut command = HomeCommand::new(home.home_revision().unwrap());
         metadata.add_to(&mut command).unwrap();
-        self.store.execute(command).unwrap();
+        home.execute(command).unwrap();
         (asset, path)
     }
 
@@ -142,42 +150,44 @@ impl Fixture {
         references: Vec<AssetReferencePageEntry>,
     ) -> SealedAssetReferenceSetProof {
         let assets = self.state.assets();
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         let begin =
             BeginAssetReferenceSet::new(AssetReferenceSetId::from_bytes(*draft.as_bytes()), source);
         let staging = begin.staging_authority();
         execute(
-            &self.store,
-            assets.begin_reference_set(assets.revision(&self.store).unwrap(), begin),
+            home,
+            assets.begin_reference_set(assets.revision(home).unwrap(), begin),
         );
         for page in references.chunks(ASSET_REFERENCE_PAGE_MAX_ENTRIES) {
             let build = assets
-                .staged_reference_set_manifest(&self.store, staging)
+                .staged_reference_set_manifest(home, staging)
                 .unwrap()
                 .build_proof();
             execute(
-                &self.store,
+                home,
                 assets.append_reference_page(
-                    assets.revision(&self.store).unwrap(),
+                    assets.revision(home).unwrap(),
                     AppendAssetReferencePage::new(build, page.to_vec().into_boxed_slice()).unwrap(),
                 ),
             );
         }
         let build = assets
-            .staged_reference_set_manifest(&self.store, staging)
+            .staged_reference_set_manifest(home, staging)
             .unwrap()
             .build_proof();
         let proof = build.sealed_proof().unwrap();
         execute(
-            &self.store,
+            home,
             assets.seal_reference_set(
-                assets.revision(&self.store).unwrap(),
+                assets.revision(home).unwrap(),
                 SealAssetReferenceSet::new(build, source),
             ),
         );
         execute(
-            &self.store,
+            home,
             assets.update_owner_heads(
-                assets.revision(&self.store).unwrap(),
+                assets.revision(home).unwrap(),
                 UpdateAssetOwnerHeads::new(
                     vec![AssetOwnerHeadUpdate::replace(
                         AssetOwner::CurrentDraft(draft),
@@ -201,12 +211,14 @@ impl Fixture {
     ) -> SealedAssetReferenceSetProof {
         assert!(marker_count != 0);
         let assets = self.state.assets();
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         let begin =
             BeginAssetReferenceSet::new(AssetReferenceSetId::from_bytes(*draft.as_bytes()), source);
         let staging = begin.staging_authority();
         execute(
-            &self.store,
-            assets.begin_reference_set(assets.revision(&self.store).unwrap(), begin),
+            home,
+            assets.begin_reference_set(assets.revision(home).unwrap(), begin),
         );
         for first in (1..=marker_count).step_by(ASSET_REFERENCE_PAGE_MAX_ENTRIES) {
             let last = marker_count.min(
@@ -223,33 +235,33 @@ impl Fixture {
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
             let build = assets
-                .staged_reference_set_manifest(&self.store, staging)
+                .staged_reference_set_manifest(home, staging)
                 .unwrap()
                 .build_proof();
             execute(
-                &self.store,
+                home,
                 assets.append_reference_page(
-                    assets.revision(&self.store).unwrap(),
+                    assets.revision(home).unwrap(),
                     AppendAssetReferencePage::new(build, page).unwrap(),
                 ),
             );
         }
         let build = assets
-            .staged_reference_set_manifest(&self.store, staging)
+            .staged_reference_set_manifest(home, staging)
             .unwrap()
             .build_proof();
         let proof = build.sealed_proof().unwrap();
         execute(
-            &self.store,
+            home,
             assets.seal_reference_set(
-                assets.revision(&self.store).unwrap(),
+                assets.revision(home).unwrap(),
                 SealAssetReferenceSet::new(build, source),
             ),
         );
         execute(
-            &self.store,
+            home,
             assets.update_owner_heads(
-                assets.revision(&self.store).unwrap(),
+                assets.revision(home).unwrap(),
                 UpdateAssetOwnerHeads::new(
                     vec![AssetOwnerHeadUpdate::replace(
                         AssetOwner::CurrentDraft(draft),

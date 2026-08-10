@@ -77,6 +77,13 @@ impl SourcePublicationPermit {
             .filter(|generation| generation.get() == self.home_generation)
     }
 
+    pub(in crate::cas_projection::connection) const fn matches_home_generation(
+        &self,
+        expected: beryl_home_store::HomeGeneration,
+    ) -> bool {
+        self.home_generation == expected.get()
+    }
+
     pub(in crate::cas_projection) fn admitted_route(
         &self,
     ) -> syndic_storage::ProviderObservationRoute {

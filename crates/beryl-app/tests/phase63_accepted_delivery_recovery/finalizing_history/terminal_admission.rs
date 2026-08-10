@@ -43,34 +43,31 @@ struct TranscriptAdmissionSnapshot {
 }
 
 fn snapshot(fixture: &crate::syndic::Fixture) -> TranscriptAdmissionSnapshot {
+    let command_home = fixture.store.live_home_command().unwrap();
+    let home = command_home.home();
     let thread = fixture
         .storage
-        .thread(&fixture.store, fixture.thread, point_limit())
+        .thread(home, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let summary = fixture
         .storage
-        .history_summary(&fixture.store, fixture.thread, point_limit())
+        .history_summary(home, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let head = fixture
         .storage
-        .transcript_view_head(&fixture.store, fixture.thread, point_limit())
+        .transcript_view_head(home, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let build = fixture
         .storage
-        .transcript_build(
-            &fixture.store,
-            fixture.thread,
-            head.generation(),
-            point_limit(),
-        )
+        .transcript_build(home, fixture.thread, head.generation(), point_limit())
         .unwrap()
         .unwrap();
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(home, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     TranscriptAdmissionSnapshot {
@@ -154,7 +151,7 @@ fn run_successful_terminal_cut<R>(
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let mut session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             crate::syndic::execution_binding().runtime_id(),
             CasProcessGeneration::new(process_generation).unwrap(),
@@ -162,24 +159,29 @@ fn run_successful_terminal_cut<R>(
             TIMEOUT,
         )
         .unwrap();
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
-    let projection = coordinator
-        .obtain_projection(
-            &fixture.store,
-            fixture.storage,
-            &mut session,
-            &CasProjectionRequest::new(
-                fixture.thread,
-                fixture.selected_path(fixture.thread),
-                crate::syndic::execution_binding(),
-                ThreadStartOptions::persistent(),
-                Some(2_000_000),
-                syndic_storage::SyndicTimestamp::from_unix_millis(65_200 + u64::from(seed)),
-                TIMEOUT,
-            ),
-            &fixture.cancellation,
-        )
-        .unwrap();
+    let (coordinator, projection) = {
+        let command_home = fixture.store.live_home_command().unwrap();
+        let home = command_home.home();
+        let coordinator = CasProjectionCoordinator::for_healthy_home(home).unwrap();
+        let projection = coordinator
+            .obtain_projection(
+                home,
+                fixture.storage,
+                &mut session,
+                &CasProjectionRequest::new(
+                    fixture.thread,
+                    fixture.selected_path(fixture.thread),
+                    crate::syndic::execution_binding(),
+                    ThreadStartOptions::persistent(),
+                    Some(2_000_000),
+                    syndic_storage::SyndicTimestamp::from_unix_millis(65_200 + u64::from(seed)),
+                    TIMEOUT,
+                ),
+                &fixture.cancellation,
+            )
+            .unwrap();
+        (coordinator, projection)
+    };
     server.wait_for_projection();
 
     let execution_request = OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT);
@@ -189,11 +191,13 @@ fn run_successful_terminal_cut<R>(
             stage,
         ));
         let capture = scope.spawn(|| {
+            let command_home = fixture.store.live_home_command().unwrap();
+            let home = command_home.home();
             let mut lifecycle = NoopLifecycle;
             let mut branch = NoopBranch;
             coordinator
                 .execute_ordinary_turn(
-                    &fixture.store,
+                    home,
                     fixture.storage,
                     fixture.state.assets(),
                     projection,
@@ -205,11 +209,14 @@ fn run_successful_terminal_cut<R>(
         });
         release_guard.wait();
 
-        let paused_gate = fixture
-            .storage
-            .input_gate(&fixture.store, fixture.thread, point_limit())
-            .unwrap()
-            .unwrap();
+        let paused_gate = {
+            let command_home = fixture.store.live_home_command().unwrap();
+            fixture
+                .storage
+                .input_gate(command_home.home(), fixture.thread, point_limit())
+                .unwrap()
+                .unwrap()
+        };
         assert_eq!(
             paused_gate.state(),
             &InputGateState::FinalizingHistory(submitted.turn)
@@ -222,11 +229,14 @@ fn run_successful_terminal_cut<R>(
             paused_attempts,
             "FinalizingHistory must fence queued execution while capture is paused"
         );
-        let admitted_gate = fixture
-            .storage
-            .input_gate(&fixture.store, fixture.thread, point_limit())
-            .unwrap()
-            .unwrap();
+        let admitted_gate = {
+            let command_home = fixture.store.live_home_command().unwrap();
+            fixture
+                .storage
+                .input_gate(command_home.home(), fixture.thread, point_limit())
+                .unwrap()
+                .unwrap()
+        };
         assert_eq!(
             admitted_gate.state(),
             &InputGateState::FinalizingHistory(submitted.turn)
@@ -243,9 +253,10 @@ fn run_successful_terminal_cut<R>(
             } if status == TurnEndStatus::complete()
         ));
         let released = wait_until("successful capture releases queued successor once", || {
+            let command_home = fixture.store.live_home_command().ok()?;
             let gate = fixture
                 .storage
-                .input_gate(&fixture.store, fixture.thread, point_limit())
+                .input_gate(command_home.home(), fixture.thread, point_limit())
                 .ok()
                 .flatten()?;
             let diagnostics = fixture.store.accepted_input_scheduler_diagnostics();
@@ -289,12 +300,15 @@ fn successful_terminal_queued_admission_preserves_completed_history_authority() 
             assert!(before.build.history_complete());
             assert!(before.summary.complete());
 
-            let successor = admit_successor(
-                &fixture.store,
-                fixture.storage,
-                fixture.thread,
-                submitted.turn,
-            );
+            let successor = {
+                let command_home = fixture.store.live_home_command().unwrap();
+                admit_successor(
+                    command_home.home(),
+                    fixture.storage,
+                    fixture.thread,
+                    submitted.turn,
+                )
+            };
             let after = snapshot(fixture);
             assert_compatible_admission(&before, &after);
             assert!(after.summary.complete());
@@ -309,7 +323,10 @@ fn successful_terminal_queued_admission_preserves_completed_history_authority() 
             assert_eq!(released.build, after.build);
             assert!(released.summary.complete());
             assert_eq!(
-                accepted_route_state(&fixture.store, fixture.storage, &successor),
+                {
+                    let command_home = fixture.store.live_home_command().unwrap();
+                    accepted_route_state(command_home.home(), fixture.storage, &successor)
+                },
                 AcceptedRouteEffectiveState::NextTurn(NextTurnReason::TerminalHistory)
             );
         },
@@ -323,35 +340,50 @@ fn successful_terminal_queued_admission_preserves_and_resumes_active_transcript_
         63_800,
         TerminalHistoryBarrierStage::AfterItems,
         |fixture, submitted| {
-            let thread = fixture
-                .storage
-                .thread(&fixture.store, fixture.thread, point_limit())
-                .unwrap()
-                .unwrap();
-            let head = fixture
-                .storage
-                .transcript_view_head(&fixture.store, fixture.thread, point_limit())
-                .unwrap()
-                .unwrap();
+            let (thread, head) = {
+                let command_home = fixture.store.live_home_command().unwrap();
+                let home = command_home.home();
+                let thread = fixture
+                    .storage
+                    .thread(home, fixture.thread, point_limit())
+                    .unwrap()
+                    .unwrap();
+                let head = fixture
+                    .storage
+                    .transcript_view_head(home, fixture.thread, point_limit())
+                    .unwrap()
+                    .unwrap();
+                (thread, head)
+            };
             assert_eq!(head.lifecycle(), ProjectionLifecycle::Stale);
-            fixture
-                .store
-                .execute_current(fixture.storage.current_start_transcript_build(
-                    StartTranscriptBuild::new(fixture.thread, thread.revision(), head.revision()),
-                ))
-                .unwrap();
+            {
+                let command_home = fixture.store.live_home_command().unwrap();
+                command_home
+                    .home()
+                    .execute_current(fixture.storage.current_start_transcript_build(
+                        StartTranscriptBuild::new(
+                            fixture.thread,
+                            thread.revision(),
+                            head.revision(),
+                        ),
+                    ))
+                    .unwrap();
+            }
             let active = snapshot(fixture);
             assert!(matches!(
                 active.build.phase(),
                 TranscriptBuildPhase::Collecting { .. } | TranscriptBuildPhase::Publishing { .. }
             ));
 
-            let successor = admit_successor(
-                &fixture.store,
-                fixture.storage,
-                fixture.thread,
-                submitted.turn,
-            );
+            let successor = {
+                let command_home = fixture.store.live_home_command().unwrap();
+                admit_successor(
+                    command_home.home(),
+                    fixture.storage,
+                    fixture.thread,
+                    submitted.turn,
+                )
+            };
             let admitted = snapshot(fixture);
             assert_compatible_admission(&active, &admitted);
             assert_eq!(admitted.build.generation(), active.build.generation());
@@ -367,7 +399,10 @@ fn successful_terminal_queued_admission_preserves_and_resumes_active_transcript_
             assert!(released.summary.complete());
             assert_eq!(released.thread.revision(), admitted.thread.revision());
             assert_eq!(
-                accepted_route_state(&fixture.store, fixture.storage, &successor),
+                {
+                    let command_home = fixture.store.live_home_command().unwrap();
+                    accepted_route_state(command_home.home(), fixture.storage, &successor)
+                },
                 AcceptedRouteEffectiveState::NextTurn(NextTurnReason::TerminalHistory)
             );
         },

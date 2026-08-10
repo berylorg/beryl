@@ -1,0 +1,299 @@
+use beryl_backend::{
+    OrderedTurnStreamCompletion, OrderedTurnStreamOperation, OrderedTurnStreamRejection,
+    OrderedTurnStreamSubmitCause,
+};
+
+use super::super::{Ingester, TargetRouteOutcome};
+use crate::cas_projection::connection::router::{
+    SourcePublicationFinishError, SourcePublicationPermit, SourcePublicationPermitError,
+    TargetInvalidation,
+};
+
+use super::staging::staging_authority;
+
+impl Ingester {
+    pub(in super::super) fn seal(
+        &mut self,
+        route: beryl_backend::ProviderObservationRoute,
+    ) -> (super::super::BrokerReply, bool) {
+        if !self.provider_is_active() {
+            return self.reject(
+                OrderedTurnStreamOperation::ProviderSeal(route),
+                OrderedTurnStreamRejection::InvalidControl,
+            );
+        }
+        let permit = match self
+            .router
+            .acquire_source_publication(route.thread_id(), route.turn_id())
+        {
+            Ok(permit) => permit,
+            Err(SourcePublicationPermitError::Unmatched) => {
+                return self.provider_target_failure(route, None);
+            }
+            Err(SourcePublicationPermitError::Target(invalidation)) => {
+                return self.provider_target_failure(route, Some(invalidation));
+            }
+            Err(SourcePublicationPermitError::Router) => {
+                return self.reject(
+                    OrderedTurnStreamOperation::ProviderSeal(route),
+                    OrderedTurnStreamRejection::InvalidControl,
+                );
+            }
+        };
+        let observation = self
+            .take_provider()
+            .expect("observation identity and stager remain paired");
+        let observation = match observation {
+            super::super::ActiveObservation::Compaction(marker) => {
+                return self.seal_compaction_marker(route, permit, marker);
+            }
+            super::super::ActiveObservation::Durable(observation) => observation,
+        };
+        if permit.compaction().is_some() {
+            observation.stager.abandon();
+            return self.failed_permit(route, permit);
+        }
+        let (home_generation, storage) =
+            match self.publish_source_activation(&permit, point_limit()) {
+                Ok(authority) => authority,
+                Err(error) if error.authority().is_some() => {
+                    permit.settle_authority_lost();
+                    return self.authority_lost_terminal();
+                }
+                Err(_) => {
+                    observation.stager.abandon();
+                    return self.failed_permit(route, permit);
+                }
+            };
+        if observation.home_generation != home_generation {
+            observation.stager.abandon();
+            return self.failed_permit(route, permit);
+        }
+        let mut commit = self.committer(
+            observation.identity,
+            observation.home_generation,
+            observation.storage,
+        );
+        let sealed = match observation.stager.seal(&mut commit) {
+            Ok(sealed) => sealed,
+            Err(error) if staging_authority(&error).is_some() => {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
+            Err(_) => {
+                drop(permit);
+                return self.reject(
+                    OrderedTurnStreamOperation::ProviderSeal(route),
+                    OrderedTurnStreamRejection::StagingConflict,
+                );
+            }
+        };
+        let trailing = syndic_storage::ProviderObservationRoute::new(
+            route.thread_id().clone(),
+            route.turn_id().clone(),
+        );
+        let bound = match sealed.bind(permit.admitted_route(), trailing) {
+            Ok(bound) => bound,
+            Err(_) => return self.failed_permit(route, permit),
+        };
+        let observation_identity = bound.identity();
+        let observation_route = bound.route().clone();
+        let mut bound = Some(bound);
+        let prepared = loop {
+            let verification = match self.live_command().await_current_or_verification(
+                &self.home,
+                self.home_id,
+                self.home_generation,
+            ) {
+                Ok(verification) => verification,
+                Err(_) => {
+                    if let Some(observation) = bound.take() {
+                        observation.abandon();
+                    }
+                    permit.settle_authority_lost();
+                    return self.authority_lost_terminal();
+                }
+            };
+            #[cfg(all(test, feature = "test-faults"))]
+            super::tests::pause_seal_preparation(
+                self.home_id,
+                observation_identity,
+                &observation_route,
+            );
+            let observation = match bound.take() {
+                Some(observation) => observation,
+                None => match super::super::super::consumer::reopen_exact(
+                    &self.home,
+                    storage,
+                    observation_identity,
+                    &observation_route,
+                    point_limit(),
+                ) {
+                    Ok(observation) => observation,
+                    Err(error) => {
+                        let settlement = verification.settle_after_operation();
+                        match settlement {
+                            Ok(settlement)
+                                if settlement.verified_current()
+                                    && error.verification_ambiguous(self.home_generation) =>
+                            {
+                                continue;
+                            }
+                            Err(_) => {
+                                permit.settle_authority_lost();
+                                return self.authority_lost_terminal();
+                            }
+                            Ok(_) => {
+                                let _ = self.live_command().observe_persistent_failure();
+                                return self.failed_permit(route, permit);
+                            }
+                        }
+                    }
+                },
+            };
+            let attempt = super::super::super::consumer::prepare(
+                &self.home,
+                storage,
+                permit.syndic_thread_id(),
+                observation,
+                point_limit(),
+                &self.cancelled,
+            );
+            match verification.settle_after_operation() {
+                Ok(settlement) if settlement.verified_current() => match attempt {
+                    Ok(prepared) => break prepared,
+                    Err(error) if error.verification_ambiguous(self.home_generation) => continue,
+                    Err(_) => {
+                        let _ = self.live_command().observe_persistent_failure();
+                        return self.failed_permit(route, permit);
+                    }
+                },
+                Ok(_) => match attempt {
+                    Ok(prepared) => break prepared,
+                    Err(_) => {
+                        let _ = self.live_command().observe_persistent_failure();
+                        return self.failed_permit(route, permit);
+                    }
+                },
+                Err(_) => {
+                    permit.settle_authority_lost();
+                    return self.authority_lost_terminal();
+                }
+            }
+        };
+        let publication = super::super::super::consumer::publish(
+            &self.home,
+            self.home_id,
+            home_generation,
+            storage,
+            prepared,
+            point_limit(),
+            &self.cancelled,
+            self.live_command(),
+        );
+        let published_activity = match publication {
+            Ok(effect) => effect
+                .into_activity()
+                .map(|activity| activity.bind(&permit)),
+            Err(error) if error.authority().is_some() => {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
+            Err(_) => {
+                let _ = self.live_command().observe_persistent_failure();
+                return self.failed_permit(route, permit);
+            }
+        };
+        self.finish_provider_publication(route, permit, published_activity)
+    }
+
+    pub(in super::super) fn finish_provider_publication(
+        &mut self,
+        route: beryl_backend::ProviderObservationRoute,
+        permit: SourcePublicationPermit,
+        published_activity: Option<super::super::super::consumer::BoundPublishedHardStopActivity>,
+    ) -> (super::super::BrokerReply, bool) {
+        match permit.finish_held() {
+            Ok(post_commit) => {
+                if let Some(activity) = published_activity {
+                    self.stop_coordinator
+                        .record_published_activity(activity.into_published());
+                }
+                post_commit.release();
+                (
+                    super::super::BrokerReply::Applied(OrderedTurnStreamCompletion::Applied),
+                    false,
+                )
+            }
+            Err(SourcePublicationFinishError::Target(invalidation)) => {
+                self.provider_target_failure(route, Some(invalidation))
+            }
+            Err(SourcePublicationFinishError::Router) => self.reject(
+                OrderedTurnStreamOperation::ProviderSeal(route),
+                OrderedTurnStreamRejection::InvalidControl,
+            ),
+        }
+    }
+
+    pub(in super::super) fn failed_permit(
+        &mut self,
+        route: beryl_backend::ProviderObservationRoute,
+        permit: SourcePublicationPermit,
+    ) -> (super::super::BrokerReply, bool) {
+        if self.exact_persistent_failure() {
+            drop(permit);
+            return (
+                super::super::BrokerReply::Applied(OrderedTurnStreamCompletion::Applied),
+                true,
+            );
+        }
+        match permit.fail() {
+            Ok(invalidation) | Err(SourcePublicationFinishError::Target(invalidation)) => {
+                self.provider_target_failure(route, Some(invalidation))
+            }
+            Err(SourcePublicationFinishError::Router) => self.reject(
+                OrderedTurnStreamOperation::ProviderSeal(route),
+                OrderedTurnStreamRejection::InvalidControl,
+            ),
+        }
+    }
+
+    fn provider_target_failure(
+        &mut self,
+        _route: beryl_backend::ProviderObservationRoute,
+        invalidation: Option<TargetInvalidation>,
+    ) -> (super::super::BrokerReply, bool) {
+        if let Some(observation) = self.take_provider() {
+            observation.abandon();
+        }
+        let outcome = match invalidation {
+            Some(invalidation) => self.invalidate_target(invalidation),
+            None => TargetRouteOutcome::TargetFailure,
+        };
+        (
+            super::super::BrokerReply::Applied(OrderedTurnStreamCompletion::Applied),
+            outcome == TargetRouteOutcome::Terminal,
+        )
+    }
+
+    pub(in super::super) fn reject(
+        &mut self,
+        operation: OrderedTurnStreamOperation,
+        reason: OrderedTurnStreamRejection,
+    ) -> (super::super::BrokerReply, bool) {
+        self.abandon_active();
+        self.retire();
+        (
+            super::super::BrokerReply::Rejected(
+                operation,
+                OrderedTurnStreamSubmitCause::Rejected(reason),
+            ),
+            true,
+        )
+    }
+}
+
+fn point_limit() -> syndic_storage::SyndicPointReadLimit {
+    syndic_storage::SyndicPointReadLimit::new(super::super::super::PROVIDER_POINT_READ_BYTES)
+        .expect("provider broker point-read bound is nonzero")
+}

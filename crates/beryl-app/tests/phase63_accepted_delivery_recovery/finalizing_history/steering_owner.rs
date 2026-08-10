@@ -57,7 +57,7 @@ fn active_steering_loss_leaves_terminal_history_release_to_the_capture_flight_ow
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let mut session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             crate::syndic::execution_binding().runtime_id(),
             CasProcessGeneration::new(63_798).unwrap(),
@@ -65,24 +65,29 @@ fn active_steering_loss_leaves_terminal_history_release_to_the_capture_flight_ow
             TIMEOUT,
         )
         .unwrap();
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
-    let projection = coordinator
-        .obtain_projection(
-            &fixture.store,
-            fixture.storage,
-            &mut session,
-            &CasProjectionRequest::new(
-                fixture.thread,
-                fixture.selected_path(fixture.thread),
-                crate::syndic::execution_binding(),
-                ThreadStartOptions::persistent(),
-                Some(2_000_000),
-                syndic_storage::SyndicTimestamp::from_unix_millis(65_100),
-                TIMEOUT,
-            ),
-            &fixture.cancellation,
-        )
-        .unwrap();
+    let (coordinator, projection) = {
+        let command_home = fixture.store.live_home_command().unwrap();
+        let home = command_home.home();
+        let coordinator = CasProjectionCoordinator::for_healthy_home(home).unwrap();
+        let projection = coordinator
+            .obtain_projection(
+                home,
+                fixture.storage,
+                &mut session,
+                &CasProjectionRequest::new(
+                    fixture.thread,
+                    fixture.selected_path(fixture.thread),
+                    crate::syndic::execution_binding(),
+                    ThreadStartOptions::persistent(),
+                    Some(2_000_000),
+                    syndic_storage::SyndicTimestamp::from_unix_millis(65_100),
+                    TIMEOUT,
+                ),
+                &fixture.cancellation,
+            )
+            .unwrap();
+        (coordinator, projection)
+    };
     server.wait_for_projection();
 
     let before_steering = fixture.store.accepted_input_scheduler_diagnostics();
@@ -93,11 +98,13 @@ fn active_steering_loss_leaves_terminal_history_release_to_the_capture_flight_ow
             TerminalHistoryBarrierStage::BeforeGateRelease,
         ));
         let capture = scope.spawn(|| {
+            let command_home = fixture.store.live_home_command().unwrap();
+            let home = command_home.home();
             let mut lifecycle = NoopLifecycle;
             let mut branch = NoopBranch;
             coordinator
                 .execute_ordinary_turn(
-                    &fixture.store,
+                    home,
                     fixture.storage,
                     fixture.state.assets(),
                     projection,
@@ -123,11 +130,14 @@ fn active_steering_loss_leaves_terminal_history_release_to_the_capture_flight_ow
             !steering_settled.fatal(),
             "active steering failed while capture owned terminal history: {steering_settled:?}"
         );
-        let paused_gate = fixture
-            .storage
-            .input_gate(&fixture.store, fixture.thread, point_limit())
-            .unwrap()
-            .unwrap();
+        let paused_gate = {
+            let command_home = fixture.store.live_home_command().unwrap();
+            fixture
+                .storage
+                .input_gate(command_home.home(), fixture.thread, point_limit())
+                .unwrap()
+                .unwrap()
+        };
         assert_eq!(
             paused_gate.state(),
             &InputGateState::FinalizingHistory(submitted.turn)
@@ -138,17 +148,23 @@ fn active_steering_loss_leaves_terminal_history_release_to_the_capture_flight_ow
             parent: submitted.turn,
         };
         assert_eq!(
-            accepted_route_state(&fixture.store, fixture.storage, &steering_ids),
+            {
+                let command_home = fixture.store.live_home_command().unwrap();
+                accepted_route_state(command_home.home(), fixture.storage, &steering_ids)
+            },
             AcceptedRouteEffectiveState::DeliveryUnknown
         );
         let paused_attempts = attempts.load(Ordering::SeqCst);
 
-        let successor = admit_successor(
-            &fixture.store,
-            fixture.storage,
-            fixture.thread,
-            submitted.turn,
-        );
+        let successor = {
+            let command_home = fixture.store.live_home_command().unwrap();
+            admit_successor(
+                command_home.home(),
+                fixture.storage,
+                fixture.thread,
+                submitted.turn,
+            )
+        };
         thread::sleep(Duration::from_millis(100));
         assert_eq!(
             attempts.load(Ordering::SeqCst),
@@ -156,14 +172,20 @@ fn active_steering_loss_leaves_terminal_history_release_to_the_capture_flight_ow
             "queued successor reached execution while capture still owned FinalizingHistory"
         );
         assert_eq!(
-            accepted_route_state(&fixture.store, fixture.storage, &successor),
+            {
+                let command_home = fixture.store.live_home_command().unwrap();
+                accepted_route_state(command_home.home(), fixture.storage, &successor)
+            },
             AcceptedRouteEffectiveState::NextTurn(NextTurnReason::TerminalHistory)
         );
-        let admitted_gate = fixture
-            .storage
-            .input_gate(&fixture.store, fixture.thread, point_limit())
-            .unwrap()
-            .unwrap();
+        let admitted_gate = {
+            let command_home = fixture.store.live_home_command().unwrap();
+            fixture
+                .storage
+                .input_gate(command_home.home(), fixture.thread, point_limit())
+                .unwrap()
+                .unwrap()
+        };
         assert_eq!(
             admitted_gate.revision(),
             paused_gate.revision().checked_next().unwrap()
@@ -174,9 +196,10 @@ fn active_steering_loss_leaves_terminal_history_release_to_the_capture_flight_ow
         release_guard.release();
         let outcome = capture.join().unwrap();
         let released = wait_until("capture releases one successor wake", || {
+            let command_home = fixture.store.live_home_command().ok()?;
             let gate = fixture
                 .storage
-                .input_gate(&fixture.store, fixture.thread, point_limit())
+                .input_gate(command_home.home(), fixture.thread, point_limit())
                 .ok()
                 .flatten()?;
             let diagnostics = fixture.store.accepted_input_scheduler_diagnostics();

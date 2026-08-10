@@ -2,26 +2,24 @@ use std::sync::Arc;
 
 use beryl_home_store::{HomeHealthState, HomeStore};
 
+use super::super::super::super::{
+    connection::{
+        CandidateSetConnectionOwnerSealFailure, CandidateSetConvergedProjectionConnectionOwner,
+        ConnectionEpochIdentity, PendingProjectionConnectionOwner, PendingProjectionLeaseOwner,
+        StableProjectionConnectionAuthentication, StableProjectionConnectionObservation,
+        registry::LoadedRegistryRecoveryObservation, seal_pending_projection_connection_owners,
+    },
+    input_replay::point_limit,
+    ordinary::{OrdinaryTurnExecutionError, preflight::PendingOrdinaryExecution},
+    persistent_failure::{PendingProjectionGroupIdentity, PendingProjectionWitness},
+};
+use super::super::super::ProjectionConnectionService;
 use super::super::ServiceAdoptionAttempt;
 use super::{
     ProjectionCandidateId, ProjectionCandidateReauthenticationReason,
     TerminalAdoptedProjectionConnectionServiceReason, model::DormantRecoveredProjection,
     validation,
 };
-use crate::cas_projection::{
-    connection::{
-        CandidateSetConnectionOwnerSealFailure, CandidateSetConvergedProjectionConnectionOwner,
-        ConnectionEpochIdentity, PendingProjectionConnectionOwner, PendingProjectionLeaseOwner,
-        StableProjectionConnectionAuthentication, StableProjectionConnectionObservation,
-        seal_pending_projection_connection_owners,
-    },
-    input_replay::point_limit,
-    ordinary::{OrdinaryTurnExecutionError, preflight::PendingOrdinaryExecution},
-    persistent_failure::{PendingProjectionGroupIdentity, PendingProjectionWitness},
-    service::ProjectionConnectionService,
-};
-
-use crate::cas_projection::connection::registry::LoadedRegistryRecoveryObservation;
 
 #[cfg(test)]
 use super::test_support::{

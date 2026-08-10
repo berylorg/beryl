@@ -183,12 +183,12 @@ fn admit_current_input(
 }
 
 fn assert_authority_lost_predecessor(
-    service: &beryl_app::cas_projection::ProjectionConnectionService,
+    store: &beryl_home_store::HomeStore,
     storage: SyndicStorage,
     active_turn: beryl_model::SyndicTurnId,
 ) {
     let state = storage
-        .turn_state(service, active_turn, point_limit())
+        .turn_state(store, active_turn, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::Incomplete);
@@ -296,26 +296,30 @@ fn admitted_and_claimed_stops_abandon_on_restart_without_losing_next_turn_input(
         assert_eq!(diagnostics.startup_active_convergences(), 1);
         assert_eq!(diagnostics.startup_terminal_convergences(), 1);
         assert!(!diagnostics.fatal());
-        assert_authority_lost_predecessor(&service, storage, promoted.turn);
-        let binding = storage
-            .current_binding(&service, ids.thread, point_limit())
-            .unwrap()
-            .unwrap();
-        assert!(matches!(binding.binding().state(), BindingState::Stale(_)));
-        let queued_after_restart = queued_candidate(&service, storage, ids.thread)
-            .unwrap()
-            .expect("stop-period input remains scheduled next-turn work");
-        assert_eq!(queued_after_restart.input_id(), queued);
-        assert_eq!(
-            queued_after_restart.next_turn_reason(),
-            NextTurnReason::Stop
-        );
-        assert_eq!(
-            try_accepted_route_state(&service, storage, &queued_ids)
+        {
+            let command_home = service.live_home_command().unwrap();
+            let home = command_home.home();
+            assert_authority_lost_predecessor(home, storage, promoted.turn);
+            let binding = storage
+                .current_binding(home, ids.thread, point_limit())
                 .unwrap()
-                .unwrap(),
-            AcceptedRouteEffectiveState::NextTurn(NextTurnReason::Stop)
-        );
+                .unwrap();
+            assert!(matches!(binding.binding().state(), BindingState::Stale(_)));
+            let queued_after_restart = queued_candidate(home, storage, ids.thread)
+                .unwrap()
+                .expect("stop-period input remains scheduled next-turn work");
+            assert_eq!(queued_after_restart.input_id(), queued);
+            assert_eq!(
+                queued_after_restart.next_turn_reason(),
+                NextTurnReason::Stop
+            );
+            assert_eq!(
+                try_accepted_route_state(home, storage, &queued_ids)
+                    .unwrap()
+                    .unwrap(),
+                AcceptedRouteEffectiveState::NextTurn(NextTurnReason::Stop)
+            );
+        }
         service.close().unwrap();
     }
 }
@@ -336,22 +340,26 @@ fn awaiting_terminal_authority_closes_before_queued_next_turn_starts() {
     let runtime_id = execution.runtime_id();
     let ids = admit_runtime_awaiting_terminal_input(&mut fixture, 190);
     assert_eq!(ids.parent, active.turn);
-    assert!(
-        queued_candidate(&fixture.store, fixture.storage, ids.thread)
-            .unwrap()
-            .is_none(),
-        "AwaitingTerminal keeps accepted-next work fenced until active authority converges"
-    );
-    assert_eq!(
-        fixture
-            .storage
-            .input_gate(&fixture.store, ids.thread, point_limit())
-            .unwrap()
-            .unwrap()
-            .state(),
-        &InputGateState::AwaitingTerminal(active.turn)
-    );
-    fixture.store.validate_registered_domains().unwrap();
+    {
+        let command_home = fixture.store.live_home_command().unwrap();
+        let home = command_home.home();
+        assert!(
+            queued_candidate(home, fixture.storage, ids.thread)
+                .unwrap()
+                .is_none(),
+            "AwaitingTerminal keeps accepted-next work fenced until active authority converges"
+        );
+        assert_eq!(
+            fixture
+                .storage
+                .input_gate(home, ids.thread, point_limit())
+                .unwrap()
+                .unwrap()
+                .state(),
+            &InputGateState::AwaitingTerminal(active.turn)
+        );
+        home.validate_registered_domains().unwrap();
+    }
     let (directory, initial_service) = fixture.into_service();
     initial_service.close().unwrap();
 
@@ -365,20 +373,24 @@ fn awaiting_terminal_authority_closes_before_queued_next_turn_starts() {
     assert_eq!(diagnostics.startup_recovery_cases(), 1);
     assert_eq!(diagnostics.startup_active_convergences(), 1);
     assert_eq!(diagnostics.startup_terminal_convergences(), 1);
-    let recovered_binding = storage
-        .current_binding(&service, ids.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    assert!(matches!(
-        recovered_binding.binding().state(),
-        BindingState::Stale(_)
-    ));
-    assert_authority_lost_predecessor(&service, storage, active.turn);
-    let queued = queued_candidate(&service, storage, ids.thread)
-        .unwrap()
-        .expect("queued stop input remains pending until execution authority arrives");
-    assert_eq!(queued.input_id(), ids.accepted_input);
-    assert_eq!(queued.next_turn_reason(), NextTurnReason::UnknownTerminal);
+    {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        let recovered_binding = storage
+            .current_binding(home, ids.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            recovered_binding.binding().state(),
+            BindingState::Stale(_)
+        ));
+        assert_authority_lost_predecessor(home, storage, active.turn);
+        let queued = queued_candidate(home, storage, ids.thread)
+            .unwrap()
+            .expect("queued stop input remains pending until execution authority arrives");
+        assert_eq!(queued.input_id(), ids.accepted_input);
+        assert_eq!(queued.next_turn_reason(), NextTurnReason::UnknownTerminal);
+    }
 
     let server = NormalTerminalServer::spawn_recovery_terminal(vec![
         json!({
@@ -400,7 +412,7 @@ fn awaiting_terminal_authority_closes_before_queued_next_turn_starts() {
     let connector =
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = service
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             runtime_id,
             CasProcessGeneration::new(63_411).unwrap(),
@@ -412,8 +424,9 @@ fn awaiting_terminal_authority_closes_before_queued_next_turn_starts() {
     let before_execution = service.accepted_input_scheduler_diagnostics();
     service.notify_scheduled_ordinary_execution_ready();
     let activation = crate::phase62_support::wait_until("queued stop durable promotion", || {
+        let command_home = service.live_home_command().ok()?;
         let gate = storage
-            .input_gate(&service, ids.thread, point_limit())
+            .input_gate(command_home.home(), ids.thread, point_limit())
             .ok()
             .flatten()?;
         if gate.state() != &InputGateState::Idle {
@@ -430,31 +443,36 @@ fn awaiting_terminal_authority_closes_before_queued_next_turn_starts() {
         activation.is_ok(),
         "queued stop promotion parked or failed: {activation:?}"
     );
-    let thread = storage
-        .thread(&service, ids.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let selected_path = SelectedPathProof::new(
-        thread.committed_tail(),
-        thread.revision(),
-        thread.selected_path_digest(),
-    );
-    let recovery_preflight = storage.prepare_recovery_projection(
-        &service,
-        RecoveryProjectionRequest::for_pending_selected_turn_parent(
-            ids.thread,
-            selected_path,
-            Some(2_000_000),
-        ),
-    );
+    let recovery_preflight = {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        let thread = storage
+            .thread(home, ids.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let selected_path = SelectedPathProof::new(
+            thread.committed_tail(),
+            thread.revision(),
+            thread.selected_path_digest(),
+        );
+        storage.prepare_recovery_projection(
+            home,
+            RecoveryProjectionRequest::for_pending_selected_turn_parent(
+                ids.thread,
+                selected_path,
+                Some(2_000_000),
+            ),
+        )
+    };
     assert!(
         recovery_preflight.is_ok(),
         "queued stop recovery preflight failed: {recovery_preflight:?}"
     );
     let promoted_diagnostics = service.accepted_input_scheduler_diagnostics();
     let dispatch = crate::phase62_support::wait_until("queued stop durable activation", || {
+        let command_home = service.live_home_command().ok()?;
         let binding = storage
-            .current_binding(&service, ids.thread, point_limit())
+            .current_binding(command_home.home(), ids.thread, point_limit())
             .ok()
             .flatten()?;
         if matches!(binding.binding().state(), BindingState::Active(_)) {
@@ -473,9 +491,13 @@ fn awaiting_terminal_authority_closes_before_queued_next_turn_starts() {
     );
     server.wait_for_projection();
     server.wait_for_turn_start();
-    assert_authority_lost_predecessor(&service, storage, active.turn);
+    {
+        let command_home = service.live_home_command().unwrap();
+        assert_authority_lost_predecessor(command_home.home(), storage, active.turn);
+    }
     crate::phase62_support::wait_until("queued stop input becomes promoted", || {
-        queued_candidate(&service, storage, ids.thread)
+        let command_home = service.live_home_command().ok()?;
+        queued_candidate(command_home.home(), storage, ids.thread)
             .ok()
             .flatten()
             .is_none()
@@ -589,16 +611,19 @@ fn delivered_steering_leaf_survives_reopen_without_provider_or_backend_replay() 
     assert_eq!(diagnostics.startup_terminal_convergences(), 1);
     thread::sleep(Duration::from_millis(100));
     assert_eq!(first_attempts.load(Ordering::SeqCst), 0);
-    let reopened = route_entry(&service, storage, ids.thread, delivered_input);
-    assert_eq!(reopened.leaf(), delivered.leaf());
-    assert_eq!(
-        reopened.effective_state(),
-        AcceptedRouteEffectiveState::Delivered
-    );
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::Promoted
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let reopened = route_entry(command_home.home(), storage, ids.thread, delivered_input);
+        assert_eq!(reopened.leaf(), delivered.leaf());
+        assert_eq!(
+            reopened.effective_state(),
+            AcceptedRouteEffectiveState::Delivered
+        );
+        assert_eq!(
+            accepted_route_state(command_home.home(), storage, &ids),
+            AcceptedRouteEffectiveState::Promoted
+        );
+    }
     service.close().unwrap();
 
     let second_attempts = Arc::new(AtomicUsize::new(0));
@@ -613,11 +638,14 @@ fn delivered_steering_leaf_survives_reopen_without_provider_or_backend_replay() 
     assert_eq!(diagnostics.startup_recovery_cases(), 0);
     thread::sleep(Duration::from_millis(100));
     assert_eq!(second_attempts.load(Ordering::SeqCst), 0);
-    let reopened_again = route_entry(&service, storage, ids.thread, delivered_input);
-    assert_eq!(reopened_again.leaf(), delivered.leaf());
-    assert_eq!(
-        reopened_again.effective_state(),
-        AcceptedRouteEffectiveState::Delivered
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let reopened_again = route_entry(command_home.home(), storage, ids.thread, delivered_input);
+        assert_eq!(reopened_again.leaf(), delivered.leaf());
+        assert_eq!(
+            reopened_again.effective_state(),
+            AcceptedRouteEffectiveState::Delivered
+        );
+    }
     service.close().unwrap();
 }

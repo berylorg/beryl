@@ -109,25 +109,29 @@ fn activated_without_cas_turn_converges_before_handoff_and_is_idempotent() {
     assert_eq!(diagnostics.startup_active_convergences(), 1);
     assert_eq!(diagnostics.startup_terminal_convergences(), 1);
     assert_eq!(diagnostics.startup_pending_turns(), 0);
-    assert_authority_lost(&service, storage, promoted.ids.thread, promoted.turn);
-    assert_eq!(
-        accepted_route_state(&service, storage, &promoted.ids),
-        AcceptedRouteEffectiveState::Promoted
-    );
-    let first_gate = storage
-        .input_gate(&service, promoted.ids.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let first_binding = storage
-        .current_binding(&service, promoted.ids.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let first_state = storage
-        .turn_state(&service, promoted.turn, point_limit())
-        .unwrap()
-        .unwrap();
-    assert!(first_state.updated_at() >= future_started_at);
-    let first_revision = storage.revision(&service).unwrap();
+    let (first_gate, first_binding, first_state, first_revision) = {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        assert_authority_lost(home, storage, promoted.ids.thread, promoted.turn);
+        assert_eq!(
+            accepted_route_state(home, storage, &promoted.ids),
+            AcceptedRouteEffectiveState::Promoted
+        );
+        let gate = storage
+            .input_gate(home, promoted.ids.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let binding = storage
+            .current_binding(home, promoted.ids.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let state = storage
+            .turn_state(home, promoted.turn, point_limit())
+            .unwrap()
+            .unwrap();
+        assert!(state.updated_at() >= future_started_at);
+        (gate, binding, state, storage.revision(home).unwrap())
+    };
     service.close().unwrap();
 
     let (service, storage, _) = restart_service(directory.path(), Box::new(UnavailableProvider));
@@ -137,28 +141,32 @@ fn activated_without_cas_turn_converges_before_handoff_and_is_idempotent() {
     assert_eq!(diagnostics.startup_recovery_cases(), 0);
     assert_eq!(diagnostics.startup_active_convergences(), 0);
     assert_eq!(diagnostics.startup_terminal_convergences(), 0);
-    assert_eq!(storage.revision(&service).unwrap(), first_revision);
-    assert_eq!(
-        storage
-            .input_gate(&service, promoted.ids.thread, point_limit())
-            .unwrap()
-            .unwrap(),
-        first_gate
-    );
-    assert_eq!(
-        storage
-            .current_binding(&service, promoted.ids.thread, point_limit())
-            .unwrap()
-            .unwrap(),
-        first_binding
-    );
-    assert_eq!(
-        storage
-            .turn_state(&service, promoted.turn, point_limit())
-            .unwrap()
-            .unwrap(),
-        first_state
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        assert_eq!(storage.revision(home).unwrap(), first_revision);
+        assert_eq!(
+            storage
+                .input_gate(home, promoted.ids.thread, point_limit())
+                .unwrap()
+                .unwrap(),
+            first_gate
+        );
+        assert_eq!(
+            storage
+                .current_binding(home, promoted.ids.thread, point_limit())
+                .unwrap()
+                .unwrap(),
+            first_binding
+        );
+        assert_eq!(
+            storage
+                .turn_state(home, promoted.turn, point_limit())
+                .unwrap()
+                .unwrap(),
+            first_state
+        );
+    }
     service.close().unwrap();
 }
 
@@ -199,31 +207,30 @@ fn delivering_steering_becomes_unknown_without_duplicate_delivery() {
     assert_eq!(diagnostics.startup_recovery_cases(), 1);
     assert_eq!(diagnostics.startup_active_convergences(), 1);
     assert_eq!(diagnostics.startup_terminal_convergences(), 1);
-    assert_authority_lost(&service, storage, thread_id, turn_id);
-    assert!(
-        storage
-            .active_cas_turn(&service, snapshot_id, point_limit())
-            .unwrap()
-            .is_some(),
-        "recovery preserves durable possible-dispatch evidence"
-    );
+    let (route, page) = {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        assert_authority_lost(home, storage, thread_id, turn_id);
+        assert!(
+            storage
+                .active_cas_turn(home, snapshot_id, point_limit())
+                .unwrap()
+                .is_some(),
+            "recovery preserves durable possible-dispatch evidence"
+        );
 
-    let gate = storage
-        .input_gate(&service, thread_id, point_limit())
-        .unwrap()
-        .unwrap();
-    let route = gate
-        .selected_route()
-        .expect("generic abandonment retains projection-loss route authority");
-    let page = storage
-        .accepted_route_page(
-            &service,
-            thread_id,
-            route.generation(),
-            route.revision(),
-            None,
-        )
-        .unwrap();
+        let gate = storage
+            .input_gate(home, thread_id, point_limit())
+            .unwrap()
+            .unwrap();
+        let route = gate
+            .selected_route()
+            .expect("generic abandonment retains projection-loss route authority");
+        let page = storage
+            .accepted_route_page(home, thread_id, route.generation(), route.revision(), None)
+            .unwrap();
+        (route, page)
+    };
     let delivering = page
         .records()
         .iter()
@@ -251,7 +258,7 @@ fn delivering_steering_becomes_unknown_without_duplicate_delivery() {
     let connector =
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = service
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             RuntimeId::from_bytes([182; 16]),
             CasProcessGeneration::new(63_182).unwrap(),
@@ -261,23 +268,28 @@ fn delivering_steering_becomes_unknown_without_duplicate_delivery() {
         .unwrap();
     server.wait_for_admission();
     thread::sleep(Duration::from_millis(100));
-    assert_eq!(
-        storage
-            .accepted_route_page(
-                &service,
-                thread_id,
-                route.generation(),
-                route.revision(),
-                None,
-            )
-            .unwrap()
-            .records()
-            .iter()
-            .find(|entry| { entry.input().id() == storage_support::phase11::delivering_input() })
-            .unwrap()
-            .effective_state(),
-        AcceptedRouteEffectiveState::DeliveryUnknown
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        assert_eq!(
+            storage
+                .accepted_route_page(
+                    command_home.home(),
+                    thread_id,
+                    route.generation(),
+                    route.revision(),
+                    None,
+                )
+                .unwrap()
+                .records()
+                .iter()
+                .find(|entry| {
+                    entry.input().id() == storage_support::phase11::delivering_input()
+                })
+                .unwrap()
+                .effective_state(),
+            AcceptedRouteEffectiveState::DeliveryUnknown
+        );
+    }
     session.invalidate_connection();
     drop(session);
     service.close().unwrap();
@@ -358,13 +370,15 @@ fn post_abandonment_restart_publishes_terminal_and_converges_captured_history() 
     assert_eq!(diagnostics.startup_active_convergences(), 0);
     assert_eq!(diagnostics.startup_terminal_convergences(), 1);
     assert!(service.initial_storage_revision() > revision_before);
+    let command_home = service.live_home_command().unwrap();
+    let home = command_home.home();
     assert_eq!(
         service.initial_storage_revision(),
-        storage.revision(&service).unwrap()
+        storage.revision(home).unwrap()
     );
-    assert_authority_lost(&service, storage, promoted.ids.thread, promoted.turn);
+    assert_authority_lost(home, storage, promoted.ids.thread, promoted.turn);
     let gate_after = storage
-        .input_gate(&service, promoted.ids.thread, point_limit())
+        .input_gate(home, promoted.ids.thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(gate_after.selected_route(), Some(route_before));
@@ -379,13 +393,13 @@ fn post_abandonment_restart_publishes_terminal_and_converges_captured_history() 
     );
     assert_eq!(
         storage
-            .current_binding(&service, promoted.ids.thread, point_limit())
+            .current_binding(home, promoted.ids.thread, point_limit())
             .unwrap()
             .unwrap(),
         binding_before
     );
     let state_after = storage
-        .turn_state(&service, promoted.turn, point_limit())
+        .turn_state(home, promoted.turn, point_limit())
         .unwrap()
         .unwrap();
     assert!(state_after.revision() > state_before.revision());
@@ -413,13 +427,14 @@ fn post_abandonment_restart_publishes_terminal_and_converges_captured_history() 
     assert!(state_after.updated_at() >= future_abandoned_at);
     assert!(
         storage
-            .active_cas_turn(&service, active_seed.snapshot, point_limit(),)
+            .active_cas_turn(home, active_seed.snapshot, point_limit(),)
             .unwrap()
             .is_some()
     );
     assert_eq!(
-        accepted_route_state(&service, storage, &promoted.ids),
+        accepted_route_state(home, storage, &promoted.ids),
         AcceptedRouteEffectiveState::Promoted
     );
+    drop(command_home);
     service.close().unwrap();
 }

@@ -15,9 +15,10 @@ use beryl_app::{
         CasProjectionCoordinator, CasProjectionRequest, OrdinaryDynamicToolContext,
         OrdinaryDynamicToolHandlers, OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome,
         OrdinaryTurnExecutionRequest, ProjectionCancellationToken, ProjectionConnectionService,
-        ProjectionConnectionServiceCloseError, ProjectionServiceConfig, ScheduledOrdinaryAdmission,
+        ProjectionServiceConfig, RunningSessionRecoverySupervisor, ScheduledOrdinaryAdmission,
         ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
-        ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
+        ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionProviderFactory,
+        ScheduledOrdinaryExecutionUnavailable, ScheduledOrdinaryProviderEpochContext,
     },
 };
 use beryl_backend::{
@@ -37,8 +38,8 @@ use crate::{
     },
     phase62_support::{
         AUTHORIZATION, CheckoutProvider, NextRecordIds, NormalTerminalServer, SessionSlot, TIMEOUT,
-        execution_binding, install_next_records, ready_provider,
-        recover_home_generation_before_promotion, wait_until,
+        UnavailableProvider, execution_binding, fail_home_generation_before_promotion,
+        install_next_records, ready_provider, supervised_ready_provider, wait_until,
     },
     records::{ActiveSeed, activate_promoted_turn, cancel_activation},
 };
@@ -192,6 +193,37 @@ impl ScheduledOrdinaryExecutionProvider for PausingCheckoutProvider {
 
     fn shutdown(&mut self) {
         self.checkout.shutdown();
+    }
+}
+
+struct PausingProviderFactory {
+    slot: SessionSlot,
+    pause: ProviderPause,
+    epochs: usize,
+}
+
+impl ScheduledOrdinaryExecutionProviderFactory for PausingProviderFactory {
+    fn create_epoch(
+        &mut self,
+        context: ScheduledOrdinaryProviderEpochContext,
+    ) -> Result<
+        Box<dyn ScheduledOrdinaryExecutionProvider>,
+        Box<dyn std::error::Error + Send + Sync + 'static>,
+    > {
+        self.epochs += 1;
+        if self.epochs == 1 {
+            Ok(Box::new(PausingCheckoutProvider {
+                checkout: supervised_ready_provider(self.slot.clone(), context.state().assets()),
+                session: self.slot.clone(),
+                pause: self.pause.clone(),
+            }))
+        } else {
+            Ok(Box::new(UnavailableProvider))
+        }
+    }
+
+    fn shutdown(&mut self) {
+        self.slot.clear();
     }
 }
 

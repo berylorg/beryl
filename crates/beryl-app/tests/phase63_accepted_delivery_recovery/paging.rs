@@ -53,7 +53,13 @@ fn startup_diagnostics_report_bounded_multipage_eof() {
     assert_eq!(diagnostics.startup_pending_turns(), 0);
     assert_eq!(diagnostics.startup_deferred_compactions(), 0);
     assert_eq!(service.initial_storage_revision(), revision_before);
-    assert_eq!(storage.revision(&service).unwrap(), revision_before);
+    {
+        let command_home = service.live_home_command().unwrap();
+        assert_eq!(
+            storage.revision(command_home.home()).unwrap(),
+            revision_before
+        );
+    }
     service.close().unwrap();
 }
 
@@ -97,6 +103,12 @@ fn startup_recovers_more_pending_cases_than_one_physical_page() {
     assert_eq!(diagnostics.startup_terminal_convergences(), 0);
     assert_eq!(diagnostics.startup_deferred_compactions(), 0);
     assert_eq!(service.initial_storage_revision(), revision_before);
-    assert_eq!(storage.revision(&service).unwrap(), revision_before);
+    {
+        let command_home = service.live_home_command().unwrap();
+        assert_eq!(
+            storage.revision(command_home.home()).unwrap(),
+            revision_before
+        );
+    }
     service.close().unwrap();
 }

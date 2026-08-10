@@ -2,18 +2,18 @@ use std::sync::Arc;
 
 use beryl_home_store::{HomeHealthState, HomeStore};
 
-use super::{
-    RecoveredServicePublicationReason, RecoveryServicePublicationAttempt,
-    ReplacementWorkerPublicationState,
-};
-use crate::cas_projection::{
-    ProjectionConnectionService,
+use super::super::super::super::{
     connection::{
         CandidateSetRecoveryPublicationBarrier, ConnectionEpochIdentity, ProjectionConnection,
         RecoveryPublicationEpochBarrier,
     },
-    service::adoption::ConnectionAdoptionState,
     service_startup::ServiceStartupGate,
+};
+use super::super::super::ProjectionConnectionService;
+use super::super::ConnectionAdoptionState;
+use super::{
+    RecoveredServicePublicationReason, RecoveryServicePublicationAttempt,
+    ReplacementWorkerPublicationState,
 };
 
 impl RecoveryServicePublicationAttempt {

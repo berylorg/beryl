@@ -4,16 +4,16 @@ use std::{
     sync::Arc,
 };
 
+use super::super::super::{
+    connection::CandidateSetConvergedProjectionConnectionOwner,
+    persistent_failure::PersistentFailureAdoptionRetirementWitness,
+    service_supervisor::{PublishedServiceEpoch, RunningServiceSlot},
+};
+use super::super::ProjectionConnectionServiceCloseError;
 use super::{
     CandidateSetConvergedAdoptedProjectionConnectionService,
     PersistentFailureServiceAdoptionMetadata, RecoveredProjectionLaneStagingError,
     ServiceAdoptionAttempt,
-};
-use crate::cas_projection::{
-    ProjectionConnectionServiceCloseError,
-    connection::CandidateSetConvergedProjectionConnectionOwner,
-    persistent_failure::PersistentFailureAdoptionRetirementWitness,
-    service_supervisor::{PublishedServiceEpoch, RunningServiceSlot},
 };
 
 mod transaction;

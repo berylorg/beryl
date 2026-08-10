@@ -137,6 +137,14 @@ impl DriverParkControl {
                 .frontier
                 .matches_cut(self.cut.service_generation, self.cut.failure_generation)
     }
+
+    pub(super) const fn cut(self) -> PersistentFailureCutIdentity {
+        self.cut
+    }
+
+    pub(super) const fn frontier(self) -> PersistentFailureCommandFrontier {
+        self.frontier
+    }
 }
 
 impl DriverParkError {
@@ -310,6 +318,17 @@ impl DriverAdoptionSlot {
                 }
                 DriverAdoptionPoll::Disposed
             }
+        }
+    }
+
+    pub(super) fn pending_park_control(&self, attempt: u64) -> Option<DriverParkControl> {
+        let state = self.state.lock().ok()?;
+        match &*state {
+            DriverAdoptionState::Pending {
+                attempt: pending_attempt,
+                control,
+            } if *pending_attempt == attempt => Some(*control),
+            _ => None,
         }
     }
 

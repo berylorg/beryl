@@ -377,7 +377,7 @@ fn send_thread_load_response(
     resumed: bool,
 ) {
     let initial_turns_page = if resumed {
-        r#","initialTurnsPage":null"#
+        r#","initialTurnsPage":null,"turnsBackwardsCursor":null,"itemsBackwardsCursor":null"#
     } else {
         ""
     };

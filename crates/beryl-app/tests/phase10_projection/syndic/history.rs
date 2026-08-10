@@ -3,13 +3,16 @@ use super::*;
 impl Fixture {
     pub fn activate_without_terminal(&mut self, submitted: SubmittedTurn) -> CasTurnSource {
         let started_at = self.tick();
-        let source = exact::establish_turn(
-            &self.store,
-            self.storage,
-            self.thread,
-            submitted.turn,
-            started_at,
-        );
+        let source = {
+            let command_home = self.store.live_home_command().unwrap();
+            exact::establish_turn(
+                command_home.home(),
+                self.storage,
+                self.thread,
+                submitted.turn,
+                started_at,
+            )
+        };
         self.admit(
             self.thread,
             submitted.turn,
@@ -17,8 +20,9 @@ impl Fixture {
             SourceEventPayload::TurnActivated,
         );
         let user_observed_at = self.tick();
+        let command_home = self.store.live_home_command().unwrap();
         exact::correlate_user_item(
-            &self.store,
+            command_home.home(),
             self.storage,
             self.thread,
             submitted.turn,
@@ -73,13 +77,16 @@ impl Fixture {
         text: &str,
     ) {
         let started_at = self.tick();
-        let source = exact::establish_turn(
-            &self.store,
-            self.storage,
-            thread,
-            submitted.turn,
-            started_at,
-        );
+        let source = {
+            let command_home = self.store.live_home_command().unwrap();
+            exact::establish_turn(
+                command_home.home(),
+                self.storage,
+                thread,
+                submitted.turn,
+                started_at,
+            )
+        };
         self.admit(
             thread,
             submitted.turn,
@@ -87,15 +94,18 @@ impl Fixture {
             SourceEventPayload::TurnActivated,
         );
         let user_observed_at = self.tick();
-        exact::correlate_user_item(
-            &self.store,
-            self.storage,
-            thread,
-            submitted.turn,
-            submitted.user_item,
-            &source,
-            user_observed_at,
-        );
+        {
+            let command_home = self.store.live_home_command().unwrap();
+            exact::correlate_user_item(
+                command_home.home(),
+                self.storage,
+                thread,
+                submitted.turn,
+                submitted.user_item,
+                &source,
+                user_observed_at,
+            );
+        }
         let item = SyndicItemId::from_bytes([self.next_item; 16]);
         self.next_item = self.next_item.checked_add(1).unwrap();
         let cas_item = CasItemId::new(format!("phase10-item-{item}")).unwrap();
@@ -107,62 +117,71 @@ impl Fixture {
             })
         };
         let assistant_started_at = self.tick();
-        exact::admit_item_frame(
-            &self.store,
-            self.storage,
-            thread,
-            submitted.turn,
-            item,
-            &source,
-            ProviderItemFrameV1::new(
-                ProviderFrameOrdinalV1::FIRST,
-                cas_item.clone(),
-                ProviderItemObservationV1::Started {
-                    observed_at: ProviderLifecycleTimestampMsV1::new(
-                        assistant_started_at.unix_millis(),
-                    ),
-                    item: agent_value(""),
-                },
-            ),
-            assistant_started_at,
-        );
+        {
+            let command_home = self.store.live_home_command().unwrap();
+            exact::admit_item_frame(
+                command_home.home(),
+                self.storage,
+                thread,
+                submitted.turn,
+                item,
+                &source,
+                ProviderItemFrameV1::new(
+                    ProviderFrameOrdinalV1::FIRST,
+                    cas_item.clone(),
+                    ProviderItemObservationV1::Started {
+                        observed_at: ProviderLifecycleTimestampMsV1::new(
+                            assistant_started_at.unix_millis(),
+                        ),
+                        item: agent_value(""),
+                    },
+                ),
+                assistant_started_at,
+            );
+        }
         let assistant_delta_at = self.tick();
-        exact::admit_item_frame(
-            &self.store,
-            self.storage,
-            thread,
-            submitted.turn,
-            item,
-            &source,
-            ProviderItemFrameV1::new(
-                ProviderFrameOrdinalV1::new(2).unwrap(),
-                cas_item.clone(),
-                ProviderItemObservationV1::Delta(ProviderItemDeltaV1::AgentMessage {
-                    delta: ProviderTextV1::inline(text),
-                }),
-            ),
-            assistant_delta_at,
-        );
+        {
+            let command_home = self.store.live_home_command().unwrap();
+            exact::admit_item_frame(
+                command_home.home(),
+                self.storage,
+                thread,
+                submitted.turn,
+                item,
+                &source,
+                ProviderItemFrameV1::new(
+                    ProviderFrameOrdinalV1::new(2).unwrap(),
+                    cas_item.clone(),
+                    ProviderItemObservationV1::Delta(ProviderItemDeltaV1::AgentMessage {
+                        delta: ProviderTextV1::inline(text),
+                    }),
+                ),
+                assistant_delta_at,
+            );
+        }
         let assistant_completed_at = self.tick();
-        exact::admit_item_frame(
-            &self.store,
-            self.storage,
-            thread,
-            submitted.turn,
-            item,
-            &source,
-            ProviderItemFrameV1::new(
-                ProviderFrameOrdinalV1::new(3).unwrap(),
-                cas_item,
-                ProviderItemObservationV1::Completed {
-                    observed_at: ProviderLifecycleTimestampMsV1::new(
-                        assistant_completed_at.unix_millis(),
-                    ),
-                    item: agent_value(text),
-                },
-            ),
-            assistant_completed_at,
-        );
+        {
+            let command_home = self.store.live_home_command().unwrap();
+            exact::admit_item_frame(
+                command_home.home(),
+                self.storage,
+                thread,
+                submitted.turn,
+                item,
+                &source,
+                ProviderItemFrameV1::new(
+                    ProviderFrameOrdinalV1::new(3).unwrap(),
+                    cas_item,
+                    ProviderItemObservationV1::Completed {
+                        observed_at: ProviderLifecycleTimestampMsV1::new(
+                            assistant_completed_at.unix_millis(),
+                        ),
+                        item: agent_value(text),
+                    },
+                ),
+                assistant_completed_at,
+            );
+        }
         self.admit(
             thread,
             submitted.turn,
@@ -180,8 +199,9 @@ impl Fixture {
         payload: SourceEventPayload,
     ) {
         let observed_at = self.tick();
+        let command_home = self.store.live_home_command().unwrap();
         exact::admit_event(
-            &self.store,
+            command_home.home(),
             self.storage,
             thread,
             turn,
@@ -192,43 +212,52 @@ impl Fixture {
     }
 
     fn finalize_all(&mut self, thread: SyndicThreadId, turn: SyndicTurnId) {
-        let indexes = self
-            .storage
-            .turn_items(
-                &self.store,
-                turn,
-                None,
-                CursorReadLimits::new(64, 1_000_000).unwrap(),
-            )
-            .unwrap()
-            .records()
-            .to_vec();
+        let indexes = {
+            let command_home = self.store.live_home_command().unwrap();
+            self.storage
+                .turn_items(
+                    command_home.home(),
+                    turn,
+                    None,
+                    CursorReadLimits::new(64, 1_000_000).unwrap(),
+                )
+                .unwrap()
+                .records()
+                .to_vec()
+        };
         for index in indexes {
-            let item = self
-                .storage
-                .canonical_item(&self.store, index.item_id(), point_limit())
-                .unwrap()
-                .unwrap();
-            let content = item
-                .provider_content()
-                .or_else(|| item.presentation_content())
-                .expect("finalization fixture item must own closed content");
-            let manifest = self
-                .storage
-                .content_manifest(&self.store, content.id(), point_limit())
-                .unwrap()
-                .unwrap();
-            if manifest.lifecycle() == ContentLifecycle::Live {
-                let state = self
+            let manifest = {
+                let command_home = self.store.live_home_command().unwrap();
+                let home = command_home.home();
+                let item = self
                     .storage
-                    .turn_state(&self.store, turn, point_limit())
+                    .canonical_item(home, index.item_id(), point_limit())
                     .unwrap()
                     .unwrap();
+                let content = item
+                    .provider_content()
+                    .or_else(|| item.presentation_content())
+                    .expect("finalization fixture item must own closed content");
+                self.storage
+                    .content_manifest(home, content.id(), point_limit())
+                    .unwrap()
+                    .unwrap()
+            };
+            if manifest.lifecycle() == ContentLifecycle::Live {
+                let state = {
+                    let command_home = self.store.live_home_command().unwrap();
+                    self.storage
+                        .turn_state(command_home.home(), turn, point_limit())
+                        .unwrap()
+                        .unwrap()
+                };
                 let updated_at = self.tick();
+                let command_home = self.store.live_home_command().unwrap();
+                let home = command_home.home();
                 execute(
-                    &self.store,
+                    home,
                     self.storage.freeze_next_turn_item(
-                        self.storage.revision(&self.store).unwrap(),
+                        self.storage.revision(home).unwrap(),
                         FreezeNextTurnItem::new(
                             thread,
                             turn,
@@ -240,27 +269,34 @@ impl Fixture {
                     ),
                 );
             }
-            let item = self
-                .storage
-                .canonical_item(&self.store, index.item_id(), point_limit())
-                .unwrap()
-                .unwrap();
+            let item = {
+                let command_home = self.store.live_home_command().unwrap();
+                self.storage
+                    .canonical_item(command_home.home(), index.item_id(), point_limit())
+                    .unwrap()
+                    .unwrap()
+            };
             if matches!(
                 item.kind(),
                 CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
             ) {
-                project_item(&self.store, self.storage, index.item_id());
+                let command_home = self.store.live_home_command().unwrap();
+                project_item(command_home.home(), self.storage, index.item_id());
             }
-            let state = self
-                .storage
-                .turn_state(&self.store, turn, point_limit())
-                .unwrap()
-                .unwrap();
+            let state = {
+                let command_home = self.store.live_home_command().unwrap();
+                self.storage
+                    .turn_state(command_home.home(), turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+            };
             let updated_at = self.tick();
+            let command_home = self.store.live_home_command().unwrap();
+            let home = command_home.home();
             execute(
-                &self.store,
+                home,
                 self.storage.finalize_next_turn_item(
-                    self.storage.revision(&self.store).unwrap(),
+                    self.storage.revision(home).unwrap(),
                     FinalizeNextTurnItem::new(
                         thread,
                         turn,
@@ -277,67 +313,70 @@ impl Fixture {
     }
 
     fn release_terminal_history(&self, thread: SyndicThreadId, turn: SyndicTurnId) {
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         let gate = self
             .storage
-            .input_gate(&self.store, thread, point_limit())
+            .input_gate(home, thread, point_limit())
             .unwrap()
             .unwrap();
         let state = self
             .storage
-            .turn_state(&self.store, turn, point_limit())
+            .turn_state(home, turn, point_limit())
             .unwrap()
             .unwrap();
         let head = self
             .storage
-            .transcript_view_head(&self.store, thread, point_limit())
+            .transcript_view_head(home, thread, point_limit())
             .unwrap()
             .unwrap();
-        self.store
-            .execute_current(self.storage.current_complete_terminal_history(
-                CompleteTerminalHistory::new(
-                    thread,
-                    turn,
-                    gate,
-                    state.revision(),
-                    head.generation(),
-                    head.revision(),
-                ),
-            ))
-            .unwrap();
+        home.execute_current(self.storage.current_complete_terminal_history(
+            CompleteTerminalHistory::new(
+                thread,
+                turn,
+                gate,
+                state.revision(),
+                head.generation(),
+                head.revision(),
+            ),
+        ))
+        .unwrap();
     }
 
     pub(super) fn finish_transcript(&self, thread: SyndicThreadId) {
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
         let thread_record = self
             .storage
-            .thread(&self.store, thread, point_limit())
+            .thread(home, thread, point_limit())
             .unwrap()
             .unwrap();
         let head = self
             .storage
-            .transcript_view_head(&self.store, thread, point_limit())
+            .transcript_view_head(home, thread, point_limit())
             .unwrap()
             .unwrap();
         let generation = head.generation();
         execute(
-            &self.store,
+            home,
             self.storage.start_transcript_build(
-                self.storage.revision(&self.store).unwrap(),
+                self.storage.revision(home).unwrap(),
                 StartTranscriptBuild::new(thread, thread_record.revision(), head.revision()),
             ),
         );
         for _ in 0..1_024 {
             let build = self
                 .storage
-                .transcript_build(&self.store, thread, generation, point_limit())
+                .transcript_build(home, thread, generation, point_limit())
                 .unwrap()
                 .unwrap();
             if build.phase() == TranscriptBuildPhase::Complete {
                 return;
             }
             execute(
-                &self.store,
+                home,
                 self.storage.advance_transcript_build(
-                    self.storage.revision(&self.store).unwrap(),
+                    self.storage.revision(home).unwrap(),
                     AdvanceTranscriptBuild::new(thread, generation, build.revision()),
                 ),
             );

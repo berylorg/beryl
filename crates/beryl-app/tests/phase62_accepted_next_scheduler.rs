@@ -21,23 +21,24 @@ use std::{
 };
 
 use beryl_app::cas_projection::{
-    ProjectionConnectionService, ProjectionServiceConfig,
+    ProjectionConnectionService, ProjectionServiceConfig, RunningSessionRecoverySupervisor,
     test_faults::{
-        install_scheduled_generation_invalidation_barrier, install_scheduled_promotion_barrier,
-        install_scheduled_promotion_reconciliation_barrier,
+        install_scheduled_promotion_barrier, install_scheduled_promotion_reconciliation_barrier,
         install_scheduled_promotion_reservation_barrier,
     },
 };
 use beryl_backend::ManagedBackendClientConnector;
-use beryl_home_store::test_faults::FaultController;
+use beryl_home_store::{
+    HomeOpenOptions, HomeSchemaVersion, HomeStore, test_faults::FaultController,
+};
 use beryl_model::{CasProcessGeneration, RuntimeId};
 use syndic_storage::{AcceptedRouteEffectiveState, SyndicReadError, SyndicStorage, TurnLifecycle};
 
 use support::{
-    NormalTerminalServer, SessionSlot, TIMEOUT, UnavailableProvider, accepted_route_state,
-    admit_runtime_next_input, current_cas_thread_id, execution_binding, install_next_records,
-    open_registered_home, ready_provider, recover_home_generation_before_promotion,
-    try_accepted_route_state, wait_until,
+    NormalTerminalServer, ReadyProviderFactory, SessionSlot, TIMEOUT, UnavailableProvider,
+    accepted_route_state, admit_runtime_next_input, current_cas_thread_id, execution_binding,
+    fail_home_generation_before_promotion, install_next_records, open_registered_home,
+    ready_provider, seed_runtime_next_input_without_wake, try_accepted_route_state, wait_until,
 };
 
 #[test]
@@ -51,7 +52,10 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     fixture.complete_with_assistant(parent, "phase62 completed answer");
     let storage = fixture.storage;
     let thread = fixture.thread;
-    let cas_thread_id = current_cas_thread_id(&fixture.store, storage, thread);
+    let cas_thread_id = {
+        let command_home = fixture.store.live_home_command().unwrap();
+        current_cas_thread_id(command_home.home(), storage, thread)
+    };
     let execution = syndic::execution_binding();
     let runtime_id = execution.runtime_id();
     assert!(
@@ -68,7 +72,7 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     );
     let session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             runtime_id,
             CasProcessGeneration::new(62_001).unwrap(),
@@ -82,7 +86,8 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     let service = &fixture.store;
 
     let promoted = wait_until("accepted-input promotion", || {
-        let state = accepted_route_state(&service, storage, &ids);
+        let command_home = service.live_home_command().unwrap();
+        let state = accepted_route_state(command_home.home(), storage, &ids);
         let diagnostics = service.accepted_input_scheduler_diagnostics();
         if state == AcceptedRouteEffectiveState::Promoted {
             Some(Ok(()))
@@ -99,22 +104,27 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     server.wait_for_projection();
 
     let successor = wait_until("scheduled ordinary terminal", || {
+        let command_home = service.live_home_command().ok()?;
+        let home = command_home.home();
         let thread = storage
-            .thread(&service, ids.thread, support::point_limit())
+            .thread(home, ids.thread, support::point_limit())
             .ok()
             .flatten()?;
         let successor = thread.committed_tail()?;
         let state = storage
-            .turn_state(&service, successor, support::point_limit())
+            .turn_state(home, successor, support::point_limit())
             .ok()
             .flatten()?;
         (state.lifecycle() == TurnLifecycle::Complete).then_some(successor)
     });
     assert_ne!(successor, ids.parent);
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::Promoted
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        assert_eq!(
+            accepted_route_state(command_home.home(), storage, &ids),
+            AcceptedRouteEffectiveState::Promoted
+        );
+    }
     wait_until("scheduled session return", || slot.is_ready().then_some(()));
     wait_until("next-turn scan release", || {
         let diagnostics = service.accepted_input_scheduler_diagnostics();
@@ -141,6 +151,12 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
 #[test]
 fn unavailable_execution_authority_leaves_the_durable_candidate_unpromoted() {
     let (directory, home, storage, _state) = open_registered_home();
+    let ids = install_next_records(
+        &home,
+        storage,
+        163,
+        execution_binding(RuntimeId::from_bytes([163; 16])),
+    );
     let service = ProjectionConnectionService::new(
         home,
         storage,
@@ -148,12 +164,6 @@ fn unavailable_execution_authority_leaves_the_durable_candidate_unpromoted() {
         Box::new(UnavailableProvider),
     )
     .unwrap();
-    let ids = install_next_records(
-        &service,
-        storage,
-        163,
-        execution_binding(RuntimeId::from_bytes([163; 16])),
-    );
     service.notify_scheduled_ordinary_execution_ready();
     wait_until("execution-unavailable scheduler observation", || {
         (service
@@ -162,16 +172,20 @@ fn unavailable_execution_authority_leaves_the_durable_candidate_unpromoted() {
             >= 1)
             .then_some(())
     });
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::NextTurn(syndic_storage::NextTurnReason::PendingTurn)
-    );
-    assert!(
-        storage
-            .turn(&service, ids.parent, support::point_limit())
-            .unwrap()
-            .is_some()
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        assert_eq!(
+            accepted_route_state(home, storage, &ids),
+            AcceptedRouteEffectiveState::NextTurn(syndic_storage::NextTurnReason::PendingTurn)
+        );
+        assert!(
+            storage
+                .turn(home, ids.parent, support::point_limit())
+                .unwrap()
+                .is_some()
+        );
+    }
 
     service.close().unwrap();
     drop(directory);
@@ -196,7 +210,7 @@ fn connection_retirement_cannot_overtake_reserved_promotion() {
     );
     let session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             execution.runtime_id(),
             CasProcessGeneration::new(62_002).unwrap(),
@@ -216,7 +230,10 @@ fn connection_retirement_cannot_overtake_reserved_promotion() {
     );
     assert!(
         matches!(
-            accepted_route_state(&fixture.store, storage, &ids),
+            {
+                let command_home = fixture.store.live_home_command().unwrap();
+                accepted_route_state(command_home.home(), storage, &ids)
+            },
             AcceptedRouteEffectiveState::NextTurn(_)
         ),
         "reservation must not publish before the test releases its exact cut"
@@ -241,7 +258,8 @@ fn connection_retirement_cannot_overtake_reserved_promotion() {
         .expect("promotion reservation must release connection retirement");
     retirement_worker.join().unwrap();
     wait_until("reserved promotion publication", || {
-        (accepted_route_state(&fixture.store, storage, &ids)
+        let command_home = fixture.store.live_home_command().unwrap();
+        (accepted_route_state(command_home.home(), storage, &ids)
             == AcceptedRouteEffectiveState::Promoted)
             .then_some(())
     });
@@ -277,7 +295,7 @@ fn connection_retirement_before_reservation_leaves_the_candidate_queued() {
     );
     let session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             execution.runtime_id(),
             CasProcessGeneration::new(62_003).unwrap(),
@@ -310,7 +328,10 @@ fn connection_retirement_before_reservation_leaves_the_candidate_queued() {
     assert_eq!(diagnostics.workers_started(), 1);
     assert!(!diagnostics.fatal());
     assert!(matches!(
-        accepted_route_state(&fixture.store, storage, &ids),
+        {
+            let command_home = fixture.store.live_home_command().unwrap();
+            accepted_route_state(command_home.home(), storage, &ids)
+        },
         AcceptedRouteEffectiveState::NextTurn(_)
     ));
 
@@ -326,25 +347,31 @@ fn connection_retirement_before_reservation_leaves_the_candidate_queued() {
 fn home_generation_recovery_before_reservation_fails_the_obsolete_service_closed() {
     let faults = FaultController::new();
     let slot = SessionSlot::default();
-    let provider_slot = slot.clone();
-    let mut fixture = syndic::Fixture::new_with_scheduled_provider_and_faults(
-        171,
+    let directory = tempfile::tempdir().unwrap();
+    let mut home = HomeStore::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
-        move |assets| Box::new(ready_provider(provider_slot, assets)),
-    );
-    let parent = fixture.submit_text("phase62 home-generation parent");
-    fixture.complete_with_assistant(parent, "phase62 home-generation answer");
-    let storage = fixture.storage;
-    let thread_id = fixture.thread;
-    let execution = syndic::execution_binding();
+    )
+    .unwrap();
+    let storage = SyndicStorage::register(&mut home).unwrap();
+    beryl_state::BerylState::register(&mut home).unwrap();
+    let execution = execution_binding(RuntimeId::from_bytes([171; 16]));
+    let ids = install_next_records(&home, storage, 171, execution.clone());
+    let supervisor = RunningSessionRecoverySupervisor::start(
+        home,
+        ProjectionServiceConfig::try_new(128, 8).unwrap(),
+        Box::new(ReadyProviderFactory::first_epoch_only(slot.clone())),
+    )
+    .unwrap();
+    let service = supervisor.acquire().unwrap();
+    let thread_id = ids.thread;
     let server = NormalTerminalServer::spawn_admission_only();
     let connector = ManagedBackendClientConnector::for_lifecycle_test(
         server.endpoint(),
         support::AUTHORIZATION,
     );
-    let session = fixture
-        .store
-        .admit(
+    let session = service
+        .admit_lifecycle_test_candidate(
             &connector,
             execution.runtime_id(),
             CasProcessGeneration::new(62_008).unwrap(),
@@ -355,44 +382,59 @@ fn home_generation_recovery_before_reservation_fails_the_obsolete_service_closed
     slot.replace(session);
     server.wait_for_admission();
 
-    let initial_generation = fixture.store.home_generation();
+    let home_id = service.home_id();
+    let initial_home_generation = service.home_generation();
+    let initial_service_generation = service.service_generation();
+    let initial_service_pointer = std::ptr::from_ref::<ProjectionConnectionService>(&*service);
     let barrier = install_scheduled_promotion_reservation_barrier(thread_id);
-    let invalidation = install_scheduled_generation_invalidation_barrier(thread_id);
-    let ids = admit_runtime_next_input(&mut fixture, 171);
+    service.notify_scheduled_ordinary_execution_ready();
     assert!(
         barrier.wait_until_paused(TIMEOUT),
         "promotion did not reach its pre-reservation cut"
     );
-    recover_home_generation_before_promotion(&fixture.store, storage, &faults, &ids);
-    assert!(fixture.store.health().generation().unwrap() > initial_generation);
-    let recovered_storage = SyndicStorage::reacquire(&fixture.store).unwrap();
+    fail_home_generation_before_promotion(&supervisor, storage, &faults, &ids);
     barrier.release();
-    assert!(
-        invalidation.wait_until_paused(TIMEOUT),
-        "scheduled worker did not classify the newer healthy generation"
-    );
-    invalidation.release();
+    drop(service);
 
-    wait_until("generation-drift worker completion", || {
-        let diagnostics = fixture.store.accepted_input_scheduler_diagnostics();
-        (diagnostics.workers_joined() >= 1).then_some(())
+    let recovered = wait_until("supervisor-owned same-home recovery", || {
+        (supervisor.diagnostics().recovery_cycles() == 1)
+            .then(|| supervisor.acquire().ok())
+            .flatten()
     });
-    wait_until("generation-drift session return", || {
-        slot.is_ready().then_some(())
-    });
+    assert_eq!(recovered.home_id(), home_id);
+    assert!(recovered.home_generation() > initial_home_generation);
+    assert!(recovered.service_generation() > initial_service_generation);
+    assert_ne!(
+        std::ptr::from_ref::<ProjectionConnectionService>(&*recovered),
+        initial_service_pointer
+    );
+    assert_eq!(
+        supervisor.diagnostics().current_home_generation(),
+        Some(recovered.home_generation())
+    );
+    assert_eq!(
+        supervisor.diagnostics().current_service_generation(),
+        Some(recovered.service_generation())
+    );
+    let command_home = recovered.live_home_command().unwrap();
+    let recovered_storage = SyndicStorage::reacquire(command_home.home()).unwrap();
     assert!(matches!(
-        accepted_route_state(&fixture.store, recovered_storage, &ids),
+        accepted_route_state(command_home.home(), recovered_storage, &ids),
         AcceptedRouteEffectiveState::NextTurn(_)
     ));
-    let diagnostics = fixture.store.accepted_input_scheduler_diagnostics();
-    assert_eq!(diagnostics.workers_started(), 1);
-    assert!(diagnostics.fatal());
+    drop(command_home);
+    wait_until("recovered scheduler unavailable outcome", || {
+        (recovered
+            .accepted_input_scheduler_diagnostics()
+            .next_execution_unavailable()
+            >= 1)
+            .then_some(())
+    });
+    assert!(!recovered.accepted_input_scheduler_diagnostics().fatal());
+    assert!(slot.is_ready());
 
-    let (directory, service) = fixture.into_service();
-    assert!(matches!(
-        service.close(),
-        Err(beryl_app::cas_projection::ProjectionConnectionServiceCloseError::SchedulerShutdown)
-    ));
+    drop(recovered);
+    supervisor.shutdown().unwrap();
     server.join();
     assert!(!slot.is_ready());
     drop(directory);
@@ -427,10 +469,13 @@ fn preexisting_next_turn_work_is_released_by_phase63_restart_handoff() {
     });
     let after = service.accepted_input_scheduler_diagnostics();
     assert!(after.next_source_page_reads() >= 1);
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::NextTurn(syndic_storage::NextTurnReason::PendingTurn)
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        assert_eq!(
+            accepted_route_state(command_home.home(), storage, &ids),
+            AcceptedRouteEffectiveState::NextTurn(syndic_storage::NextTurnReason::PendingTurn)
+        );
+    }
 
     service.close().unwrap();
     drop(directory);

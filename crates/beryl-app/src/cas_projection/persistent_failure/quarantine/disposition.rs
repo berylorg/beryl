@@ -1,6 +1,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use crate::cas_projection::{
+    PersistentFailurePendingProjectionQuarantineError, PersistentFailureRecoveryInventoryError,
     connection::{InertConnectionEpochAttachment, PendingProjectionConnectionOwner},
     persistent_failure::{
         PersistentFailureCutIdentity, PersistentFailureRecoveryInventory,
@@ -66,11 +67,49 @@ impl PersistentFailurePendingProjectionQuarantine {
     }
 }
 
+impl PersistentFailurePendingProjectionQuarantineError {
+    /// Consumes failed quarantine conversion through the installed inert topology's terminal path.
+    pub(in crate::cas_projection) fn dispose_for_supervisor_shutdown(self) -> Result<(), ()> {
+        dispose_terminal_inventory(self.into_inventory())
+            .map(|_| ())
+            .map_err(|_| ())
+    }
+}
+
+impl PersistentFailureRecoveryInventoryError {
+    /// Consumes a failed inventory conversion without abandoning its exact retained authority.
+    pub(in crate::cas_projection) fn dispose_for_supervisor_shutdown(self) -> Result<(), ()> {
+        let inventory = match self.into_inventory() {
+            Ok(inventory) => inventory,
+            Err(error) => {
+                // These variants never checked out a terminal-capable inventory. Returning their
+                // handoff to the existing exact escrow is the only conservative disposition.
+                let _ = error.into_handoff();
+                return Err(());
+            }
+        };
+        let inventory = match inventory.into_pending_projection_quarantine() {
+            Ok(quarantine) => quarantine.into_inventory(),
+            Err(error) => error.into_inventory(),
+        };
+        dispose_terminal_inventory(inventory)
+            .map(|_| ())
+            .map_err(|_| ())
+    }
+}
+
 fn dispose_terminal_quarantine(
     quarantine: PersistentFailurePendingProjectionQuarantine,
 ) -> Result<PersistentFailureTerminalDispositionWitness, PersistentFailureTerminalDispositionError>
 {
     let inventory = quarantine.into_inventory();
+    dispose_terminal_inventory(inventory)
+}
+
+fn dispose_terminal_inventory(
+    inventory: PersistentFailureRecoveryInventory,
+) -> Result<PersistentFailureTerminalDispositionWitness, PersistentFailureTerminalDispositionError>
+{
     let fence = match inventory.checkout_pending_quarantine_for_terminal_disposition() {
         Ok(fence) => fence,
         Err(_) => {

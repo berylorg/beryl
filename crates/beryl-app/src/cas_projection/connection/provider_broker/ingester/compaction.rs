@@ -196,25 +196,29 @@ impl Ingester {
                 return (applied().0, true);
             }
         };
-        if self
-            .publish_source_activation(&permit, point_limit())
-            .is_err()
-        {
-            if self.exact_persistent_failure() {
-                drop(permit);
-                return (applied().0, true);
+        match self.publish_source_activation(&permit, point_limit()) {
+            Ok(_) => {}
+            Err(error) if error.authority().is_some() => {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
             }
-            return match permit.fail() {
-                Ok(invalidation) | Err(SourcePublicationFinishError::Target(invalidation)) => {
-                    let terminal =
-                        self.invalidate_target(invalidation) == super::TargetRouteOutcome::Terminal;
-                    (applied().0, terminal)
+            Err(_) => {
+                if self.exact_persistent_failure() {
+                    drop(permit);
+                    return (applied().0, true);
                 }
-                Err(SourcePublicationFinishError::Router) => {
-                    self.retire();
-                    (applied().0, true)
-                }
-            };
+                return match permit.fail() {
+                    Ok(invalidation) | Err(SourcePublicationFinishError::Target(invalidation)) => {
+                        let terminal = self.invalidate_target(invalidation)
+                            == super::TargetRouteOutcome::Terminal;
+                        (applied().0, terminal)
+                    }
+                    Err(SourcePublicationFinishError::Router) => {
+                        self.retire();
+                        (applied().0, true)
+                    }
+                };
+            }
         }
         match permit.finish_held() {
             Ok(release) => {

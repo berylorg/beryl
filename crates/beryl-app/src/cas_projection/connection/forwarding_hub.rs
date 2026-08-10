@@ -157,6 +157,26 @@ impl ForwardingHub {
         state.endpoint.take()
     }
 
+    /// Recovers the epoch barrier after poison and terminalizes it without moving its endpoint.
+    ///
+    /// This is the allocation-free fallback used when adoption cannot reserve storage for a
+    /// detached endpoint. The returned epoch clone lets the caller request cancellation after the
+    /// hub lock is released; explicit disposition remains able to detach and join the resident
+    /// endpoint later.
+    pub(super) fn mark_inert_in_place_recovering_poison(
+        &self,
+    ) -> Option<Arc<ConnectionServiceEpoch>> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        state.inert = true;
+        state
+            .endpoint
+            .as_ref()
+            .map(|endpoint| Arc::clone(endpoint.epoch()))
+    }
+
     #[cfg(test)]
     pub(super) fn poison_epoch_barrier_for_test(&self) {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -172,6 +192,15 @@ impl ForwardingHub {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         state.inert && state.endpoint.is_none()
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_inert_and_attached_recovering_poison_for_test(&self) -> bool {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        state.inert && state.endpoint.is_some()
     }
 
     fn lock_state(&self) -> Result<MutexGuard<'_, ForwardingHubState>, ProjectionCoordinatorError> {

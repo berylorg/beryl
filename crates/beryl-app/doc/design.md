@@ -376,13 +376,18 @@ Keep independent main-window presentation responsive while process-wide services
   service startup fence. It orders each stable driver's one-shot command-frontier control through a
   pre-reserved capacity-one stable slot
   outside the old gate and epoch queue. The driver settles already-dispatched work without another
-  backend request, rejects not-yet-dispatched old commands through the gate-close frontier, parks,
-  and explicitly joins every ownership-clean old ingester. Each join returns the exact old ingester
+  backend request, explicitly rejects not-yet-dispatched old commands through the gate-close
+  frontier with one typed cut-correlated nondispatch completion, lets each scheduled worker
+  surrender without durable accepted-input mutation or retry, parks only after scheduler
+  quiescence can join those workers, and explicitly joins every ownership-clean old ingester. No
+  live old-epoch command crosses adoption. Each join returns the exact old ingester
   admission and terminal receipt into the attempt-owned old-epoch attachment; neither is dropped or
   released to the old pool. Later ordinary queue traffic cannot starve or overtake adoption, and the
   driver selects no new stream observation after it sees the control. Cancellation or detached
-  thread drop is not a join proof. Commands carry their admitting epoch and fail at dequeue when the
-  stable slot has changed.
+  thread drop is not a join proof. Commands carry their admitting epoch, and ordinary dequeue
+  validates it under the stable adoption-slot execution guard. An unexpected mismatch receives the
+  same typed nondispatch completion before provider work as a defensive invariant; it is never
+  silently dropped or executed across epochs.
 - The capacity-one control slot survives each successfully published app-service generation. Its
   cut-bound control message and park token are one-shot; publication leaves the slot empty and
   eligible only for a later strictly newer failure cut. An inert adoption failure permanently

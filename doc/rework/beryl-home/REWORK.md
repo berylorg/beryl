@@ -53,6 +53,9 @@
   and each unrestored response or control family unavailable before dispatch until its final
   incremental boundary is installed; no raw-value, whole-DOM, or unbounded-buffering fallback
   may bridge that gap.
+- Removing the materialized backend dynamic-tool request boundary intentionally leaves app-owned
+  GUI tool modules unavailable until Checkpoint 4 installs their feature-owned incremental sinks;
+  no aggregate request, raw-JSON parser, compatibility export, or compile-only facade may bridge it.
 - The submitted-text descriptor cutover intentionally leaves image-bearing ordinary execution
   unavailable before dispatch until the immediately following image-descriptor boundary installs
   the final cursor path. The durable pending turn and borrowed loaded projection remain exact; no
@@ -200,6 +203,8 @@
 
 ## Checkpoint 4: Build The Multi-Window Shell And Navigation
 
+- [ ] Cut app-owned diagnostic, settings, theme, and GUI-control dynamic tools to their final
+  feature-owned incremental registry sinks and bounded shell bridges.
 - [ ] Implement independent main windows, exact thread claims, ordinary close versus Exit,
   restoration, and a practical process window-count limit.
 - [ ] Implement runtime and root creation, Host/WSL identity, zero-runtime onboarding, empty restore,

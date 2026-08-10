@@ -12,6 +12,8 @@ use beryl_state::{BerylState, BerylStateReacquireError};
 use syndic_storage::SyndicStorage;
 use thiserror::Error;
 
+#[cfg(test)]
+use self::worker::Phase93AdoptionObservation;
 use self::{
     provider::ProviderFactoryOwner,
     worker::{RecoveryWorkerExit, RecoveryWorkerStart},
@@ -81,6 +83,8 @@ pub struct RunningSessionRecoverySupervisor {
     slot: Arc<RunningServiceSlot>,
     signal: mpsc::SyncSender<()>,
     worker: Mutex<Option<std::thread::JoinHandle<RecoveryWorkerExit>>>,
+    #[cfg(test)]
+    phase93_observation: Arc<Mutex<Option<Phase93AdoptionObservation>>>,
 }
 
 impl RunningSessionRecoverySupervisor {
@@ -140,6 +144,8 @@ impl RunningSessionRecoverySupervisor {
             return Err(RunningSessionRecoveryStartError::NotificationAttachment);
         }
         let slot = RunningServiceSlot::new(service, state);
+        #[cfg(test)]
+        let phase93_observation = Arc::new(Mutex::new(None));
         let worker = RecoveryWorkerStart {
             home: retained_home,
             config,
@@ -147,12 +153,16 @@ impl RunningSessionRecoverySupervisor {
             signal: signal.clone(),
             receiver,
             provider_factory,
+            #[cfg(test)]
+            phase93_observation: Arc::clone(&phase93_observation),
         }
         .spawn()?;
         Ok(Self {
             slot,
             signal,
             worker: Mutex::new(Some(worker)),
+            #[cfg(test)]
+            phase93_observation,
         })
     }
 
@@ -165,6 +175,14 @@ impl RunningSessionRecoverySupervisor {
     #[must_use]
     pub fn diagnostics(&self) -> RunningSessionRecoveryDiagnostics {
         self.slot.diagnostics()
+    }
+
+    #[cfg(test)]
+    fn phase93_adoption_observation_for_test(&self) -> Option<Phase93AdoptionObservation> {
+        *self
+            .phase93_observation
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
     }
 
     /// Explicitly stops recovery, settles the current service, and finally closes the provider

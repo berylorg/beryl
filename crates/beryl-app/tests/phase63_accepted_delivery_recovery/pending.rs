@@ -122,30 +122,34 @@ fn already_promoted_pending_turn_resumes_once_and_stays_terminal_after_restart()
             .then_some(diagnostics)
     });
     let parked_workers_joined = parked_diagnostics.workers_joined();
-    assert_eq!(
-        storage
-            .input_gate(&service, ids.thread, point_limit())
-            .unwrap()
-            .unwrap(),
-        gate_before
-    );
-    assert_eq!(
-        storage
-            .turn_state(&service, promoted.turn, point_limit())
-            .unwrap()
-            .unwrap(),
-        state_before
-    );
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::Promoted
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        assert_eq!(
+            storage
+                .input_gate(home, ids.thread, point_limit())
+                .unwrap()
+                .unwrap(),
+            gate_before
+        );
+        assert_eq!(
+            storage
+                .turn_state(home, promoted.turn, point_limit())
+                .unwrap()
+                .unwrap(),
+            state_before
+        );
+        assert_eq!(
+            accepted_route_state(home, storage, &ids),
+            AcceptedRouteEffectiveState::Promoted
+        );
+    }
 
     let server = NormalTerminalServer::spawn_resume_terminal(active.cas_thread.as_str());
     let connector =
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = service
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             runtime_id,
             CasProcessGeneration::new(63_184).unwrap(),
@@ -156,8 +160,9 @@ fn already_promoted_pending_turn_resumes_once_and_stays_terminal_after_restart()
     slot.replace(session);
     service.notify_scheduled_ordinary_execution_ready();
     let activation = wait_until("recovered pending durable activation", || {
+        let command_home = service.live_home_command().ok()?;
         let gate = storage
-            .input_gate(&service, ids.thread, point_limit())
+            .input_gate(command_home.home(), ids.thread, point_limit())
             .ok()
             .flatten()?;
         if gate.state() != &InputGateState::PendingTurn(promoted.turn) {
@@ -178,8 +183,9 @@ fn already_promoted_pending_turn_resumes_once_and_stays_terminal_after_restart()
     );
     server.wait_for_projection();
     let completed = wait_until("recovered exact pending turn terminal", || {
+        let command_home = service.live_home_command().ok()?;
         let state = storage
-            .turn_state(&service, promoted.turn, point_limit())
+            .turn_state(command_home.home(), promoted.turn, point_limit())
             .ok()
             .flatten()?;
         (state.lifecycle() == TurnLifecycle::Complete).then_some(state)
@@ -188,15 +194,18 @@ fn already_promoted_pending_turn_resumes_once_and_stays_terminal_after_restart()
     wait_until("recovered scheduled session return", || {
         slot.is_ready().then_some(())
     });
-    let thread_record = storage
-        .thread(&service, ids.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(thread_record.committed_tail(), Some(promoted.turn));
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::Promoted
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let thread_record = storage
+            .thread(command_home.home(), ids.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(thread_record.committed_tail(), Some(promoted.turn));
+        assert_eq!(
+            accepted_route_state(command_home.home(), storage, &ids),
+            AcceptedRouteEffectiveState::Promoted
+        );
+    }
     service.close().unwrap();
     server.join();
 
@@ -210,26 +219,30 @@ fn already_promoted_pending_turn_resumes_once_and_stays_terminal_after_restart()
     assert_eq!(diagnostics.startup_recovery_cases(), 0);
     assert_eq!(diagnostics.recovered_pending_execution_unavailable(), 0);
     assert_eq!(diagnostics.workers_started(), 0);
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::Promoted
-    );
-    assert_eq!(
-        storage
-            .thread(&service, ids.thread, point_limit())
-            .unwrap()
-            .unwrap()
-            .committed_tail(),
-        Some(promoted.turn)
-    );
-    assert_eq!(
-        storage
-            .turn_state(&service, promoted.turn, point_limit())
-            .unwrap()
-            .unwrap()
-            .lifecycle(),
-        TurnLifecycle::Complete
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        assert_eq!(
+            accepted_route_state(home, storage, &ids),
+            AcceptedRouteEffectiveState::Promoted
+        );
+        assert_eq!(
+            storage
+                .thread(home, ids.thread, point_limit())
+                .unwrap()
+                .unwrap()
+                .committed_tail(),
+            Some(promoted.turn)
+        );
+        assert_eq!(
+            storage
+                .turn_state(home, promoted.turn, point_limit())
+                .unwrap()
+                .unwrap()
+                .lifecycle(),
+            TurnLifecycle::Complete
+        );
+    }
     service.close().unwrap();
 }
 
@@ -289,21 +302,25 @@ fn unavailable_provider_parks_until_an_explicit_execution_ready_wake() {
     assert_eq!(parked.startup_pending_turns(), 1);
     assert_eq!(parked.recovered_pending_execution_unavailable(), 1);
     assert!(!parked.recovered_pending_retained_source_cursor());
-    assert_eq!(storage.revision(&service).unwrap(), revision_before);
-    assert_eq!(
-        storage
-            .input_gate(&service, ids.thread, point_limit())
-            .unwrap()
-            .unwrap(),
-        gate_before
-    );
-    assert_eq!(
-        storage
-            .turn_state(&service, promoted.turn, point_limit())
-            .unwrap()
-            .unwrap(),
-        state_before
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        assert_eq!(storage.revision(home).unwrap(), revision_before);
+        assert_eq!(
+            storage
+                .input_gate(home, ids.thread, point_limit())
+                .unwrap()
+                .unwrap(),
+            gate_before
+        );
+        assert_eq!(
+            storage
+                .turn_state(home, promoted.turn, point_limit())
+                .unwrap()
+                .unwrap(),
+            state_before
+        );
+    }
 
     thread::sleep(Duration::from_millis(100));
     let still_parked = service.accepted_input_scheduler_diagnostics();
@@ -325,24 +342,28 @@ fn unavailable_provider_parks_until_an_explicit_execution_ready_wake() {
     });
     let retried = service.accepted_input_scheduler_diagnostics();
     assert_eq!(retried.recovered_pending_execution_unavailable(), 2);
-    assert_eq!(storage.revision(&service).unwrap(), revision_before);
-    assert_eq!(
-        accepted_route_state(&service, storage, &ids),
-        AcceptedRouteEffectiveState::Promoted
-    );
-    assert_eq!(
-        storage
-            .input_gate(&service, ids.thread, point_limit())
-            .unwrap()
-            .unwrap(),
-        gate_before
-    );
-    assert_eq!(
-        storage
-            .turn_state(&service, promoted.turn, point_limit())
-            .unwrap()
-            .unwrap(),
-        state_before
-    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        assert_eq!(storage.revision(home).unwrap(), revision_before);
+        assert_eq!(
+            accepted_route_state(home, storage, &ids),
+            AcceptedRouteEffectiveState::Promoted
+        );
+        assert_eq!(
+            storage
+                .input_gate(home, ids.thread, point_limit())
+                .unwrap()
+                .unwrap(),
+            gate_before
+        );
+        assert_eq!(
+            storage
+                .turn_state(home, promoted.turn, point_limit())
+                .unwrap()
+                .unwrap(),
+            state_before
+        );
+    }
     service.close().unwrap();
 }

@@ -5,12 +5,18 @@ use beryl_home_store::{HomeHealthState, HomeStore};
 use super::{
     RunningSessionRecoveryShutdownError, RunningSessionRecoveryStartError,
     provider::ProviderFactoryOwner,
-    recovery::{RecoveryBuildOutcome, build_converged_replacement},
+    recovery::{
+        PersistentFailureDormantReplacementAdoptionFailure,
+        PersistentFailurePendingProjectionQuarantineDormantReplacementFailure,
+        RecoveryBuildOutcome, build_dormant_replacement_for_supervisor,
+    },
     slot::RunningServiceSlot,
 };
+#[cfg(test)]
+use crate::cas_projection::PersistentFailureServiceAdoptionMetadata;
 use crate::cas_projection::{
-    PersistentFailureNotificationStatus, ProjectionConnectionServiceCloseOutcome,
-    ProjectionServiceConfig,
+    AdoptedUnpublishedProjectionConnectionService, PersistentFailureNotificationStatus,
+    ProjectionConnectionServiceCloseOutcome, ProjectionServiceConfig,
 };
 
 pub(super) struct RecoveryWorkerStart {
@@ -20,18 +26,38 @@ pub(super) struct RecoveryWorkerStart {
     pub(super) signal: mpsc::SyncSender<()>,
     pub(super) receiver: mpsc::Receiver<()>,
     pub(super) provider_factory: ProviderFactoryOwner,
+    #[cfg(test)]
+    pub(super) phase93_observation: Arc<Mutex<Option<Phase93AdoptionObservation>>>,
 }
 
 pub(super) struct RecoveryWorkerExit {
     service_error: Option<crate::cas_projection::ProjectionConnectionServiceCloseError>,
     terminal_recovery: bool,
+    terminal_owner: Option<RecoveryTerminalOwner>,
+    provider_factory: Option<ProviderFactoryOwner>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct Phase93AdoptionObservation {
+    pub(super) metadata: PersistentFailureServiceAdoptionMetadata,
+    pub(super) startup_fence_closed: bool,
+    pub(super) adopted_connection_count: usize,
+}
+
+enum RecoveryTerminalOwner {
+    Adopted(AdoptedUnpublishedProjectionConnectionService),
+    AdoptionFailure(PersistentFailureDormantReplacementAdoptionFailure),
+    BuildFailure(PersistentFailurePendingProjectionQuarantineDormantReplacementFailure),
+}
+
 enum RecoveryWorkerAction {
     Continue,
     Shutdown,
     Terminal,
+    TerminalWithBuildFailure(PersistentFailurePendingProjectionQuarantineDormantReplacementFailure),
+    Adopted(AdoptedUnpublishedProjectionConnectionService),
+    AdoptionFailure(PersistentFailureDormantReplacementAdoptionFailure),
 }
 
 enum RecoveryCutFailure {
@@ -69,6 +95,8 @@ impl RecoveryWorkerStart {
             signal,
             receiver,
             provider_factory,
+            #[cfg(test)]
+            phase93_observation,
         } = self;
         let factory = Arc::new(Mutex::new(Some(provider_factory)));
         let thread_factory = Arc::clone(&factory);
@@ -88,6 +116,8 @@ impl RecoveryWorkerStart {
                     signal,
                     receiver,
                     provider_factory,
+                    #[cfg(test)]
+                    phase93_observation,
                 )
             });
         match handle {
@@ -119,8 +149,10 @@ fn run(
     signal: mpsc::SyncSender<()>,
     receiver: mpsc::Receiver<()>,
     mut provider_factory: ProviderFactoryOwner,
+    #[cfg(test)] phase93_observation: Arc<Mutex<Option<Phase93AdoptionObservation>>>,
 ) -> RecoveryWorkerExit {
     let mut terminal_recovery = false;
+    let mut terminal_owner = None;
     while receiver.recv().is_ok() {
         if slot.is_shutting_down() {
             break;
@@ -186,15 +218,45 @@ fn run(
                 slot.mark_terminal();
                 break;
             }
+            RecoveryWorkerAction::TerminalWithBuildFailure(failure) => {
+                terminal_owner = Some(RecoveryTerminalOwner::BuildFailure(failure));
+                terminal_recovery = true;
+                slot.mark_terminal();
+                break;
+            }
+            RecoveryWorkerAction::Adopted(owner) => {
+                #[cfg(test)]
+                {
+                    let observation = Phase93AdoptionObservation {
+                        metadata: owner.metadata(),
+                        startup_fence_closed: owner.startup_fence_is_closed_for_test(),
+                        adopted_connection_count: owner.adopted_connection_count_for_test(),
+                    };
+                    *phase93_observation
+                        .lock()
+                        .unwrap_or_else(|poison| poison.into_inner()) = Some(observation);
+                }
+                terminal_owner = Some(RecoveryTerminalOwner::Adopted(owner));
+                terminal_recovery = true;
+                slot.mark_terminal();
+                break;
+            }
+            RecoveryWorkerAction::AdoptionFailure(failure) => {
+                terminal_owner = Some(RecoveryTerminalOwner::AdoptionFailure(failure));
+                terminal_recovery = true;
+                slot.mark_terminal();
+                break;
+            }
         }
     }
     slot.begin_shutdown();
     drop(home);
     let service_error = settle_current_service(&slot).err();
-    provider_factory.shutdown();
     RecoveryWorkerExit {
         service_error,
         terminal_recovery,
+        terminal_owner,
+        provider_factory: Some(provider_factory),
     }
 }
 
@@ -217,30 +279,25 @@ fn recover_current_service(
             return RecoveryWorkerAction::Terminal;
         }
     };
-    match build_converged_replacement(
+    match build_dormant_replacement_for_supervisor(
         handoff,
         home,
         config,
-        signal,
         receiver,
         slot,
         provider_factory,
     ) {
-        RecoveryBuildOutcome::Converged(converged) => {
-            match converged.publish_recovered_service(slot) {
-                Ok(_metadata) => RecoveryWorkerAction::Continue,
-                Err(error) => {
-                    let _ = error.dispose();
-                    #[cfg(test)]
-                    eprintln!(
-                        "same-home recovery entered a terminal state during final publication"
-                    );
-                    RecoveryWorkerAction::Terminal
-                }
-            }
-        }
+        RecoveryBuildOutcome::Dormant(owner) => match owner.adopt(signal.clone()) {
+            Ok(adopted) => RecoveryWorkerAction::Adopted(adopted),
+            Err(failure) => RecoveryWorkerAction::AdoptionFailure(failure),
+        },
         RecoveryBuildOutcome::Shutdown => RecoveryWorkerAction::Shutdown,
-        RecoveryBuildOutcome::Terminal => RecoveryWorkerAction::Terminal,
+        RecoveryBuildOutcome::Terminal(Some(failure)) => {
+            // Retain every typed conversion failure through explicit supervisor disposition.
+            // The old service is already withdrawn, so this remains unmounted.
+            RecoveryWorkerAction::TerminalWithBuildFailure(failure)
+        }
+        RecoveryBuildOutcome::Terminal(None) => RecoveryWorkerAction::Terminal,
     }
 }
 
@@ -293,9 +350,30 @@ fn settle_current_service(
 
 impl RecoveryWorkerExit {
     pub(super) fn into_result(self) -> Result<(), RunningSessionRecoveryShutdownError> {
-        if let Some(error) = self.service_error {
+        let Self {
+            service_error,
+            terminal_recovery,
+            terminal_owner,
+            provider_factory,
+        } = self;
+        let terminal_disposition_failed = match terminal_owner {
+            Some(RecoveryTerminalOwner::Adopted(owner)) => {
+                owner.dispose_after_recovery_failure().is_err()
+            }
+            Some(RecoveryTerminalOwner::AdoptionFailure(failure)) => {
+                failure.dispose_for_worker_terminal().is_err()
+            }
+            Some(RecoveryTerminalOwner::BuildFailure(failure)) => {
+                failure.dispose_for_worker_terminal().is_err()
+            }
+            None => false,
+        };
+        if let Some(mut provider_factory) = provider_factory {
+            provider_factory.shutdown();
+        }
+        if let Some(error) = service_error {
             Err(RunningSessionRecoveryShutdownError::Service(error))
-        } else if self.terminal_recovery {
+        } else if terminal_recovery || terminal_disposition_failed {
             Err(RunningSessionRecoveryShutdownError::TerminalRecovery)
         } else {
             Ok(())

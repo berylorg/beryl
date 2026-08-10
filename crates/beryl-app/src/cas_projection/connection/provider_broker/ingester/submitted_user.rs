@@ -10,13 +10,13 @@ use syndic_storage::{
     SealedProviderFrameReference, SyndicPointReadLimit, SyndicStorage, TurnItemOrdinal,
 };
 
-use super::{Ingester, TargetRouteOutcome};
+use super::{Ingester, TargetRouteOutcome, activation::SourceActivationError};
 use crate::cas_projection::{
     connection::router::{
         SourcePublicationFinishError, SourcePublicationPermit, SourcePublicationPermitError,
         TargetInvalidation,
     },
-    live_source::LiveSourceTarget,
+    live_source::{LiveSourcePublicationError, LiveSourceTarget},
     provider_frame::{self, ProviderFramePublication},
 };
 
@@ -29,9 +29,46 @@ struct SubmittedUserFrame {
     ordinal: ProviderFrameOrdinalV1,
 }
 
+#[derive(Debug)]
 enum CheckedUserPreparationError {
     Authority(crate::cas_projection::LiveCommandAdmissionError),
+    Activation(SourceActivationError),
+    LiveSource(LiveSourcePublicationError),
+    Read(syndic_storage::SyndicReadError),
+    Reacquire(beryl_home_store::DomainHandleError),
     Target,
+}
+
+impl CheckedUserPreparationError {
+    fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+        match self {
+            Self::Authority(source) => Some(*source),
+            Self::Activation(source) => source.authority(),
+            _ => None,
+        }
+    }
+
+    fn verification_ambiguous(
+        &self,
+        expected_generation: beryl_home_store::HomeGeneration,
+    ) -> bool {
+        let read = match self {
+            Self::LiveSource(LiveSourcePublicationError::Read(source)) | Self::Read(source) => {
+                source
+            }
+            Self::Reacquire(beryl_home_store::DomainHandleError::HealthGate(source)) => {
+                return source.state() == beryl_home_store::HomeHealthState::Verifying
+                    && source.generation() == expected_generation;
+            }
+            _ => return false,
+        };
+        matches!(
+            read,
+            syndic_storage::SyndicReadError::Read(beryl_home_store::ReadError::HealthGate(source))
+                if source.state() == beryl_home_store::HomeHealthState::Verifying
+                    && source.generation() == expected_generation
+        )
+    }
 }
 
 impl Ingester {
@@ -68,27 +105,40 @@ impl Ingester {
         #[cfg(feature = "test-faults")]
         let _publication_activity = test_metrics.begin_checked_user_publication();
         let limit = point_limit();
+        let (home_generation, mut storage) = match self
+            .publish_source_activation(&permit, limit)
+            .map_err(CheckedUserPreparationError::Activation)
+        {
+            Ok(authority) => authority,
+            Err(error) if error.authority().is_some() => {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
+            Err(_) => return self.failed_checked_user_permit(permit, message),
+        };
+        let mut verified_continuation = false;
+        let mut refresh_storage = false;
         let prepared = loop {
-            let verification = match self.live_command().await_current_or_verification(
-                &self.home,
-                self.home_id,
-                self.home_generation,
-            ) {
-                Ok(verification) => verification,
-                Err(source) => break Err(CheckedUserPreparationError::Authority(source)),
-            };
-            #[cfg(feature = "test-faults")]
-            crate::cas_projection::test_faults::pause_checked_user_publication(
-                crate::cas_projection::test_faults::ProviderTestKey::new(
+            let verification = if verified_continuation {
+                None
+            } else {
+                match self.live_command().await_current_or_verification(
+                    &self.home,
                     self.home_id,
-                    std::sync::Arc::as_ptr(&self.cancelled) as usize,
-                ),
-                message.lifecycle(),
-            );
-            let attempt = (|| {
-                let (home_generation, storage) = self
-                    .publish_source_activation(&permit, limit)
-                    .map_err(|()| CheckedUserPreparationError::Target)?;
+                    home_generation,
+                ) {
+                    Ok(verification) => Some(verification),
+                    Err(source) => break Err(CheckedUserPreparationError::Authority(source)),
+                }
+            };
+            let attempt: Result<
+                (LiveSourceTarget, SubmittedUserFrame),
+                CheckedUserPreparationError,
+            > = (|| {
+                if refresh_storage {
+                    storage = SyndicStorage::reacquire(&self.home)
+                        .map_err(CheckedUserPreparationError::Reacquire)?;
+                }
                 let target = LiveSourceTarget::resolve(
                     &self.home,
                     storage,
@@ -97,30 +147,55 @@ impl Ingester {
                     permit.cas_turn_id(),
                     limit,
                 )
-                .map_err(|_| CheckedUserPreparationError::Target)?;
-                let frame = self
-                    .submitted_user_frame(&message, &permit, &target, storage, limit)
-                    .map_err(|()| CheckedUserPreparationError::Target)?;
-                Ok((home_generation, storage, target, frame))
+                .map_err(CheckedUserPreparationError::LiveSource)?;
+                #[cfg(all(test, feature = "test-faults"))]
+                tests::record_checked_user_preparation_attempt(self.home_id, message.lifecycle());
+                #[cfg(feature = "test-faults")]
+                {
+                    crate::cas_projection::test_faults::pause_checked_user_publication(
+                        crate::cas_projection::test_faults::ProviderTestKey::new(
+                            self.home_id,
+                            std::sync::Arc::as_ptr(&self.cancelled) as usize,
+                        ),
+                        message.lifecycle(),
+                    );
+                }
+                let frame =
+                    self.submitted_user_frame(&message, &permit, &target, storage, limit)?;
+                Ok((target, frame))
             })();
+            let Some(verification) = verification else {
+                match attempt {
+                    Err(error) if error.verification_ambiguous(home_generation) => {
+                        verified_continuation = false;
+                        refresh_storage = true;
+                        continue;
+                    }
+                    result => break result,
+                }
+            };
             match verification.settle_after_operation() {
-                Ok(settlement) if settlement.verified_current() => match attempt {
-                    Ok(prepared) => break Ok(prepared),
-                    Err(_) => continue,
-                },
+                Ok(settlement)
+                    if settlement.verified_current()
+                        && attempt
+                            .as_ref()
+                            .is_err_and(|error| error.verification_ambiguous(home_generation)) =>
+                {
+                    verified_continuation = true;
+                    refresh_storage = true;
+                    continue;
+                }
                 Ok(_) => break attempt,
                 Err(source) => break Err(CheckedUserPreparationError::Authority(source)),
             }
         };
-        let (home_generation, storage, target, frame) = match prepared {
+        let (target, frame) = match prepared {
             Ok(prepared) => prepared,
-            Err(CheckedUserPreparationError::Authority(_)) => {
+            Err(error) if error.authority().is_some() => {
                 permit.settle_authority_lost();
                 return self.authority_lost_terminal();
             }
-            Err(CheckedUserPreparationError::Target) => {
-                return self.failed_checked_user_permit(permit, message);
-            }
+            Err(_) => return self.failed_checked_user_permit(permit, message),
         };
         if let Err(error) = publish_checked_user_frame(
             &self.home,
@@ -149,36 +224,41 @@ impl Ingester {
         target: &LiveSourceTarget,
         storage: SyndicStorage,
         limit: SyndicPointReadLimit,
-    ) -> Result<SubmittedUserFrame, ()> {
+    ) -> Result<SubmittedUserFrame, CheckedUserPreparationError> {
         match message.lifecycle() {
             UserMessageEchoLifecycle::Started => {
-                let turn_id = permit.pending_syndic_turn_id().ok_or(())?;
+                let turn_id = permit
+                    .pending_syndic_turn_id()
+                    .ok_or(CheckedUserPreparationError::Target)?;
                 if turn_id != target.turn_id() {
-                    return Err(());
+                    return Err(CheckedUserPreparationError::Target);
                 }
-                let limits = CursorReadLimits::new(2, SUBMITTED_ITEM_PAGE_BYTES).map_err(|_| ())?;
+                let limits = CursorReadLimits::new(2, SUBMITTED_ITEM_PAGE_BYTES)
+                    .expect("checked-user cursor bounds are nonzero");
                 let items = storage
                     .turn_items(&self.home, turn_id, None, limits)
-                    .map_err(|_| ())?;
+                    .map_err(CheckedUserPreparationError::Read)?;
                 if items.has_more() || items.records().len() != 1 {
-                    return Err(());
+                    return Err(CheckedUserPreparationError::Target);
                 }
                 let index = &items.records()[0];
                 let item = storage
                     .canonical_item(&self.home, index.item_id(), limit)
-                    .map_err(|_| ())?
-                    .ok_or(())?;
+                    .map_err(CheckedUserPreparationError::Read)?
+                    .ok_or(CheckedUserPreparationError::Target)?;
                 let confirmed_items = storage
                     .turn_items(&self.home, turn_id, None, limits)
-                    .map_err(|_| ())?;
+                    .map_err(CheckedUserPreparationError::Read)?;
                 let confirmed_item = storage
                     .canonical_item(&self.home, index.item_id(), limit)
-                    .map_err(|_| ())?;
+                    .map_err(CheckedUserPreparationError::Read)?;
                 if confirmed_items != items || confirmed_item.as_ref() != Some(&item) {
-                    return Err(());
+                    return Err(CheckedUserPreparationError::Target);
                 }
                 let record = &item;
-                let content = record.presentation_content().ok_or(())?;
+                let content = record
+                    .presentation_content()
+                    .ok_or(CheckedUserPreparationError::Target)?;
                 if index.turn_id() != turn_id
                     || index.ordinal() != TurnItemOrdinal::FIRST
                     || record.id() != index.item_id()
@@ -190,7 +270,7 @@ impl Ingester {
                     || record.cas_source().is_some()
                     || record.provider().is_some()
                 {
-                    return Err(());
+                    return Err(CheckedUserPreparationError::Target);
                 }
                 Ok(SubmittedUserFrame {
                     item_id: record.id(),
@@ -206,21 +286,29 @@ impl Ingester {
                 );
                 let captured = storage
                     .capture_item(&self.home, &source, limit)
-                    .map_err(|_| ())?
-                    .ok_or(())?;
+                    .map_err(CheckedUserPreparationError::Read)?
+                    .ok_or(CheckedUserPreparationError::Target)?;
                 let record = captured.item();
-                let content = record.presentation_content().ok_or(())?;
+                let content = record
+                    .presentation_content()
+                    .ok_or(CheckedUserPreparationError::Target)?;
                 if record.turn_id() != target.turn_id()
                     || record.kind() != CanonicalItemKind::UserInput
                     || record.provider_lifecycle() != ProviderItemLifecycle::Started
                 {
-                    return Err(());
+                    return Err(CheckedUserPreparationError::Target);
                 }
                 Ok(SubmittedUserFrame {
                     item_id: record.id(),
                     content,
-                    prior: Some(record.provider().cloned().ok_or(())?),
-                    ordinal: ProviderFrameOrdinalV1::new(2).map_err(|_| ())?,
+                    prior: Some(
+                        record
+                            .provider()
+                            .cloned()
+                            .ok_or(CheckedUserPreparationError::Target)?,
+                    ),
+                    ordinal: ProviderFrameOrdinalV1::new(2)
+                        .expect("checked-user completion ordinal is nonzero"),
                 })
             }
         }
@@ -339,7 +427,7 @@ fn point_limit() -> SyndicPointReadLimit {
 }
 
 #[cfg(all(test, feature = "test-faults"))]
-mod tests {
+pub(super) mod tests {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/provider_broker_checked_user.rs"

@@ -53,7 +53,10 @@ fn phase82_exact_empty_set_adopts_one_unpublished_recovered_service() {
         retained_home.home_revision().unwrap(),
         revision_before_adoption
     );
+    let startup_gate = adopted.startup_gate_for_test();
+    assert!(startup_gate.is_closed());
     drop(adopted);
+    assert!(!startup_gate.is_closed());
 }
 
 #[test]
@@ -373,5 +376,23 @@ mod multi_connection_success {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/service_epoch_adoption/multi_connection_success.rs"
+    ));
+}
+
+mod command_frontier {
+    use super::*;
+
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/service_epoch_adoption/command_frontier.rs"
+    ));
+}
+
+mod resource_failure_ownership {
+    use super::*;
+
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/service_epoch_adoption/resource_failure_ownership.rs"
     ));
 }

@@ -163,6 +163,21 @@ impl PendingProjectionAdoptionTopology {
         &self.connection_owners
     }
 
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn take_connection_owners_for_adversarial_test(
+        &mut self,
+    ) -> Vec<PendingProjectionConnectionOwner> {
+        std::mem::take(&mut self.connection_owners)
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn replace_connection_owners_for_adversarial_test(
+        &mut self,
+        owners: Vec<PendingProjectionConnectionOwner>,
+    ) -> Vec<PendingProjectionConnectionOwner> {
+        std::mem::replace(&mut self.connection_owners, owners)
+    }
+
     pub(in crate::cas_projection) fn group_count(&self) -> usize {
         self.groups.len()
     }

@@ -11,7 +11,9 @@ use beryl_app::cas_projection::{
     ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
 };
-use beryl_app::input_admission::prepare_accepted_input_admission;
+use beryl_app::input_admission::{
+    PreparedAcceptedInputAdmission, prepare_accepted_input_admission,
+};
 use beryl_backend::ManagedBackendClientConnector;
 use beryl_model::{CasProcessGeneration, RuntimeId, SyndicDraftId, SyndicThreadId};
 use beryl_state::BerylState;
@@ -155,7 +157,7 @@ fn recovered_nondispatch_hands_capacity_to_waiting_next_work_without_self_retry(
     let connector =
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = service
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             runtime_id,
             CasProcessGeneration::new(63_188).unwrap(),
@@ -285,13 +287,19 @@ fn recovered_completion_reopens_same_thread_next_work_waiting_on_its_worker() {
     let directory = close_seeded(home);
     let (seeding_service, seeding_storage, seeding_state) =
         restart_service(directory.path(), Box::new(UnavailableProvider));
-    admit_same_thread_next(
-        &seeding_service,
-        seeding_storage,
-        &seeding_state,
-        recovered.thread,
-        230,
-    );
+    let prepared = {
+        let command_home = seeding_service.live_home_command().unwrap();
+        admit_same_thread_next(
+            command_home.home(),
+            seeding_storage,
+            &seeding_state,
+            recovered.thread,
+            230,
+        )
+    };
+    seeding_service
+        .execute_accepted_input_admission(prepared)
+        .unwrap();
     seeding_service.close().unwrap();
 
     let slot = SessionSlot::default();
@@ -318,7 +326,7 @@ fn recovered_completion_reopens_same_thread_next_work_waiting_on_its_worker() {
     let connector =
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = service
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             runtime_id,
             CasProcessGeneration::new(63_196).unwrap(),
@@ -362,12 +370,12 @@ fn recovered_completion_reopens_same_thread_next_work_waiting_on_its_worker() {
 }
 
 fn admit_same_thread_next(
-    store: &ProjectionConnectionService,
+    store: &beryl_home_store::HomeStore,
     storage: SyndicStorage,
     state: &BerylState,
     thread_id: SyndicThreadId,
     seed: u8,
-) {
+) -> PreparedAcceptedInputAdmission {
     let current = storage
         .current_draft(store, thread_id, point_limit())
         .unwrap()
@@ -387,7 +395,5 @@ fn admit_same_thread_next(
         None,
         time(63_196),
     );
-    let prepared =
-        prepare_accepted_input_admission(store, storage, state.assets(), admission).unwrap();
-    store.execute_accepted_input_admission(prepared).unwrap();
+    prepare_accepted_input_admission(store, storage, state.assets(), admission).unwrap()
 }

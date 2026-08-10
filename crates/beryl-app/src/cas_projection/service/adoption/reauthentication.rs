@@ -12,6 +12,7 @@ mod test_support;
 mod transaction;
 mod validation;
 
+pub(in crate::cas_projection) use model::RecoveredProjectionLaneStagingError;
 use model::{CandidateLedgerEntry, CandidateLedgerGroup, DormantRecoveredProjection};
 pub use model::{
     CandidateSetConvergedAdoptedProjectionConnectionService, ProjectionCandidateDispositionOutcome,
@@ -22,15 +23,12 @@ pub use model::{
     ProjectionCandidateReauthenticationStatus, RecoveredProjectionCandidateMetadata,
     TerminalAdoptedProjectionConnectionService, TerminalAdoptedProjectionConnectionServiceReason,
 };
-pub(in crate::cas_projection) use model::{
-    RecoveredProjectionLaneStagingError, StagedRecoveredProjectionConnectionService,
-};
 
-use super::{AdoptedUnpublishedProjectionConnectionService, ServiceAdoptionAttempt};
-use crate::cas_projection::{
+use super::super::super::{
     connection::PendingProjectionConnectionOwner,
     persistent_failure::PendingProjectionCandidateGroup,
 };
+use super::{AdoptedUnpublishedProjectionConnectionService, ServiceAdoptionAttempt};
 
 /// Sole owning ledger for every quarantined candidate of one adopted unpublished service.
 #[must_use = "the ledger must converge before the adopted service can be published"]
@@ -319,7 +317,7 @@ impl AdoptedProjectionCandidateReauthenticationLedger {
 
     pub(in crate::cas_projection) fn dispose_after_recovery_failure(
         mut self,
-    ) -> Result<(), crate::cas_projection::ProjectionConnectionServiceCloseError> {
+    ) -> Result<(), super::super::ProjectionConnectionServiceCloseError> {
         if let Some(attempt) = self.attempt.as_mut() {
             attempt.make_inert();
         }
@@ -371,127 +369,6 @@ impl AdoptedProjectionCandidateReauthenticationLedger {
                 });
             }
         }
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn replace_candidate_witness_owner_for_test(
-        &mut self,
-        candidate_id: ProjectionCandidateId,
-        owner: beryl_model::SyndicThreadId,
-    ) {
-        self.groups[candidate_id.group_index()]
-            .witness
-            .replace_syndic_thread_id_for_test(owner);
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn replace_candidate_connection_key_for_test(
-        &mut self,
-        candidate_id: ProjectionCandidateId,
-        cas_thread_id: beryl_model::CasThreadId,
-    ) {
-        self.groups[candidate_id.group_index()]
-            .identity
-            .replace_cas_thread_id_for_test(cas_thread_id);
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn corrupt_candidate_stable_connection_identity_for_test(
-        &mut self,
-        candidate_id: ProjectionCandidateId,
-    ) {
-        let group = &mut self.groups[candidate_id.group_index()];
-        group.identity.corrupt_connection_identity_for_test();
-        let entry = group.entries[candidate_id.candidate_index()]
-            .as_mut()
-            .expect("the test candidate remains present");
-        match entry {
-            CandidateLedgerEntry::Unprocessed(owner)
-            | CandidateLedgerEntry::Rejected { owner, .. } => {
-                owner.corrupt_stable_connection_identity_for_test();
-            }
-            CandidateLedgerEntry::Accepted(_) | CandidateLedgerEntry::Disposed => {
-                panic!("only an owning pending candidate can receive test identity corruption");
-            }
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn force_candidate_set_topology_mismatch_for_test(&mut self) {
-        self.connection_owners[0].force_candidate_set_topology_mismatch_for_test();
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn pause_candidate_after_pre_authentication_for_test(
-        &self,
-        candidate_id: ProjectionCandidateId,
-    ) -> test_support::CandidateReauthenticationPauseController {
-        self.test_pauses.install(
-            candidate_id,
-            test_support::CandidateReauthenticationPauseStage::AfterPreAuth,
-        )
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn pause_candidate_before_stable_read_confirmation_for_test(
-        &self,
-        candidate_id: ProjectionCandidateId,
-    ) -> test_support::CandidateReauthenticationPauseController {
-        self.test_pauses.install(
-            candidate_id,
-            test_support::CandidateReauthenticationPauseStage::BeforeStableReadConfirmation,
-        )
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn pause_candidate_after_stable_read_for_test(
-        &self,
-        candidate_id: ProjectionCandidateId,
-    ) -> test_support::CandidateReauthenticationPauseController {
-        self.test_pauses.install(
-            candidate_id,
-            test_support::CandidateReauthenticationPauseStage::AfterStableRead,
-        )
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn pause_candidate_set_seal_before_transfer_for_test(
-        &self,
-    ) -> test_support::CandidateSetSealPauseController {
-        self.test_pauses.install_seal_pause()
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn replacement_worker_diagnostics_for_test(
-        &self,
-    ) -> crate::cas_projection::ProjectionWorkerPoolDiagnostics {
-        self.attempt
-            .as_ref()
-            .and_then(|attempt| attempt.adopted_service.as_ref())
-            .expect("an owning ledger retains its adopted replacement service")
-            .worker_pool_diagnostics()
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn remove_adopted_service_membership_for_test(&self) {
-        self.attempt
-            .as_ref()
-            .and_then(|attempt| attempt.adopted_service.as_ref())
-            .expect("an owning ledger retains its adopted replacement service")
-            .connections
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clear();
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn poison_adopted_service_membership_for_test(&self) {
-        self.attempt
-            .as_ref()
-            .and_then(|attempt| attempt.adopted_service.as_ref())
-            .expect("an owning ledger retains its adopted replacement service")
-            .connections
-            .poison_for_test();
     }
 }
 

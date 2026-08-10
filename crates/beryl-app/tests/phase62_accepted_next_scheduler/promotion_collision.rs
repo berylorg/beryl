@@ -1,7 +1,8 @@
 use super::*;
 
+use beryl_app::cas_projection::RunningSessionRecoveryShutdownError;
 use beryl_home_store::{
-    HomeCommand,
+    HomeCommand, HomeHealthState,
     test_faults::{FaultController, FaultPoint},
 };
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete};
@@ -10,25 +11,34 @@ use syndic_storage::test_faults::{FixtureBatch, FixtureDelete};
 fn ambiguous_promotion_collision_fails_closed_before_cas_dispatch() {
     let faults = FaultController::new();
     let slot = SessionSlot::default();
-    let provider_slot = slot.clone();
-    let mut fixture = syndic::Fixture::new_with_scheduled_provider_and_faults(
-        170,
+    let directory = tempfile::tempdir().unwrap();
+    let mut home = HomeStore::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
-        move |assets| Box::new(ready_provider(provider_slot, assets)),
-    );
-    let parent = fixture.submit_text("phase62 collision parent");
-    fixture.complete_with_assistant(parent, "phase62 collision answer");
-    let storage = fixture.storage;
-    let thread_id = fixture.thread;
-    let execution = syndic::execution_binding();
+    )
+    .unwrap();
+    let storage = SyndicStorage::register(&mut home).unwrap();
+    beryl_state::BerylState::register(&mut home).unwrap();
+    let execution = execution_binding(RuntimeId::from_bytes([170; 16]));
+    let ids = install_next_records(&home, storage, 170, execution.clone());
+    let supervisor = RunningSessionRecoverySupervisor::start(
+        home,
+        ProjectionServiceConfig::try_new(128, 8).unwrap(),
+        Box::new(ReadyProviderFactory::every_epoch(slot.clone())),
+    )
+    .unwrap();
+    let service = supervisor.acquire().unwrap();
+    let initial_home_generation = service.home_generation();
+    let initial_service_generation = service.service_generation();
+    let initial_service_pointer = std::ptr::from_ref::<ProjectionConnectionService>(&*service);
+
     let server = NormalTerminalServer::spawn_admission_only();
     let connector = ManagedBackendClientConnector::for_lifecycle_test(
         server.endpoint(),
         support::AUTHORIZATION,
     );
-    let session = fixture
-        .store
-        .admit(
+    let session = service
+        .admit_lifecycle_test_candidate(
             &connector,
             execution.runtime_id(),
             CasProcessGeneration::new(62_007).unwrap(),
@@ -39,9 +49,9 @@ fn ambiguous_promotion_collision_fails_closed_before_cas_dispatch() {
     slot.replace(session);
     server.wait_for_admission();
 
-    let reserved = install_scheduled_promotion_barrier(thread_id);
-    let reconciling = install_scheduled_promotion_reconciliation_barrier(thread_id);
-    let ids = admit_runtime_next_input(&mut fixture, 170);
+    let reserved = install_scheduled_promotion_barrier(ids.thread);
+    let reconciling = install_scheduled_promotion_reconciliation_barrier(ids.thread);
+    service.notify_scheduled_ordinary_execution_ready();
     assert!(reserved.wait_until_paused(TIMEOUT));
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     reserved.release();
@@ -49,22 +59,50 @@ fn ambiguous_promotion_collision_fails_closed_before_cas_dispatch() {
         reconciling.wait_until_paused(TIMEOUT),
         "ambiguous command did not reach reconciliation"
     );
+    drop(reserved);
+    {
+        let command_home = service.live_home_command().unwrap();
+        assert_eq!(
+            command_home.home().health().state(),
+            HomeHealthState::Verifying
+        );
+    }
 
-    fixture.store.verify_health().unwrap();
-    let mut batch = FixtureBatch::new();
-    batch
-        .delete(FixtureDelete::AcceptedInput(ids.accepted_input))
-        .unwrap();
-    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
-    command
-        .add(storage.fixture_contribution(storage.revision(&fixture.store).unwrap(), batch))
-        .unwrap();
-    fixture.store.execute(command).unwrap();
+    wait_until("supervisor same-generation verification", || {
+        (supervisor.diagnostics().verification_successes() == 1).then_some(())
+    });
+    assert_eq!(service.home_generation(), initial_home_generation);
+    assert_eq!(service.service_generation(), initial_service_generation);
+    assert_eq!(
+        std::ptr::from_ref::<ProjectionConnectionService>(&*service),
+        initial_service_pointer
+    );
+    assert_eq!(
+        supervisor.diagnostics().current_home_generation(),
+        Some(initial_home_generation)
+    );
+    assert_eq!(
+        supervisor.diagnostics().current_service_generation(),
+        Some(initial_service_generation)
+    );
+    {
+        let command_home = service.live_home_command().unwrap();
+        let home = command_home.home();
+        let mut batch = FixtureBatch::new();
+        batch
+            .delete(FixtureDelete::AcceptedInput(ids.accepted_input))
+            .unwrap();
+        let mut command = HomeCommand::new(home.home_revision().unwrap());
+        command
+            .add(storage.fixture_contribution(storage.revision(home).unwrap(), batch))
+            .unwrap();
+        home.execute(command).unwrap();
+    }
     reconciling.release();
+    drop(reconciling);
 
     wait_until("promotion collision scheduler failure", || {
-        fixture
-            .store
+        service
             .accepted_input_scheduler_diagnostics()
             .fatal()
             .then_some(())
@@ -73,17 +111,18 @@ fn ambiguous_promotion_collision_fails_closed_before_cas_dispatch() {
         slot.is_ready().then_some(())
     });
     assert_eq!(
-        fixture
-            .store
+        service
             .accepted_input_scheduler_diagnostics()
             .workers_started(),
         1
     );
 
-    let (directory, service) = fixture.into_service();
+    drop(service);
     assert!(matches!(
-        service.close(),
-        Err(beryl_app::cas_projection::ProjectionConnectionServiceCloseError::SchedulerShutdown)
+        supervisor.shutdown(),
+        Err(RunningSessionRecoveryShutdownError::Service(
+            beryl_app::cas_projection::ProjectionConnectionServiceCloseError::SchedulerShutdown
+        ))
     ));
     server.join();
     assert!(!slot.is_ready());
