@@ -17,6 +17,7 @@ Keep acceptance evidence attributable to one run while retaining exact ownership
 - `beryl-app` owns the diagnostic-child protocol, process supervisor, narrow acceptance-session facade, deterministic bounds, cleanup, and evidence schema.
 - The `beryl` package owns the `beryl-acceptance` command-line entry point and the versioned bounded request-plan input.
 - Feature-specific live acceptance owns its request plan and post-run assertions outside this system. A successful harness run proves transport, process, and evidence mechanics only.
+- Test-only fault and synchronization controls bind by value to one acceptance launch before process creation and follow that launch's exact child, Job, transport, retained startup owner, and terminal cleanup owner. They are not process-global, PID-selected, or shared between parallel runs, and test observation must not block or alter cleanup timing.
 
 ## Launch And Protocol
 

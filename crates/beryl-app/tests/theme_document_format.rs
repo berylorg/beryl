@@ -70,6 +70,11 @@ font_weight = { value = 400 }
 id = "markdown.inline_code"
 text_background = "ambient_parent"
 foreground = "static_parent"
+
+[[role]]
+id = "transcript.selection"
+foreground = { value = "#ffffff" }
+text_background = { value = "#336699" }
 "##;
 
     let document = ThemeDocument::from_toml_str(text).unwrap();
@@ -91,6 +96,23 @@ foreground = "static_parent"
             .properties()
             .get(&BerylThemeProperty::Foreground.id().into()),
         Some(&StylePropertySource::StaticParent)
+    );
+
+    let selection = document
+        .definition()
+        .roles()
+        .iter()
+        .find(|role| role.role_id().as_str() == BerylThemeRole::TranscriptSelection.id())
+        .unwrap();
+    assert!(
+        selection
+            .properties()
+            .contains_key(&BerylThemeProperty::Foreground.id().into())
+    );
+    assert!(
+        selection
+            .properties()
+            .contains_key(&BerylThemeProperty::TextBackground.id().into())
     );
 }
 

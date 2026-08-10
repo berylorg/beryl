@@ -461,10 +461,11 @@ id = "{role_id}"
 }
 
 #[test]
-fn strict_candidate_validation_rejects_mixed_phase52_role_properties_after_splits() {
+fn strict_candidate_validation_rejects_unsupported_transcript_selection_surface_properties() {
     for (role_id, property) in [
-        (BerylThemeRole::TranscriptUserInput.id(), "font_size"),
         (BerylThemeRole::TranscriptSelection.id(), "background"),
+        (BerylThemeRole::TranscriptSelection.id(), "border"),
+        (BerylThemeRole::TranscriptUserInput.id(), "font_size"),
         (BerylThemeRole::MarkdownBlockQuote.id(), "border"),
         (BerylThemeRole::CodePanelBody.id(), "font_family"),
         (BerylThemeRole::CodePanelBody.id(), "foreground"),
@@ -647,7 +648,7 @@ fn built_in_active_projection_resolves_all_inventory_roles() {
 }
 
 #[test]
-fn transcript_selection_projection_resolves_text_background_only() {
+fn transcript_selection_projection_resolves_selected_glyph_and_highlight_colors() {
     let projection = ActiveThemeProjection::built_in();
     let style = projection
         .default_style(BerylThemeRole::TranscriptSelection.id())
@@ -660,8 +661,95 @@ fn transcript_selection_projection_resolves_text_background_only() {
     );
     assert!(
         style
+            .property(&BerylThemeProperty::Foreground.id().into())
+            .is_some()
+    );
+    assert!(
+        style
             .property(&BerylThemeProperty::Background.id().into())
             .is_none()
+    );
+    assert!(
+        style
+            .property(&BerylThemeProperty::Border.id().into())
+            .is_none()
+    );
+}
+
+#[test]
+fn built_in_transcript_selection_uses_static_foreground_and_concrete_text_background() {
+    let definition = built_in_theme_definition();
+    let selection = definition
+        .roles()
+        .iter()
+        .find(|role| role.role_id().as_str() == BerylThemeRole::TranscriptSelection.id())
+        .expect("built-in definition should include transcript.selection");
+
+    assert!(matches!(
+        selection
+            .properties()
+            .get(&BerylThemeProperty::Foreground.id().into()),
+        Some(StylePropertySource::StaticParent)
+    ));
+    assert_eq!(
+        selection
+            .properties()
+            .get(&BerylThemeProperty::TextBackground.id().into()),
+        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
+            "#173a5e"
+        )))
+    );
+}
+
+#[test]
+fn transcript_selection_foreground_and_text_background_resolve_independently() {
+    let foreground_from_parent = ActiveThemeProjection::from_built_in_resolver(
+        ThemeResolver::new(
+            built_in_theme_schema(),
+            built_in_definition_with_transcript_selection_sources(
+                StylePropertySource::StaticParent,
+                StylePropertySource::Fallback,
+            ),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let text_background_from_parent = ActiveThemeProjection::from_built_in_resolver(
+        ThemeResolver::new(
+            built_in_theme_schema(),
+            built_in_definition_with_transcript_selection_sources(
+                StylePropertySource::Fallback,
+                StylePropertySource::Concrete(StylePropertyValue::color("#234567")),
+            ),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    let foreground_id = BerylThemeProperty::Foreground.id().into();
+    let text_background_id = BerylThemeProperty::TextBackground.id().into();
+    let foreground_style = foreground_from_parent
+        .default_style(BerylThemeRole::TranscriptSelection.id())
+        .unwrap();
+    let text_background_style = text_background_from_parent
+        .default_style(BerylThemeRole::TranscriptSelection.id())
+        .unwrap();
+
+    assert_eq!(
+        foreground_style.property(&foreground_id),
+        Some(&StylePropertyValue::color("#123456"))
+    );
+    assert_eq!(
+        foreground_style.property(&text_background_id),
+        Some(&StylePropertyValue::color("#173a5e"))
+    );
+    assert_eq!(
+        text_background_style.property(&foreground_id),
+        Some(&StylePropertyValue::color("#ffffff"))
+    );
+    assert_eq!(
+        text_background_style.property(&text_background_id),
+        Some(&StylePropertyValue::color("#234567"))
     );
 }
 
@@ -1908,6 +1996,42 @@ fn built_in_definition_with_inline_code_text_background(
     )
 }
 
+fn built_in_definition_with_transcript_selection_sources(
+    foreground_source: StylePropertySource,
+    text_background_source: StylePropertySource,
+) -> ThemeDefinition {
+    ThemeDefinition::new(
+        built_in_theme_definition()
+            .roles()
+            .iter()
+            .map(|role| {
+                let mut role_definition = ThemeRoleDefinition::new(role.role_id().clone());
+                if let Some(static_parent) = role.static_parent() {
+                    role_definition = role_definition.with_static_parent(static_parent.clone());
+                }
+                for (property_id, property_source) in role.properties() {
+                    let next_source = match (role.role_id().as_str(), property_id.as_str()) {
+                        ("selection", "foreground") => {
+                            StylePropertySource::Concrete(StylePropertyValue::color("#123456"))
+                        }
+                        ("selection", "text_background") => {
+                            StylePropertySource::Concrete(StylePropertyValue::color("#234567"))
+                        }
+                        ("transcript.selection", "foreground") => foreground_source.clone(),
+                        ("transcript.selection", "text_background") => {
+                            text_background_source.clone()
+                        }
+                        _ => property_source.clone(),
+                    };
+                    role_definition =
+                        role_definition.with_property(property_id.clone(), next_source);
+                }
+                role_definition
+            })
+            .collect(),
+    )
+}
+
 fn built_in_definition_with_root_overrides() -> ThemeDefinition {
     ThemeDefinition::new(
         built_in_theme_definition()
@@ -2249,11 +2373,13 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
         | BerylThemeRole::ScrollbarThumbHover
         | BerylThemeRole::ScrollbarThumbDragging
         | BerylThemeRole::FocusRing => property_set(&[BerylThemeProperty::Color]),
-        BerylThemeRole::InputSelection
-        | BerylThemeRole::TranscriptSelection
-        | BerylThemeRole::SettingsInputSelection => {
+        BerylThemeRole::InputSelection | BerylThemeRole::SettingsInputSelection => {
             property_set(&[BerylThemeProperty::TextBackground])
         }
+        BerylThemeRole::TranscriptSelection => property_set(&[
+            BerylThemeProperty::Foreground,
+            BerylThemeProperty::TextBackground,
+        ]),
         BerylThemeRole::MediaBorder | BerylThemeRole::SettingsInputError => {
             property_set(&[BerylThemeProperty::Border])
         }

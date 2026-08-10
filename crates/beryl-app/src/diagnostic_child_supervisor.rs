@@ -14,12 +14,7 @@ use thiserror::Error;
 use tracing::warn;
 
 #[cfg(test)]
-use std::sync::{Mutex, OnceLock};
-#[cfg(test)]
-use std::{
-    cell::RefCell,
-    sync::mpsc::{Receiver as TestReceiver, SyncSender as TestSyncSender},
-};
+use std::{cell::RefCell, sync::mpsc::SyncSender as TestSyncSender};
 
 use crate::{
     BerylHomeDir, BerylHomeDirError,
@@ -37,6 +32,9 @@ mod launch;
 mod process_tree;
 #[path = "diagnostic_child_supervisor/stderr_capture.rs"]
 mod stderr_capture;
+#[cfg(test)]
+#[path = "diagnostic_child_supervisor/test_support.rs"]
+mod test_support;
 #[path = "diagnostic_child_supervisor/transport.rs"]
 mod transport;
 
@@ -46,11 +44,14 @@ pub(crate) use launch::{
     MAX_DIAGNOSTIC_CHILD_WORKSPACE_PATH_BYTES,
 };
 use process_tree::DiagnosticHostProcessTree;
-#[cfg(all(test, target_os = "windows"))]
-#[allow(unused_imports)]
-pub(crate) use process_tree::install_job_assignment_hook_for_test;
 use stderr_capture::DiagnosticStderrCapture;
 pub(crate) use stderr_capture::DiagnosticStderrSnapshot;
+#[cfg(test)]
+use test_support::AcceptanceTestControl;
+#[cfg(test)]
+pub(crate) use test_support::{
+    AcceptanceStartupFailureStage, AcceptanceTestObservation, AcceptanceTestPlan,
+};
 #[cfg(test)]
 use transport::force_stdout_reader_spawn_failure;
 use transport::{
@@ -64,49 +65,6 @@ pub(crate) const DIAGNOSTIC_CHILD_STOP_BUDGET: Duration = Duration::from_secs(11
 pub(crate) const DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(12);
 const DIAGNOSTIC_CHILD_STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(25);
-
-#[cfg(test)]
-struct AcceptanceCleanupFailureHook {
-    pid: u32,
-    remaining_failures: usize,
-}
-
-#[cfg(test)]
-static ACCEPTANCE_CLEANUP_FAILURE_HOOK: OnceLock<Mutex<Option<AcceptanceCleanupFailureHook>>> =
-    OnceLock::new();
-
-#[cfg(test)]
-pub(crate) struct AcceptanceSpawnHook {
-    spawned: TestSyncSender<u32>,
-    release: TestReceiver<()>,
-}
-
-#[cfg(test)]
-static ACCEPTANCE_SPAWN_HOOK: OnceLock<Mutex<Option<AcceptanceSpawnHook>>> = OnceLock::new();
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AcceptanceStartupFailureStage {
-    JobCreate,
-    JobConfigure,
-    JobAssign,
-    WriterSpawn,
-    StdoutReaderSpawn,
-    StderrReaderSpawn,
-    GateWrite,
-    GateReady,
-    Handshake,
-}
-
-#[cfg(test)]
-struct AcceptanceStartupFailureHook {
-    pid: u32,
-    stage: AcceptanceStartupFailureStage,
-}
-
-#[cfg(test)]
-static ACCEPTANCE_STARTUP_FAILURE_HOOK: OnceLock<Mutex<Option<AcceptanceStartupFailureHook>>> =
-    OnceLock::new();
 
 #[cfg(test)]
 thread_local! {
@@ -246,6 +204,8 @@ struct DiagnosticChildProcess {
     shutdown_method: &'static str,
     join_readers_on_cleanup: bool,
     #[cfg(test)]
+    acceptance_test_control: Option<AcceptanceTestControl>,
+    #[cfg(test)]
     writer_joined_before_job_release: Option<bool>,
 }
 
@@ -343,6 +303,38 @@ impl DiagnosticChildSupervisor {
             startup_timeout,
             cleanup_grace_timeout,
             cleanup_termination_timeout,
+            #[cfg(test)]
+            None,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn start_for_acceptance_with_test_plan(
+        &mut self,
+        launch: DiagnosticChildLaunch,
+        startup_timeout: Duration,
+        cleanup_grace_timeout: Duration,
+        cleanup_termination_timeout: Duration,
+        test_plan: AcceptanceTestPlan,
+    ) -> Result<DiagnosticChildStartOutcome, DiagnosticAcceptanceStartupFailure> {
+        #[cfg(not(target_os = "windows"))]
+        {
+            drop(test_plan);
+            return self.start_for_acceptance(
+                launch,
+                startup_timeout,
+                cleanup_grace_timeout,
+                cleanup_termination_timeout,
+            );
+        }
+
+        #[cfg(target_os = "windows")]
+        self.start_acceptance_gated(
+            launch,
+            startup_timeout,
+            cleanup_grace_timeout,
+            cleanup_termination_timeout,
+            Some(test_plan),
         )
     }
 
@@ -429,6 +421,8 @@ impl DiagnosticChildSupervisor {
             shutdown_method: "not_run",
             join_readers_on_cleanup: false,
             #[cfg(test)]
+            acceptance_test_control: None,
+            #[cfg(test)]
             writer_joined_before_job_release: None,
         };
         let request_id = self.next_request_id();
@@ -449,6 +443,7 @@ impl DiagnosticChildSupervisor {
         startup_timeout: Duration,
         cleanup_grace_timeout: Duration,
         cleanup_termination_timeout: Duration,
+        #[cfg(test)] acceptance_test_plan: Option<AcceptanceTestPlan>,
     ) -> Result<DiagnosticChildStartOutcome, DiagnosticAcceptanceStartupFailure> {
         self.reap_observed_exit()
             .map_err(DiagnosticAcceptanceStartupFailure::without_owner)?;
@@ -489,11 +484,20 @@ impl DiagnosticChildSupervisor {
                 },
             )
         })?;
-        let mut process = DiagnosticChildProcess::new_startup(child, child_home, executable_path);
+        let mut process = DiagnosticChildProcess::new_startup(
+            child,
+            child_home,
+            executable_path,
+            #[cfg(test)]
+            acceptance_test_plan,
+        );
         #[cfg(test)]
-        run_acceptance_spawn_hook(process.child.id());
-        let (host_process_tree, job_error) =
-            DiagnosticHostProcessTree::create_for_child_retaining(&process.child);
+        process.run_acceptance_spawn_barrier();
+        let (host_process_tree, job_error) = DiagnosticHostProcessTree::create_for_child_retaining(
+            &process.child,
+            #[cfg(test)]
+            process.acceptance_test_control.as_mut(),
+        );
         process.host_process_tree = host_process_tree;
         if let Some(error) = job_error {
             return Err(Self::fail_acceptance_startup(
@@ -513,10 +517,8 @@ impl DiagnosticChildSupervisor {
             ));
         };
         #[cfg(test)]
-        let forced_writer_spawn_failure = force_acceptance_startup_failure(
-            process.child.id(),
-            AcceptanceStartupFailureStage::WriterSpawn,
-        );
+        let forced_writer_spawn_failure =
+            process.force_acceptance_startup_failure(AcceptanceStartupFailureStage::WriterSpawn);
         #[cfg(test)]
         let writer = if forced_writer_spawn_failure {
             Err(DiagnosticStdinWriter::forced_spawn_failure(stdin))
@@ -553,10 +555,8 @@ impl DiagnosticChildSupervisor {
             ));
         };
         #[cfg(test)]
-        let forced_stdout_reader_failure = force_acceptance_startup_failure(
-            process.child.id(),
-            AcceptanceStartupFailureStage::StdoutReaderSpawn,
-        );
+        let forced_stdout_reader_failure = process
+            .force_acceptance_startup_failure(AcceptanceStartupFailureStage::StdoutReaderSpawn);
         #[cfg(test)]
         let stdout_reader = if forced_stdout_reader_failure {
             force_stdout_reader_spawn_failure(stdout, true)
@@ -588,10 +588,8 @@ impl DiagnosticChildSupervisor {
             ));
         };
         #[cfg(test)]
-        let forced_stderr_reader_failure = force_acceptance_startup_failure(
-            process.child.id(),
-            AcceptanceStartupFailureStage::StderrReaderSpawn,
-        );
+        let forced_stderr_reader_failure = process
+            .force_acceptance_startup_failure(AcceptanceStartupFailureStage::StderrReaderSpawn);
         #[cfg(test)]
         let stderr_capture = if forced_stderr_reader_failure {
             DiagnosticStderrCapture::force_child_spawn_failure(stderr)
@@ -616,19 +614,10 @@ impl DiagnosticChildSupervisor {
 
         let gate_deadline = Instant::now() + startup_timeout;
         #[cfg(test)]
-        let forced_gate_write_failure = force_acceptance_startup_failure(
-            process.child.id(),
-            AcceptanceStartupFailureStage::GateWrite,
-        );
+        let forced_gate_write_failure =
+            process.force_acceptance_startup_failure(AcceptanceStartupFailureStage::GateWrite);
         #[cfg(not(test))]
         let forced_gate_write_failure = false;
-        #[cfg(test)]
-        let forced_gate_ready_failure = force_acceptance_startup_failure(
-            process.child.id(),
-            AcceptanceStartupFailureStage::GateReady,
-        );
-        #[cfg(not(test))]
-        let forced_gate_ready_failure = false;
         let gate_result = if forced_gate_write_failure {
             Err(DiagnosticChildSupervisorError::WriteRequest {
                 source: io::Error::other("forced gate write failure for test"),
@@ -644,6 +633,13 @@ impl DiagnosticChildSupervisor {
                     startup_timeout,
                 )
                 .and_then(|()| {
+                    #[cfg(test)]
+                    process.observe_gate_write_completed_for_test();
+                    #[cfg(test)]
+                    let forced_gate_ready_failure = process
+                        .force_acceptance_startup_failure(AcceptanceStartupFailureStage::GateReady);
+                    #[cfg(not(test))]
+                    let forced_gate_ready_failure = false;
                     if forced_gate_ready_failure {
                         Err(
                             DiagnosticChildSupervisorError::StartupProtocolIncompatible {
@@ -667,10 +663,8 @@ impl DiagnosticChildSupervisor {
         }
         let request_id = self.next_request_id();
         #[cfg(test)]
-        let forced_handshake_failure = force_acceptance_startup_failure(
-            process.child.id(),
-            AcceptanceStartupFailureStage::Handshake,
-        );
+        let forced_handshake_failure =
+            process.force_acceptance_startup_failure(AcceptanceStartupFailureStage::Handshake);
         #[cfg(not(test))]
         let forced_handshake_failure = false;
         let handshake_result = if forced_handshake_failure {
@@ -1252,7 +1246,12 @@ impl Drop for SpawnedDiagnosticChildGuard {
 }
 
 impl DiagnosticChildProcess {
-    fn new_startup(child: Child, home_dir: BerylHomeDir, executable_path: PathBuf) -> Self {
+    fn new_startup(
+        child: Child,
+        home_dir: BerylHomeDir,
+        executable_path: PathBuf,
+        #[cfg(test)] acceptance_test_plan: Option<AcceptanceTestPlan>,
+    ) -> Self {
         Self {
             child,
             stdin_writer: None,
@@ -1265,7 +1264,31 @@ impl DiagnosticChildProcess {
             shutdown_method: "not_run",
             join_readers_on_cleanup: true,
             #[cfg(test)]
+            acceptance_test_control: acceptance_test_plan.map(AcceptanceTestControl::new),
+            #[cfg(test)]
             writer_joined_before_job_release: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn run_acceptance_spawn_barrier(&mut self) {
+        if let Some(control) = self.acceptance_test_control.as_mut() {
+            control.run_spawn_barrier(self.child.id());
+        }
+    }
+
+    #[cfg(test)]
+    fn force_acceptance_startup_failure(&mut self, stage: AcceptanceStartupFailureStage) -> bool {
+        let pid = self.child.id();
+        self.acceptance_test_control
+            .as_mut()
+            .is_some_and(|control| control.force_startup_failure(pid, stage))
+    }
+
+    #[cfg(test)]
+    fn observe_gate_write_completed_for_test(&self) {
+        if let Some(control) = self.acceptance_test_control.as_ref() {
+            control.observe_gate_write_completed(self.child.id());
         }
     }
 
@@ -1321,6 +1344,8 @@ impl DiagnosticChildProcess {
             cleanup_phase: "not_started",
             shutdown_method: "not_run",
             join_readers_on_cleanup: false,
+            #[cfg(test)]
+            acceptance_test_control: None,
             #[cfg(test)]
             writer_joined_before_job_release: None,
         })
@@ -1422,7 +1447,11 @@ impl DiagnosticChildProcess {
         self.cleanup_phase = "initializing";
         self.shutdown_method = "none";
         #[cfg(test)]
-        if force_acceptance_cleanup_failure(self.child.id()) {
+        if self
+            .acceptance_test_control
+            .as_mut()
+            .is_some_and(|control| control.begin_cleanup_attempt(self.child.id()))
+        {
             self.cleanup_phase = "forced_failure";
             return Err(DiagnosticChildSupervisorError::RequestTimeout {
                 timeout: grace_timeout.saturating_add(kill_timeout.saturating_mul(2)),
@@ -1554,6 +1583,10 @@ impl DiagnosticChildProcess {
     }
 
     fn fail_safe_release_nonblocking(&mut self) {
+        #[cfg(test)]
+        if let Some(control) = self.acceptance_test_control.as_ref() {
+            control.observe_fail_safe_release(self.child.id());
+        }
         if let Some(stdin_writer) = self.stdin_writer.as_mut() {
             stdin_writer.close();
         }
@@ -1563,127 +1596,10 @@ impl DiagnosticChildProcess {
 }
 
 #[cfg(test)]
-pub(crate) fn install_acceptance_cleanup_failure_hook_for_test(
-    pid: u32,
-    remaining_failures: usize,
-) {
-    *ACCEPTANCE_CLEANUP_FAILURE_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("acceptance cleanup failure hook lock must remain available") =
-        Some(AcceptanceCleanupFailureHook {
-            pid,
-            remaining_failures,
-        });
-}
-
-#[cfg(test)]
-pub(crate) fn acceptance_cleanup_failure_remaining_for_test(pid: u32) -> Option<usize> {
-    ACCEPTANCE_CLEANUP_FAILURE_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("acceptance cleanup failure hook lock must remain available")
-        .as_ref()
-        .filter(|configured| configured.pid == pid)
-        .map(|configured| configured.remaining_failures)
-}
-
-#[cfg(test)]
-pub(crate) fn clear_acceptance_cleanup_failure_hook_for_test(pid: u32) {
-    let mut hook = ACCEPTANCE_CLEANUP_FAILURE_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("acceptance cleanup failure hook lock must remain available");
-    if hook
-        .as_ref()
-        .is_some_and(|configured| configured.pid == pid)
-    {
-        *hook = None;
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn install_acceptance_spawn_hook_for_test(
-    spawned: TestSyncSender<u32>,
-    release: TestReceiver<()>,
-) {
-    *ACCEPTANCE_SPAWN_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("acceptance spawn hook lock must remain available") =
-        Some(AcceptanceSpawnHook { spawned, release });
-}
-
-#[cfg(test)]
-fn run_acceptance_spawn_hook(pid: u32) {
-    let hook = ACCEPTANCE_SPAWN_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("acceptance spawn hook lock must remain available")
-        .take();
-    let Some(hook) = hook else {
-        return;
-    };
-    let _ = hook.spawned.send(pid);
-    let _ = hook.release.recv();
-}
-
-#[cfg(test)]
-pub(crate) fn install_acceptance_startup_failure_hook_for_test(
-    pid: u32,
-    stage: AcceptanceStartupFailureStage,
-) {
-    *ACCEPTANCE_STARTUP_FAILURE_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("acceptance startup failure hook lock must remain available") =
-        Some(AcceptanceStartupFailureHook { pid, stage });
-}
-
-#[cfg(test)]
 pub(crate) fn install_child_wait_poll_observer_for_test(observer: TestSyncSender<Duration>) {
     CHILD_WAIT_POLL_OBSERVER.with(|installed| {
         *installed.borrow_mut() = Some(observer);
     });
-}
-
-#[cfg(test)]
-pub(super) fn force_acceptance_startup_failure(
-    pid: u32,
-    stage: AcceptanceStartupFailureStage,
-) -> bool {
-    let mut hook = ACCEPTANCE_STARTUP_FAILURE_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("acceptance startup failure hook lock must remain available");
-    if hook
-        .as_ref()
-        .is_some_and(|configured| configured.pid == pid && configured.stage == stage)
-    {
-        *hook = None;
-        true
-    } else {
-        false
-    }
-}
-
-#[cfg(test)]
-fn force_acceptance_cleanup_failure(pid: u32) -> bool {
-    let mut hook = ACCEPTANCE_CLEANUP_FAILURE_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("acceptance cleanup failure hook lock must remain available");
-    let Some(configured) = hook.as_mut() else {
-        return false;
-    };
-    if configured.pid != pid || configured.remaining_failures == 0 {
-        return false;
-    }
-    configured.remaining_failures -= 1;
-    if configured.remaining_failures == 0 {
-        *hook = None;
-    }
-    true
 }
 
 fn startup_protocol_error(error: DiagnosticChildSupervisorError) -> DiagnosticChildSupervisorError {

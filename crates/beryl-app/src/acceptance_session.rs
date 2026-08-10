@@ -20,6 +20,8 @@ use serde::{Serialize, Serializer};
 use serde_json::Value;
 use thiserror::Error;
 
+#[cfg(test)]
+use crate::diagnostic_child_supervisor::AcceptanceTestPlan;
 use crate::diagnostic_child_supervisor::{
     DiagnosticAcceptanceCleanupAttempt, DiagnosticAcceptanceCleanupRetry,
     DiagnosticAcceptanceProcessOwner, DiagnosticAcceptanceStartupOwner, DiagnosticChildLaunch,
@@ -666,6 +668,25 @@ pub struct AcceptanceSession {
 
 impl AcceptanceSession {
     pub fn start(config: AcceptanceSessionConfig) -> Result<Self, AcceptanceSessionStartFailure> {
+        Self::start_inner(
+            config,
+            #[cfg(test)]
+            None,
+        )
+    }
+
+    #[cfg(all(test, target_os = "windows"))]
+    pub(crate) fn start_with_test_plan(
+        config: AcceptanceSessionConfig,
+        test_plan: AcceptanceTestPlan,
+    ) -> Result<Self, AcceptanceSessionStartFailure> {
+        Self::start_inner(config, Some(test_plan))
+    }
+
+    fn start_inner(
+        config: AcceptanceSessionConfig,
+        #[cfg(test)] test_plan: Option<AcceptanceTestPlan>,
+    ) -> Result<Self, AcceptanceSessionStartFailure> {
         config.validate().map_err(|error| {
             if matches!(
                 &error,
@@ -693,12 +714,30 @@ impl AcceptanceSession {
             None => launch,
         };
         let mut supervisor = DiagnosticChildSupervisor::default();
-        let identity = match supervisor.start_for_acceptance(
+        #[cfg(test)]
+        let start_result = match test_plan {
+            Some(test_plan) => supervisor.start_for_acceptance_with_test_plan(
+                launch,
+                config.limits.startup_timeout,
+                cleanup_grace_timeout,
+                cleanup_termination_timeout,
+                test_plan,
+            ),
+            None => supervisor.start_for_acceptance(
+                launch,
+                config.limits.startup_timeout,
+                cleanup_grace_timeout,
+                cleanup_termination_timeout,
+            ),
+        };
+        #[cfg(not(test))]
+        let start_result = supervisor.start_for_acceptance(
             launch,
             config.limits.startup_timeout,
             cleanup_grace_timeout,
             cleanup_termination_timeout,
-        ) {
+        );
+        let identity = match start_result {
             Ok(DiagnosticChildStartOutcome::Started(identity)) => identity,
             Ok(DiagnosticChildStartOutcome::AlreadyRunning(_)) => {
                 return Err(AcceptanceSessionStartFailure::without_owner(

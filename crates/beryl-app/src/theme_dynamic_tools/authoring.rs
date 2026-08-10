@@ -179,6 +179,7 @@ fn transcript_roles_section() -> Value {
             "Use transcript.turn.assistant.final for final answer narrative text.",
             "Use transcript.turn.assistant.commentary for commentary text and transcript.turn.assistant.reasoning for reasoning text.",
             "Use transcript.turn.user for user input fragments.",
+            "Use transcript.selection foreground for selected glyphs and text_background for the selection highlight fill.",
             "Markdown roles inherit from transcript narrative contexts unless a document overrides them."
         ],
     })

@@ -70,6 +70,9 @@ Render backend-owned Codex conversation history as a responsive parent conversat
 - Rendered transcript text supports ordinary desktop text selection for clipboard copying.
 - Selection, scrolling, live remeasurement, and viewport virtualization preserve logical selected text while selected content remains in the loaded transcript window.
 - Visible highlight rectangles must match the rendered portions of the logical selection, including soft-wrapped start and end positions.
+- Selected transcript glyphs resolve their color from `transcript.selection.foreground`, and visible highlight rectangles resolve their fill from `transcript.selection.text_background`.
+- Selection foreground overrides only glyph color within selected portions of text runs; Markdown typography, decoration, source mapping, copying, quoting, hit testing, and unselected run colors remain unchanged.
+- Selection painting and run splitting remain bounded to the visible presentation window and must not scan or reshape the full loaded transcript during pointer movement, scrolling, or remeasurement.
 - Beryl-owned Markdown semantic structures retain source-span or copy-source information so selection can produce Markdown-preserving copied text without reparsing full transcript history.
 - Standard copy commands write Markdown-preserving selected text to the system clipboard, not lossy rendered-only text.
 - Copying preserves Markdown syntax for inline code, emphasis, strong emphasis, links, lists, block quotes, headings, code blocks, image markers, math, and unsupported source fallbacks.

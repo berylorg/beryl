@@ -27,6 +27,7 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 - Runtime ambient inheritance is distinct from static inheritance and is used for embedded content whose surrounding render context changes.
 - Role property sets follow semantic category: surface roles expose surface properties, text roles expose foreground/background and coherent typography, single-primitive roles expose `color`, and controls/rows/menus/status/media/transcript/graph/checklist/workspace/settings roles inherit from appropriate foundation roles.
 - Transient interaction states may change resolved color properties for hover, pressed, active, selected, focused, disabled, warning, error, info, pending, streaming, and unavailable states, but must not change widget geometry unless a widget contract permits it.
+- The `transcript.selection` role exposes `foreground` for selected glyphs and `text_background` for the selection highlight fill. The transcript renderer applies both properties to the selected range while preserving every other text-run property.
 - The active theme drives both the main workspace window and app-neutral style options passed into reusable settings-window mechanics.
 
 ## Theme Documents And Repository

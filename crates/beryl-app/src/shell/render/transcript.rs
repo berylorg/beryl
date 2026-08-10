@@ -35,11 +35,11 @@ use std::{
 
 use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
 use gpui::{
-    AnyElement, App, AsyncApp, Bounds, ClipboardItem, Context, DispatchPhase, Entity, FocusHandle,
-    Focusable, Font, FontStyle, FontWeight, Image, KeyBinding, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Pixels, Render, ScrollHandle,
-    ScrollWheelEvent, SharedString, Task, TextLayout, TextRun, WeakEntity, Window, anchored,
-    canvas, div, fill, img, point, prelude::*, px,
+    AnyElement, App, AsyncApp, Bounds, ClipboardItem, ContentMask, Context, DispatchPhase, Entity,
+    FocusHandle, Focusable, Font, FontStyle, FontWeight, Image, KeyBinding, KeyDownEvent,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Pixels, Render,
+    ScrollHandle, ScrollWheelEvent, SharedString, Task, TextLayout, TextRun, WeakEntity, Window,
+    WrappedLineLayout, anchored, canvas, div, fill, img, point, prelude::*, px,
 };
 use tracing::{Level, debug};
 
@@ -85,7 +85,11 @@ use self::inline_markdown::{TranscriptSelectableImageMarker, TranscriptSelectabl
 use self::media_blocks::{TranscriptMediaRenderLayout, TranscriptMediaTheme};
 use self::media_cache::TranscriptMediaRenderContext;
 use self::nested_scroll::TranscriptNestedScrollOwnership;
-use self::selection_highlight::wrapped_line_selection_highlight_bounds;
+use self::selection_highlight::{
+    SelectionOpacityRegion, WrappedLineSelectionPaintMask, paint_wrapped_line_selection_foreground,
+    selection_opacity_for_bounds, wrapped_line_selection_highlight_bounds,
+    wrapped_line_selection_paint_masks,
+};
 use self::stream_projection::{TranscriptStreamProjection, TranscriptStreamProjectionContext};
 pub(crate) use self::theme::{
     TranscriptInlineCodeHost, TranscriptRoleStyle, TranscriptTextRole, TranscriptTheme,
@@ -125,6 +129,7 @@ const TRANSCRIPT_CODE_PANEL_MIN_HEIGHT: f32 = 64.0;
 const TRANSCRIPT_CODE_PANEL_DEFAULT_MAX_HEIGHT: f32 = 360.0;
 const TRANSCRIPT_CODE_PANEL_MAX_HEIGHT_RATIO: f32 = 0.7;
 const CODE_PANEL_INTERACTION_STATE_MAX_ENTRIES: usize = 512;
+const TRANSCRIPT_EDIT_DIMMED_OPACITY: f32 = 0.48;
 const TRANSCRIPT_KEY_CONTEXT: &str = "TranscriptPanel";
 gpui::actions!(
     beryl_transcript,
@@ -206,6 +211,7 @@ pub(crate) struct TranscriptPanel {
     next_visible_text_frame: VisibleTranscriptTextFrame,
     visible_text_geometry: HashMap<TranscriptTextLineKey, TranscriptTextLineGeometry>,
     next_visible_text_geometry: HashMap<TranscriptTextLineKey, TranscriptTextLineGeometry>,
+    next_visible_text_opacity_regions: Vec<SelectionOpacityRegion>,
     visible_text_geometry_viewport_bounds: Option<Bounds<Pixels>>,
     visible_text_hit_geometry: Vec<TranscriptTextLineHitGeometry>,
     next_visible_text_hit_geometry: Vec<TranscriptTextLineHitGeometry>,
@@ -461,6 +467,16 @@ struct TranscriptTextLineGeometry {
     bounds: Bounds<Pixels>,
     layout: TextLayout,
     display_text_len: usize,
+    opacity: f32,
+}
+
+#[derive(Clone)]
+struct TranscriptSelectedLinePaint {
+    line: Arc<WrappedLineLayout>,
+    origin: gpui::Point<Pixels>,
+    line_height: Pixels,
+    masks: Vec<WrappedLineSelectionPaintMask>,
+    opacity: f32,
 }
 
 #[derive(Clone)]
@@ -544,6 +560,7 @@ impl TranscriptPanel {
             next_visible_text_frame: VisibleTranscriptTextFrame::default(),
             visible_text_geometry: HashMap::new(),
             next_visible_text_geometry: HashMap::new(),
+            next_visible_text_opacity_regions: Vec::new(),
             visible_text_geometry_viewport_bounds: None,
             visible_text_hit_geometry: Vec::new(),
             next_visible_text_hit_geometry: Vec::new(),
@@ -710,6 +727,7 @@ impl TranscriptPanel {
     fn begin_text_span_frame(&mut self) {
         self.next_visible_text_frame.clear();
         self.next_visible_text_geometry.clear();
+        self.next_visible_text_opacity_regions.clear();
         self.next_visible_text_hit_geometry.clear();
     }
 
@@ -730,6 +748,7 @@ impl TranscriptPanel {
                 bounds,
                 layout: layout.clone(),
                 display_text_len,
+                opacity: 1.0,
             },
         );
         self.next_visible_text_hit_geometry
@@ -754,8 +773,20 @@ impl TranscriptPanel {
             ));
     }
 
+    fn register_text_opacity_region(&mut self, bounds: Bounds<Pixels>, opacity: f32) {
+        self.next_visible_text_opacity_regions
+            .push(SelectionOpacityRegion { bounds, opacity });
+    }
+
     fn finish_text_span_frame(&mut self, viewport_bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
         self.next_visible_text_frame.finish_insertions();
+        for geometry in self.next_visible_text_geometry.values_mut() {
+            geometry.opacity = selection_opacity_for_bounds(
+                geometry.bounds,
+                self.next_visible_text_opacity_regions.as_slice(),
+            );
+        }
+        self.next_visible_text_opacity_regions.clear();
         self.next_visible_text_hit_geometry.sort_by_key(|geometry| {
             (
                 geometry.bounds.top(),
@@ -1281,13 +1312,12 @@ impl TranscriptPanel {
             .cloned()
     }
 
-    fn selected_text_highlight_bounds(&self) -> Vec<Bounds<Pixels>> {
+    fn selected_text_paints(&self) -> Vec<TranscriptSelectedLinePaint> {
         self.text_selection
             .selected_line_ranges(&self.visible_text_frame)
             .into_iter()
-            .flat_map(|range| {
-                self.highlight_bounds_for_range(&range.key, range.start, range.end)
-                    .into_iter()
+            .filter_map(|range| {
+                self.selected_text_paint_for_range(&range.key, range.start, range.end)
             })
             .collect()
     }
@@ -1295,22 +1325,91 @@ impl TranscriptPanel {
     fn render_selected_text_highlights(
         &self,
         entity: Entity<TranscriptPanel>,
-        color: gpui::Rgba,
+        background: gpui::Rgba,
+        foreground: gpui::Rgba,
     ) -> AnyElement {
-        canvas(
-            |_, _, _| (),
-            move |_, _, window, cx| {
-                let highlights = entity.update(cx, |view, _| view.selected_text_highlight_bounds());
-                for bounds in highlights {
-                    window.paint_quad(fill(bounds, color).corner_radii(px(2.0)));
-                }
-            },
-        )
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
-        .into_any_element()
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .child(self.render_selected_text_highlight_layer(
+                entity.clone(),
+                background,
+                foreground,
+                1.0,
+            ))
+            .child(self.render_selected_text_highlight_layer(
+                entity,
+                background,
+                foreground,
+                TRANSCRIPT_EDIT_DIMMED_OPACITY,
+            ))
+            .into_any_element()
+    }
+
+    fn render_selected_text_highlight_layer(
+        &self,
+        entity: Entity<TranscriptPanel>,
+        background: gpui::Rgba,
+        foreground: gpui::Rgba,
+        opacity: f32,
+    ) -> AnyElement {
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .opacity(opacity)
+            .child(
+                canvas(
+                    |_, _, _| (),
+                    move |_, _, window, cx| {
+                        let Some((viewport_bounds, selected_lines)) =
+                            entity.update(cx, |view, _| {
+                                let viewport_bounds = view.visible_text_geometry_viewport_bounds?;
+                                let selected_lines = view
+                                    .selected_text_paints()
+                                    .into_iter()
+                                    .filter(|line| line.opacity == opacity)
+                                    .collect::<Vec<_>>();
+                                Some((viewport_bounds, selected_lines))
+                            })
+                        else {
+                            return;
+                        };
+                        window.with_content_mask(
+                            Some(ContentMask {
+                                bounds: viewport_bounds,
+                            }),
+                            |window| {
+                                for selected_line in &selected_lines {
+                                    for mask in &selected_line.masks {
+                                        window.paint_quad(
+                                            fill(mask.bounds, background).corner_radii(px(2.0)),
+                                        );
+                                    }
+                                }
+                                for selected_line in selected_lines {
+                                    paint_wrapped_line_selection_foreground(
+                                        selected_line.line.as_ref(),
+                                        selected_line.origin,
+                                        selected_line.line_height,
+                                        selected_line.masks.as_slice(),
+                                        foreground.into(),
+                                        window,
+                                    );
+                                }
+                            },
+                        );
+                    },
+                )
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full(),
+            )
+            .into_any_element()
     }
 
     fn selected_text_bounds(&self) -> Option<Bounds<Pixels>> {
@@ -1515,6 +1614,41 @@ impl TranscriptPanel {
             geometry.bounds.size.width,
             display_start..display_end,
         )
+    }
+
+    fn selected_text_paint_for_range(
+        &self,
+        key: &TranscriptTextLineKey,
+        start: usize,
+        end: usize,
+    ) -> Option<TranscriptSelectedLinePaint> {
+        let geometry = self.visible_text_geometry.get(key)?;
+        let display_start = selection_offset_to_display_offset(start, geometry);
+        let display_end = selection_offset_to_display_offset(end, geometry);
+        if display_start == display_end {
+            return None;
+        }
+
+        let line = geometry.layout.line_layout_for_index(display_start)?;
+        let line_height = geometry.layout.line_height();
+        let masks = wrapped_line_selection_paint_masks(
+            line.as_ref(),
+            geometry.bounds.origin,
+            line_height,
+            geometry.bounds.size.width,
+            display_start..display_end,
+        );
+        if masks.is_empty() {
+            return None;
+        }
+
+        Some(TranscriptSelectedLinePaint {
+            line,
+            origin: geometry.bounds.origin,
+            line_height,
+            masks,
+            opacity: geometry.opacity,
+        })
     }
 
     fn retain_nested_code_panel_selection<'a>(
@@ -1749,6 +1883,7 @@ impl TranscriptPanel {
         self.visible_media.borrow_mut().clear();
         self.visible_text_geometry.clear();
         self.next_visible_text_geometry.clear();
+        self.next_visible_text_opacity_regions.clear();
         self.visible_text_geometry_viewport_bounds = None;
         self.visible_text_hit_geometry.clear();
         self.next_visible_text_hit_geometry.clear();
@@ -1769,6 +1904,7 @@ impl TranscriptPanel {
         self.next_visible_text_frame.clear();
         self.visible_text_geometry.clear();
         self.next_visible_text_geometry.clear();
+        self.next_visible_text_opacity_regions.clear();
         self.visible_text_geometry_viewport_bounds = None;
         self.visible_text_hit_geometry.clear();
         self.next_visible_text_hit_geometry.clear();
@@ -1797,6 +1933,7 @@ impl TranscriptPanel {
         self.next_visible_text_frame.clear();
         self.visible_text_geometry.clear();
         self.next_visible_text_geometry.clear();
+        self.next_visible_text_opacity_regions.clear();
         self.visible_text_geometry_viewport_bounds = None;
         self.visible_text_hit_geometry.clear();
         self.next_visible_text_hit_geometry.clear();
@@ -1994,6 +2131,7 @@ impl Render for TranscriptPanel {
             self.next_visible_text_frame.clear();
             self.visible_text_geometry.clear();
             self.next_visible_text_geometry.clear();
+            self.next_visible_text_opacity_regions.clear();
             self.visible_text_geometry_viewport_bounds = None;
             self.visible_text_hit_geometry.clear();
             self.next_visible_text_hit_geometry.clear();
@@ -2718,6 +2856,7 @@ impl Render for TranscriptPanel {
                                     self.render_selected_text_highlights(
                                         entity.clone(),
                                         theme.selection.text_background(),
+                                        theme.selection.foreground(),
                                     ),
                                 );
                                 if let Some(quote_popup) =
@@ -2870,16 +3009,19 @@ fn render_turn(
     profiler: Option<Rc<TranscriptFrameProfile>>,
     cx: &mut gpui::App,
 ) -> AnyElement {
+    let opacity_entity = entity.clone();
     let row = div()
         .w_full()
         .px_3()
         .pb_3()
-        .when(dimmed_for_edit, |this| this.opacity(0.48))
         .when(index == 0, |this| this.pt_4());
 
     if turn.is_released_history_placeholder() {
         let height = placeholder_height.unwrap_or_else(|| px(96.0)).max(px(64.0));
         return row
+            .when(dimmed_for_edit, |this| {
+                this.opacity(TRANSCRIPT_EDIT_DIMMED_OPACITY)
+            })
             .on_mouse_down(MouseButton::Right, {
                 let entity = entity.clone();
                 move |event, window, cx| {
@@ -2897,6 +3039,10 @@ fn render_turn(
             .into_any_element();
     }
 
+    let observe_prepaint = profiler.is_some() || dimmed_for_edit;
+    let prepaint_profiler = profiler.clone();
+    let prepaint_row_identity = row_identity.clone();
+    let row_started = Instant::now();
     row.on_mouse_down(MouseButton::Right, {
         let entity = entity.clone();
         move |event, window, cx| {
@@ -2908,15 +3054,26 @@ fn render_turn(
             }
         }
     })
-    .when_some(profiler.clone(), |this, profiler| {
-        let row_started = Instant::now();
-        let row_identity = row_identity.clone();
-        this.on_children_prepainted(move |_, _, _| {
-            profiler.observe_turn_prepaint(
-                index,
-                Some(row_identity.as_str()),
-                row_started.elapsed(),
-            );
+    .when(observe_prepaint, move |this| {
+        this.when(dimmed_for_edit, |this| {
+            this.opacity(TRANSCRIPT_EDIT_DIMMED_OPACITY)
+        })
+        .on_children_prepainted(move |children, _, cx| {
+            if let Some(profiler) = prepaint_profiler.as_ref() {
+                profiler.observe_turn_prepaint(
+                    index,
+                    Some(prepaint_row_identity.as_str()),
+                    row_started.elapsed(),
+                );
+            }
+            if dimmed_for_edit {
+                let Some(bounds) = children.first().copied() else {
+                    return;
+                };
+                opacity_entity.update(cx, |view, _| {
+                    view.register_text_opacity_region(bounds, TRANSCRIPT_EDIT_DIMMED_OPACITY);
+                });
+            }
         })
     })
     .child(render_turn_card(

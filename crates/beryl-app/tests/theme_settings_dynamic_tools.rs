@@ -255,6 +255,24 @@ fn theme_schema_read_value_reports_role_specific_supported_properties() {
     assert!(!thematic_properties.contains(&BerylThemeProperty::Border.id().to_string()));
     assert!(!thematic_properties.contains(&BerylThemeProperty::Foreground.id().to_string()));
 
+    let transcript_selection =
+        theme_schema_value(Some(BerylThemeRole::TranscriptSelection.id()), 8).unwrap();
+    let transcript_selection_properties =
+        property_ids(&first_role(&transcript_selection)["properties"]);
+    assert_eq!(
+        transcript_selection_properties,
+        vec![
+            BerylThemeProperty::Foreground.id().to_string(),
+            BerylThemeProperty::TextBackground.id().to_string(),
+        ]
+    );
+    assert!(
+        !transcript_selection_properties.contains(&BerylThemeProperty::Background.id().to_string())
+    );
+    assert!(
+        !transcript_selection_properties.contains(&BerylThemeProperty::Border.id().to_string())
+    );
+
     let code_panel_body = theme_schema_value(Some(BerylThemeRole::CodePanelBody.id()), 8).unwrap();
     let code_panel_properties = property_ids(&first_role(&code_panel_body)["properties"]);
     let mut expected = built_in_theme_supported_properties(BerylThemeRole::CodePanelBody)
@@ -458,14 +476,14 @@ fn theme_authoring_guide_contains_required_guidance_without_private_settings() {
 fn theme_authoring_guide_role_hints_include_supported_properties() {
     let value = theme_authoring_guide_value(
         ThemeAuthoringGuideSection::Overview,
-        Some(BerylThemeRole::CodePanelBody.id()),
+        Some(BerylThemeRole::TranscriptSelection.id()),
         4,
     );
     let role = first_role(&value["roleHints"]);
     let properties = property_ids(&role["supportedProperties"]);
 
-    assert_eq!(role["id"], BerylThemeRole::CodePanelBody.id());
-    let mut expected = built_in_theme_supported_properties(BerylThemeRole::CodePanelBody)
+    assert_eq!(role["id"], BerylThemeRole::TranscriptSelection.id());
+    let mut expected = built_in_theme_supported_properties(BerylThemeRole::TranscriptSelection)
         .iter()
         .map(|property| property.id().to_string())
         .collect::<Vec<_>>();
@@ -473,8 +491,11 @@ fn theme_authoring_guide_role_hints_include_supported_properties() {
     assert_eq!(properties, expected);
     assert_eq!(
         role["supportedPropertyCount"],
-        built_in_theme_supported_properties(BerylThemeRole::CodePanelBody).len()
+        built_in_theme_supported_properties(BerylThemeRole::TranscriptSelection).len()
     );
+    assert!(properties.contains(&BerylThemeProperty::Foreground.id().to_string()));
+    assert!(properties.contains(&BerylThemeProperty::TextBackground.id().to_string()));
+    assert!(!properties.contains(&BerylThemeProperty::Background.id().to_string()));
     assert!(!properties.contains(&BerylThemeProperty::Border.id().to_string()));
 
     let hidden = theme_authoring_guide_value(
@@ -671,6 +692,65 @@ foreground = { value = "#112233" }
             "{expected_kind}: {diagnostics:?}"
         );
         assert!(value["diagnosticCount"].as_u64().unwrap() >= 1);
+    }
+
+    root.close().unwrap();
+}
+
+#[test]
+fn theme_validation_handles_transcript_selection_properties() {
+    let root = unique_temp_dir();
+    let snapshot = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
+    let valid = validate_theme_document_value(
+        r##"
+schema = 1
+
+[[role]]
+id = "transcript.selection"
+foreground = { value = "#ffffff" }
+text_background = { value = "#123456" }
+"##,
+        true,
+        &[BerylThemeRole::TranscriptSelection.id().to_string()],
+        8,
+        &snapshot,
+    );
+
+    assert_eq!(valid["valid"], true);
+    let summary = role_by_id(
+        &valid["summary"]["roles"],
+        BerylThemeRole::TranscriptSelection.id(),
+    );
+    assert_eq!(
+        property_ids(&summary["properties"]),
+        vec![
+            BerylThemeProperty::Foreground.id().to_string(),
+            BerylThemeProperty::TextBackground.id().to_string(),
+        ]
+    );
+
+    for property in ["background", "border"] {
+        let invalid = validate_theme_document_value(
+            &format!(
+                "schema = 1\n\n[[role]]\nid = \"transcript.selection\"\n{property} = {{ value = \"#123456\" }}"
+            ),
+            true,
+            &[],
+            8,
+            &snapshot,
+        );
+        assert_eq!(invalid["valid"], false, "{property}");
+        assert!(
+            invalid["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| {
+                    diagnostic["kind"] == "unknown_property"
+                        && diagnostic["roleId"] == BerylThemeRole::TranscriptSelection.id()
+                        && diagnostic["propertyId"] == property
+                })
+        );
     }
 
     root.close().unwrap();

@@ -2,18 +2,8 @@ use std::{io, process::Child};
 
 use super::DiagnosticChildSupervisorError;
 
-#[cfg(all(test, target_os = "windows"))]
-use std::sync::{Mutex, OnceLock, mpsc};
-
-#[cfg(all(test, target_os = "windows"))]
-struct JobAssignmentHook {
-    assigned: mpsc::SyncSender<u32>,
-    release: Option<mpsc::Receiver<()>>,
-    fail_after_assignment: bool,
-}
-
-#[cfg(all(test, target_os = "windows"))]
-static JOB_ASSIGNMENT_HOOK: OnceLock<Mutex<Option<JobAssignmentHook>>> = OnceLock::new();
+#[cfg(test)]
+use super::{AcceptanceStartupFailureStage, test_support::AcceptanceTestControl};
 
 #[cfg(target_os = "windows")]
 pub(super) struct DiagnosticHostProcessTree {
@@ -30,7 +20,11 @@ impl DiagnosticHostProcessTree {
     }
 
     pub(super) fn create_for_child(child: &Child) -> Result<Self, DiagnosticChildSupervisorError> {
-        let (tree, error) = Self::create_for_child_retaining(child);
+        let (tree, error) = Self::create_for_child_retaining(
+            child,
+            #[cfg(test)]
+            None,
+        );
         match error {
             Some(error) => Err(error),
             None => Ok(tree),
@@ -39,6 +33,7 @@ impl DiagnosticHostProcessTree {
 
     pub(super) fn create_for_child_retaining(
         child: &Child,
+        #[cfg(test)] mut acceptance_test_control: Option<&mut AcceptanceTestControl>,
     ) -> (Self, Option<DiagnosticChildSupervisorError>) {
         use std::{mem::size_of, os::windows::io::AsRawHandle};
 
@@ -56,10 +51,9 @@ impl DiagnosticHostProcessTree {
 
         let mut tree = Self { job: None };
         #[cfg(test)]
-        if super::force_acceptance_startup_failure(
-            child.id(),
-            super::AcceptanceStartupFailureStage::JobCreate,
-        ) {
+        if acceptance_test_control.as_mut().is_some_and(|control| {
+            control.force_startup_failure(child.id(), AcceptanceStartupFailureStage::JobCreate)
+        }) {
             return (
                 tree,
                 Some(DiagnosticChildSupervisorError::CreateProcessJob {
@@ -83,26 +77,13 @@ impl DiagnosticHostProcessTree {
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         #[cfg(test)]
-        if super::force_acceptance_startup_failure(
-            child.id(),
-            super::AcceptanceStartupFailureStage::JobConfigure,
-        ) {
+        if acceptance_test_control.as_mut().is_some_and(|control| {
+            control.force_startup_failure(child.id(), AcceptanceStartupFailureStage::JobConfigure)
+        }) {
             return (
                 tree,
                 Some(DiagnosticChildSupervisorError::ConfigureProcessJob {
                     source: io::Error::other("forced Job configuration failure for test"),
-                }),
-            );
-        }
-        #[cfg(test)]
-        if super::force_acceptance_startup_failure(
-            child.id(),
-            super::AcceptanceStartupFailureStage::JobAssign,
-        ) {
-            return (
-                tree,
-                Some(DiagnosticChildSupervisorError::AssignProcessToJob {
-                    source: io::Error::other("forced Job assignment failure for test"),
                 }),
             );
         }
@@ -118,6 +99,21 @@ impl DiagnosticHostProcessTree {
                 tree,
                 Some(DiagnosticChildSupervisorError::ConfigureProcessJob {
                     source: windows_io_error(source),
+                }),
+            );
+        }
+        #[cfg(test)]
+        if let Some(control) = acceptance_test_control.as_ref() {
+            control.observe_job_configured(child.id());
+        }
+        #[cfg(test)]
+        if acceptance_test_control.as_mut().is_some_and(|control| {
+            control.force_startup_failure(child.id(), AcceptanceStartupFailureStage::JobAssign)
+        }) {
+            return (
+                tree,
+                Some(DiagnosticChildSupervisorError::AssignProcessToJob {
+                    source: io::Error::other("forced Job assignment failure for test"),
                 }),
             );
         }
@@ -138,8 +134,10 @@ impl DiagnosticHostProcessTree {
             );
         }
         #[cfg(test)]
-        if let Err(error) = run_job_assignment_hook(child.id()) {
-            return (tree, Some(error));
+        if let Some(control) = acceptance_test_control {
+            if let Err(error) = control.run_job_assignment(child.id()) {
+                return (tree, Some(error));
+            }
         }
         (tree, None)
     }
@@ -173,44 +171,6 @@ impl DiagnosticHostProcessTree {
     }
 }
 
-#[cfg(all(test, target_os = "windows"))]
-fn run_job_assignment_hook(child_pid: u32) -> Result<(), DiagnosticChildSupervisorError> {
-    let hook = JOB_ASSIGNMENT_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("job assignment test hook lock must remain available")
-        .take();
-    let Some(hook) = hook else {
-        return Ok(());
-    };
-    let _ = hook.assigned.send(child_pid);
-    if let Some(release) = hook.release {
-        let _ = release.recv();
-    }
-    if hook.fail_after_assignment {
-        return Err(DiagnosticChildSupervisorError::AssignProcessToJob {
-            source: io::Error::other("forced post-assignment setup failure for test"),
-        });
-    }
-    Ok(())
-}
-
-#[cfg(all(test, target_os = "windows"))]
-pub(crate) fn install_job_assignment_hook_for_test(
-    assigned: mpsc::SyncSender<u32>,
-    release: Option<mpsc::Receiver<()>>,
-    fail_after_assignment: bool,
-) {
-    *JOB_ASSIGNMENT_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .expect("job assignment test hook lock must remain available") = Some(JobAssignmentHook {
-        assigned,
-        release,
-        fail_after_assignment,
-    });
-}
-
 #[cfg(target_os = "windows")]
 fn windows_io_error(source: windows::core::Error) -> io::Error {
     io::Error::other(source.to_string())
@@ -231,6 +191,7 @@ impl DiagnosticHostProcessTree {
 
     pub(super) fn create_for_child_retaining(
         _child: &Child,
+        #[cfg(test)] _acceptance_test_control: Option<&mut AcceptanceTestControl>,
     ) -> (Self, Option<DiagnosticChildSupervisorError>) {
         (Self, None)
     }

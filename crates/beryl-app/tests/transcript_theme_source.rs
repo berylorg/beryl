@@ -128,6 +128,7 @@ fn separator_render_snapshot_uses_single_color_property() {
     assert!(SHELL_RENDER_THEME_ROLE_STYLE_SOURCE.contains("pub(super) fn style_single_color"));
     assert!(TRANSCRIPT_BLOCK_MARKDOWN_SOURCE.contains(".bg(theme.thematic_break.color())"));
     assert!(TRANSCRIPT_SOURCE.contains("theme.selection.text_background()"));
+    assert!(TRANSCRIPT_SOURCE.contains("theme.selection.foreground()"));
     assert!(!TRANSCRIPT_SOURCE.contains("theme.selection.background()"));
     assert!(TRANSCRIPT_THEME_SOURCE.contains("pub(crate) fn color(&self) -> Rgba"));
 }

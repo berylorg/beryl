@@ -105,17 +105,13 @@ use std::{
 use diagnostic_child_protocol::{
     DIAGNOSTIC_CHILD_PROTOCOL_NAME, DIAGNOSTIC_CHILD_PROTOCOL_VERSION, DiagnosticChildCommand,
 };
-#[cfg(windows)]
-use diagnostic_child_supervisor::install_job_assignment_hook_for_test;
 use diagnostic_child_supervisor::{
-    AcceptanceStartupFailureStage, DIAGNOSTIC_CHILD_STOP_BUDGET,
-    DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT, DiagnosticAcceptanceCleanupRetry,
-    DiagnosticChildLaunch, DiagnosticChildStartOutcome, DiagnosticChildStopOutcome,
-    DiagnosticChildSupervisor, DiagnosticChildSupervisorError, SpawnedDiagnosticChildGuard,
-    acceptance_cleanup_failure_remaining_for_test, clear_acceptance_cleanup_failure_hook_for_test,
-    install_acceptance_cleanup_failure_hook_for_test, install_acceptance_spawn_hook_for_test,
-    install_acceptance_startup_failure_hook_for_test, install_child_wait_poll_observer_for_test,
-    same_home_path,
+    AcceptanceStartupFailureStage, AcceptanceTestObservation, AcceptanceTestPlan,
+    DIAGNOSTIC_CHILD_STOP_BUDGET, DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT,
+    DiagnosticAcceptanceCleanupRetry, DiagnosticAcceptanceProcessOwner, DiagnosticChildLaunch,
+    DiagnosticChildStartOutcome, DiagnosticChildStopOutcome, DiagnosticChildSupervisor,
+    DiagnosticChildSupervisorError, SpawnedDiagnosticChildGuard,
+    install_child_wait_poll_observer_for_test, same_home_path,
 };
 
 #[test]
@@ -321,15 +317,20 @@ fn acceptance_gate_is_held_until_job_assignment_completes() {
     let launch = DiagnosticChildLaunch::new(child.path(), executable);
     let (assigned_sender, assigned_receiver) = mpsc::sync_channel(1);
     let (release_sender, release_receiver) = mpsc::sync_channel(0);
-    install_job_assignment_hook_for_test(assigned_sender, Some(release_receiver), false);
+    let test_plan = AcceptanceTestPlan::new().with_job_assignment(
+        assigned_sender,
+        Some(release_receiver),
+        false,
+    );
 
     let started = thread::spawn(move || {
         let mut supervisor = DiagnosticChildSupervisor::default();
-        let result = supervisor.start_for_acceptance(
+        let result = supervisor.start_for_acceptance_with_test_plan(
             launch,
             Duration::from_secs(2),
             Duration::from_millis(10),
             Duration::from_secs(1),
+            test_plan,
         );
         (supervisor, result)
     });
@@ -349,6 +350,155 @@ fn acceptance_gate_is_held_until_job_assignment_completes() {
     assert!(marker.exists());
     supervisor.stop().unwrap();
     child.close().unwrap();
+    root.close().unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn acceptance_test_plans_isolate_simultaneous_launch_lanes() {
+    let root = tempdir_support::temp_dir("beryl-diagnostic-plan-lanes-");
+    let child_a = tempdir_support::temp_dir("beryl-diagnostic-plan-lane-a-home-");
+    let child_b = tempdir_support::temp_dir("beryl-diagnostic-plan-lane-b-home-");
+    let child_c = tempdir_support::temp_dir("beryl-diagnostic-plan-lane-c-home-");
+    let lane_a = root.join("lane-a");
+    let lane_b = root.join("lane-b");
+    let lane_c = root.join("lane-c");
+    fs::create_dir_all(&lane_a).unwrap();
+    fs::create_dir_all(&lane_b).unwrap();
+    fs::create_dir_all(&lane_c).unwrap();
+
+    let (spawned_a, reached_a) = mpsc::sync_channel(1);
+    let (release_a, wait_a) = mpsc::sync_channel(0);
+    let (observed_a, observations_a) = mpsc::sync_channel(8);
+    let plan_a = AcceptanceTestPlan::new()
+        .with_spawn_barrier(spawned_a, wait_a)
+        .with_startup_failure(AcceptanceStartupFailureStage::JobConfigure)
+        .with_cleanup_failures(1)
+        .with_observer(observed_a);
+    let launch_a = DiagnosticChildLaunch::new(
+        child_a.path(),
+        fake_gated_child_executable(&lane_a, &lane_a.join("gate.txt"), false),
+    );
+
+    let (spawned_b, reached_b) = mpsc::sync_channel(1);
+    let (release_b, wait_b) = mpsc::sync_channel(0);
+    let (observed_b, observations_b) = mpsc::sync_channel(8);
+    let plan_b = AcceptanceTestPlan::new()
+        .with_spawn_barrier(spawned_b, wait_b)
+        .with_startup_failure(AcceptanceStartupFailureStage::GateWrite)
+        .with_cleanup_failures(2)
+        .with_observer(observed_b);
+    let launch_b = DiagnosticChildLaunch::new(
+        child_b.path(),
+        fake_gated_child_executable(&lane_b, &lane_b.join("gate.txt"), false),
+    );
+
+    let (spawned_c, reached_c) = mpsc::sync_channel(1);
+    let (release_c, wait_c) = mpsc::sync_channel(0);
+    let (observed_c, observations_c) = mpsc::sync_channel(8);
+    let plan_c = AcceptanceTestPlan::new()
+        .with_spawn_barrier(spawned_c, wait_c)
+        .with_startup_failure(AcceptanceStartupFailureStage::Handshake)
+        .with_cleanup_failures(3)
+        .with_observer(observed_c);
+    let launch_c = DiagnosticChildLaunch::new(
+        child_c.path(),
+        fake_gated_child_executable(&lane_c, &lane_c.join("gate.txt"), false),
+    );
+
+    let run_lane = |launch, plan| {
+        thread::spawn(move || {
+            DiagnosticChildSupervisor::default().start_for_acceptance_with_test_plan(
+                launch,
+                Duration::from_secs(2),
+                Duration::from_millis(1),
+                Duration::from_millis(1),
+                plan,
+            )
+        })
+    };
+    let lane_a = run_lane(launch_a, plan_a);
+    let lane_b = run_lane(launch_b, plan_b);
+    let lane_c = run_lane(launch_c, plan_c);
+
+    let pid_a = reached_a.recv_timeout(Duration::from_secs(1)).unwrap();
+    let pid_b = reached_b.recv_timeout(Duration::from_secs(1)).unwrap();
+    let pid_c = reached_c.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert_ne!(pid_a, pid_b);
+    assert_ne!(pid_b, pid_c);
+    assert_ne!(pid_a, pid_c);
+    let exact_a = ExactWindowsProcess::open_while_known_live(pid_a);
+    let exact_b = ExactWindowsProcess::open_while_known_live(pid_b);
+    let exact_c = ExactWindowsProcess::open_while_known_live(pid_c);
+
+    release_c.send(()).unwrap();
+    release_a.send(()).unwrap();
+    release_b.send(()).unwrap();
+    let failure_a = lane_a.join().unwrap().unwrap_err();
+    let failure_b = lane_b.join().unwrap().unwrap_err();
+    let failure_c = lane_c.join().unwrap().unwrap_err();
+    let (cause_a, initial_a, owner_a) = failure_a.into_parts();
+    let (cause_b, initial_b, owner_b) = failure_b.into_parts();
+    let (cause_c, initial_c, owner_c) = failure_c.into_parts();
+    assert!(matches!(
+        cause_a,
+        DiagnosticChildSupervisorError::ConfigureProcessJob { .. }
+    ));
+    assert!(matches!(
+        cause_b,
+        DiagnosticChildSupervisorError::WriteRequest { .. }
+    ));
+    assert!(matches!(
+        cause_c,
+        DiagnosticChildSupervisorError::StartupProtocolIncompatible { .. }
+    ));
+    assert!(initial_a.is_some() && initial_b.is_some() && initial_c.is_some());
+    assert_eq!(
+        observations_a.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::StartupFailureConsumed {
+            pid: pid_a,
+            stage: AcceptanceStartupFailureStage::JobConfigure,
+        }
+    );
+    assert_eq!(
+        observations_b.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::JobConfigured { pid: pid_b }
+    );
+    assert_eq!(
+        observations_b.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::StartupFailureConsumed {
+            pid: pid_b,
+            stage: AcceptanceStartupFailureStage::GateWrite,
+        }
+    );
+    assert_eq!(
+        observations_c.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::JobConfigured { pid: pid_c }
+    );
+    assert_eq!(
+        observations_c.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::GateWriteCompleted { pid: pid_c }
+    );
+    assert_eq!(
+        observations_c.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::StartupFailureConsumed {
+            pid: pid_c,
+            stage: AcceptanceStartupFailureStage::Handshake,
+        }
+    );
+
+    reclaim_lane_owner(owner_a.unwrap(), pid_a, 1);
+    reclaim_lane_owner(owner_b.unwrap(), pid_b, 2);
+    reclaim_lane_owner(owner_c.unwrap(), pid_c, 3);
+    assert_lane_cleanup_observations(&observations_a, pid_a, 1);
+    assert_lane_cleanup_observations(&observations_b, pid_b, 2);
+    assert_lane_cleanup_observations(&observations_c, pid_c, 3);
+    exact_a.assert_exited();
+    exact_b.assert_exited();
+    exact_c.assert_exited();
+    child_a.close().unwrap();
+    child_b.close().unwrap();
+    child_c.close().unwrap();
     root.close().unwrap();
 }
 
@@ -391,14 +541,19 @@ fn post_assignment_setup_failure_cleans_direct_child_before_gate_release() {
     let launch = DiagnosticChildLaunch::new(child.path(), executable);
     let (assigned_sender, assigned_receiver) = mpsc::sync_channel(1);
     let (release_sender, release_receiver) = mpsc::sync_channel(0);
-    install_job_assignment_hook_for_test(assigned_sender, Some(release_receiver), true);
+    let test_plan = AcceptanceTestPlan::new().with_job_assignment(
+        assigned_sender,
+        Some(release_receiver),
+        true,
+    );
 
     let started = thread::spawn(move || {
-        DiagnosticChildSupervisor::default().start_for_acceptance(
+        DiagnosticChildSupervisor::default().start_for_acceptance_with_test_plan(
             launch,
             Duration::from_secs(1),
             Duration::ZERO,
             Duration::from_secs(1),
+            test_plan,
         )
     });
     let pid = assigned_receiver
@@ -427,22 +582,24 @@ fn acceptance_startup_failure_transfers_exact_owner_for_bounded_retries() {
     let launch = DiagnosticChildLaunch::new(child.path(), executable);
     let (assigned_sender, assigned_receiver) = mpsc::sync_channel(1);
     let (release_sender, release_receiver) = mpsc::sync_channel(0);
-    install_job_assignment_hook_for_test(assigned_sender, Some(release_receiver), true);
+    let test_plan = AcceptanceTestPlan::new()
+        .with_job_assignment(assigned_sender, Some(release_receiver), true)
+        .with_cleanup_failures(2);
 
     let started_at = Instant::now();
     let started = thread::spawn(move || {
-        DiagnosticChildSupervisor::default().start_for_acceptance(
+        DiagnosticChildSupervisor::default().start_for_acceptance_with_test_plan(
             launch,
             Duration::from_secs(1),
             Duration::from_millis(1),
             Duration::from_millis(1),
+            test_plan,
         )
     });
     let pid = assigned_receiver
         .recv_timeout(Duration::from_secs(1))
         .unwrap();
     let direct_child = ExactWindowsProcess::open_while_known_live(pid);
-    install_acceptance_cleanup_failure_hook_for_test(pid, 2);
     release_sender.send(()).unwrap();
     let failure = started.join().unwrap().unwrap_err();
     assert!(started_at.elapsed() < Duration::from_secs(2));
@@ -501,25 +658,44 @@ fn every_injected_startup_setup_failure_retains_or_terminally_cleans_resources()
         let launch = DiagnosticChildLaunch::new(child.path(), executable);
         let (spawned_sender, spawned_receiver) = mpsc::sync_channel(1);
         let (release_sender, release_receiver) = mpsc::sync_channel(0);
-        install_acceptance_spawn_hook_for_test(spawned_sender, release_receiver);
+        let (observation_sender, observation_receiver) = mpsc::sync_channel(8);
+        let test_plan = AcceptanceTestPlan::new()
+            .with_spawn_barrier(spawned_sender, release_receiver)
+            .with_startup_failure(stage);
+        let test_plan = if stage == AcceptanceStartupFailureStage::GateWrite {
+            test_plan.with_startup_failure(AcceptanceStartupFailureStage::GateReady)
+        } else {
+            test_plan
+        };
+        let test_plan = test_plan
+            .with_cleanup_failures(1)
+            .with_observer(observation_sender);
         let started = thread::spawn(move || {
-            DiagnosticChildSupervisor::default().start_for_acceptance(
+            DiagnosticChildSupervisor::default().start_for_acceptance_with_test_plan(
                 launch,
                 Duration::from_secs(1),
                 Duration::from_millis(1),
                 Duration::from_millis(1),
+                test_plan,
             )
         });
         let pid = spawned_receiver
             .recv_timeout(Duration::from_secs(1))
             .unwrap();
         let direct_child = ExactWindowsProcess::open_while_known_live(pid);
-        install_acceptance_startup_failure_hook_for_test(pid, stage);
-        install_acceptance_cleanup_failure_hook_for_test(pid, 1);
         release_sender.send(()).unwrap();
         let failure = started.join().unwrap().unwrap_err();
         let (cause, initial_cleanup_error, owner) = failure.into_parts();
         assert!(initial_cleanup_error.is_some(), "stage {stage:?}");
+        if stage == AcceptanceStartupFailureStage::JobAssign {
+            assert_eq!(
+                observation_receiver
+                    .recv_timeout(Duration::from_secs(1))
+                    .unwrap(),
+                AcceptanceTestObservation::JobConfigured { pid },
+                "injected Job assignment failure must occur after Job configuration"
+            );
+        }
         match stage {
             AcceptanceStartupFailureStage::JobCreate => assert!(matches!(
                 cause,
@@ -586,6 +762,42 @@ fn every_injected_startup_setup_failure_retains_or_terminally_cleans_resources()
             owner.retry_cleanup(Duration::ZERO, Duration::from_secs(2)),
             DiagnosticAcceptanceCleanupRetry::Reclaimed(identity) if identity.pid == pid
         ));
+        let observations = observation_receiver.try_iter().collect::<Vec<_>>();
+        if stage == AcceptanceStartupFailureStage::GateWrite {
+            assert!(
+                observations.contains(&AcceptanceTestObservation::StartupFailureConsumed {
+                    pid,
+                    stage: AcceptanceStartupFailureStage::GateWrite,
+                })
+            );
+            assert!(!observations.iter().any(|observation| matches!(
+                observation,
+                AcceptanceTestObservation::GateWriteCompleted { .. }
+            )));
+            assert!(!observations.iter().any(|observation| matches!(
+                observation,
+                AcceptanceTestObservation::StartupFailureConsumed {
+                    stage: AcceptanceStartupFailureStage::GateReady,
+                    ..
+                }
+            )));
+        }
+        if stage == AcceptanceStartupFailureStage::GateReady {
+            let gate_write = observations
+                .iter()
+                .position(|observation| {
+                    *observation == AcceptanceTestObservation::GateWriteCompleted { pid }
+                })
+                .expect("gate write completion must be observed before ready-frame injection");
+            assert_eq!(
+                observations.get(gate_write + 1),
+                Some(&AcceptanceTestObservation::StartupFailureConsumed {
+                    pid,
+                    stage: AcceptanceStartupFailureStage::GateReady,
+                }),
+                "GateReady must be consumed on entry to ready-frame handling"
+            );
+        }
         direct_child.assert_exited();
         if !matches!(
             stage,
@@ -611,20 +823,22 @@ fn bounded_join_timeout_retains_exact_job_for_cleanup_retry() {
     let launch = DiagnosticChildLaunch::new(child.path(), executable);
     let (spawned_sender, spawned_receiver) = mpsc::sync_channel(1);
     let (release_sender, release_receiver) = mpsc::sync_channel(0);
-    install_acceptance_spawn_hook_for_test(spawned_sender, release_receiver);
+    let test_plan = AcceptanceTestPlan::new()
+        .with_spawn_barrier(spawned_sender, release_receiver)
+        .with_startup_failure(AcceptanceStartupFailureStage::Handshake)
+        .with_cleanup_failures(1);
     let started = thread::spawn(move || {
-        DiagnosticChildSupervisor::default().start_for_acceptance(
+        DiagnosticChildSupervisor::default().start_for_acceptance_with_test_plan(
             launch,
             Duration::from_secs(1),
             Duration::from_millis(1),
             Duration::from_millis(1),
+            test_plan,
         )
     });
     let pid = spawned_receiver
         .recv_timeout(Duration::from_secs(1))
         .unwrap();
-    install_acceptance_startup_failure_hook_for_test(pid, AcceptanceStartupFailureStage::Handshake);
-    install_acceptance_cleanup_failure_hook_for_test(pid, 1);
     release_sender.send(()).unwrap();
     let failure = started.join().unwrap().unwrap_err();
     let (_, _, owner) = failure.into_parts();
@@ -660,20 +874,24 @@ fn dropping_unconsumed_startup_owner_closes_job_without_timed_retry() {
     let launch = DiagnosticChildLaunch::new(child.path(), executable);
     let (assigned_sender, assigned_receiver) = mpsc::sync_channel(1);
     let (release_sender, release_receiver) = mpsc::sync_channel(0);
-    install_job_assignment_hook_for_test(assigned_sender, Some(release_receiver), false);
+    let (observation_sender, observation_receiver) = mpsc::sync_channel(4);
+    let test_plan = AcceptanceTestPlan::new()
+        .with_job_assignment(assigned_sender, Some(release_receiver), false)
+        .with_cleanup_failures(2)
+        .with_observer(observation_sender);
 
     let started = thread::spawn(move || {
-        DiagnosticChildSupervisor::default().start_for_acceptance(
+        DiagnosticChildSupervisor::default().start_for_acceptance_with_test_plan(
             launch,
             Duration::from_secs(2),
             Duration::from_millis(1),
             Duration::from_millis(1),
+            test_plan,
         )
     });
     let pid = assigned_receiver
         .recv_timeout(Duration::from_secs(1))
         .unwrap();
-    install_acceptance_cleanup_failure_hook_for_test(pid, 2);
     release_sender.send(()).unwrap();
     let failure = started.join().unwrap().unwrap_err();
     let (_, initial_cleanup_error, owner) = failure.into_parts();
@@ -692,11 +910,36 @@ fn dropping_unconsumed_startup_owner_closes_job_without_timed_retry() {
     drop(owner);
     assert!(dropped_at.elapsed() < Duration::from_millis(100));
     assert_eq!(
-        acceptance_cleanup_failure_remaining_for_test(pid),
-        Some(1),
-        "owner Drop must not perform an unrequested timed cleanup retry"
+        observation_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap(),
+        AcceptanceTestObservation::JobConfigured { pid }
     );
-    clear_acceptance_cleanup_failure_hook_for_test(pid);
+    assert_eq!(
+        observation_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap(),
+        AcceptanceTestObservation::GateWriteCompleted { pid }
+    );
+    assert_eq!(
+        observation_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap(),
+        AcceptanceTestObservation::CleanupAttempt {
+            pid,
+            ordinal: 1,
+            forced_failure: true,
+            remaining_forced_failures: 1,
+        }
+    );
+    assert_eq!(
+        observation_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap(),
+        AcceptanceTestObservation::FailSafeRelease { pid },
+        "owner Drop must release fail-safe without a timed cleanup retry"
+    );
+    assert!(observation_receiver.try_recv().is_err());
     descendant.wait_until_exited(Duration::from_secs(2));
     descendant.assert_exited();
     child.close().unwrap();
@@ -707,10 +950,13 @@ fn dropping_unconsumed_startup_owner_closes_job_without_timed_retry() {
 #[test]
 fn acceptance_finish_recovers_before_publishing_and_records_both_attempts() {
     let root = tempdir_support::temp_dir("beryl-acceptance-finish-recovery-");
-    let (session, evidence_path) = terminal_acceptance_session(root.path(), Duration::from_secs(1));
+    let (session, evidence_path) = terminal_acceptance_session(
+        root.path(),
+        Duration::from_secs(1),
+        AcceptanceTestPlan::new().with_cleanup_failures(1),
+    );
     let pid = session.diagnostic_child_pid_for_test();
     let exact_child = ExactWindowsProcess::open_while_known_live(pid);
-    install_acceptance_cleanup_failure_hook_for_test(pid, 1);
 
     let outcome = session.finish();
 
@@ -787,7 +1033,10 @@ fn acceptance_finish_recovers_before_publishing_and_records_both_attempts() {
 #[test]
 fn acceptance_budget_is_shared_by_request_cleanup_error_and_stderr() {
     let root = tempdir_support::temp_dir("beryl-acceptance-shared-budget-");
-    let mut session = terminal_budget_acceptance_session(root.path());
+    let mut session = terminal_budget_acceptance_session(
+        root.path(),
+        AcceptanceTestPlan::new().with_cleanup_failures(1),
+    );
     let pid = session.diagnostic_child_pid_for_test();
     let exact_child = ExactWindowsProcess::open_while_known_live(pid);
 
@@ -795,8 +1044,6 @@ fn acceptance_budget_is_shared_by_request_cleanup_error_and_stderr() {
         .request(AcceptanceRequest::new("read_process", serde_json::json!({})).unwrap())
         .unwrap_err();
     assert!(request_error.to_string().contains("after 100ms"));
-    install_acceptance_cleanup_failure_hook_for_test(pid, 1);
-
     let outcome = session.finish();
     let evidence = outcome.evidence();
     assert!(matches!(
@@ -847,12 +1094,13 @@ fn acceptance_budget_is_shared_by_request_cleanup_error_and_stderr() {
 #[test]
 fn acceptance_finish_persists_indeterminate_cleanup_and_retains_exact_owner() {
     let root = tempdir_support::temp_dir("beryl-acceptance-finish-retained-");
-    let (session, evidence_path) =
-        terminal_acceptance_session(root.path(), Duration::from_millis(50));
+    let (session, evidence_path) = terminal_acceptance_session(
+        root.path(),
+        Duration::from_millis(50),
+        AcceptanceTestPlan::new().with_cleanup_failures(2),
+    );
     let pid = session.diagnostic_child_pid_for_test();
     let exact_child = ExactWindowsProcess::open_while_known_live(pid);
-    install_acceptance_cleanup_failure_hook_for_test(pid, 2);
-
     let mut outcome = session.finish();
 
     assert!(matches!(
@@ -919,13 +1167,14 @@ fn acceptance_finish_persists_indeterminate_cleanup_and_retains_exact_owner() {
 #[test]
 fn acceptance_finish_reports_combined_cleanup_and_publication_failure_without_clobber() {
     let root = tempdir_support::temp_dir("beryl-acceptance-finish-combined-");
-    let (session, evidence_path) =
-        terminal_acceptance_session(root.path(), Duration::from_millis(50));
+    let (session, evidence_path) = terminal_acceptance_session(
+        root.path(),
+        Duration::from_millis(50),
+        AcceptanceTestPlan::new().with_cleanup_failures(2),
+    );
     let pid = session.diagnostic_child_pid_for_test();
     let exact_child = ExactWindowsProcess::open_while_known_live(pid);
     fs::write(&evidence_path, b"operator-owned").unwrap();
-    install_acceptance_cleanup_failure_hook_for_test(pid, 2);
-
     let mut outcome = session.finish();
 
     assert!(matches!(
@@ -971,38 +1220,34 @@ fn acceptance_finish_reports_combined_cleanup_and_publication_failure_without_cl
 #[test]
 fn terminal_and_unfinished_drops_never_start_hidden_timed_cleanup_retries() {
     let root = tempdir_support::temp_dir("beryl-acceptance-finish-drop-");
+    let (finished_observer, finished_observations) = mpsc::sync_channel(8);
+    let finished_plan = AcceptanceTestPlan::new()
+        .with_cleanup_failures(3)
+        .with_observer(finished_observer);
     let (session, evidence_path) =
-        terminal_acceptance_session(root.path(), Duration::from_millis(50));
+        terminal_acceptance_session(root.path(), Duration::from_millis(50), finished_plan);
     let pid = session.diagnostic_child_pid_for_test();
     let exact_child = ExactWindowsProcess::open_while_known_live(pid);
-    install_acceptance_cleanup_failure_hook_for_test(pid, 3);
     let outcome = session.finish();
     assert!(
         evidence_path.is_file(),
         "finish must publish terminal evidence"
     );
-    assert_eq!(acceptance_cleanup_failure_remaining_for_test(pid), Some(1));
     drop(outcome);
-    assert_eq!(
-        acceptance_cleanup_failure_remaining_for_test(pid),
-        Some(1),
-        "terminal outcome Drop must not perform a timed cleanup retry"
-    );
-    clear_acceptance_cleanup_failure_hook_for_test(pid);
+    assert_cleanup_observations(&finished_observations, pid, &[(1, 2), (2, 1)], true);
     exact_child.wait_until_exited(Duration::from_secs(2));
     exact_child.assert_exited();
 
-    let (session, _) = terminal_acceptance_session(root.path(), Duration::from_millis(50));
+    let (unfinished_observer, unfinished_observations) = mpsc::sync_channel(8);
+    let unfinished_plan = AcceptanceTestPlan::new()
+        .with_cleanup_failures(2)
+        .with_observer(unfinished_observer);
+    let (session, _) =
+        terminal_acceptance_session(root.path(), Duration::from_millis(50), unfinished_plan);
     let pid = session.diagnostic_child_pid_for_test();
     let exact_child = ExactWindowsProcess::open_while_known_live(pid);
-    install_acceptance_cleanup_failure_hook_for_test(pid, 2);
     drop(session);
-    assert_eq!(
-        acceptance_cleanup_failure_remaining_for_test(pid),
-        Some(1),
-        "unfinished session Drop must run configured cleanup exactly once"
-    );
-    clear_acceptance_cleanup_failure_hook_for_test(pid);
+    assert_cleanup_observations(&unfinished_observations, pid, &[(1, 1)], true);
     exact_child.wait_until_exited(Duration::from_secs(2));
     exact_child.assert_exited();
     root.close().unwrap();
@@ -1617,9 +1862,97 @@ fn fake_child_executable(root: &std::path::Path, behavior: FakeChildBehavior) ->
 }
 
 #[cfg(windows)]
+fn assert_cleanup_observations(
+    observations: &mpsc::Receiver<AcceptanceTestObservation>,
+    pid: u32,
+    expected_attempts: &[(usize, usize)],
+    expect_fail_safe_release: bool,
+) {
+    assert_eq!(
+        observations.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::JobConfigured { pid }
+    );
+    assert_eq!(
+        observations.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::GateWriteCompleted { pid }
+    );
+    for &(ordinal, remaining_forced_failures) in expected_attempts {
+        assert_eq!(
+            observations.recv_timeout(Duration::from_secs(1)).unwrap(),
+            AcceptanceTestObservation::CleanupAttempt {
+                pid,
+                ordinal,
+                forced_failure: true,
+                remaining_forced_failures,
+            }
+        );
+    }
+    if expect_fail_safe_release {
+        assert_eq!(
+            observations.recv_timeout(Duration::from_secs(1)).unwrap(),
+            AcceptanceTestObservation::FailSafeRelease { pid }
+        );
+    }
+    assert!(observations.try_recv().is_err());
+}
+
+#[cfg(windows)]
+fn reclaim_lane_owner(
+    mut owner: DiagnosticAcceptanceProcessOwner,
+    pid: u32,
+    forced_cleanup_failures: usize,
+) {
+    for retry in 1..=forced_cleanup_failures {
+        let result = owner.retry_cleanup(Duration::ZERO, Duration::from_secs(2));
+        if retry == forced_cleanup_failures {
+            assert!(matches!(
+                result,
+                DiagnosticAcceptanceCleanupRetry::Reclaimed(identity) if identity.pid == pid
+            ));
+        } else {
+            assert!(matches!(
+                result,
+                DiagnosticAcceptanceCleanupRetry::StillRetained { identity, .. }
+                    if identity.pid == pid
+            ));
+        }
+    }
+}
+
+#[cfg(windows)]
+fn assert_lane_cleanup_observations(
+    observations: &mpsc::Receiver<AcceptanceTestObservation>,
+    pid: u32,
+    forced_cleanup_failures: usize,
+) {
+    for ordinal in 1..=forced_cleanup_failures {
+        assert_eq!(
+            observations.recv_timeout(Duration::from_secs(1)).unwrap(),
+            AcceptanceTestObservation::CleanupAttempt {
+                pid,
+                ordinal,
+                forced_failure: true,
+                remaining_forced_failures: forced_cleanup_failures - ordinal,
+            }
+        );
+    }
+    assert_eq!(
+        observations.recv_timeout(Duration::from_secs(1)).unwrap(),
+        AcceptanceTestObservation::CleanupAttempt {
+            pid,
+            ordinal: forced_cleanup_failures + 1,
+            forced_failure: false,
+            remaining_forced_failures: 0,
+        }
+    );
+    assert!(observations.try_recv().is_err());
+}
+
+#[cfg(windows)]
 fn terminal_acceptance_session(
     root: &std::path::Path,
     recovery_cleanup_timeout: Duration,
+    test_plan: AcceptanceTestPlan,
 ) -> (AcceptanceSession, PathBuf) {
     static SEQUENCE: AtomicUsize = AtomicUsize::new(1);
 
@@ -1654,11 +1987,17 @@ fn terminal_acceptance_session(
         recovery_cleanup_timeout,
     )
     .unwrap();
-    (AcceptanceSession::start(config).unwrap(), evidence_path)
+    (
+        AcceptanceSession::start_with_test_plan(config, test_plan).unwrap(),
+        evidence_path,
+    )
 }
 
 #[cfg(windows)]
-fn terminal_budget_acceptance_session(root: &std::path::Path) -> AcceptanceSession {
+fn terminal_budget_acceptance_session(
+    root: &std::path::Path,
+    test_plan: AcceptanceTestPlan,
+) -> AcceptanceSession {
     let fixture = root.join("terminal-budget-fixture");
     let workspace = fixture.join("workspace");
     let evidence_dir = fixture.join("evidence");
@@ -1685,7 +2024,7 @@ fn terminal_budget_acceptance_session(root: &std::path::Path) -> AcceptanceSessi
         Duration::from_secs(1),
     )
     .unwrap();
-    AcceptanceSession::start(config).unwrap()
+    AcceptanceSession::start_with_test_plan(config, test_plan).unwrap()
 }
 
 #[cfg(windows)]
