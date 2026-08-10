@@ -33,4 +33,5 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_Security", 
 
 [dev-dependencies]
 tempfile.workspace = true
+tracing-subscriber.workspace = true
 tungstenite.workspace = true

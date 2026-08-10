@@ -4,17 +4,18 @@
 mod tempdir_support;
 
 use beryl_app::{
-    AgentPreferences, AppearanceSettings, BerylThemeProperty, BerylThemeRole, GuiPreferences,
-    INSTALL_THEME_TOOL, MAX_THEME_ACTIVE_DOCUMENT_RESPONSE_BYTES, MAX_THEME_TOOL_NAME_BYTES,
-    NotificationPreferences, OperationPreferences, PREVIEW_THEME_TOOL,
+    ActivityDiagnosticCaptureErrorCategory, ActivityDiagnosticCaptureRuntimeState,
+    ActivityDiagnosticCaptureStatus, AgentPreferences, AppearanceSettings, BerylThemeProperty,
+    BerylThemeRole, GuiPreferences, INSTALL_THEME_TOOL, MAX_THEME_ACTIVE_DOCUMENT_RESPONSE_BYTES,
+    MAX_THEME_TOOL_NAME_BYTES, NotificationPreferences, OperationPreferences, PREVIEW_THEME_TOOL,
     READ_THEME_AUTHORING_GUIDE_TOOL, SAVE_THEME_AS_TOOL, SettingsDynamicToolRequest,
     ThemeAuthoringGuideSection, ThemeDocument, ThemeDynamicToolRequest, ThemeRepositoryStore,
     ThemeSaveAsSource, UPDATE_GUI_SETTINGS_TOOL, UPDATE_THEME_TOOL,
     VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL,
-    built_in_theme_supported_properties, gui_settings_snapshot_value,
-    parse_beryl_settings_dynamic_tool_request, parse_beryl_theme_dynamic_tool_request,
-    settings_validation_value, theme_authoring_guide_value, theme_repository_value,
-    theme_schema_value, validate_theme_document_value,
+    beryl_settings_dynamic_tool_specs, built_in_theme_supported_properties,
+    gui_settings_snapshot_value, parse_beryl_settings_dynamic_tool_request,
+    parse_beryl_theme_dynamic_tool_request, settings_validation_value, theme_authoring_guide_value,
+    theme_repository_value, theme_schema_value, validate_theme_document_value,
 };
 use beryl_backend::{DynamicToolCallRequest, parse_dynamic_tool_call_request};
 use serde_json::{Value, json};
@@ -708,10 +709,11 @@ fn settings_snapshot_redacts_local_paths_and_developer_instruction_text() {
         agent: AgentPreferences::with_developer_instructions(Some(
             developer_instructions.to_string(),
         )),
+        ..GuiPreferences::default()
     };
     let themes = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
 
-    let snapshot = gui_settings_snapshot_value(&preferences, &themes);
+    let snapshot = gui_settings_snapshot_value(&preferences, &themes, None);
     let encoded = serde_json::to_string(&snapshot).unwrap();
 
     assert_eq!(
@@ -745,6 +747,7 @@ fn settings_update_parser_preserves_explicit_null_and_reports_noop_validation() 
         notifications: NotificationPreferences::with_end_turn_sound_path(Some(secret_sound_path))
             .unwrap(),
         agent: AgentPreferences::with_developer_instructions(Some("current".to_string())),
+        ..GuiPreferences::default()
     };
     let clear_request = dynamic_tool_request(
         UPDATE_GUI_SETTINGS_TOOL,
@@ -780,7 +783,7 @@ fn settings_update_parser_preserves_explicit_null_and_reports_noop_validation() 
     else {
         panic!("expected settings validation request");
     };
-    let validation = settings_validation_value(&current, &update).unwrap();
+    let validation = settings_validation_value(&current, &update, None).unwrap();
     assert_eq!(validation["valid"], true);
     assert_eq!(validation["changed"], false);
 
@@ -835,6 +838,159 @@ fn settings_update_parser_rejects_unknown_keys_and_invalid_values() {
     let invalid_sound_path_error =
         parse_beryl_settings_dynamic_tool_request(&invalid_sound_path_request).unwrap_err();
     assert_eq!(invalid_sound_path_error.kind(), "invalid_field");
+}
+
+#[test]
+fn diagnostic_settings_update_schema_and_parser_are_strict_and_typed() {
+    let schema = beryl_settings_dynamic_tool_specs()
+        .into_iter()
+        .find(|spec| spec.name == UPDATE_GUI_SETTINGS_TOOL)
+        .expect("GUI settings update tool should be registered")
+        .input_schema;
+    assert_eq!(schema["additionalProperties"], false);
+    assert_eq!(
+        schema["properties"]["diagnostics"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        schema["properties"]["diagnostics"]["properties"]["activityDiagnosticCaptureEnabled"]["type"],
+        "boolean"
+    );
+
+    for enabled in [false, true] {
+        let request = dynamic_tool_request(
+            UPDATE_GUI_SETTINGS_TOOL,
+            json!({
+                "diagnostics": {
+                    "activityDiagnosticCaptureEnabled": enabled,
+                }
+            }),
+        );
+        let SettingsDynamicToolRequest::Update { update } =
+            parse_beryl_settings_dynamic_tool_request(&request).unwrap()
+        else {
+            panic!("expected settings update request");
+        };
+        assert_eq!(
+            update
+                .apply_to(&GuiPreferences::default())
+                .unwrap()
+                .diagnostics
+                .activity_diagnostic_capture_enabled,
+            enabled
+        );
+    }
+
+    let unknown_field = dynamic_tool_request(
+        UPDATE_GUI_SETTINGS_TOOL,
+        json!({ "diagnostics": { "unknown": true } }),
+    );
+    let wrong_type = dynamic_tool_request(
+        UPDATE_GUI_SETTINGS_TOOL,
+        json!({ "diagnostics": { "activityDiagnosticCaptureEnabled": "true" } }),
+    );
+    assert_eq!(
+        parse_beryl_settings_dynamic_tool_request(&unknown_field)
+            .unwrap_err()
+            .kind(),
+        "invalid_arguments"
+    );
+    assert_eq!(
+        parse_beryl_settings_dynamic_tool_request(&wrong_type)
+            .unwrap_err()
+            .kind(),
+        "invalid_field"
+    );
+}
+
+#[test]
+fn diagnostic_settings_validation_is_nonmutating_and_reports_prospective_value() {
+    let current = GuiPreferences::default();
+    let update_request = dynamic_tool_request(
+        VALIDATE_GUI_SETTINGS_UPDATE_TOOL,
+        json!({ "diagnostics": { "activityDiagnosticCaptureEnabled": true } }),
+    );
+    let noop_request = dynamic_tool_request(
+        VALIDATE_GUI_SETTINGS_UPDATE_TOOL,
+        json!({ "diagnostics": {} }),
+    );
+    let SettingsDynamicToolRequest::Validate { update } =
+        parse_beryl_settings_dynamic_tool_request(&update_request).unwrap()
+    else {
+        panic!("expected settings validation request");
+    };
+    let validation = settings_validation_value(&current, &update, None).unwrap();
+    assert_eq!(
+        current.diagnostics.activity_diagnostic_capture_enabled,
+        false
+    );
+    assert_eq!(validation["valid"], true);
+    assert_eq!(validation["changed"], true);
+    assert_eq!(
+        validation["resultingSettings"]["diagnostics"]["activityDiagnosticCaptureEnabled"],
+        true
+    );
+
+    let SettingsDynamicToolRequest::Validate { update } =
+        parse_beryl_settings_dynamic_tool_request(&noop_request).unwrap()
+    else {
+        panic!("expected settings validation request");
+    };
+    let validation = settings_validation_value(&current, &update, None).unwrap();
+    assert_eq!(validation["changed"], false);
+    assert_eq!(
+        validation["resultingSettings"]["diagnostics"]["activityDiagnosticCaptureEnabled"],
+        false
+    );
+}
+
+#[test]
+fn diagnostic_settings_snapshot_is_exact_bounded_and_redacted() {
+    let root = unique_temp_dir();
+    let mut preferences = GuiPreferences::default();
+    preferences.diagnostics.activity_diagnostic_capture_enabled = true;
+    let themes = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
+    let status = ActivityDiagnosticCaptureStatus {
+        configured: true,
+        runtime_state: ActivityDiagnosticCaptureRuntimeState::Unavailable,
+        capture_generation: 7,
+        written_record_count: 11,
+        dropped_record_count: 13,
+        queue_full_drop_count: 17,
+        queue_disconnected_drop_count: 19,
+        schema_rejection_drop_count: 23,
+        oversized_record_count: 29,
+        repair_count: 31,
+        rotation_count: 37,
+        error_category: Some(ActivityDiagnosticCaptureErrorCategory::LockUnavailable),
+    };
+
+    let snapshot = gui_settings_snapshot_value(&preferences, &themes, Some(&status));
+    assert_eq!(
+        snapshot["diagnostics"],
+        json!({
+            "activityDiagnosticCaptureEnabled": true,
+            "activityDiagnosticCaptureStatus": {
+                "configured": true,
+                "state": "unavailable",
+                "captureGeneration": 7,
+                "writtenRecordCount": 11,
+                "droppedRecordCount": 13,
+                "queueFullDropCount": 17,
+                "queueDisconnectedDropCount": 19,
+                "schemaRejectionDropCount": 23,
+                "oversizedRecordCount": 29,
+                "repairCount": 31,
+                "rotationCount": 37,
+                "errorCategory": "lock_unavailable",
+            }
+        })
+    );
+    let encoded = serde_json::to_string(&snapshot).unwrap();
+    assert!(!encoded.contains("activity-capture"));
+    assert!(!encoded.contains("C:\\Users"));
+
+    root.close().unwrap();
 }
 
 fn first_role(value: &Value) -> &Value {

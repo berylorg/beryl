@@ -1,5 +1,9 @@
 use std::path::PathBuf;
 
+#[path = "../src/activity_lifecycle_diagnostics.rs"]
+mod activity_lifecycle_diagnostics;
+#[path = "../src/activity_presentation_diagnostics.rs"]
+mod activity_presentation_diagnostics;
 #[path = "../src/shell/tool_activity.rs"]
 mod tool_activity;
 
@@ -53,6 +57,106 @@ fn projection_classifies_completed_items_from_raw_status() {
 }
 
 #[test]
+fn lifecycle_diagnostics_distinguish_matching_completion_and_completion_without_start() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_main", "turn_1", command_item("matched")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &TurnStreamEvent::ReasoningSummaryTextDelta {
+            thread_id: "thread_main".to_string(),
+            turn_id: "turn_1".to_string(),
+            item_id: "matched".to_string(),
+            summary_index: 0,
+            delta: "content that must not be retained".to_string(),
+        },
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_main",
+            "turn_1",
+            command_item_with_status("matched", "completed"),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_main",
+            "turn_1",
+            command_item_with_status("completion_only", "completed"),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let snapshot = projection.lifecycle_diagnostic_snapshot();
+    assert_eq!(snapshot.events.len(), 4);
+    assert_eq!(snapshot.events[0].kind, "started");
+    assert_eq!(snapshot.events[0].projection_outcome, "inserted_running");
+    assert_eq!(snapshot.events[0].before_row_status, None);
+    assert_eq!(snapshot.events[0].after_row_status, Some("running"));
+    assert_eq!(snapshot.events[1].kind, "updated");
+    assert_eq!(snapshot.events[1].projection_outcome, "matched_existing");
+    assert_eq!(snapshot.events[1].before_row_status, Some("running"));
+    assert_eq!(snapshot.events[1].after_row_status, Some("running"));
+    assert_eq!(snapshot.events[2].kind, "completed");
+    assert_eq!(snapshot.events[2].projection_outcome, "matched_existing");
+    assert_eq!(snapshot.events[2].before_row_status, Some("running"));
+    assert_eq!(snapshot.events[2].after_row_status, Some("finished_ok"));
+    assert_eq!(snapshot.events[3].projection_outcome, "inserted_completed");
+    assert_eq!(snapshot.events[3].before_row_status, None);
+    assert_eq!(snapshot.events[3].after_row_status, Some("finished_ok"));
+    assert!(
+        !serde_json::to_string(&snapshot)
+            .unwrap()
+            .contains("content that must not be retained")
+    );
+}
+
+#[test]
+fn lifecycle_diagnostics_make_mismatched_item_identity_visible() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_main", "turn_1", command_item("started_item")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_main",
+            "turn_1",
+            command_item_with_status("different_item", "completed"),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert_eq!(
+        projection
+            .rows()
+            .iter()
+            .find(|row| row.item_id() == "started_item")
+            .unwrap()
+            .status,
+        ToolActivityRowStatus::Running
+    );
+    assert_eq!(
+        projection
+            .rows()
+            .iter()
+            .find(|row| row.item_id() == "different_item")
+            .unwrap()
+            .status,
+        ToolActivityRowStatus::FinishedOk
+    );
+    let snapshot = projection.lifecycle_diagnostic_snapshot();
+    assert_eq!(snapshot.events[1].projection_outcome, "inserted_completed");
+    assert_eq!(
+        snapshot.events[1].item.value.as_deref(),
+        Some("different_item")
+    );
+}
+
+#[test]
 fn projection_row_identity_includes_thread_turn_and_item() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
@@ -100,6 +204,47 @@ fn projection_row_identity_survives_active_to_finished_resorting() {
         .expect("finished activity row should remain visible");
     assert_eq!(first_row.stable_identity(), &first_identity);
     assert_eq!(projection.rows()[0].item_id(), "second");
+}
+
+#[test]
+fn projection_revision_advances_for_visible_status_and_order_changes() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_main", "turn_1", command_item("first")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_main", "turn_1", command_item("second")),
+        Some("Main".to_string()),
+    );
+    let running_revision = projection.presentation_diagnostic_state();
+    let running_window = projection.rows_for_selected_thread_window(Some("thread_main"), 0..2);
+    assert_eq!(running_window.len(), 2);
+    let first_stable_identity = running_window[0].1.stable_identity().clone();
+
+    projection.apply_stream_event(
+        &completed(
+            "thread_main",
+            "turn_1",
+            command_item_with_status("first", "completed"),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let terminal_revision = projection.presentation_diagnostic_state();
+    let terminal_window = projection.rows_for_selected_thread_window(Some("thread_main"), 0..2);
+    assert!(terminal_revision.revision > running_revision.revision);
+    assert!(
+        terminal_revision.newest_lifecycle_sequence > running_revision.newest_lifecycle_sequence
+    );
+    assert_eq!(terminal_revision.running_row_count, 1);
+    assert_eq!(terminal_revision.finished_ok_row_count, 1);
+    assert_eq!(terminal_window[0].1.item_id(), "second");
+    assert_eq!(terminal_window[1].1.item_id(), "first");
+    assert_eq!(
+        terminal_window[1].1.stable_identity(),
+        &first_stable_identity
+    );
 }
 
 #[test]
@@ -455,6 +600,126 @@ fn projection_retains_history_and_finishes_lingering_running_rows() {
     assert_eq!(
         projection.rows()[0].status,
         ToolActivityRowStatus::FinishedError
+    );
+}
+
+#[test]
+fn lifecycle_diagnostics_record_turn_thread_and_all_fallback_counts() {
+    let mut projection = ToolActivityProjection::default();
+    for item_id in ["main_1", "main_2"] {
+        projection.apply_stream_event(
+            &started("thread_main", "turn_1", command_item(item_id)),
+            Some("Main".to_string()),
+        );
+    }
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("child_1")),
+        Some("Child".to_string()),
+    );
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_main", "turn_1", TurnStatus::Completed),
+        None,
+    );
+
+    projection.apply_stream_event(
+        &started("thread_main", "turn_2", command_item("main_3")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(&thread_archived("thread_main"), None);
+    projection.apply_stream_event(
+        &TurnStreamEvent::ProtocolError {
+            error: JsonRpcError {
+                code: -32000,
+                message: "content that must not be retained".to_string(),
+                data: None,
+            },
+        },
+        None,
+    );
+
+    let snapshot = projection.lifecycle_diagnostic_snapshot();
+    let fallback_events = snapshot
+        .events
+        .iter()
+        .filter(|event| event.stage == "fallback")
+        .collect::<Vec<_>>();
+    assert_eq!(fallback_events.len(), 3);
+    assert_eq!(fallback_events[0].kind, "turn_completed");
+    assert_eq!(fallback_events[0].affected_row_count, 2);
+    assert_eq!(fallback_events[1].kind, "thread_archived");
+    assert_eq!(fallback_events[1].affected_row_count, 1);
+    assert_eq!(fallback_events[2].kind, "protocol_error");
+    assert_eq!(fallback_events[2].affected_row_count, 1);
+    let serialized = serde_json::to_string(&snapshot).unwrap();
+    assert!(!serialized.contains("content that must not be retained"));
+}
+
+#[test]
+fn lifecycle_diagnostics_record_local_stream_failure_and_clear_with_projection() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("selected_thread", "turn_1", command_item("cmd")),
+        Some("Main".to_string()),
+    );
+
+    assert!(projection.finish_running_for_thread_stream_failure("selected_thread"));
+    let snapshot = projection.lifecycle_diagnostic_snapshot();
+    let failure = snapshot.events.last().unwrap();
+    assert_eq!(failure.stage, "stream_failure");
+    assert_eq!(failure.kind, "local_turn_failure");
+    assert_eq!(failure.thread.value.as_deref(), Some("selected_thread"));
+    assert_eq!(failure.turn.value, None);
+    assert_eq!(failure.affected_row_count, 1);
+    assert_eq!(failure.before_row_status, Some("running"));
+    assert_eq!(failure.after_row_status, Some("finished_error"));
+
+    assert!(projection.clear_all());
+    let snapshot = projection.lifecycle_diagnostic_snapshot();
+    assert_eq!(snapshot.retained_count, 0);
+    assert_eq!(snapshot.oldest_sequence, None);
+    assert_eq!(snapshot.omissions.evicted_event_count, 0);
+}
+
+#[test]
+fn clear_resets_projection_correlation_and_first_reuse_sequences() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started(
+            "selected_thread",
+            "turn_before_clear",
+            command_item("before_clear"),
+        ),
+        Some("Main".to_string()),
+    );
+    let before_clear = projection.presentation_diagnostic_state();
+    assert_eq!(before_clear.revision, 1);
+    assert_eq!(before_clear.newest_lifecycle_sequence, Some(1));
+    assert_eq!(
+        projection.lifecycle_diagnostic_snapshot().newest_sequence,
+        Some(1)
+    );
+
+    assert!(projection.clear_all());
+    let cleared = projection.presentation_diagnostic_state();
+    assert_eq!(cleared.revision, 0);
+    assert_eq!(cleared.newest_lifecycle_sequence, None);
+    assert_eq!(cleared.total_row_count, 0);
+    assert_eq!(projection.lifecycle_diagnostic_snapshot().retained_count, 0);
+
+    projection.apply_stream_event(
+        &started(
+            "selected_thread",
+            "turn_after_clear",
+            command_item("after_clear"),
+        ),
+        Some("Main".to_string()),
+    );
+    let reused = projection.presentation_diagnostic_state();
+    assert_eq!(reused.revision, 1);
+    assert_eq!(reused.newest_lifecycle_sequence, Some(1));
+    assert_eq!(
+        projection.lifecycle_diagnostic_snapshot().newest_sequence,
+        Some(1)
     );
 }
 

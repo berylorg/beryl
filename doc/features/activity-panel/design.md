@@ -27,6 +27,7 @@ Show bounded live and recent backend activity for the selected conversation with
 
 - Activity is transient presentation state derived from normalized backend stream events and bounded GUI-derived records.
 - Activity records are in-memory session history. They survive thread switching within the loaded workspace and are discarded on app restart or workspace/backend-session teardown.
+- When the separate operator-enabled Activity diagnostic file capture is active, it may receive content-free diagnostic copies of lifecycle and presentation observations under `doc/features/diagnostics/design.md`. That evidence journal is not the Activity projection, conversation history, transcript state, or workspace state; it must not restore, retain, reorder, or otherwise affect Activity rows.
 - Visible rows are scoped to the selected backend conversation thread and that thread's observed subagent activity.
 - When the workspace is on a pending new-thread draft, visible activity is empty rather than stale rows from the previous selection.
 - Activity state is keyed by backend thread id, turn id, and item id so lifecycle updates remain exact across overlapping threads and subagents.

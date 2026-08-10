@@ -17,16 +17,18 @@ use beryl_app::{
     DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL, DIAGNOSTIC_CHILD_STOP_TOOL,
     DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL, DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL,
     DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL, INSTALL_THEME_TOOL, LifecycleYieldOutcome,
-    PREVIEW_THEME_TOOL, READ_CHECKLIST_TOOL, READ_GRAPH_NEIGHBORHOOD_TOOL, READ_GUI_SETTINGS_TOOL,
-    READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL, READ_PROCESS_DIAGNOSTICS_TOOL,
-    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
-    READ_THEME_AUTHORING_GUIDE_TOOL, READ_THEME_REPOSITORY_TOOL, READ_THEME_SCHEMA_TOOL,
-    READ_TRANSCRIPT_FRAME_METRICS_TOOL, READ_VISIBLE_MEDIA_TOOL, READ_WORKSPACE_GRAPH_SUMMARY_TOOL,
-    SAVE_THEME_AS_TOOL, SET_CHECKLIST_ITEM_STATUS_TOOL, SET_GRAPH_NODE_PARENT_TOOL,
-    STOP_THEME_PREVIEW_TOOL, UPDATE_GUI_SETTINGS_TOOL, UPDATE_THEME_TOOL, UPSERT_GRAPH_NODE_TOOL,
-    UPSERT_GRAPH_SOFT_LINK_TOOL, VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL,
-    WorkspaceGraphToolService, YIELD_TOOL, beryl_diagnostic_child_dynamic_tool_specs,
-    beryl_dynamic_tool_specs, beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
+    PREVIEW_THEME_TOOL, READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL,
+    READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL, READ_CHECKLIST_TOOL, READ_GRAPH_NEIGHBORHOOD_TOOL,
+    READ_GUI_SETTINGS_TOOL, READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL,
+    READ_PROCESS_DIAGNOSTICS_TOOL, READ_RENDERER_DIAGNOSTICS_TOOL,
+    READ_RETAINED_STATE_SUMMARY_TOOL, READ_THEME_AUTHORING_GUIDE_TOOL, READ_THEME_REPOSITORY_TOOL,
+    READ_THEME_SCHEMA_TOOL, READ_TRANSCRIPT_FRAME_METRICS_TOOL, READ_VISIBLE_MEDIA_TOOL,
+    READ_WORKSPACE_GRAPH_SUMMARY_TOOL, SAVE_THEME_AS_TOOL, SET_CHECKLIST_ITEM_STATUS_TOOL,
+    SET_GRAPH_NODE_PARENT_TOOL, STOP_THEME_PREVIEW_TOOL, UPDATE_GUI_SETTINGS_TOOL,
+    UPDATE_THEME_TOOL, UPSERT_GRAPH_NODE_TOOL, UPSERT_GRAPH_SOFT_LINK_TOOL,
+    VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL, WorkspaceGraphToolService,
+    YIELD_TOOL, beryl_diagnostic_child_dynamic_tool_specs, beryl_dynamic_tool_specs,
+    beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
     beryl_user_thread_start_options, dispatch_beryl_dynamic_tool_call_with_metadata,
     dispatch_beryl_graph_dynamic_tool_call, dispatch_beryl_graph_dynamic_tool_call_with_metadata,
     dispatch_beryl_lifecycle_dynamic_tool_call_with_metadata, validate_unique_dynamic_tool_names,
@@ -131,6 +133,14 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             (
                 Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
                 READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL_NAME
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL
             ),
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
@@ -379,6 +389,14 @@ fn diagnostic_tool_specs_are_bounded_and_read_only() {
         .iter()
         .find(|tool| tool.name == READ_TRANSCRIPT_FRAME_METRICS_TOOL)
         .expect("transcript-frame diagnostics tool must be registered");
+    let activity_lifecycle = tools
+        .iter()
+        .find(|tool| tool.name == READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL)
+        .expect("Activity lifecycle diagnostics tool must be registered");
+    let activity_presentation = tools
+        .iter()
+        .find(|tool| tool.name == READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL)
+        .expect("Activity presentation diagnostics tool must be registered");
 
     assert_eq!(
         visible.namespace.as_deref(),
@@ -398,6 +416,24 @@ fn diagnostic_tool_specs_are_bounded_and_read_only() {
         64
     );
     assert!(frame_metrics.input_schema["properties"]["afterSequence"].is_object());
+    assert_eq!(
+        activity_lifecycle.input_schema["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        activity_lifecycle.input_schema["properties"]["limit"]["maximum"],
+        256
+    );
+    assert!(activity_lifecycle.input_schema["properties"]["afterSequence"].is_object());
+    assert_eq!(
+        activity_presentation.input_schema["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        activity_presentation.input_schema["properties"]["limit"]["maximum"],
+        64
+    );
+    assert!(activity_presentation.input_schema["properties"]["afterSequence"].is_object());
 }
 
 #[test]

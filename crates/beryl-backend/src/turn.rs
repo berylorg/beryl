@@ -25,6 +25,7 @@ const TURN_STARTED_METHOD: &str = "turn/started";
 const TURN_COMPLETED_METHOD: &str = "turn/completed";
 const ITEM_STARTED_METHOD: &str = "item/started";
 const ITEM_COMPLETED_METHOD: &str = "item/completed";
+const TURN_STREAM_WARNING_FIELD_CHAR_LIMIT: usize = 256;
 const AGENT_MESSAGE_DELTA_METHOD: &str = "item/agentMessage/delta";
 const REASONING_SUMMARY_PART_ADDED_METHOD: &str = "item/reasoning/summaryPartAdded";
 const REASONING_SUMMARY_TEXT_DELTA_METHOD: &str = "item/reasoning/summaryTextDelta";
@@ -1095,6 +1096,56 @@ impl TurnStreamEvent {
     }
 }
 
+fn warn_if_unexpected_turn_stream_item_type(
+    notification_method: &str,
+    thread_id: &str,
+    turn_id: &str,
+    item: &ThreadItem,
+) {
+    let ThreadItem::Generic(item) = item else {
+        return;
+    };
+    if ToolActivitySource::from_item_type(&item.item_type).is_some()
+        || is_known_generic_item_type_outside_activity_sources(&item.item_type)
+    {
+        return;
+    }
+
+    let notification_method = bounded_turn_stream_warning_field(notification_method);
+    let thread_id = bounded_turn_stream_warning_field(thread_id);
+    let turn_id = bounded_turn_stream_warning_field(turn_id);
+    let item_id = bounded_turn_stream_warning_field(&item.id);
+    let item_type = bounded_turn_stream_warning_field(&item.item_type);
+    tracing::warn!(
+        notification_method = %notification_method,
+        thread_id = %thread_id,
+        turn_id = %turn_id,
+        item_id = %item_id,
+        item_type = %item_type,
+        item_type_bytes = item.item_type.len(),
+        "received unexpected backend item type during turn stream"
+    );
+}
+
+fn is_known_generic_item_type_outside_activity_sources(item_type: &str) -> bool {
+    matches!(
+        item_type,
+        "plan" | "hookPrompt" | "sleep" | "enteredReviewMode" | "exitedReviewMode"
+    )
+}
+
+fn bounded_turn_stream_warning_field(value: &str) -> String {
+    let mut chars = value.chars();
+    let mut bounded = chars
+        .by_ref()
+        .take(TURN_STREAM_WARNING_FIELD_CHAR_LIMIT)
+        .collect::<String>();
+    if chars.next().is_some() {
+        bounded.push_str("...");
+    }
+    bounded
+}
+
 impl<'de> Deserialize<'de> for ThreadItem {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -1468,6 +1519,12 @@ pub fn parse_turn_stream_event(
         }
         ITEM_STARTED_METHOD => {
             let params: ItemNotification = serde_json::from_value(params)?;
+            warn_if_unexpected_turn_stream_item_type(
+                ITEM_STARTED_METHOD,
+                &params.thread_id,
+                &params.turn_id,
+                &params.item,
+            );
             TurnStreamEvent::ItemStarted {
                 thread_id: params.thread_id,
                 turn_id: params.turn_id,
@@ -1476,6 +1533,12 @@ pub fn parse_turn_stream_event(
         }
         ITEM_COMPLETED_METHOD => {
             let params: ItemNotification = serde_json::from_value(params)?;
+            warn_if_unexpected_turn_stream_item_type(
+                ITEM_COMPLETED_METHOD,
+                &params.thread_id,
+                &params.turn_id,
+                &params.item,
+            );
             TurnStreamEvent::ItemCompleted {
                 thread_id: params.thread_id,
                 turn_id: params.turn_id,
@@ -1706,4 +1769,134 @@ fn collab_agent_spawn_label_event(params: &Value) -> Option<TurnStreamEvent> {
     )?;
 
     Some(TurnStreamEvent::AgentLabelUpdated { thread_id, label })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        io::{self, Write},
+        sync::{Arc, Mutex},
+    };
+
+    use serde_json::json;
+    use tracing_subscriber::fmt::MakeWriter;
+
+    use super::*;
+
+    #[derive(Clone, Default)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().expect("capture lock poisoned").extend(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for SharedWriter {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    fn capture_warnings(run: impl FnOnce()) -> String {
+        let writer = SharedWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_target(false)
+            .with_writer(writer.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, run);
+        let bytes = writer.0.lock().expect("capture lock poisoned").clone();
+        String::from_utf8(bytes).expect("warning capture must be UTF-8")
+    }
+
+    #[test]
+    fn unexpected_turn_stream_item_types_warn_with_bounded_context_only() {
+        let long_type = "é".repeat(TURN_STREAM_WARNING_FIELD_CHAR_LIMIT + 1);
+        let output = capture_warnings(|| {
+            for (method, item_type, secret) in [
+                (ITEM_STARTED_METHOD, "futureTool", "started secret"),
+                (
+                    ITEM_COMPLETED_METHOD,
+                    long_type.as_str(),
+                    "completed secret",
+                ),
+            ] {
+                let event = parse_turn_stream_event(
+                    method,
+                    Some(json!({
+                        "threadId": "thread_123",
+                        "turnId": "turn_123",
+                        "item": {
+                            "id": "item_123",
+                            "type": item_type,
+                            "payload": secret
+                        }
+                    })),
+                )
+                .expect("unexpected item must remain parseable");
+                assert!(event.is_some());
+            }
+        });
+
+        assert_eq!(
+            output
+                .matches("received unexpected backend item type during turn stream")
+                .count(),
+            2
+        );
+        assert!(output.contains("notification_method=item/started"));
+        assert!(output.contains("notification_method=item/completed"));
+        assert!(output.contains("item_id=item_123"));
+        assert!(output.contains("item_type=futureTool"));
+        assert!(output.contains(&format!(
+            "item_type={}...",
+            "é".repeat(TURN_STREAM_WARNING_FIELD_CHAR_LIMIT)
+        )));
+        assert!(output.contains(&format!("item_type_bytes={}", long_type.len())));
+        assert!(!output.contains("started secret"));
+        assert!(!output.contains("completed secret"));
+    }
+
+    #[test]
+    fn known_item_types_do_not_warn() {
+        let output = capture_warnings(|| {
+            let mut items = vec![
+                json!({"id": "message_1", "type": "agentMessage", "text": "done"}),
+                json!({"id": "tool_1", "type": "mcpToolCall", "status": "completed"}),
+            ];
+            items.extend(
+                [
+                    "plan",
+                    "hookPrompt",
+                    "sleep",
+                    "enteredReviewMode",
+                    "exitedReviewMode",
+                ]
+                .map(|item_type| json!({"id": "generic_1", "type": item_type})),
+            );
+            for item in items {
+                let event = parse_turn_stream_event(
+                    ITEM_COMPLETED_METHOD,
+                    Some(json!({
+                        "threadId": "thread_123",
+                        "turnId": "turn_123",
+                        "item": item
+                    })),
+                )
+                .expect("known item must remain parseable");
+                assert!(event.is_some());
+            }
+        });
+
+        assert!(output.is_empty(), "unexpected warning output: {output}");
+    }
 }

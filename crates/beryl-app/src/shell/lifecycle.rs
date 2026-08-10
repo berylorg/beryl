@@ -131,6 +131,7 @@ impl ShellView {
                         opened.graph,
                         opened.graph_revision,
                         opened.graph_warning,
+                        self.activity_diagnostic_capture_sink(),
                     ),
                 };
                 if intent == super::WorkspaceOpenIntent::ThreadSelectorActivation
@@ -209,10 +210,12 @@ impl ShellView {
                         attempt,
                         backend_unavailable.unavailable.clone(),
                     );
+                    let activity_diagnostic_capture_sink = self.activity_diagnostic_capture_sink();
                     let surface = preserved_surface.unwrap_or_else(|| {
                         seed_backend_unavailable_surface(
                             &loaded_workspace,
                             backend_unavailable.surface_seed.clone(),
+                            activity_diagnostic_capture_sink,
                         )
                     });
                     self.cancel_thread_title_workers();
@@ -575,6 +578,7 @@ impl ShellView {
 fn seed_backend_unavailable_surface(
     loaded_workspace: &LoadedWorkspaceState,
     seed: WorkspaceSurfaceSeed,
+    activity_diagnostic_capture_sink: Option<crate::ActivityDiagnosticCaptureSink>,
 ) -> ConversationSurfaceState {
     let (known_threads, selected_thread_id) = backend_unavailable_thread_seed();
     ConversationSurfaceState::seeded(
@@ -592,6 +596,7 @@ fn seed_backend_unavailable_surface(
         seed.graph,
         seed.graph_revision,
         seed.graph_warning,
+        activity_diagnostic_capture_sink,
     )
 }
 

@@ -1,6 +1,12 @@
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
 
+#[path = "../src/activity_lifecycle_diagnostics.rs"]
+mod activity_lifecycle_diagnostics;
+
+#[path = "../src/activity_presentation_diagnostics.rs"]
+mod activity_presentation_diagnostics;
+
 mod dynamic_tools {
     pub const BERYL_DYNAMIC_TOOL_NAMESPACE: &str = "beryl";
 }

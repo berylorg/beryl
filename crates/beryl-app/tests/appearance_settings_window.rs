@@ -14,17 +14,18 @@ use std::{
 };
 
 pub use beryl_app::{
-    ActiveThemeProjection, AgentPreferences, AppearanceButtonSettings,
-    AppearanceButtonStateSettings, AppearanceForegroundSettings, AppearanceInputSettings,
-    AppearanceRoleSettings, AppearanceSettings, AppearanceSettingsStore,
+    ActiveThemeProjection, ActivityDiagnosticCaptureErrorCategory,
+    ActivityDiagnosticCaptureRuntimeState, ActivityDiagnosticCaptureStatus, AgentPreferences,
+    AppearanceButtonSettings, AppearanceButtonStateSettings, AppearanceForegroundSettings,
+    AppearanceInputSettings, AppearanceRoleSettings, AppearanceSettings, AppearanceSettingsStore,
     AppearanceStatusLineSettings, AppearanceSurfaceSettings, AppearanceTranscriptShellSettings,
     BUILT_IN_INSTALLED_THEME_ID, BerylThemeProperty, BerylThemeRole, BerylWorkspacePersistence,
-    ContextCompactionTimeoutError, GuiPreferences, GuiPreferencesStore, InstalledThemeId,
-    NotificationPreferences, NotificationSoundPathError, OperationPreferences, StylePropertyId,
-    StylePropertyKind, StylePropertySource, StylePropertyValue, StyleRoleId, ThemeDefinition,
-    ThemeDocument, ThemeRepositorySnapshot, ThemeRepositoryStore, ThemeResolutionContext,
-    ThemeResolver, ThemeRoleDefinition, ThemeRoleSchema, WorkspaceGraphUpkeepPolicy,
-    built_in_theme_schema, built_in_theme_supported_properties,
+    ContextCompactionTimeoutError, DiagnosticPreferences, GuiPreferences, GuiPreferencesStore,
+    InstalledThemeId, NotificationPreferences, NotificationSoundPathError, OperationPreferences,
+    StylePropertyId, StylePropertyKind, StylePropertySource, StylePropertyValue, StyleRoleId,
+    ThemeDefinition, ThemeDocument, ThemeRepositorySnapshot, ThemeRepositoryStore,
+    ThemeResolutionContext, ThemeResolver, ThemeRoleDefinition, ThemeRoleSchema,
+    WorkspaceGraphUpkeepPolicy, built_in_theme_schema, built_in_theme_supported_properties,
     normalize_developer_instructions_text, normalize_graph_upkeep_instructions_text,
     parse_context_compaction_timeout_seconds_text, parse_notification_sound_path_text,
     validate_notification_sound_path,
@@ -32,7 +33,7 @@ pub use beryl_app::{
 use gpui_settings_window::{
     SettingsFieldId, SettingsFieldKind, SettingsPageActionId, SettingsPageBodyLayout,
     SettingsPageId, SettingsPageSplitItemPreviewStyle, SettingsRowActionId, SettingsRowDetailField,
-    SettingsWindowModel, SettingsWindowOpenDisposition, open_settings_window,
+    SettingsSectionId, SettingsWindowModel, SettingsWindowOpenDisposition, open_settings_window,
 };
 
 #[path = "../src/build_identity.rs"]
@@ -47,7 +48,7 @@ fn settings_model_maps_theme_editor_navigator_and_selected_role_rows() {
     let mut state = settings_state(AppearanceSettings::default());
     let model = state.model();
 
-    assert_eq!(model.sections().len(), 5);
+    assert_eq!(model.sections().len(), 6);
     assert_eq!(model.selected_section_id().as_str(), "themes");
     assert_eq!(model.selected_page_id().as_str(), "themes");
 
@@ -1454,6 +1455,109 @@ fn settings_model_includes_operations_context_compaction_timeout_row() {
 }
 
 #[test]
+fn settings_model_includes_diagnostics_capture_choice_and_bounded_status() {
+    let mut state = settings_state(AppearanceSettings::default());
+    let mut status = ActivityDiagnosticCaptureStatus::default();
+    status.configured = true;
+    status.runtime_state = ActivityDiagnosticCaptureRuntimeState::Active;
+    status.written_record_count = 4;
+    status.dropped_record_count = 1;
+    status.queue_full_drop_count = 1;
+    state.set_activity_diagnostic_capture_status(status);
+
+    let field_id = state.activity_diagnostic_capture_field_id();
+    state.select_section(SettingsSectionId::from("diagnostics"));
+    let model = state.model();
+    let row = model
+        .row(&field_id)
+        .expect("activity diagnostic capture row should exist");
+
+    assert_eq!(row.label(), "Activity diagnostic capture");
+    assert_eq!(row.kind(), SettingsFieldKind::Choice);
+    assert_eq!(row.value(), "disabled");
+    assert_eq!(
+        row.choices()
+            .iter()
+            .map(|choice| (choice.value(), choice.label()))
+            .collect::<Vec<_>>(),
+        vec![("disabled", "Disabled"), ("enabled", "Enabled")]
+    );
+    let status = row.error().expect("capture status should be visible");
+    assert!(status.contains("Runtime: active"));
+    assert!(status.contains("Written: 4"));
+    assert!(status.contains("Dropped: 1"));
+    assert!(!status.contains("activity.jsonl"));
+}
+
+#[test]
+fn diagnostics_status_poll_selection_requires_the_diagnostics_section_and_page() {
+    let mut state = settings_state(AppearanceSettings::default());
+    assert!(!state.diagnostics_page_selected());
+
+    state.select_section(SettingsSectionId::from("diagnostics"));
+    assert!(state.diagnostics_page_selected());
+
+    state.select_section(SettingsSectionId::from("operations"));
+    assert!(!state.diagnostics_page_selected());
+}
+
+#[test]
+fn diagnostics_capture_draft_is_staged_applied_reset_and_conflict_checked() {
+    let (mut state, _appearance, preferences, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+    let field_id = state.activity_diagnostic_capture_field_id();
+    state.set_field_value(&field_id, "enabled".to_string());
+
+    assert!(
+        !preferences
+            .lock()
+            .unwrap()
+            .diagnostics
+            .activity_diagnostic_capture_enabled,
+        "choice edits must not live-preview into active preferences"
+    );
+    let external = GuiPreferences {
+        diagnostics: DiagnosticPreferences {
+            activity_diagnostic_capture_enabled: true,
+        },
+        ..GuiPreferences::default()
+    };
+    assert!(state.apply_preferences_from_external(external).is_err());
+
+    state.reset_draft_from_active();
+    assert_eq!(
+        state.model().row(&field_id).map(|row| row.value()),
+        Some("disabled")
+    );
+
+    state.set_field_value(&field_id, "enabled".to_string());
+    assert!(state.apply());
+    assert!(
+        preferences
+            .lock()
+            .unwrap()
+            .diagnostics
+            .activity_diagnostic_capture_enabled
+    );
+    wait_for_save(&mut state);
+    assert!(
+        GuiPreferencesStore::new(&root)
+            .load_or_default()
+            .unwrap()
+            .diagnostics
+            .activity_diagnostic_capture_enabled
+    );
+
+    state.set_field_value(&field_id, "disabled".to_string());
+    state.reset_draft_from_active();
+    assert_eq!(
+        state.model().row(&field_id).map(|row| row.value()),
+        Some("enabled")
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
 fn settings_window_options_map_active_theme_to_visual_theme() {
     let mut active = AppearanceSettings::default();
     active.general_ui.background = "#101112".to_string();
@@ -2053,7 +2157,7 @@ fn settings_apply_persists_empty_notification_path_as_disabled() {
             .end_turn_sound_path,
         None
     );
-    wait_for_save(&mut state);
+    assert!(!state.has_pending_save());
 
     let loaded_preferences = GuiPreferencesStore::new(&root).load_or_default().unwrap();
     assert_eq!(loaded_preferences.notifications.end_turn_sound_path, None);
@@ -2075,6 +2179,7 @@ fn settings_save_uses_injected_root_when_environment_home_differs() {
         ),
         "#010203".to_string(),
     );
+    state.set_field_value(&context_compaction_timeout_field_id(), "240".to_string());
     assert!(state.apply());
     wait_for_save(&mut state);
 
@@ -2220,7 +2325,7 @@ fn settings_theme_modified_state_tracks_edits_apply_cancel_save_and_failed_valid
         state.apply(),
         "preference apply should not validate theme edits"
     );
-    wait_for_save(&mut state);
+    assert!(!state.has_pending_save());
     assert!(
         state
             .model()
@@ -2594,7 +2699,9 @@ fn wait_for_save(state: &mut settings::SettingsState) {
             settings::SettingsSavePoll::Saved => return,
             settings::SettingsSavePoll::Pending => thread::sleep(Duration::from_millis(10)),
             settings::SettingsSavePoll::Idle => panic!("settings save should be pending"),
-            settings::SettingsSavePoll::Failed(error) => panic!("settings save failed: {error}"),
+            settings::SettingsSavePoll::Failed { error, .. } => {
+                panic!("settings save failed: {error}")
+            }
         }
     }
 

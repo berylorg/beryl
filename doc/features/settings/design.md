@@ -18,12 +18,13 @@ Give users a durable, validated settings window for Beryl-owned application pref
 - The settings window does not include the main workspace toolbar strip.
 - It uses a left sidebar of broad sections and one right-pane page or subpage at a time.
 - Sidebar rows do not expand into nested trees. Subpages open in the right pane with breadcrumb/back navigation while the sidebar remains at the broad section level.
-- Current V1 sections are `Themes`, `Operations`, `Notifications`, `Agent`, and `Graph`.
+- Current V1 sections are `Themes`, `Operations`, `Notifications`, `Agent`, `Graph`, and `Diagnostics`.
 - The `Themes` section's product behavior is owned by `doc/features/theming/design.md`.
 - The settings window root layout stretches with the OS window. The sidebar has a bounded fixed logical width; the main pane takes remaining width.
 - Page content is organized as section headings followed by grouped row lists. Pages must not nest cards inside cards.
 - The settings shell itself is not an outer scrolling surface. The sidebar and current page body own their own scrolling while headers and apply/action areas remain reachable.
 - Unavailable sections, invalid staged values, failed saves, and failed feature-owned settings operations render localized page or row feedback without replacing the settings shell.
+- GUI composition and mounting are defined normatively in [gui.md](gui.md).
 
 ## Settings Rows
 
@@ -41,11 +42,11 @@ Give users a durable, validated settings window for Beryl-owned application pref
 
 - Beryl owns settings schemas, validation, staged drafts, apply behavior, and persistence.
 - GUI-owned user settings are persisted separately from backend-owned Codex configuration.
-- Operation preferences, notification preferences, developer-instructions preferences, and AI-control preferences are app-wide GUI settings, not workspace-scoped state. Graph upkeep instructions are the workspace-scoped exception and are owned by the graph-upkeep feature.
+- Operation preferences, notification preferences, developer-instructions preferences, AI-control preferences, and Activity diagnostic-capture enablement are app-wide GUI settings, not workspace-scoped state. Graph upkeep instructions are the workspace-scoped exception and are owned by the graph-upkeep feature.
 - Explicit GUI preferences are stored in `preferences.toml` under the configured Beryl home directory.
 - Settings update operations commit through validation, active-update, persistence, and recovery paths used by settings-window Apply.
 - Applying settings validates staged values before they become active, updates the running UI, and persists accepted settings without requiring the window to close.
-- Closing or hiding the settings window without applying discards unapplied staged edits and does not mutate active theme, operation, notification, developer-instructions, or other active settings.
+- Closing or hiding the settings window without applying discards unapplied staged edits and does not mutate active theme, operation, notification, developer-instructions, diagnostic-capture, or other active settings.
 - Ordinary settings drafts do not live-preview unapplied changes. User-visible theme Preview behavior is owned by `doc/features/theming/design.md`.
 
 ## Feature-Owned Settings Rows
@@ -57,6 +58,11 @@ Give users a durable, validated settings window for Beryl-owned application pref
 - The Graph section includes graph upkeep instructions; workspace-scoped semantics and send-time graph-upkeep behavior are owned by `doc/features/graph-upkeep/design.md`.
 - The Notifications section includes `End-turn sound`; notification playback semantics are owned by `doc/features/notifications/design.md`.
 - The Themes section and theme editor are owned by `doc/features/theming/design.md`.
+- The Diagnostics section includes `Activity diagnostic capture`; its persistence, privacy, file bounds, runtime lifecycle, and failure semantics are owned by `doc/features/diagnostics/design.md`.
+- `Activity diagnostic capture` uses a `Disabled` or `Enabled` choice control while the reusable settings dependency has no boolean switch field kind. This presentation choice does not change the setting's typed boolean preference contract.
+- Applying `Enabled` persists operator intent through the ordinary settings path and asynchronously requests capture activation. Runtime lock, filesystem, repair, or writer failure leaves the configured value enabled while the row reports bounded localized unavailable or failed status so restart or a later disable/re-enable may retry.
+- Applying `Disabled` persists disabled intent and gates new capture records immediately. Background writer shutdown may remain briefly in `stopping`; settings Apply never blocks the GPUI thread waiting for file flush or writer join.
+- The Diagnostics page may show bounded capture state and counters defined by the diagnostics feature, but it must not display the Beryl home, capture file paths, exact event identities, event content, or raw filesystem errors.
 - Feature-owned rows must keep controls reachable and labels readable at supported minimum settings-window width.
 
 ## Settings Dynamic Tools
@@ -68,9 +74,11 @@ Give users a durable, validated settings window for Beryl-owned application pref
 - Literal values are returned only for non-sensitive scalar settings.
 - Notification sound reads return configured/disabled state and non-identifying file metadata, never the full path.
 - Developer-instructions reads return enabled state, character count, line count, and stable content fingerprint, never literal instruction text.
+- Diagnostics reads return the literal non-sensitive Activity capture enabled boolean plus bounded configured-versus-runtime state and counters owned by the diagnostics feature. They never return capture paths, Beryl-home paths, event identities, event content, or raw filesystem errors.
 - Settings write tools use typed operation-specific schemas.
 - Validation-only calls are non-mutating.
 - Accepted settings updates commit immediately through the same validation and persistence path as Apply, without creating unapplied settings-window drafts.
+- Settings update tools may set the typed Activity diagnostic-capture enabled boolean. Validation performs no filesystem mutation; an accepted update persists intent and requests the same asynchronous active-state transition used by settings-window Apply.
 - AI-control preferences that govern model authority are read-only to the model unless a later design adds an operator-confirmed write operation.
 - Tool calls must cross bounded shell-owned request/response bridges. Turn workers must not hold direct access to `ShellView`, GPUI handles, settings-window internals, or repository mutation handles.
 - Tool calls that cannot be correlated to the active app-server thread/turn context, fail validation, target unavailable settings, or conflict with unapplied settings-window drafts reject with bounded structured results.

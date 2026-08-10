@@ -49,6 +49,10 @@ impl<'a> ShellRenderFrame<'a> {
         self.style.role_color(role, fallback)
     }
 
+    pub(in crate::shell) fn role_has_color(&self, role: crate::BerylThemeRole) -> bool {
+        self.style.role_has_color(role)
+    }
+
     pub(in crate::shell) fn role_font_family(
         &self,
         role: crate::BerylThemeRole,

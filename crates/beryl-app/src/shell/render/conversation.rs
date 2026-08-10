@@ -6,6 +6,7 @@ use gpui::{
     anchored, canvas, div, img, prelude::*, px, relative, rgba,
 };
 
+use crate::activity_presentation_diagnostics::ActivityPresentationRenderRow;
 use crate::shell::{
     BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
     ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState,
@@ -1704,6 +1705,12 @@ fn render_tool_activity_panel(
     cx: &mut Context<ShellView>,
 ) -> Option<gpui::AnyElement> {
     if !surface.tool_activity_panel_visible() {
+        surface.observe_activity_presentation_render(
+            false,
+            0..0,
+            layout::TOOL_ACTIVITY_OVERSCAN_ROWS,
+            [],
+        );
         return None;
     }
 
@@ -1718,6 +1725,26 @@ fn render_tool_activity_panel(
         layout::TOOL_ACTIVITY_OVERSCAN_ROWS,
     );
     let rows = surface.tool_activity_row_window(row_window.range.clone());
+    let diagnostic_rows = rows.iter().map(|(index, row)| {
+        let (theme_role, used_theme_role, color) =
+            tool_activity_status_presentation(shell, row.status);
+        ActivityPresentationRenderRow {
+            rendered_index: *index,
+            thread_id: row.thread_id(),
+            turn_id: row.turn_id(),
+            item_id: row.item_id(),
+            status: row.status.diagnostic_label(),
+            status_indicator_theme_role: theme_role,
+            used_theme_role,
+            resolved_rgba: rgba_to_diagnostic_bytes(color),
+        }
+    });
+    surface.observe_activity_presentation_render(
+        true,
+        row_window.range.clone(),
+        layout::TOOL_ACTIVITY_OVERSCAN_ROWS,
+        diagnostic_rows,
+    );
     let scrollbar_visibility =
         shell.scrollbar_visibility_policy(&crate::shell::ScrollbarRegion::ToolActivity, cx);
 
@@ -1929,20 +1956,7 @@ fn tool_activity_status_disc(
     shell: &ShellRenderFrame<'_>,
     status: ToolActivityRowStatus,
 ) -> impl IntoElement {
-    let color = match status {
-        ToolActivityRowStatus::Running => shell.role_color(
-            BerylThemeRole::ActivityIndicatorRunning,
-            shell.status_line_value_foreground(),
-        ),
-        ToolActivityRowStatus::FinishedOk => shell.role_color(
-            BerylThemeRole::ActivityIndicatorOk,
-            shell.status_line_value_foreground(),
-        ),
-        ToolActivityRowStatus::FinishedError => shell.role_color(
-            BerylThemeRole::ActivityIndicatorError,
-            shell.status_line_value_foreground(),
-        ),
-    };
+    let (_, _, color) = tool_activity_status_presentation(shell, status);
 
     div()
         .w(px(10.0))
@@ -1950,6 +1964,39 @@ fn tool_activity_status_disc(
         .rounded_full()
         .flex_none()
         .bg(color)
+}
+
+fn tool_activity_status_presentation(
+    shell: &ShellRenderFrame<'_>,
+    status: ToolActivityRowStatus,
+) -> (&'static str, bool, gpui::Rgba) {
+    let (role, role_name) = match status {
+        ToolActivityRowStatus::Running => (
+            BerylThemeRole::ActivityIndicatorRunning,
+            "activity.indicator.running",
+        ),
+        ToolActivityRowStatus::FinishedOk => {
+            (BerylThemeRole::ActivityIndicatorOk, "activity.indicator.ok")
+        }
+        ToolActivityRowStatus::FinishedError => (
+            BerylThemeRole::ActivityIndicatorError,
+            "activity.indicator.error",
+        ),
+    };
+    (
+        role_name,
+        shell.role_has_color(role),
+        shell.role_color(role, shell.status_line_value_foreground()),
+    )
+}
+
+fn rgba_to_diagnostic_bytes(color: gpui::Rgba) -> [u8; 4] {
+    [
+        (color.r.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (color.g.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (color.b.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (color.a.clamp(0.0, 1.0) * 255.0).round() as u8,
+    ]
 }
 
 fn render_checklist_sidebar_panel(
@@ -2025,6 +2072,326 @@ fn measure_uncached_composer_input(
         .measure_geometry(initial_measurement.input_bounds, window);
 
     layout::composer_input_measurement(available_height, viewport_height, &final_geometry)
+}
+
+#[cfg(test)]
+mod activity_presentation_render_tests {
+    use std::{
+        path::PathBuf,
+        sync::{Arc, Mutex},
+    };
+
+    use beryl_backend::{HardStopCapabilities, ThreadItem, ThreadSummary, TurnStreamEvent};
+    use beryl_model::{
+        conversation::WorkspaceConversationState, semantic_graph::SemanticGraph,
+        workspace::BerylWorkspaceId,
+    };
+    use gpui::point;
+    use gpui_settings_window::{SettingsWindowOpenDisposition, open_settings_window};
+    use serde_json::json;
+
+    use crate::shell::ShellState;
+    use crate::{
+        ActiveThemeProjection, AppBootstrap, GuiPreferences, WorkspaceActivityPanelMode,
+        WorkspaceGraphRevision, WorkspaceUiState,
+    };
+
+    use super::*;
+
+    fn thread_summary(id: &str) -> ThreadSummary {
+        ThreadSummary {
+            id: id.to_string(),
+            forked_from_id: None,
+            cwd: PathBuf::from("C:/work/beryl"),
+            preview: format!("{id} preview"),
+            name: None,
+            agent_nickname: None,
+            path: None,
+            created_at: 1,
+            updated_at: 2,
+            model_provider: "openai".to_string(),
+            ephemeral: false,
+        }
+    }
+
+    fn test_surface() -> ConversationSurfaceState {
+        let workspace_state = WorkspaceConversationState::default();
+        ConversationSurfaceState::seeded(
+            BerylWorkspaceId::new("activity-render-test").unwrap(),
+            &workspace_state,
+            &WorkspaceUiState::new(WorkspaceActivityPanelMode::On, 112.0),
+            vec![
+                thread_summary("thread_main"),
+                thread_summary("thread_other"),
+            ],
+            HardStopCapabilities::default(),
+            None,
+            None,
+            Default::default(),
+            Some("thread_main".to_string()),
+            None,
+            None,
+            SemanticGraph::default(),
+            WorkspaceGraphRevision::default(),
+            None,
+            None,
+        )
+    }
+
+    fn command_item(item_id: &str, status: &str) -> ThreadItem {
+        serde_json::from_value(json!({
+            "id": item_id,
+            "type": "commandExecution",
+            "command": "dir",
+            "cwd": "C:/work/beryl",
+            "status": status
+        }))
+        .unwrap()
+    }
+
+    fn start_item(surface: &mut ConversationSurfaceState, thread_id: &str, item_id: &str) {
+        surface.apply_stream_event(
+            TurnStreamEvent::ItemStarted {
+                thread_id: thread_id.to_string(),
+                turn_id: "turn".to_string(),
+                item: command_item(item_id, "inProgress"),
+            },
+            None,
+        );
+    }
+
+    fn complete_item(surface: &mut ConversationSurfaceState, item_id: &str) {
+        surface.apply_stream_event(
+            TurnStreamEvent::ItemCompleted {
+                thread_id: "thread_main".to_string(),
+                turn_id: "turn".to_string(),
+                item: command_item(item_id, "completed"),
+            },
+            None,
+        );
+    }
+
+    fn render_actual_activity_panel(view: &ShellView, cx: &mut Context<ShellView>) {
+        let frame = ShellRenderFrame::new(view, view.render_style_snapshot());
+        let surface = view
+            .conversation_surface()
+            .expect("test shell should retain a conversation surface");
+        assert!(
+            render_tool_activity_panel(&frame, surface, px(74.0), cx).is_some(),
+            "Activity On should execute the actual visible panel render path"
+        );
+    }
+
+    #[gpui::test]
+    fn actual_activity_render_tracks_stable_terminal_row_through_reorder_and_overscan(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let active_theme = Arc::new(Mutex::new(ActiveThemeProjection::built_in()));
+        let gui_preferences = Arc::new(Mutex::new(GuiPreferences::default()));
+        let mut settings_state = crate::shell::settings::SettingsState::new_without_stores(
+            active_theme.clone(),
+            gui_preferences.clone(),
+            "test stores unavailable".to_string(),
+        );
+        let settings_options = settings_state.window_options();
+        let settings_window = cx.update(|cx| {
+            open_settings_window(
+                cx,
+                settings_state.model(),
+                settings_options,
+                SettingsWindowOpenDisposition::Hidden,
+            )
+            .expect("test settings window should open")
+        });
+        let (shell, cx) = cx.add_window_view(move |window, cx| {
+            ShellView::new(
+                window,
+                AppBootstrap::new(None),
+                Err("test app state unavailable".to_string()),
+                settings_window,
+                settings_state,
+                active_theme,
+                gui_preferences,
+                None,
+                cx,
+            )
+        });
+
+        shell.update(cx, |view, _| {
+            let ShellState::Blocked(blocked) = &mut view.state else {
+                panic!("test app-state failure should create a blocked shell");
+            };
+            blocked.surface = Some(test_surface());
+        });
+
+        let running_identity = shell.update(cx, |view, cx| {
+            let surface = view.conversation_surface_mut().unwrap();
+            start_item(surface, "thread_other", "other");
+            start_item(surface, "thread_main", "tracked");
+            for index in 0..39 {
+                start_item(surface, "thread_main", &format!("filler-{index:02}"));
+            }
+            let identity = surface
+                .tool_activity
+                .rows()
+                .iter()
+                .find(|row| row.item_id() == "tracked")
+                .unwrap()
+                .stable_identity()
+                .clone();
+            view.notify_conversation_model_refresh(cx);
+            view.notify_conversation_model_refresh(cx);
+            identity
+        });
+
+        let (selected_other_revision, selected_main_revision) = shell.update(cx, |view, cx| {
+            view.conversation_surface_mut()
+                .unwrap()
+                .select_thread_by_id("thread_other");
+            let selected_other_revision = view
+                .conversation_surface()
+                .unwrap()
+                .tool_activity
+                .presentation_diagnostic_state()
+                .revision;
+            view.notify_conversation_model_refresh(cx);
+            view.conversation_surface_mut()
+                .unwrap()
+                .select_thread_by_id("thread_main");
+            let selected_main_revision = view
+                .conversation_surface()
+                .unwrap()
+                .tool_activity
+                .presentation_diagnostic_state()
+                .revision;
+            view.notify_conversation_model_refresh(cx);
+            (selected_other_revision, selected_main_revision)
+        });
+        assert!(selected_main_revision > selected_other_revision);
+
+        shell.update(cx, |view, cx| render_actual_activity_panel(view, cx));
+        shell.update(cx, |view, cx| {
+            view.conversation_surface()
+                .unwrap()
+                .tool_activity_scroll_handle
+                .set_offset(point(px(0.0), px(-640.0)));
+            render_actual_activity_panel(view, cx);
+        });
+
+        let (terminal_identity, terminal_revision) = shell.update(cx, |view, cx| {
+            let surface = view.conversation_surface_mut().unwrap();
+            complete_item(surface, "tracked");
+            let terminal_row = surface
+                .tool_activity
+                .rows()
+                .iter()
+                .find(|row| row.item_id() == "tracked")
+                .unwrap();
+            let result = (
+                terminal_row.stable_identity().clone(),
+                surface
+                    .tool_activity
+                    .presentation_diagnostic_state()
+                    .revision,
+            );
+            view.notify_conversation_model_refresh(cx);
+            render_actual_activity_panel(view, cx);
+            result
+        });
+        assert_eq!(terminal_identity, running_identity);
+
+        shell.update(cx, |view, cx| {
+            view.conversation_surface()
+                .unwrap()
+                .tool_activity_scroll_handle
+                .set_offset(point(px(0.0), px(-10_000.0)));
+            render_actual_activity_panel(view, cx);
+        });
+
+        let snapshot = shell.update(cx, |view, _| {
+            view.conversation_surface()
+                .unwrap()
+                .activity_presentation_diagnostic_snapshot()
+        });
+        for revision in [
+            selected_other_revision,
+            selected_main_revision,
+            terminal_revision,
+        ] {
+            let projection_index = snapshot
+                .events
+                .iter()
+                .position(|event| {
+                    event.stage == "projection_changed"
+                        && event.projection_revision == Some(revision)
+                })
+                .expect("projection change should be retained");
+            let shell_indexes = snapshot
+                .events
+                .iter()
+                .enumerate()
+                .filter_map(|(index, event)| {
+                    (event.stage == "shell_notified" && event.projection_revision == Some(revision))
+                        .then_some(index)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(shell_indexes.len(), 1);
+            assert!(projection_index < shell_indexes[0]);
+        }
+
+        let render_samples = snapshot
+            .events
+            .iter()
+            .filter(|event| event.stage == "render_sample")
+            .collect::<Vec<_>>();
+        let running = render_samples
+            .iter()
+            .find_map(|sample| {
+                sample
+                    .sampled_rows
+                    .iter()
+                    .find(|row| row.item.value.as_deref() == Some("tracked"))
+                    .filter(|row| row.status == "running")
+                    .map(|row| (*sample, row))
+            })
+            .expect("tracked row should be sampled while running");
+        assert_eq!(running.1.thread.value.as_deref(), Some("thread_main"));
+        assert_eq!(running.1.turn.value.as_deref(), Some("turn"));
+        assert_eq!(
+            running.1.status_indicator_theme_role,
+            "activity.indicator.running"
+        );
+        assert_eq!(running.1.color_source, "theme_role");
+        assert_eq!(running.1.resolved_rgba, [56, 189, 248, 255]);
+
+        assert!(render_samples.iter().any(|sample| {
+            sample.rendered_range_start.is_some_and(|start| start > 0)
+                && sample
+                    .sampled_rows
+                    .iter()
+                    .all(|row| row.item.value.as_deref() != Some("tracked"))
+        }));
+        let terminal = render_samples
+            .iter()
+            .find_map(|sample| {
+                sample
+                    .sampled_rows
+                    .iter()
+                    .find(|row| row.item.value.as_deref() == Some("tracked"))
+                    .filter(|row| row.status == "finished_ok")
+                    .map(|row| (*sample, row))
+            })
+            .expect("tracked terminal row should re-enter the sampled overscan window");
+        assert_eq!(terminal.0.projection_revision, Some(terminal_revision));
+        assert_eq!(terminal.1.thread.value.as_deref(), Some("thread_main"));
+        assert_eq!(terminal.1.turn.value.as_deref(), Some("turn"));
+        assert_eq!(
+            terminal.1.status_indicator_theme_role,
+            "activity.indicator.ok"
+        );
+        assert_eq!(terminal.1.color_source, "theme_role");
+        assert_eq!(terminal.1.resolved_rgba, [34, 197, 94, 255]);
+    }
 }
 
 fn render_composer(

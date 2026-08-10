@@ -17,13 +17,16 @@ use gpui_settings_window::{
 };
 
 use crate::{
-    ActiveThemeProjection, AppearanceSettings, BerylWorkspacePersistence, GuiPreferences,
-    GuiPreferencesStore, InstalledThemeId, StylePropertyValue, StyleRoleId, ThemeDefinition,
-    ThemeRepositorySnapshot, ThemeRepositoryStore, WorkspaceGraphUpkeepPolicy,
+    ActiveThemeProjection, ActivityDiagnosticCaptureStatus, AppearanceSettings,
+    BerylWorkspacePersistence, GuiPreferences, GuiPreferencesStore, InstalledThemeId,
+    StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeRepositorySnapshot,
+    ThemeRepositoryStore, WorkspaceGraphUpkeepPolicy,
 };
 
 #[path = "settings/developer_instructions.rs"]
 mod developer_instructions;
+#[path = "settings/diagnostics.rs"]
+mod diagnostics;
 #[path = "settings/graph.rs"]
 mod graph;
 #[path = "settings/notifications.rs"]
@@ -38,13 +41,16 @@ mod theme_editor;
 mod themes;
 
 use developer_instructions::{AgentSettingsDraft, developer_instructions_field_id};
+use diagnostics::{
+    DiagnosticsSettingsDraft, activity_diagnostic_capture_field_id, diagnostics_section_id,
+};
 use graph::{
     GraphSettingsDraft, GraphSettingsTarget, graph_section_id, graph_upkeep_instructions_field_id,
 };
 use notifications::{
     NotificationSettingsDraft, NotificationSettingsRowAction, end_turn_sound_field_id,
 };
-use operations::OperationSettingsDraft;
+use operations::{OperationSettingsDraft, context_compaction_timeout_field_id};
 use theme::settings_window_theme;
 
 #[cfg_attr(test, allow(unused_imports))]
@@ -54,6 +60,11 @@ pub(super) type SharedActiveThemeProjection = Arc<Mutex<ActiveThemeProjection>>;
 pub(super) type SharedGuiPreferences = Arc<Mutex<GuiPreferences>>;
 
 const SETTINGS_TEXT_INPUT_UNDO_BYTE_LIMIT: usize = 1024 * 1024;
+const MAX_SETTINGS_SAVE_ERROR_BYTES: usize = 512;
+const PREFERENCES_STORE_UNAVAILABLE_MESSAGE: &str =
+    "Beryl settings storage is unavailable for the configured home directory.";
+const PREFERENCES_SAVE_ROLLBACK_MESSAGE: &str =
+    "Could not save this setting. The previous value was restored.";
 
 pub(super) fn load_initial_theme_repository_snapshot(
     store: Option<&ThemeRepositoryStore>,
@@ -70,6 +81,12 @@ pub(super) fn load_initial_gui_preferences(store: &GuiPreferencesStore) -> GuiPr
 #[derive(Clone)]
 struct SettingsSaveSnapshot {
     preferences: GuiPreferences,
+    previous_active_preferences: GuiPreferences,
+}
+
+struct SettingsSaveTask {
+    snapshot: SettingsSaveSnapshot,
+    receiver: Receiver<Result<(), String>>,
 }
 
 #[derive(Clone)]
@@ -127,7 +144,6 @@ pub(super) struct SettingsState {
     workspace_persistence_store: Option<BerylWorkspacePersistence>,
     theme_repository_store: Option<ThemeRepositoryStore>,
     theme_repository_snapshot: ThemeRepositorySnapshot,
-    store_unavailable_message: Option<String>,
     theme_editor_draft: theme_editor::ThemeEditorDraft,
     theme_draft_modified: bool,
     selected_theme_role_id: StyleRoleId,
@@ -136,10 +152,12 @@ pub(super) struct SettingsState {
     agent_draft: AgentSettingsDraft,
     graph_draft: GraphSettingsDraft,
     operation_draft: OperationSettingsDraft,
+    diagnostics_draft: DiagnosticsSettingsDraft,
+    activity_diagnostic_capture_status: ActivityDiagnosticCaptureStatus,
     selected_section_id: SettingsSectionId,
     selected_page_id: SettingsPageId,
     errors: HashMap<SettingsFieldId, String>,
-    save_receiver: Option<Receiver<Result<(), String>>>,
+    save_task: Option<SettingsSaveTask>,
     queued_save: Option<SettingsSaveSnapshot>,
     graph_save_task: Option<GraphUpkeepPolicySaveTask>,
     queued_graph_save: Option<GraphUpkeepPolicySaveSnapshot>,
@@ -152,7 +170,10 @@ pub(super) enum SettingsSavePoll {
     Idle,
     Pending,
     Saved,
-    Failed(String),
+    Failed {
+        error: String,
+        restored_preferences: Option<GuiPreferences>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -247,7 +268,7 @@ impl SettingsState {
         workspace_persistence_store: Option<BerylWorkspacePersistence>,
         theme_repository_store: Option<ThemeRepositoryStore>,
         theme_repository_snapshot: ThemeRepositorySnapshot,
-        store_unavailable_message: Option<String>,
+        _store_unavailable_message: Option<String>,
     ) -> Self {
         let appearance_settings =
             AppearanceSettings::from_active_theme(theme_repository_snapshot.active_projection());
@@ -266,7 +287,6 @@ impl SettingsState {
             workspace_persistence_store,
             theme_repository_store,
             theme_repository_snapshot,
-            store_unavailable_message,
             theme_editor_draft,
             theme_draft_modified: false,
             selected_theme_role_id: theme_editor::default_role_id(),
@@ -277,10 +297,14 @@ impl SettingsState {
             agent_draft: AgentSettingsDraft::from_preferences(&gui_preferences.agent),
             graph_draft: GraphSettingsDraft::from_target(GraphSettingsTarget::no_workspace()),
             operation_draft: OperationSettingsDraft::from_preferences(&gui_preferences.operations),
+            diagnostics_draft: DiagnosticsSettingsDraft::from_preferences(
+                &gui_preferences.diagnostics,
+            ),
+            activity_diagnostic_capture_status: ActivityDiagnosticCaptureStatus::default(),
             selected_section_id: themes::section_id(),
             selected_page_id: themes::root_page_id(),
             errors: HashMap::new(),
-            save_receiver: None,
+            save_task: None,
             queued_save: None,
             graph_save_task: None,
             queued_graph_save: None,
@@ -340,6 +364,8 @@ impl SettingsState {
             self.agent_draft = AgentSettingsDraft::from_preferences(&preferences.agent);
             self.operation_draft =
                 OperationSettingsDraft::from_preferences(&preferences.operations);
+            self.diagnostics_draft =
+                DiagnosticsSettingsDraft::from_preferences(&preferences.diagnostics);
         }
         self.graph_draft = GraphSettingsDraft::from_target(self.graph_target_snapshot());
         self.errors.clear();
@@ -350,6 +376,19 @@ impl SettingsState {
             .lock()
             .map(|preferences| preferences.clone())
             .unwrap_or_default()
+    }
+
+    pub(super) fn set_activity_diagnostic_capture_status(
+        &mut self,
+        status: ActivityDiagnosticCaptureStatus,
+    ) {
+        self.activity_diagnostic_capture_status = status;
+    }
+
+    pub(super) fn diagnostics_page_selected(&self) -> bool {
+        self.selected_section_id == diagnostics_section_id()
+            && self.selected_page_id
+                == SettingsPageId::from(diagnostics_section_id().as_str().to_string())
     }
 
     pub(super) fn apply_preferences_from_external(
@@ -367,6 +406,9 @@ impl SettingsState {
         if !changed {
             return Ok(false);
         }
+        if self.preferences_store.is_none() {
+            return Err(self.preferences_store_unavailable_message());
+        }
         self.commit_gui_preferences(next.clone());
         Ok(changed)
     }
@@ -377,6 +419,7 @@ impl SettingsState {
             || developer_instructions::has_section_id(&section_id)
             || graph::has_section_id(&section_id)
             || operations::has_section_id(&section_id)
+            || diagnostics::has_section_id(&section_id)
         {
             self.selected_section_id = section_id.clone();
             self.selected_page_id = SettingsPageId::from(section_id.as_str().to_string());
@@ -389,6 +432,9 @@ impl SettingsState {
             self.selected_page_id = page_id;
         } else if page_id == SettingsPageId::from(graph_section_id().as_str().to_string()) {
             self.selected_section_id = graph_section_id();
+            self.selected_page_id = page_id;
+        } else if page_id == SettingsPageId::from(diagnostics_section_id().as_str().to_string()) {
+            self.selected_section_id = diagnostics_section_id();
             self.selected_page_id = page_id;
         }
     }
@@ -419,7 +465,10 @@ impl SettingsState {
             .set_field_value(field_id, value.clone())
             || self.agent_draft.set_field_value(field_id, value.clone())
             || self.graph_draft.set_field_value(field_id, value.clone())
-            || self.operation_draft.set_field_value(field_id, value)
+            || self
+                .operation_draft
+                .set_field_value(field_id, value.clone())
+            || self.diagnostics_draft.set_field_value(field_id, value)
         {
             self.errors.remove(field_id);
         }
@@ -527,6 +576,11 @@ impl SettingsState {
         developer_instructions_field_id()
     }
 
+    #[allow(dead_code)]
+    pub(super) fn activity_diagnostic_capture_field_id(&self) -> SettingsFieldId {
+        activity_diagnostic_capture_field_id()
+    }
+
     pub(super) fn handle_row_action(
         &mut self,
         field_id: &SettingsFieldId,
@@ -604,6 +658,11 @@ impl SettingsState {
             &self.errors,
         ));
         sections.push(graph::settings_section(&self.graph_draft, &self.errors));
+        sections.push(diagnostics::settings_section(
+            &self.diagnostics_draft,
+            &self.activity_diagnostic_capture_status,
+            &self.errors,
+        ));
 
         SettingsWindowModel::with_selected_page(
             sections,
@@ -708,6 +767,13 @@ impl SettingsState {
                 None
             }
         };
+        let diagnostic_preferences = match self.diagnostics_draft.to_preferences() {
+            Ok(preferences) => Some(preferences),
+            Err(diagnostic_errors) => {
+                errors.extend(diagnostic_errors);
+                None
+            }
+        };
         let graph_upkeep_policy = match self.graph_draft.pending_policy() {
             Ok(policy) => policy,
             Err(graph_errors) => {
@@ -727,13 +793,31 @@ impl SettingsState {
             agent_preferences.expect("agent preferences are present when validation passes");
         let operation_preferences = operation_preferences
             .expect("operation preferences are present when validation passes");
+        let diagnostic_preferences = diagnostic_preferences
+            .expect("diagnostic preferences are present when validation passes");
         let gui_preferences = GuiPreferences {
             notifications: notification_preferences,
             agent: agent_preferences,
             operations: operation_preferences,
+            diagnostics: diagnostic_preferences,
         };
 
-        self.commit_gui_preferences(gui_preferences);
+        let active_preferences = self.active_preferences_snapshot();
+        if gui_preferences != active_preferences && self.preferences_store.is_none() {
+            self.errors = preference_field_errors(
+                &active_preferences,
+                &gui_preferences,
+                self.preferences_store_unavailable_message(),
+            );
+            return false;
+        }
+
+        if gui_preferences != active_preferences {
+            self.commit_gui_preferences(gui_preferences);
+        } else {
+            self.record_gui_preference_drafts(&gui_preferences);
+            self.errors.clear();
+        }
         if let Some((workspace_id, policy)) = graph_upkeep_policy {
             self.enqueue_graph_upkeep_policy_save(GraphUpkeepPolicySaveSnapshot {
                 workspace_id,
@@ -745,7 +829,7 @@ impl SettingsState {
     }
 
     pub(super) fn has_pending_save(&self) -> bool {
-        self.save_receiver.is_some()
+        self.save_task.is_some()
             || self.queued_save.is_some()
             || self.graph_save_task.is_some()
             || self.queued_graph_save.is_some()
@@ -755,12 +839,13 @@ impl SettingsState {
         self.graph_save_task.is_some() || self.queued_graph_save.is_some()
     }
 
+    fn preferences_store_unavailable_message(&self) -> String {
+        PREFERENCES_STORE_UNAVAILABLE_MESSAGE.to_string()
+    }
+
     fn commit_gui_preferences(&mut self, gui_preferences: GuiPreferences) {
-        self.notification_draft =
-            NotificationSettingsDraft::from_preferences(&gui_preferences.notifications);
-        self.agent_draft = AgentSettingsDraft::from_preferences(&gui_preferences.agent);
-        self.operation_draft =
-            OperationSettingsDraft::from_preferences(&gui_preferences.operations);
+        let previous_active_preferences = self.active_preferences_snapshot();
+        self.record_gui_preference_drafts(&gui_preferences);
         self.errors.clear();
 
         if let Ok(mut active) = self.active_preferences.lock() {
@@ -769,11 +854,22 @@ impl SettingsState {
 
         self.enqueue_save(SettingsSaveSnapshot {
             preferences: gui_preferences,
+            previous_active_preferences,
         });
     }
 
+    fn record_gui_preference_drafts(&mut self, gui_preferences: &GuiPreferences) {
+        self.notification_draft =
+            NotificationSettingsDraft::from_preferences(&gui_preferences.notifications);
+        self.agent_draft = AgentSettingsDraft::from_preferences(&gui_preferences.agent);
+        self.operation_draft =
+            OperationSettingsDraft::from_preferences(&gui_preferences.operations);
+        self.diagnostics_draft =
+            DiagnosticsSettingsDraft::from_preferences(&gui_preferences.diagnostics);
+    }
+
     fn enqueue_save(&mut self, snapshot: SettingsSaveSnapshot) {
-        if self.save_receiver.is_some() {
+        if self.save_task.is_some() {
             self.queued_save = Some(snapshot);
             return;
         }
@@ -784,22 +880,20 @@ impl SettingsState {
     fn spawn_save(&mut self, snapshot: SettingsSaveSnapshot) {
         let (sender, receiver) = mpsc::channel();
         let Some(preferences_store) = self.preferences_store.clone() else {
-            let message = self.store_unavailable_message.clone().unwrap_or_else(|| {
-                "Beryl settings storage is unavailable for the configured home directory."
-                    .to_string()
-            });
+            let message = self.preferences_store_unavailable_message();
             let _ = sender.send(Err(message));
-            self.save_receiver = Some(receiver);
+            self.save_task = Some(SettingsSaveTask { snapshot, receiver });
             return;
         };
 
+        let preferences = snapshot.preferences.clone();
         thread::spawn(move || {
             let result = preferences_store
-                .save(&snapshot.preferences)
-                .map_err(|error| error.to_string());
+                .save(&preferences)
+                .map_err(|error| bounded_settings_save_error(error.to_string()));
             let _ = sender.send(result);
         });
-        self.save_receiver = Some(receiver);
+        self.save_task = Some(SettingsSaveTask { snapshot, receiver });
     }
 
     fn enqueue_graph_upkeep_policy_save(&mut self, snapshot: GraphUpkeepPolicySaveSnapshot) {
@@ -837,14 +931,19 @@ impl SettingsState {
 
     pub(super) fn poll_save(&mut self) -> SettingsSavePoll {
         let graph_result = self.poll_graph_upkeep_policy_save();
-        let Some(receiver) = self.save_receiver.as_ref() else {
+        let Some(task) = self.save_task.as_ref() else {
             return graph_result.unwrap_or(SettingsSavePoll::Idle);
         };
 
-        match receiver.try_recv() {
+        match task.receiver.try_recv() {
             Ok(Ok(())) => {
-                self.save_receiver = None;
-                if let Some(snapshot) = self.queued_save.take() {
+                let completed_snapshot = self
+                    .save_task
+                    .take()
+                    .expect("GUI preference save task exists after successful receive")
+                    .snapshot;
+                if let Some(mut snapshot) = self.queued_save.take() {
+                    snapshot.previous_active_preferences = completed_snapshot.preferences;
                     self.spawn_save(snapshot);
                     SettingsSavePoll::Pending
                 } else {
@@ -852,21 +951,67 @@ impl SettingsState {
                 }
             }
             Ok(Err(error)) => {
-                self.save_receiver = None;
-                if let Some(snapshot) = self.queued_save.take() {
+                let failed_snapshot = self
+                    .save_task
+                    .take()
+                    .expect("GUI preference save task exists after failed receive")
+                    .snapshot;
+                let mut restored_preferences = None;
+                if let Some(mut snapshot) = self.queued_save.take() {
+                    snapshot.previous_active_preferences =
+                        failed_snapshot.previous_active_preferences;
                     self.spawn_save(snapshot);
+                } else {
+                    restored_preferences = self.restore_failed_gui_preferences(&failed_snapshot);
                 }
-                SettingsSavePoll::Failed(error)
+                SettingsSavePoll::Failed {
+                    error,
+                    restored_preferences,
+                }
             }
             Err(mpsc::TryRecvError::Empty) => SettingsSavePoll::Pending,
             Err(mpsc::TryRecvError::Disconnected) => {
-                self.save_receiver = None;
-                if let Some(snapshot) = self.queued_save.take() {
+                let failed_snapshot = self
+                    .save_task
+                    .take()
+                    .expect("GUI preference save task exists after disconnect")
+                    .snapshot;
+                let mut restored_preferences = None;
+                if let Some(mut snapshot) = self.queued_save.take() {
+                    snapshot.previous_active_preferences =
+                        failed_snapshot.previous_active_preferences;
                     self.spawn_save(snapshot);
+                } else {
+                    restored_preferences = self.restore_failed_gui_preferences(&failed_snapshot);
                 }
-                SettingsSavePoll::Failed("saving stopped unexpectedly".to_string())
+                SettingsSavePoll::Failed {
+                    error: "saving stopped unexpectedly".to_string(),
+                    restored_preferences,
+                }
             }
         }
+    }
+
+    fn restore_failed_gui_preferences(
+        &mut self,
+        failed_snapshot: &SettingsSaveSnapshot,
+    ) -> Option<GuiPreferences> {
+        let restored_preferences = {
+            let mut active = self.active_preferences.lock().ok()?;
+            if *active != failed_snapshot.preferences {
+                return None;
+            }
+            *active = failed_snapshot.previous_active_preferences.clone();
+            active.clone()
+        };
+
+        self.record_gui_preference_drafts(&restored_preferences);
+        self.errors = preference_field_errors(
+            &restored_preferences,
+            &failed_snapshot.preferences,
+            PREFERENCES_SAVE_ROLLBACK_MESSAGE.to_string(),
+        );
+        Some(restored_preferences)
     }
 
     fn poll_graph_upkeep_policy_save(&mut self) -> Option<SettingsSavePoll> {
@@ -897,7 +1042,10 @@ impl SettingsState {
                 if let Some(snapshot) = self.queued_graph_save.take() {
                     self.spawn_graph_upkeep_policy_save(snapshot);
                 }
-                Some(SettingsSavePoll::Failed(error))
+                Some(SettingsSavePoll::Failed {
+                    error: bounded_settings_save_error(error),
+                    restored_preferences: None,
+                })
             }
             Err(mpsc::TryRecvError::Empty) => Some(SettingsSavePoll::Pending),
             Err(mpsc::TryRecvError::Disconnected) => {
@@ -911,7 +1059,10 @@ impl SettingsState {
                 if let Some(snapshot) = self.queued_graph_save.take() {
                     self.spawn_graph_upkeep_policy_save(snapshot);
                 }
-                Some(SettingsSavePoll::Failed(error))
+                Some(SettingsSavePoll::Failed {
+                    error,
+                    restored_preferences: None,
+                })
             }
         }
     }
@@ -1161,6 +1312,8 @@ impl SettingsState {
             != NotificationSettingsDraft::from_preferences(&active.notifications)
             || self.agent_draft != AgentSettingsDraft::from_preferences(&active.agent)
             || self.operation_draft != OperationSettingsDraft::from_preferences(&active.operations)
+            || self.diagnostics_draft
+                != DiagnosticsSettingsDraft::from_preferences(&active.diagnostics)
     }
 }
 
@@ -1209,6 +1362,39 @@ impl ThemeEditorDiagnostics {
             last_modified_state_recompute_micros: self.last_modified_state_recompute_micros,
         })
     }
+}
+
+fn preference_field_errors(
+    previous: &GuiPreferences,
+    next: &GuiPreferences,
+    message: String,
+) -> HashMap<SettingsFieldId, String> {
+    let mut errors = HashMap::new();
+    if previous.notifications != next.notifications {
+        errors.insert(end_turn_sound_field_id(), message.clone());
+    }
+    if previous.agent != next.agent {
+        errors.insert(developer_instructions_field_id(), message.clone());
+    }
+    if previous.operations != next.operations {
+        errors.insert(context_compaction_timeout_field_id(), message.clone());
+    }
+    if previous.diagnostics != next.diagnostics {
+        errors.insert(activity_diagnostic_capture_field_id(), message);
+    }
+    errors
+}
+
+fn bounded_settings_save_error(value: String) -> String {
+    if value.len() <= MAX_SETTINGS_SAVE_ERROR_BYTES {
+        return value;
+    }
+
+    let mut end = MAX_SETTINGS_SAVE_ERROR_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_string()
 }
 
 fn default_save_as_name(settings: &AppearanceSettings) -> String {

@@ -288,6 +288,7 @@ fn selected_thread_mutations_sync_activity_projection_without_stream_ingress() {
     let upsert_body = rust_function_body(shell_source, "fn upsert_selected_thread");
     let new_thread_body = rust_function_body(shell_source, "fn start_new_thread(&mut self)");
     let reopen_body = rust_function_body(shell_source, "fn refresh_after_backend_reopen");
+    let clear_activity_body = rust_function_body(shell_source, "fn clear_tool_activity");
 
     assert_eq!(shell_source.matches("self.selected_thread =").count(), 1);
     assert_order(
@@ -300,13 +301,18 @@ fn selected_thread_mutations_sync_activity_projection_without_stream_ingress() {
     assert!(upsert_body.contains("self.set_selected_thread_index(Some(0))"));
     assert!(new_thread_body.contains("self.set_selected_thread_index(None)"));
     assert!(reopen_body.contains("let selected_thread = self.selected_thread"));
-    let reopen_after_activity_clear = reopen_body
-        .split_once("self.tool_activity.clear_all()")
-        .expect("backend reopen must clear retained activity")
+    let reopen_after_selected_thread_capture = reopen_body
+        .split_once("let selected_thread = self.selected_thread;")
+        .expect("backend reopen must retain selected-thread identity before clearing activity")
         .1;
-    assert!(
-        reopen_after_activity_clear.contains("self.set_selected_thread_index(selected_thread)")
+    assert_order(
+        reopen_after_selected_thread_capture,
+        "self.clear_tool_activity()",
+        "self.set_selected_thread_index(selected_thread)",
     );
+    assert!(clear_activity_body.contains("self.activity_presentation_diagnostics.clear()"));
+    assert!(clear_activity_body.contains("self.tool_activity.clear_all()"));
+    assert!(clear_activity_body.contains("self.hard_stop_targets.clear_all()"));
 }
 
 #[test]
@@ -1052,6 +1058,167 @@ fn phase29_theme_settings_modules_are_split_into_focused_sources() {
     assert!(!theme_store_source.contains("fn snapshot_from_loaded"));
     assert!(theme_store_io_source.contains("fn read_manifest"));
     assert!(theme_store_snapshot_source.contains("fn snapshot_from_loaded"));
+}
+
+#[test]
+fn activity_diagnostic_capture_intent_has_one_app_lifetime_reconciliation_path() {
+    let shell_source = include_str!("../src/shell.rs");
+    let capture_settings_source =
+        include_str!("../src/shell/activity_diagnostic_capture_settings.rs");
+    let reconcile_body = rust_function_body(
+        capture_settings_source,
+        "fn reconcile_activity_diagnostic_capture",
+    );
+    let apply_body = rust_function_body(shell_source, "fn apply_settings_window_changes");
+    let save_poll_body = rust_function_body(shell_source, "fn poll_settings_save");
+
+    assert!(shell_source.contains(
+        "activity_diagnostic_file_capture: Option<ActivityDiagnosticFileCaptureController>"
+    ));
+    assert!(shell_source.contains("mod activity_diagnostic_capture_settings;"));
+    assert!(shell_source.contains("ActivityDiagnosticFileCaptureController::new"));
+    assert!(shell_source.contains("view.reconcile_activity_diagnostic_capture(cx)"));
+    assert!(reconcile_body.contains("active_preferences_snapshot()"));
+    assert!(reconcile_body.contains("(false, true) => controller.enable"));
+    assert!(reconcile_body.contains("(true, false) => controller.disable()"));
+    assert!(reconcile_body.contains("_ => Ok(0)"));
+    assert_eq!(reconcile_body.matches("controller.enable(").count(), 1);
+    assert_eq!(reconcile_body.matches("controller.disable(").count(), 1);
+    assert!(apply_body.contains("self.reconcile_activity_diagnostic_capture(cx)"));
+    assert!(save_poll_body.contains("restored_preferences"));
+    assert!(save_poll_body.contains("self.reconcile_activity_diagnostic_capture(cx)"));
+    assert!(save_poll_body.contains("self.refresh_active_theme_surfaces(cx)"));
+
+    for unrelated_reset in [
+        "begin_workspace_open",
+        "finish_backend_reopen",
+        "set_activity_panel_visible",
+        "clear_all",
+    ] {
+        assert!(!reconcile_body.contains(unrelated_reset));
+    }
+}
+
+#[test]
+fn activity_diagnostic_capture_status_is_fresh_bounded_and_visibility_polled() {
+    let shell_source = include_str!("../src/shell.rs");
+    let settings_source = include_str!("../src/shell/settings.rs");
+    let capture_settings_source =
+        include_str!("../src/shell/activity_diagnostic_capture_settings.rs");
+    let dynamic_settings_source = include_str!("../src/shell/dynamic_settings.rs");
+    let status_body = rust_function_body(
+        capture_settings_source,
+        "fn activity_diagnostic_capture_status",
+    );
+    let sync_body = rust_function_body(shell_source, "fn sync_settings_window_model");
+    let schedule_body = rust_function_body(
+        capture_settings_source,
+        "fn schedule_activity_diagnostic_capture_status_refresh",
+    );
+    let poll_mode_body = rust_function_body(
+        capture_settings_source,
+        "fn activity_diagnostic_capture_status_poll_mode",
+    );
+    let cancel_body = rust_function_body(
+        capture_settings_source,
+        "fn cancel_activity_diagnostic_capture_status_refresh",
+    );
+    let selection_body = rust_function_body(settings_source, "fn diagnostics_page_selected");
+    let open_body = rust_function_body(shell_source, "fn open_settings_window");
+    let hide_body = rust_function_body(shell_source, "fn hide_settings_window");
+    let dynamic_body = rust_function_body(
+        dynamic_settings_source,
+        "fn handle_beryl_settings_dynamic_tool_request",
+    );
+
+    assert!(status_body.contains("ActivityDiagnosticCaptureStatus::default()"));
+    assert!(status_body.contains("status.configured = configured"));
+    assert!(status_body.contains("ActivityDiagnosticCaptureRuntimeState::Failed"));
+    assert!(status_body.contains("ActivityDiagnosticCaptureErrorCategory::WriterDisconnected"));
+    for prohibited in [
+        "home_dir",
+        "activity.jsonl",
+        "activity.lock",
+        "error.to_string",
+    ] {
+        assert!(!status_body.contains(prohibited));
+    }
+
+    assert!(sync_body.contains("refresh_activity_diagnostic_capture_status"));
+    assert!(sync_body.contains("schedule_activity_diagnostic_capture_status_refresh"));
+    assert!(
+        capture_settings_source
+            .contains("ACTIVITY_DIAGNOSTIC_CAPTURE_TRANSITION_STATUS_POLL_INTERVAL")
+    );
+    assert!(capture_settings_source.contains("Duration::from_millis(16)"));
+    assert!(
+        capture_settings_source.contains("ACTIVITY_DIAGNOSTIC_CAPTURE_ACTIVE_STATUS_POLL_INTERVAL")
+    );
+    assert!(capture_settings_source.contains("Duration::from_secs(1)"));
+    assert!(poll_mode_body.contains("ActivityDiagnosticCaptureRuntimeState::Starting"));
+    assert!(poll_mode_body.contains("ActivityDiagnosticCaptureRuntimeState::Stopping"));
+    assert!(poll_mode_body.contains("ActivityDiagnosticCaptureRuntimeState::Active"));
+    assert!(poll_mode_body.contains("ActivityDiagnosticCaptureRuntimeState::Disabled"));
+    assert!(poll_mode_body.contains("ActivityDiagnosticCaptureRuntimeState::Unavailable"));
+    assert!(poll_mode_body.contains("ActivityDiagnosticCaptureRuntimeState::Failed"));
+    assert!(poll_mode_body.contains("settings_state.diagnostics_page_selected()"));
+    assert!(poll_mode_body.contains("settings_window.is_visible(cx).unwrap_or(false)"));
+    assert!(poll_mode_body.contains("Some(ActivityDiagnosticCaptureStatusPollMode::Transition)"));
+    assert!(poll_mode_body.contains("Some(ActivityDiagnosticCaptureStatusPollMode::Active)"));
+    assert!(poll_mode_body.contains("| ActivityDiagnosticCaptureRuntimeState::Failed => None"));
+
+    assert!(schedule_body.contains("poll_mode.is_slow()"));
+    assert!(schedule_body.contains("activity_diagnostic_capture_status_poll_scheduled"));
+    assert!(schedule_body.contains("activity_diagnostic_capture_status_poll_generation"));
+    assert!(schedule_body.contains("activity_diagnostic_capture_status_poll_slow == slow"));
+    assert!(schedule_body.contains("timer(poll_mode.interval())"));
+    assert!(schedule_body.contains("!= generation"));
+    assert!(schedule_body.contains("!= slow"));
+    assert!(cancel_body.contains("activity_diagnostic_capture_status_poll_generation"));
+    assert!(cancel_body.contains("activity_diagnostic_capture_status_poll_scheduled = false"));
+    assert!(cancel_body.contains("activity_diagnostic_capture_status_poll_slow = false"));
+
+    assert!(selection_body.contains("self.selected_section_id"));
+    assert!(selection_body.contains("self.selected_page_id"));
+    assert!(selection_body.contains("diagnostics_section_id()"));
+    assert_order(
+        open_body,
+        "refresh_activity_diagnostic_capture_status",
+        ".show(",
+    );
+    assert_order(
+        open_body,
+        ".show(",
+        "schedule_activity_diagnostic_capture_status_refresh",
+    );
+    assert_order(
+        hide_body,
+        ".hide(cx)",
+        "schedule_activity_diagnostic_capture_status_refresh",
+    );
+
+    let validate_arm = dynamic_body
+        .split("SettingsDynamicToolRequest::Validate")
+        .nth(1)
+        .expect("missing validate arm")
+        .split("SettingsDynamicToolRequest::Update")
+        .next()
+        .expect("missing update arm boundary");
+    assert!(validate_arm.contains("activity_diagnostic_capture_status"));
+    assert!(!validate_arm.contains("reconcile_activity_diagnostic_capture"));
+
+    let update_arm = dynamic_body
+        .split("SettingsDynamicToolRequest::Update")
+        .nth(1)
+        .expect("missing update arm");
+    assert!(update_arm.contains("if changed"));
+    assert!(update_arm.contains("reconcile_activity_diagnostic_capture"));
+    assert!(update_arm.contains("\"settings_update_rejected\""));
+    assert_order(
+        update_arm,
+        "reconcile_activity_diagnostic_capture",
+        "settings_update_value",
+    );
 }
 
 fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {

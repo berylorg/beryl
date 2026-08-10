@@ -3,7 +3,10 @@ use std::path::Path;
 use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse};
 use serde_json::{Value, json};
 
-use crate::{GuiPreferences, ThemeRepositorySnapshot};
+use crate::{
+    ActivityDiagnosticCaptureErrorCategory, ActivityDiagnosticCaptureRuntimeState,
+    ActivityDiagnosticCaptureStatus, GuiPreferences, ThemeRepositorySnapshot,
+};
 
 use super::{
     GuiSettingsUpdate, MAX_SETTINGS_TOOL_ERROR_BYTES, MAX_SETTINGS_TOOL_INSTALLED_THEME_COUNT,
@@ -13,6 +16,7 @@ use super::{
 pub fn gui_settings_snapshot_value(
     preferences: &GuiPreferences,
     themes: &ThemeRepositorySnapshot,
+    activity_capture_status: Option<&ActivityDiagnosticCaptureStatus>,
 ) -> Value {
     let installed_themes = themes
         .themes()
@@ -41,6 +45,7 @@ pub fn gui_settings_snapshot_value(
                 preferences.agent.developer_instructions.as_deref()
             ),
         },
+        "diagnostics": diagnostics_value(preferences, activity_capture_status),
         "aiControl": {
             "available": false,
             "writable": false,
@@ -57,12 +62,13 @@ pub fn gui_settings_snapshot_value(
 pub fn settings_validation_value(
     current: &GuiPreferences,
     update: &GuiSettingsUpdate,
+    activity_capture_status: Option<&ActivityDiagnosticCaptureStatus>,
 ) -> Result<Value, SettingsDynamicToolError> {
     let updated = update.apply_to(current)?;
     Ok(json!({
         "valid": true,
         "changed": &updated != current,
-        "resultingSettings": gui_preferences_summary_value(&updated),
+        "resultingSettings": gui_preferences_summary_value(&updated, activity_capture_status),
     }))
 }
 
@@ -70,11 +76,12 @@ pub fn settings_update_value(
     preferences: &GuiPreferences,
     changed: bool,
     save_pending: bool,
+    activity_capture_status: Option<&ActivityDiagnosticCaptureStatus>,
 ) -> Value {
     json!({
         "changed": changed,
         "savePending": save_pending,
-        "settings": gui_preferences_summary_value(preferences),
+        "settings": gui_preferences_summary_value(preferences, activity_capture_status),
     })
 }
 
@@ -104,7 +111,10 @@ pub fn settings_tool_failure_response(
     })))
 }
 
-fn gui_preferences_summary_value(preferences: &GuiPreferences) -> Value {
+fn gui_preferences_summary_value(
+    preferences: &GuiPreferences,
+    activity_capture_status: Option<&ActivityDiagnosticCaptureStatus>,
+) -> Value {
     json!({
         "operations": {
             "contextCompactionTimeoutSeconds": preferences.operations.context_compaction_timeout_seconds,
@@ -119,6 +129,7 @@ fn gui_preferences_summary_value(preferences: &GuiPreferences) -> Value {
                 preferences.agent.developer_instructions.as_deref()
             ),
         },
+        "diagnostics": diagnostics_value(preferences, activity_capture_status),
     })
 }
 
@@ -153,6 +164,72 @@ fn developer_instructions_metadata(value: Option<&str>) -> Value {
         "lineCount": value.lines().count().max(1),
         "fingerprint": stable_fingerprint(value.as_bytes()),
     })
+}
+
+fn diagnostics_value(
+    preferences: &GuiPreferences,
+    activity_capture_status: Option<&ActivityDiagnosticCaptureStatus>,
+) -> Value {
+    let mut diagnostics = json!({
+        "activityDiagnosticCaptureEnabled": preferences
+            .diagnostics
+            .activity_diagnostic_capture_enabled,
+    });
+    if let Some(status) = activity_capture_status {
+        diagnostics
+            .as_object_mut()
+            .expect("diagnostics value is an object")
+            .insert(
+                "activityDiagnosticCaptureStatus".to_string(),
+                activity_capture_status_value(status),
+            );
+    }
+    diagnostics
+}
+
+fn activity_capture_status_value(status: &ActivityDiagnosticCaptureStatus) -> Value {
+    json!({
+        "configured": status.configured,
+        "state": activity_capture_runtime_state_value(status.runtime_state),
+        "captureGeneration": status.capture_generation,
+        "writtenRecordCount": status.written_record_count,
+        "droppedRecordCount": status.dropped_record_count,
+        "queueFullDropCount": status.queue_full_drop_count,
+        "queueDisconnectedDropCount": status.queue_disconnected_drop_count,
+        "schemaRejectionDropCount": status.schema_rejection_drop_count,
+        "oversizedRecordCount": status.oversized_record_count,
+        "repairCount": status.repair_count,
+        "rotationCount": status.rotation_count,
+        "errorCategory": status.error_category.map(activity_capture_error_category_value),
+    })
+}
+
+fn activity_capture_runtime_state_value(
+    state: ActivityDiagnosticCaptureRuntimeState,
+) -> &'static str {
+    match state {
+        ActivityDiagnosticCaptureRuntimeState::Disabled => "disabled",
+        ActivityDiagnosticCaptureRuntimeState::Starting => "starting",
+        ActivityDiagnosticCaptureRuntimeState::Active => "active",
+        ActivityDiagnosticCaptureRuntimeState::Stopping => "stopping",
+        ActivityDiagnosticCaptureRuntimeState::Unavailable => "unavailable",
+        ActivityDiagnosticCaptureRuntimeState::Failed => "failed",
+    }
+}
+
+fn activity_capture_error_category_value(
+    category: ActivityDiagnosticCaptureErrorCategory,
+) -> &'static str {
+    match category {
+        ActivityDiagnosticCaptureErrorCategory::LockUnavailable => "lock_unavailable",
+        ActivityDiagnosticCaptureErrorCategory::Directory => "directory",
+        ActivityDiagnosticCaptureErrorCategory::Lock => "lock",
+        ActivityDiagnosticCaptureErrorCategory::Recovery => "recovery",
+        ActivityDiagnosticCaptureErrorCategory::Rotation => "rotation",
+        ActivityDiagnosticCaptureErrorCategory::Serialization => "serialization",
+        ActivityDiagnosticCaptureErrorCategory::Write => "write",
+        ActivityDiagnosticCaptureErrorCategory::WriterDisconnected => "writer_disconnected",
+    }
 }
 
 fn stable_fingerprint(bytes: &[u8]) -> String {

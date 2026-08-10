@@ -377,8 +377,7 @@ impl ShellView {
                 }
             }
         }
-        self.notify_transcript_panel(cx);
-        cx.notify();
+        self.notify_conversation_model_refresh(cx);
     }
 }
 

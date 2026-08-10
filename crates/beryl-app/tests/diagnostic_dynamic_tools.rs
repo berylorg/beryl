@@ -1,3 +1,7 @@
+#[path = "../src/activity_lifecycle_diagnostics.rs"]
+mod activity_lifecycle_diagnostics;
+#[path = "../src/activity_presentation_diagnostics.rs"]
+mod activity_presentation_diagnostics;
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
 
@@ -8,6 +12,15 @@ mod dynamic_tools {
 #[path = "../src/diagnostic_dynamic_tools.rs"]
 mod diagnostic_dynamic_tools;
 
+use activity_lifecycle_diagnostics::{
+    ACTIVITY_LIFECYCLE_DIAGNOSTIC_CAPACITY, ACTIVITY_LIFECYCLE_IDENTITY_BYTE_CAPACITY,
+    ActivityLifecycleDiagnosticInput, ActivityLifecycleDiagnosticSnapshot,
+    ActivityLifecycleDiagnostics, ActivityLifecycleIdentityValidity,
+};
+use activity_presentation_diagnostics::{
+    ActivityPresentationDiagnosticSnapshot, ActivityPresentationDiagnostics,
+    ActivityPresentationRenderRow, ActivityProjectionDiagnosticState,
+};
 use beryl_backend::{
     DynamicToolCallOutputContentItem, DynamicToolCallRequest, DynamicToolCallResponse,
     parse_dynamic_tool_call_request,
@@ -15,8 +28,9 @@ use beryl_backend::{
 use diagnostic_dynamic_tools::{
     DiagnosticToolSnapshot, MediaDiagnosticEvent, MediaDiagnosticLog, MediaEventSnapshot,
     MemoryDiagnosticSnapshot, MemoryDiagnosticUiCorrelation, PreviewDiagnostic,
-    ProcessDiagnosticSnapshot, READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL,
-    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
+    ProcessDiagnosticSnapshot, READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL,
+    READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL, READ_MEDIA_EVENTS_TOOL,
+    READ_MEMORY_DIAGNOSTICS_TOOL, READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
     READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL, READ_TRANSCRIPT_FRAME_METRICS_TOOL,
     READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
     SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
@@ -29,6 +43,181 @@ use diagnostic_dynamic_tools::{
 };
 use memory_diagnostics::RetainedStateSnapshot;
 use serde_json::{Value, json};
+
+#[test]
+fn activity_lifecycle_ring_enforces_identity_validity_and_storage_bounds() {
+    let mut diagnostics = ActivityLifecycleDiagnostics::default();
+    let over_bound_identity = "x".repeat(513);
+    let over_bound_protocol = "é".repeat(300);
+    diagnostics.record(activity_lifecycle_input(
+        None,
+        Some("   "),
+        Some(over_bound_identity.as_str()),
+        Some(over_bound_protocol.as_str()),
+        Some(over_bound_protocol.as_str()),
+    ));
+
+    let snapshot = diagnostics.snapshot();
+    let event = &snapshot.events[0];
+    assert_eq!(
+        event.thread.validity,
+        ActivityLifecycleIdentityValidity::Missing
+    );
+    assert_eq!(
+        event.turn.validity,
+        ActivityLifecycleIdentityValidity::Blank
+    );
+    assert_eq!(
+        event.item.validity,
+        ActivityLifecycleIdentityValidity::OverBound
+    );
+    assert!(event.thread.value.is_none());
+    assert!(event.turn.value.is_none());
+    assert!(event.item.value.is_none());
+    assert!(event.item_type.truncated);
+    assert!(event.item_type.value.as_ref().unwrap().len() <= 512);
+    assert!(event.item_status.truncated);
+    assert_eq!(snapshot.omissions.missing_identity_field_count, 1);
+    assert_eq!(snapshot.omissions.blank_identity_field_count, 1);
+    assert_eq!(snapshot.omissions.over_bound_identity_field_count, 1);
+    assert_eq!(snapshot.omissions.truncated_protocol_string_count, 2);
+
+    diagnostics.clear();
+    for index in 0..300 {
+        let item_id = format!("item-{index}");
+        diagnostics.record(activity_lifecycle_input(
+            Some("thread"),
+            Some("turn"),
+            Some(item_id.as_str()),
+            Some("commandExecution"),
+            Some("inProgress"),
+        ));
+    }
+    let snapshot = diagnostics.snapshot();
+    assert_eq!(
+        snapshot.retained_count,
+        ACTIVITY_LIFECYCLE_DIAGNOSTIC_CAPACITY
+    );
+    assert_eq!(
+        snapshot.returned_count,
+        ACTIVITY_LIFECYCLE_DIAGNOSTIC_CAPACITY
+    );
+    assert_eq!(snapshot.oldest_sequence, Some(45));
+    assert_eq!(snapshot.newest_sequence, Some(300));
+    assert_eq!(snapshot.omissions.evicted_event_count, 44);
+    assert!(snapshot.truncated);
+
+    diagnostics.clear();
+    let identity = "i".repeat(512);
+    for _ in 0..100 {
+        diagnostics.record(activity_lifecycle_input(
+            Some(identity.as_str()),
+            Some(identity.as_str()),
+            Some(identity.as_str()),
+            Some("commandExecution"),
+            Some("completed"),
+        ));
+    }
+    let snapshot = diagnostics.snapshot();
+    assert!(snapshot.retained_count < 100);
+    assert!(snapshot.retained_identity_bytes <= ACTIVITY_LIFECYCLE_IDENTITY_BYTE_CAPACITY);
+    assert!(snapshot.omissions.evicted_event_count > 0);
+
+    diagnostics.clear();
+    let snapshot = diagnostics.snapshot();
+    assert_eq!(snapshot.retained_count, 0);
+    assert_eq!(snapshot.oldest_sequence, None);
+    assert_eq!(snapshot.newest_sequence, None);
+    assert_eq!(snapshot.omissions.evicted_event_count, 0);
+    assert!(!snapshot.truncated);
+}
+
+#[test]
+fn activity_presentation_diagnostics_are_bounded_content_free_and_cursor_readable() {
+    let diagnostics = ActivityPresentationDiagnostics::default();
+    let projection = ActivityProjectionDiagnosticState {
+        revision: 1,
+        newest_lifecycle_sequence: Some(4),
+        total_row_count: 1,
+        running_row_count: 1,
+        finished_ok_row_count: 0,
+        finished_error_row_count: 0,
+    };
+    diagnostics.observe_shell_notification(projection);
+    diagnostics.observe_render(
+        projection,
+        true,
+        Some("thread"),
+        1,
+        0..1,
+        2,
+        [ActivityPresentationRenderRow {
+            rendered_index: 0,
+            thread_id: "thread",
+            turn_id: "turn",
+            item_id: "item",
+            status: "running",
+            status_indicator_theme_role: "activity.indicator.running",
+            used_theme_role: false,
+            resolved_rgba: [10, 20, 30, 255],
+        }],
+    );
+    let snapshot = diagnostics.snapshot();
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
+        &diagnostic_tool_request(
+            READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL,
+            json!({ "afterSequence": 1, "limit": 64 }),
+        ),
+        DiagnosticToolSnapshot {
+            activity_presentation: snapshot,
+            ..diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0))
+        },
+    );
+    let payload = response_json(&response);
+    let result = &payload["result"];
+    assert_eq!(result["returnedCount"], 2);
+    assert_eq!(result["events"][0]["stage"], "shell_notified");
+    assert_eq!(result["events"][1]["stage"], "render_sample");
+    assert_eq!(
+        result["events"][1]["sampledRows"][0]["item"]["value"],
+        "item"
+    );
+    assert!(result.to_string().contains("renderer_fallback"));
+    assert!(!result.to_string().contains("command"));
+}
+
+#[test]
+fn activity_lifecycle_serialization_omits_content_bearing_fields() {
+    let mut diagnostics = ActivityLifecycleDiagnostics::default();
+    diagnostics.record(activity_lifecycle_input(
+        Some("thread"),
+        Some("turn"),
+        Some("item"),
+        Some("commandExecution"),
+        Some("completed"),
+    ));
+
+    let value = serde_json::to_value(diagnostics.snapshot()).unwrap();
+    let event = value["events"][0].as_object().unwrap();
+    for forbidden in [
+        "command",
+        "cwd",
+        "path",
+        "arguments",
+        "output",
+        "displayLabel",
+        "prompt",
+        "message",
+        "reasoning",
+        "model",
+        "backendBody",
+    ] {
+        assert!(
+            !event.contains_key(forbidden),
+            "unexpected field {forbidden}"
+        );
+    }
+}
 
 #[test]
 fn visible_media_diagnostics_caps_items_and_truncates_strings() {
@@ -396,6 +585,51 @@ fn settings_window_diagnostics_tool_is_registered() {
 }
 
 #[test]
+fn activity_lifecycle_tool_is_registered_and_filters_oldest_to_newest() {
+    let specs = beryl_diagnostic_dynamic_tool_specs();
+    let spec = specs
+        .iter()
+        .find(|spec| spec.name == READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL)
+        .expect("Activity lifecycle diagnostic tool should be registered");
+    assert_eq!(spec.input_schema["properties"]["limit"]["maximum"], 256);
+    assert_eq!(
+        spec.input_schema["properties"]["afterSequence"]["minimum"],
+        0
+    );
+
+    let request = diagnostic_tool_request(
+        READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL,
+        json!({ "afterSequence": 2, "limit": 2 }),
+    );
+    assert!(is_beryl_diagnostic_dynamic_tool(&request));
+
+    let mut lifecycle = ActivityLifecycleDiagnostics::default();
+    for index in 1..=5 {
+        let item_id = format!("item-{index}");
+        lifecycle.record(activity_lifecycle_input(
+            Some("thread"),
+            Some("turn"),
+            Some(item_id.as_str()),
+            Some("commandExecution"),
+            Some("completed"),
+        ));
+    }
+    let mut snapshot = diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0));
+    snapshot.activity_lifecycle = lifecycle.snapshot();
+
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(&request, snapshot);
+    let payload = response_json(&response);
+    assert!(response.success);
+    assert_eq!(payload["result"]["retainedCount"], 5);
+    assert_eq!(payload["result"]["returnedCount"], 2);
+    assert_eq!(payload["result"]["oldestSequence"], 1);
+    assert_eq!(payload["result"]["newestSequence"], 5);
+    assert_eq!(payload["result"]["events"][0]["sequence"], 3);
+    assert_eq!(payload["result"]["events"][1]["sequence"], 4);
+    assert_eq!(payload["result"]["truncated"], true);
+}
+
+#[test]
 fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
     let runtime = RuntimeTargetDiagnostic {
         runtime: "host-windows".to_string(),
@@ -428,6 +662,8 @@ fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
+            activity_lifecycle: ActivityLifecycleDiagnosticSnapshot::default(),
+            activity_presentation: ActivityPresentationDiagnosticSnapshot::default(),
         },
     );
     let payload = response_json(&response);
@@ -492,6 +728,8 @@ fn renderer_diagnostics_include_target_identity_and_bounded_snapshot() {
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
+            activity_lifecycle: ActivityLifecycleDiagnosticSnapshot::default(),
+            activity_presentation: ActivityPresentationDiagnosticSnapshot::default(),
         },
     );
     let payload = response_json(&response);
@@ -567,6 +805,8 @@ fn renderer_diagnostics_serialize_source_backed_image_sections() {
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
+            activity_lifecycle: ActivityLifecycleDiagnosticSnapshot::default(),
+            activity_presentation: ActivityPresentationDiagnosticSnapshot::default(),
         },
     );
     let payload = response_json(&response);
@@ -738,6 +978,31 @@ fn diagnostic_snapshot(
         media_events,
         transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
         settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
+        activity_lifecycle: ActivityLifecycleDiagnosticSnapshot::default(),
+        activity_presentation: ActivityPresentationDiagnosticSnapshot::default(),
+    }
+}
+
+fn activity_lifecycle_input<'a>(
+    thread_id: Option<&'a str>,
+    turn_id: Option<&'a str>,
+    item_id: Option<&'a str>,
+    item_type: Option<&'a str>,
+    item_status: Option<&'a str>,
+) -> ActivityLifecycleDiagnosticInput<'a> {
+    ActivityLifecycleDiagnosticInput {
+        stage: "activity_ingress",
+        category: "lifecycle",
+        kind: "completed",
+        thread_id,
+        turn_id,
+        item_id,
+        item_type,
+        item_status,
+        projection_outcome: "matched_existing",
+        before_row_status: Some("running"),
+        after_row_status: Some("finished_ok"),
+        affected_row_count: 1,
     }
 }
 

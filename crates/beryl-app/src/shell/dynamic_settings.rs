@@ -26,11 +26,13 @@ impl ShellView {
                 gui_settings_snapshot_value(
                     &self.settings_state.active_preferences_snapshot(),
                     self.settings_state.theme_repository_snapshot(),
+                    Some(&self.activity_diagnostic_capture_status()),
                 ),
             ),
             SettingsDynamicToolRequest::Validate { update } => {
                 let current = self.settings_state.active_preferences_snapshot();
-                match settings_validation_value(&current, &update) {
+                let capture_status = self.activity_diagnostic_capture_status();
+                match settings_validation_value(&current, &update, Some(&capture_status)) {
                     Ok(result) => settings_tool_success_response(request, result),
                     Err(message) => {
                         settings_tool_failure_response(request, message.kind(), message.to_string())
@@ -45,6 +47,9 @@ impl ShellView {
                         .apply_preferences_from_external(preferences.clone())
                     {
                         Ok(changed) => {
+                            if changed {
+                                self.reconcile_activity_diagnostic_capture(cx);
+                            }
                             self.sync_settings_window_model(cx);
                             if changed {
                                 self.schedule_settings_save_poll(cx);
@@ -56,6 +61,7 @@ impl ShellView {
                                     &preferences,
                                     changed,
                                     self.settings_state.has_pending_save(),
+                                    Some(&self.activity_diagnostic_capture_status()),
                                 ),
                             )
                         }

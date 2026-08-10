@@ -157,8 +157,7 @@ impl ShellView {
             cx.notify();
             return;
         }
-        self.notify_transcript_panel(cx);
-        cx.notify();
+        self.notify_conversation_model_refresh(cx);
     }
 
     pub(crate) fn handle_transcript_edit_mode_key_down(
@@ -177,8 +176,7 @@ impl ShellView {
             .conversation_surface_mut()
             .is_some_and(ConversationSurfaceState::cancel_transcript_edit_mode);
         if cancelled {
-            self.notify_transcript_panel(cx);
-            cx.notify();
+            self.notify_conversation_model_refresh(cx);
         }
         cancelled
     }
@@ -458,8 +456,7 @@ impl ShellView {
             .conversation_surface_mut()
             .is_some_and(ConversationSurfaceState::reconcile_transcript_edit_mode);
         if changed {
-            self.notify_transcript_panel(cx);
-            cx.notify();
+            self.notify_conversation_model_refresh(cx);
         }
     }
 }

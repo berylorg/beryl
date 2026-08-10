@@ -15,6 +15,12 @@ use gpui::SharedString;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::activity_lifecycle_diagnostics::{
+    ActivityLifecycleDiagnosticInput, ActivityLifecycleDiagnosticObserver,
+    ActivityLifecycleDiagnosticSnapshot, ActivityLifecycleDiagnostics,
+};
+use crate::activity_presentation_diagnostics::ActivityProjectionDiagnosticState;
+
 const MULTI_AGENT_V2_DIAGNOSTIC_RECORD_LIMIT: usize = 64;
 const MULTI_AGENT_V2_DIAGNOSTIC_IDENTITY_BYTE_LIMIT: usize = 64 * 1024;
 const MULTI_AGENT_V2_DIAGNOSTIC_IDENTITY_FIELD_BYTE_LIMIT: usize = 512;
@@ -32,6 +38,9 @@ pub(super) struct ToolActivityProjection {
     visible_row_indexes_by_thread: HashMap<String, Vec<usize>>,
     last_selected_thread_id: Option<String>,
     next_start_order: u64,
+    lifecycle_diagnostics: ActivityLifecycleDiagnostics,
+    projection_revision: u64,
+    newest_lifecycle_sequence_in_projection: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +53,14 @@ pub(super) struct ToolActivityRow {
 }
 
 impl ToolActivityRow {
+    pub(super) fn thread_id(&self) -> &str {
+        self.key.thread_id.as_str()
+    }
+
+    pub(super) fn turn_id(&self) -> &str {
+        self.key.turn_id.as_str()
+    }
+
     pub(super) fn item_id(&self) -> &str {
         self.key.item_id.as_str()
     }
@@ -166,6 +183,14 @@ pub(super) struct ToolActivityRetainedCounts {
 
 impl Default for ToolActivityProjection {
     fn default() -> Self {
+        Self::with_activity_lifecycle_diagnostic_observer(None)
+    }
+}
+
+impl ToolActivityProjection {
+    pub(super) fn with_activity_lifecycle_diagnostic_observer(
+        observer: Option<ActivityLifecycleDiagnosticObserver>,
+    ) -> Self {
         Self {
             records: Vec::new(),
             rows: Vec::new(),
@@ -178,11 +203,35 @@ impl Default for ToolActivityProjection {
             visible_row_indexes_by_thread: HashMap::new(),
             last_selected_thread_id: None,
             next_start_order: 0,
+            lifecycle_diagnostics: ActivityLifecycleDiagnostics::with_observer(observer),
+            projection_revision: 0,
+            newest_lifecycle_sequence_in_projection: None,
         }
     }
-}
 
-impl ToolActivityProjection {
+    pub(super) fn lifecycle_diagnostic_snapshot(&self) -> ActivityLifecycleDiagnosticSnapshot {
+        self.lifecycle_diagnostics.snapshot()
+    }
+
+    pub(super) fn presentation_diagnostic_state(&self) -> ActivityProjectionDiagnosticState {
+        let mut state = ActivityProjectionDiagnosticState {
+            revision: self.projection_revision,
+            newest_lifecycle_sequence: self.newest_lifecycle_sequence_in_projection,
+            total_row_count: self.rows.len(),
+            running_row_count: 0,
+            finished_ok_row_count: 0,
+            finished_error_row_count: 0,
+        };
+        for row in &self.rows {
+            match row.status {
+                ToolActivityRowStatus::Running => state.running_row_count += 1,
+                ToolActivityRowStatus::FinishedOk => state.finished_ok_row_count += 1,
+                ToolActivityRowStatus::FinishedError => state.finished_error_row_count += 1,
+            }
+        }
+        state
+    }
+
     #[allow(dead_code)]
     pub(super) fn rows(&self) -> &[ToolActivityRow] {
         &self.rows
@@ -500,18 +549,36 @@ impl ToolActivityProjection {
             TurnStreamEvent::AgentLabelUpdated { .. } => false,
             TurnStreamEvent::TurnCompleted { thread_id, turn } => {
                 match final_status_from_turn_status(turn.status) {
-                    Some(status) => self.finish_running_for_turn(thread_id, &turn.id, status),
+                    Some(status) => {
+                        let affected =
+                            self.finish_running_for_turn_count(thread_id, &turn.id, status);
+                        self.record_fallback(
+                            "turn_completed",
+                            Some(thread_id),
+                            Some(turn.id.as_str()),
+                            status,
+                            affected,
+                        );
+                        affected > 0
+                    }
                     None => false,
                 }
             }
-            TurnStreamEvent::ThreadClosed { thread_id }
-            | TurnStreamEvent::ThreadArchived { thread_id }
-            | TurnStreamEvent::ThreadDeleted { thread_id } => {
-                self.finish_running_for_thread(thread_id, ToolActivityRowStatus::FinishedOk)
+            TurnStreamEvent::ThreadClosed { thread_id } => {
+                self.finish_thread_fallback("thread_closed", thread_id)
+            }
+            TurnStreamEvent::ThreadArchived { thread_id } => {
+                self.finish_thread_fallback("thread_archived", thread_id)
+            }
+            TurnStreamEvent::ThreadDeleted { thread_id } => {
+                self.finish_thread_fallback("thread_deleted", thread_id)
             }
             TurnStreamEvent::ThreadUnarchived { .. } => false,
             TurnStreamEvent::ProtocolError { .. } => {
-                self.finish_all_running(ToolActivityRowStatus::FinishedError)
+                let status = ToolActivityRowStatus::FinishedError;
+                let affected = self.finish_all_running_count(status);
+                self.record_fallback("protocol_error", None, None, status, affected);
+                affected > 0
             }
             TurnStreamEvent::TurnStarted { .. }
             | TurnStreamEvent::ThreadStatusChanged { .. }
@@ -581,7 +648,9 @@ impl ToolActivityProjection {
             || !self.parent_thread_by_child.is_empty()
             || !self.root_turn_by_child_thread.is_empty()
             || !self.visible_row_indexes_by_thread.is_empty()
-            || self.last_selected_thread_id.is_some();
+            || self.last_selected_thread_id.is_some()
+            || self.projection_revision != 0
+            || self.newest_lifecycle_sequence_in_projection.is_some();
         self.records.clear();
         self.rows.clear();
         self.agent_labels_by_thread.clear();
@@ -592,6 +661,9 @@ impl ToolActivityProjection {
         self.root_turn_by_child_thread.clear();
         self.visible_row_indexes_by_thread.clear();
         self.last_selected_thread_id.take();
+        self.lifecycle_diagnostics.clear();
+        self.projection_revision = 0;
+        self.newest_lifecycle_sequence_in_projection = None;
         changed
     }
 
@@ -600,6 +672,73 @@ impl ToolActivityProjection {
         thread_id: &str,
         status: ToolActivityRowStatus,
     ) -> bool {
+        self.finish_running_for_thread_count(thread_id, status) > 0
+    }
+
+    pub(super) fn finish_running_for_thread_stream_failure(&mut self, thread_id: &str) -> bool {
+        let status = ToolActivityRowStatus::FinishedError;
+        let affected = self.finish_running_for_thread_count(thread_id, status);
+        self.lifecycle_diagnostics
+            .record(ActivityLifecycleDiagnosticInput {
+                stage: "stream_failure",
+                category: "stream_failure",
+                kind: "local_turn_failure",
+                thread_id: Some(thread_id),
+                turn_id: None,
+                item_id: None,
+                item_type: None,
+                item_status: None,
+                projection_outcome: fallback_outcome(affected),
+                before_row_status: (affected > 0).then_some("running"),
+                after_row_status: (affected > 0).then_some(status.diagnostic_label()),
+                affected_row_count: affected,
+            });
+        if affected > 0 {
+            self.refresh_projection_lifecycle_sequence();
+        }
+        affected > 0
+    }
+
+    fn finish_thread_fallback(&mut self, kind: &'static str, thread_id: &str) -> bool {
+        let status = ToolActivityRowStatus::FinishedOk;
+        let affected = self.finish_running_for_thread_count(thread_id, status);
+        self.record_fallback(kind, Some(thread_id), None, status, affected);
+        affected > 0
+    }
+
+    fn record_fallback(
+        &mut self,
+        kind: &'static str,
+        thread_id: Option<&str>,
+        turn_id: Option<&str>,
+        status: ToolActivityRowStatus,
+        affected: usize,
+    ) {
+        self.lifecycle_diagnostics
+            .record(ActivityLifecycleDiagnosticInput {
+                stage: "fallback",
+                category: "fallback",
+                kind,
+                thread_id,
+                turn_id,
+                item_id: None,
+                item_type: None,
+                item_status: None,
+                projection_outcome: fallback_outcome(affected),
+                before_row_status: (affected > 0).then_some("running"),
+                after_row_status: (affected > 0).then_some(status.diagnostic_label()),
+                affected_row_count: affected,
+            });
+        if affected > 0 {
+            self.refresh_projection_lifecycle_sequence();
+        }
+    }
+
+    fn finish_running_for_thread_count(
+        &mut self,
+        thread_id: &str,
+        status: ToolActivityRowStatus,
+    ) -> usize {
         let completion_order = self
             .records
             .iter()
@@ -607,19 +746,19 @@ impl ToolActivityProjection {
                 record.key.thread_id == thread_id && record.status == ToolActivityRowStatus::Running
             })
             .then(|| self.next_start_order());
-        let mut changed = false;
+        let mut affected = 0usize;
         for record in &mut self.records {
             if record.key.thread_id == thread_id && record.status == ToolActivityRowStatus::Running
             {
                 record.status = status;
                 record.completion_order = completion_order;
-                changed = true;
+                affected = affected.saturating_add(1);
             }
         }
-        if changed {
+        if affected > 0 {
             self.rebuild_rows();
         }
-        changed
+        affected
     }
 
     fn apply_tool_activity(
@@ -628,10 +767,21 @@ impl ToolActivityProjection {
         agent_label: Option<String>,
         execution_target: Option<&WorkspaceId>,
     ) -> bool {
+        let diagnostic_thread_id = activity.thread_id.clone();
+        let diagnostic_turn_id = activity.turn_id.clone();
+        let diagnostic_item_id = activity.item_id.clone();
+        let diagnostic_item_type = activity.item_type.clone();
+        let diagnostic_item_status = activity.raw_item_status.clone();
+        let lifecycle = activity.lifecycle;
+        let key = ToolActivityKey::from_activity(&activity);
+        let before_status = self
+            .records
+            .iter()
+            .find(|existing| existing.key == key)
+            .map(|record| record.status);
         let ownership_changed = self.apply_receiver_thread_ownership_updates(&activity);
         let explicit_agent_label = explicit_agent_label_for_activity(&activity, agent_label);
-        let key = ToolActivityKey::from_activity(&activity);
-        let activity_changed = match activity.lifecycle {
+        let activity_changed = match lifecycle {
             ToolActivityLifecycle::Started => {
                 self.start_activity(key, activity, explicit_agent_label, execution_target)
             }
@@ -649,6 +799,33 @@ impl ToolActivityProjection {
                 )
             }
         };
+        let after_status = self
+            .records
+            .iter()
+            .find(|existing| {
+                existing.key.thread_id == diagnostic_thread_id
+                    && existing.key.turn_id == diagnostic_turn_id
+                    && existing.key.item_id == diagnostic_item_id
+            })
+            .map(|record| record.status);
+        self.lifecycle_diagnostics
+            .record(ActivityLifecycleDiagnosticInput {
+                stage: "activity_ingress",
+                category: "lifecycle",
+                kind: lifecycle_diagnostic_kind(lifecycle),
+                thread_id: Some(diagnostic_thread_id.as_str()),
+                turn_id: Some(diagnostic_turn_id.as_str()),
+                item_id: Some(diagnostic_item_id.as_str()),
+                item_type: Some(diagnostic_item_type.as_str()),
+                item_status: diagnostic_item_status.as_deref(),
+                projection_outcome: lifecycle_projection_outcome(lifecycle, before_status),
+                before_row_status: before_status.map(ToolActivityRowStatus::diagnostic_label),
+                after_row_status: after_status.map(ToolActivityRowStatus::diagnostic_label),
+                affected_row_count: usize::from(after_status.is_some()),
+            });
+        if activity_changed {
+            self.refresh_projection_lifecycle_sequence();
+        }
         if ownership_changed.changed && !activity_changed {
             if ownership_changed.requires_row_rebuild {
                 self.rebuild_rows();
@@ -776,12 +953,12 @@ impl ToolActivityProjection {
         true
     }
 
-    fn finish_running_for_turn(
+    fn finish_running_for_turn_count(
         &mut self,
         thread_id: &str,
         turn_id: &str,
         status: ToolActivityRowStatus,
-    ) -> bool {
+    ) -> usize {
         let completion_order = self
             .records
             .iter()
@@ -791,7 +968,7 @@ impl ToolActivityProjection {
                     && record.status == ToolActivityRowStatus::Running
             })
             .then(|| self.next_start_order());
-        let mut changed = false;
+        let mut affected = 0usize;
         for record in &mut self.records {
             if record.key.thread_id == thread_id
                 && record.key.turn_id == turn_id
@@ -799,33 +976,33 @@ impl ToolActivityProjection {
             {
                 record.status = status;
                 record.completion_order = completion_order;
-                changed = true;
+                affected = affected.saturating_add(1);
             }
         }
-        if changed {
+        if affected > 0 {
             self.rebuild_rows();
         }
-        changed
+        affected
     }
 
-    fn finish_all_running(&mut self, status: ToolActivityRowStatus) -> bool {
+    fn finish_all_running_count(&mut self, status: ToolActivityRowStatus) -> usize {
         let completion_order = self
             .records
             .iter()
             .any(|record| record.status == ToolActivityRowStatus::Running)
             .then(|| self.next_start_order());
-        let mut changed = false;
+        let mut affected = 0usize;
         for record in &mut self.records {
             if record.status == ToolActivityRowStatus::Running {
                 record.status = status;
                 record.completion_order = completion_order;
-                changed = true;
+                affected = affected.saturating_add(1);
             }
         }
-        if changed {
+        if affected > 0 {
             self.rebuild_rows();
         }
-        changed
+        affected
     }
 
     fn finish_or_insert_completed(
@@ -1596,6 +1773,18 @@ impl ToolActivityProjection {
     }
 
     fn rebuild_rows(&mut self) {
+        let previous_row_model = self
+            .rows
+            .iter()
+            .map(|row| {
+                (
+                    row.key.thread_id.clone(),
+                    row.key.turn_id.clone(),
+                    row.key.item_id.clone(),
+                    row.status,
+                )
+            })
+            .collect::<Vec<_>>();
         self.prune_derived_state();
         self.prune_retained_records();
         self.prune_derived_state();
@@ -1619,6 +1808,28 @@ impl ToolActivityProjection {
             })
             .collect();
         self.rebuild_visible_row_indexes();
+        let current_row_model = self
+            .rows
+            .iter()
+            .map(|row| {
+                (
+                    row.key.thread_id.clone(),
+                    row.key.turn_id.clone(),
+                    row.key.item_id.clone(),
+                    row.status,
+                )
+            })
+            .collect::<Vec<_>>();
+        if previous_row_model != current_row_model {
+            self.projection_revision = self.projection_revision.saturating_add(1);
+            self.newest_lifecycle_sequence_in_projection =
+                self.lifecycle_diagnostics.snapshot().newest_sequence;
+        }
+    }
+
+    fn refresh_projection_lifecycle_sequence(&mut self) {
+        self.newest_lifecycle_sequence_in_projection =
+            self.lifecycle_diagnostics.snapshot().newest_sequence;
     }
 
     fn next_start_order(&mut self) -> u64 {
@@ -1793,7 +2004,7 @@ impl ToolActivityRecordSource {
 }
 
 impl MultiAgentV2LifecycleKind {
-    fn diagnostic_label(self) -> &'static str {
+    pub(super) fn diagnostic_label(self) -> &'static str {
         match self {
             Self::Started => "started",
             Self::Interacted => "interacted",
@@ -1810,7 +2021,7 @@ impl ToolActivityRowStatus {
         }
     }
 
-    fn diagnostic_label(self) -> &'static str {
+    pub(super) fn diagnostic_label(self) -> &'static str {
         match self {
             Self::Running => "running",
             Self::FinishedOk => "finished_ok",
@@ -2484,10 +2695,183 @@ fn final_status_from_item_status(raw_item_status: Option<&str>) -> ToolActivityR
     }
 }
 
+fn lifecycle_diagnostic_kind(lifecycle: ToolActivityLifecycle) -> &'static str {
+    match lifecycle {
+        ToolActivityLifecycle::Started => "started",
+        ToolActivityLifecycle::Updated => "updated",
+        ToolActivityLifecycle::Completed => "completed",
+    }
+}
+
+fn lifecycle_projection_outcome(
+    lifecycle: ToolActivityLifecycle,
+    before_status: Option<ToolActivityRowStatus>,
+) -> &'static str {
+    match (lifecycle, before_status) {
+        (ToolActivityLifecycle::Started, None) => "inserted_running",
+        (ToolActivityLifecycle::Started, Some(ToolActivityRowStatus::Running)) => "matched_running",
+        (ToolActivityLifecycle::Started, Some(_)) => "reactivated_existing",
+        (ToolActivityLifecycle::Updated, None) => "inserted_running",
+        (ToolActivityLifecycle::Updated, Some(_)) => "matched_existing",
+        (ToolActivityLifecycle::Completed, None) => "inserted_completed",
+        (ToolActivityLifecycle::Completed, Some(_)) => "matched_existing",
+    }
+}
+
+fn fallback_outcome(affected: usize) -> &'static str {
+    if affected == 0 {
+        "no_running_match"
+    } else {
+        "finished_running_rows"
+    }
+}
+
 fn final_status_from_turn_status(status: TurnStatus) -> Option<ToolActivityRowStatus> {
     match status {
         TurnStatus::Completed => Some(ToolActivityRowStatus::FinishedOk),
         TurnStatus::Interrupted | TurnStatus::Failed => Some(ToolActivityRowStatus::FinishedError),
         TurnStatus::InProgress => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+        mpsc::{self, TrySendError},
+    };
+
+    use serde_json::json;
+
+    use super::*;
+
+    fn without_elapsed(
+        mut snapshot: ActivityLifecycleDiagnosticSnapshot,
+    ) -> ActivityLifecycleDiagnosticSnapshot {
+        for event in &mut snapshot.events {
+            event.elapsed_micros = 0;
+        }
+        snapshot
+    }
+
+    fn apply_command_lifecycle(projection: &mut ToolActivityProjection) {
+        let started_item: ThreadItem = serde_json::from_value(json!({
+            "id": "command",
+            "type": "commandExecution",
+            "command": "content excluded from diagnostics",
+            "cwd": "C:/content/excluded",
+            "status": "inProgress"
+        }))
+        .unwrap();
+        let completed_item: ThreadItem = serde_json::from_value(json!({
+            "id": "command",
+            "type": "commandExecution",
+            "command": "content excluded from diagnostics",
+            "cwd": "C:/content/excluded",
+            "status": "failed"
+        }))
+        .unwrap();
+
+        assert!(projection.apply_stream_event(
+            &TurnStreamEvent::ItemStarted {
+                thread_id: "thread".to_string(),
+                turn_id: "turn".to_string(),
+                item: started_item,
+            },
+            None,
+        ));
+        assert!(projection.apply_stream_event(
+            &TurnStreamEvent::ItemCompleted {
+                thread_id: "thread".to_string(),
+                turn_id: "turn".to_string(),
+                item: completed_item,
+            },
+            None,
+        ));
+    }
+
+    fn assert_projection_diagnostics_equal(
+        actual: &ToolActivityProjection,
+        expected: &ToolActivityProjection,
+    ) {
+        assert_eq!(actual.rows(), expected.rows());
+        let actual_presentation = actual.presentation_diagnostic_state();
+        let expected_presentation = expected.presentation_diagnostic_state();
+        assert_eq!(actual_presentation.revision, expected_presentation.revision);
+        assert_eq!(
+            actual_presentation.newest_lifecycle_sequence,
+            expected_presentation.newest_lifecycle_sequence
+        );
+        assert_eq!(
+            actual_presentation.total_row_count,
+            expected_presentation.total_row_count
+        );
+        assert_eq!(
+            actual_presentation.running_row_count,
+            expected_presentation.running_row_count
+        );
+        assert_eq!(
+            actual_presentation.finished_ok_row_count,
+            expected_presentation.finished_ok_row_count
+        );
+        assert_eq!(
+            actual_presentation.finished_error_row_count,
+            expected_presentation.finished_error_row_count
+        );
+        assert_eq!(
+            without_elapsed(actual.lifecycle_diagnostic_snapshot()),
+            without_elapsed(expected.lifecycle_diagnostic_snapshot())
+        );
+    }
+
+    #[test]
+    fn observer_queue_pressure_and_disconnect_cannot_change_projection_or_ring_reads() {
+        let (sender, _receiver) = mpsc::sync_channel(1);
+        let full_count = Arc::new(AtomicUsize::new(0));
+        let pressured_observer = ActivityLifecycleDiagnosticObserver::new({
+            let full_count = Arc::clone(&full_count);
+            move |event| {
+                if matches!(sender.try_send(event.sequence), Err(TrySendError::Full(_))) {
+                    full_count.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        });
+        let (sender, receiver) = mpsc::sync_channel::<u64>(1);
+        drop(receiver);
+        let disconnected_count = Arc::new(AtomicUsize::new(0));
+        let disconnected_observer = ActivityLifecycleDiagnosticObserver::new({
+            let disconnected_count = Arc::clone(&disconnected_count);
+            move |event| {
+                if matches!(
+                    sender.try_send(event.sequence),
+                    Err(TrySendError::Disconnected(_))
+                ) {
+                    disconnected_count.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        });
+        let mut baseline = ToolActivityProjection::default();
+        let mut pressured = ToolActivityProjection::with_activity_lifecycle_diagnostic_observer(
+            Some(pressured_observer),
+        );
+        let mut disconnected = ToolActivityProjection::with_activity_lifecycle_diagnostic_observer(
+            Some(disconnected_observer),
+        );
+
+        apply_command_lifecycle(&mut baseline);
+        apply_command_lifecycle(&mut pressured);
+        apply_command_lifecycle(&mut disconnected);
+
+        assert_eq!(full_count.load(Ordering::Relaxed), 1);
+        assert_eq!(disconnected_count.load(Ordering::Relaxed), 2);
+        assert_eq!(baseline.rows().len(), 1);
+        assert_eq!(
+            baseline.rows()[0].status,
+            ToolActivityRowStatus::FinishedError
+        );
+        assert_eq!(baseline.presentation_diagnostic_state().revision, 2);
+        assert_projection_diagnostics_equal(&pressured, &baseline);
+        assert_projection_diagnostics_equal(&disconnected, &baseline);
     }
 }

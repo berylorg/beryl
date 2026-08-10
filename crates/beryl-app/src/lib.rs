@@ -83,6 +83,10 @@
 
 mod acceptance_digest;
 mod acceptance_session;
+mod activity_diagnostic_capture_fanout;
+mod activity_diagnostic_file_capture;
+mod activity_lifecycle_diagnostics;
+mod activity_presentation_diagnostics;
 mod appearance;
 mod backend_failure;
 mod beryl_home_dir;
@@ -248,6 +252,22 @@ pub use acceptance_session::{
     MAX_ACCEPTANCE_REQUEST_TIMEOUT, MAX_ACCEPTANCE_REQUESTS, MAX_ACCEPTANCE_RUN_ID_BYTES,
     MAX_ACCEPTANCE_RUNTIME, MAX_ACCEPTANCE_STARTUP_TIMEOUT, compile_acceptance_requests,
 };
+pub use activity_diagnostic_file_capture::{
+    ACTIVITY_CAPTURE_QUEUE_CAPACITY, ACTIVITY_CAPTURE_SCHEMA_VERSION,
+    ACTIVITY_CAPTURE_SEGMENT_BYTE_CAPACITY, ACTIVITY_CAPTURE_TOTAL_DATA_BYTE_CAPACITY,
+    ActivityDiagnosticCaptureControllerError, ActivityDiagnosticCaptureErrorCategory,
+    ActivityDiagnosticCaptureEventV1, ActivityDiagnosticCaptureRuntimeState,
+    ActivityDiagnosticCaptureSink, ActivityDiagnosticCaptureStatus,
+    ActivityDiagnosticCaptureSubmitOutcome, ActivityDiagnosticColorSourceV1,
+    ActivityDiagnosticFileCaptureController, ActivityDiagnosticIdentityV1,
+    ActivityDiagnosticIdentityValidityV1, ActivityDiagnosticIndicatorRoleV1,
+    ActivityDiagnosticLifecycleCategoryV1, ActivityDiagnosticLifecycleEventV1,
+    ActivityDiagnosticLifecycleKindV1, ActivityDiagnosticLifecycleStageV1,
+    ActivityDiagnosticProjectionChangedV1, ActivityDiagnosticProjectionOutcomeV1,
+    ActivityDiagnosticProtocolStringV1, ActivityDiagnosticRenderRowV1,
+    ActivityDiagnosticRenderSampleV1, ActivityDiagnosticRowStatusV1,
+    ActivityDiagnosticShellNotifiedV1,
+};
 pub use appearance::{
     ActiveThemeProjection, AppearanceButtonSettings, AppearanceButtonStateSettings,
     AppearanceChromeSettings, AppearanceForegroundSettings, AppearanceInputSettings,
@@ -285,6 +305,7 @@ pub use diagnostic_child_dynamic_tools::{
     beryl_diagnostic_child_dynamic_tool_specs, is_beryl_diagnostic_child_dynamic_tool,
 };
 pub use diagnostic_dynamic_tools::{
+    READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL, READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL,
     READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL, READ_PROCESS_DIAGNOSTICS_TOOL,
     READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
     READ_TRANSCRIPT_FRAME_METRICS_TOOL, READ_VISIBLE_MEDIA_TOOL,
@@ -326,7 +347,7 @@ pub use lifecycle_dynamic_tools::{
 pub use persistence::{StartupMetadata, StartupPersistence, StartupPersistenceError};
 pub use preferences::{
     AgentPreferences, ContextCompactionTimeoutError, DEFAULT_CONTEXT_COMPACTION_TIMEOUT_SECONDS,
-    GuiPreferences, GuiPreferencesError, GuiPreferencesStore,
+    DiagnosticPreferences, GuiPreferences, GuiPreferencesError, GuiPreferencesStore,
     MAX_CONTEXT_COMPACTION_TIMEOUT_SECONDS, MIN_CONTEXT_COMPACTION_TIMEOUT_SECONDS,
     NotificationPreferences, NotificationSoundPathError, OperationPreferences,
     normalize_developer_instructions_text, parse_context_compaction_timeout_seconds_text,

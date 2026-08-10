@@ -115,6 +115,14 @@ impl ShellView {
             cx.renderer_diagnostic_snapshot(),
             window.renderer_diagnostic_snapshot(),
         );
+        let activity_lifecycle = self
+            .conversation_surface()
+            .map(|surface| surface.tool_activity.lifecycle_diagnostic_snapshot())
+            .unwrap_or_default();
+        let activity_presentation = self
+            .conversation_surface()
+            .map(ConversationSurfaceState::activity_presentation_diagnostic_snapshot)
+            .unwrap_or_default();
         DiagnosticToolSnapshot {
             process,
             memory,
@@ -124,6 +132,8 @@ impl ShellView {
             media_events: panel_snapshot.media_events,
             transcript_frame_metrics: panel_snapshot.transcript_frame_metrics,
             settings_window: self.settings_window_diagnostic_snapshot(cx),
+            activity_lifecycle,
+            activity_presentation,
         }
     }
 

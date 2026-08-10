@@ -22,6 +22,14 @@ pub struct GuiPreferences {
     pub agent: AgentPreferences,
     #[serde(default)]
     pub operations: OperationPreferences,
+    #[serde(default)]
+    pub diagnostics: DiagnosticPreferences,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagnosticPreferences {
+    #[serde(default)]
+    pub activity_diagnostic_capture_enabled: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +123,7 @@ impl GuiPreferences {
             notifications: self.notifications.validated()?,
             agent: self.agent.validated(),
             operations: self.operations.validated(),
+            diagnostics: self.diagnostics.validated(),
         })
     }
 
@@ -166,6 +175,12 @@ impl AgentPreferences {
 
     pub fn validated(&self) -> Self {
         Self::with_developer_instructions(self.developer_instructions.clone())
+    }
+}
+
+impl DiagnosticPreferences {
+    pub fn validated(&self) -> Self {
+        self.clone()
     }
 }
 

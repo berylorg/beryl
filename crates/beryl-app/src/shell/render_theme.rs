@@ -254,6 +254,13 @@ impl ShellRenderStyleSnapshot {
             .unwrap_or(fallback)
     }
 
+    pub(super) fn role_has_color(&self, role: crate::BerylThemeRole) -> bool {
+        self.role_styles
+            .get(&role)
+            .and_then(|style| style.color)
+            .is_some()
+    }
+
     pub(super) fn role_font_family(
         &self,
         role: crate::BerylThemeRole,

@@ -10,10 +10,11 @@ use crate::{
 };
 
 use super::{
-    AgentSettingsUpdate, GuiSettingsUpdate, MAX_SETTINGS_TOOL_STRING_BYTES,
-    MAX_SETTINGS_TOOL_TIMEOUT_STRING_BYTES, NotificationSettingsUpdate, OperationSettingsUpdate,
-    READ_GUI_SETTINGS_TOOL, SettingsDynamicToolError, SettingsDynamicToolRequest,
-    UPDATE_GUI_SETTINGS_TOOL, VALIDATE_GUI_SETTINGS_UPDATE_TOOL,
+    AgentSettingsUpdate, DiagnosticSettingsUpdate, GuiSettingsUpdate,
+    MAX_SETTINGS_TOOL_STRING_BYTES, MAX_SETTINGS_TOOL_TIMEOUT_STRING_BYTES,
+    NotificationSettingsUpdate, OperationSettingsUpdate, READ_GUI_SETTINGS_TOOL,
+    SettingsDynamicToolError, SettingsDynamicToolRequest, UPDATE_GUI_SETTINGS_TOOL,
+    VALIDATE_GUI_SETTINGS_UPDATE_TOOL,
 };
 
 use crate::dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE;
@@ -52,6 +53,7 @@ struct SettingsUpdateArguments {
     operations: Option<OperationSettingsUpdateArguments>,
     notifications: Option<NotificationSettingsUpdateArguments>,
     agent: Option<AgentSettingsUpdateArguments>,
+    diagnostics: Option<DiagnosticSettingsUpdateArguments>,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +75,13 @@ struct NotificationSettingsUpdateArguments {
 struct AgentSettingsUpdateArguments {
     #[serde(default, deserialize_with = "deserialize_setting_value_field")]
     developer_instructions: SettingValueField,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DiagnosticSettingsUpdateArguments {
+    #[serde(default, deserialize_with = "deserialize_setting_value_field")]
+    activity_diagnostic_capture_enabled: SettingValueField,
 }
 
 #[derive(Debug)]
@@ -108,6 +117,7 @@ fn parse_settings_update(arguments: &Value) -> Result<GuiSettingsUpdate, Setting
             .map(notification_update)
             .transpose()?,
         agent: arguments.agent.map(agent_update).transpose()?,
+        diagnostics: arguments.diagnostics.map(diagnostic_update).transpose()?,
     })
 }
 
@@ -144,6 +154,24 @@ fn agent_update(
     };
     Ok(AgentSettingsUpdate {
         developer_instructions,
+    })
+}
+
+fn diagnostic_update(
+    arguments: DiagnosticSettingsUpdateArguments,
+) -> Result<DiagnosticSettingsUpdate, SettingsDynamicToolError> {
+    let activity_diagnostic_capture_enabled = match arguments.activity_diagnostic_capture_enabled {
+        SettingValueField::Missing => None,
+        SettingValueField::Present(Value::Bool(value)) => Some(value),
+        SettingValueField::Present(_) => {
+            return Err(SettingsDynamicToolError::invalid_field(
+                "diagnostics.activityDiagnosticCaptureEnabled",
+                "expected boolean",
+            ));
+        }
+    };
+    Ok(DiagnosticSettingsUpdate {
+        activity_diagnostic_capture_enabled,
     })
 }
 

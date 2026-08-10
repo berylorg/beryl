@@ -9,19 +9,20 @@ use std::{
 };
 
 pub use beryl_app::{
-    ActiveThemeProjection, AgentPreferences, AppearanceButtonSettings,
-    AppearanceButtonStateSettings, AppearanceForegroundSettings, AppearanceInputSettings,
-    AppearanceRoleSettings, AppearanceSettings, AppearanceStatusLineSettings,
-    AppearanceSurfaceSettings, AppearanceTranscriptShellSettings, BUILT_IN_INSTALLED_THEME_ID,
-    BerylThemeProperty, BerylThemeRole, BerylWorkspacePersistence, ContextCompactionTimeoutError,
-    GuiPreferences, GuiPreferencesStore, InstalledThemeId, NotificationPreferences,
-    NotificationSoundPathError, OperationPreferences, StylePropertyId, StylePropertyKind,
-    StylePropertySource, StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeRepositorySnapshot,
-    ThemeRepositoryStore, ThemeResolutionContext, ThemeResolver, ThemeRoleDefinition,
-    ThemeRoleSchema, WorkspaceGraphUpkeepPolicy, built_in_theme_schema,
-    normalize_developer_instructions_text, normalize_graph_upkeep_instructions_text,
-    parse_context_compaction_timeout_seconds_text, parse_notification_sound_path_text,
-    validate_notification_sound_path,
+    ActiveThemeProjection, ActivityDiagnosticCaptureErrorCategory,
+    ActivityDiagnosticCaptureRuntimeState, ActivityDiagnosticCaptureStatus, AgentPreferences,
+    AppearanceButtonSettings, AppearanceButtonStateSettings, AppearanceForegroundSettings,
+    AppearanceInputSettings, AppearanceRoleSettings, AppearanceSettings,
+    AppearanceStatusLineSettings, AppearanceSurfaceSettings, AppearanceTranscriptShellSettings,
+    BUILT_IN_INSTALLED_THEME_ID, BerylThemeProperty, BerylThemeRole, BerylWorkspacePersistence,
+    ContextCompactionTimeoutError, DiagnosticPreferences, GuiPreferences, GuiPreferencesStore,
+    InstalledThemeId, NotificationPreferences, NotificationSoundPathError, OperationPreferences,
+    StylePropertyId, StylePropertyKind, StylePropertySource, StylePropertyValue, StyleRoleId,
+    ThemeDefinition, ThemeRepositorySnapshot, ThemeRepositoryStore, ThemeResolutionContext,
+    ThemeResolver, ThemeRoleDefinition, ThemeRoleSchema, WorkspaceGraphUpkeepPolicy,
+    built_in_theme_schema, normalize_developer_instructions_text,
+    normalize_graph_upkeep_instructions_text, parse_context_compaction_timeout_seconds_text,
+    parse_notification_sound_path_text, validate_notification_sound_path,
 };
 use beryl_model::workspace::{BerylWorkspaceId, BerylWorkspaceManifest};
 use gpui_settings_window::SettingsFieldKind;
@@ -293,7 +294,9 @@ fn settings_state_with_temp_store(
 fn wait_for_all_saves(state: &mut settings::SettingsState) {
     for _ in 0..100 {
         match state.poll_save() {
-            settings::SettingsSavePoll::Failed(error) => panic!("settings save failed: {error}"),
+            settings::SettingsSavePoll::Failed { error, .. } => {
+                panic!("settings save failed: {error}")
+            }
             settings::SettingsSavePoll::Idle
             | settings::SettingsSavePoll::Pending
             | settings::SettingsSavePoll::Saved => {

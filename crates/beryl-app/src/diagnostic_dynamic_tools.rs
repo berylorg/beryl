@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
+    activity_lifecycle_diagnostics::ActivityLifecycleDiagnosticSnapshot,
+    activity_presentation_diagnostics::ActivityPresentationDiagnosticSnapshot,
     dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE,
     memory_diagnostics::{ProcessMemorySnapshot, RetainedStateSnapshot},
 };
@@ -21,6 +23,9 @@ pub const READ_VISIBLE_MEDIA_TOOL: &str = "read_visible_media";
 pub const READ_MEDIA_EVENTS_TOOL: &str = "read_media_events";
 pub const READ_TRANSCRIPT_FRAME_METRICS_TOOL: &str = "read_transcript_frame_metrics";
 pub const READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL: &str = "read_settings_window_diagnostics";
+pub const READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL: &str = "read_activity_lifecycle_diagnostics";
+pub const READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL: &str =
+    "read_activity_presentation_diagnostics";
 
 pub(crate) const DEFAULT_VISIBLE_MEDIA_LIMIT: usize = 32;
 pub(crate) const MAX_VISIBLE_MEDIA_LIMIT: usize = 64;
@@ -28,6 +33,10 @@ pub(crate) const DEFAULT_MEDIA_EVENT_LIMIT: usize = 64;
 pub(crate) const MAX_MEDIA_EVENT_LIMIT: usize = 128;
 pub(crate) const DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 32;
 pub(crate) const MAX_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 64;
+pub(crate) const DEFAULT_ACTIVITY_LIFECYCLE_DIAGNOSTIC_LIMIT: usize = 64;
+pub(crate) const MAX_ACTIVITY_LIFECYCLE_DIAGNOSTIC_LIMIT: usize = 256;
+pub(crate) const DEFAULT_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT: usize = 64;
+pub(crate) const MAX_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT: usize = 64;
 const MAX_RENDERER_DIAGNOSTIC_WINDOWS: usize = 16;
 const MEDIA_EVENT_RING_CAPACITY: usize = 256;
 const TRANSCRIPT_FRAME_METRIC_RING_CAPACITY: usize = 128;
@@ -44,6 +53,8 @@ pub(crate) struct DiagnosticToolSnapshot {
     pub media_events: MediaEventSnapshot,
     pub transcript_frame_metrics: TranscriptFrameMetricsSnapshot,
     pub settings_window: SettingsWindowDiagnosticSnapshot,
+    pub activity_lifecycle: ActivityLifecycleDiagnosticSnapshot,
+    pub activity_presentation: ActivityPresentationDiagnosticSnapshot,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -796,6 +807,22 @@ pub fn beryl_diagnostic_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             "Read bounded content-free settings-window render and synchronization diagnostics.",
             empty_object_schema(),
         ),
+        DynamicToolSpec::new(
+            READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL,
+            "Read bounded content-free Activity lifecycle ingress, projection, fallback, and stream-failure diagnostics.",
+            media_events_schema_with_limits(
+                MAX_ACTIVITY_LIFECYCLE_DIAGNOSTIC_LIMIT,
+                DEFAULT_ACTIVITY_LIFECYCLE_DIAGNOSTIC_LIMIT,
+            ),
+        ),
+        DynamicToolSpec::new(
+            READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL,
+            "Read bounded content-free Activity projection, Shell notification, and element-tree construction diagnostics. This does not prove GPU paint.",
+            media_events_schema_with_limits(
+                MAX_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT,
+                DEFAULT_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT,
+            ),
+        ),
     ]
     .into_iter()
     .map(|tool| {
@@ -819,6 +846,8 @@ pub fn is_beryl_diagnostic_dynamic_tool(request: &DynamicToolCallRequest) -> boo
                 | READ_MEDIA_EVENTS_TOOL
                 | READ_TRANSCRIPT_FRAME_METRICS_TOOL
                 | READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL
+                | READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL
+                | READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL
         )
 }
 
@@ -901,6 +930,28 @@ fn diagnostic_tool_result(
         READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL => {
             parse_arguments::<EmptyArguments>(request.arguments())?;
             Ok(json!(snapshot.settings_window))
+        }
+        READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL => {
+            let arguments = parse_arguments::<MediaEventsArguments>(request.arguments())?;
+            Ok(json!(activity_lifecycle_diagnostics_result(
+                snapshot.activity_lifecycle,
+                arguments.after_sequence,
+                arguments.limit_or_default(
+                    DEFAULT_ACTIVITY_LIFECYCLE_DIAGNOSTIC_LIMIT,
+                    MAX_ACTIVITY_LIFECYCLE_DIAGNOSTIC_LIMIT,
+                ),
+            )))
+        }
+        READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL => {
+            let arguments = parse_arguments::<MediaEventsArguments>(request.arguments())?;
+            Ok(json!(activity_presentation_diagnostics_result(
+                snapshot.activity_presentation,
+                arguments.after_sequence,
+                arguments.limit_or_default(
+                    DEFAULT_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT,
+                    MAX_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT,
+                ),
+            )))
         }
         other => Err(DynamicDiagnosticToolError::UnsupportedTool {
             tool: other.to_string(),
@@ -987,6 +1038,42 @@ pub(crate) fn transcript_frame_metrics_result(
         snapshot.truncated = true;
     }
     snapshot.frame_count = snapshot.frames.len();
+    snapshot
+}
+
+pub(crate) fn activity_lifecycle_diagnostics_result(
+    mut snapshot: ActivityLifecycleDiagnosticSnapshot,
+    after_sequence: Option<u64>,
+    limit: usize,
+) -> ActivityLifecycleDiagnosticSnapshot {
+    if let Some(after_sequence) = after_sequence {
+        snapshot
+            .events
+            .retain(|event| event.sequence > after_sequence);
+    }
+    if snapshot.events.len() > limit {
+        snapshot.events.truncate(limit);
+        snapshot.truncated = true;
+    }
+    snapshot.returned_count = snapshot.events.len();
+    snapshot
+}
+
+pub(crate) fn activity_presentation_diagnostics_result(
+    mut snapshot: ActivityPresentationDiagnosticSnapshot,
+    after_sequence: Option<u64>,
+    limit: usize,
+) -> ActivityPresentationDiagnosticSnapshot {
+    if let Some(after_sequence) = after_sequence {
+        snapshot
+            .events
+            .retain(|event| event.sequence > after_sequence);
+    }
+    if snapshot.events.len() > limit {
+        snapshot.events.truncate(limit);
+        snapshot.truncated = true;
+    }
+    snapshot.returned_count = snapshot.events.len();
     snapshot
 }
 

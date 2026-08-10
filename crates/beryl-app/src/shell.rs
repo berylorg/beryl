@@ -48,6 +48,16 @@ use tracing::{debug, warn};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
+use crate::activity_diagnostic_capture_fanout::{
+    lifecycle_capture_observer, presentation_capture_observer,
+};
+use crate::activity_diagnostic_file_capture::{
+    ActivityDiagnosticCaptureSink, ActivityDiagnosticFileCaptureController,
+};
+use crate::activity_presentation_diagnostics::{
+    ActivityPresentationDiagnosticSnapshot, ActivityPresentationDiagnostics,
+    ActivityPresentationRenderRow,
+};
 use crate::diagnostic_child_control::{
     DiagnosticStartTurnArguments, DiagnosticStopTurnArguments, DiagnosticThreadListArguments,
 };
@@ -395,6 +405,7 @@ gpui::actions!(
 );
 
 mod account_rate_limits;
+mod activity_diagnostic_capture_settings;
 mod backend_availability;
 mod checklist_sidebar_panel_state;
 mod checklist_sidebar_projection;
@@ -896,6 +907,10 @@ pub(super) struct ShellView {
     turn_receiver: Option<Receiver<TurnWorkerUpdate>>,
     shell_tool_receiver: Option<Receiver<ShellDynamicToolRequest>>,
     diagnostic_target_receiver: Option<Receiver<DiagnosticTargetShellRequest>>,
+    activity_diagnostic_file_capture: Option<ActivityDiagnosticFileCaptureController>,
+    activity_diagnostic_capture_status_poll_scheduled: bool,
+    activity_diagnostic_capture_status_poll_generation: u64,
+    activity_diagnostic_capture_status_poll_slow: bool,
     diagnostic_child_supervisor: Arc<Mutex<DiagnosticChildSupervisor>>,
     transcript_edit_replacement_turn: Option<TranscriptEditReplacementTurnState>,
     turn_steering_receivers: Vec<TurnSteeringTask>,
@@ -1420,6 +1435,7 @@ struct ConversationSurfaceState {
     execution_details: ExecutionDetailState,
     transcript_presentation: TranscriptPresentationState,
     tool_activity: ToolActivityProjection,
+    activity_presentation_diagnostics: ActivityPresentationDiagnostics,
     hard_stop_targets: HardStopTargetProjection,
     lifecycle_yields: LifecycleYieldState,
     tool_activity_panel_mode: WorkspaceActivityPanelMode,
@@ -2048,16 +2064,27 @@ impl ConversationSurfaceState {
         graph: SemanticGraph,
         graph_revision: WorkspaceGraphRevision,
         graph_warning: Option<String>,
+        activity_diagnostic_capture_sink: Option<ActivityDiagnosticCaptureSink>,
     ) -> Self {
         let known_threads =
             bounded_known_threads(known_threads, selected_thread_id.iter().cloned());
+        let lifecycle_capture_observer = activity_diagnostic_capture_sink
+            .clone()
+            .map(lifecycle_capture_observer);
+        let presentation_capture_observer =
+            activity_diagnostic_capture_sink.map(presentation_capture_observer);
         let mut state = Self {
             known_threads,
             selected_thread: None,
             selected_thread_status: None,
             execution_details: ExecutionDetailState::default(),
             transcript_presentation: TranscriptPresentationState::default(),
-            tool_activity: ToolActivityProjection::default(),
+            tool_activity: ToolActivityProjection::with_activity_lifecycle_diagnostic_observer(
+                lifecycle_capture_observer,
+            ),
+            activity_presentation_diagnostics: ActivityPresentationDiagnostics::with_observer(
+                presentation_capture_observer,
+            ),
             hard_stop_targets: {
                 let mut projection = HardStopTargetProjection::default();
                 projection.set_capabilities(hard_stop_capabilities);
@@ -2495,6 +2522,33 @@ impl ConversationSurfaceState {
             .rows_for_selected_thread_window(self.selected_thread_id(), range)
     }
 
+    fn activity_presentation_diagnostic_snapshot(&self) -> ActivityPresentationDiagnosticSnapshot {
+        self.activity_presentation_diagnostics.snapshot()
+    }
+
+    fn observe_activity_presentation_shell_notification(&self) {
+        self.activity_presentation_diagnostics
+            .observe_shell_notification(self.tool_activity.presentation_diagnostic_state());
+    }
+
+    fn observe_activity_presentation_render<'a>(
+        &self,
+        panel_visible: bool,
+        rendered_range: Range<usize>,
+        overscan_row_count: usize,
+        rows: impl IntoIterator<Item = ActivityPresentationRenderRow<'a>>,
+    ) {
+        self.activity_presentation_diagnostics.observe_render(
+            self.tool_activity.presentation_diagnostic_state(),
+            panel_visible,
+            self.selected_thread_id(),
+            self.tool_activity_row_count(),
+            rendered_range,
+            overscan_row_count,
+            rows,
+        );
+    }
+
     fn tool_activity_panel_mode(&self) -> WorkspaceActivityPanelMode {
         self.tool_activity_panel_mode
     }
@@ -2555,6 +2609,7 @@ impl ConversationSurfaceState {
 
     #[allow(dead_code)]
     fn clear_tool_activity(&mut self) -> bool {
+        self.activity_presentation_diagnostics.clear();
         self.tool_activity.clear_all() | self.hard_stop_targets.clear_all()
     }
 
@@ -3105,6 +3160,7 @@ impl ConversationSurfaceState {
             execution_details: self.execution_details.clone(),
             transcript_presentation: self.transcript_presentation.clone(),
             tool_activity: self.tool_activity.clone(),
+            activity_presentation_diagnostics: self.activity_presentation_diagnostics.clone(),
             hard_stop_targets: self.hard_stop_targets.clone(),
             lifecycle_yields: self.lifecycle_yields.clone(),
             tool_activity_panel_mode: self.tool_activity_panel_mode,
@@ -3163,8 +3219,7 @@ impl ConversationSurfaceState {
         snapshot
             .member_thread_inventory
             .prepare_for_backend_reopen();
-        snapshot.tool_activity.clear_all();
-        snapshot.hard_stop_targets.clear_all();
+        snapshot.clear_tool_activity();
         snapshot.lifecycle_yields.clear_all();
         snapshot
             .status_line_operations
@@ -3243,9 +3298,8 @@ impl ConversationSurfaceState {
             self.set_notice(notice);
         }
         let selected_thread = self.selected_thread;
-        self.tool_activity.clear_all();
+        self.clear_tool_activity();
         self.set_selected_thread_index(selected_thread);
-        self.hard_stop_targets.clear_all();
         self.hard_stop_targets
             .set_capabilities(hard_stop_capabilities);
         self.apply_known_thread_agent_labels();
@@ -4234,7 +4288,8 @@ impl ConversationSurfaceState {
             self.hard_stop_targets.finish_thread(&thread_id);
         }
         if let Some(thread_id) = self.selected_thread_id().map(str::to_string) {
-            self.finish_running_tool_activity_for_thread_error(&thread_id);
+            self.tool_activity
+                .finish_running_for_thread_stream_failure(&thread_id);
         }
         let before = self.transcript_presentation.len();
         let Some(turn_index) = self.execution_details.finish_turn_failure(message.clone()) else {
@@ -4653,6 +4708,15 @@ impl ShellView {
                 .map(|state| state.workspace_persistence.clone())
                 .map_err(Clone::clone),
         );
+        let activity_diagnostic_file_capture = app_state.as_ref().ok().and_then(|state| {
+            match ActivityDiagnosticFileCaptureController::new(state.home_dir.clone()) {
+                Ok(controller) => Some(controller),
+                Err(error) => {
+                    warn!(category = %error, "Activity diagnostic file capture is unavailable");
+                    None
+                }
+            }
+        });
 
         let mut view = Self {
             bootstrap,
@@ -4696,6 +4760,10 @@ impl ShellView {
             turn_receiver: None,
             shell_tool_receiver: None,
             diagnostic_target_receiver,
+            activity_diagnostic_file_capture,
+            activity_diagnostic_capture_status_poll_scheduled: false,
+            activity_diagnostic_capture_status_poll_generation: 0,
+            activity_diagnostic_capture_status_poll_slow: false,
             diagnostic_child_supervisor: Arc::new(Mutex::new(DiagnosticChildSupervisor::default())),
             transcript_edit_replacement_turn: None,
             turn_steering_receivers: Vec::new(),
@@ -4748,6 +4816,8 @@ impl ShellView {
         view.subscribe_conversation_input(cx);
         view.refresh_theme_role_navigator_renderer_state();
         view.sync_settings_window_options_current(cx);
+        view.reconcile_activity_diagnostic_capture(cx);
+        view.sync_settings_window_model(cx);
 
         if view.block_if_app_state_unavailable(window, cx) {
             view.schedule_poll_if_needed(window, cx);
@@ -4775,6 +4845,12 @@ impl ShellView {
         MemoryMilestone::new("shell_view_new_done").log();
 
         view
+    }
+
+    fn activity_diagnostic_capture_sink(&self) -> Option<ActivityDiagnosticCaptureSink> {
+        self.activity_diagnostic_file_capture
+            .as_ref()
+            .map(ActivityDiagnosticFileCaptureController::sink)
     }
 
     fn block_if_app_state_unavailable(
@@ -5426,8 +5502,7 @@ impl ShellView {
             let updated = self.poll_phase_thread_preparation_updates(window, cx);
             self.schedule_poll_if_needed(window, cx);
             if updated {
-                self.notify_transcript_panel(cx);
-                cx.notify();
+                self.notify_conversation_model_refresh(cx);
             }
             return;
         }
@@ -5494,7 +5569,7 @@ impl ShellView {
         if updated {
             self.notify_transcript_panel(cx);
             self.notify_checklist_sidebar_panel(cx);
-            cx.notify();
+            self.notify_shell_model_refresh(cx);
         }
     }
 
@@ -7409,8 +7484,7 @@ impl ShellView {
             .conversation_surface_mut()
             .is_some_and(ConversationSurfaceState::release_transcript_submit_anchor);
         if released {
-            self.notify_transcript_panel(cx);
-            cx.notify();
+            self.notify_conversation_model_refresh(cx);
         }
     }
 
@@ -7555,8 +7629,7 @@ impl ShellView {
             .conversation_surface_mut()
             .is_some_and(ConversationSurfaceState::install_loaded_history_transcript_anchor);
         if installed {
-            self.notify_transcript_panel(cx);
-            cx.notify();
+            self.notify_conversation_model_refresh(cx);
         }
     }
 
@@ -8766,12 +8839,14 @@ impl ShellView {
         self.settings_state.reset_draft_from_active();
         self.sync_settings_window_options(cx);
         self.refresh_theme_role_navigator_renderer_state();
+        self.refresh_activity_diagnostic_capture_status();
         if let Err(error) = self
             .settings_window
             .show(cx, self.settings_state.model(), true)
         {
             warn!(error = %error, "failed to open Beryl settings window");
         }
+        self.schedule_activity_diagnostic_capture_status_refresh(cx);
     }
 
     fn apply_settings_window_changes(&mut self, hide_after_apply: bool, cx: &mut Context<Self>) {
@@ -8780,6 +8855,7 @@ impl ShellView {
             return;
         }
 
+        self.reconcile_activity_diagnostic_capture(cx);
         self.refresh_active_theme_surfaces(cx);
         self.sync_settings_window_model(cx);
         self.schedule_settings_save_poll(cx);
@@ -8838,8 +8914,7 @@ impl ShellView {
                     panel_id,
                     ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
                 );
-                self.notify_transcript_panel(cx);
-                cx.notify();
+                self.notify_conversation_model_refresh(cx);
             }
         }
     }
@@ -8874,8 +8949,7 @@ impl ShellView {
                 panel_id,
                 ThemeCandidatePanelFeedback::info("Another theme install is already running"),
             );
-            self.notify_transcript_panel(cx);
-            cx.notify();
+            self.notify_conversation_model_refresh(cx);
             return;
         }
 
@@ -8889,8 +8963,7 @@ impl ShellView {
                         panel_id,
                         ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
                     );
-                    self.notify_transcript_panel(cx);
-                    cx.notify();
+                    self.notify_conversation_model_refresh(cx);
                     return;
                 }
             };
@@ -8902,8 +8975,7 @@ impl ShellView {
                     panel_id,
                     ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
                 );
-                self.notify_transcript_panel(cx);
-                cx.notify();
+                self.notify_conversation_model_refresh(cx);
                 return;
             }
         };
@@ -8919,8 +8991,7 @@ impl ShellView {
                     "Beryl theme storage is unavailable for the configured home directory",
                 ),
             );
-            self.notify_transcript_panel(cx);
-            cx.notify();
+            self.notify_conversation_model_refresh(cx);
             return;
         };
 
@@ -8928,8 +8999,7 @@ impl ShellView {
             panel_id.clone(),
             ThemeCandidatePanelFeedback::info(format!("Confirm install name `{name}`")),
         );
-        self.notify_transcript_panel(cx);
-        cx.notify();
+        self.notify_conversation_model_refresh(cx);
 
         let definition = candidate.definition().clone();
         let window_handle = window.window_handle();
@@ -8960,8 +9030,7 @@ impl ShellView {
                                 panel_id,
                                 ThemeCandidatePanelFeedback::info("Install cancelled"),
                             );
-                            view.notify_transcript_panel(cx);
-                            cx.notify();
+                            view.notify_conversation_model_refresh(cx);
                         }
                     });
                 });
@@ -8984,8 +9053,7 @@ impl ShellView {
                 panel_id,
                 ThemeCandidatePanelFeedback::info("Another theme install is already running"),
             );
-            self.notify_transcript_panel(cx);
-            cx.notify();
+            self.notify_conversation_model_refresh(cx);
             return;
         }
 
@@ -9000,8 +9068,7 @@ impl ShellView {
             ),
         });
         self.schedule_poll_if_needed(window, cx);
-        self.notify_transcript_panel(cx);
-        cx.notify();
+        self.notify_conversation_model_refresh(cx);
     }
 
     fn poll_theme_candidate_install_updates(&mut self, cx: &mut Context<Self>) -> bool {
@@ -9063,8 +9130,7 @@ impl ShellView {
                     update.panel_id,
                     ThemeCandidatePanelFeedback::error(format!("Install failed: {error}")),
                 );
-                self.notify_transcript_panel(cx);
-                cx.notify();
+                self.notify_conversation_model_refresh(cx);
             }
         }
     }
@@ -9089,7 +9155,8 @@ impl ShellView {
         }
     }
 
-    fn sync_settings_window_model(&self, cx: &mut Context<Self>) {
+    fn sync_settings_window_model(&mut self, cx: &mut Context<Self>) {
+        self.refresh_activity_diagnostic_capture_status();
         self.refresh_theme_role_navigator_renderer_state();
         if let Err(error) = self
             .settings_window
@@ -9097,6 +9164,7 @@ impl ShellView {
         {
             warn!(error = %error, "failed to synchronize Beryl settings window");
         }
+        self.schedule_activity_diagnostic_capture_status_refresh(cx);
     }
 
     fn sync_settings_window_options(&mut self, cx: &mut Context<Self>) {
@@ -9133,10 +9201,11 @@ impl ShellView {
         );
     }
 
-    fn hide_settings_window(&self, cx: &mut Context<Self>) {
+    fn hide_settings_window(&mut self, cx: &mut Context<Self>) {
         if let Err(error) = self.settings_window.hide(cx) {
             warn!(error = %error, "failed to hide Beryl settings window");
         }
+        self.schedule_activity_diagnostic_capture_status_refresh(cx);
     }
 
     fn play_end_turn_sound_if_attention_triggered(
@@ -9441,8 +9510,15 @@ impl ShellView {
                 }
             }
             settings::SettingsSavePoll::Pending => self.schedule_settings_save_poll(cx),
-            settings::SettingsSavePoll::Failed(error) => {
+            settings::SettingsSavePoll::Failed {
+                error,
+                restored_preferences,
+            } => {
                 warn!(error = %error, "failed to save Beryl settings");
+                if restored_preferences.is_some() {
+                    self.reconcile_activity_diagnostic_capture(cx);
+                    self.refresh_active_theme_surfaces(cx);
+                }
                 self.sync_settings_window_model(cx);
                 self.begin_workspace_title_generation_if_needed();
                 if self.settings_state.has_pending_save() {
@@ -10822,8 +10898,7 @@ impl ShellView {
         }
 
         if updated {
-            self.notify_transcript_panel(cx);
-            cx.notify();
+            self.notify_conversation_model_refresh(cx);
         }
     }
 
@@ -14234,8 +14309,7 @@ impl ShellView {
         if cleared_active_thread {
             self.persist_current_workspace_state(false);
         }
-        self.notify_transcript_panel(cx);
-        cx.notify();
+        self.notify_conversation_model_refresh(cx);
         Ok("selected")
     }
 
@@ -14732,6 +14806,18 @@ impl ShellView {
         self.transcript_panel.update(cx, |_, cx| {
             cx.notify();
         });
+    }
+
+    fn notify_shell_model_refresh(&self, cx: &mut Context<Self>) {
+        if let Some(surface) = self.conversation_surface() {
+            surface.observe_activity_presentation_shell_notification();
+        }
+        cx.notify();
+    }
+
+    fn notify_conversation_model_refresh(&self, cx: &mut Context<Self>) {
+        self.notify_transcript_panel(cx);
+        self.notify_shell_model_refresh(cx);
     }
 
     fn notify_checklist_sidebar_panel(&self, cx: &mut Context<Self>) {

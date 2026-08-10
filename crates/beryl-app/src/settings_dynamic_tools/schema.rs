@@ -56,6 +56,16 @@ pub(super) fn settings_update_schema() -> Value {
                     }
                 },
                 "additionalProperties": false
+            },
+            "diagnostics": {
+                "type": "object",
+                "properties": {
+                    "activityDiagnosticCaptureEnabled": {
+                        "type": "boolean",
+                        "description": "Whether Beryl should attempt content-free Activity diagnostic file capture."
+                    }
+                },
+                "additionalProperties": false
             }
         },
         "additionalProperties": false

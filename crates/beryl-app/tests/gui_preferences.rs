@@ -5,10 +5,11 @@ use std::fs;
 
 use beryl_app::{
     AgentPreferences, ContextCompactionTimeoutError, DEFAULT_CONTEXT_COMPACTION_TIMEOUT_SECONDS,
-    GuiPreferences, GuiPreferencesStore, MAX_CONTEXT_COMPACTION_TIMEOUT_SECONDS,
-    MIN_CONTEXT_COMPACTION_TIMEOUT_SECONDS, NotificationPreferences, NotificationSoundPathError,
-    OperationPreferences, normalize_developer_instructions_text,
-    parse_context_compaction_timeout_seconds_text, parse_notification_sound_path_text,
+    DiagnosticPreferences, GuiPreferences, GuiPreferencesStore,
+    MAX_CONTEXT_COMPACTION_TIMEOUT_SECONDS, MIN_CONTEXT_COMPACTION_TIMEOUT_SECONDS,
+    NotificationPreferences, NotificationSoundPathError, OperationPreferences,
+    normalize_developer_instructions_text, parse_context_compaction_timeout_seconds_text,
+    parse_notification_sound_path_text,
 };
 
 #[test]
@@ -20,6 +21,7 @@ fn gui_preferences_default_has_no_end_turn_sound() {
 
     assert_eq!(preferences.notifications.end_turn_sound_path, None);
     assert_eq!(preferences.agent.developer_instructions, None);
+    assert!(!preferences.diagnostics.activity_diagnostic_capture_enabled);
     assert_eq!(
         preferences.operations.context_compaction_timeout_seconds,
         DEFAULT_CONTEXT_COMPACTION_TIMEOUT_SECONDS
@@ -39,6 +41,9 @@ fn gui_preferences_roundtrip_through_preferences_toml() {
             "Use subagents for independent reviews.".to_string(),
         )),
         operations: OperationPreferences::with_context_compaction_timeout_seconds(240).unwrap(),
+        diagnostics: DiagnosticPreferences {
+            activity_diagnostic_capture_enabled: true,
+        },
     };
 
     store.save(&preferences).unwrap();
@@ -53,7 +58,44 @@ fn gui_preferences_roundtrip_through_preferences_toml() {
         Some("Use subagents for independent reviews.")
     );
     assert_eq!(loaded.operations.context_compaction_timeout_seconds, 240);
+    assert!(loaded.diagnostics.activity_diagnostic_capture_enabled);
     assert!(store.preferences_path().exists());
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn gui_preferences_diagnostic_capture_false_roundtrips_and_legacy_toml_defaults_false() {
+    let root = unique_temp_dir();
+    let store = GuiPreferencesStore::new(&root);
+    let preferences = GuiPreferences {
+        diagnostics: DiagnosticPreferences {
+            activity_diagnostic_capture_enabled: false,
+        },
+        ..GuiPreferences::default()
+    };
+
+    store.save(&preferences).unwrap();
+    assert!(
+        fs::read_to_string(store.preferences_path())
+            .unwrap()
+            .contains("activity_diagnostic_capture_enabled = false")
+    );
+    assert!(
+        !store
+            .load_or_default()
+            .unwrap()
+            .diagnostics
+            .activity_diagnostic_capture_enabled
+    );
+
+    fs::write(
+        store.preferences_path(),
+        "[operations]\ncontext_compaction_timeout_seconds = 240\n",
+    )
+    .unwrap();
+    let legacy = store.load_or_default().unwrap();
+    assert!(!legacy.diagnostics.activity_diagnostic_capture_enabled);
+    assert_eq!(legacy.operations.context_compaction_timeout_seconds, 240);
     cleanup_temp_dir(root);
 }
 
@@ -78,6 +120,7 @@ fn assert_invalid_persisted_operation_timeout_preserves_other_preferences(replac
             "Keep valid preferences when operation timeout is invalid.".to_string(),
         )),
         operations: OperationPreferences::with_context_compaction_timeout_seconds(240).unwrap(),
+        diagnostics: DiagnosticPreferences::default(),
     };
 
     store.save(&preferences).unwrap();
@@ -118,6 +161,7 @@ fn gui_preferences_failed_persist_preserves_existing_preferences_file() {
             "Keep the old persisted instructions.".to_string(),
         )),
         operations: OperationPreferences::with_context_compaction_timeout_seconds(240).unwrap(),
+        diagnostics: DiagnosticPreferences::default(),
     };
     let replacement = GuiPreferences {
         notifications: NotificationPreferences::with_end_turn_sound_path(Some(
@@ -128,6 +172,9 @@ fn gui_preferences_failed_persist_preserves_existing_preferences_file() {
             "This write should fail before becoming authoritative.".to_string(),
         )),
         operations: OperationPreferences::with_context_compaction_timeout_seconds(300).unwrap(),
+        diagnostics: DiagnosticPreferences {
+            activity_diagnostic_capture_enabled: true,
+        },
     };
 
     store.save(&original).unwrap();

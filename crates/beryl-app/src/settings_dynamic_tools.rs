@@ -7,7 +7,10 @@ use std::path::PathBuf;
 use beryl_backend::{DynamicToolCallRequest, DynamicToolSpec};
 use serde_json::Value;
 
-use crate::{AgentPreferences, GuiPreferences, NotificationPreferences, OperationPreferences};
+use crate::{
+    AgentPreferences, DiagnosticPreferences, GuiPreferences, NotificationPreferences,
+    OperationPreferences,
+};
 
 use crate::dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE;
 pub use parser::parse_beryl_settings_dynamic_tool_request;
@@ -37,6 +40,7 @@ pub struct GuiSettingsUpdate {
     operations: Option<OperationSettingsUpdate>,
     notifications: Option<NotificationSettingsUpdate>,
     agent: Option<AgentSettingsUpdate>,
+    diagnostics: Option<DiagnosticSettingsUpdate>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -52,6 +56,11 @@ struct NotificationSettingsUpdate {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct AgentSettingsUpdate {
     developer_instructions: Option<Option<String>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct DiagnosticSettingsUpdate {
+    activity_diagnostic_capture_enabled: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -125,6 +134,14 @@ impl GuiSettingsUpdate {
         {
             next.agent =
                 AgentPreferences::with_developer_instructions(developer_instructions.clone());
+        }
+        if let Some(diagnostics) = &self.diagnostics
+            && let Some(activity_diagnostic_capture_enabled) =
+                diagnostics.activity_diagnostic_capture_enabled
+        {
+            next.diagnostics = DiagnosticPreferences {
+                activity_diagnostic_capture_enabled,
+            };
         }
         next.validated()
             .map_err(|source| SettingsDynamicToolError::new("invalid_settings", source.to_string()))
