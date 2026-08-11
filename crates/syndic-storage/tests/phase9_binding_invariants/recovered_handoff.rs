@@ -117,7 +117,7 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
     };
 
     let wrong_process = stale_from_usable(usable, loaded_generation(8, 12));
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_stale_binding(
             storage.revision(&store).unwrap(),
@@ -128,8 +128,7 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
                 wrong_process,
             ),
         ),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingPathConflict
@@ -147,8 +146,7 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
                 same_process,
             ),
         ),
-    )
-    .unwrap();
+    );
     store.validate_registered_domains().unwrap();
     store.close().unwrap();
 
@@ -250,7 +248,7 @@ fn recovered_abandonment_retains_exact_active_snapshot_generation() {
     ));
 
     let injection_stale = stale_from_usable(active.usable(), fixture.injection_generation);
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.abandon_active_binding(
             storage.revision(&store).unwrap(),
@@ -263,8 +261,7 @@ fn recovered_abandonment_retains_exact_active_snapshot_generation() {
                 injection_stale,
             ),
         ),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingStateConflict
@@ -293,8 +290,7 @@ fn recovered_abandonment_retains_exact_active_snapshot_generation() {
                 current_stale,
             ),
         ),
-    )
-    .unwrap();
+    );
     let binding = storage
         .current_binding(&store, fixture.thread, point_limit())
         .unwrap()

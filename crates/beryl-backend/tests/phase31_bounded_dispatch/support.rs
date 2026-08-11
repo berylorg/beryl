@@ -105,13 +105,6 @@ pub fn send_config_response(socket: &mut WebSocket<TcpStream>, id: u64) {
     );
 }
 
-pub fn send_recognized_rejection(socket: &mut WebSocket<TcpStream>, id: u64) {
-    send_json(
-        socket,
-        &format!(r#"{{"error":{{"code":-32600,"message":"recognized"}},"id":{id}}}"#),
-    );
-}
-
 pub fn assert_initialize(request: &Value, request_only: bool) {
     assert_eq!(request["jsonrpc"], "2.0");
     assert_eq!(request["id"], 1);

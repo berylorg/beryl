@@ -2,7 +2,7 @@ mod support;
 
 use std::num::NonZeroU64;
 
-use beryl_home_store::{HomeCommand, SidecarNamespace};
+use beryl_home_store::{CommandOutcome, HomeCommand, SidecarNamespace};
 use beryl_model::{AssetId, SyndicThreadId, WindowId};
 use beryl_state::{
     AdmitBranchHandoffJob, ApplySettings, AssetMediaType, CatalogRowExpectation,
@@ -24,14 +24,20 @@ fn beryl_domains_project_only_their_affected_receipt_revision() {
         .unwrap()
         .checked_next()
         .unwrap();
-    let receipt = execute(
+    let outcome = execute(
         &store,
         state.runtime_roots().create_runtime_with_home_root(
             state.runtime_roots().revision(&store).unwrap(),
             host_runtime(1, 2, r"C:\Codex\codex.exe", r"C:\Users\operator"),
         ),
-    )
-    .unwrap();
+    );
+    let receipt = match outcome {
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => receipt,
+        outcome => panic!("expected committed runtime receipt, got {outcome:?}"),
+    };
 
     assert_eq!(receipt.generation(), store.health().generation().unwrap());
     assert_eq!(
@@ -186,7 +192,13 @@ fn one_receipt_projects_every_affected_beryl_domain_revision() {
         .unwrap();
     first_asset.add_to(&mut command).unwrap();
 
-    let receipt = store.execute(command).unwrap();
+    let receipt = match store.execute(command) {
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => receipt,
+        outcome => panic!("expected committed receipt command, got {outcome:?}"),
+    };
     assert_eq!(
         state
             .runtime_roots()

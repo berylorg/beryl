@@ -1,4 +1,4 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
     AcceptedInputLifecycle, AcceptedNextSourceRecord, AcceptedRouteGenerationHeadRecord,
@@ -37,6 +37,23 @@ impl DomainMutation<SyndicDomain> for AbandonActiveBindingMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BindingsCodec>(1)?;
+        reservation.reserve_records::<BindingHeadsCodec>(1)?;
+        reservation.reserve_records::<CasThreadIndexCodec>(1)?;
+        reservation.reserve_records::<CasThreadBindingIndexCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
+        reservation.reserve_records::<AcceptedReadySourcesCodec>(1)?;
+        reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteLeavesCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

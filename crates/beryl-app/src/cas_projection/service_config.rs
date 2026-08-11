@@ -1,7 +1,7 @@
 use std::{
     num::NonZeroUsize,
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -164,25 +164,6 @@ struct ProjectionWorkerAdmission {
     pool: ProjectionWorkerPool,
     role: ProjectionWorkerRole,
     committed_steering_worker: AtomicBool,
-    preactivation_surrender_active: AtomicBool,
-}
-
-#[derive(Clone)]
-pub(super) struct ProjectionPreactivationSurrenderIssuer {
-    admission: Weak<ProjectionWorkerAdmission>,
-    retainer: super::persistent_failure::PersistentFailureProjectionRetainer,
-}
-
-pub(super) struct ProjectionPreactivationSurrender {
-    admission: Arc<ProjectionWorkerAdmission>,
-    retainer: super::persistent_failure::PersistentFailureProjectionRetainer,
-    active: bool,
-}
-
-/// Retainer-free ownership of the exact worker admission held across local recovery quarantine.
-pub(super) struct ProjectionPreactivationRecoveryHold {
-    admission: Arc<ProjectionWorkerAdmission>,
-    active: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -382,7 +363,6 @@ impl ProjectionWorkerPermitPair {
 
 impl Drop for ProjectionWorkerAdmission {
     fn drop(&mut self) {
-        debug_assert!(!self.preactivation_surrender_active.load(Ordering::Acquire));
         let mut state = self
             .pool
             .inner
@@ -421,7 +401,6 @@ impl ProjectionWorkerPermit {
                 pool,
                 role,
                 committed_steering_worker: AtomicBool::new(false),
-                preactivation_surrender_active: AtomicBool::new(false),
             }),
         }
     }
@@ -431,201 +410,6 @@ impl ProjectionWorkerPermit {
         self.admission
             .committed_steering_worker
             .store(true, Ordering::Release);
-    }
-
-    #[cfg(test)]
-    fn admission_identity_for_test(&self) -> usize {
-        Arc::as_ptr(&self.admission) as usize
-    }
-
-    pub(super) fn preactivation_surrender_issuer(
-        &self,
-        retainer: super::persistent_failure::PersistentFailureProjectionRetainer,
-    ) -> Result<ProjectionPreactivationSurrenderIssuer, super::ProjectionCoordinatorError> {
-        if self.admission.role != ProjectionWorkerRole::ScheduledOrdinary {
-            return Err(
-                super::ProjectionCoordinatorError::PreactivationProjectionAdmissionUnavailable,
-            );
-        }
-        Ok(ProjectionPreactivationSurrenderIssuer {
-            admission: Arc::downgrade(&self.admission),
-            retainer,
-        })
-    }
-
-    /// Converts a newly acquired scheduled-worker admission directly into a retainer-free recovery
-    /// hold without opening a scheduler or pre-activation execution surface.
-    pub(super) fn into_preactivation_recovery_hold(
-        self,
-    ) -> Result<ProjectionPreactivationRecoveryHold, Self> {
-        if self.admission.role != ProjectionWorkerRole::ScheduledOrdinary
-            || self
-                .admission
-                .preactivation_surrender_active
-                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                .is_err()
-        {
-            return Err(self);
-        }
-        let admission = Arc::clone(&self.admission);
-        drop(self);
-        Ok(ProjectionPreactivationRecoveryHold {
-            admission,
-            active: true,
-        })
-    }
-}
-
-impl ProjectionPreactivationSurrenderIssuer {
-    pub(super) fn try_mint(
-        &self,
-    ) -> Result<ProjectionPreactivationSurrender, super::ProjectionCoordinatorError> {
-        let admission = self.admission.upgrade().ok_or(
-            super::ProjectionCoordinatorError::PreactivationProjectionAdmissionUnavailable,
-        )?;
-        admission
-            .preactivation_surrender_active
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| {
-                super::ProjectionCoordinatorError::PreactivationProjectionAdmissionUnavailable
-            })?;
-        Ok(ProjectionPreactivationSurrender {
-            admission,
-            retainer: self.retainer.clone(),
-            active: true,
-        })
-    }
-}
-
-impl ProjectionPreactivationSurrender {
-    pub(super) fn issuer(&self) -> ProjectionPreactivationSurrenderIssuer {
-        ProjectionPreactivationSurrenderIssuer {
-            admission: Arc::downgrade(&self.admission),
-            retainer: self.retainer.clone(),
-        }
-    }
-
-    pub(super) fn retainer(
-        &self,
-    ) -> super::persistent_failure::PersistentFailureProjectionRetainer {
-        self.retainer.clone()
-    }
-
-    pub(super) fn matches_worker(&self, worker: &ProjectionWorkerPermit) -> bool {
-        Arc::ptr_eq(&self.admission, &worker.admission)
-    }
-
-    pub(super) fn is_sole_admission_owner(&self) -> bool {
-        Arc::strong_count(&self.admission) == 1
-    }
-
-    /// Detaches the old failure retainer while continuously preserving the admission hold.
-    pub(super) fn into_recovery_hold(mut self) -> ProjectionPreactivationRecoveryHold {
-        let admission = Arc::clone(&self.admission);
-        self.active = false;
-        drop(self);
-        ProjectionPreactivationRecoveryHold {
-            admission,
-            active: true,
-        }
-    }
-}
-
-impl ProjectionPreactivationRecoveryHold {
-    fn split_admission(mut self) -> (ProjectionWorkerPermit, Arc<ProjectionWorkerAdmission>) {
-        assert!(
-            self.active
-                && self.admission.role == ProjectionWorkerRole::ScheduledOrdinary
-                && self
-                    .admission
-                    .preactivation_surrender_active
-                    .load(Ordering::Acquire),
-            "only one active scheduled recovery hold can restore worker execution authority"
-        );
-        let admission = Arc::clone(&self.admission);
-        self.active = false;
-        drop(self);
-        (
-            ProjectionWorkerPermit {
-                admission: Arc::clone(&admission),
-            },
-            admission,
-        )
-    }
-
-    /// Splits the retained replacement admission into its exact worker permit and a surrender
-    /// child tied to the freshly published service's persistent-failure retainer.
-    ///
-    /// This is an ownership-only transition over the existing admission. It neither consults the
-    /// worker pool nor acquires replacement capacity.
-    pub(super) fn into_worker_and_surrender(
-        self,
-        retainer: super::persistent_failure::PersistentFailureProjectionRetainer,
-    ) -> (ProjectionWorkerPermit, ProjectionPreactivationSurrender) {
-        let (worker, admission) = self.split_admission();
-        (
-            worker,
-            ProjectionPreactivationSurrender {
-                admission,
-                retainer,
-                active: true,
-            },
-        )
-    }
-
-    #[cfg(test)]
-    fn restore_worker_for_test(self) -> ProjectionWorkerPermit {
-        let (worker, admission) = self.split_admission();
-        let was_active = admission
-            .preactivation_surrender_active
-            .swap(false, Ordering::AcqRel);
-        assert!(was_active);
-        drop(admission);
-        worker
-    }
-}
-
-impl Drop for ProjectionPreactivationSurrender {
-    fn drop(&mut self) {
-        if self.active {
-            self.active = false;
-            let was_active = self
-                .admission
-                .preactivation_surrender_active
-                .swap(false, Ordering::AcqRel);
-            debug_assert!(was_active);
-        }
-    }
-}
-
-impl Drop for ProjectionPreactivationRecoveryHold {
-    fn drop(&mut self) {
-        if self.active {
-            self.active = false;
-            let was_active = self
-                .admission
-                .preactivation_surrender_active
-                .swap(false, Ordering::AcqRel);
-            debug_assert!(was_active);
-        }
-    }
-}
-
-impl std::fmt::Debug for ProjectionPreactivationSurrenderIssuer {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ProjectionPreactivationSurrenderIssuer")
-            .field("admission_live", &self.admission.strong_count())
-            .finish_non_exhaustive()
-    }
-}
-
-impl std::fmt::Debug for ProjectionPreactivationSurrender {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ProjectionPreactivationSurrender")
-            .field("active", &self.active)
-            .finish_non_exhaustive()
     }
 }
 

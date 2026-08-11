@@ -6,3 +6,5 @@
 /.cargo/config.toml
 /*.bat
 /doc/rework/beryl-home/old-doc/next-big-rework.md
+/.serena/
+/.codex/

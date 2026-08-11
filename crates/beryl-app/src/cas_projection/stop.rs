@@ -1,40 +1,36 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Condvar, Mutex, Weak},
+    sync::{Arc, Mutex, Weak},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(test)]
+use std::sync::Condvar;
 
 use beryl_backend::{
     ApprovalInterruption, ExactForegroundTurn, StopAttemptCorrelation, StopAttemptDisposition,
     StopOperationCorrelation, TurnInterruptDisposition, TurnInterruptOutcome,
 };
-use beryl_home_store::{HomeGeneration, HomeStore};
+use beryl_home_store::{
+    CommandError, CommandOutcome, CommitReceipt, HomeGeneration, HomeStore,
+    ReconciliationDescriptor,
+};
 use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     AbandonStopOperation, ClaimStopDispatch, JoinStopCause, SafelyReopenStopOperation,
     StopAbandonmentReason, StopAdmissionIneligibility, StopAdmissionRead, StopAttemptNonce,
     StopCause, StopCauseSet, StopOperationId, StopOperationNonce, StopOperationState,
-    StopOperationTarget, StopOperationTransitionStatus, SyndicLiveStopOperation,
+    StopOperationTarget, SyndicLiveStopOperation,
     SyndicPointReadLimit, SyndicReadError, SyndicStorage, SyndicTimestamp,
 };
 use thiserror::Error;
 
 use super::connection::{
-    EventRouter, StopElectionAcquireError, StopElectionPermit, StopTargetProof,
+    EventRouter, StopElectionAcquireError, StopElectionAdmission, StopElectionPermit,
+    StopTargetProof,
 };
 
-mod hard;
 mod persistent_failure;
-
-pub use hard::{
-    BoundedHardStopResult, HardStopLimitation, HardStopTargetDisposition, HardStopTargetKind,
-    HardStopTargetResult,
-};
-pub(in crate::cas_projection) use hard::{
-    HardStopRunOwner, PublishedHardStopActivity, PublishedHardStopActivityKind,
-    PublishedHardStopActivityLifecycle,
-};
-pub(in crate::cas_projection) use persistent_failure::PersistentFailureStopEvidence;
 
 const STOP_POINT_READ_BYTES: usize = 1_000_000;
 
@@ -44,7 +40,6 @@ enum LocalDispatchState {
     ClaimUnresolved,
     ClaimedNotDispatched,
     Dispatching,
-    HardStopRunningProvenNondispatch,
     ProvenNondispatchSettling,
     PrimaryAccepted,
     PossiblyDispatched,
@@ -71,7 +66,6 @@ struct LifecycleYieldKey {
 struct StopCoordinatorState {
     stops: HashMap<SyndicThreadId, LocalStop>,
     lifecycle_yields: HashMap<LifecycleYieldKey, crate::LifecycleYieldOutcome>,
-    hard: hard::HardStopCoordinatorState,
     persistent_failure: Option<super::persistent_failure::PersistentFailureCutIdentity>,
 }
 
@@ -82,8 +76,6 @@ pub(in crate::cas_projection) struct StopCoordinator {
     storage: SyndicStorage,
     commands: super::persistent_failure::LiveCommandAuthorizer,
     state: Mutex<StopCoordinatorState>,
-    hard_activity: Mutex<hard::HardStopActivityState>,
-    hard_wake: Condvar,
     #[cfg(test)]
     race_pauses: StopRacePauses,
 }
@@ -91,6 +83,7 @@ pub(in crate::cas_projection) struct StopCoordinator {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum StopRaceStage {
+    ElectionHeldBeforeAdmissionGate,
     BeforeClaimFence,
     ClaimFenceHeld,
     BeforeBeginDispatchFence,
@@ -268,12 +261,52 @@ pub enum StopCoordinationError {
     RandomUnavailable,
     #[error("the exact durable stop transition did not commit")]
     TransitionNotCommitted,
+    #[error("the exact durable stop transition was proven not committed: {0}")]
+    CommandNotCommitted(#[source] CommandError),
+    #[error("the exact durable stop transition committed before a later failure: {later_failure}")]
+    CommandCommitted {
+        receipt: CommitReceipt,
+        #[source]
+        later_failure: CommandError,
+    },
+    #[error("the exact durable stop transition has an indeterminate outcome: {failure}")]
+    CommandIndeterminate {
+        #[source]
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
     #[error("the exact durable stop transition collided with another authority")]
     TransitionCollision,
     #[error("the live-event stop election failed")]
     Election,
     #[error("the bounded stop authority read failed")]
     Read(#[from] SyndicReadError),
+}
+
+fn require_stop_committed(outcome: CommandOutcome) -> Result<(), StopCoordinationError> {
+    match outcome {
+        CommandOutcome::NotCommitted { evidence } => {
+            Err(StopCoordinationError::CommandNotCommitted(evidence))
+        }
+        CommandOutcome::Committed {
+            receipt: _,
+            later_failure: None,
+        } => Ok(()),
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(later_failure),
+        } => Err(StopCoordinationError::CommandCommitted {
+            receipt,
+            later_failure,
+        }),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => Err(StopCoordinationError::CommandIndeterminate {
+            failure,
+            reconciliation,
+        }),
+    }
 }
 
 impl From<StopElectionAcquireError> for StopCoordinationError {
@@ -305,7 +338,6 @@ pub(in crate::cas_projection) enum StopDispatchSettlement {
     Stopping(StopOperationId),
     SafelyReopened(StopOperationId),
     Abandoned(StopOperationId),
-    HardStop(HardStopRunOwner),
 }
 
 impl StopCoordinator {
@@ -323,8 +355,6 @@ impl StopCoordinator {
             storage,
             commands,
             state: Mutex::new(StopCoordinatorState::default()),
-            hard_activity: Mutex::new(hard::HardStopActivityState::default()),
-            hard_wake: Condvar::new(),
             #[cfg(test)]
             race_pauses: StopRacePauses::default(),
         }
@@ -412,23 +442,18 @@ impl StopCoordinator {
         drop(state);
 
         let permit = router.acquire_stop_election(command, &proof)?;
-        let _command = self
-            .commands
-            .authorize()
-            .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
-        self.ensure_current()?;
+        #[cfg(test)]
+        self.pause_race_if_requested(StopRaceStage::ElectionHeldBeforeAdmissionGate);
         #[cfg(test)]
         self.pause_race_if_requested(StopRaceStage::BeforeClaimFence);
         let mut state = self
             .state
             .lock()
             .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
-        if !_command.is_current() || state.persistent_failure.is_some() {
-            return Err(StopCoordinationError::HomeAuthorityLost);
-        }
-        #[cfg(test)]
-        self.pause_race_if_requested(StopRaceStage::ClaimFenceHeld);
         if state.stops.contains_key(&proof.syndic_thread_id()) {
+            if state.persistent_failure.is_some() {
+                return Err(StopCoordinationError::HomeAuthorityLost);
+            }
             let ownership = {
                 let local = state
                     .stops
@@ -448,15 +473,42 @@ impl StopCoordinator {
             return Ok(ownership);
         }
 
-        let live = match self.read(proof.syndic_thread_id())? {
+        let (live, permit, _command) = match self.read(proof.syndic_thread_id())? {
             StopAdmissionRead::Admissible(candidate) => {
                 if !proof.matches(candidate.target()) {
                     return Err(StopCoordinationError::TargetUnavailable);
                 }
                 let operation_nonce = random_operation_nonce()?;
                 let admission = candidate.admission(operation_nonce, StopCauseSet::from(cause));
+                let (permit, command) = match permit
+                    .admission(candidate.target().turn_id())
+                    .map_err(|_| StopCoordinationError::HomeAuthorityLost)?
+                {
+                    StopElectionAdmission::Current { permit, command } => (permit, command),
+                    StopElectionAdmission::PersistentFailure(failure) => {
+                        cancel_automatic_continuation_by_identity(
+                            &mut state,
+                            proof.syndic_thread_id(),
+                            failure.syndic_turn_id(),
+                        );
+                        drop(state);
+                        failure
+                            .preserve()
+                            .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
+                        return Err(StopCoordinationError::HomeAuthorityLost);
+                    }
+                    StopElectionAdmission::Closed => {
+                        return Err(StopCoordinationError::HomeAuthorityLost);
+                    }
+                };
+                #[cfg(test)]
+                self.pause_race_if_requested(StopRaceStage::ClaimFenceHeld);
                 self.execute_admission(&admission)?;
-                self.require_live(proof.syndic_thread_id(), admission.operation_id())?
+                (
+                    self.require_live(proof.syndic_thread_id(), admission.operation_id())?,
+                    permit,
+                    command,
+                )
             }
             StopAdmissionRead::Stopping(_) => {
                 return Err(StopCoordinationError::LocalAuthorityMismatch);
@@ -593,7 +645,6 @@ impl StopCoordinator {
                 ))
             }
             LocalDispatchState::Dispatching
-            | LocalDispatchState::HardStopRunningProvenNondispatch
             | LocalDispatchState::ProvenNondispatchSettling
             | LocalDispatchState::PrimaryAccepted
             | LocalDispatchState::PossiblyDispatched
@@ -631,11 +682,9 @@ impl StopCoordinator {
             cause,
         );
         let home = self.current_home()?;
-        let _ = home.execute_current(self.storage.current_join_stop_cause(request.clone()));
-        let status = self
-            .storage
-            .stop_cause_join_status(&home, &request, point_limit())?;
-        require_transition(status)?;
+        require_stop_committed(
+            home.execute_current(self.storage.current_join_stop_cause(request.clone())),
+        )?;
         self.require_live(live.target().thread_id(), live.operation_id())
     }
 
@@ -644,20 +693,16 @@ impl StopCoordinator {
         request: &syndic_storage::AdmitStopOperation,
     ) -> Result<(), StopCoordinationError> {
         let home = self.current_home()?;
-        let _ = home.execute_current(self.storage.current_admit_stop_operation(request.clone()));
-        let status = self
-            .storage
-            .stop_admission_status(&home, request, point_limit())?;
-        require_transition(status)
+        require_stop_committed(
+            home.execute_current(self.storage.current_admit_stop_operation(request.clone())),
+        )
     }
 
     fn execute_claim(&self, request: &ClaimStopDispatch) -> Result<(), StopCoordinationError> {
         let home = self.current_home()?;
-        let _ = home.execute_current(self.storage.current_claim_stop_dispatch(request.clone()));
-        let status = self
-            .storage
-            .stop_dispatch_claim_status(&home, request, point_limit())?;
-        require_transition(status)
+        require_stop_committed(
+            home.execute_current(self.storage.current_claim_stop_dispatch(request.clone())),
+        )
     }
 
     fn read(&self, thread_id: SyndicThreadId) -> Result<StopAdmissionRead, StopCoordinationError> {
@@ -820,8 +865,17 @@ mod tests {
 }
 
 fn cancel_automatic_continuation(state: &mut StopCoordinatorState, target: &StopOperationTarget) {
+    cancel_automatic_continuation_by_identity(state, target.thread_id(), target.turn_id());
+}
+
+fn cancel_automatic_continuation_by_identity(
+    state: &mut StopCoordinatorState,
+    thread_id: SyndicThreadId,
+    turn_id: SyndicTurnId,
+) {
     state.lifecycle_yields.retain(|key, outcome| {
-        key.thread_id != target.thread_id()
+        key.thread_id != thread_id
+            || key.turn_id != turn_id
             || *outcome != crate::LifecycleYieldOutcome::PhaseContinue
     });
 }
@@ -894,14 +948,6 @@ fn random_attempt_nonce() -> Result<StopAttemptNonce, StopCoordinationError> {
 
 fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(STOP_POINT_READ_BYTES).expect("stop point-read bound is nonzero")
-}
-
-fn require_transition(status: StopOperationTransitionStatus) -> Result<(), StopCoordinationError> {
-    match status {
-        StopOperationTransitionStatus::Exact => Ok(()),
-        StopOperationTransitionStatus::Prior => Err(StopCoordinationError::TransitionNotCommitted),
-        StopOperationTransitionStatus::Collision => Err(StopCoordinationError::TransitionCollision),
-    }
 }
 
 fn system_timestamp_at_least(
@@ -1003,18 +1049,13 @@ impl StopDispatchOwner {
             .expect("stop owner retains its election until primary settlement");
         let settlement = match outcome.disposition() {
             TurnInterruptDisposition::RequestAccepted => {
-                if let Some(owner) = self.coordinator.settle_primary_and_begin_hard_run(
+                self.coordinator.mark_primary_accepted(
+                    self.target.thread_id(),
                     self.operation_id,
-                    &self.target,
                     self.attempt,
-                    true,
-                    self.timeout,
-                    permit,
-                )? {
-                    StopDispatchSettlement::HardStop(owner)
-                } else {
-                    StopDispatchSettlement::Stopping(self.operation_id)
-                }
+                )?;
+                permit.finish();
+                StopDispatchSettlement::Stopping(self.operation_id)
             }
             TurnInterruptDisposition::CompletionUnknown { .. } => {
                 self.coordinator.mark_possibly_dispatched(
@@ -1022,34 +1063,24 @@ impl StopDispatchOwner {
                     self.operation_id,
                     self.attempt,
                 )?;
-                self.coordinator
-                    .finish_hard_without_run(self.operation_id)?;
                 permit.finish();
                 StopDispatchSettlement::Stopping(self.operation_id)
             }
             TurnInterruptDisposition::ProvenNotDispatched { .. } => {
-                if let Some(owner) = self.coordinator.settle_primary_and_begin_hard_run(
+                self.coordinator.prepare_proven_nondispatch(
+                    self.target.thread_id(),
                     self.operation_id,
-                    &self.target,
                     self.attempt,
-                    false,
-                    self.timeout,
-                    permit,
-                )? {
-                    StopDispatchSettlement::HardStop(owner)
-                } else {
-                    self.coordinator
-                        .settle_proven_nondispatch(self.operation_id, Some(self.attempt))?
-                }
+                )?;
+                permit.finish();
+                self.coordinator
+                    .settle_proven_nondispatch(self.operation_id, Some(self.attempt))?
             }
             TurnInterruptDisposition::RejectedBeforeCoreInterrupt => {
                 let settlement = self.coordinator.abandon(
                     self.operation_id,
                     StopAbandonmentReason::ProviderRejectedBeforeCoreInterrupt,
                 )?;
-                self.coordinator
-                    .finish_hard_without_run(self.operation_id)?;
-                self.coordinator.consume_hard_slot(self.operation_id);
                 permit.finish();
                 settlement
             }
@@ -1073,19 +1104,15 @@ impl StopDispatchOwner {
             .permit
             .take()
             .expect("stop owner retains its election until primary settlement");
-        let settlement = if let Some(owner) = self.coordinator.settle_primary_and_begin_hard_run(
+        self.coordinator.prepare_proven_nondispatch(
+            self.target.thread_id(),
             self.operation_id,
-            &self.target,
             self.attempt,
-            false,
-            self.timeout,
-            permit,
-        )? {
-            StopDispatchSettlement::HardStop(owner)
-        } else {
-            self.coordinator
-                .settle_proven_nondispatch(self.operation_id, Some(self.attempt))?
-        };
+        )?;
+        permit.finish();
+        let settlement = self
+            .coordinator
+            .settle_proven_nondispatch(self.operation_id, Some(self.attempt))?;
         self.settled = true;
         Ok(settlement)
     }
@@ -1113,27 +1140,15 @@ impl StopCoordinator {
             return;
         }
         if let Ok(mut state) = self.state.lock() {
-            self.clear_published_activity(thread_id, turn_id);
             let consumed = state
                 .stops
                 .get(&thread_id)
                 .filter(|local| local.target.turn_id() == turn_id)
-                .map(|local| local.operation_id);
-            if let Some(operation_id) = consumed {
+                .is_some();
+            if consumed {
                 state.stops.remove(&thread_id);
-                let remove = if let Some(slot) = state.hard.slots.get_mut(&operation_id) {
-                    slot.consumed = true;
-                    slot.terminal_successor = true;
-                    slot.joined_waiters == 0 && matches!(slot.phase, hard::SlotPhase::Finished(_))
-                } else {
-                    false
-                };
-                if remove {
-                    state.hard.slots.remove(&operation_id);
-                }
             }
         }
-        self.hard_wake.notify_all();
     }
 
     pub(in crate::cas_projection) fn abandon_for_authority_loss(
@@ -1148,7 +1163,6 @@ impl StopCoordinator {
             .state
             .lock()
             .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
-        self.clear_published_activity(thread_id, turn_id);
         let local = state
             .stops
             .get(&thread_id)
@@ -1160,7 +1174,6 @@ impl StopCoordinator {
         };
         if local.dispatch == LocalDispatchState::DurablyAbandoned {
             self.remove_local(local.operation_id);
-            self.consume_hard_slot(local.operation_id);
             return Ok(true);
         }
         let operation_id = local.operation_id;
@@ -1168,13 +1181,11 @@ impl StopCoordinator {
             StopAdmissionRead::Stopping(live) if live.operation_id() == operation_id => {
                 self.abandon(operation_id, StopAbandonmentReason::TargetAuthorityLost)?;
                 self.remove_local(operation_id);
-                self.consume_hard_slot(operation_id);
                 Ok(true)
             }
             StopAdmissionRead::Stopping(_) => Err(StopCoordinationError::LocalAuthorityMismatch),
             StopAdmissionRead::Admissible(_) | StopAdmissionRead::Ineligible(_) => {
                 self.remove_local(operation_id);
-                self.consume_hard_slot(operation_id);
                 Ok(false)
             }
         }
@@ -1201,7 +1212,6 @@ impl StopCoordinator {
         Ok(())
     }
 
-    #[cfg(test)]
     fn mark_primary_accepted(
         &self,
         thread_id: SyndicThreadId,
@@ -1235,7 +1245,7 @@ impl StopCoordinator {
         if self.failure_cut_is_active() {
             return;
         }
-        let has_hard_slot = {
+        {
             let Ok(mut state) = self.state.lock() else {
                 return;
             };
@@ -1251,18 +1261,14 @@ impl StopCoordinator {
                 | LocalDispatchState::ProvenNondispatchSettling => {
                     LocalDispatchState::ClaimUnresolved
                 }
-                LocalDispatchState::Dispatching
-                | LocalDispatchState::HardStopRunningProvenNondispatch
-                | LocalDispatchState::PrimaryAccepted => LocalDispatchState::PossiblyDispatched,
+                LocalDispatchState::Dispatching | LocalDispatchState::PrimaryAccepted => {
+                    LocalDispatchState::PossiblyDispatched
+                }
                 LocalDispatchState::ClaimUnresolved
                 | LocalDispatchState::PossiblyDispatched
                 | LocalDispatchState::DurablyAbandoned
                 | LocalDispatchState::FailureFrozenNondispatch => local.dispatch,
             };
-            state.hard.slots.contains_key(&operation_id)
-        };
-        if has_hard_slot {
-            let _ = self.finish_hard_without_run(operation_id);
         }
     }
 
@@ -1273,6 +1279,33 @@ impl StopCoordinator {
         self.settle_proven_nondispatch(operation_id, None)
     }
 
+    fn prepare_proven_nondispatch(
+        &self,
+        thread_id: SyndicThreadId,
+        operation_id: StopOperationId,
+        attempt: StopAttemptNonce,
+    ) -> Result<(), StopCoordinationError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
+        let local = state
+            .stops
+            .get_mut(&thread_id)
+            .ok_or(StopCoordinationError::LocalAuthorityMismatch)?;
+        if local.operation_id != operation_id
+            || local.attempt != Some(attempt)
+            || !matches!(
+                local.dispatch,
+                LocalDispatchState::ClaimedNotDispatched | LocalDispatchState::Dispatching
+            )
+        {
+            return Err(StopCoordinationError::LocalAuthorityMismatch);
+        }
+        local.dispatch = LocalDispatchState::ProvenNondispatchSettling;
+        Ok(())
+    }
+
     fn settle_proven_nondispatch(
         self: &Arc<Self>,
         operation_id: StopOperationId,
@@ -1281,7 +1314,7 @@ impl StopCoordinator {
         if self.failure_cut_is_active() {
             return Ok(StopDispatchSettlement::Stopping(operation_id));
         }
-        let mut state = self
+        let state = self
             .state
             .lock()
             .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
@@ -1301,38 +1334,12 @@ impl StopCoordinator {
                             local.dispatch,
                             LocalDispatchState::ClaimedNotDispatched
                                 | LocalDispatchState::Dispatching
-                                | LocalDispatchState::HardStopRunningProvenNondispatch
                                 | LocalDispatchState::ProvenNondispatchSettling
                         )
                 }
             };
-        let racing_hard_attachment = expected_attempt.is_some()
-            && matches!(
-                local.dispatch,
-                LocalDispatchState::ClaimedNotDispatched | LocalDispatchState::Dispatching
-            );
-        let target = local.target.clone();
-        let timeout = local.timeout;
         if !exact_local_authority {
             return Err(StopCoordinationError::LocalAuthorityMismatch);
-        }
-        if racing_hard_attachment
-            && let Some(owner) = self.begin_racing_proven_nondispatch_hard_run(
-                &mut state,
-                operation_id,
-                &target,
-                expected_attempt.expect("racing dispatch retains its attempt"),
-                timeout,
-            )?
-        {
-            return Ok(StopDispatchSettlement::HardStop(owner));
-        }
-        if racing_hard_attachment {
-            state
-                .stops
-                .get_mut(&operation_id.thread_id())
-                .expect("validated local stop remains present")
-                .dispatch = LocalDispatchState::ProvenNondispatchSettling;
         }
         drop(state);
 
@@ -1361,14 +1368,10 @@ impl StopCoordinator {
             live.stop_revision(),
         );
         let home = self.current_home()?;
-        let _ = home.execute_current(
+        require_stop_committed(home.execute_current(
             self.storage
                 .current_safely_reopen_stop_operation(request.clone()),
-        );
-        let status = self
-            .storage
-            .safe_stop_reopen_status(&home, &request, point_limit())?;
-        require_transition(status)?;
+        ))?;
         self.remove_local(operation_id);
         Ok(StopDispatchSettlement::SafelyReopened(operation_id))
     }
@@ -1396,11 +1399,9 @@ impl StopCoordinator {
             stale,
         );
         let home = self.current_home()?;
-        let _ = home.execute_current(self.storage.current_abandon_stop_operation(request.clone()));
-        let status = self
-            .storage
-            .stop_abandonment_status(&home, &request, point_limit())?;
-        require_transition(status)?;
+        require_stop_committed(
+            home.execute_current(self.storage.current_abandon_stop_operation(request.clone())),
+        )?;
         let mut state = self
             .state
             .lock()
@@ -1413,8 +1414,6 @@ impl StopCoordinator {
             return Err(StopCoordinationError::LocalAuthorityMismatch);
         }
         local.dispatch = LocalDispatchState::DurablyAbandoned;
-        let turn_id = local.target.turn_id();
-        self.clear_published_activity(operation_id.thread_id(), turn_id);
         Ok(StopDispatchSettlement::Abandoned(operation_id))
     }
 

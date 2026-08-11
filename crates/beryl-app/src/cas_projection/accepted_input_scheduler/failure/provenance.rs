@@ -9,8 +9,8 @@ use crate::input_admission::InputAdmissionBuildError;
 
 use super::{
     health::{
-        from_syndic_read, is_cut_correlated_command, is_cut_correlated_read,
-        is_verification_pending_command, is_verification_pending_read,
+        from_syndic_read, is_current_health_loss_command, is_current_health_loss_read,
+        is_cut_correlated_command, is_cut_correlated_read,
     },
     types::SchedulerFailure,
 };
@@ -19,8 +19,8 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn from_coordinator(
     error: &ProjectionCoordinatorError,
     expected: HomeGeneration,
 ) -> SchedulerFailure {
-    if is_verification_pending_coordinator(error, expected) {
-        SchedulerFailure::VerificationPending
+    if is_current_health_loss_coordinator(error, expected) {
+        SchedulerFailure::PersistentHomeFailure
     } else if is_cut_correlated_coordinator(error, expected) {
         SchedulerFailure::PersistentHomeFailure
     } else {
@@ -28,22 +28,22 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn from_coordinator(
     }
 }
 
-pub(in crate::cas_projection::accepted_input_scheduler) fn is_verification_pending_coordinator(
+pub(in crate::cas_projection::accepted_input_scheduler) fn is_current_health_loss_coordinator(
     error: &ProjectionCoordinatorError,
     expected: HomeGeneration,
 ) -> bool {
     match error {
         ProjectionCoordinatorError::HomeNotHealthy {
-            state: HomeHealthState::Verifying,
+            state,
             generation: Some(actual),
-        } => *actual == expected,
+        } => *state != HomeHealthState::Healthy && *actual == expected,
         ProjectionCoordinatorError::HomeGenerationMismatch {
             expected: bound,
             actual: Some(actual),
-            state: HomeHealthState::Verifying,
-        } => *bound == expected && *actual == expected,
+            state,
+        } => *state != HomeHealthState::Healthy && *bound == expected && *actual == expected,
         ProjectionCoordinatorError::SyndicRevisionUnavailable { source } => {
-            is_verification_pending_read(source, expected)
+            is_current_health_loss_read(source, expected)
         }
         _ => false,
     }
@@ -92,8 +92,8 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn from_admission(
     error: &ScheduledOrdinaryAdmissionError,
     expected: HomeGeneration,
 ) -> SchedulerFailure {
-    if is_verification_pending_admission(error, expected) {
-        SchedulerFailure::VerificationPending
+    if is_current_health_loss_admission(error, expected) {
+        SchedulerFailure::PersistentHomeFailure
     } else if is_cut_correlated_admission(error, expected) {
         SchedulerFailure::PersistentHomeFailure
     } else {
@@ -101,16 +101,16 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn from_admission(
     }
 }
 
-pub(in crate::cas_projection::accepted_input_scheduler) fn is_verification_pending_admission(
+pub(in crate::cas_projection::accepted_input_scheduler) fn is_current_health_loss_admission(
     error: &ScheduledOrdinaryAdmissionError,
     expected: HomeGeneration,
 ) -> bool {
     match error {
         ScheduledOrdinaryAdmissionError::Authority(error) => {
-            is_verification_pending_coordinator(error, expected)
+            is_current_health_loss_coordinator(error, expected)
         }
         ScheduledOrdinaryAdmissionError::AssetAuthority { source } => {
-            is_verification_pending_read(source, expected)
+            is_current_health_loss_read(source, expected)
         }
         _ => false,
     }
@@ -136,22 +136,22 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn is_cut_correlated_pub
     }
 }
 
-pub(in crate::cas_projection::accepted_input_scheduler) fn is_verification_pending_publication(
+pub(in crate::cas_projection::accepted_input_scheduler) fn is_current_health_loss_publication(
     error: &ProjectionPublicationFailure,
     expected: HomeGeneration,
 ) -> bool {
     match error {
         ProjectionPublicationFailure::HomeRead(source) => {
-            is_verification_pending_read(source, expected)
+            is_current_health_loss_read(source, expected)
         }
         ProjectionPublicationFailure::Command(source) => {
-            is_verification_pending_command(source, expected)
+            is_current_health_loss_command(source, expected)
         }
         ProjectionPublicationFailure::Reconciliation(SyndicReadError::Read(source)) => {
-            is_verification_pending_read(source, expected)
+            is_current_health_loss_read(source, expected)
         }
         ProjectionPublicationFailure::HomeAuthorityLost(source) => {
-            is_verification_pending_coordinator(source, expected)
+            is_current_health_loss_coordinator(source, expected)
         }
         _ => false,
     }
@@ -172,18 +172,18 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn from_input_admission_
         }
         _ => false,
     };
-    let verification_pending = match error {
-        InputAdmissionBuildError::Read(source) => is_verification_pending_read(source, expected),
+    let current_health_loss = match error {
+        InputAdmissionBuildError::Read(source) => is_current_health_loss_read(source, expected),
         InputAdmissionBuildError::SyndicRead(SyndicReadError::Read(source)) => {
-            is_verification_pending_read(source, expected)
+            is_current_health_loss_read(source, expected)
         }
         InputAdmissionBuildError::AssetRead(AssetReadError::Read(source)) => {
-            is_verification_pending_read(source, expected)
+            is_current_health_loss_read(source, expected)
         }
         _ => false,
     };
-    if verification_pending {
-        SchedulerFailure::VerificationPending
+    if current_health_loss {
+        SchedulerFailure::PersistentHomeFailure
     } else if cut_correlated {
         SchedulerFailure::PersistentHomeFailure
     } else {

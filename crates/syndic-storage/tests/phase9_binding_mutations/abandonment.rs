@@ -75,7 +75,7 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
         timestamp(8),
     )
     .unwrap();
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         &store,
         storage.abandon_active_binding(
             storage.revision(&store).unwrap(),
@@ -89,7 +89,7 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
             ),
         ),
     )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingStateConflict
@@ -252,7 +252,7 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         .input_gate(&store, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
-    execute_result(
+    execute(
         &store,
         storage.admit_live_source_event(
             storage.revision(&store).unwrap(),
@@ -272,7 +272,7 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             .unwrap(),
         ),
     )
-    .expect("exact activation is admitted before projection loss");
+    );
     let binding = storage
         .current_binding(&store, fixture.thread, point_limit())
         .unwrap()
@@ -309,7 +309,7 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         timestamp(7),
     )
     .unwrap();
-    execute_result(
+    execute(
         &store,
         storage.abandon_active_binding(
             storage.revision(&store).unwrap(),
@@ -323,7 +323,7 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             ),
         ),
     )
-    .expect("active projection is abandoned");
+    );
     let state = storage
         .turn_state(&store, fixture.turn, point_limit())
         .unwrap()
@@ -346,14 +346,14 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         timestamp(8),
     )
     .unwrap();
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         &store,
         storage.admit_live_source_event(
             storage.revision(&store).unwrap(),
             stale_projection_activation,
         ),
     )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceIdentityConflict
@@ -366,16 +366,16 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         TurnTerminalOutcome::Complete,
         timestamp(8),
     );
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), source_less_complete),
     )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceIdentityConflict
     ));
-    execute_result(
+    execute(
         &store,
         storage.admit_live_source_event(
             storage.revision(&store).unwrap(),
@@ -389,12 +389,12 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             ),
         ),
     )
-    .expect("source-less unknown-terminal convergence is admitted after abandonment");
+    );
     let binding = storage
         .current_binding(&store, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
-    execute_result(
+    execute(
         &store,
         storage.publish_unbound_binding(
             storage.revision(&store).unwrap(),
@@ -407,7 +407,7 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             .unwrap(),
         ),
     )
-    .expect("stale projection may publish an unbound successor");
+    );
     let binding = storage
         .current_binding(&store, fixture.thread, point_limit())
         .unwrap()
@@ -417,7 +417,7 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         fixture.selected.thread_revision(),
         empty_selected_path_digest(),
     );
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         &store,
         storage.publish_valid_binding(
             storage.revision(&store).unwrap(),
@@ -434,7 +434,7 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             ),
         ),
     )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::TurnLifecycleConflict

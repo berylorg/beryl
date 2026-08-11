@@ -5,7 +5,7 @@ mod generic_witness_corruption;
 mod support;
 
 use beryl_home_store::{
-    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, CommandOutcome, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{AcceptedInputRevision, CasTurnId, InputGateRevision};
@@ -377,13 +377,38 @@ fn named_rejection_abandonment_fault_cuts_reconcile_old_or_exact() {
         let request = seed(&store, storage);
 
         faults.fail_next(point);
-        assert!(
-            store
-                .execute_current(storage.current_abandon_active_binding(request.clone()))
-                .is_err()
-        );
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-        store.verify_health().unwrap();
+        let outcome =
+            store.execute_current(storage.current_abandon_active_binding(request.clone()));
+        match (point, outcome) {
+            (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
+                assert!(matches!(evidence, CommandError::Commit { .. }));
+            }
+            (
+                FaultPoint::AfterCommitBeforePersist,
+                outcome @ CommandOutcome::Indeterminate { .. },
+            ) => {
+                assert!(
+                    matches!(
+                        &outcome,
+                        CommandOutcome::Indeterminate {
+                            failure: CommandError::Persistence { .. },
+                            ..
+                        }
+                    ),
+                    "unexpected indeterminate outcome at {point:?}: {outcome:?}",
+                );
+            }
+            (
+                FaultPoint::AfterPersist,
+                CommandOutcome::Committed {
+                    receipt,
+                    later_failure: Some(CommandError::Persistence { .. }),
+                },
+            ) => {
+                assert_eq!(receipt.home_revision(), store.home_revision().unwrap());
+            }
+            (_, outcome) => panic!("unexpected exact command outcome at {point:?}: {outcome:?}"),
+        }
         assert_eq!(
             storage
                 .abandoned_active_binding_publication_status(&store, &request, limit())

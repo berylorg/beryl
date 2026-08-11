@@ -122,7 +122,7 @@ impl Ingester {
             let verification = if verified_continuation {
                 None
             } else {
-                match self.live_command().await_current_or_verification(
+                match self.live_command().enter_current_home(
                     &self.home,
                     self.home_id,
                     home_generation,
@@ -148,8 +148,6 @@ impl Ingester {
                     limit,
                 )
                 .map_err(CheckedUserPreparationError::LiveSource)?;
-                #[cfg(all(test, feature = "test-faults"))]
-                tests::record_checked_user_preparation_attempt(self.home_id, message.lifecycle());
                 #[cfg(feature = "test-faults")]
                 {
                     crate::cas_projection::test_faults::pause_checked_user_publication(
@@ -176,7 +174,7 @@ impl Ingester {
             };
             match verification.settle_after_operation() {
                 Ok(settlement)
-                    if settlement.verified_current()
+                    if settlement.requires_retry()
                         && attempt
                             .as_ref()
                             .is_err_and(|error| error.verification_ambiguous(home_generation)) =>

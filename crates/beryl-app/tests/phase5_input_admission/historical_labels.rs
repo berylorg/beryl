@@ -58,7 +58,7 @@ fn establish_origin(
         submission,
     )
     .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("expected committed origin: {evidence:?}"), outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate origin: {outcome:?}"), }
     Origin { asset_id, proof }
 }
 

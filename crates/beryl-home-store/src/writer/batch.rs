@@ -1,29 +1,23 @@
-use beryl_model::{DomainRevision, HomeRevision};
-
 use crate::{
-    CommandError,
-    command::{DomainParticipant, PendingAction, PendingMutation},
+    command::{PendingAction, PendingMutation},
     domain::RegisteredDomain,
-    metadata::{HOME_REVISION_KEY, encode_home_revision},
+    metadata::{encode_home_revision, HOME_REVISION_KEY},
     store::StoreGeneration,
+    CommandError, CommitReceipt,
 };
 
 use super::{
-    PreparedMutation,
     command_error::{batch_accounting_overflow, commit_fjall_error},
+    PreparedMutation,
 };
 
 pub(super) struct AssembledBatch {
     pub(super) batch: fjall::WriteBatch,
-    pub(super) next_home: HomeRevision,
-    pub(super) domains: Vec<(usize, DomainRevision)>,
 }
 
 struct BatchParticipant<'a> {
-    participant: &'a DomainParticipant,
     domain: &'a RegisteredDomain,
     pending: Vec<PendingMutation>,
-    next_revision: DomainRevision,
     encoded_metadata: Vec<u8>,
 }
 
@@ -56,25 +50,18 @@ impl BatchTotals {
 
 pub(super) fn assemble(
     generation: &StoreGeneration,
-    current_home: HomeRevision,
+    receipt: &CommitReceipt,
     prepared: Vec<PreparedMutation<'_>>,
 ) -> Result<AssembledBatch, CommandError> {
-    let next_home =
-        current_home
-            .checked_next()
-            .map_err(|source| CommandError::RevisionExhausted {
-                scope: "home".to_owned(),
-                source,
-            })?;
     let mut participants = Vec::with_capacity(prepared.len());
     for participant in prepared {
-        let next_revision = participant
-            .current_revision
-            .checked_next()
-            .map_err(|source| CommandError::RevisionExhausted {
-                scope: format!("domain `{}`", participant.domain.name),
-                source,
-            })?;
+        let next_revision = receipt
+            .domains
+            .iter()
+            .find_map(|(slot, revision)| {
+                (*slot == participant.participant.slot()).then_some(*revision)
+            })
+            .expect("intended receipt contains every prepared mutation domain");
         let encoded_metadata = participant
             .domain
             .metadata(next_revision)
@@ -83,15 +70,13 @@ pub(super) fn assemble(
                 source: Box::new(source),
             })?;
         participants.push(BatchParticipant {
-            participant: participant.participant,
             domain: participant.domain,
             pending: participant.pending,
-            next_revision,
             encoded_metadata,
         });
     }
 
-    let encoded_home_revision = encode_home_revision(next_home);
+    let encoded_home_revision = encode_home_revision(receipt.home_revision);
     let mut totals = BatchTotals::default();
     for participant in &participants {
         for mutation in &participant.pending {
@@ -121,8 +106,6 @@ pub(super) fn assemble(
         .database
         .batch(capacity, fjall::PersistMode::Buffer)
         .map_err(commit_fjall_error)?;
-    let mut domains = Vec::with_capacity(participants.len());
-
     for participant in participants {
         for mutation in participant.pending {
             let family = participant
@@ -155,7 +138,6 @@ pub(super) fn assemble(
                 participant.encoded_metadata.into_boxed_slice(),
             )
             .map_err(commit_fjall_error)?;
-        domains.push((participant.participant.slot(), participant.next_revision));
     }
     batch
         .insert(
@@ -165,9 +147,5 @@ pub(super) fn assemble(
         )
         .map_err(commit_fjall_error)?;
 
-    Ok(AssembledBatch {
-        batch,
-        next_home,
-        domains,
-    })
+    Ok(AssembledBatch { batch })
 }

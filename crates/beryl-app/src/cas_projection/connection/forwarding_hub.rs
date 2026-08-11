@@ -8,18 +8,16 @@ use beryl_backend::{
 };
 use beryl_model::CasThreadId;
 
-use super::{ConnectionRegistryAuthority, ConnectionServiceEpoch, ConnectionThreadClosedOutcome};
-use crate::cas_projection::{
-    ProjectionCoordinatorError, ProjectionRegistryKind, ProjectionServiceGeneration,
-};
+use super::{ConnectionAttachment, ConnectionRegistryAuthority, ConnectionThreadClosedOutcome};
+use crate::cas_projection::{ProjectionCoordinatorError, ProjectionRegistryKind};
 
-pub(super) struct ForwardingEpochEndpoint {
-    epoch: Arc<ConnectionServiceEpoch>,
+pub(super) struct ForwardingAttachmentEndpoint {
+    attachment: Arc<ConnectionAttachment>,
     sink: Box<dyn OrderedTurnStreamSink>,
 }
 
 struct ForwardingHubState {
-    endpoint: Option<ForwardingEpochEndpoint>,
+    endpoint: Option<ForwardingAttachmentEndpoint>,
     inert: bool,
 }
 
@@ -29,7 +27,7 @@ pub(super) struct ForwardingHub {
     state: Mutex<ForwardingHubState>,
 }
 
-pub(super) struct ForwardingHubEpochGuard<'a> {
+pub(super) struct ForwardingHubAttachmentGuard<'a> {
     state: MutexGuard<'a, ForwardingHubState>,
 }
 
@@ -53,20 +51,16 @@ struct ForwardingHubSink {
     hub: Arc<ForwardingHub>,
 }
 
-impl ForwardingEpochEndpoint {
+impl ForwardingAttachmentEndpoint {
     pub(super) fn new(
-        epoch: Arc<ConnectionServiceEpoch>,
+        attachment: Arc<ConnectionAttachment>,
         sink: Box<dyn OrderedTurnStreamSink>,
     ) -> Self {
-        Self { epoch, sink }
+        Self { attachment, sink }
     }
 
-    pub(super) fn service_generation(&self) -> ProjectionServiceGeneration {
-        self.epoch.identity.service_generation()
-    }
-
-    pub(super) fn epoch(&self) -> &Arc<ConnectionServiceEpoch> {
-        &self.epoch
+    pub(super) fn attachment(&self) -> &Arc<ConnectionAttachment> {
+        &self.attachment
     }
 }
 
@@ -89,7 +83,7 @@ impl ForwardingHub {
 
     pub(super) fn install_initial(
         &self,
-        endpoint: ForwardingEpochEndpoint,
+        endpoint: ForwardingAttachmentEndpoint,
     ) -> Result<(), ProjectionCoordinatorError> {
         let mut state = self.lock_state()?;
         if state.inert || state.endpoint.is_some() {
@@ -99,12 +93,12 @@ impl ForwardingHub {
         Ok(())
     }
 
-    pub(super) fn lock_epoch(
+    pub(super) fn lock_attachment(
         &self,
-    ) -> Result<ForwardingHubEpochGuard<'_>, ProjectionCoordinatorError> {
+    ) -> Result<ForwardingHubAttachmentGuard<'_>, ProjectionCoordinatorError> {
         #[cfg(test)]
         observe_forwarding_hub_lock_attempt(self.authority.generation.get());
-        Ok(ForwardingHubEpochGuard {
+        Ok(ForwardingHubAttachmentGuard {
             state: self.lock_state()?,
         })
     }
@@ -121,12 +115,16 @@ impl ForwardingHub {
             .endpoint
             .as_mut()
             .ok_or(ProjectionCoordinatorError::ProjectionWorkerStopped)?;
-        super::record_connection_thread_closed(&self.authority, &endpoint.epoch.router, thread_id)
+        super::record_connection_thread_closed(
+            &self.authority,
+            &endpoint.attachment.router,
+            thread_id,
+        )
     }
 
-    pub(super) fn current_epoch(
+    pub(super) fn current_attachment(
         &self,
-    ) -> Result<Arc<ConnectionServiceEpoch>, ProjectionCoordinatorError> {
+    ) -> Result<Arc<ConnectionAttachment>, ProjectionCoordinatorError> {
         let state = self.lock_state()?;
         if state.inert {
             return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
@@ -134,7 +132,7 @@ impl ForwardingHub {
         state
             .endpoint
             .as_ref()
-            .map(|endpoint| Arc::clone(&endpoint.epoch))
+            .map(|endpoint| Arc::clone(&endpoint.attachment))
             .ok_or(ProjectionCoordinatorError::ProjectionWorkerStopped)
     }
 
@@ -142,65 +140,6 @@ impl ForwardingHub {
         self.state
             .lock()
             .is_ok_and(|state| state.endpoint.is_none())
-    }
-
-    /// Recovers the epoch barrier even after poison and atomically removes its executable endpoint.
-    ///
-    /// The returned endpoint remains the caller's exact inert ownership attachment. Any work that
-    /// cancellation can wake must happen after this method releases the hub lock.
-    pub(super) fn detach_inert_recovering_poison(&self) -> Option<ForwardingEpochEndpoint> {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        state.inert = true;
-        state.endpoint.take()
-    }
-
-    /// Recovers the epoch barrier after poison and terminalizes it without moving its endpoint.
-    ///
-    /// This is the allocation-free fallback used when adoption cannot reserve storage for a
-    /// detached endpoint. The returned epoch clone lets the caller request cancellation after the
-    /// hub lock is released; explicit disposition remains able to detach and join the resident
-    /// endpoint later.
-    pub(super) fn mark_inert_in_place_recovering_poison(
-        &self,
-    ) -> Option<Arc<ConnectionServiceEpoch>> {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        state.inert = true;
-        state
-            .endpoint
-            .as_ref()
-            .map(|endpoint| Arc::clone(endpoint.epoch()))
-    }
-
-    #[cfg(test)]
-    pub(super) fn poison_epoch_barrier_for_test(&self) {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _state = self.state.lock().unwrap();
-            panic!("poison forwarding-hub epoch barrier for test");
-        }));
-    }
-
-    #[cfg(test)]
-    pub(super) fn is_inert_and_detached_recovering_poison_for_test(&self) -> bool {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        state.inert && state.endpoint.is_none()
-    }
-
-    #[cfg(test)]
-    pub(super) fn is_inert_and_attached_recovering_poison_for_test(&self) -> bool {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        state.inert && state.endpoint.is_some()
     }
 
     fn lock_state(&self) -> Result<MutexGuard<'_, ForwardingHubState>, ProjectionCoordinatorError> {
@@ -237,7 +176,7 @@ impl ForwardingHubLockAttemptObservation {
     pub(in crate::cas_projection) fn wait(self) {
         self.reached
             .recv_timeout(std::time::Duration::from_secs(10))
-            .expect("the exact forwarding hub must reach its epoch-lock attempt");
+            .expect("the exact forwarding hub must reach its attachment-lock attempt");
     }
 }
 
@@ -260,30 +199,15 @@ fn observe_forwarding_hub_lock_attempt(connection_generation: u64) {
     }
 }
 
-impl ForwardingHubEpochGuard<'_> {
-    pub(super) fn epoch(&self) -> Option<&Arc<ConnectionServiceEpoch>> {
+impl ForwardingHubAttachmentGuard<'_> {
+    pub(super) fn attachment(&self) -> Option<&Arc<ConnectionAttachment>> {
         self.state
             .endpoint
             .as_ref()
-            .map(ForwardingEpochEndpoint::epoch)
+            .map(ForwardingAttachmentEndpoint::attachment)
     }
 
-    pub(super) fn service_generation(&self) -> Option<ProjectionServiceGeneration> {
-        self.state
-            .endpoint
-            .as_ref()
-            .map(ForwardingEpochEndpoint::service_generation)
-    }
-
-    pub(super) fn replace(
-        &mut self,
-        endpoint: ForwardingEpochEndpoint,
-    ) -> Option<ForwardingEpochEndpoint> {
-        debug_assert!(!self.state.inert);
-        self.state.endpoint.replace(endpoint)
-    }
-
-    pub(super) fn mark_inert(&mut self) -> Option<ForwardingEpochEndpoint> {
+    pub(super) fn mark_inert(&mut self) -> Option<ForwardingAttachmentEndpoint> {
         self.state.inert = true;
         self.state.endpoint.take()
     }

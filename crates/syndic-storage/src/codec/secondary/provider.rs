@@ -46,6 +46,8 @@ impl Family for ProviderObservationChunksFamily {
 pub(crate) struct ProviderNarrativeSpansFamily;
 pub(crate) type ProviderNarrativeSpansCodec = ExactCodec<ProviderNarrativeSpansFamily>;
 
+const PROVIDER_NARRATIVE_SPAN_VALUE_BYTES: usize = 16 + 8 + 8 + 8 + 8 + 32 + 8 + 8 + 32 + 32;
+
 impl ProviderNarrativeSpansFamily {
     pub(crate) fn validate_key_value(
         key: &ProviderNarrativeSpanKey,
@@ -70,7 +72,7 @@ impl Family for ProviderNarrativeSpansFamily {
     const NAME: &'static str = "provider-narrative-spans";
     const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(1);
     const MAX_KEY_BYTES: usize = ProviderNarrativeSpanKey::ENCODED_BYTES;
-    const MAX_VALUE_BYTES: usize = SMALL_MAX;
+    const MAX_VALUE_BYTES: usize = PROVIDER_NARRATIVE_SPAN_VALUE_BYTES;
 
     fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
         Ok((*key).encode())

@@ -5,7 +5,7 @@ fn enum_control<C: ProviderObservationStageCallback>(
     field: ProviderField,
     value: ProviderEnumValue,
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     stager.control(
         ProviderObservationControl::Enum {
             context: ProviderValueContext::Field(field),
@@ -20,7 +20,7 @@ fn begin_item<C: ProviderObservationStageCallback>(
     lifecycle: ProviderObservationItemLifecycle,
     kind: ProviderObservationItemKind,
     callback: &mut C,
-) -> Result<ProviderObservationStager, ProviderObservationStagingError<C::Error>> {
+) -> Result<ProviderObservationStager, ProviderObservationStagingError> {
     let mut stager = ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),
         ProviderObservationBegin::Item { lifecycle, kind },
@@ -36,7 +36,7 @@ fn container<C: ProviderObservationStageCallback>(
     context: ProviderValueContext,
     kind: ProviderContainer,
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     let control = if begin {
         ProviderObservationControl::BeginContainer {
             context,
@@ -57,7 +57,7 @@ fn element<C: ProviderObservationStageCallback>(
     context: ProviderValueContext,
     index: u64,
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     let control = if begin {
         ProviderObservationControl::BeginElement { context, index }
     } else {
@@ -66,9 +66,7 @@ fn element<C: ProviderObservationStageCallback>(
     stager.control(control, callback)
 }
 
-fn validation_error<E: std::error::Error + Send + Sync + 'static>(
-    result: Result<(), ProviderObservationStagingError<E>>,
-) -> ProviderObservationValidatorError {
+fn validation_error(result: Result<(), ProviderObservationStagingError>) -> ProviderObservationValidatorError {
     match result {
         Err(ProviderObservationStagingError::Validation(error)) => error,
         Err(error) => panic!("unexpected staging error: {error}"),
@@ -81,7 +79,7 @@ fn context_text<C: ProviderObservationStageCallback>(
     context: ProviderValueContext,
     bytes: &[u8],
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     stager.control(ProviderObservationControl::BeginField(context), callback)?;
     stager.fragment(
         ProviderObservationStagingBytes::new(context, bytes).unwrap(),

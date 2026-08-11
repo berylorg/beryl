@@ -63,3 +63,16 @@ stable control slot; candidate-hold and worker-pool accounting; mismatch, poison
 partial attempts; success and failure ownership; exact rejected-candidate hold settlement before
 publication; and absence of backend, storage, unsubscribe, recovered-read, publication, rebind,
 scheduler-dequeue, or old-gate effects.
+
+## Later Course Correction
+
+The stable-core and service-epoch correction above was itself invalidated. Current recovery closes
+the failed service and all derived connections, brokers, projections, loaded-session registrations,
+schedulers, and process-local authority. It then creates a fresh service and fresh connections and
+reacquires fresh projections only from durable Syndic and binding authority.
+
+The router-rebinding evidence remains valid historical evidence, but no stable core, retained
+lease, service epoch, connection quarantine, or adoption transaction now crosses store recovery.
+The later Phase 96 terminal-disposition gap confirmed that preserving the topology kept generating
+additional old-owner retirement obligations; the retained-adoption implementation is therefore
+deleted or replaced rather than repaired further.

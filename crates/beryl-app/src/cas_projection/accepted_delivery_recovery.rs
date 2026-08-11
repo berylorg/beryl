@@ -146,7 +146,6 @@ fn converge_case(
                     stopping.target().turn_id(),
                     observed_at,
                     point_limit(),
-                    None,
                 )
                 .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
             }
@@ -180,7 +179,6 @@ fn converge_case(
                 turn_id,
                 minimum_timestamp,
                 point_limit(),
-                None,
             )
             .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
             diagnostics.terminal_convergences = diagnostics.terminal_convergences.saturating_add(1);
@@ -265,7 +263,33 @@ fn converge_compaction_restart(
             return Err(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant);
         }
     };
-    let _ = home.execute_current(command);
+    match home.execute_current(command) {
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+            return Err(ProjectionCoordinatorError::CommandNotCommitted(evidence));
+        }
+        beryl_home_store::CommandOutcome::Committed {
+            receipt: _,
+            later_failure: None,
+        } => {}
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(later_failure),
+        } => {
+            return Err(ProjectionCoordinatorError::CommandCommitted {
+                receipt,
+                later_failure,
+            });
+        }
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            return Err(ProjectionCoordinatorError::CommandIndeterminate {
+                failure,
+                reconciliation,
+            });
+        }
+    }
     let settled = storage
         .compaction_recovery_read(home, operation_id, point_limit())
         .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?
@@ -319,7 +343,6 @@ fn publish_source_less_terminal(
         turn_id,
         minimum_observed_at,
         point_limit(),
-        None,
     )
     .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)
 }

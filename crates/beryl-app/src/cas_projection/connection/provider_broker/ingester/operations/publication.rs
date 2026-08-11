@@ -100,7 +100,7 @@ impl Ingester {
         let observation_route = bound.route().clone();
         let mut bound = Some(bound);
         let prepared = loop {
-            let verification = match self.live_command().await_current_or_verification(
+            let verification = match self.live_command().enter_current_home(
                 &self.home,
                 self.home_id,
                 self.home_generation,
@@ -114,12 +114,6 @@ impl Ingester {
                     return self.authority_lost_terminal();
                 }
             };
-            #[cfg(all(test, feature = "test-faults"))]
-            super::tests::pause_seal_preparation(
-                self.home_id,
-                observation_identity,
-                &observation_route,
-            );
             let observation = match bound.take() {
                 Some(observation) => observation,
                 None => match super::super::super::consumer::reopen_exact(
@@ -134,7 +128,7 @@ impl Ingester {
                         let settlement = verification.settle_after_operation();
                         match settlement {
                             Ok(settlement)
-                                if settlement.verified_current()
+                                if settlement.requires_retry()
                                     && error.verification_ambiguous(self.home_generation) =>
                             {
                                 continue;
@@ -160,7 +154,7 @@ impl Ingester {
                 &self.cancelled,
             );
             match verification.settle_after_operation() {
-                Ok(settlement) if settlement.verified_current() => match attempt {
+                Ok(settlement) if settlement.requires_retry() => match attempt {
                     Ok(prepared) => break prepared,
                     Err(error) if error.verification_ambiguous(self.home_generation) => continue,
                     Err(_) => {
@@ -191,10 +185,8 @@ impl Ingester {
             &self.cancelled,
             self.live_command(),
         );
-        let published_activity = match publication {
-            Ok(effect) => effect
-                .into_activity()
-                .map(|activity| activity.bind(&permit)),
+        match publication {
+            Ok(()) => {}
             Err(error) if error.authority().is_some() => {
                 permit.settle_authority_lost();
                 return self.authority_lost_terminal();
@@ -204,21 +196,16 @@ impl Ingester {
                 return self.failed_permit(route, permit);
             }
         };
-        self.finish_provider_publication(route, permit, published_activity)
+        self.finish_provider_publication(route, permit)
     }
 
     pub(in super::super) fn finish_provider_publication(
         &mut self,
         route: beryl_backend::ProviderObservationRoute,
         permit: SourcePublicationPermit,
-        published_activity: Option<super::super::super::consumer::BoundPublishedHardStopActivity>,
     ) -> (super::super::BrokerReply, bool) {
         match permit.finish_held() {
             Ok(post_commit) => {
-                if let Some(activity) = published_activity {
-                    self.stop_coordinator
-                        .record_published_activity(activity.into_published());
-                }
                 post_commit.release();
                 (
                     super::super::BrokerReply::Applied(OrderedTurnStreamCompletion::Applied),

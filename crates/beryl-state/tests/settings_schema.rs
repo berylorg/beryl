@@ -3,10 +3,10 @@ mod support;
 use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
-    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
+    CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, RecordCodec,
-    RecordFamily, RecordVersion, StorageDomain,
+    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder,
+    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_state::{BerylState, BerylStateRegistrationError};
 use tempfile::tempdir;
@@ -110,6 +110,14 @@ impl DomainMutation<RawSettingsDomain> for PutRawSetting {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, RawSettingsDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<RawSettingRecordV1>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, RawSettingsDomain>,
@@ -139,7 +147,13 @@ fn settings_reopen_rejects_an_unknown_setting_schema() {
             },
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed settings fixture command, got {outcome:?}"),
+    }
     store.close().unwrap();
 
     let mut store = HomeStore::open(HomeOpenOptions::new(

@@ -114,7 +114,12 @@ fn successful_recovery_requires_old_handle_reacquisition() {
         .add(old.fixture_contribution(old.revision(&store).unwrap(), fixture))
         .unwrap();
     faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(store.execute(command).is_err());
+    assert!(matches!(
+        store.execute(command),
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: beryl_home_store::CommandError::Commit { .. }
+        }
+    ));
     assert_eq!(store.health().state(), HomeHealthState::Verifying);
 
     faults.fail_next(FaultPoint::BeforeVerification);

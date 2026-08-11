@@ -3,8 +3,8 @@ use std::{
     collections::HashSet,
     marker::PhantomData,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
 };
 
@@ -12,20 +12,139 @@ use beryl_model::{DomainRevision, HomeRevision};
 use thiserror::Error;
 
 use crate::{
-    AdmittedSidecar, DomainCallbackError, DomainHandle, DomainReader, ReadError, RecordCodec,
-    StorageDomain,
     domain::{RegisteredDomain, StoreInstanceId},
     read::{encode_stored_key, encode_value},
+    AdmittedSidecar, DomainCallbackError, DomainHandle, DomainReader, ReadError, RecordCodec,
+    StorageDomain,
 };
 
 mod participant;
 mod result;
 
-pub(crate) use participant::{DomainMutationPlan, DomainParticipant};
 use participant::{mutation_plan, validation_plan};
+pub(crate) use participant::{DomainMutationPlan, DomainParticipant};
 pub use result::{
-    CommandError, CommitReceipt, CommitReceiptError, ContributorCallbackStage, RevisionConflict,
+    CommandError, CommandOutcome, CommitReceipt, CommitReceiptError, ContributorCallbackStage,
+    ReconciliationDescriptor, RevisionConflict, StorageCommitState, StorageErrorClass,
+    StorageResource,
 };
+
+const RECONCILIATION_DESCRIPTOR_FIXED_BYTES: usize = 128;
+const RECONCILIATION_DOMAIN_FIXED_BYTES: usize = 128;
+const RECONCILIATION_RECORD_FIXED_BYTES: usize = 128;
+
+/// One codec-family record quota reserved before writer admission.
+pub(crate) struct ReservedRecordQuota {
+    pub(crate) family: &'static str,
+    pub(crate) codec_type: TypeId,
+    pub(crate) count: usize,
+}
+
+/// One typed participant's pre-admission reconciliation reservation facts.
+pub(crate) struct ReconciliationReservationOutput {
+    pub(crate) domain: &'static str,
+    pub(crate) quotas: Vec<ReservedRecordQuota>,
+    pub(crate) descriptor_bytes: usize,
+}
+
+/// Exact materialized old/new facts for one record in an opaque reconciliation descriptor.
+pub(crate) struct MaterializedRecordDescriptor {
+    pub(crate) family_slot: usize,
+    pub(crate) key: Box<[u8]>,
+    pub(crate) old: Option<Box<[u8]>>,
+    pub(crate) new: Option<Box<[u8]>>,
+}
+
+/// Exact materialized reconciliation facts for one participating domain.
+pub(crate) struct MaterializedDomainDescriptor {
+    pub(crate) domain_slot: usize,
+    pub(crate) intended_revision: DomainRevision,
+    pub(crate) records: Vec<MaterializedRecordDescriptor>,
+}
+
+/// Typed pre-admission collector for records that may require reconciliation.
+///
+/// Reservation declares only bounded per-codec record quotas, so it needs neither caller keys,
+/// a snapshot, nor a domain registry. The admitted writer later discovers exact pending natural
+/// record identities and materializes their exact old and intended new values.
+pub struct ReconciliationReservation<'a, D: StorageDomain> {
+    quotas: Vec<ReservedRecordQuota>,
+    families: HashSet<&'static str>,
+    descriptor_bytes: usize,
+    _callback: PhantomData<&'a mut ()>,
+    _typed: PhantomData<fn(D) -> D>,
+}
+
+impl<'a, D: StorageDomain> ReconciliationReservation<'a, D> {
+    pub(crate) fn new() -> Self {
+        Self {
+            quotas: Vec::new(),
+            families: HashSet::new(),
+            descriptor_bytes: RECONCILIATION_DESCRIPTOR_FIXED_BYTES
+                .saturating_add(RECONCILIATION_DOMAIN_FIXED_BYTES),
+            _callback: PhantomData,
+            _typed: PhantomData,
+        }
+    }
+
+    /// Reserves a bounded count of natural records in one exact codec family.
+    ///
+    ///
+    /// One family may be declared only once. Its conservative descriptor charge includes the
+    /// codec's maximum encoded stored-key size and both old/new maximum stored-value envelopes.
+    pub fn reserve_records<R: RecordCodec<D>>(
+        &mut self,
+        count: usize,
+    ) -> Result<(), MutationBuildError> {
+        if count == 0 {
+            return Err(MutationBuildError::ZeroReconciliationReservation {
+                domain: D::NAME,
+                family: R::FAMILY,
+            });
+        }
+        if !self.families.insert(R::FAMILY) {
+            return Err(MutationBuildError::DuplicateReconciliationReservation {
+                domain: D::NAME,
+                family: R::FAMILY,
+            });
+        }
+        let stored_value_bytes = R::MAX_VALUE_BYTES.saturating_add(crate::RECORD_VERSION_BYTES);
+        let per_record = RECONCILIATION_RECORD_FIXED_BYTES
+            .checked_add(R::MAX_KEY_BYTES)
+            .and_then(|bytes| bytes.checked_add(stored_value_bytes))
+            .and_then(|bytes| bytes.checked_add(stored_value_bytes))
+            .ok_or(MutationBuildError::ReconciliationReservationOverflow {
+                domain: D::NAME,
+                family: R::FAMILY,
+            })?;
+        let total = per_record.checked_mul(count).ok_or(
+            MutationBuildError::ReconciliationReservationOverflow {
+                domain: D::NAME,
+                family: R::FAMILY,
+            },
+        )?;
+        self.descriptor_bytes = self.descriptor_bytes.checked_add(total).ok_or(
+            MutationBuildError::ReconciliationReservationOverflow {
+                domain: D::NAME,
+                family: R::FAMILY,
+            },
+        )?;
+        self.quotas.push(ReservedRecordQuota {
+            family: R::FAMILY,
+            codec_type: TypeId::of::<R>(),
+            count,
+        });
+        Ok(())
+    }
+
+    pub(crate) fn into_output(self) -> ReconciliationReservationOutput {
+        ReconciliationReservationOutput {
+            domain: D::NAME,
+            quotas: self.quotas,
+            descriptor_bytes: self.descriptor_bytes,
+        }
+    }
+}
 
 /// Cooperative cancellation observed only before serialized writer admission.
 #[derive(Clone, Default)]
@@ -62,6 +181,15 @@ pub trait DomainMutation<D: StorageDomain>: Send + 'static {
     /// This method must be deterministic, bounded, and free of external I/O or
     /// side effects. Same-store writer reentry is rejected.
     fn validate(&self, reader: &DomainReader<'_, D>) -> Result<(), Self::Error>;
+
+    /// Reserves the exact codec-family quotas that this mutation may change.
+    ///
+    /// This pre-admission callback must be deterministic, bounded, and free of reads, external
+    /// I/O, and side effects. Each possible codec family must be reserved exactly once.
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, D>,
+    ) -> Result<(), Self::Error>;
 
     /// Adds typed puts and deletes after every participant validates.
     ///
@@ -116,6 +244,30 @@ pub enum MutationBuildError {
     DuplicateRecord {
         /// Stable domain name.
         domain: &'static str,
+    },
+    /// One reconciliation quota requested no records.
+    #[error("domain `{domain}` reserves zero reconciliation records for family `{family}`")]
+    ZeroReconciliationReservation {
+        /// Stable domain name.
+        domain: &'static str,
+        /// Codec family.
+        family: &'static str,
+    },
+    /// One codec family was declared more than once for reconciliation.
+    #[error("domain `{domain}` reserves reconciliation family `{family}` more than once")]
+    DuplicateReconciliationReservation {
+        /// Stable domain name.
+        domain: &'static str,
+        /// Codec family.
+        family: &'static str,
+    },
+    /// Conservative reconciliation descriptor accounting exceeded `usize`.
+    #[error("domain `{domain}` reconciliation reservation overflows for family `{family}`")]
+    ReconciliationReservationOverflow {
+        /// Stable domain name.
+        domain: &'static str,
+        /// Codec family.
+        family: &'static str,
     },
     /// A typed codec rejected its key or value.
     #[error(transparent)]

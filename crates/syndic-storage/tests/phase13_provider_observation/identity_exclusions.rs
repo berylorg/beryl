@@ -3,7 +3,7 @@ use super::*;
 fn control(
     stager: &mut ProviderObservationStager,
     value: ProviderObservationControl,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     stager.control(value, callback).unwrap();
 }
@@ -11,7 +11,7 @@ fn control(
 fn begin_item(
     byte: u8,
     kind: ProviderObservationItemKind,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
     let mut stager = ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),
@@ -30,7 +30,7 @@ fn begin_container(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     container: ProviderContainer,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,
@@ -46,7 +46,7 @@ fn end_container(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     container: ProviderContainer,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,
@@ -62,7 +62,7 @@ fn context_text(
     stager: &mut ProviderObservationStager,
     context: ProviderValueContext,
     bytes: &[u8],
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,

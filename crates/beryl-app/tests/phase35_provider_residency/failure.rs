@@ -89,7 +89,12 @@ fn prove_fragment_store_failure() {
             syndic_storage::test_faults::ProviderObservationCorruption::BuildDigest,
         )
         .unwrap();
-    harness.store().execute_current(corruption).unwrap();
+    match harness.store().execute_current(corruption) {
+        beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. } => panic!("expected committed corruption injection, got {outcome:?}"),
+        outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"),
+        outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate corruption injection: {outcome:?}"),
+    }
     barrier.release();
 
     harness.wait_for_target_closed();

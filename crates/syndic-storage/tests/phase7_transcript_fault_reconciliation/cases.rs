@@ -44,7 +44,29 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
         );
         let command = command(&store, contribution);
         faults.fail_next(point);
-        assert!(store.execute(command).is_err());
+        match (point, store.execute(command)) {
+            (
+                FaultPoint::BeforeCommit,
+                beryl_home_store::CommandOutcome::NotCommitted {
+                    evidence: CommandError::Commit { .. },
+                },
+            )
+            | (
+                FaultPoint::AfterPersist,
+                beryl_home_store::CommandOutcome::Committed {
+                    later_failure: Some(CommandError::Persistence { .. }),
+                    ..
+                },
+            ) => {}
+            (
+                FaultPoint::AfterCommitBeforePersist,
+                outcome @ beryl_home_store::CommandOutcome::Indeterminate {
+                    failure: CommandError::Persistence { .. },
+                    ..
+                },
+            ) => assert!(format!("{outcome:?}").contains("Indeterminate")),
+            (_, outcome) => panic!("unexpected transcript fault outcome: {outcome:?}"),
+        }
         assert_eq!(store.health().state(), HomeHealthState::Verifying);
 
         store.verify_health().unwrap();

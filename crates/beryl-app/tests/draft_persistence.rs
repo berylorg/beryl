@@ -5,7 +5,7 @@ use beryl_app::draft_persistence::{
     DraftCompletionAction, DraftFlushAction, DraftPersistenceService, DraftPersistenceTime,
     execute_draft_save, read_draft_persistence_seed,
 };
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
     SyndicThreadId,
@@ -50,7 +50,22 @@ impl Fixture {
                 storage.create_thread(storage.revision(&store).expect("domain revision"), creation),
             )
             .expect("add creation");
-        store.execute(command).expect("create thread");
+        match store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("create thread unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("create thread committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("create thread indeterminate: {outcome:?}")
+            }
+        }
         Self {
             _directory: directory,
             store,
@@ -119,7 +134,22 @@ impl Fixture {
                 apply,
             ))
             .expect("add setting update");
-        self.store.execute(command).expect("publish setting");
+        match self.store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("publish setting unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("publish setting committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("publish setting indeterminate: {outcome:?}")
+            }
+        }
         settings
             .setting(&self.store, SettingKey::DraftAutosaveInterval)
             .expect("read setting")

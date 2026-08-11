@@ -1,239 +1,176 @@
 # Goals
 
-Define Beryl's internal backend runtime system for launching, probing, connecting to, supervising, and recovering `codex app-server` runtime targets.
+Define Beryl's internal backend runtime system for launching, connecting to, supervising, and recovering one pinned `codex app-server` release per configured runtime.
 
-Preserve exact runtime, root, backend-process, Syndic-thread, CAS-thread, turn, auth, policy, sandbox, and protocol boundaries while allowing user-visible features to degrade predictably when a runtime is unavailable.
+Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authentication, policy, sandbox, and protocol boundaries while rebuilding failed runtime services from durable authority.
 
 ## Non-goals
 
-- Defining user-visible recovery copy, disabled states, or runtime/root workflows that belong in feature docs.
+- Defining user-visible recovery copy, disabled states, or runtime/root workflows.
 - Bundling, installing, replacing, or modifying Codex.
-- Exposing operator-managed unauthenticated app-server listeners.
-- Treating backend thread enumeration as the source of Beryl thread, runtime, or root identity.
-- Owning Syndic durable transcript history, transcript projection, or transcript presentation policy.
+- Exposing operator-managed or unauthenticated app-server listeners.
+- Treating backend thread enumeration or historical reads as Beryl catalog or transcript authority.
+- Dynamically probing backend capabilities or destructive experimental methods.
+- Retaining or adopting failed connection/service internals after Beryl-home recovery.
+- Providing hard-stop escalation or managing CAS process memory.
 
 # Decisions
 
 ## Runtime Ownership
 
-- Beryl integrates with Codex through `codex app-server` as an out-of-process client.
-- Beryl launches and owns managed backend processes in V1. It does not attach to already running app-server instances.
-- One configured runtime is identified by one canonical Codex CLI executable path plus its derived Host or exact WSL-distribution mode. Runtime identity is not inferred from `PATH` and is not merely the environment name.
-- Runtime admission canonicalizes the selected file, derives Host or WSL distribution from its filesystem boundary, converts WSL selection paths to an exact runtime-native path, and rejects paths whose executable or environment identity cannot be proven.
-- Backend availability is tracked per configured executable runtime, not globally, not merely per Host or WSL environment, and not per root.
-- A backend-unavailable runtime disables backend-required operations for threads bound to it without erasing runtime/root records, rebinding threads, changing window selection, or requiring application exit.
-- One backend-unavailable executable runtime does not disable another configured executable runtime, including another path in the same Host or WSL environment.
+- Beryl integrates with CAS as an out-of-process client and owns every app-server process it launches.
+- `beryl-app` owns process-wide runtime interest, launch and retirement orchestration, and the one
+  single-flight same-home recovery supervisor. `beryl-backend` owns construction, process-tree
+  supervision, bounded lifecycle termination, and disposal of each managed app-server process.
+- One configured runtime is identified by one canonical Codex CLI executable path plus its Host or exact WSL distribution. Runtime identity is not inferred from `PATH` or from an environment label alone.
+- Runtime admission is complete only when one production foreground session proves all four
+  release-admission parts: opaque provenance from the exact Beryl-managed launch; an initialize
+  response user-agent product token matching exactly `codex-cli 0.146.0`; the immutable foreground
+  profile selected before the first byte and initialized with every required notification enabled;
+  and exactly one effective `config/read` on that same initialized session.
+- That sole admission `config/read` must prove
+  `features.multi_agent_v2.enabled = true` and
+  `features.multi_agent_v2.expose_spawn_agent_model_overrides = true`, with both dotted origins
+  exactly `sessionFlags`. Missing, false, malformed, superseded, differently sourced, or detached
+  facts fail closed, and no partial runtime record is committed.
+- Admission and launch do not send capability probes, create synthetic threads, or issue destructive requests.
+- Backend availability is tracked per configured executable runtime. Failure disables backend-required operations only for threads bound to that runtime and never erases or rebinds durable Beryl state.
 
 ## Launch And Listener Security
 
-- Host-Windows launch executes the runtime's exact configured Codex CLI path directly with `app-server`; it does not resolve `codex` from the process `PATH`.
-- WSL launch uses `wsl.exe`, targets the runtime's derived distro, sets the requested working directory, and executes the runtime's exact configured runtime-native Codex CLI path with `app-server` inside that distro.
-- Every managed launch enables strict configuration and requires the effective nested CAS settings
-  `features.multi_agent_v2.enabled = true` and
-  `features.multi_agent_v2.expose_spawn_agent_model_overrides = true`. Release defaults and launch
-  arguments alone are not compatibility authority. Beryl supplies them as one atomic SessionFlags
-  table override so a later scalar feature toggle cannot replace the configured object.
-- A Beryl-owned app-server listens on an authenticated loopback WebSocket endpoint chosen by Beryl.
-- Beryl generates a high-entropy capability token per managed launch, stores it only in a per-run local token file and memory, passes the token file to app-server auth configuration, uses the token in WebSocket handshakes, and removes the token file when the server exits.
-- Managed listeners bind only to loopback addresses and must not expose unauthenticated non-loopback endpoints.
-- Cross-boundary communication uses the app-server contract rather than direct access to Codex storage or process memory.
-- The managed process owner mints the only production client connectors for its authenticated
-  listener. Each connector carries opaque launch provenance tied to that exact process boundary,
-  runtime identity, executable paths, runtime mode, and working directory;
-  caller-supplied endpoints, bearer values, executable labels, or detached probe reports cannot
-  manufacture production admission authority.
-- A thread's exact runtime/root binding supplies the CAS working directory for its execution projection. CAS alone applies working-directory-dependent `AGENTS.md`, skill discovery, sandbox, configuration, and instruction behavior; Beryl neither pre-reads nor emulates those rules.
+- Host launch executes the exact configured CLI path with `app-server`; WSL launch uses the exact configured distribution, working directory, and runtime-native executable path.
+- Every managed launch applies the exact pinned configuration required by Beryl as one atomic configuration override. Configuration mismatch makes the runtime unavailable; Beryl does not probe around it.
+- A managed app-server listens only on a Beryl-selected authenticated loopback WebSocket endpoint.
+- Beryl creates one high-entropy token per launch, stores it only in memory and a per-run local
+  token file, and uses it for the handshake. `beryl-backend` removes the file and clears retained
+  token material on every failed spawn, launch or admission failure, cancellation, normal or
+  abnormal process exit, and disposal path; cleanup is idempotent and joined before managed-process
+  disposal completes.
+- The managed-process owner mints production connectors tied to the exact process, runtime, executable, mode, and working directory. Caller-supplied endpoints, bearer values, labels, or detached reports cannot manufacture admission authority.
+- CAS alone applies working-directory-dependent instructions, skills, sandbox, configuration, and policy. Beryl neither reads nor emulates them.
 
 ## Backend Lifecycle
 
-- Launching a backend through a local child process, including through `wsl.exe`, is a supported lifecycle mode.
-- The GUI owns every backend child process it launches and terminates those processes when no longer needed or when the GUI exits.
-- Managed termination covers the supervised runtime boundary, including descendants that would otherwise outlive the immediate child.
-- Host-Windows launches are supervised as Windows process trees.
-- WSL launches create a Beryl-owned cleanup boundary inside the selected distro.
-- Ordinary close of one main window releases only that window's runtime interest. A managed backend remains alive while another window or in-flight operation requires it.
-- Dedicated application Exit and final process shutdown explicitly stop active managed backend processes before process exit. Destructors are fallback only.
-- Backend process lifetime is separate from backend client connection lifetime.
-- Dropping one client connection must not terminate a managed app-server still needed by other work.
-- One Beryl process may manage backend processes for multiple runtimes as needed, but uses at most one active managed app-server process for a given runtime.
-- Foreground turns, thread activation, inventory refresh, title generation, status operations, and lazy maintenance use independent backend client connections when sharing one connection would delay foreground streaming or completion.
-- A foreground candidate connection is created with immutable full-profile intent and its
-  configured parser, page, pre-bind control, queue, and concurrency limits before initialize reads
-  its first byte. Background request-only clients use a distinct bounded response policy and cannot
-  be promoted into a foreground stream connection after construction.
-- Status model discovery keeps `model/list` cursor pagination intact. One popup query owns a
-  runtime-session generation, bounded resident result pages, and one continuation request; popup
-  close, runtime change, or stale generation cancels it. The runtime manager never aggregates all
-  pages into a process cache.
+- `beryl-backend` supervises every launched Host or WSL process tree and explicitly terminates it
+  when `beryl-app` retirement orchestration releases the final runtime requirement or final
+  shutdown begins.
+- Bounded process-shutdown escalation belongs only to managed-runtime lifecycle disposal. It is not
+  turn control, a hard stop, terminal-history evidence, or authority to terminate a selected turn.
+- One Beryl process uses at most one active managed app-server process per configured runtime.
+- Backend process lifetime is independent from client-connection lifetime. Dropping one connection does not stop a process still needed by another window or operation.
+- Runtime interest is process-wide and shared by the `beryl-app` runtime orchestrator. Releasing
+  one window's interest does not stop a runtime still required by another window or an already
+  required operation. After the final runtime interest disappears and no required operation
+  remains, that orchestrator retires its app-owned drivers, ingesters, brokers, routers,
+  schedulers, projections, queues, and workers, then directs `beryl-backend` to retire its client
+  and session internals, managed process tree, listener, token material, queues, and workers.
+- The `beryl-app` runtime orchestrator owns one opaque `runtime activity period` identity for each
+  continuously usable published runtime service and supplies it to every matching Syndic activity
+  projection mutation. Thread switching, turn completion, and later turns retain that identity.
+  Managed-process restart, runtime teardown or replacement, and same-home service replacement end
+  it before old-period facts can publish. An unpublished candidate's fresh identity becomes current
+  only in the atomic replacement publication; late facts for an ended period are rejected.
+- Foreground turns and bounded background operations use separate connections when sharing one would delay foreground streaming or terminal handling.
+- Every connection is created with its fixed parser, queue, payload, page, and concurrency bounds before reading its first byte. A request-only connection cannot later become a foreground capture connection.
+- Status and model lists remain cursor-paged and revision-bound; the `beryl-app` runtime
+  orchestrator does not aggregate a complete backend inventory.
 
 ## Progressive Warm-Up
 
-- Opening the Beryl home and creating restored conversation shells does not launch CAS.
-- After shells exist, Beryl requests warm-up only for each unique runtime needed by a currently open window's selected thread.
-- One process-wide runtime manager coalesces concurrent warm-up requests for the same runtime into one launch/probe lifecycle and fans the resulting readiness state out to every interested window.
-- Thread-catalog membership alone never warms a runtime.
-- Cancelling one window's interest does not cancel a shared launch still required by another window.
-- Runtime launch, probe, retry, and shutdown work remains off the GPUI thread and uses bounded request and process timeouts.
+- Opening Beryl and restoring conversation shells does not launch CAS.
+- Warm-up begins only for unique runtimes required by currently open selected threads. Catalog membership alone never warms a runtime.
+- The `beryl-app` runtime orchestrator coalesces concurrent interest in the same runtime and fans
+  the result to interested windows.
+- Cancelling one interest does not cancel launch while another interest remains.
+- Cancelling the final interest permits the same orderly zero-interest retirement once no required
+  operation remains; an in-flight required operation is not abandoned merely to reach zero interest.
+- Launch, exact-release admission, retry, and shutdown run off the GUI thread with bounded request and process timeouts.
 
 ## Neutral Maintenance Roots
 
-- Maintenance turns that must avoid project instructions use a runtime-local empty directory reserved for the managed CAS lifecycle.
-- Each Host runtime uses its own empty directory under the Beryl home sidecar area, keyed by a non-secret digest of configured executable identity.
-- Each WSL runtime uses an empty per-Beryl-home-and-runtime directory under that distribution's user cache directory, keyed by non-secret digests of canonical Beryl-home and configured executable identities.
-- The WSL directory contains no durable Beryl authority. It is recreated or validated as empty before use and may be removed when the runtime shuts down.
-- Beryl does not fall back to a project root when neutral-directory creation or validation fails; the maintenance operation is unavailable for that runtime.
+- Maintenance operations that must avoid project instructions use an empty runtime-local directory reserved for that managed runtime.
+- Host and WSL directories are keyed by non-secret Beryl-home and runtime identity, contain no durable conversation authority, and are recreated or validated as empty before use.
+- Beryl never falls back to a project root when neutral-root preparation fails.
 
-## Capability Probing
+## Pinned Protocol Boundary
 
-- Runtime admission performs a bounded executable/version and required-capability probe against the exact selected path before the runtime and its home root may commit. Failure returns a typed admission error and leaves no partial runtime record or managed process.
-- Beryl probes backend compatibility when a managed backend is launched or explicitly probed for a runtime target.
-- Compatibility probing validates the required app-server contract for the current Beryl target version and capability set.
-- Required capabilities include exact thread resume by id for approved live execution/control, live
-  turn event streaming suitable for Syndic capture, model listing, cwd-scoped config reads, ordered
-  text and local-image user input on turn start or steering, developer-instructions payloads,
-  active-turn steering by expected turn id, active-turn interruption, thread compaction, dynamic
-  tool registration, and reverse dynamic tool calls. Runtime-readable files and transcript media
-  use Beryl's bounded filesystem and asset boundaries rather than app-server `fs/readFile`.
-- The fixed steering compatibility probe is a private non-destructive absent-target request with
-  one minimal valid text input and an explicit expected turn id. The exact recognized rejection
-  proves that the pinned method and required parameter names reached the loaded-thread lookup; it
-  neither executes production steering nor substitutes for the public runtime operation.
-- Operational steering admission separately combines that probe with the exact-version gate and
-  retained 0.146.0 evidence for the specialized public boundary: exact thread and expected active
-  turn identities, a bounded caller correlation, streamed ordered text and local-image input, an
-  exact `{turnId}` success response, and delayed user-message lifecycle correlation. A detached
-  probe fact alone never authorizes a foreground steering dispatch.
-- Compatibility probing consumes initialize, config, one model page, and method success or rejection
-  through their schema-specific bounded decoders. It retains no model-page aggregate, raw response,
-  arbitrary error data, or incidental configuration.
-- Exact CAS 0.146.0 compatibility requires the probed session to come from the managed process
-  owner's production connector and requires its effective config read to prove both native
-  multi-agent settings enabled and both effective dotted origins owned by `sessionFlags`. Missing,
-  false, malformed, superseded, or otherwise unprovable settings reject the runtime; a lifecycle-
-  test connector is not production authority.
-- Required capabilities include exact native CAS continuation and fork plus stable 0.146.0
-  `thread/inject_items` with the recovery semantics defined by
+- The exact supported release contract includes normal foreground notifications, thread start and steering, exact soft interruption, context compaction, native continuation and fork, dynamic tools, generated-image `savedPath`, and the bounded historical-repair adapter defined by `doc/systems/cas-live-syndic-transcript/design.md`.
+- Generated-schema and pinned-release source evidence for these boundaries is recorded under
+  `doc/memory/topic/codex-app-server/`. Runtime admission combines that semantic proof with the exact
+  initialize version and required effective configuration facts; it does not use capability,
+  model-list, private-steering, user-target, synthetic-target, or diagnostic-text probes.
+- CAS-native collaboration owns subagent creation and lifecycle. Its native `spawn_agent` tool
+  exposes optional `model` and `reasoning_effort` selection to the orchestrating model. Each
+  explicit value precedes its configured subagent default. If neither resolves, the child keeps the
+  parent profile. Reasoning alone applies to the parent model; a selected model without resolved
+  reasoning uses that model's catalog default; and a resolved pair is validated together. Context
+  selection through `fork_turns` is independent of profile selection, including when full parent
+  history seeds the child. Beryl does not require a child to use its parent's profile, register an
+  imitation spawning tool, or maintain a parallel child-agent registry.
+- Admission rejects an effective configuration known from the pinned contract to disable native
+  subagent model or reasoning selection. It never discovers those inputs by running a probe turn.
+- CAS thread lists and ordinary historical turn reads are not catalog or transcript surfaces. Only the repair adapter may perform the exact bounded terminal-turn read authorized by the CAS-live system.
+- Hosted and standalone media producers are admitted only when the pinned release contract names their exact normalized form. Parser tolerance for an unsolicited item does not admit a producer.
+- Unsupported ordinary operations are unavailable for that pinned release. Beryl does not negotiate experimental fallbacks or invoke user-thread methods merely to test them.
+
+## Exact Soft Interruption
+
+- Active-turn interruption accepts one of two non-interchangeable typed authorization families. Both
+  bind the exact already loaded foreground session, CAS thread and turn, runtime/process generation,
+  loaded-session generation, and sole foreground driver.
+- Durable authorization additionally carries the exact admitted stop operation and sole attempt.
+  Its admission, join, approval, and convergence ordering is defined by
   `doc/systems/cas-live-syndic-transcript/design.md`.
-- Foreground-stream compatibility is release-scoped. Exact CAS 0.146.0 admission requires retained
-  proof of
-  uninterrupted full-notification subscription, serial item-before-terminal FIFO consumption for
-  normally finishing ordinary turns, a
-  closed disposition for every public pinned item variant, typed item-delta discrimination, and
-  fail-closed loss handling because reconnect, resume, late subscription, and process restart do
-  not replay notifications. A CAS-version change must refresh the retained source and installed
-  runtime proofs before admission can rely on equivalent semantics.
-- Hosted Responses image generation is not an admitted exact-CAS-0.146.0 producer capability unless
-  retained release-scoped evidence proves that the client can send the native `image_generation`
-  tool declaration. Standalone
-  `image_gen.imagegen` is the admitted image-generation path and is probed and normalized
-  separately. Parser tolerance for an unsolicited hosted item from a nonconforming custom provider
-  does not admit that provider behavior.
-- Branch execution additionally requires the exact one-time selected-context projection proven by `doc/systems/cas-live-syndic-transcript/design.md`; schema presence without accepted-limit and trust-semantics proof is insufficient.
-- CAS thread-list, CAS historical turn reads through `thread/turns/list`, and full-history `thread/read` are not Beryl catalog or transcript capabilities. Compatibility probing must not require them, and live backend code must not retain them as a fallback surface.
-- Branch-discussion creation is Syndic-native and performs no CAS work before first user submission. Its later execution prefers exact CAS-native inherited parent context and uses fresh recovery injection only when that lineage is unavailable or unprovable.
-- Edit actions depend on app-server rollback and turn-start primitives plus exact rollback-scope proof. When missing or unprovable, edit actions are disabled rather than emulated.
-- Hard-stop backend primitives are admitted separately. Non-destructive primitives may use typed
-  compatibility probes; destructive coarse cleanup requires exact pinned-source evidence plus
-  negotiated experimental capability and is never invoked merely as a probe. Missing hard-stop
-  support disables only affected escalation targets and must not disable soft interruption.
+- Volatile pre-admission authorization is eligible only after exact proof that durable admission
+  failed before reaching a writer or returned `NotCommitted`. `Committed`, `Indeterminate`, and
+  any state in which durable stop authority may exist are ineligible.
+- Volatile authorization is process-local and single-use on that same existing authenticated
+  foreground target and driver. A detached, replacement, resumed, request-only, or newly selected
+  session cannot consume it. The driver cancels the exact target's process-local continuation intent
+  before consuming the authorization or dispatching `turn/interrupt`.
+- Volatile authorization supplies no durable operation, join, retry, restart recovery, durable
+  success, or terminal claim. Matching request acceptance remains nonterminal; the ordered live
+  stream or authoritative target loss determines convergence.
+- The foreground driver serializes an interruption authorized by either family with provider polling,
+  approval responses, target closure, and terminal handoff. Each closed request-outcome family
+  distinguishes matching acceptance, pinned rejection, proven local nondispatch, and completion
+  unknown after possible dispatch without making the families interchangeable.
+- The backend boundary never retries interruption. A lost or replaced connection cannot recreate
+  either dispatch authority.
+- Hard stop, diagnostic hard stop, child/subagent termination, command-process termination, coarse
+  background-terminal cleanup, and process shutdown as turn control are unsupported and are never
+  probed or invoked.
 
-## Exact Interruption Boundary
+## Store And Connection Recovery
 
-- Active-turn interruption is a required soft-stop capability. Production use requires the exact
-  loaded foreground session, CAS thread id, CAS turn id, runtime generation, managed-process
-  generation, and loaded-thread generation already proven by the CAS-live target. A request-only
-  client, newly resumed session, status string, or process lookup cannot substitute for that
-  authority. The pinned empty-`turnId` startup-cancellation mode is never an exact turn operation
-  and is rejected locally.
-- The sole foreground connection driver serializes `turn/interrupt` with stream polling, approval
-  responses, target closure, and terminal handoff. It exposes two non-interchangeable authority
-  families over that one wire method. Durable stop carries the durable stop-operation and claimed-
-  attempt correlations. Persistent-store-failure interruption instead carries one volatile,
-  process-local failure-attempt correlation and cannot be passed to a durable stop or cleanup
-  method. Every correlation remains local and is never fabricated as app-server idempotency
-  support.
-- Exact CAS 0.146.0 interruption admission requires retained source and live evidence of whether the
-  checked app-server turn is also the target of the submitted core interrupt. Unless that evidence
-  proves one atomic targeted primitive, Beryl treats the core interrupt as untargeted. Production
-  exactness therefore additionally requires Beryl's exclusive authenticated managed listener and
-  a target-operation fence that prohibits a
-  successor turn or compaction start from the handler precheck through request disposition or
-  terminal observation. Without that proof, the interruption capability is unavailable.
-- The normalized request outcome is closed: matching response acceptance,
-  `RejectedBeforeCoreInterrupt`, local proven non-dispatch, or completion unknown after possible
-  dispatch. Local proven non-dispatch requires byte-level writer evidence or rejection before
-  transport. Timeout, malformed matching response, response-identity failure, transport loss after
-  any request byte may have crossed, and connection loss before a matching response are completion
-  unknown. Publishing completion unknown retires that exact session before another request or
-  poll.
-- Under exact CAS 0.146.0, a correlated `-32600` response with absent `data` or the handler-local
-  `-32603` submission-failure response with absent `data` normalizes to
-  `RejectedBeforeCoreInterrupt` only after retained exact-release source evidence proves that the
-  handler did not enqueue a core interrupt. The version-scoped verdict proves only that nondispatch
-  fact. It supplies neither a machine-readable cause nor a verdict that the
-  requested target remains current. Diagnostic text and arbitrary JSON-RPC error data are never
-  target verdicts. The app may safely reopen only from separate local proven-nondispatch evidence
-  while exact target authority remains; handler rejection instead requires terminal evidence or
-  retirement of the uncertain projection.
-- The backend boundary never retries interruption. A matching response proves request acceptance,
-  not interrupted lifecycle or terminal history. Exact turn-stream terminal evidence, target
-  closure, or connection-authority loss remains a separate ordered observation. A volatile
-  persistent-failure outcome supplies no durable admission, stop receipt, retry authority, failure-
-  generation proof, or target-selection claim; Beryl-home failure policy and attempt election stay
-  outside the backend boundary.
-- Hard-stop methods are optional per primitive and use exact opaque handles supplied by normalized
-  activity on the same target generation. Turn-process termination, associated child or subagent
-  turn interruption, and supported thread-scoped background-terminal cleanup each return their own
-  matching response, source-pinned rejection, proven-nondispatch, possible-dispatch, or unsupported
-  outcome. One target's failure cannot be collapsed into or used to infer another target's result.
-- Unless retained exact-0.146.0 evidence proves an ABA-safe individual turn-process capability,
-  Beryl exposes none.
-  `command/exec/terminate` belongs to a separate standalone, originating-connection process
-  namespace. Experimental `thread/backgroundTerminals/terminate` reaches the turn-owned namespace
-  but compares only a reusable numeric process id and cannot compare the provider item identity;
-  a frozen id can therefore terminate a later process after ABA reuse. Neither method is admitted
-  for individual hard stop, and a prior list read is not an atomic identity fence.
-- Pinned `thread/backgroundTerminals/clean {threadId}` is optional coarse cleanup. Its empty
-  response proves only core request acceptance, and its eventual scope is every unified-exec
-  process then present in the loaded thread. It is not per-process or selected-turn completion
-  evidence. Pinned child/subagent interruption is unavailable because its core interrupt is
-  untargeted and Beryl cannot fence internally scheduled child successors.
-- On the same loaded pinned session, cleanup enqueue completes before the empty response and one
-  submission loop fully handles that queued op before receiving a later Beryl core operation.
-  Callers may use the response as an ordering barrier for a later operation only while the exact
-  session survives and their no-successor fence prevented an earlier submission. It remains
-  non-evidence of cleanup completion in isolation.
-- After experimental capability admission and local parameter validation, any JSON-RPC error from
-  pinned coarse cleanup is authority-invalidating: its unstructured error cannot safely
-  distinguish unloaded thread, capability drift, or core-channel failure. The exact session
-  retires before another hard-target request.
-- Capability probing proves only method shape and supported handle kind. It neither discovers live
-  targets nor authorizes a production request. No hard-stop path may synthesize a handle from
-  command text, process enumeration, working directory, names, or historical backend reads.
-  Neither standalone command termination nor the experimental reusable-id turn-process family can
-  stand in for an exact process-instance primitive.
-- Coarse-cleanup capability admission combines the exact pinned release/source proof with the
-  negotiated experimental API capability. Compatibility work never calls
-  `thread/backgroundTerminals/clean` on a user thread merely to probe it, because that request is
-  destructive and asynchronous.
+- A failed Beryl-home generation fences new runtime commands that require durable publication.
+- During the bounded outage interval, foreground capture may retain only the hard-limited process-local facts defined by the CAS-live system. The runtime layer adds no second buffer or durable authority.
+- Fresh-service recovery runs in this order: fence new durable commands; close and dispose the failed
+  service; reopen the same home as an unpublished `reopening` candidate with a fresh writer and
+  candidate-only handles; construct a fresh backend/app service and fresh connections; converge
+  durable pending, stop, compaction, and repair obligations behind the recovery publication fence;
+  attach the supervisor; atomically publish the complete replacement as the newer healthy
+  generation; and only then reacquire CAS projections from durable Syndic binding authority.
+- Every connection, driver, broker, router, projection registration, loaded-session registration,
+  lease, candidate, scheduler, and worker derived from the failed generation is closed and disposed.
+  No such object, stable core, service epoch, or quarantined connection crosses the publication cut.
+- Failure or cancellation during candidate construction, durable convergence, or supervisor
+  attachment publishes none of that candidate. `beryl-app` disposes the complete unpublished
+  candidate by joining and releasing its app-owned drivers, ingesters, brokers, routers,
+  schedulers, projections, queues, and workers. `beryl-backend` separately joins and releases the
+  candidate's backend client and session internals, managed process tree, listener, token material,
+  queues, and workers before recovery reports failure.
+- Before any broker, connection, or service releases a home-store command outcome, it synchronously
+  transfers any `Indeterminate` custody value to the owning home's reconciliation registry as
+  required by `doc/systems/beryl-home-storage/design.md`. Once the registry owns that exact scope,
+  broker or service cancellation, failure, retirement, candidate disposal, and managed app-server
+  process exit cannot retract or drop it.
+- Any in-flight non-idempotent request remains classified from its last exact durable and transport evidence. Recovery does not resend it merely because a fresh connection exists.
+- Backend process replacement likewise creates fresh connection and projection authority; it cannot inherit interruption, steering, repair-response, or capture authority from the old process.
 
-## Connection Loss Recovery
+## Protocol Ownership
 
-- If a foreground backend connection or managed process is lost, the GUI keeps Beryl-home state, runtime/root records, selected Syndic thread, durable draft, and readable Syndic transcript state intact.
-- If a background backend connection for title generation, inventory refresh, or lazy maintenance fails while the managed process remains usable, Beryl reports or logs only that operation's failure and keeps the active conversation usable.
-- Backend launch, probe, or compatibility failure before a usable connection exists is reported as backend-unavailable for that runtime target, not as application startup failure.
-- On backend disconnect, the GUI presents a recovery path rather than silently switching backend process.
-- Recovery actions may include relaunching a managed backend for the same runtime and resumed thread binding or closing the application instance.
-- The GUI must not silently switch the user to a different backend process after disconnect.
-- A lost connection or replaced process never recreates an interruption dispatch capability.
-  Durable admitted or dispatch-claimed stop state converges through the CAS-live startup
-  abandonment contract; runtime recovery does not resend it against either the old or a resumed
-  target.
-
-## Protocol Boundary
-
-- Authentication, session storage, agent execution, subagents, configuration, skills, MCP, and other non-UI agent state remain backend-owned.
-- Backend execution state, authentication, policy, sandbox behavior, tools, and live execution event streams remain backend-owned.
-- Captured transcript history and selected transcript rendering source records are Syndic-owned after the CAS-live capture boundary accepts them.
-- Turn execution stream inactivity is not itself backend failure.
-- Request and probe timeouts apply to bounded JSON-RPC requests. Active turn streams may remain quiet until terminal events, protocol error, transport disconnect, or backend exit.
+- Authentication, agent execution, configuration, skills, MCP, tools, subagents, sandboxing, approvals, and provider policy remain backend-owned.
+- Captured and repaired conversation history becomes Syndic-owned only through the CAS-live publication boundary.
+- Turn-stream inactivity is not backend failure. Active streams may remain quiet until terminal evidence, protocol failure, transport disconnect, or backend exit.
+- Timeouts apply to bounded requests. They never infer that a quiet turn is complete or that a non-idempotent request did not dispatch.

@@ -6,7 +6,10 @@ use std::{
 };
 
 use beryl_backend::{ManagedBackendClientConnector, ManagedBackendError, ManagedBackendSession};
-use beryl_home_store::{CommandError, HomeCloseError, HomeGeneration, HomeHealthState, HomeStore};
+use beryl_home_store::{
+    CommandError, CommitReceipt, HomeCloseError, HomeGeneration, HomeHealthState, HomeStore,
+    ReconciliationDescriptor,
+};
 #[cfg(test)]
 use beryl_model::SyndicAcceptedInputId;
 use beryl_model::{
@@ -21,8 +24,6 @@ use thiserror::Error;
 
 #[cfg(all(test, feature = "test-faults"))]
 use super::LoadedCasProjection;
-#[cfg(any(test, feature = "test-faults"))]
-use super::runtime::LifecycleTestCompatibilityFacts;
 #[cfg(test)]
 use super::{
     ActiveSteeringDeliveryError, ActiveSteeringDeliveryOutcome, LiveEventTarget,
@@ -34,15 +35,15 @@ use super::{
     accepted_input_scheduler::{
         AcceptedInputScheduler, AcceptedInputSchedulerContext, AcceptedInputSchedulerDiagnostics,
         AcceptedInputSchedulerExit, AcceptedInputSchedulerSignal, AcceptedInputWakeReason,
-        ActiveSteeringCancellationLifecycle, RecoveredProjectionLane, RecoveredProjectionLaneParts,
-        RecoveredProjectionLaneStageError, StartupRecoveryDiagnostics,
+        ActiveSteeringCancellationLifecycle, StartupRecoveryDiagnostics,
     },
     connection::ProjectionConnection,
+    initial_start::InitialStartGate,
     persistent_failure::{
         LiveCommandAuthorizer, MasterCommandGate, MasterCommandGateCloseOwner,
-        PersistentFailureCoordinator, PersistentFailureCutCompletion, PersistentFailureCutHandoff,
-        PersistentFailureCutSnapshot, PersistentFailureCutState, PersistentFailureNotification,
-        PersistentFailureRetainedService, ProjectionServiceGeneration,
+        PersistentFailureCoordinator, PersistentFailureCutCompletion, PersistentFailureCutSnapshot,
+        PersistentFailureCutState, PersistentFailureNotification,
+        PersistentFailureTerminalEvidence, ProjectionServiceGeneration,
         persistent_failure_notification_channel,
     },
     scheduled_ordinary::{
@@ -55,10 +56,9 @@ use super::{
         ProjectionWorkerPool, ProjectionWorkerPoolDiagnostics,
     },
     service_registry::ProjectionServiceConnectionRegistry,
-    service_startup::ServiceStartupGate,
     stop::{
-        BoundedHardStopResult, StopCoordinationError, StopCoordinationOutcome, StopCoordinator,
-        StopOwnership, WindowCloseStopBarrier, WindowCloseStopOutcome,
+        StopCoordinationError, StopCoordinationOutcome, StopCoordinator, StopOwnership,
+        WindowCloseStopBarrier, WindowCloseStopOutcome,
     },
 };
 use crate::input_admission::PreparedAcceptedInputAdmission;
@@ -69,44 +69,16 @@ use std::sync::{
 };
 
 mod admission;
-mod adoption;
 mod commands;
 mod construction;
 mod flight_registry;
 mod scheduling;
 mod shutdown;
 
-pub use adoption::{
-    AdoptedProjectionCandidateReauthenticationLedger,
-    AdoptedUnpublishedProjectionConnectionService,
-    CandidateSetConvergedAdoptedProjectionConnectionService, PersistentFailureServiceAdoptionError,
-    PersistentFailureServiceAdoptionMetadata, PersistentFailureServiceAdoptionReason,
-    ProjectionCandidateDispositionOutcome, ProjectionCandidateId,
-    ProjectionCandidateLedgerAccessError, ProjectionCandidateLedgerMetadata,
-    ProjectionCandidateLedgerSealError, ProjectionCandidateLedgerSealFailure,
-    ProjectionCandidateLedgerSealReason, ProjectionCandidateMetadata,
-    ProjectionCandidateReauthenticationOutcome, ProjectionCandidateReauthenticationReason,
-    ProjectionCandidateReauthenticationStatus, RecoveredProjectionCandidateMetadata,
-    RecoveredServicePublicationError, RecoveredServicePublicationMetadata,
-    RecoveredServicePublicationReason, TerminalAdoptedProjectionConnectionService,
-    TerminalAdoptedProjectionConnectionServiceReason, UnpublishedProjectionConnectionService,
-    UnpublishedProjectionConnectionServiceBuildError,
-    UnpublishedProjectionConnectionServiceMetadata,
-};
-
 pub(super) use flight_registry::ProjectionFlight;
 
 #[cfg(test)]
 static NEXT_ADMISSION_RECONCILIATION_PAUSE: AtomicU64 = AtomicU64::new(1);
-
-/// Synchronous outcome of one deliberate hard-stop request.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum HardStopCoordinationOutcome {
-    /// The caller received the immutable bounded result shared by this stop operation.
-    Finished(BoundedHardStopResult),
-    /// No exact selected provider operation was eligible when the request was admitted.
-    Ineligible(StopAdmissionIneligibility),
-}
 
 struct PreparedProjectionSessionAdmission {
     command: super::LiveCommandPermit,
@@ -136,15 +108,13 @@ pub struct ProjectionConnectionService {
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     storage: SyndicStorage,
-    startup: ProjectionServiceStartupState,
+    startup_storage_revision: DomainRevision,
     config: ProjectionServiceConfig,
     workers: ProjectionWorkerPool,
     service_generation: ProjectionServiceGeneration,
     command_gate: MasterCommandGate,
     command_authorizer: LiveCommandAuthorizer,
     persistent_failure: Option<PersistentFailureCoordinator>,
-    persistent_failure_escrow:
-        Option<super::persistent_failure::PersistentFailureServiceEscrowReservation>,
     #[cfg(test)]
     admission_reconciliation_failures: AtomicUsize,
     #[cfg(test)]
@@ -154,33 +124,8 @@ pub struct ProjectionConnectionService {
     context_compaction: Option<Arc<super::context_compaction::ContextCompactionCoordinator>>,
     scheduler: Option<AcceptedInputScheduler>,
     scheduler_signal: AcceptedInputSchedulerSignal,
-    recovered_projection_lane: RecoveredProjectionLane,
     scheduled_ordinary_provider: Option<Arc<Mutex<Box<dyn ScheduledOrdinaryExecutionProvider>>>>,
     settled: bool,
-}
-
-enum ProjectionServiceStartupState {
-    Dormant,
-    Ready { storage_revision: DomainRevision },
-}
-
-enum ProjectionServiceStartupPreparation {
-    Dormant,
-    Ready {
-        storage_revision: DomainRevision,
-        recovery: StartupRecoveryDiagnostics,
-    },
-}
-
-impl ProjectionServiceStartupState {
-    const fn storage_revision(&self) -> DomainRevision {
-        match self {
-            Self::Ready { storage_revision } => *storage_revision,
-            Self::Dormant => {
-                panic!("a dormant unpublished service has no converged storage revision")
-            }
-        }
-    }
 }
 
 /// One scoped process-shell capability for the service-owned Beryl home.
@@ -194,13 +139,13 @@ pub struct LiveHomeCommand<'a> {
 }
 
 /// Consuming close result for one projection-service generation.
-#[must_use = "persistent failure returns the sole process recovery handoff"]
+#[must_use = "persistent failure returns bounded terminal evidence"]
 #[derive(Debug)]
 pub enum ProjectionConnectionServiceCloseOutcome {
     /// Ordinary shutdown won and explicitly closed the owned home.
     Closed,
-    /// Persistent failure won and preserved the failed service without destructive shutdown.
-    PersistentFailure(PersistentFailureCutHandoff),
+    /// Persistent failure won and the failed generation was terminally disposed.
+    PersistentFailure(PersistentFailureTerminalEvidence),
 }
 
 impl LiveHomeCommand<'_> {
@@ -219,6 +164,18 @@ pub enum AcceptedInputAdmissionExecutionError {
     Authority(#[from] ProjectionCoordinatorError),
     #[error("accepted-input publication did not commit: {0}")]
     Command(#[source] CommandError),
+    #[error("accepted-input publication committed before a later failure: {later_failure}")]
+    CommandCommitted {
+        receipt: CommitReceipt,
+        #[source]
+        later_failure: CommandError,
+    },
+    #[error("accepted-input publication has an indeterminate durable outcome: {failure}")]
+    CommandIndeterminate {
+        #[source]
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
     #[error("accepted-input publication reconciliation failed; the service was closed: {0}")]
     Reconciliation(#[from] SyndicReadError),
     #[error(
@@ -241,6 +198,8 @@ pub enum ProjectionConnectionServiceCloseError {
     ContextCompactionShutdown,
     #[error("the persistent-failure cut worker failed or panicked during shutdown")]
     PersistentFailureWorkerShutdown,
+    #[error("persistent-failure authority could not be terminally disposed")]
+    PersistentFailureDisposal,
     #[error("a joined projection connection still owns the Beryl home")]
     HomeOwnershipLeaked,
     #[error("the owned Beryl home failed explicit close: {0}")]
@@ -272,19 +231,4 @@ mod persistent_failure_tests {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/persistent_failure_cut.rs"
     ));
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/unit/service_epoch_adoption.rs"
-    ));
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/unit/projection_candidate_reauthentication.rs"
-    ));
-
-    mod forwarding_order {
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/unit/service_epoch_adoption/forwarding_order.rs"
-        ));
-    }
 }

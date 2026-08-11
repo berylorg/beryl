@@ -18,7 +18,9 @@ use beryl_app::{
     },
     input_admission::{idle_submission_command, prepare_accepted_input_admission},
 };
-use beryl_home_store::{CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     CasItemId, SealedAssetReferenceSetProof, SyndicAcceptedInputId, SyndicDraftId,
     SyndicDraftMarkerId, SyndicItemId, SyndicThreadId, SyndicTurnId,
@@ -316,7 +318,22 @@ impl Fixture {
         let home = command_home.home();
         let command =
             idle_submission_command(home, self.storage, self.state.assets(), submission).unwrap();
-        home.execute(command).unwrap();
+        match home.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("idle submission unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("idle submission committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("idle submission indeterminate: {outcome:?}")
+            }
+        }
         SubmittedTurn { turn, user_item }
     }
 

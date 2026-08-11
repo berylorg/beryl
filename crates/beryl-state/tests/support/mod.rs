@@ -5,7 +5,7 @@ pub mod phase9;
 use std::path::Path;
 
 use beryl_home_store::{
-    CommandError, CommitReceipt, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     MutationContribution,
 };
 use beryl_model::{
@@ -79,10 +79,7 @@ pub fn wsl_runtime(
     CreateRuntimeWithHomeRoot::new(runtime, root).unwrap()
 }
 
-pub fn execute(
-    store: &HomeStore,
-    contribution: MutationContribution,
-) -> Result<CommitReceipt, CommandError> {
+pub fn execute(store: &HomeStore, contribution: MutationContribution) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
     store.execute(command)
@@ -100,7 +97,13 @@ pub fn create_host_runtime(
         state.runtime_roots().revision(store).unwrap(),
         host_runtime(runtime_byte, root_byte, executable, root),
     );
-    execute(store, contribution).unwrap();
+    match execute(store, contribution) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed runtime creation, got {outcome:?}"),
+    }
 }
 
 pub fn contributor_source<T: std::error::Error + 'static>(error: &CommandError) -> Option<&T> {

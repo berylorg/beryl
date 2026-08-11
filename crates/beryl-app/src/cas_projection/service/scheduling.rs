@@ -28,58 +28,9 @@ impl ProjectionConnectionService {
             .attach_recovery_supervisor(signal)
     }
 
-    pub(in crate::cas_projection) fn wake_same_generation_verified(&self) {
-        self.scheduler_signal
-            .wake(AcceptedInputWakeReason::SameGenerationVerified);
-    }
-
-    pub(in crate::cas_projection) fn retained_home_for_recovery(&self) -> Arc<HomeStore> {
-        Arc::clone(
-            self.home
-                .as_ref()
-                .expect("an unsettled service retains its exact opened home"),
-        )
-    }
-
-    pub(in crate::cas_projection) fn converge_dormant_startup(
-        &mut self,
-    ) -> Result<StartupRecoveryDiagnostics, ProjectionCoordinatorError> {
-        assert!(
-            matches!(self.startup, ProjectionServiceStartupState::Dormant),
-            "only a dormant unpublished service may converge recovered startup state"
-        );
-        let home = self
-            .home
-            .as_deref()
-            .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
-        let recovery = super::super::accepted_delivery_recovery::recover_startup(
-            home,
-            self.home_id,
-            self.home_generation,
-            self.storage,
-        )?;
-        let storage_revision = self
-            .storage
-            .revision(home)
-            .map_err(|source| ProjectionCoordinatorError::SyndicRevisionUnavailable { source })?;
-        self.scheduler_signal.hand_off_recovery(recovery);
-        self.startup = ProjectionServiceStartupState::Ready { storage_revision };
-        Ok(recovery)
-    }
-
-    pub(in crate::cas_projection) fn stage_recovered_projection_lane(
-        &self,
-        entries: Vec<RecoveredProjectionLaneParts>,
-    ) -> Result<(), RecoveredProjectionLaneStageError> {
-        self.recovered_projection_lane.stage(entries)?;
-        self.scheduler_signal
-            .wake(AcceptedInputWakeReason::ExecutionReady);
-        Ok(())
-    }
-
     #[must_use]
     pub const fn initial_storage_revision(&self) -> DomainRevision {
-        self.startup.storage_revision()
+        self.startup_storage_revision
     }
 
     /// Returns the immutable local limits used for every admitted candidate.
@@ -244,7 +195,7 @@ impl ProjectionConnectionService {
             self.persistent_failure
                 .as_ref()
                 .expect("open service retains persistent-failure coordination")
-                .projection_retainer(self.home_id, self.home_generation),
+                .terminal_disposer(self.home_id, self.home_generation),
             flight,
         );
         let mut result = self
@@ -357,10 +308,10 @@ impl ProjectionConnectionService {
     }
 
     #[cfg(test)]
-    pub(in crate::cas_projection) fn retained_home_for_test(&self) -> &HomeStore {
+    pub(in crate::cas_projection) fn home_for_shutdown_test(&self) -> &HomeStore {
         self.home
             .as_deref()
-            .expect("unsettled test service retains its opened home")
+            .expect("unsettled test service owns its opened home")
     }
 
     #[cfg(test)]

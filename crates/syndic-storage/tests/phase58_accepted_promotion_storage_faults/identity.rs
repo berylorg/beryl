@@ -20,7 +20,12 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
             ),
         ))
         .unwrap();
-    store.execute(create).unwrap();
+    match store.execute(create) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected collision fixture creation to commit without later failure, got {outcome:?}"),
+    }
     let existing_item = SyndicItemId::from_bytes([203; 16]);
     support::exact_cas::submit_current_draft(
         &store,
@@ -61,7 +66,10 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
             AcceptedInputPromotionStatus::Collision,
             "{namespace} collision must not classify as Prior",
         );
-        let error = execute_promotion(&store, storage, request).unwrap_err();
+        let error = match execute_promotion(&store, storage, request) {
+            CommandOutcome::NotCommitted { evidence } => evidence,
+            outcome => panic!("expected definitive identity collision, got {outcome:?}"),
+        };
         assert!(
             matches!(
                 mutation_error(&error),
@@ -83,7 +91,10 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
             .unwrap(),
         AcceptedInputPromotionStatus::Collision,
     );
-    let error = execute_promotion(&store, storage, item_collision).unwrap_err();
+    let error = match execute_promotion(&store, storage, item_collision) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected definitive item collision, got {outcome:?}"),
+    };
     assert!(matches!(
         mutation_error(&error),
         SyndicMutationError::AdmissionIdentityCollision

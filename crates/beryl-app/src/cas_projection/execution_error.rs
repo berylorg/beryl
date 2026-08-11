@@ -1,6 +1,8 @@
 use beryl_backend::{ManagedBackendError, ThreadInjectionPreflightError, ThreadStatus};
-use beryl_home_store::{CommandBuildError, CommandError, ReadError};
-use beryl_model::{CasProcessGeneration, CasThreadId, RuntimeId};
+use beryl_home_store::{
+    CommandBuildError, CommandError, CommitReceipt, ReadError, ReconciliationDescriptor,
+};
+use beryl_model::{CasThreadId, RuntimeId};
 use syndic_storage::{
     NativeProjectionError, RecoveryProjectionError, SyndicReadError, SyndicRecordError,
     SyndicValueError,
@@ -20,6 +22,18 @@ pub enum ProjectionPublicationFailure {
     HomeRead(#[source] ReadError),
     #[error("projection publication command failed and did not reconcile as exact")]
     Command(#[source] CommandError),
+    #[error("projection publication committed before a later command failure: {later_failure}")]
+    CommandCommitted {
+        receipt: CommitReceipt,
+        #[source]
+        later_failure: CommandError,
+    },
+    #[error("projection publication has an indeterminate durable outcome: {failure}")]
+    CommandIndeterminate {
+        #[source]
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
     #[error("projection publication command could not be built")]
     CommandBuild(#[source] CommandBuildError),
     #[error("projection publication left the expected prior binding intact")]
@@ -49,34 +63,6 @@ pub enum ProjectionExecutionError {
     RuntimeMismatch {
         requested: RuntimeId,
         admitted: RuntimeId,
-    },
-    /// Replacement connection belongs to another managed CAS process generation.
-    #[error("same-native reacquisition requires managed process {expected:?}, not {admitted:?}")]
-    ProcessGenerationMismatch {
-        expected: CasProcessGeneration,
-        admitted: CasProcessGeneration,
-    },
-    /// Replacement connection is the old connection or already owns another projection.
-    #[error("same-native reacquisition for {thread_id} requires a fresh CAS connection")]
-    ReacquisitionConnectionNotFresh { thread_id: CasThreadId },
-    /// Old subscription anchor disappeared before transfer completed.
-    #[error("same-native reacquisition anchor for {thread_id} was lost")]
-    ReacquisitionAnchorLost { thread_id: CasThreadId },
-    /// Replacement-side resume reservation disappeared before transfer completed.
-    #[error("same-native reacquisition reservation for {thread_id} was lost")]
-    ReacquisitionReservationLost { thread_id: CasThreadId },
-    /// Another operation already owns the quarantined thread handoff.
-    #[error("same-native reacquisition is already in progress for {thread_id}")]
-    ReacquisitionInProgress { thread_id: CasThreadId },
-    /// Durable binding no longer equals the terminal basis captured by the anchor.
-    #[error("same-native reacquisition binding changed for {thread_id}")]
-    ReacquisitionBindingChanged {
-        thread_id: beryl_model::SyndicThreadId,
-    },
-    /// Anchor belongs to a different Beryl-home identity or generation.
-    #[error("same-native reacquisition belongs to another home for {thread_id}")]
-    ReacquisitionHomeMismatch {
-        thread_id: beryl_model::SyndicThreadId,
     },
     #[error("loaded CAS thread {thread_id} is owned by another exact client connection")]
     LoadedProjectionConnectionMismatch { thread_id: CasThreadId },

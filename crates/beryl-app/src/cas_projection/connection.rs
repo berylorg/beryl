@@ -22,16 +22,15 @@ use thiserror::Error;
 use crate::cas_projection::{
     ProjectionCoordinatorError, ProjectionExecutionError,
     stop::{
-        HardStopRunOwner, StopCoordinationError, StopCoordinationOutcome, StopCoordinator,
-        StopDispatchOwner, StopDispatchSettlement, StopOwnership,
+        StopCoordinationError, StopCoordinationOutcome, StopCoordinator, StopDispatchOwner,
+        StopDispatchSettlement, StopOwnership,
     },
 };
 
-mod adoption;
+mod attachment;
 mod authority;
 mod driver;
 mod driver_outcome;
-mod epoch;
 mod forwarding_hub;
 mod lease;
 mod lifecycle;
@@ -54,69 +53,50 @@ pub use router::{
     LiveEventTargetRegistrationError, RoutedApproval, RoutedDynamicToolCall,
 };
 
-pub(in crate::cas_projection) use adoption::{
-    AdoptedConnectionEpochAttachment, BoundConnectionEpoch, ConnectionEpochAdoptionBarrier,
-    ConnectionReplacementContext, InertConnectionEpochAttachment, OldConnectionIngesterJoinError,
-    PreparedConnectionEpoch, PreparedConnectionEpochBindError, PreparedConnectionEpochError,
-    RecoveredConnectionPublicationReason, RecoveryPublicationEpochBarrier,
-};
-pub(in crate::cas_projection) use authority::{
-    CandidateSetRecoveryPublicationBarrier, CandidateSetRecoveryPublicationFailure,
-    FailureRetainedConnectionOwnerWitness,
-};
+use attachment::ConnectionAttachment;
+pub(in crate::cas_projection) use attachment::ConnectionAttachmentIdentity;
 use driver::ConnectionDriver;
 pub(in crate::cas_projection) use driver::{
-    ConnectionRequestSession, DriverParkError, DriverParkErrorReason,
-    ExactContextCompactionDispatch, ParkedDriver,
+    ConnectionRequestSession, ExactContextCompactionDispatch,
 };
 pub(in crate::cas_projection) use driver_outcome::{
     ConnectionCommandOutcome, ConnectionRoutingFailure,
 };
-pub(in crate::cas_projection) use epoch::ConnectionEpochIdentity;
-use epoch::ConnectionServiceEpoch;
-use forwarding_hub::{ForwardingEpochEndpoint, ForwardingHub};
+use forwarding_hub::{ForwardingAttachmentEndpoint, ForwardingHub};
+use lease::RawLoadedLeaseSeed;
 pub(super) use lease::{
-    DormantRecoveredProjectionLeaseOwner, ExistingLease, FailureRetainedRawLoadedLease,
-    FailureRetainedRawQuarantinedAnchor, FailureRetainedRawReacquisitionReservation,
-    LoadedLeaseRecoveryObservation, LoadedProjectionLease, LocalLoadedRegistryDispositionOwner,
-    PendingProjectionLeaseOwner, QuarantinedProjectionAnchor,
-    StableProjectionConnectionAuthentication, StableProjectionConnectionObservation,
-    ThreadRetirement,
+    ExistingLease, LoadedProjectionLease, LocalLoadedRegistryDispositionOwner,
+    TerminalLoadedLeaseDispositionOwner, ThreadRetirement,
 };
-use lease::{RawLoadedLeaseSeed, RawQuarantinedAnchorSeed, RawReacquisitionReservationSeed};
 pub(in crate::cas_projection) use lifecycle::ProjectionConnectionIdentityObservation;
 pub(in crate::cas_projection) use persistent_failure::{
     PersistentFailureCompletedTarget, PersistentFailureCompletion, PersistentFailureDriverResult,
-    PersistentFailureNoDispatchReason,
+    PersistentFailureInterruptDisposition, PersistentFailureNoDispatchReason,
 };
 #[cfg(test)]
 pub(in crate::cas_projection) use provider_broker::CheckedSteeringLifecycle;
 pub(in crate::cas_projection) use provider_broker::{
     ActiveBindingLossDisposition, CheckedSteeringLifecycleArmError, CheckedSteeringLifecycleOwner,
-    CheckedSteeringLifecycleWaitError, ProviderBrokerAdoptionStopped, ProviderBrokerLossError,
-    ProviderBrokerLossOutcome,
+    CheckedSteeringLifecycleWaitError, ProviderBrokerLossError, ProviderBrokerLossOutcome,
 };
 use provider_broker::{ProviderBroker, ProviderBrokerControl};
 pub(in crate::cas_projection) use router::EventRouter;
 pub(in crate::cas_projection) use router::LiveEventTargetHandoffError;
 #[cfg(test)]
 pub(in crate::cas_projection) use router::PersistentFailureTargetIneligibility;
+pub(in crate::cas_projection) use router::PersistentFailureTargetWitness;
 pub(in crate::cas_projection) use router::TargetRegistrationProof;
 pub(in crate::cas_projection) use router::TargetTurnRegistration;
 pub(in crate::cas_projection) use router::{
     ActiveSteeringAttemptAcquireError, ActiveSteeringAttemptFinishError,
     ActiveSteeringAttemptFinishOutcome, ActiveSteeringAttemptPermit,
-    ActiveSteeringTargetLookupError, StopElectionAcquireError, StopElectionPermit, StopTargetProof,
-    TargetAuthorizationFailure,
+    ActiveSteeringTargetLookupError, StopElectionAcquireError, StopElectionAdmission,
+    StopElectionPermit, StopTargetProof, TargetAuthorizationFailure,
 };
+use router::{ConnectionProcessFact, TargetRegistration};
 pub(in crate::cas_projection) use router::{
     LiveEventTargetLossError, LiveEventTargetLossOutcome, ProvenTerminalOutcome,
 };
-pub(in crate::cas_projection) use router::{
-    PersistentFailureTargetGuardDisposition, PersistentFailureTargetGuardObservation,
-    PersistentFailureTargetGuardSettlementError, PersistentFailureTargetWitness,
-};
-use router::{StableConnectionProcessFact, TargetRegistration};
 pub(in crate::cas_projection) use source_broker::StreamedInputBrokerService;
 pub(in crate::cas_projection) use target_command::turn_start_allows_not_started;
 pub(in crate::cas_projection) use target_command::{
@@ -130,17 +110,12 @@ use crate::cas_projection::service_config::ProjectionWorkerPermitPair;
 pub(in crate::cas_projection) use registry::LoadedThreadKey;
 use registry::{
     ConnectionGeneration, ExistingSubscription, LeaseToken, ObservedSubscription,
-    ReacquisitionAnchorToken, ReacquisitionReservationToken, allocate_connection_generation,
+    allocate_connection_generation,
 };
 
 pub(super) use authority::{
-    CandidateSetConnectionOwnerSealFailure, CandidateSetConvergedProjectionConnectionOwner,
-    CleanupFailureTransfer, ConnectionCleanupOwner, ConnectionPromotionReleaseOutcome,
-    ConnectionPromotionReservation, ConnectionRegistryAuthority, ConnectionRetirementOutcome,
-    FailureRetainedBarrierTopologyError, FailureRetainedCleanupOwner,
-    FailureRetainedPromotionReservation, PendingProjectionConnectionOwner,
-    PendingProjectionConnectionOwnerInstallError, PendingProjectionConnectionOwnerInstallFailure,
-    PromotionFailureTransfer, seal_pending_projection_connection_owners,
+    ConnectionCleanupOwner, ConnectionPromotionReleaseOutcome, ConnectionPromotionReservation,
+    ConnectionRegistryAuthority, ConnectionRetirementOutcome,
 };
 pub(super) use lifecycle::ProjectionConnection;
 

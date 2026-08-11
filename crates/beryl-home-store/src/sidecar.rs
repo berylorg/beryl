@@ -8,8 +8,8 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    HealthGateError, HomeGeneration, HomeStore, domain::StoreInstanceId, fault::FaultController,
-    fault::FaultPoint, health::FailureSeverity,
+    domain::StoreInstanceId, fault::FaultController, fault::FaultPoint, health::FailureSeverity,
+    HealthGateError, HomeGeneration, HomeStore,
 };
 
 mod io;

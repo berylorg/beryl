@@ -1,4 +1,6 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
+};
 use beryl_model::{DomainRevision, JobId, SyndicThreadId};
 
 use crate::{
@@ -126,6 +128,14 @@ impl DomainMutation<SyndicDomain> for AcceptGeneratedThreadTitle {
         validate_title_eligibility(reader, self.thread_id, &self.title)
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ThreadAttributesCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, SyndicDomain>,
@@ -158,6 +168,14 @@ impl DomainMutation<SyndicDomain> for ArchiveBranchDiscussionThread {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ThreadAttributesCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, SyndicDomain>,
@@ -187,6 +205,14 @@ impl DomainMutation<SyndicDomain> for PublishThreadUsage {
             return Err(SyndicMutationError::UsageProviderOrdinalConflict);
         }
         validate_current_usage_route(reader, self.thread_id, &self.observation)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ThreadUsageCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

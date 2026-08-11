@@ -4,13 +4,136 @@ use beryl_model::{DomainRevision, HomeRevision, RevisionError};
 use thiserror::Error;
 
 use crate::{
-    DomainCallbackSource, DomainHandle, HealthGateError, HomeGeneration, HomeStore, ReadError,
-    StorageDomain, domain::StoreInstanceId, health::FailureSeverity,
+    domain::StoreInstanceId, health::FailureSeverity, DomainCallbackSource, DomainHandle,
+    HealthGateError, HomeGeneration, HomeStore, ReadError, StorageDomain,
 };
+
+/// Beryl-owned name for one configured Fjall storage resource.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StorageResource {
+    EncodedRangeEndpointBytes,
+    ApplicationKeyspaces,
+    KeyspaceNameBytes,
+    JournalFiles,
+    AtomicBatchRecords,
+    AtomicBatchEncodedKeyBytes,
+    AtomicBatchEncodedValueBytes,
+    EncodedJournalRecordBytes,
+    DecodedJournalRecordBytes,
+    EncodedBlockBytes,
+    DecodedBlockBytes,
+    EncodedSeparatedValueBytes,
+    DecodedSeparatedValueBytes,
+    MergeSources,
+    TableRecords,
+    BlobFileRecords,
+    FragmentationRecords,
+    VersionHistorySlots,
+    SharedBlockCacheBytes,
+    MemtablePayloadBytes,
+    MemtableRecords,
+    Other,
+}
+
+/// Beryl-owned stable classification of one retained storage failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StorageErrorClass {
+    Configuration,
+    PolicyDenied {
+        resource: StorageResource,
+        requested: u64,
+        limit: u64,
+    },
+    Corruption,
+    Io(std::io::ErrorKind),
+    Integrity,
+    Poisoned,
+    MaintenanceTerminal,
+    KeyspaceIdentity,
+    Durability,
+    Other,
+}
+
+/// Beryl-owned exact commit classification retained from a storage mutation failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StorageCommitState {
+    NotCommitted,
+    Committed,
+    Indeterminate,
+}
+
+/// Opaque retained operation facts for a command whose durable outcome is indeterminate.
+///
+/// Phase 100 deliberately exposes no token, read, disposal, or reconciliation operation. The
+/// descriptor retains its reserved operation slot, exact materialized record facts, and intended
+/// receipt only for the package's later reconciliation phase.
+pub struct ReconciliationDescriptor {
+    _slot: crate::reconciliation::ReconciliationSlot,
+    domains: Vec<crate::command::MaterializedDomainDescriptor>,
+    receipt: CommitReceipt,
+}
+
+impl fmt::Debug for ReconciliationDescriptor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReconciliationDescriptor")
+            .field("domain_count", &self.domains.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl ReconciliationDescriptor {
+    pub(crate) fn new(
+        slot: crate::reconciliation::ReconciliationSlot,
+        domains: Vec<crate::command::MaterializedDomainDescriptor>,
+        receipt: CommitReceipt,
+    ) -> Self {
+        Self {
+            _slot: slot,
+            domains,
+            receipt,
+        }
+    }
+
+    pub(crate) fn domains(&self) -> &[crate::command::MaterializedDomainDescriptor] {
+        &self.domains
+    }
+
+    pub(crate) fn receipt(&self) -> &CommitReceipt {
+        &self.receipt
+    }
+}
+
+/// Exact durable-state classification for one executed command.
+#[derive(Debug)]
+#[must_use = "command outcomes carry exact commit evidence, receipts, or reconciliation state"]
+pub enum CommandOutcome {
+    /// No physical mutation committed; the error is definitive evidence.
+    NotCommitted {
+        /// Exact command failure.
+        evidence: CommandError,
+    },
+    /// The complete batch is durable. A later local or health-confirmation failure is retained.
+    Committed {
+        /// Exact committed revision facts.
+        receipt: CommitReceipt,
+        /// Failure after commit, if one occurred.
+        later_failure: Option<CommandError>,
+    },
+    /// The store could not classify whether the complete batch became durable.
+    Indeterminate {
+        /// Exact failure that made the outcome indeterminate.
+        failure: CommandError,
+        /// Opaque retained operation facts.
+        reconciliation: ReconciliationDescriptor,
+    },
+}
 
 /// Domain-callback stage that surfaced a storage-owned access failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ContributorCallbackStage {
+    /// Reserve bounded reconciliation quota before writer admission.
+    Reservation,
     /// Validate current participant state before assembling mutations.
     Validation,
     /// Assemble the participant's typed pending mutations.
@@ -219,6 +342,15 @@ pub enum CommandError {
         #[source]
         source: Box<dyn Error + Send + Sync>,
     },
+    /// A domain rejected pre-admission reconciliation reservation.
+    #[error("domain `{domain}` rejected reconciliation reservation: {source}")]
+    ContributorReservation {
+        /// Stable typed domain name.
+        domain: &'static str,
+        /// Domain-owned source.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
     /// A storage-owned read or sidecar access failed inside a domain callback.
     #[error("domain `{domain}` failed storage access during {stage:?}: {source}")]
     ContributorAccess {
@@ -244,6 +376,33 @@ pub enum CommandError {
     EmptyContribution {
         /// Stable typed domain name.
         domain: &'static str,
+    },
+    /// Every retained reconciliation operation slot is occupied.
+    #[error("no reconciliation operation capacity remains")]
+    ReconciliationCapacity,
+    /// The conservative descriptor budget exceeds the fixed per-operation limit.
+    #[error(
+        "reconciliation descriptor requests {requested} bytes, exceeding the {limit}-byte limit"
+    )]
+    ReconciliationDescriptorTooLarge {
+        /// Conservative requested descriptor bytes.
+        requested: usize,
+        /// Fixed per-descriptor byte ceiling.
+        limit: usize,
+    },
+    /// Admitted pending mutations did not match their pre-admission reconciliation quota.
+    #[error(
+        "domain `{domain}` reconciliation reservation mismatches family `{family}`: reserved {reserved}, actual {actual}"
+    )]
+    ReconciliationReservationMismatch {
+        /// Stable domain name.
+        domain: &'static str,
+        /// Codec family whose quota did not match the contribution.
+        family: &'static str,
+        /// Pre-admission declared record count.
+        reserved: usize,
+        /// Admitted pending record count.
+        actual: usize,
     },
     /// A required home or domain revision is exhausted.
     #[error("cannot advance {scope} revision: {source}")]
@@ -282,9 +441,33 @@ pub enum CommandError {
         #[source]
         source: Box<dyn Error + Send + Sync>,
     },
+    /// A committed batch publication and its required later persistence step both failed.
+    #[error(
+        "committed batch failure `{commit}` was followed by persistence failure `{persistence}`"
+    )]
+    PersistenceAfterCommitFailure {
+        /// Exact committed batch failure retained first.
+        commit: Box<CommandError>,
+        /// Exact later persistence or local failure.
+        persistence: Box<CommandError>,
+    },
 }
 
 impl CommandError {
+    /// Returns the exact Beryl-owned storage error class when this command retained one.
+    #[must_use]
+    pub fn storage_class(&self) -> Option<StorageErrorClass> {
+        self.classified_fjall()
+            .map(|source| storage_error_class(source.class()))
+    }
+
+    /// Returns the exact Beryl-owned commit state when this command retained one.
+    #[must_use]
+    pub fn storage_commit_state(&self) -> Option<StorageCommitState> {
+        self.classified_fjall()
+            .and_then(|source| source.commit_state().map(storage_commit_state))
+    }
+
     /// Returns deterministic conflict facts when this is a stale command.
     #[must_use]
     pub fn conflicts(&self) -> Option<&[RevisionConflict]> {
@@ -292,5 +475,106 @@ impl CommandError {
             Self::Conflict { conflicts, .. } => Some(conflicts),
             _ => None,
         }
+    }
+
+    fn classified_fjall(&self) -> Option<&crate::health::ClassifiedFjallError> {
+        match self {
+            Self::Commit { source } | Self::Persistence { source } => {
+                source.downcast_ref::<crate::health::ClassifiedFjallError>()
+            }
+            Self::PersistenceAfterCommitFailure { persistence, .. } => {
+                persistence.classified_fjall()
+            }
+            Self::RevisionRead { source } => read_fjall(source),
+            Self::ContributorAccess { source, .. } => match source {
+                DomainCallbackSource::Read(source) => read_fjall(source),
+                DomainCallbackSource::Sidecar(_) => None,
+            },
+            _ => None,
+        }
+    }
+}
+
+fn read_fjall(source: &ReadError) -> Option<&crate::health::ClassifiedFjallError> {
+    match source {
+        ReadError::Storage { source, .. } => {
+            source.downcast_ref::<crate::health::ClassifiedFjallError>()
+        }
+        _ => None,
+    }
+}
+
+fn storage_resource(resource: fjall::StorageResource) -> StorageResource {
+    match resource {
+        fjall::StorageResource::EncodedRangeEndpointBytes => {
+            StorageResource::EncodedRangeEndpointBytes
+        }
+        fjall::StorageResource::ApplicationKeyspaces => StorageResource::ApplicationKeyspaces,
+        fjall::StorageResource::KeyspaceNameBytes => StorageResource::KeyspaceNameBytes,
+        fjall::StorageResource::JournalFiles => StorageResource::JournalFiles,
+        fjall::StorageResource::AtomicBatchRecords => StorageResource::AtomicBatchRecords,
+        fjall::StorageResource::AtomicBatchEncodedKeyBytes => {
+            StorageResource::AtomicBatchEncodedKeyBytes
+        }
+        fjall::StorageResource::AtomicBatchEncodedValueBytes => {
+            StorageResource::AtomicBatchEncodedValueBytes
+        }
+        fjall::StorageResource::EncodedJournalRecordBytes => {
+            StorageResource::EncodedJournalRecordBytes
+        }
+        fjall::StorageResource::DecodedJournalRecordBytes => {
+            StorageResource::DecodedJournalRecordBytes
+        }
+        fjall::StorageResource::EncodedBlockBytes => StorageResource::EncodedBlockBytes,
+        fjall::StorageResource::DecodedBlockBytes => StorageResource::DecodedBlockBytes,
+        fjall::StorageResource::EncodedSeparatedValueBytes => {
+            StorageResource::EncodedSeparatedValueBytes
+        }
+        fjall::StorageResource::DecodedSeparatedValueBytes => {
+            StorageResource::DecodedSeparatedValueBytes
+        }
+        fjall::StorageResource::MergeSources => StorageResource::MergeSources,
+        fjall::StorageResource::TableRecords => StorageResource::TableRecords,
+        fjall::StorageResource::BlobFileRecords => StorageResource::BlobFileRecords,
+        fjall::StorageResource::FragmentationRecords => StorageResource::FragmentationRecords,
+        fjall::StorageResource::VersionHistorySlots => StorageResource::VersionHistorySlots,
+        fjall::StorageResource::SharedBlockCacheBytes => StorageResource::SharedBlockCacheBytes,
+        fjall::StorageResource::MemtablePayloadBytes => StorageResource::MemtablePayloadBytes,
+        fjall::StorageResource::MemtableRecords => StorageResource::MemtableRecords,
+        fjall::StorageResource::Other => StorageResource::Other,
+        _ => StorageResource::Other,
+    }
+}
+
+fn storage_error_class(class: fjall::ErrorClass) -> StorageErrorClass {
+    match class {
+        fjall::ErrorClass::Configuration => StorageErrorClass::Configuration,
+        fjall::ErrorClass::PolicyDenied {
+            resource,
+            requested,
+            limit,
+        } => StorageErrorClass::PolicyDenied {
+            resource: storage_resource(resource),
+            requested,
+            limit,
+        },
+        fjall::ErrorClass::Corruption => StorageErrorClass::Corruption,
+        fjall::ErrorClass::Io(kind) => StorageErrorClass::Io(kind),
+        fjall::ErrorClass::Integrity => StorageErrorClass::Integrity,
+        fjall::ErrorClass::Poisoned => StorageErrorClass::Poisoned,
+        fjall::ErrorClass::MaintenanceTerminal => StorageErrorClass::MaintenanceTerminal,
+        fjall::ErrorClass::KeyspaceIdentity => StorageErrorClass::KeyspaceIdentity,
+        fjall::ErrorClass::Durability => StorageErrorClass::Durability,
+        fjall::ErrorClass::Other => StorageErrorClass::Other,
+        _ => StorageErrorClass::Other,
+    }
+}
+
+fn storage_commit_state(state: fjall::CommitState) -> StorageCommitState {
+    match state {
+        fjall::CommitState::NotCommitted => StorageCommitState::NotCommitted,
+        fjall::CommitState::Committed => StorageCommitState::Committed,
+        fjall::CommitState::Indeterminate => StorageCommitState::Indeterminate,
+        _ => StorageCommitState::Indeterminate,
     }
 }

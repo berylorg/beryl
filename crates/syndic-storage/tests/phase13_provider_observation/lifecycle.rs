@@ -27,7 +27,7 @@ fn enum_value(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     value: ProviderEnumValue,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     stager
         .control(
@@ -44,7 +44,7 @@ fn empty_container(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     container: ProviderContainer,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     let context = ProviderValueContext::Field(field);
     stager
@@ -64,7 +64,7 @@ fn empty_container(
 fn required_except_status(
     stager: &mut ProviderObservationStager,
     kind: ProviderObservationItemKind,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     common_item(stager, callback).unwrap();
     match kind {
@@ -141,7 +141,7 @@ fn begin(
     byte: u8,
     lifecycle: ProviderObservationItemLifecycle,
     kind: ProviderObservationItemKind,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
     ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),

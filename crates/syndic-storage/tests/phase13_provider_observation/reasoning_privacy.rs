@@ -2,7 +2,7 @@ use super::*;
 
 fn begin(
     byte: u8,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
     ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),
@@ -15,7 +15,7 @@ fn begin(
 }
 
 fn assert_validation(
-    result: Result<(), ProviderObservationStagingError<CommandError>>,
+    result: Result<(), ProviderObservationStagingError>,
     expected: ProviderObservationValidatorError,
 ) {
     assert!(matches!(

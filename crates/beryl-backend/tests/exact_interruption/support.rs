@@ -2,8 +2,8 @@ use beryl_backend::{
     CallerNoSuccessorFence, ExactForegroundTurn, ExactForegroundTurnAuthorization,
     ManagedBackendClientConnector, ManagedBackendSession, OrderedTurnStreamCompletion,
     OrderedTurnStreamOperation, OrderedTurnStreamSink, OrderedTurnStreamSubmitError,
-    PersistentFailureInterruptAuthorization, PersistentFailureInterruptCorrelation,
-    StopAttemptCorrelation, StopOperationCorrelation,
+    StopAttemptCorrelation, StopOperationCorrelation, VolatileInterruptAdmissionFailure,
+    VolatileInterruptAuthorization, VolatileInterruptCorrelation,
 };
 use beryl_model::{
     CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasThreadId,
@@ -77,13 +77,12 @@ pub fn authorize(session: &mut ManagedBackendSession) -> ExactForegroundTurnAuth
         .unwrap()
 }
 
-pub fn authorize_persistent_failure(
-    session: &mut ManagedBackendSession,
-) -> PersistentFailureInterruptAuthorization {
+pub fn authorize_volatile(session: &mut ManagedBackendSession) -> VolatileInterruptAuthorization {
     session
-        .authorize_persistent_failure_interrupt(
+        .authorize_volatile_interrupt(
             target(),
-            PersistentFailureInterruptCorrelation::from_bytes([0xC3; 16]),
+            VolatileInterruptAdmissionFailure::WriterReturnedNotCommitted,
+            VolatileInterruptCorrelation::from_bytes([0xC3; 16]),
             CallerNoSuccessorFence::issue(),
         )
         .unwrap()

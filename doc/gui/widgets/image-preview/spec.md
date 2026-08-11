@@ -6,7 +6,8 @@ Sometimes known as: image lightbox, fitted image popup
 
 # Purpose
 
-Shows one owner-supplied image in a bounded, transient window overlay while preserving aspect ratio, focus return, and local failure presentation.
+Shows one owner-supplied image in a bounded, transient modal overlay within the owning window while
+preserving aspect ratio, focus return, and local failure presentation.
 
 # References
 
@@ -16,33 +17,65 @@ Widgets:
 
 # Anatomy
 
-The image preview consists of a backdrop, popup frame, image stage, fitted image surface, optional local state message, and close command.
+The image preview consists of a backdrop, popup frame, preview-chrome command region, image stage,
+fitted image surface, optional local state message, optional contextual-command anchor, and close
+command. The optional anchor and required close command use command buttons in the chrome region.
 
-The owner supplies preview identity, one admitted bounded thumbnail or visible tile set, local
-failure state, accessibility label, and originating anchor. The widget does not locate, decode,
-validate, persist, replace, mutate, or retain the complete original image bytes.
+The owner supplies preview identity, media-identity state, one admitted bounded thumbnail or visible
+tile set when ready, local presentation state, accessibility label, originating anchor, and any
+contextual-command availability. The widget does not locate, decode, validate, persist, replace,
+mutate, or retain the complete original image bytes and does not decide product command policy.
 
 # Look
 
-The preview reads as transient inspection chrome above the owning window. A subdued backdrop separates it from the underlying conversation while leaving the relationship to that window clear.
+The preview reads as transient inspection chrome above the owning window. A subdued backdrop
+separates it from underlying content while leaving the relationship to that window clear.
 
 The image stage uses a neutral inset surface so transparent and unusually proportioned images remain legible. Loading, unavailable, unsupported, oversized, and decode-failed treatment stays local to the same stable popup frame.
 
-The close command is always visible and does not overlap the fitted image.
+The close command is always visible and does not overlap the fitted image. Owner-supplied
+contextual-command anchoring does not obscure media or state text.
 
 # States
 
-The widget supports closed, opening, open, focused, resource-pending, ready, unavailable, unsupported, oversized, decode-failed, and closing states.
+The widget supports closed, opening, open, focused, closing, pending, admitted, unavailable,
+rendition-pending, ready, local-unavailable, unsupported, oversized, and decode-failed states.
 
-Failure states preserve the popup frame, close command, focus contract, and owner-supplied image identity. They never substitute another resource silently.
+`pending`, `admitted`, and `unavailable` are mutually exclusive owner-supplied media-identity states.
+An admitted preview may additionally be `rendition-pending`, `ready`, or `local-unavailable`;
+unsupported, oversized, and decode-failed refine the local unavailable reason. These mappings
+render owner-supplied state and do not define product transition policy.
+
+Pending and failure states preserve the popup frame, close command, contextual-command anchor,
+focus contract, and owner-supplied image identity. They never substitute another resource silently.
 
 # Interaction
 
-Opening the preview records the exact originating marker or command and moves focus into the popup, initially to the close command when no other preview control exists.
+Opening the preview records the exact originating marker or command and moves focus into the popup,
+initially to the close command.
 
-Activating the close command, pressing Escape, or activating the backdrop closes the preview. Pointer activation inside the popup frame does not dismiss it.
+While open, the preview is modal within the owning OS window. When no owner-supplied child command
+surface or external flow owns focus, focus is contained within the popup frame: Tab and Shift+Tab
+cycle through its eligible controls, and attempts to move focus to underlying window content are
+redirected to the last focused eligible preview control or the close command. An active child
+command surface owns its internal focus rules but remains inside the preview's modal scope.
 
-Closure returns focus to the exact origin when that origin still exists and is eligible. Otherwise focus returns to the owning transcript or composer surface according to the feature's activation path.
+Activating the contextual-command anchor reports the preview identity and current anchor geometry
+to the owner. The widget does not define the commands, their availability, or the canonical command
+surface composed at that anchor.
+
+When the owner-supplied command surface closes, focus returns to the exact eligible
+contextual-command anchor. If an invoked command opens a platform picker or another external flow,
+closing that flow returns focus to the anchor when the preview still exists. If the preview has
+closed meanwhile, focus follows the preview's origin-return contract.
+
+Activating the close command, or pressing Escape while the preview owns Escape, closes the preview.
+Pointer activation inside the popup frame does not dismiss it. Pointer activation on the backdrop
+is consumed by the preview before closure; it closes the preview without propagating, retargeting,
+or replaying that activation to underlying content.
+
+Closure returns focus to the exact origin when that origin still exists and is eligible. Otherwise
+focus returns to the owner-supplied stable fallback surface.
 
 The preview does not provide image editing, file replacement, drag export, external-viewer launch, zoom, pan, or submission commands.
 
@@ -53,6 +86,11 @@ If the owner replaces the resource revision while the preview is open, the widge
 The backdrop fills the owning OS-window overlay. The popup frame is centered and clamped inside that overlay with inset clearance from every edge.
 
 The frame's maximum inline and block size derive from the available overlay size. The image stage consumes the remaining frame allocation after the close-command region. The image surface fits inside the stage with aspect ratio preserved and without enlargement beyond its owner-supplied intrinsic resolution.
+
+The preview-chrome command region keeps the close command available and separate from the image
+stage. When present, the contextual-command anchor shares that region without overlapping the state
+message or image. Its owner-supplied command surface is positioned by that canonical surface's own
+anchoring contract.
 
 The popup is non-user-resizable and has no internal scroll surface. Extremely large or unsupported resources use the owner-supplied bounded state instead of creating an unbounded image element.
 
@@ -89,6 +127,14 @@ Spec CSS:
   box-shadow: var(--shadow);
 }
 
+.image-preview__chrome {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
 .image-preview__stage {
   display: flex;
   align-items: center;
@@ -109,6 +155,7 @@ Spec CSS:
   color: var(--foreground);
   font-size: var(--font-size);
 }
+
 ```
 
 # Variants

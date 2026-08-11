@@ -3,18 +3,20 @@ mod support;
 #[cfg(feature = "test-faults")]
 use std::{sync::Arc, thread};
 
+#[cfg(feature = "test-faults")]
+use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint, FaultScope},
+    HomeOpenOptions, HomeSchemaVersion,
+};
 use beryl_home_store::{
     CommandError, DomainHandle, DomainMutation, DomainReader, HomeCommand, HomeStore,
     MutationBuilder, PointReadLimit,
 };
-#[cfg(feature = "test-faults")]
-use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion,
-    test_faults::{FaultController, FaultPoint, FaultScope},
-};
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, FixtureMutationError, PutBytes, open_home};
+use support::{
+    committed, not_committed, open_home, AlphaDomain, BytesRecord, FixtureMutationError, PutBytes,
+};
 
 struct PutIfMissing {
     key: u64,
@@ -33,6 +35,14 @@ impl DomainMutation<AlphaDomain> for PutIfMissing {
                 "logical record is no longer absent",
             ));
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, AlphaDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BytesRecord<AlphaDomain>>(1)?;
         Ok(())
     }
 
@@ -77,7 +87,7 @@ fn current_domain_command_captures_physical_revisions_after_writer_admission() {
         assert!(!second.is_finished());
         first_cut.release();
         first.join().unwrap();
-        second.join().unwrap().unwrap();
+        committed(second.join().unwrap());
     });
 
     assert_eq!(store.home_revision().unwrap().get(), 3);
@@ -99,18 +109,16 @@ fn scoped_writer_fault_ignores_other_typed_current_commands() {
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     faults.fail_next_in_scope(FaultPoint::BeforeCommit, FaultScope::of::<PutIfMissing>());
 
-    store
-        .execute_current(alpha.current_command(PutBytes::<AlphaDomain>::new(
+    committed(
+        store.execute_current(alpha.current_command(PutBytes::<AlphaDomain>::new(
             1,
             b"different mutation".to_vec(),
-        )))
-        .unwrap();
-    let error = store
-        .execute_current(alpha.current_command(PutIfMissing {
-            key: 2,
-            value: b"target mutation".to_vec(),
-        }))
-        .unwrap_err();
+        ))),
+    );
+    let error = not_committed(store.execute_current(alpha.current_command(PutIfMissing {
+        key: 2,
+        value: b"target mutation".to_vec(),
+    })));
     assert!(matches!(error, CommandError::Commit { .. }));
 
     store.verify_health().unwrap();
@@ -129,7 +137,7 @@ fn current_domain_command_preserves_exact_logical_validation() {
     });
     commit_one(&store, alpha, 4, b"current".to_vec());
 
-    let error = store.execute_current(command).unwrap_err();
+    let error = not_committed(store.execute_current(command));
     assert!(matches!(
         error,
         CommandError::ContributorValidation {
@@ -150,7 +158,7 @@ fn commit_one(store: &HomeStore, domain: DomainHandle<AlphaDomain>, key: u64, va
             PutBytes::<AlphaDomain>::new(key, value),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
 }
 
 fn read(store: &HomeStore, domain: DomainHandle<AlphaDomain>, key: u64) -> Option<Vec<u8>> {

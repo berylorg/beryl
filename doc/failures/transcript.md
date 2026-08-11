@@ -106,7 +106,10 @@
 - Evidence: design review showed the user-visible goals are responsive rendering, memory bounds, smooth semantic navigation, and a full viewport when source data exists. The visual transcript scrollbar, exact page-scroll geometry, and selection through unrendered chunks are acceptable to remove for this rewrite.
 - Why it failed: continuous huge-turn geometry keeps correctness coupled to offscreen measurement and pushes the implementation back toward fragile spacer behavior. It also preserves old scrollbar-driven behavior that the new core does not need.
 - Course correction: streamed huge-turn mode abandons continuous pixel geometry. It stores a semantic anchor shaped by turn identity, chunk identity, local anchor offset when needed, rendered chunk range, and navigation direction. The renderer fills adjacent chunks around that anchor until the viewport plus overscan is full or an explicit fallback/boundary is reached. The transcript region renders no visual scrollbar, and selection/copy in streamed huge-turn mode is limited to rendered chunks.
-- Affected design and tests: `doc/features/transcript/design.md`, `doc/ui.md`, `crates/beryl-app/doc/design.md`, and `doc/plan.md` require the semantic streaming path. Tests must guard against transcript scrollbar rendering, unrendered-chunk spacers, cumulative chunk scroll offsets, and render-anyway controls in this phase.
+- Historical affected authority and tests: `doc/features/transcript/design.md`, the now-archived
+  `doc/rework/beryl-home/old-doc/ui.md`, `crates/beryl-app/doc/design.md`, and the then-active root
+  plan required the semantic streaming path. Tests guarded against transcript scrollbar rendering,
+  unrendered-chunk spacers, cumulative chunk scroll offsets, and render-anyway controls in that phase.
 
 ## Streamed Chunk Measurement During List Prepaint
 
@@ -124,4 +127,6 @@
 - Evidence: source audit found direct dependencies from `ShellView`, `ConversationSurfaceState`, selected-thread activation, diagnostics, render theme construction, and integration tests to legacy transcript module names and data types.
 - Why it failed: preserving the old names as no-op shells would be an adapter-shaped compatibility layer and would keep obsolete models in the live architecture.
 - Course correction: first introduce a new shell-facing `syndic_transcript` surface and move live callers to target-state host, presentation, residency, and diagnostic contracts. Archive old transcript source only after the live module tree no longer imports old transcript modules.
-- Affected plan: `doc/plan.md` Phase 2 remains `wip` and `doc/rework/syndic-to-renderer/REWORK.md` tracks the replacement boundary and obsolete-test retirement before source archiving.
+- Historical disposition: the former Phase 2 and Syndic-to-renderer rework completed. Its tracker is
+  archived at `doc/rework/syndic-to-renderer/old-doc/REWORK.md`; current authority is the active root
+  plan and Beryl-home rework.

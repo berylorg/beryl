@@ -49,58 +49,34 @@ impl ProjectionConnectionService {
         let dispatch = home.execute(prepared.command);
         #[cfg(test)]
         self.pause_admission_reconciliation_if_requested(prepared.admission.accepted_input_id());
-        let status = match self.accepted_input_status(home, &prepared.admission) {
-            Ok(status) => status,
-            Err(_) => {
-                if let Err(source) = self.ensure_current() {
-                    let verification_pending = matches!(
-                        &source,
-                        ProjectionCoordinatorError::HomeGenerationMismatch {
-                            expected,
-                            actual: Some(actual),
-                            state: HomeHealthState::Verifying,
-                        } if *expected == self.home_generation && *actual == self.home_generation
-                    );
-                    if verification_pending {
-                        let _ = command.observe_persistent_failure();
-                    } else {
-                        self.fail_closed_admission_boundary();
-                    }
-                    return Err(source.into());
-                }
-                match self.accepted_input_status(home, &prepared.admission) {
-                    Ok(status) => status,
-                    Err(source) => {
-                        self.fail_closed_admission_boundary();
-                        return Err(AcceptedInputAdmissionExecutionError::Reconciliation(source));
-                    }
-                }
+        match dispatch {
+            beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+                Err(AcceptedInputAdmissionExecutionError::Command(evidence))
             }
-        };
-        match status {
-            InputAdmissionStatus::ExactAccepted => {
+            beryl_home_store::CommandOutcome::Committed {
+                receipt: _,
+                later_failure: None,
+            } => {
                 self.scheduler_signal
                     .wake(AcceptedInputWakeReason::AcceptedReady);
                 self.scheduler_signal
                     .wake(AcceptedInputWakeReason::AcceptedNextReady);
                 Ok(())
             }
-            InputAdmissionStatus::Absent => match dispatch {
-                Ok(_) => {
-                    self.fail_closed_admission_boundary();
-                    Err(AcceptedInputAdmissionExecutionError::ImpossibleReconciliation)
-                }
-                Err(source) => Err(AcceptedInputAdmissionExecutionError::Command(source)),
-            },
-            InputAdmissionStatus::ExactSubmitted | InputAdmissionStatus::Collision
-                if dispatch.is_err() =>
-            {
-                Err(AcceptedInputAdmissionExecutionError::Collision)
-            }
-            InputAdmissionStatus::ExactSubmitted | InputAdmissionStatus::Collision => {
-                self.fail_closed_admission_boundary();
-                Err(AcceptedInputAdmissionExecutionError::ImpossibleReconciliation)
-            }
+            beryl_home_store::CommandOutcome::Committed {
+                receipt,
+                later_failure: Some(later_failure),
+            } => Err(AcceptedInputAdmissionExecutionError::CommandCommitted {
+                receipt,
+                later_failure,
+            }),
+            beryl_home_store::CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => Err(AcceptedInputAdmissionExecutionError::CommandIndeterminate {
+                failure,
+                reconciliation,
+            }),
         }
     }
 
@@ -202,27 +178,6 @@ impl ProjectionConnectionService {
             .map(|(outcome, _)| outcome)
     }
 
-    /// Admits, attaches, and completes one bounded hard escalation for the selected operation.
-    ///
-    /// The primary interruption and every admitted hard target run synchronously on the same
-    /// foreground driver. Duplicate callers join the immutable result for the durable stop
-    /// operation and never repeat either request.
-
-    pub fn hard_stop_selected_operation(
-        &self,
-        thread_id: SyndicThreadId,
-    ) -> Result<HardStopCoordinationOutcome, StopCoordinationError> {
-        self.coordinate_hard_stop(thread_id, StopCause::SelectedOperationControl)
-    }
-
-    /// Performs the diagnostic form of the same exact bounded hard-stop operation.
-    pub fn hard_stop_selected_operation_for_diagnostics(
-        &self,
-        thread_id: SyndicThreadId,
-    ) -> Result<HardStopCoordinationOutcome, StopCoordinationError> {
-        self.coordinate_hard_stop(thread_id, StopCause::DiagnosticControl)
-    }
-
     /// Admits or joins healthy-home window-close ownership of one exact selected operation.
     ///
     /// A waiting result owns an exact non-cloneable barrier. The non-GUI caller must retain its
@@ -298,49 +253,6 @@ impl ProjectionConnectionService {
             }),
         }?;
         Ok((outcome, Some(target)))
-    }
-
-    fn coordinate_hard_stop(
-        &self,
-        thread_id: SyndicThreadId,
-        cause: StopCause,
-    ) -> Result<HardStopCoordinationOutcome, StopCoordinationError> {
-        let (connection, proof) = match self.prepare_stop(thread_id)? {
-            PreparedStop::Exact {
-                target: _,
-
-                connection,
-                proof,
-            } => (connection, proof),
-            PreparedStop::Ineligible(reason) => {
-                return Ok(HardStopCoordinationOutcome::Ineligible(reason));
-            }
-        };
-        let continuation_proof = proof.clone();
-        let (attachment, continuation) =
-            match connection.coordinate_stop(&self.stop_coordinator, proof, cause)? {
-                StopOwnership::Primary(owner) => {
-                    let operation_id = owner.operation_id();
-                    let admission = self.stop_coordinator.attach_hard_stop(operation_id)?;
-                    let parts = admission.into_parts();
-                    debug_assert!(parts.1.is_none());
-                    // The hard result is a separately frozen outcome. Driver or durable-settlement
-                    // failure must still let the admitted waiter observe that bounded result.
-                    let _ = connection.dispatch_exact_stop(owner);
-                    parts
-                }
-                StopOwnership::Joined {
-                    operation_id,
-                    interruption: _,
-                } => self
-                    .stop_coordinator
-                    .attach_hard_stop(operation_id)?
-                    .into_parts(),
-            };
-        if let Some(owner) = continuation {
-            let _ = connection.dispatch_exact_hard_stop(owner, continuation_proof);
-        }
-        attachment.wait().map(HardStopCoordinationOutcome::Finished)
     }
 
     fn prepare_stop(

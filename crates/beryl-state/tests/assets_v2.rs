@@ -3,23 +3,22 @@ mod support;
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    CommandError, CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    SidecarByteLimit, SidecarError, SidecarNamespace,
+    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, SidecarByteLimit, SidecarError, SidecarNamespace,
 };
 use beryl_model::{
-    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
-    SealedAssetReferenceSetProof, SealedContentMarkerSummary, SyndicAcceptedInputId,
-    SyndicContentDigest, SyndicContentId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
-    SyndicProjectionId, SyndicRetryRecordId, advance_content_marker_digest,
-    content_marker_digest_seed,
+    advance_content_marker_digest, content_marker_digest_seed, AssetId, AssetReferenceSetDigest,
+    AssetReferenceSetId, ImageLabelOrdinal, SealedAssetReferenceSetProof,
+    SealedContentMarkerSummary, SyndicAcceptedInputId, SyndicContentDigest, SyndicContentId,
+    SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
 };
 use beryl_state::{
-    ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES,
-    ASSET_REFERENCE_PAGE_MAX_STORED_BYTES, AppendAssetReferencePage, AssetDimensions,
-    AssetLabelDisposition, AssetMediaType, AssetMutationError, AssetOwner, AssetOwnerHeadUpdate,
-    AssetReadError, AssetReferenceOrdinal, AssetReferencePageEntry, AssetReferencePageError,
-    AssetReferenceSetLifecycle, AssetReferenceSetStagingAuthority, BeginAssetReferenceSet,
-    BerylState, PublishAssetMetadata, SealAssetReferenceSet, UpdateAssetOwnerHeads,
+    AppendAssetReferencePage, AssetDimensions, AssetLabelDisposition, AssetMediaType,
+    AssetMutationError, AssetOwner, AssetOwnerHeadUpdate, AssetReadError, AssetReferenceOrdinal,
+    AssetReferencePageEntry, AssetReferencePageError, AssetReferenceSetLifecycle,
+    AssetReferenceSetStagingAuthority, BeginAssetReferenceSet, BerylState, PublishAssetMetadata,
+    SealAssetReferenceSet, UpdateAssetOwnerHeads, ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES,
+    ASSET_REFERENCE_PAGE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_STORED_BYTES,
 };
 use tempfile::tempdir;
 
@@ -27,13 +26,19 @@ fn execute(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
 ) -> beryl_home_store::CommitReceipt {
-    execute_result(store, contribution).unwrap()
+    match execute_outcome(store, contribution) {
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => receipt,
+        outcome => panic!("expected committed asset command, got {outcome:?}"),
+    }
 }
 
-fn execute_result(
+fn execute_outcome(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<beryl_home_store::CommitReceipt, CommandError> {
+) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
     store.execute(command)
@@ -133,7 +138,13 @@ fn publish_metadata_bytes(
         .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     contribution.add_to(&mut command).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed asset metadata publication, got {outcome:?}"),
+    }
     (asset_id, path)
 }
 

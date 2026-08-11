@@ -3,7 +3,7 @@
 use std::convert::Infallible;
 
 use beryl_app::conversation_tools::ConversationToolRegistry;
-use beryl_home_store::{HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{
     BindingRevision, CasConversationToolProfile, CasItemId, CasLoadedSessionGeneration,
     CasLoadedThreadGeneration, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId,
@@ -388,5 +388,20 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("exact Syndic contribution unexpectedly not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("exact Syndic contribution committed with later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("exact Syndic contribution indeterminate: {outcome:?}")
+        }
+    }
 }

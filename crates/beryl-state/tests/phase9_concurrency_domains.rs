@@ -1,6 +1,6 @@
 mod support;
 
-use beryl_home_store::HomeCommand;
+use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_state::{
     AdmitBranchHandoffJob, ApplySettings, BranchHandoffJobLifecycle, CatalogFreshness,
     CatalogPointReadLimit, CatalogRowExpectation, CompleteResolvingTurn, ExpectedSettingRevision,
@@ -14,6 +14,19 @@ use support::phase9::{
     admission, assert_one_success_one_conflict, catalog_facts, catalog_sources, command,
     race_commands, thread,
 };
+
+macro_rules! expect_committed {
+    ($outcome:expr) => {{
+        let outcome = $outcome;
+        match outcome {
+            CommandOutcome::Committed {
+                receipt,
+                later_failure: None,
+            } => receipt,
+            outcome => panic!("expected committed command, got {outcome:?}"),
+        }
+    }};
+}
 
 fn absent(key: SettingKey, value: SettingValue) -> SettingUpdate {
     SettingUpdate::new(key, ExpectedSettingRevision::Absent, value)
@@ -31,7 +44,7 @@ fn exact(
 fn concurrent_multi_setting_apply_never_publishes_a_mixed_pair() {
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
-    execute(
+    expect_committed!(execute(
         &store,
         state.settings().apply(
             state.settings().revision(&store).unwrap(),
@@ -47,8 +60,7 @@ fn concurrent_multi_setting_apply_never_publishes_a_mixed_pair() {
             ])
             .unwrap(),
         ),
-    )
-    .unwrap();
+    ));
 
     let theme = state
         .settings()
@@ -141,14 +153,13 @@ fn concurrent_durable_job_transitions_leave_one_valid_lifecycle() {
     let (store, state) = support::open(directory.path());
     let admitted = admission(40);
     let job_id = admitted.job_id();
-    execute(
+    expect_committed!(execute(
         &store,
         state.durable_jobs().admit_branch_handoff(
             state.durable_jobs().revision(&store).unwrap(),
             AdmitBranchHandoffJob::new(admitted),
         ),
-    )
-    .unwrap();
+    ));
     let job = state.durable_jobs().job(&store, job_id).unwrap().unwrap();
     let expected_home = store.home_revision().unwrap();
     let expected_domain = state.durable_jobs().revision(&store).unwrap();
@@ -208,7 +219,7 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
     let thread_id = thread(50);
-    execute(
+    expect_committed!(execute(
         &store,
         state.catalog().publish(
             state.catalog().revision(&store).unwrap(),
@@ -220,8 +231,7 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
             )
             .unwrap(),
         ),
-    )
-    .unwrap();
+    ));
     let initial = state
         .catalog()
         .row(&store, thread_id, CatalogPointReadLimit::schema_maximum())
@@ -257,7 +267,7 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
         .unwrap()
         .unwrap();
     if raced.freshness() == CatalogFreshness::Stale {
-        execute(
+        expect_committed!(execute(
             &store,
             state.catalog().publish(
                 state.catalog().revision(&store).unwrap(),
@@ -269,8 +279,7 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
                 )
                 .unwrap(),
             ),
-        )
-        .unwrap();
+        ));
     }
     let rebuilt = state
         .catalog()

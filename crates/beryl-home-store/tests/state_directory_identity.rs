@@ -12,12 +12,12 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
     test_faults::{FaultController, FaultPoint},
+    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, PutBytes};
+use support::{committed, AlphaDomain, BytesRecord, PutBytes};
 
 const RENAME_CHILD_HOME: &str = "BERYL_PHASE13_RENAME_HOME";
 const RENAME_CHILD_TARGET: &str = "BERYL_PHASE13_RENAME_TARGET";
@@ -38,7 +38,7 @@ fn put(store: &mut HomeStore, domain: beryl_home_store::DomainHandle<AlphaDomain
             PutBytes::<AlphaDomain>::new(1, value.to_vec()),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
 }
 
 fn read(store: &HomeStore, domain: beryl_home_store::DomainHandle<AlphaDomain>) -> Vec<u8> {
@@ -111,7 +111,10 @@ fn recovery_retains_the_exact_state_directory_until_orderly_close() {
             PutBytes::<AlphaDomain>::new(2, b"surface failure".to_vec()),
         ))
         .unwrap();
-    assert!(current.execute(failed).is_err());
+    assert!(matches!(
+        current.execute(failed),
+        beryl_home_store::CommandOutcome::NotCommitted { .. }
+    ));
     faults.fail_next(FaultPoint::BeforeVerification);
     assert!(current.verify_health().is_err());
 

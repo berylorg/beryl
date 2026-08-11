@@ -1,7 +1,8 @@
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, SidecarByteLimit, SidecarNamespace,
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, SidecarByteLimit,
+    SidecarNamespace,
 };
 use beryl_model::{
     AssetId, AssetReferenceSetId, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
@@ -116,7 +117,12 @@ impl Fixture {
             submission,
         )
         .unwrap();
-        self.store.execute(command).unwrap();
+        match self.store.execute(command) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("pending-turn fixture command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("pending-turn fixture command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("pending-turn fixture command was indeterminate: {outcome:?}"),
+        }
     }
 
     fn current(&self) -> SyndicCurrentDraft {
@@ -187,7 +193,12 @@ impl Fixture {
             admission,
         )
         .unwrap();
-        self.store.execute(command).unwrap();
+        match self.store.execute(command) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("accepted-input fixture command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("accepted-input fixture command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("accepted-input fixture command was indeterminate: {outcome:?}"),
+        }
         self.storage
             .accepted_input(&self.store, input_id, point_limit())
             .unwrap()
@@ -257,7 +268,12 @@ impl Fixture {
             .unwrap();
         let mut command = HomeCommand::new(self.store.home_revision().unwrap());
         metadata.add_to(&mut command).unwrap();
-        self.store.execute(command).unwrap();
+        match self.store.execute(command) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("asset metadata fixture command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("asset metadata fixture command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("asset metadata fixture command was indeterminate: {outcome:?}"),
+        }
         asset
     }
 
@@ -360,7 +376,12 @@ pub(super) fn execute_one(
 ) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("fixture contribution command committed with later failure: {outcome:?}"),
+        CommandOutcome::NotCommitted { evidence } => panic!("fixture contribution command was not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("fixture contribution command was indeterminate: {outcome:?}"),
+    }
 }
 
 fn marker_id(draft: SyndicDraftId, ordinal: u64) -> SyndicDraftMarkerId {

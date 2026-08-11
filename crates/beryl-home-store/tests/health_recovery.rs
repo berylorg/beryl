@@ -5,14 +5,14 @@ mod support;
 use std::{num::NonZeroU64, sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     CommandError, CommitReceiptError, DomainValidationError, HealthVerificationError, HomeCommand,
     HomeHealthSnapshot, HomeHealthState, HomeOpenError, HomeOpenOptions, HomeRecoveryError,
     HomeSchemaVersion, HomeStore, ReadError, RecoveryRetrySchedule,
-    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, PutBytes};
+use support::{committed, AlphaDomain, BytesRecord, PutBytes};
 
 fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
     HomeStore::open_with_faults(
@@ -56,7 +56,9 @@ fn surfaced_commit_failure_gates_reads_until_bounded_verification_succeeds() {
     faults.fail_next(FaultPoint::BeforeCommit);
     assert!(matches!(
         store.execute(command(&store, alpha, 7, b"never committed")),
-        Err(CommandError::Commit { .. })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::Commit { .. }
+        }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Verifying);
     assert!(matches!(
@@ -93,7 +95,10 @@ fn failed_verification_force_recovers_only_the_same_locked_home() {
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     assert!(matches!(
         store.execute(command(&store, alpha, 9, b"indeterminate")),
-        Err(CommandError::Persistence { .. })
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure: CommandError::Persistence { .. },
+            reconciliation: _,
+        }
     ));
     faults.fail_next(FaultPoint::BeforeVerification);
     assert!(matches!(
@@ -115,7 +120,9 @@ fn failed_verification_force_recovers_only_the_same_locked_home() {
     assert_eq!(store.home_id(), home_id);
     assert!(matches!(
         store.execute(stale_command),
-        Err(CommandError::ForeignDomain { .. })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ForeignDomain { .. }
+        }
     ));
 
     let alpha = store.domain_handle::<AlphaDomain>().unwrap();
@@ -140,9 +147,7 @@ fn same_home_recovery_rejects_a_prior_generation_success_receipt() {
     let mut store = open_with_faults(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let prior_generation = store.health().generation().unwrap();
-    let receipt = store
-        .execute(command(&store, alpha, 1, b"durable prior result"))
-        .unwrap();
+    let receipt = committed(store.execute(command(&store, alpha, 1, b"durable prior result")));
     let receipt_domain_revision = store
         .receipt_domain_revision(&receipt, alpha)
         .unwrap()
@@ -152,7 +157,9 @@ fn same_home_recovery_rejects_a_prior_generation_success_receipt() {
     faults.fail_next(FaultPoint::BeforeCommit);
     assert!(matches!(
         store.execute(command(&store, alpha, 2, b"indeterminate")),
-        Err(CommandError::Commit { .. })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::Commit { .. }
+        }
     ));
     faults.fail_next(FaultPoint::BeforeVerification);
     assert!(store.verify_health().is_err());
@@ -183,7 +190,10 @@ fn recovery_is_single_flight_and_new_signals_join_the_active_attempt() {
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
 
     faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(store.execute(command(&store, alpha, 1, b"x")).is_err());
+    assert!(matches!(
+        store.execute(command(&store, alpha, 1, b"x")),
+        beryl_home_store::CommandOutcome::NotCommitted { .. }
+    ));
     faults.fail_next(FaultPoint::BeforeVerification);
     assert!(store.verify_health().is_err());
     assert_eq!(store.health().state(), HomeHealthState::Failed);
@@ -218,7 +228,10 @@ fn failed_recovery_can_retry_the_same_home_without_replacement_creation() {
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
 
     faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(store.execute(command(&store, alpha, 1, b"x")).is_err());
+    assert!(matches!(
+        store.execute(command(&store, alpha, 1, b"x")),
+        beryl_home_store::CommandOutcome::NotCommitted { .. }
+    ));
     faults.fail_next(FaultPoint::BeforeVerification);
     assert!(store.verify_health().is_err());
 
@@ -260,20 +273,16 @@ fn recovery_rejects_validator_disagreement_and_remains_failed() {
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
     let domain = store.register_domain::<ValidatedDomain>().unwrap();
-    store
-        .execute(command_for_validated(&store, domain, b"reject"))
-        .unwrap();
+    committed(store.execute(command_for_validated(&store, domain, b"reject")));
 
     faults.fail_next(FaultPoint::BeforeSidecarWrite);
-    assert!(
-        store
-            .admit_sidecar(
-                beryl_home_store::SidecarNamespace::new("fixture").unwrap(),
-                b"sidecar",
-                beryl_home_store::SidecarByteLimit::new(NonZeroU64::new(64).unwrap()),
-            )
-            .is_err()
-    );
+    assert!(store
+        .admit_sidecar(
+            beryl_home_store::SidecarNamespace::new("fixture").unwrap(),
+            b"sidecar",
+            beryl_home_store::SidecarByteLimit::new(NonZeroU64::new(64).unwrap()),
+        )
+        .is_err());
     assert!(matches!(
         store.verify_health(),
         Err(HealthVerificationError::DomainValidation(

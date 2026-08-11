@@ -4,7 +4,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use beryl_home_store::{CommandError, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     CasItemId, CasThreadId, CasTurnId, ProviderObservationId, SyndicContentId, SyndicItemId,
     SyndicTurnId,
@@ -72,27 +72,43 @@ fn source(item: &str) -> CasItemSource {
 fn observation_callback(
     store: &HomeStore,
     storage: SyndicStorage,
-) -> impl FnMut(&ProviderObservationStageBatch) -> Result<(), CommandError> + '_ {
-    move |batch| {
-        store
-            .execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
-            .map(|_| ())
+) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + '_ {
+    move |batch| store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+}
+
+fn committed_stage_value<T>(outcome: ProviderObservationStageOutcome<T>) -> T {
+    match outcome {
+        ProviderObservationStageOutcome::Committed {
+            value,
+            receipt: _,
+            later_failure: None,
+        } => value,
+        ProviderObservationStageOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("expected staging to commit without later failure, got {failure:?}"),
+        ProviderObservationStageOutcome::NotCommitted { evidence } => {
+            panic!("expected staging to commit, got NotCommitted: {evidence:?}")
+        }
+        ProviderObservationStageOutcome::Indeterminate { failure, .. } => {
+            panic!("expected staging to commit, got Indeterminate: {failure:?}")
+        }
     }
 }
 
 fn control(
     stager: &mut ProviderObservationStager,
     value: ProviderObservationControl,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
-    stager.control(value, callback).unwrap();
+    committed_stage_value(stager.control(value, callback).unwrap());
 }
 
 fn scalar(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     value: ProviderScalar,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,
@@ -108,7 +124,7 @@ fn enum_value(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     value: ProviderEnumValue,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,
@@ -124,7 +140,7 @@ fn text(
     stager: &mut ProviderObservationStager,
     context: ProviderValueContext,
     pieces: &[&[u8]],
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,
@@ -132,12 +148,14 @@ fn text(
         callback,
     );
     for piece in pieces {
-        stager
-            .fragment(
-                ProviderObservationStagingBytes::new(context, piece).unwrap(),
-                callback,
-            )
-            .unwrap();
+        committed_stage_value(
+            stager
+                .fragment(
+                    ProviderObservationStagingBytes::new(context, piece).unwrap(),
+                    callback,
+                )
+                .unwrap(),
+        );
     }
     control(
         stager,
@@ -150,7 +168,7 @@ fn field_text(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     pieces: &[&[u8]],
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     text(stager, ProviderValueContext::Field(field), pieces, callback);
 }
@@ -159,7 +177,7 @@ fn begin_container(
     stager: &mut ProviderObservationStager,
     context: ProviderValueContext,
     container: ProviderContainer,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,
@@ -172,7 +190,7 @@ fn end_container(
     stager: &mut ProviderObservationStager,
     context: ProviderValueContext,
     container: ProviderContainer,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,
@@ -183,11 +201,9 @@ fn end_container(
 
 fn bind_sealed(
     stager: ProviderObservationStager,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> BoundProviderObservation {
-    stager
-        .seal(callback)
-        .unwrap()
+    committed_stage_value(stager.seal(callback).unwrap())
         .bind(route(), route())
         .unwrap()
 }

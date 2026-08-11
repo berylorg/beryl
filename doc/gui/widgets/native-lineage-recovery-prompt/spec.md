@@ -8,7 +8,7 @@ Sometimes known as: composer recovery prompt
 
 Presents the exact Retry-or-recover decision when a conversation cannot reuse its native CAS
 lineage, while occupying the ordinary user-input-panel position without becoming a modal dialog or
-discarding the hidden composer state.
+discarding the durable draft or its compact host-owned restoration facts.
 
 # References
 
@@ -31,8 +31,9 @@ effects. The prompt owns their shared arrangement and focus movement but does no
 binding may be retried or retired.
 
 The widget contains no text editor, draft copy, transcript content, error-detail scroller, close
-command, or dismissal affordance. The owning feature retains the ordinary composer and its state
-outside this widget while the prompt is mounted.
+command, or dismissal affordance. It accepts no composer instance, durable draft binding,
+restoration seed, resident range, request, layout cache, or staged edit. The contribution owner,
+not this widget, owns slot replacement and any composer unmount or later restoration lifecycle.
 
 # Look
 
@@ -54,8 +55,9 @@ focused-command, and leaving states.
 Exactly one running state may be present. While a command is running, both commands reject duplicate
 activation. A disabled command remains visible and satisfies `expected-action-availability`.
 
-Leaving retains the current presentation until the owning feature publishes either the restored
-composer or a successor pending-turn state; it never briefly exposes an empty user-input panel.
+Leaving retains the current presentation until the owning feature publishes either a coherent
+newly mounted eligible composer or a successor pending-turn state; it never briefly exposes an
+empty user-input panel.
 
 # Interaction
 
@@ -64,16 +66,16 @@ control that must finish its current key event before focus transfer. Tab and Sh
 the enabled command buttons without leaving an unreachable focus target inside the prompt.
 
 Enter and Space invoke the focused command according to the `command button` contract. Escape does
-not dismiss the prompt, restore the composer, change the selected thread, or abandon the retained
-binding.
+not dismiss the prompt, request a replacement composer, change the selected thread, or abandon the
+retained binding.
 
 When both commands are temporarily unavailable, the prompt itself may receive programmatic focus
 for accessible reading, but it performs no command. Disabled buttons expose their owner-supplied
 explanations through the referenced availability contract.
 
-On replacement by an eligible composer, focus returns to the restored editor. If restoration is
-not eligible because an already-admitted turn owns the input, the owning feature supplies the exact
-safe focus destination outside this widget.
+On replacement by an eligible composer, focus moves to the newly mounted editor only after its
+coherent restored surface is ready. If restoration is not eligible because an already-admitted turn
+owns the input, the owning feature supplies the exact safe focus destination outside this widget.
 
 # Layout
 
@@ -143,7 +145,7 @@ Spec CSS:
 
 # Variants
 
-N/A.
+N/A
 
 # UI Roles
 

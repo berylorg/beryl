@@ -23,7 +23,9 @@ Widgets:
 
 # Anatomy
 
-The thread lineage contains a fixed root strip, structural heading, horizontal trail viewport, fixed-stride windowed trail layer, ordered parent breadcrumb controls, separators, readonly current-thread endpoint, and an overlay horizontal scrollbar.
+The thread lineage contains a fixed root strip, structural heading, horizontal trail viewport with a
+stable focus proxy, fixed-stride windowed trail layer, ordered parent breadcrumb controls,
+separators, readonly current-thread endpoint, and an overlay horizontal scrollbar.
 
 Each resident parent breadcrumb has an owner-supplied stable thread identity, title, availability state, bounded accessible context, and navigation command. The current endpoint has stable identity and title but no activation command.
 
@@ -39,7 +41,9 @@ Horizontal overflow does not wrap the trail, increase strip height, or create ou
 
 # States
 
-The widget supports loading page, ready, horizontal overflow, leading clamped, trailing clamped, manually scrolled, auto-revealing current, focused breadcrumb, tooltip visible, reconciling, and inert states.
+The widget supports loading page, ready, horizontal overflow, leading clamped, trailing clamped,
+manually scrolled, auto-revealing current, focused breadcrumb, logical breadcrumb focus retained,
+viewport focus proxy focused, tooltip visible, reconciling, and inert states.
 
 Parent breadcrumbs support normal, hover, pressed, focused, unavailable, open elsewhere, truncated, and navigation-pending states. The current endpoint supports current and truncated states only.
 
@@ -55,11 +59,26 @@ On first mount and after a selected-thread identity change, the viewport reveals
 
 The trail uses fixed-stride horizontal windowing. Every parent slot has one fixed inline stride and truncates its label, so the logical extent is derived from parent count without measuring or retaining offscreen breadcrumbs. The widget realizes resident items intersecting the viewport plus at most two complete breadcrumb items before and two after the visible range; separators are part of their following slot. A missing visible or overscan page triggers one deduplicated bounded page request and renders no fabricated breadcrumb.
 
-Stable thread identity, not visible index, owns focus, navigation dispatch, and tooltip anchoring. Query revision owns page reconciliation. A reconciliation that retains the focused breadcrumb preserves focus and reveals it. If the focused identity disappears, focus returns to the trail viewport without activating another breadcrumb.
+Stable thread identity, not visible index, owns focus, navigation dispatch, and tooltip anchoring.
+Query revision owns page reconciliation. When a focused breadcrumb leaves the realized window, the
+widget retains only the compact `(query revision, stable thread identity)` logical focus record and
+moves actual focus to the trail viewport proxy. Arrow traversal continues from that logical record.
+When the same identity becomes realized under the matching revision, the widget restores actual
+breadcrumb focus and reveals it without activation only while the trail viewport proxy still owns
+focus. If focus has left the proxy, the compact logical record remains available for a later trail
+focus entry without moving actual focus. After a query-revision change, reconciliation rebinds the
+record only if the new revision retains that stable identity; otherwise the record clears and focus
+remains wherever the current focus route placed it. The widget never retains an offscreen
+breadcrumb entity or geometry to preserve focus.
 
-If windowing removes a tooltip-owning item, the tooltip closes intentionally. The widget never retains unbounded offscreen breadcrumbs solely to preserve focus, hover, or popup geometry.
+If windowing removes a tooltip-owning item, the tooltip closes intentionally. The widget never retains unbounded offscreen breadcrumbs solely to preserve focus, hover, or tooltip-anchor geometry.
 
-Content-free diagnostics expose widget instance id, opaque nonreversible selected-thread, query-revision, and breadcrumb diagnostic keys, parent count, resident and pending page counts, realized item count, visible diagnostic-key range, overscan item count, fixed item stride, viewport width, logical content width, scroll offset, clamp direction, focused-key presence, current endpoint presence, and tooltip-anchor presence. Diagnostics never include titles, paths, availability explanations, raw thread ids, or tooltip text.
+Content-free diagnostics expose widget instance id, opaque nonreversible selected-thread,
+query-revision, and breadcrumb diagnostic keys, parent count, resident and pending page counts,
+realized item count, visible diagnostic-key range, overscan item count, fixed item stride, viewport
+width, logical content width, scroll offset, clamp direction, logical-focused-key presence,
+viewport-focus-proxy presence, current endpoint presence, and tooltip-anchor presence. Diagnostics
+never include titles, paths, availability explanations, raw thread ids, or tooltip text.
 
 # Layout
 

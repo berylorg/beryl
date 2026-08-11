@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use beryl_backend::{
     ApprovalRequestKind, ApprovalResponseDisposition,
@@ -19,13 +19,12 @@ use crate::cas_projection::{
         router::{
             EventRouter, LIVE_EVENT_TARGET_CAPACITY, LiveEventConnectionState, LiveEventPoll,
             LiveEventTargetCloseReason, LiveEventTargetRegistrationError,
-            PersistentFailureTargetGuardDisposition, PersistentFailureTargetIneligibility,
-            TargetRegistration, TargetTurnRegistration,
+            PersistentFailureTargetIneligibility, StopElectionAdmission, TargetRegistration,
+            TargetTurnRegistration,
         },
     },
     context_compaction::ContextCompactionTargetAuthority,
     persistent_failure::{PersistentFailureCutIdentity, PersistentFailureGeneration},
-    stop::PersistentFailureStopEvidence,
 };
 
 use super::super::{ActiveSteeringAttemptKey, TargetPublication, TargetTurn};
@@ -123,10 +122,35 @@ fn stop_wait_releases_its_command_before_failure_drain_and_freeze_wake() {
     .expect("open router wait failure home");
     let home_generation = home.health().generation().unwrap();
     let (router, gate) = router_with_gate_for(0xed, 8_899);
-    let registration = register_target(&router, 0, home_generation.get())
-        .expect("register stop wait failure target");
+    let registration = {
+        let command = live_command(&router);
+        router
+            .register(
+                &command,
+                LoadedThreadKey {
+                    runtime_id: router.runtime_id,
+                    process_generation: router.process_generation,
+                    cas_thread_id: target_id(0),
+                },
+                SyndicThreadId::from_bytes([1; 16]),
+                CasLoadedSessionGeneration::new(
+                    router.process_generation,
+                    CasLoadedThreadGeneration::new(1).unwrap(),
+                ),
+                home_generation.get(),
+                Duration::from_secs(1),
+                TargetTurnRegistration::Pending(super::pending_activation(1)),
+            )
+            .expect("register stop wait failure target")
+    };
     let thread_id = registration.key().cas_thread_id.clone();
     let turn_id = CasTurnId::new("cas-turn-000").unwrap();
+    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .acquire_source_publication(&thread_id, &turn_id)
+        .unwrap()
+        .finish()
+        .unwrap();
     let proof = router
         .stop_target(registration.owner(), &thread_id, &turn_id)
         .expect("build exact stop proof");
@@ -171,13 +195,8 @@ fn stop_wait_releases_its_command_before_failure_drain_and_freeze_wake() {
         gate.service_generation(),
         PersistentFailureGeneration::FIRST,
     );
-    let mut stop_evidence = HashMap::new();
-    stop_evidence.insert(
-        registration.owner(),
-        PersistentFailureStopEvidence::NoLocalStop,
-    );
     router
-        .freeze_persistent_failure_targets(identity, &stop_evidence)
+        .freeze_persistent_failure_targets(identity)
         .expect("failure freeze wakes the permit-free router wait");
     assert!(matches!(
         waiter.join().unwrap(),
@@ -317,11 +336,13 @@ fn failure_cut_snapshots_all_admitted_targets_in_deterministic_order() {
         home_generation.get(),
     );
 
+    let ascending_identity = identity_for_router(&ascending_router, identity);
+    let descending_identity = identity_for_router(&descending_router, identity);
     let ascending = ascending_router
-        .freeze_persistent_failure_targets(identity, &HashMap::new())
+        .freeze_persistent_failure_targets(ascending_identity)
         .expect("active router freezes all of its bounded targets");
     let descending = descending_router
-        .freeze_persistent_failure_targets(identity, &HashMap::new())
+        .freeze_persistent_failure_targets(descending_identity)
         .expect("active router freezes all of its bounded targets");
 
     let ascending = ascending.into_candidates();
@@ -401,12 +422,12 @@ fn failure_target_freeze_classifies_every_eligibility_exclusion() {
 
     assert!(frozen_candidate(EligibilityCase::Eligible, identity).is_ok());
     for (case, expected) in cases {
-        assert_eq!(frozen_candidate(case, identity), Err(expected));
+        assert_eq!(frozen_candidate(case, identity).err(), Some(expected));
     }
 }
 
 #[test]
-fn failure_target_guard_is_spent_once_and_router_freeze_is_single_flight() {
+fn router_failure_freeze_is_single_flight_after_dispatch_authorization() {
     let home_directory = tempfile::tempdir().expect("router guard home");
     let home = HomeStore::open(HomeOpenOptions::new(
         home_directory.path(),
@@ -420,19 +441,11 @@ fn failure_target_guard_is_spent_once_and_router_freeze_is_single_flight() {
         PersistentFailureGeneration::FIRST,
     );
     let (router, proof) = frozen_eligible_target(identity);
-
-    let authorization = router
-        .authorize_persistent_failure_dispatch(&proof)
+    let _authorization = router
+        .authorize_persistent_failure_dispatch(proof)
         .expect("the exact frozen guard is initially spendable");
     assert_eq!(
-        router.authorize_persistent_failure_dispatch(&proof).err(),
-        Some(PersistentFailureTargetIneligibility::AlreadyFrozen)
-    );
-    drop(authorization);
-    assert_eq!(
-        router
-            .freeze_persistent_failure_targets(identity, &HashMap::new())
-            .err(),
+        router.freeze_persistent_failure_targets(identity).err(),
         Some(PersistentFailureTargetIneligibility::RouterUnavailable)
     );
 }
@@ -451,17 +464,12 @@ fn thread_close_before_failure_freeze_marks_the_exact_target_ineligible() {
         ProjectionServiceGeneration::allocate().unwrap(),
         PersistentFailureGeneration::FIRST,
     );
-    let (router, registration) = eligibility_target(EligibilityCase::Eligible, identity);
+    let (router, registration, identity) = eligibility_target(EligibilityCase::Eligible, identity);
     let thread_id = registration.key().cas_thread_id.clone();
 
     assert!(!router.record_thread_closed(&thread_id).unwrap());
-    let mut stop_evidence = HashMap::new();
-    stop_evidence.insert(
-        registration.owner(),
-        PersistentFailureStopEvidence::NoLocalStop,
-    );
     let mut candidates = router
-        .freeze_persistent_failure_targets(identity, &stop_evidence)
+        .freeze_persistent_failure_targets(identity)
         .expect("the router records the exact failure cut")
         .into_candidates();
     assert_eq!(candidates.len(), 1);
@@ -479,7 +487,7 @@ fn thread_close_before_failure_freeze_marks_the_exact_target_ineligible() {
 }
 
 #[test]
-fn thread_close_after_failure_freeze_closes_routing_and_preserves_settlement_guard() {
+fn thread_close_after_failure_freeze_closes_routing_and_invalidates_dispatch() {
     let home_directory = tempfile::tempdir().expect("router close-after-freeze home");
     let home = HomeStore::open(HomeOpenOptions::new(
         home_directory.path(),
@@ -492,14 +500,9 @@ fn thread_close_after_failure_freeze_closes_routing_and_preserves_settlement_gua
         ProjectionServiceGeneration::allocate().unwrap(),
         PersistentFailureGeneration::FIRST,
     );
-    let (router, registration) = eligibility_target(EligibilityCase::Eligible, identity);
-    let mut stop_evidence = HashMap::new();
-    stop_evidence.insert(
-        registration.owner(),
-        PersistentFailureStopEvidence::NoLocalStop,
-    );
+    let (router, registration, identity) = eligibility_target(EligibilityCase::Eligible, identity);
     let mut candidates = router
-        .freeze_persistent_failure_targets(identity, &stop_evidence)
+        .freeze_persistent_failure_targets(identity)
         .unwrap()
         .into_candidates();
     let proof = candidates.pop().unwrap().into_proof().unwrap();
@@ -514,14 +517,7 @@ fn thread_close_after_failure_freeze_closes_routing_and_preserves_settlement_gua
         LiveEventPoll::Closed(LiveEventTargetCloseReason::ThreadClosed)
     ));
     assert_eq!(
-        router
-            .observe_persistent_failure_target_guard(proof.witness())
-            .unwrap()
-            .disposition(),
-        PersistentFailureTargetGuardDisposition::Frozen
-    );
-    assert_eq!(
-        router.authorize_persistent_failure_dispatch(&proof).err(),
+        router.authorize_persistent_failure_dispatch(proof).err(),
         Some(PersistentFailureTargetIneligibility::IdentityMismatch)
     );
 }
@@ -530,18 +526,9 @@ fn frozen_candidate(
     case: EligibilityCase,
     identity: PersistentFailureCutIdentity,
 ) -> Result<super::super::PersistentFailureTargetProof, PersistentFailureTargetIneligibility> {
-    let (router, registration) = eligibility_target(case, identity);
-    let mut stop_evidence = HashMap::new();
-    stop_evidence.insert(
-        registration.owner(),
-        if matches!(case, EligibilityCase::PriorPrimaryAmbiguous) {
-            PersistentFailureStopEvidence::Dispatching
-        } else {
-            PersistentFailureStopEvidence::NoLocalStop
-        },
-    );
+    let (router, _registration, identity) = eligibility_target(case, identity);
     let mut candidates = router
-        .freeze_persistent_failure_targets(identity, &stop_evidence)
+        .freeze_persistent_failure_targets(identity)
         .expect("active test router freezes once")
         .into_candidates();
     assert_eq!(candidates.len(), 1);
@@ -551,14 +538,9 @@ fn frozen_candidate(
 fn frozen_eligible_target(
     identity: PersistentFailureCutIdentity,
 ) -> (Arc<EventRouter>, super::super::PersistentFailureTargetProof) {
-    let (router, registration) = eligibility_target(EligibilityCase::Eligible, identity);
-    let mut stop_evidence = HashMap::new();
-    stop_evidence.insert(
-        registration.owner(),
-        PersistentFailureStopEvidence::NoLocalStop,
-    );
+    let (router, _registration, identity) = eligibility_target(EligibilityCase::Eligible, identity);
     let mut candidates = router
-        .freeze_persistent_failure_targets(identity, &stop_evidence)
+        .freeze_persistent_failure_targets(identity)
         .unwrap()
         .into_candidates();
     (router, candidates.pop().unwrap().into_proof().unwrap())
@@ -567,8 +549,13 @@ fn frozen_eligible_target(
 fn eligibility_target(
     case: EligibilityCase,
     identity: PersistentFailureCutIdentity,
-) -> (Arc<EventRouter>, TargetRegistration) {
-    let router = router_for(0xe1, 8_001);
+) -> (
+    Arc<EventRouter>,
+    TargetRegistration,
+    PersistentFailureCutIdentity,
+) {
+    let (router, gate) = router_with_gate_for(0xe1, 8_001);
+    let identity = identity_for_router(&router, identity);
     let owner = SyndicThreadId::from_bytes([0xe1; 16]);
     let cas_thread_id = CasThreadId::new("eligibility-target").unwrap();
     let command = live_command(&router);
@@ -587,13 +574,49 @@ fn eligibility_target(
             ),
             identity.home_generation.get(),
             Duration::from_secs(1),
-            if matches!(case, EligibilityCase::ActiveOnlyRegistration) {
-                TargetTurnRegistration::Active(CasTurnId::new("active-only-turn").unwrap())
-            } else {
-                TargetTurnRegistration::Pending(super::pending_activation(0xe1))
-            },
+            TargetTurnRegistration::Pending(super::pending_activation(0xe1)),
         )
         .unwrap();
+    drop(command);
+    let mut state = router.state.lock().unwrap();
+    let target = state.targets.get_mut(&cas_thread_id).unwrap();
+    let cas_turn_id = CasTurnId::new("eligible-turn").unwrap();
+    target.turn_state = TargetTurn::Exact;
+    target.turn_id = Some(cas_turn_id.clone());
+    target.start_dispatched = true;
+    target.activation_durable = true;
+    drop(state);
+
+    if !matches!(case, EligibilityCase::PriorPrimaryAmbiguous) {
+        let stop_proof = router
+            .stop_target(owner, &cas_thread_id, &cas_turn_id)
+            .expect("eligible target produces an exact stop proof");
+        let permit = router
+            .acquire_stop_election(
+                gate.authorizer()
+                    .authorize()
+                    .expect("admit exact stop election"),
+                &stop_proof,
+            )
+            .expect("elect exact stop target");
+        assert!(
+            gate.elect_persistent_failure_for_test(PersistentFailureGeneration::FIRST)
+                .expect("elect exact persistent failure")
+        );
+        let StopElectionAdmission::PersistentFailure(admission) = permit
+            .admission(super::pending_activation(0xe1).turn_id())
+            .expect("classify exact failed admission")
+        else {
+            panic!("the exact stop admission transfers to persistent failure");
+        };
+        admission
+            .preserve()
+            .expect("preserve exact failed-admission proof");
+        let state = router.state.lock().unwrap();
+        assert!(state.active_stop_election.is_none());
+        assert!(state.volatile_stop_admission.is_some());
+    }
+
     let mut state = router.state.lock().unwrap();
     if matches!(case, EligibilityCase::ActiveOperation) {
         state.active_steering_attempt = Some(ActiveSteeringAttemptKey {
@@ -605,15 +628,6 @@ fn eligibility_target(
         });
     }
     let target = state.targets.get_mut(&cas_thread_id).unwrap();
-    if !matches!(
-        case,
-        EligibilityCase::ActiveOnlyRegistration | EligibilityCase::AwaitingActivation
-    ) {
-        target.turn_state = TargetTurn::Exact;
-        target.turn_id = Some(CasTurnId::new("eligible-turn").unwrap());
-        target.start_dispatched = true;
-        target.activation_durable = true;
-    }
     match case {
         EligibilityCase::ContextCompaction => {
             let operation =
@@ -637,14 +651,26 @@ fn eligibility_target(
         EligibilityCase::GenerationMismatch => {
             target.home_generation = target.home_generation.checked_add(1).unwrap();
         }
+        EligibilityCase::ActiveOnlyRegistration => target.pending_activation = None,
+        EligibilityCase::AwaitingActivation => target.activation_durable = false,
         EligibilityCase::Eligible
         | EligibilityCase::ActiveOperation
-        | EligibilityCase::ActiveOnlyRegistration
-        | EligibilityCase::AwaitingActivation
         | EligibilityCase::PriorPrimaryAmbiguous => {}
     }
     drop(state);
-    (router, registration)
+    (router, registration, identity)
+}
+
+fn identity_for_router(
+    router: &EventRouter,
+    identity: PersistentFailureCutIdentity,
+) -> PersistentFailureCutIdentity {
+    PersistentFailureCutIdentity::new(
+        identity.home_id,
+        identity.home_generation,
+        router.commands.service_generation(),
+        identity.failure_generation,
+    )
 }
 
 fn register_targets(

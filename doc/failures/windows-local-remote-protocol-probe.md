@@ -15,3 +15,15 @@ Microsoft documents the structure inputs and the information-class buffer contra
 Home admission now resolves the final path from the retained directory handle, rejects UNC final paths, classifies the resolved drive root with `GetDriveTypeW`, and treats a successful remote-protocol query as an additional remote signal. `ERROR_NOACCESS` is accepted only after those independent handle-derived checks classify the target as local.
 
 The controlling remote-home policy remains unchanged: generic UNC and mapped remote homes fail closed. The Windows dependency memory note records the corrected query sequence, and the Phase 3 tests retain local-open plus UNC rejection coverage.
+
+## Later Course Correction
+
+The blanket UNC and mapped-remote rejection policy above is superseded. Native local NTFS retains
+the full crash-durability contract. Other filesystems, including UNC, WSL-backed, removable, and
+synchronized locations, may open with a clearly surfaced best-effort warning when basic access and
+a reliable exclusive lifetime lock work; an unreliable lock still fails admission.
+
+`FileRemoteProtocolInfo`, UNC spelling, or drive classification may inform diagnostics, but they do
+not independently reject a non-native filesystem that satisfies the reliable-lock boundary. The
+original `ERROR_NOACCESS` evidence remains the reason not to treat the remote-protocol probe as a
+universal admission classifier.

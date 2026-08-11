@@ -2,7 +2,7 @@
 
 mod support;
 
-use beryl_home_store::{CommandError, CursorReadLimits, HomeCommand, HomeStore};
+use beryl_home_store::{CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeStore};
 use beryl_model::{CasItemId, SyndicItemId};
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::*;
@@ -23,10 +23,10 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
 }
 
 #[test]
@@ -107,11 +107,14 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         final_answer,
         ProjectionSourceRange::new(0, 11).unwrap(),
     );
-    let error = execute(
+    let error = match execute(
         &store,
         storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), nonterminal),
     )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected not-committed nonterminal handoff, got {outcome:?}"),
+    };
     let CommandError::ContributorValidation {
         source: error_source,
         ..
@@ -178,11 +181,14 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         final_answer,
         ProjectionSourceRange::new(0, 11).unwrap(),
     );
-    let error = execute(
+    let error = match execute(
         &store,
         storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), existing),
     )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected not-committed preexisting handoff, got {outcome:?}"),
+    };
     let CommandError::ContributorValidation {
         source: error_source,
         ..
@@ -206,11 +212,14 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
             source_turn: child_turn,
         })
         .unwrap();
-    execute(
+    match execute(
         &store,
         storage.fixture_contribution(storage.revision(&store).unwrap(), restore),
     )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome => panic!("expected committed activity fixture restoration, got {outcome:?}"),
+    }
     let invalid = PublishActivityChildHandoff::new(
         owner,
         head.revision(),
@@ -219,11 +228,14 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         final_answer,
         ProjectionSourceRange::new(0, 12).unwrap(),
     );
-    let error = execute(
+    let error = match execute(
         &store,
         storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), invalid),
     )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected not-committed invalid handoff, got {outcome:?}"),
+    };
     let CommandError::ContributorValidation {
         source: error_source,
         ..
@@ -245,11 +257,14 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         final_answer,
         range,
     );
-    execute(
+    match execute(
         &store,
         storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), request),
     )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome => panic!("expected committed activity handoff, got {outcome:?}"),
+    }
     let published = storage
         .activity_query_head(&store, owner, point_limit())
         .unwrap()

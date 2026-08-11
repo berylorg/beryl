@@ -11,7 +11,7 @@ mod operational;
 #[path = "support/terminal.rs"]
 mod terminal;
 
-use beryl_home_store::{CursorReadLimits, HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, CursorReadLimits, HomeCommand, HomeStore};
 use beryl_model::{
     AssetReferenceSetDigest, AssetReferenceSetId, CasItemId, SealedAssetReferenceSetProof,
     SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicThreadId, SyndicTurnId,
@@ -461,7 +461,13 @@ pub fn point_limit() -> SyndicPointReadLimit {
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed recovery-projection command, got {outcome:?}"),
+    }
 }
 
 fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {

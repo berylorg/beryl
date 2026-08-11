@@ -452,7 +452,6 @@ impl SchedulerRuntime {
                 let disposition = result.unwrap_or(WorkerDisposition::Fatal);
                 completions.publish(WorkerCompletion {
                     thread_id: std::thread::current().id(),
-                    disposition,
                 });
                 disposition
             })

@@ -1,4 +1,4 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
     ProjectionLifecycle, SyndicMutationError, TranscriptBuildPhase, TranscriptBuildRecord,
@@ -95,6 +95,18 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<TranscriptPathTurnsCodec>(1)?;
+        reservation.reserve_records::<TranscriptEntriesCodec>(64)?;
+        reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
+        reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
+        reservation.reserve_records::<HistorySummariesCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

@@ -1,11 +1,11 @@
 use std::path::Path;
 
 use beryl_model::{CasThreadId, CasTurnId};
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 
 use crate::{
-    CompatibilityProbe, DynamicToolSpec, ModelListOptions, ThreadApprovalPolicy, ThreadLoadOptions,
-    ThreadSandboxMode, ThreadStartOptions, incoming_json::ResponseFamily,
+    DynamicToolSpec, ModelListOptions, ThreadApprovalPolicy, ThreadLoadOptions, ThreadSandboxMode,
+    ThreadStartOptions, incoming_json::ResponseFamily,
 };
 
 pub(super) trait RequestSpec: Serialize {
@@ -319,32 +319,6 @@ impl<'a> ThreadForkParams<'a> {
 impl RequestSpec for ThreadForkParams<'_> {
     fn response_family(&self) -> ResponseFamily {
         ResponseFamily::ThreadFork
-    }
-}
-
-pub(super) struct CompatibilityRequest<P> {
-    probe: CompatibilityProbe,
-    params: P,
-}
-
-impl<P> CompatibilityRequest<P> {
-    pub(super) const fn new(probe: CompatibilityProbe, params: P) -> Self {
-        Self { probe, params }
-    }
-}
-
-impl<P: Serialize> Serialize for CompatibilityRequest<P> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.params.serialize(serializer)
-    }
-}
-
-impl<P: Serialize> RequestSpec for CompatibilityRequest<P> {
-    fn response_family(&self) -> ResponseFamily {
-        ResponseFamily::Compatibility(self.probe)
     }
 }
 

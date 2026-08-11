@@ -4,7 +4,6 @@ use thiserror::Error;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ResponseFamily {
     Initialize,
-    Compatibility(crate::CompatibilityProbe),
     ConfigRead,
     ModelList,
     ThreadStart,
@@ -18,14 +17,12 @@ pub(crate) enum ResponseFamily {
     TurnSteer,
     TurnInterrupt,
     ThreadCompactStart,
-    ThreadBackgroundTerminalsClean,
 }
 
 impl ResponseFamily {
     pub(crate) const fn method(self) -> &'static str {
         match self {
             Self::Initialize => "initialize",
-            Self::Compatibility(probe) => probe.method(),
             Self::ConfigRead => "config/read",
             Self::ModelList => "model/list",
             Self::ThreadStart => "thread/start",
@@ -39,7 +36,6 @@ impl ResponseFamily {
             Self::TurnSteer => "turn/steer",
             Self::TurnInterrupt => "turn/interrupt",
             Self::ThreadCompactStart => "thread/compact/start",
-            Self::ThreadBackgroundTerminalsClean => "thread/backgroundTerminals/clean",
         }
     }
 
@@ -68,21 +64,11 @@ impl ResponseFamily {
                 ),
             )
             | (
-                Self::ThreadBackgroundTerminalsClean,
-                crate::BoundedResponseResult::EmptyAcknowledgement(
-                    crate::EmptyAcknowledgement::ThreadBackgroundTerminalsClean,
-                ),
-            )
-            | (
                 Self::TurnInterrupt,
                 crate::BoundedResponseResult::EmptyAcknowledgement(
                     crate::EmptyAcknowledgement::TurnInterrupt,
                 ),
             ) => true,
-            (
-                Self::Compatibility(expected),
-                crate::BoundedResponseResult::Compatibility(actual),
-            ) => actual.probe() == expected,
             _ => false,
         }
     }

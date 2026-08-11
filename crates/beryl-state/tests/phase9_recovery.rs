@@ -3,9 +3,9 @@ mod support;
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    CommandError, CommitReceiptError, HealthVerificationError, HomeCommand, HomeHealthState,
-    ReadError, SidecarNamespace,
     test_faults::{FaultController, FaultPoint},
+    CommandError, CommandOutcome, CommitReceiptError, HealthVerificationError, HomeCommand,
+    HomeHealthState, ReadError, SidecarNamespace,
 };
 use beryl_model::{AssetId, RuntimeId, SyndicThreadId, WindowId};
 use beryl_state::{
@@ -21,6 +21,19 @@ use support::phase9::{
 };
 use support::{execute, host_runtime};
 
+macro_rules! expect_committed {
+    ($outcome:expr) => {{
+        let outcome = $outcome;
+        match outcome {
+            CommandOutcome::Committed {
+                receipt,
+                later_failure: None,
+            } => receipt,
+            outcome => panic!("expected committed command, got {outcome:?}"),
+        }
+    }};
+}
+
 fn create_setting(key: SettingKey, value: SettingValue) -> SettingUpdate {
     SettingUpdate::new(key, ExpectedSettingRevision::Absent, value)
 }
@@ -32,27 +45,25 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     let (store, state) = open_with_faults(directory.path(), faults.clone());
     let home_id = store.home_id();
 
-    execute(
+    expect_committed!(execute(
         &store,
         state.runtime_roots().create_runtime_with_home_root(
             state.runtime_roots().revision(&store).unwrap(),
             host_runtime(1, 2, r"C:\Codex\codex.exe", r"C:\Work\beryl"),
         ),
-    )
-    .unwrap();
+    ));
 
     let window_id = WindowId::from_bytes([3; 16]);
-    execute(
+    expect_committed!(execute(
         &store,
         state.session().initialize_threadless(
             state.session().revision(&store).unwrap(),
             InitializeThreadlessWindow::new(window_id, placement(3)),
         ),
-    )
-    .unwrap();
+    ));
 
     let thread_id = SyndicThreadId::from_bytes([7; 16]);
-    execute(
+    expect_committed!(execute(
         &store,
         state.settings().apply(
             state.settings().revision(&store).unwrap(),
@@ -62,11 +73,10 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
             )])
             .unwrap(),
         ),
-    )
-    .unwrap();
+    ));
 
     let initial_session = state.session().minimal_bootstrap(&store).unwrap().unwrap();
-    execute(
+    expect_committed!(execute(
         &store,
         state.session().replace_claim(
             state.session().revision(&store).unwrap(),
@@ -79,21 +89,19 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
                 thread_id,
             ),
         ),
-    )
-    .unwrap();
+    ));
 
     let admitted_job = admission(20);
     let job_id = admitted_job.job_id();
-    execute(
+    expect_committed!(execute(
         &store,
         state.durable_jobs().admit_branch_handoff(
             state.durable_jobs().revision(&store).unwrap(),
             AdmitBranchHandoffJob::new(admitted_job),
         ),
-    )
-    .unwrap();
+    ));
 
-    execute(
+    expect_committed!(execute(
         &store,
         state.catalog().publish(
             state.catalog().revision(&store).unwrap(),
@@ -105,8 +113,7 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
             )
             .unwrap(),
         ),
-    )
-    .unwrap();
+    ));
 
     let sidecar = store
         .admit_sidecar(
@@ -135,7 +142,13 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
         .unwrap();
     let mut asset_command = HomeCommand::new(store.home_revision().unwrap());
     first_asset.add_to(&mut asset_command).unwrap();
-    store.execute(asset_command).unwrap();
+    match store.execute(asset_command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed phase-9 asset command, got {outcome:?}"),
+    }
 
     let expected_runtime = state
         .runtime_roots()
@@ -170,7 +183,7 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
         .setting(&store, SettingKey::ActiveThemeId)
         .unwrap()
         .unwrap();
-    let prior_generation_receipt = execute(
+    let prior_generation_receipt = expect_committed!(execute(
         &store,
         prior_state.settings().apply(
             prior_state.settings().revision(&store).unwrap(),
@@ -181,8 +194,7 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
             )])
             .unwrap(),
         ),
-    )
-    .unwrap();
+    ));
     let stale_sidecar = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
@@ -223,8 +235,14 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
             )])
             .unwrap(),
         ),
-    )
-    .unwrap_err();
+    );
+    let (surfaced, _reconciliation) = match surfaced {
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => (failure, reconciliation),
+        outcome => panic!("expected indeterminate recovery command, got {outcome:?}"),
+    };
     assert!(matches!(surfaced, CommandError::Persistence { .. }));
     assert_eq!(store.health().state(), HomeHealthState::Verifying);
     assert!(matches!(
@@ -266,9 +284,11 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     ));
     assert!(matches!(
         store.execute(stale_command),
-        Err(CommandError::ForeignDomain {
-            domain: "beryl-settings"
-        })
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::ForeignDomain {
+                domain: "beryl-settings"
+            },
+        }
     ));
 
     let current_asset_revision = current_state.assets().revision(&store).unwrap();
@@ -289,10 +309,12 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     stale_first_asset.add_to(&mut stale_token_command).unwrap();
     assert!(matches!(
         store.execute(stale_token_command),
-        Err(CommandError::ForeignSidecar)
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::ForeignSidecar
+        }
     ));
 
-    execute(
+    expect_committed!(execute(
         &store,
         current_state.settings().apply(
             current_state.settings().revision(&store).unwrap(),
@@ -302,8 +324,7 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
             )])
             .unwrap(),
         ),
-    )
-    .unwrap();
+    ));
     assert_eq!(
         current_state
             .settings()

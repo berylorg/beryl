@@ -3,20 +3,24 @@
 mod support;
 
 use std::{
+    convert::Infallible,
     error::Error,
     io,
-    panic::{AssertUnwindSafe, catch_unwind},
+    panic::{catch_unwind, AssertUnwindSafe},
 };
 
 use beryl_home_store::{
-    CommandError, DomainMutation, DomainReader, DomainValidator, HomeCommand, HomeHealthState,
-    HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore, MutationBuilder,
-    PointReadLimit, ReadError,
     test_faults::{FaultController, FaultPoint},
+    CommandError, DomainMutation, DomainReader, DomainSchemaVersion, DomainValidator, HomeCommand,
+    HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily,
+    RecordVersion, StorageCommitState, StorageDomain, StorageErrorClass,
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes};
+use support::{
+    committed, not_committed, AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes,
+};
 
 struct RequireBeta;
 
@@ -55,6 +59,14 @@ impl DomainMutation<AlphaDomain> for PutMany {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, AlphaDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BytesRecord<AlphaDomain>>(self.count as usize)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, AlphaDomain>,
@@ -64,6 +76,86 @@ impl DomainMutation<AlphaDomain> for PutMany {
         for key in 0..self.count {
             mutations.put::<BytesRecord<AlphaDomain>>(&key, &value)?;
         }
+        Ok(())
+    }
+}
+
+struct AggregateReservationDomain;
+struct AggregateReservationRecord;
+
+impl StorageDomain for AggregateReservationDomain {
+    const NAME: &'static str = "aggregate_reservation";
+    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
+    const FAMILIES: &'static [RecordFamily<Self>] = &[RecordFamily::new::<
+        AggregateReservationRecord,
+    >(KeyspaceSchemaVersion::new(1))];
+    type ValidationError = Infallible;
+
+    fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+}
+
+impl RecordCodec<AggregateReservationDomain> for AggregateReservationRecord {
+    type Key = u64;
+    type Value = u8;
+    type Error = Infallible;
+
+    const FAMILY: &'static str = "records";
+    const VERSION: RecordVersion = RecordVersion::new(1);
+    const MAX_KEY_BYTES: usize = 8;
+    const MAX_VALUE_BYTES: usize = 31 * 1024 * 1024;
+
+    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+        Ok(key.to_be_bytes().to_vec())
+    }
+
+    fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+        Ok(u64::from_be_bytes(encoded.try_into().unwrap()))
+    }
+
+    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+        Ok(vec![*value])
+    }
+
+    fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+        Ok(encoded[0])
+    }
+}
+
+struct AggregateReservationPut(u64);
+
+impl DomainMutation<AggregateReservationDomain> for AggregateReservationPut {
+    type Error = Infallible;
+
+    fn validate(
+        &self,
+        _reader: &DomainReader<'_, AggregateReservationDomain>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<
+            '_,
+            AggregateReservationDomain,
+        >,
+    ) -> Result<(), Self::Error> {
+        reservation
+            .reserve_records::<AggregateReservationRecord>(1)
+            .expect("fixture reservation must be structurally valid");
+        Ok(())
+    }
+
+    fn contribute(
+        &self,
+        _reader: &DomainReader<'_, AggregateReservationDomain>,
+        mutations: &mut MutationBuilder<'_, AggregateReservationDomain>,
+    ) -> Result<(), Self::Error> {
+        mutations
+            .put::<AggregateReservationRecord>(&self.0, &1)
+            .expect("fixture mutation must be structurally valid");
         Ok(())
     }
 }
@@ -156,7 +248,7 @@ fn fixed_batch_limit_counts_application_and_package_owned_revision_records() {
             },
         ))
         .unwrap();
-    let receipt = store.execute(exact).unwrap();
+    let receipt = committed(store.execute(exact));
     assert_eq!(receipt.home_revision().get(), 2);
     assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
 
@@ -171,11 +263,78 @@ fn fixed_batch_limit_counts_application_and_package_owned_revision_records() {
         .unwrap();
     assert!(matches!(
         store.execute(one_over),
-        Err(CommandError::Commit { .. })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::Commit { .. }
+        }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+}
+
+#[test]
+fn theoretical_reconciliation_descriptor_limit_rejects_before_writer_admission() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults);
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command
+        .add(alpha.contribution(
+            store.domain_revision(alpha).unwrap(),
+            PutMany { count: 50_000_000 },
+        ))
+        .unwrap();
+
+    assert!(matches!(
+        store.execute(command),
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ReconciliationDescriptorTooLarge { .. }
+        }
+    ));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(store.home_revision().unwrap().get(), 1);
+    assert_eq!(store.domain_revision(alpha).unwrap().get(), 1);
+}
+
+#[test]
+fn aggregate_reconciliation_capacity_releases_when_an_indeterminate_descriptor_drops() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults.clone());
+    let domain = store
+        .register_domain::<AggregateReservationDomain>()
+        .unwrap();
+    let mut retained = Vec::new();
+
+    for key in 0..4 {
+        faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+        match store.execute_current(domain.current_command(AggregateReservationPut(key))) {
+            beryl_home_store::CommandOutcome::Indeterminate {
+                failure: CommandError::Persistence { .. },
+                reconciliation,
+            } => retained.push(reconciliation),
+            other => panic!("expected classified indeterminate command outcome, got {other:?}"),
+        }
+        assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    }
+
+    assert!(matches!(
+        store.execute_current(domain.current_command(AggregateReservationPut(4))),
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ReconciliationCapacity
+        }
+    ));
+
+    drop(retained.pop().unwrap());
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    assert!(matches!(
+        store.execute_current(domain.current_command(AggregateReservationPut(5))),
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure: CommandError::Persistence { .. },
+            reconciliation: _,
+        }
+    ));
 }
 
 #[test]
@@ -187,14 +346,27 @@ fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
     let generation = store.health().generation().unwrap();
 
     let fault = fjall::test_faults::fail_next_journal_write();
-    let error = store
-        .execute(put_command(&store, alpha, 42, b"must not publish"))
-        .unwrap_err();
+    let outcome = store.execute(put_command(&store, alpha, 42, b"must not publish"));
     drop(fault);
-    assert!(matches!(error, CommandError::Commit { .. }));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-    assert!(store.verify_health().is_err());
+    let reconciliation = match outcome {
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure: CommandError::Commit { source },
+            reconciliation,
+        } => {
+            let error = CommandError::Commit { source };
+            assert_eq!(error.storage_class(), Some(StorageErrorClass::Io(io::ErrorKind::Other)));
+            assert_eq!(
+                error.storage_commit_state(),
+                Some(StorageCommitState::Indeterminate)
+            );
+            reconciliation
+        }
+        other => panic!("expected classified indeterminate command outcome, got {other:?}"),
+    };
+    drop(reconciliation);
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(store.health().generation(), Some(generation));
+    assert!(matches!(store.home_revision(), Err(ReadError::Storage { .. })));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
     let recovery = store.recover_same_home().unwrap();
     assert_eq!(recovery.generation().get(), generation.get() + 1);
@@ -202,6 +374,56 @@ fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
     assert_eq!(store.home_revision().unwrap().get(), 1);
     assert_eq!(store.domain_revision(alpha).unwrap().get(), 1);
     assert_eq!(read_value(&store, alpha, 42), None);
+}
+
+#[test]
+fn owned_fjall_buffer_committed_failure_stays_indeterminate_until_sync_all() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults);
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let generation = store.health().generation().unwrap();
+
+    let fault = fjall::test_faults::fail_batch_publication_after(0);
+    let outcome = store.execute(put_command(
+        &store,
+        alpha,
+        43,
+        b"durable despite previsible failure",
+    ));
+    drop(fault);
+    let reconciliation = match outcome {
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure:
+                CommandError::PersistenceAfterCommitFailure {
+                    commit,
+                    persistence,
+                },
+            reconciliation,
+        } => {
+            assert_eq!(commit.storage_class(), Some(StorageErrorClass::Durability));
+            assert_eq!(commit.storage_commit_state(), Some(StorageCommitState::Committed));
+            assert_eq!(persistence.storage_class(), Some(StorageErrorClass::Poisoned));
+            assert_eq!(
+                persistence.storage_commit_state(),
+                Some(StorageCommitState::Indeterminate)
+            );
+            reconciliation
+        }
+        other => panic!("expected classified indeterminate command outcome, got {other:?}"),
+    };
+    drop(reconciliation);
+
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    let recovery = store.recover_same_home().unwrap();
+    assert_eq!(recovery.generation().get(), generation.get() + 1);
+    let alpha = store.domain_handle::<AlphaDomain>().unwrap();
+    assert_eq!(store.home_revision().unwrap().get(), 2);
+    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+    assert_eq!(
+        read_value(&store, alpha, 43).as_deref(),
+        Some(b"durable despite previsible failure".as_slice())
+    );
 }
 
 #[test]
@@ -289,16 +511,11 @@ fn exact_io_error_kinds_surface_at_the_commit_boundary() {
         let alpha = store.register_domain::<AlphaDomain>().unwrap();
 
         faults.fail_next_with_kind(FaultPoint::BeforeCommit, kind);
-        let error = store
-            .execute(put_command(&store, alpha, 9, b"must not commit"))
-            .unwrap_err();
+        let error = not_committed(store.execute(put_command(&store, alpha, 9, b"must not commit")));
         match error {
             CommandError::Commit { source } => assert_io_kind(source.as_ref(), kind),
             other => panic!("unexpected command error: {other:?}"),
         }
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-        store.verify_health().unwrap();
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         assert_eq!(store.home_revision().unwrap().get(), 1);
         assert_eq!(read_value(&store, alpha, 9), None);
@@ -314,20 +531,23 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
     let generation = store.health().generation().unwrap();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
-    let error = store
-        .execute(put_command(&store, alpha, 22, b"already durable"))
-        .unwrap_err();
+    let outcome = store.execute(put_command(&store, alpha, 22, b"already durable"));
+    let (receipt, error) = match outcome {
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(error),
+        } => (receipt, error),
+        other => panic!("expected committed outcome with later failure, got {other:?}"),
+    };
+    assert_eq!(receipt.home_revision().get(), 2);
     match error {
         CommandError::Persistence { source } => {
             assert_io_kind(source.as_ref(), io::ErrorKind::StorageFull);
         }
         other => panic!("unexpected command error: {other:?}"),
     }
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-    let health = store.verify_health().unwrap();
-    assert_eq!(health.state(), HomeHealthState::Healthy);
-    assert_eq!(health.generation(), Some(generation));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(store.health().generation(), Some(generation));
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
     assert_eq!(
@@ -350,7 +570,7 @@ fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
         PutBytes::<BetaDomain>::new(7, b"guarded".to_vec()),
     ))
     .unwrap();
-    store.execute(seed).unwrap();
+    committed(store.execute(seed));
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(alpha).unwrap();
     let beta_before = store.domain_revision(beta).unwrap();
@@ -367,11 +587,12 @@ fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::Persistence { .. })
+        beryl_home_store::CommandOutcome::Committed {
+            receipt: _,
+            later_failure: Some(CommandError::Persistence { .. }),
+        }
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-    store.verify_health().unwrap();
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
     assert_eq!(store.home_revision().unwrap().get(), home_before.get() + 1);
     assert_eq!(
         store.domain_revision(alpha).unwrap().get(),
@@ -393,23 +614,28 @@ fn current_domain_command_shares_post_sync_durability_and_health_semantics() {
     let generation = store.health().generation().unwrap();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
-    let error = store
-        .execute_current(alpha.current_command(PutBytes::<AlphaDomain>::new(
-            23,
-            b"current already durable".to_vec(),
-        )))
-        .unwrap_err();
+    let outcome = store.execute_current(alpha.current_command(PutBytes::<AlphaDomain>::new(
+        23,
+        b"current already durable".to_vec(),
+    )));
+    let error = match outcome {
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(error),
+        } => {
+            assert_eq!(receipt.home_revision().get(), 2);
+            error
+        }
+        other => panic!("expected committed outcome with later failure, got {other:?}"),
+    };
     match error {
         CommandError::Persistence { source } => {
             assert_io_kind(source.as_ref(), io::ErrorKind::StorageFull);
         }
         other => panic!("unexpected current-domain command error: {other:?}"),
     }
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-    let health = store.verify_health().unwrap();
-    assert_eq!(health.state(), HomeHealthState::Healthy);
-    assert_eq!(health.generation(), Some(generation));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(store.health().generation(), Some(generation));
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
     assert_eq!(
@@ -447,7 +673,9 @@ fn writer_panic_survives_persistent_recovery_faults_until_replacement_succeeds()
         if let Some(probe) = poison_probe.take() {
             assert!(matches!(
                 store.execute(probe),
-                Err(CommandError::WriterPoisoned)
+                beryl_home_store::CommandOutcome::NotCommitted {
+                    evidence: CommandError::WriterPoisoned
+                }
             ));
         }
     }
@@ -457,9 +685,7 @@ fn writer_panic_survives_persistent_recovery_faults_until_replacement_succeeds()
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
     let alpha = store.domain_handle::<AlphaDomain>().unwrap();
-    store
-        .execute(put_command(&store, alpha, 2, b"writer usable"))
-        .unwrap();
+    committed(store.execute(put_command(&store, alpha, 2, b"writer usable")));
     assert_eq!(
         read_value(&store, alpha, 2).as_deref(),
         Some(b"writer usable".as_slice())

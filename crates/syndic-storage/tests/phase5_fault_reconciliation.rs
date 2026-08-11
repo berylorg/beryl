@@ -29,7 +29,13 @@ fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStor
 fn execute_one(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean fault-reconciliation fixture command, got {outcome:?}"),
+    }
 }
 
 fn seed_submission(store: &HomeStore, storage: SyndicStorage) -> IdleSubmission {
@@ -112,7 +118,29 @@ fn persistence_cuts_reconcile_to_wholly_absent_or_exactly_submitted() {
             .unwrap();
 
         faults.fail_next(point);
-        assert!(store.execute(command).is_err());
+        match (point, store.execute(command)) {
+            (
+                FaultPoint::BeforeCommit,
+                beryl_home_store::CommandOutcome::NotCommitted {
+                    evidence: CommandError::Commit { .. },
+                },
+            )
+            | (
+                FaultPoint::AfterPersist,
+                beryl_home_store::CommandOutcome::Committed {
+                    later_failure: Some(CommandError::Persistence { .. }),
+                    ..
+                },
+            ) => {}
+            (
+                FaultPoint::AfterCommitBeforePersist,
+                outcome @ beryl_home_store::CommandOutcome::Indeterminate {
+                    failure: CommandError::Persistence { .. },
+                    ..
+                },
+            ) => assert!(format!("{outcome:?}").contains("Indeterminate")),
+            (_, outcome) => panic!("unexpected submit fault outcome: {outcome:?}"),
+        }
         assert_eq!(store.health().state(), HomeHealthState::Verifying);
         store.verify_health().unwrap();
         assert_eq!(

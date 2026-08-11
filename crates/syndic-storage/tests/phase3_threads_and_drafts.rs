@@ -80,17 +80,32 @@ fn execute(
     store: &HomeStore,
     storage: SyndicStorage,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<beryl_home_store::CommitReceipt, CommandError> {
+) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    let receipt = store.execute(command)?;
-    assert!(
-        storage
-            .committed_revision(store, &receipt)
-            .unwrap()
-            .is_some()
-    );
-    Ok(receipt)
+    store.execute(command)
+}
+
+fn assert_committed(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    outcome: beryl_home_store::CommandOutcome,
+) -> beryl_home_store::CommitReceipt {
+    match outcome {
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => {
+            assert!(
+                storage
+                    .committed_revision(store, &receipt)
+                    .unwrap()
+                    .is_some()
+            );
+            receipt
+        }
+        outcome => panic!("unexpected thread-and-draft command outcome: {outcome:?}"),
+    }
 }
 
 fn stage_content(store: &HomeStore, storage: SyndicStorage, content: &PreparedContent) {
@@ -225,7 +240,9 @@ fn cancellation_before_admission_and_identity_collision_change_nothing() {
         .unwrap();
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::CancelledBeforeAdmission)
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::CancelledBeforeAdmission
+        }
     ));
     assert_eq!(storage.revision(&store).unwrap(), before);
     assert_eq!(

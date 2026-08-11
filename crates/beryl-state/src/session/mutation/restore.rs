@@ -2,15 +2,17 @@ use std::collections::HashSet;
 
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainMutation, DomainReader, MutationBuilder,
+    ReconciliationReservation,
 };
 use beryl_model::{SessionRevision, WindowId};
 
 use crate::RecordRevision;
 
 use crate::session::{
-    MAX_SESSION_CLAIMS, SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError,
-    SessionWindowRecord, ThreadClaimRecord, ThreadClaimState, WindowClaimSelection,
-    codec::ClaimByWindowCodec,
+    codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec},
+    SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError, SessionWindowRecord,
+    ThreadClaimRecord, ThreadClaimState, WindowClaimSelection, MAX_RESTORABLE_WINDOWS,
+    MAX_SESSION_CLAIMS,
 };
 
 use super::shared::{
@@ -37,6 +39,17 @@ impl DomainMutation<SessionDomain> for BeginSessionRestore {
 
     fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
         prepare_restore(self, reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
+        reservation.reserve_records::<SessionWindowCodec>(MAX_RESTORABLE_WINDOWS)?;
+        reservation.reserve_records::<ClaimByWindowCodec>(MAX_SESSION_CLAIMS)?;
+        reservation.reserve_records::<ClaimByThreadCodec>(MAX_SESSION_CLAIMS)?;
+        Ok(())
     }
 
     fn contribute(
@@ -172,6 +185,17 @@ impl DomainMutation<SessionDomain> for ActivateRestoringClaim {
 
     fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
         prepare_activation(self, reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
+        reservation.reserve_records::<SessionWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByThreadCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

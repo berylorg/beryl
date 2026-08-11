@@ -26,10 +26,20 @@ fn limit() -> SyndicPointReadLimit {
 fn execute(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
+}
+
+fn assert_committed(outcome: beryl_home_store::CommandOutcome) {
+    match outcome {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("unexpected live-history reconciliation command outcome: {outcome:?}"),
+    }
 }
 
 fn typed_error(error: &CommandError) -> &SyndicMutationError {

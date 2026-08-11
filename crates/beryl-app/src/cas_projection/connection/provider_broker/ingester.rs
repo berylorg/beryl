@@ -8,7 +8,7 @@ use std::{
     thread::JoinHandle,
 };
 
-#[cfg(test)]
+#[cfg(feature = "test-faults")]
 use std::sync::OnceLock;
 
 use beryl_backend::{
@@ -42,9 +42,8 @@ use crate::cas_projection::{
             TargetInvalidation,
         },
     },
-    persistent_failure::PersistentFailureCutIdentity,
+    initial_start::InitialStartGate,
     service_config::ProjectionWorkerPermit,
-    service_startup::ServiceStartupGate,
 };
 
 mod activation;
@@ -84,8 +83,6 @@ enum CurrentObservationAuthorityError {
         before: beryl_home_store::HomeHealthSnapshot,
         after: beryl_home_store::HomeHealthSnapshot,
     },
-    #[cfg(all(test, feature = "test-faults"))]
-    InjectedNonHealth,
 }
 
 impl CurrentObservationAuthorityError {
@@ -133,7 +130,7 @@ struct ProviderBrokerStartGate {
     changed: Condvar,
 }
 
-struct ProviderBrokerWorkerEscrow {
+struct ProviderBrokerWorkerOwner {
     state: Mutex<ProviderBrokerWorkerState>,
 }
 
@@ -147,19 +144,16 @@ struct ProviderBrokerWorkerState {
 enum ProviderBrokerWorkerDisposition {
     Undecided,
     OrdinaryRelease,
-    RetainForAdoption(PersistentFailureCutIdentity),
 }
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
 pub(in crate::cas_projection::connection) enum ProviderBrokerWorkerDispositionArmError {
     #[error("the provider-ingester worker disposition state is poisoned")]
     Poisoned,
-    #[error("the provider-ingester worker already has an incompatible terminal disposition")]
-    Contended,
 }
 
 struct ProviderBrokerWorkerTerminalGuard {
-    worker: Arc<ProviderBrokerWorkerEscrow>,
+    worker: Arc<ProviderBrokerWorkerOwner>,
 }
 
 struct ProviderBrokerJoinedWorker {
@@ -169,10 +163,10 @@ struct ProviderBrokerJoinedWorker {
 
 enum ProviderBrokerBuildResources {
     Worker {
-        worker: Arc<ProviderBrokerWorkerEscrow>,
+        worker: Arc<ProviderBrokerWorkerOwner>,
     },
     PagePool {
-        worker: Arc<ProviderBrokerWorkerEscrow>,
+        worker: Arc<ProviderBrokerWorkerOwner>,
         pages: PagePool,
     },
     Unstarted(ProviderBrokerUnstarted),
@@ -183,8 +177,8 @@ struct ProviderBrokerUnstarted {
     control: Arc<ProviderBrokerControl>,
     launch: Arc<ProviderBrokerLaunchEscrow>,
     start_gate: Arc<ProviderBrokerStartGate>,
-    startup_gate: Arc<ServiceStartupGate>,
-    worker: Arc<ProviderBrokerWorkerEscrow>,
+    initial_start: Arc<InitialStartGate>,
+    worker: Arc<ProviderBrokerWorkerOwner>,
 }
 
 struct ProviderBrokerLaunchEscrow {
@@ -202,7 +196,7 @@ enum ProviderBrokerBuildFault {
     Spawn,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-faults"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ProviderBrokerBuildResourceSnapshot {
     worker: bool,
@@ -212,7 +206,7 @@ struct ProviderBrokerBuildResourceSnapshot {
     control: bool,
     ingester: bool,
     start_gate: bool,
-    startup_gate: bool,
+    initial_start: bool,
 }
 
 pub(in crate::cas_projection::connection) struct ProviderBrokerStartToken {
@@ -223,14 +217,14 @@ pub(in crate::cas_projection::connection) struct ProviderBrokerStartToken {
 
 pub(in crate::cas_projection::connection) struct StartBlockedProviderBrokerIngester {
     control: Arc<ProviderBrokerControl>,
-    worker: Arc<ProviderBrokerWorkerEscrow>,
+    worker: Arc<ProviderBrokerWorkerOwner>,
     handle: Option<JoinHandle<ProviderBrokerTerminalReceipt>>,
-    startup_gate: Arc<ServiceStartupGate>,
+    initial_start: Arc<InitialStartGate>,
 }
 
 pub(in crate::cas_projection::connection) struct RunningProviderBrokerIngester {
     control: Arc<ProviderBrokerControl>,
-    worker: Arc<ProviderBrokerWorkerEscrow>,
+    worker: Arc<ProviderBrokerWorkerOwner>,
     handle: Option<JoinHandle<ProviderBrokerTerminalReceipt>>,
     active: bool,
 }
@@ -272,12 +266,6 @@ pub(in crate::cas_projection) struct ProviderBrokerStopped {
     receipt: ProviderBrokerTerminalReceipt,
 }
 
-pub(in crate::cas_projection) struct ProviderBrokerAdoptionStopped {
-    worker: ProjectionWorkerPermit,
-    receipt: ProviderBrokerTerminalReceipt,
-    cut: PersistentFailureCutIdentity,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection::connection) struct ProviderBrokerTerminalReceipt {
     service_generation: crate::cas_projection::ProjectionServiceGeneration,
@@ -289,11 +277,11 @@ pub(in crate::cas_projection::connection) struct ProviderBrokerTerminalReceipt {
 pub(in crate::cas_projection::connection) enum ProviderBrokerIngesterJoinError {
     #[error("the provider ingester failed or panicked before clean termination")]
     WorkerFailed,
-    #[error("the provider ingester terminal receipt belongs to another service epoch")]
+    #[error("the provider ingester terminal receipt belongs to another service attachment")]
     EpochMismatch,
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-faults")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ForcedProviderBrokerJoinFailure {
     home_id: BerylHomeId,
@@ -301,7 +289,7 @@ struct ForcedProviderBrokerJoinFailure {
     service_generation: crate::cas_projection::ProjectionServiceGeneration,
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-faults")]
 static FORCED_PROVIDER_BROKER_JOIN_FAILURES: OnceLock<Mutex<Vec<ForcedProviderBrokerJoinFailure>>> =
     OnceLock::new();
 
@@ -336,7 +324,7 @@ struct Ingester {
     test_metrics: Arc<crate::cas_projection::test_faults::ProviderBrokerTestMetrics>,
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-faults")]
 pub(in crate::cas_projection::connection) fn fail_next_provider_broker_join_for_test(
     home_id: BerylHomeId,
     home_generation: HomeGeneration,

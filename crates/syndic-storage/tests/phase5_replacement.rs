@@ -35,7 +35,13 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean replacement fixture command, got {outcome:?}"),
+    }
 }
 
 fn root_turn() -> beryl_model::SyndicTurnId {
@@ -465,7 +471,12 @@ fn stale_selected_path_rejects_replacement_edit_without_changing_the_draft() {
     command
         .add(storage.start_replacement_edit(storage.revision(&store).unwrap(), edit))
         .unwrap();
-    assert!(store.execute(command).is_err());
+    assert!(matches!(
+        store.execute(command),
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ContributorValidation { .. }
+        }
+    ));
 
     let current = storage
         .current_draft(&store, id(30), point_limit())

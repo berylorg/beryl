@@ -4,6 +4,10 @@ This document registers external GUI widget specs that are visible to Beryl but 
 
 `Spec root` is a local documentation lookup path for agents and developers. It is not a Cargo dependency mechanism. When a listed root or widget spec is unavailable, report the missing external spec instead of reconstructing the contract from source code.
 
+For Beryl, a canonical widget registered here is the controlling widget contract even when the
+bundled GUI reference set contains the same canonical name. The bundled reference is neither a
+fallback nor an additional contract for that registered widget.
+
 ## gpui-scrollbar
 
 Code dependency: Cargo crate `gpui-scrollbar`

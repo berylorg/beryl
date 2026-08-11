@@ -1,3 +1,4 @@
+use beryl_home_store::CommandOutcome;
 use syndic_storage::{CompactionSettlement, SettleCompactionOperation};
 
 use super::compaction_support::CompactionFixture;
@@ -9,7 +10,7 @@ fn consumed_successful_compaction_reopens_as_valid_exact_authority() {
     fixture.claim(id);
     fixture.publish_success(id, 20);
     let operation = fixture.operation(id);
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_compaction_operation(
             SettleCompactionOperation::new(
@@ -17,8 +18,13 @@ fn consumed_successful_compaction_reopens_as_valid_exact_authority() {
                 operation.revision(),
                 CompactionSettlement::ManualSuccess,
             ),
-        ))
-        .unwrap();
+        )) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean recovered compaction settlement, got {outcome:?}"),
+    }
 
     let fixture = fixture.reopen();
     fixture.store.validate_registered_domains().unwrap();

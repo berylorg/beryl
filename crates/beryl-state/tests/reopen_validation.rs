@@ -1,10 +1,10 @@
 use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
-    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
+    CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, RecordCodec,
-    RecordFamily, RecordVersion, StorageDomain,
+    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder,
+    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::RuntimeId;
 use beryl_state::{BerylStateBootstrap, BerylStateRegistrationError};
@@ -135,6 +135,15 @@ impl DomainMutation<IncompleteRuntimeDomain> for SeedRuntimeWithoutHomeRoot {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, IncompleteRuntimeDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<RuntimeBytes>(1)?;
+        reservation.reserve_records::<ExecutableIndexBytes>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, IncompleteRuntimeDomain>,
@@ -168,7 +177,13 @@ fn minimal_session_bootstrap_defers_unrelated_runtime_validation() {
             },
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed runtime fixture command, got {outcome:?}"),
+    }
     store.close().unwrap();
 
     let mut reopened = HomeStore::open(HomeOpenOptions::new(
@@ -178,13 +193,11 @@ fn minimal_session_bootstrap_defers_unrelated_runtime_validation() {
     .unwrap();
     let bootstrap = BerylStateBootstrap::register(&mut reopened)
         .expect("minimal bootstrap must register only the session domain");
-    assert!(
-        bootstrap
-            .session()
-            .minimal_bootstrap(&reopened)
-            .unwrap()
-            .is_none()
-    );
+    assert!(bootstrap
+        .session()
+        .minimal_bootstrap(&reopened)
+        .unwrap()
+        .is_none());
     let error = match bootstrap.complete(&mut reopened) {
         Ok(_) => panic!("incomplete runtime unexpectedly passed validation"),
         Err(error) => error,

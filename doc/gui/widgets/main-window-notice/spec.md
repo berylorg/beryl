@@ -12,6 +12,7 @@ Presents one bounded warning, error, or informational message, with optional own
 
 Contracts:
 
+- disabled-command-tooltip
 - scroll-ownership
 
 Widgets:
@@ -27,11 +28,12 @@ optional owner-supplied command region, and external vertical scrollbar.
 
 The widget presents exactly one owner-supplied notice record at a time. The owning feature supplies
 stable notice identity, bounded title and detail projections, warning/error/info classification,
-dismissal mode and effect, and optional commands with stable command identities. The command region
-accepts at most three commands and renders that statically bounded set in full. Queue policy,
-deduplication, coalescing, and replacement order remain outside the widget. The widget owns visible
-notice anatomy, detail selection, close-control placement, command-region placement, bounded
-layout, and variant treatment.
+dismissal mode and effect, optional commands with stable command identities, an overlay-local origin
+derived from the block-end edge of current main-window chrome, logical safe insets, the available
+overlay allocation, and a safe focus target. The command region accepts at most three commands and
+renders that statically bounded set in full. Queue policy, deduplication, same-condition updates,
+and replacement order remain outside the widget. The widget owns visible notice anatomy, detail
+selection, close-control placement, command-region placement, bounded layout, and variant treatment.
 
 Owner commands use the referenced `command button` contract. The widget does not prescribe command labels, command effects, pending policy, retry semantics, a global dismiss-all command, or any other feature-specific recovery policy.
 
@@ -55,13 +57,19 @@ In the dismissible variant, the close command has the accessible name `Dismiss n
 
 The persistent variant renders no close command and does not dismiss through Escape, outside click, or notice activation. Its owner removes or replaces the record when the feature-owned condition ends.
 
-Enabled owner commands follow the `command button` interaction contract and report their stable command identity to the owner. Command activation does not implicitly dismiss the notice. Disabled owner commands retain the referenced command-button tooltip obligation, and loading or duplicate-activation policy remains owner supplied.
+Enabled owner commands follow the `command button` interaction contract and report their stable command identity to the owner. Command activation does not implicitly dismiss the notice. Disabled owner commands retain the referenced `disabled-command-tooltip` obligation, and loading or duplicate-activation policy remains owner supplied.
 
 Detail text supports ordinary pointer and keyboard selection and copy. It is readonly and contains no transcript or feature context menu. The detail viewport owns vertical scrolling while it has overflow; boundary propagation follows `scroll-ownership`.
 
-When replacement changes the stable notice identity, old detail selection and scroll position are cleared. If the previously focused notice control is absent in the replacement, focus moves to the first enabled owner command, then the close command, then the owner-supplied safe target. If removal empties the visible queue, focus returns to that safe target in the unchanged main window.
+When replacement changes the stable notice identity, old detail selection and scroll position are cleared. If the previously focused notice control is absent in the replacement, focus moves to the first enabled owner command, then the close command, then the owner-supplied safe target. If owner removal supplies no replacement record, focus returns to that safe target in the unchanged main window.
 
 When content for the same stable notice identity receives a newer revision, the widget preserves focus on a retained close command or stable owner command and preserves detail scroll only while the prior top-visible text geometry remains valid. It clears a selection whose source revision changed.
+
+While inert, the notice frame and all descendants are excluded from focus routing and reject
+pointer, wheel, touchpad, scrollbar, keyboard selection or copy, close-command, owner-command, and
+programmatic acceptance input. The widget emits no dismissal, owner-command, selection, copy, or
+scroll callback. If it becomes inert while a notice control holds focus, focus moves to the
+owner-supplied safe target.
 
 The detail viewport contains one owner-supplied bounded text record, not a repeated list. Queue size does not affect the widget's render tree because only the current record is mounted.
 
@@ -69,7 +77,10 @@ Content-free diagnostics expose widget instance id, an opaque nonreversible noti
 
 # Layout
 
-The frame uses a fixed inline size clamped to the main-window overlay and a content-derived block size capped by its maximum. It anchors near the overlay's top-trailing edge below the toolbar and any visible lineage strip.
+The owner supplies the overlay-local block-start origin immediately below the current toolbar and
+any visible lineage strip, together with logical safe insets and the available overlay allocation.
+The frame anchors at that origin near the trailing edge, applies the owner-supplied insets, and
+clamps its fixed inline size and content-derived capped block size to that allocation.
 
 The fixed header places the variant marker and title leading and the optional close command trailing. The detail viewport fills the remaining bounded allocation and never displaces header or command controls. Its scrollbar overlays the trailing edge.
 
@@ -77,13 +88,17 @@ The optional command region follows the detail viewport, aligns its command butt
 
 Entering, leaving, and replacement treatments use overlay-only paint changes. They do not contribute layout space to the main conversation window.
 
+`--owner-origin-block-start`, `--owner-inset-block-start`, and
+`--owner-inset-inline-end` are dynamic overlay-local values supplied by the owning main-window
+chrome after accounting for the current toolbar, lineage strip, and safe area.
+
 Spec CSS:
 
 ```css
 .main-window-notice {
   position: absolute;
-  inset-block-start: var(--anchor-offset-y);
-  inset-inline-end: var(--anchor-offset-x);
+  inset-block-start: calc(var(--owner-origin-block-start) + var(--owner-inset-block-start));
+  inset-inline-end: var(--owner-inset-inline-end);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -101,7 +116,7 @@ Spec CSS:
   flex: none;
   align-items: center;
   min-inline-size: 0;
-  block-size: var(--header-height);
+  block-size: var(--height);
   padding-inline: var(--padding-x);
   gap: var(--gap);
 }
@@ -132,7 +147,7 @@ Spec CSS:
 .main-window-notice__detail-viewport {
   position: relative;
   min-block-size: 0;
-  max-block-size: var(--detail-max-height);
+  max-block-size: var(--max-height);
   padding-inline: var(--padding-x);
   padding-block-end: var(--padding-y);
   overflow: hidden;
@@ -166,6 +181,11 @@ Spec CSS:
 
 Severity variants are warning, error, and info.
 
+The active severity token is applied to the root frame and projected to every severity-sensitive
+anatomy part: variant marker, title, detail viewport, and close command. Each such part resolves the
+matching warning, error, or info UI-role selector from the same visible notice revision. Owner
+`command button` controls retain their separately configured variant.
+
 Dismissal variants are dismissible and persistent. Dismissible renders the close command. Persistent omits the close command and remains until its owner removes or replaces the notice.
 
 Default variant: info dismissible.
@@ -174,8 +194,9 @@ Default variant: info dismissible.
 
 ```css
 .main-window-notice {
-  --anchor-offset-x: 12px;
-  --anchor-offset-y: 12px;
+  --owner-origin-block-start: 0px;
+  --owner-inset-block-start: 12px;
+  --owner-inset-inline-end: 12px;
   --width: 420px;
   --max-height: 280px;
   --border-width: 1px;
@@ -187,7 +208,7 @@ Default variant: info dismissible.
 }
 
 .main-window-notice__header {
-  --header-height: 40px;
+  --height: 40px;
   --padding-x: 12px;
   --gap: 8px;
 }
@@ -217,7 +238,7 @@ Default variant: info dismissible.
 }
 
 .main-window-notice__detail-viewport {
-  --detail-max-height: 220px;
+  --max-height: 220px;
   --padding-x: 12px;
   --padding-y: 10px;
   --foreground: #cbd5e1;

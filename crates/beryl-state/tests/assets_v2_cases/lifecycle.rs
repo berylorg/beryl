@@ -93,7 +93,10 @@ fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
     );
     let mut wrong_command = HomeCommand::new(store.home_revision().unwrap());
     wrong_command.add(wrong).unwrap();
-    assert!(store.execute(wrong_command).is_err());
+    assert!(matches!(
+        store.execute(wrong_command),
+        CommandOutcome::NotCommitted { .. }
+    ));
 
     let build = manifest.build_proof();
     let proof = build.sealed_proof().unwrap();
@@ -238,19 +241,15 @@ fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
             .unwrap(),
         ),
     );
-    assert!(
-        reopened_state
-            .assets()
-            .owner_head(&reopened, owner)
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        reopened_state
-            .assets()
-            .sealed_reference_set_manifest(&reopened, proof)
-            .is_ok()
-    );
+    assert!(reopened_state
+        .assets()
+        .owner_head(&reopened, owner)
+        .unwrap()
+        .is_none());
+    assert!(reopened_state
+        .assets()
+        .sealed_reference_set_manifest(&reopened, proof)
+        .is_ok());
     assert!(sidecar_path.is_file());
 }
 
@@ -295,12 +294,10 @@ fn command_pages_are_physically_bounded_without_an_asset_length_ceiling() {
             SealAssetReferenceSet::new(manifest.build_proof(), source),
         ),
     );
-    assert!(
-        state
-            .assets()
-            .sealed_reference_set_manifest(&store, sealed)
-            .is_ok()
-    );
+    assert!(state
+        .assets()
+        .sealed_reference_set_manifest(&store, sealed)
+        .is_ok());
 
     let representable = AssetId::sha256_v1([23; 32], NonZeroU64::new(u64::MAX).unwrap());
     assert!(matches!(

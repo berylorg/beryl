@@ -1,36 +1,27 @@
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
+use beryl_backend::ManagedBackendClientConnector;
 
 use beryl_home_store::{
-    HomeCommand, HomeHealthState, HomeOpenError, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
-};
-use beryl_model::{
-    BindingRevision, CasThreadId, PathFlavor, RootId, RuntimeMode, RuntimeNativePath,
-    ThreadRevision,
 };
 use beryl_state::{
     ApplySettings, BerylState, ExpectedSettingRevision, SettingKey, SettingUpdate, SettingValue,
 };
-use syndic_storage::{
-    CasLineageProof, CasRepresentedPrefixProof, NativeCasLineage, SyndicStorage,
-    empty_selected_path_digest,
-};
+use syndic_storage::SyndicStorage;
+use beryl_model::{CasProcessGeneration, RuntimeId};
 
 use super::*;
-use crate::cas_projection::{
-    LoadedCasProjection, LoadedProjectionReleaseOutcome, PersistentFailureNotificationStatus,
-    PersistentFailureRecoveryInventoryError, connection::LoadedProjectionLease,
-    persistent_failure::PersistentFailureServiceEscrowReservation,
-};
 
-mod admission_server {
+mod terminal_server {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/phase37_normal_terminal/server.rs"
@@ -38,9 +29,7 @@ mod admission_server {
 }
 
 #[derive(Clone)]
-struct ShutdownProbe {
-    count: Arc<AtomicUsize>,
-}
+struct ShutdownProbe(Arc<AtomicUsize>);
 
 impl ScheduledOrdinaryExecutionProvider for ShutdownProbe {
     fn try_issue(
@@ -51,23 +40,11 @@ impl ScheduledOrdinaryExecutionProvider for ShutdownProbe {
     }
 
     fn shutdown(&mut self) {
-        self.count.fetch_add(1, Ordering::SeqCst);
+        self.0.fetch_add(1, Ordering::SeqCst);
     }
 }
 
 fn service() -> (
-    tempfile::TempDir,
-    FaultController,
-    BerylState,
-    Arc<AtomicUsize>,
-    ProjectionConnectionService,
-) {
-    service_with_worker_capacity(4)
-}
-
-fn service_with_worker_capacity(
-    worker_capacity: u64,
-) -> (
     tempfile::TempDir,
     FaultController,
     BerylState,
@@ -87,23 +64,36 @@ fn service_with_worker_capacity(
     let service = ProjectionConnectionService::new(
         home,
         storage,
-        ProjectionServiceConfig::try_new(8, worker_capacity).unwrap(),
-        Box::new(ShutdownProbe {
-            count: Arc::clone(&shutdowns),
-        }),
+        ProjectionServiceConfig::try_new(8, 4).unwrap(),
+        Box::new(ShutdownProbe(Arc::clone(&shutdowns))),
     )
     .unwrap();
-    wait_until(
-        "the initial recovered-pending scheduler pass to settle",
-        || {
-            let diagnostics = service.accepted_input_scheduler_diagnostics();
-            diagnostics.recovered_pending_pass_count() >= 1
-                && diagnostics.workers_active() == 0
-                && service.worker_pool_diagnostics().active() == 0
-                && !diagnostics.fatal()
-        },
-    );
     (directory, faults, state, shutdowns, service)
+}
+
+fn fail_home(
+    service: &ProjectionConnectionService,
+    state: BerylState,
+    faults: &FaultController,
+) {
+    let live = service.live_home_command().unwrap();
+    let home = live.home();
+    let update = SettingUpdate::new(
+        SettingKey::DeveloperInstructions,
+        ExpectedSettingRevision::Absent,
+        SettingValue::developer_instructions("terminal persistent failure").unwrap(),
+    );
+    let contribution = state.settings().apply(
+        state.settings().revision(home).unwrap(),
+        ApplySettings::new(vec![update]).unwrap(),
+    );
+    let mut command = HomeCommand::new(home.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    faults.panic_next(FaultPoint::BeforeCommit);
+    let outcome = catch_unwind(AssertUnwindSafe(|| home.execute(command)));
+    assert!(outcome.is_err());
+    assert_eq!(home.health().state(), HomeHealthState::Failed);
+    drop(live);
 }
 
 fn wait_until(description: &str, mut predicate: impl FnMut() -> bool) {
@@ -117,51 +107,152 @@ fn wait_until(description: &str, mut predicate: impl FnMut() -> bool) {
     }
 }
 
-fn fail_home_through_live_command(
-    service: &ProjectionConnectionService,
-    state: BerylState,
-    faults: &FaultController,
-) {
-    let (live, command) = prepare_failure_command(service, state, "persistent failure cut");
-    let home = live.home();
-    faults.panic_next(FaultPoint::BeforeCommit);
+#[test]
+fn persistent_failure_close_returns_only_terminal_evidence_and_disposes_workers() {
+    let (_directory, faults, state, shutdowns, service) = service();
+    let home_id = service.home_id();
+    let home_generation = service.home_generation();
+    let service_generation = service.service_generation();
+    fail_home(&service, state, &faults);
+    wait_until("the persistent-failure cut to finish", || {
+        service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
+    });
 
-    let panicked = catch_unwind(AssertUnwindSafe(|| home.execute(command)));
-    assert!(panicked.is_err());
-    assert_eq!(home.health().state(), HomeHealthState::Failed);
+    let evidence = match service.close().unwrap() {
+        ProjectionConnectionServiceCloseOutcome::PersistentFailure(evidence) => evidence,
+        ProjectionConnectionServiceCloseOutcome::Closed => {
+            panic!("the persistent-failure winner must return terminal evidence")
+        }
+    };
+
+    assert_eq!(evidence.home_id(), home_id);
+    assert_eq!(evidence.home_generation(), home_generation);
+    assert_eq!(evidence.service_generation(), service_generation);
+    assert_eq!(evidence.completion(), PersistentFailureCutCompletion::Finished);
+    assert_eq!(evidence.cut_snapshot().state(), PersistentFailureCutState::Finished);
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn ordinary_close_remains_exact_and_shuts_provider_once() {
+    let (_directory, _faults, _state, shutdowns, service) = service();
     assert!(matches!(
-        service.persistent_failure_cut_snapshot().state(),
-        PersistentFailureCutState::Armed | PersistentFailureCutState::Cutting
+        service.close().unwrap(),
+        ProjectionConnectionServiceCloseOutcome::Closed
     ));
-    drop(live);
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
 }
 
-fn prepare_failure_command<'a>(
-    service: &'a ProjectionConnectionService,
-    state: BerylState,
-    instructions: &'static str,
-) -> (LiveHomeCommand<'a>, HomeCommand) {
-    let live = service.live_home_command().unwrap();
-    let home = live.home();
-    let update = SettingUpdate::new(
-        SettingKey::DeveloperInstructions,
-        ExpectedSettingRevision::Absent,
-        SettingValue::developer_instructions(instructions).unwrap(),
+#[test]
+fn persistent_failure_close_joins_and_detaches_an_admitted_connection() {
+    let (_directory, faults, state, shutdowns, service) = service();
+    let server = terminal_server::NormalTerminalServer::spawn_admission_only();
+    let connector = ManagedBackendClientConnector::for_lifecycle_test(
+        server.endpoint(),
+        terminal_server::AUTHORIZATION,
     );
-    let contribution = state.settings().apply(
-        state.settings().revision(home).unwrap(),
-        ApplySettings::new(vec![update]).unwrap(),
-    );
-    let mut command = HomeCommand::new(home.home_revision().unwrap());
-    command.add(contribution).unwrap();
-    (live, command)
+    let session = service
+        .admit_lifecycle_test_candidate(
+            &connector,
+            RuntimeId::from_bytes([99; 16]),
+            CasProcessGeneration::new(99_001).unwrap(),
+            Path::new(r"C:\work\beryl"),
+            terminal_server::TIMEOUT,
+        )
+        .unwrap();
+    let retirement = session.connection_retirement_handle_for_test();
+    server.wait_for_admission();
+    assert!(service.worker_pool_diagnostics().active() >= 2);
+
+    fail_home(&service, state, &faults);
+    wait_until("the admitted-connection failure cut to finish", || {
+        service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
+    });
+
+    assert!(matches!(
+        service.close().unwrap(),
+        ProjectionConnectionServiceCloseOutcome::PersistentFailure(_)
+    ));
+    assert!(retirement.is_retired());
+    assert!(retirement.is_detached());
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    drop(session);
+    drop(retirement);
+    server.join();
 }
 
+#[test]
+fn terminal_close_reports_an_unclean_ingester_receipt_after_full_detach() {
+    let (_directory, faults, state, shutdowns, service) = service();
+    let server = terminal_server::NormalTerminalServer::spawn_admission_only();
+    let connector = ManagedBackendClientConnector::for_lifecycle_test(
+        server.endpoint(),
+        terminal_server::AUTHORIZATION,
+    );
+    let session = service
+        .admit_lifecycle_test_candidate(
+            &connector,
+            RuntimeId::from_bytes([100; 16]),
+            CasProcessGeneration::new(100_001).unwrap(),
+            Path::new(r"C:\work\beryl"),
+            terminal_server::TIMEOUT,
+        )
+        .unwrap();
+    let retirement = session.connection_retirement_handle_for_test();
+    server.wait_for_admission();
+    retirement.fail_next_ingester_join();
 
-include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/persistent_failure_cut/cut_outcomes.rs"));
-include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/persistent_failure_cut/service_lifecycle.rs"));
-include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/persistent_failure_cut/retained_authority.rs"));
-include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/persistent_failure_cut/handoff_late.rs"));
-include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/persistent_failure_cut/barriers_and_incomplete.rs"));
-include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/pending_projection_quarantine.rs"));
-include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/pending_projection_quarantine_retirement.rs"));
+    fail_home(&service, state, &faults);
+    wait_until("the unclean-ingester failure cut to finish", || {
+        service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
+    });
+
+    assert!(matches!(
+        service.close(),
+        Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+    ));
+    assert!(retirement.is_retired());
+    assert!(retirement.is_detached());
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    drop(session);
+    drop(retirement);
+    server.join();
+}
+
+#[test]
+fn terminal_close_recovers_a_poisoned_ingester_handle_before_reporting_failure() {
+    let (_directory, faults, state, shutdowns, service) = service();
+    let server = terminal_server::NormalTerminalServer::spawn_admission_only();
+    let connector = ManagedBackendClientConnector::for_lifecycle_test(
+        server.endpoint(),
+        terminal_server::AUTHORIZATION,
+    );
+    let session = service
+        .admit_lifecycle_test_candidate(
+            &connector,
+            RuntimeId::from_bytes([101; 16]),
+            CasProcessGeneration::new(101_001).unwrap(),
+            Path::new(r"C:\work\beryl"),
+            terminal_server::TIMEOUT,
+        )
+        .unwrap();
+    let retirement = session.connection_retirement_handle_for_test();
+    server.wait_for_admission();
+    retirement.poison_ingester_handle();
+
+    fail_home(&service, state, &faults);
+    wait_until("the poisoned-ingester failure cut to finish", || {
+        service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
+    });
+
+    assert!(matches!(
+        service.close(),
+        Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+    ));
+    assert!(retirement.is_retired());
+    assert!(retirement.is_detached());
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    drop(session);
+    drop(retirement);
+    server.join();
+}

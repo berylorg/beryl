@@ -31,6 +31,8 @@ Own Beryl's integration boundary with `codex app-server`.
 - Host-Windows managed launches are supervised as a Windows process tree so shutdown can terminate descendants as well as the immediate child process.
 - WSL-Linux managed launches create a Beryl-owned cleanup boundary inside the selected distro so shutdown can terminate the Linux `codex app-server` process independently from the host `wsl.exe` wrapper lifetime.
 - Managed backend shutdown is explicit, idempotent, waits for process exit with bounded escalation, and cleans per-run launch material after the process supervision boundary is released.
+- That bounded escalation belongs only to managed-process lifecycle disposal. It is not turn
+  control, terminal evidence, a diagnostic hard stop, or authority to terminate a selected turn.
 - The managed server owns process supervision, auth material, and an opaque per-launch provenance
   covering the exact runtime identity, process generation, executable paths, runtime mode, and
   working directory. It is the only production constructor of client connectors, and those connectors bind
@@ -40,38 +42,40 @@ Own Beryl's integration boundary with `codex app-server`.
 
 ## Protocol Boundary
 
-- This crate owns transport I/O, compatibility probing, and incremental normalization of backend
+- This crate owns transport I/O, exact-release admission, and incremental normalization of backend
   observations for the other Beryl packages.
 - This crate supplies normalized CAS live observation streams to the CAS-live Syndic transcript
   system defined in `doc/systems/cas-live-syndic-transcript/design.md` under the streaming, queue,
   parser, frame, and payload limits in `doc/systems/bounded-resource-dataflow/design.md`, but does
   not own Syndic durability, projection, or transcript presentation policy.
-- Compatibility admission combines the observed initialize handshake, an exact `codex-cli 0.146.0`
-  version match, targeted non-destructive request validation of every required method and field,
-  and retained source-backed plus live semantic evidence for that pinned release.
-- Compatibility admission additionally requires opaque production-launch provenance and an
-  effective config read from that exact initialized session proving both required nested
+- Release admission requires four non-interchangeable facts from one production foreground
+  session: opaque provenance from the exact managed launch; the observed initialize handshake with
+  an exact `codex-cli 0.146.0` product-version match; an immutable foreground profile selected before
+  the first byte and initialized with every required notification enabled; and exactly one
+  effective `config/read` from that same initialized session.
+- That sole admission read must prove both required nested
   `features.multi_agent_v2` booleans are true and both dotted origins are `sessionFlags`. Missing,
   false, malformed, superseded, or unproven values fail closed; detached reports and asserted
   launch arguments do not authorize admission.
-- Method advertisement or generated-schema presence alone is not compatibility proof. Per-runtime probing validates the exact typed request boundary without starting a synthetic model turn; semantic properties that would require mutation or model execution are proven by the retained pinned-release evidence rather than re-enacted against every configured runtime.
-- The retained compatibility report contains only bounded initialize identity, bounded effective
-  config defaults, exact probe-success facts, and closed capability facts. A `model/list` probe
-  validates one bounded page but does not retain that page or aggregate later cursors into the
-  report; product model discovery opens its own one-page-at-a-time query.
-- Managed WebSocket is the primary multi-client transport boundary.
-- Stdio remains a single-client transport implementation for compatibility tests and fallback-oriented protocol work, but callers that require concurrent foreground and background backend operations must use independent WebSocket client sessions.
+- Admission sends no capability, `model/list`, private `turn/steer`, user-target, or synthetic-target
+  probe. Required request and notification semantics come only from the generated schema and exact
+  pinned-release source evidence.
+- The retained release-admission report contains only opaque production-launch provenance, bounded
+  initialize product/version identity, and the exact required effective-configuration facts. It
+  contains no probe-success or inferred capability facts. Product model discovery is a separate
+  post-admission one-page-at-a-time query and never contributes compatibility authority.
+- Managed WebSocket is the sole production transport boundary. Concurrent foreground and
+  background backend operations use independent WebSocket client sessions.
 - This crate separates managed app-server process lifetime from backend client session lifetime.
 - Dropping or closing a backend client session must not terminate a managed app-server process owned by a managed server handle.
 - Each backend client session owns its own initialize state, serialized request-id sequence, exact
   response expectation, profile-specific receive policy, and bounded response pages and limits.
-  Initialization, config read, one-page model listing, and the compatibility admission sequence
-  use method-owned incremental result families. Every later response family remains unavailable
+  Initialization and config read use method-owned incremental result families. A later product
+  model-list query uses its own method-owned incremental result family. Every later response family remains unavailable
   before id allocation, serialization, or request bytes until its bounded decoder is restored.
-- An initialized foreground session retains an immutable
-  full-turn-stream proof. `has_full_turn_stream` is true only after the initialize handshake
-  completes with no opted-out notification methods; request-only and uninitialized sessions cannot
-  authorize a foreground stream or be promoted from mutable options.
+- A foreground session's notification profile is fixed before initialize and must complete
+  initialize with no required notification method opted out. Request-only and uninitialized
+  sessions cannot authorize a foreground stream or be promoted from mutable options.
 - Each backend client session bounds server-request retention with a fixed-capacity compact prefix
   and fixed parser/source pages while it waits for a specific request response. On a
   provider-capable connection, the
@@ -87,9 +91,8 @@ Own Beryl's integration boundary with `codex app-server`.
 - A full-profile client selects that immutable ingress policy and its configured parser, page, and
   queue limits before its first transport read. Initialize later proves the requested notification
   profile; it never promotes a previously constructed decoder after bytes were received.
-  Request-only WebSocket
-  and detached stdio clients use structurally separate policies and cannot become foreground
-  clients in place.
+  Request-only and foreground WebSocket clients use structurally separate policies and cannot
+  become one another in place.
 - Incremental full-profile selection has no ordinary mode. Canonical method-first messages select
   their schema machine, pinned `id,result` success validates the sole expected id before selecting
   its result machine, and pinned `error,id` failure consumes bounded error facts under that expected
@@ -99,9 +102,8 @@ Own Beryl's integration boundary with `codex app-server`.
   Unknown notifications discard in order; unsupported server requests discard and then fail the
   connection. No completion-time DOM inspection, reordered-field tolerance, or non-target fallback
   exists. See
-  `doc/failures/cas-phase25-late-approval-discriminator.md`. The response-order proof under
-  `doc/memory/github.com/openai/codex/commit/44918ea10c0f99151c6710411b4322c2f5c96bea/`
-  is prior-release history; exact 0.146.0 evidence must refresh it before admission.
+  `doc/failures/cas-phase25-late-approval-discriminator.md`. Release admission requires exact CAS
+  0.146.0 generated-schema and pinned-release source evidence for this response-order boundary.
 - Decoded provider fragments end only at UTF-8 scalar boundaries. Before a parser call, ingress
   exchanges a nonempty page whose remaining suffix cannot hold one maximum-width decoded scalar;
   fixed decoded text uses the same boundary rule. A failing parser call's committed output is
@@ -115,20 +117,20 @@ Own Beryl's integration boundary with `codex app-server`.
 - A dynamic-tool request cannot enter the unbound deferred FIFO. If it is observed before the
   ordered registry sink is bound, the session fails closed before its arguments; no raw or typed
   argument prefix is retained for later reconciliation.
-- Backend client initialization requests the app-server experimental API capability when available, because Beryl depends on new protocol fields and notifications such as subagent `agentNickname` metadata and `thread/started`.
+- Backend client initialization sends the exact pinned experimental-API and notification settings
+  required by Beryl for fields and notifications such as subagent `agentNickname` metadata and
+  `thread/started`; refusal or mismatch fails initialization rather than selecting a fallback.
 - Backend client initialization must not opt out of `thread/started` on sessions that can feed foreground turn-stream activity.
 - WebSocket client sessions authenticate with the managed server using `Authorization: Bearer <token>` during the WebSocket handshake.
 - The WebSocket transport layer owns the authenticated client handshake, outbound client-to-server masking, inbound frame-header parsing, opcode and reserved-bit validation, server-to-client masking rejection, continuation-frame state, control-frame handling, close handling, bounded handshake read-ahead retention, handshake timeout behavior, and bounded payload-byte reads.
-- Stdio transport line reads are bounded before JSON parsing or stderr logging so a backend cannot force Beryl to retain an unlimited single stdout or stderr line.
-- Protocol errors for oversized stdio lines and invalid JSON must not retain the rejected full line payload.
 - WebSocket framing, socket I/O, masking, continuation, and control-frame code must not know
   JSON-RPC method names, request ids, transcript item schemas, generated-image fields, or backend
   normalization types.
 - Outbound JSON writes directly into a fixed-capacity transport writer. WebSocket output fragments
   one logical text message across a Text frame and bounded Continuation frames, applies one fresh
-  client mask in place per reusable frame buffer, and marks only the final frame with FIN. Stdio
-  output uses bounded buffering plus one terminal newline. No generic request path constructs a
-  whole JSON `String`, request-sized byte vector, or request-sized masking copy.
+  client mask in place per reusable frame buffer, and marks only the final frame with FIN. No
+  generic request path constructs a whole JSON `String`, request-sized byte vector, or request-
+  sized masking copy.
 - The outbound writer retains monotonic byte-level dispatch evidence. A failure before any
   underlying transport byte may have been accepted is proven non-dispatch; a partial header,
   payload, line, newline, or flush makes completion unknown and permanently closes that incomplete
@@ -167,14 +169,17 @@ Own Beryl's integration boundary with `codex app-server`.
   per-record metadata are discarded. Required values outside their representable domain produce a
   typed malformed or unavailable result after the complete value is consumed.
 - Full-profile initialize retains only the bounded app-server product/version token and required
-  closed platform facts. Config reads retain only bounded model and reasoning identifiers. Thread
-  lineage responses retain exact bounded identity, status, model/provider/reasoning facts and
+  closed platform facts. The sole release-admission config read retains only the two required
+  feature booleans and their dotted origin facts; ordinary post-admission config reads retain only
+  bounded model and reasoning identifiers. Thread lineage responses retain exact bounded identity,
+  status, model/provider/reasoning facts and
   structurally discard turns, items, previews, paths, names, source trees, and other history or
   catalog fields. Empty acknowledgements discard their complete result object after validating its
   envelope.
 - A metadata-only `thread/read` response retains bounded thread identity, closed status, the
   required bounded provider identity, and one optional bounded subagent nickname. Exact CAS 0.146.0
-  schema and live evidence must prove those source fields before compatibility admission. The
+  generated-schema and pinned-release source evidence must establish those source fields before
+  release admission. The
   response does not synthesize model or reasoning metadata that the source omits.
   Its schema machine selects the exact top-level and nested nickname paths incrementally, coalesces
   equal producer mirrors, rejects conflicting values, and discards turns, items, preview, cwd,
@@ -191,30 +196,21 @@ Own Beryl's integration boundary with `codex app-server`.
   without imposing a complete-token lexical limit. Explicitly bounded semantic identities are
   validated against their own value contracts while their surrounding provider fields still stream.
   See `doc/failures/cas-phase13-provider-lexical-caps.md`.
-- The retained stdio implementation has detached bounded whole-line ingress and no live managed
-  constructor. Streamed `turn/start` is capability-gated on stdio before verifier installation or
-  transport writes, yielding typed proven non-dispatch while leaving the session reusable. Any
-  future live stdio constructor must first move stdout parsing under the session-owned incremental
-  verifier; bounded outbound buffering alone does not authorize streamed input or generated-image
-  payload admission on stdio.
-- Compatibility admission requires retained proof of the official CAS 0.146.0 discriminant-first
-  wire order:
+- The pinned boundary requires generated-schema and pinned-release source evidence for the official
+  CAS 0.146.0 discriminant-first wire order:
   notification `method` precedes `params`, lifecycle `item` precedes its sibling fields, and item
   `type` precedes variant payload fields. A target message that exposes the large field before those
   discriminants, duplicates them, or is otherwise ambiguous fails closed; Beryl never restores
-  arbitrary-order tolerance by buffering the field. The prior-release source and installed-wire
-  proof is
-  `doc/memory/github.com/openai/codex/commit/44918ea10c0f99151c6710411b4322c2f5c96bea/image-generation-wire-order.md`.
-  It is not exact-0.146.0 compatibility proof and must be refreshed before admission.
+  arbitrary-order tolerance by buffering the field.
 - The observed pinned Web-search catch-all is the sole explicit lossy variant. Ingress emits the
   closed `Other` marker, structurally consumes its remaining payload through fixed discard state,
   and retains none of its arbitrary field names or values. This does not admit a generic unknown
   item, enum, object, raw-JSON, or materialized fallback.
-- The exclusion is compatibility containment for a base64-bearing CAS contract, not a preferred
-  media interface. If a future compatible CAS protocol provides the filesystem path without sending
-  the base64 field, Beryl uses that path-only contract and removes this special-case filter.
+- The exclusion is mandatory containment for the pinned base64-bearing CAS contract, not a media
+  interface. The separately authenticated `savedPath` handoff is the only supported generated-media
+  byte path; no alternate path-only protocol or filter bypass is admitted.
 - The JSON-RPC session layer owns request-id allocation, the sole non-cloneable response
-  expectation, response routing, initialize state, compatibility probing, and session-level
+  expectation, response routing, initialize state, exact-release admission, and session-level
   cancellation semantics. Full-profile notifications cross its synchronous ordered boundary or are
   structurally discarded; they are not retained in a generic notification buffer.
 - Existing typed backend normalization remains the caller-facing boundary after transport reads and JSON-RPC routing complete.
@@ -251,10 +247,14 @@ Own Beryl's integration boundary with `codex app-server`.
   owns the opening quote, per-fragment JSON escaping, and closing quote for one logical string;
   Beryl does not suppress quotes, concatenate raw JSON, or implement a second escaping grammar.
 - Streamed `turn/start` is supported only on the production WebSocket session whose incremental
-  ingress shares the request-scoped verifier. The detached stdio compatibility transport rejects
-  this specialized operation before dispatch.
+  ingress shares the request-scoped verifier. Request-only WebSocket sessions reject this
+  specialized operation before dispatch.
 - This crate does not expose Codex App Server thread-list normalization as a live public boundary. Beryl-home catalogs, selectors, restore paths, titles, runtimes, roots, and Syndic threads are not backend-discovered rows.
-- Thread-start normalization exposes app-server ephemeral-thread support as an explicit backend protocol capability without deciding which GUI workflows may use it.
+- Thread-start normalization exposes the exact pinned app-server ephemeral-thread start operation
+  and its bounded normalized request/response schema without deciding which GUI workflows may use
+  it. The operation belongs to the exact 0.146.0 generated-schema and pinned-release source
+  contract; this package exposes no runtime-discovered capability flag, report, probe, or other
+  capability surface for it.
 - Thread resume normalization may attach to an exact CAS projection for live execution or control, but it is not selected-thread activation or catalog proof.
 - Thread start, resume, and fork requests set the target's metadata-only controls, including
   `excludeTurns = true` where the protocol provides it. Their public responses, plus rollback and
@@ -264,7 +264,11 @@ Own Beryl's integration boundary with `codex app-server`.
   whole-message ceiling substitutes for that boundary.
 - Resume and rollback reject a response whose CAS thread id differs from the exact requested thread.
   Fork rejects a response that reuses its source CAS thread.
-- Thread read normalization is not a Beryl shell catalog, selector, restore, title, runtime, root, or Syndic-thread authority. Live GUI code must not use metadata-only reads to populate user-visible thread lists.
+- Thread-read normalization returns only bounded metadata fields and exposes no Beryl catalog row,
+  selected-thread claim, restore record, resolved title, runtime, or root value. It confers no
+  authority over the domains owned by the
+  [conversation-threads feature](../../../doc/features/conversation-threads/design.md) and the
+  [Syndic conversation-history system](../../../doc/systems/syndic-conversation-history/design.md).
 - Thread fork normalization exposes app-server `thread/fork` as creating a backend-owned conversation thread from an existing backend thread without deciding whether the GUI should activate the created thread or how downstream callers should present fork lineage.
 - Thread rollback normalization exposes app-server `thread/rollback` as a backend-owned thread-history mutation targeted by exact thread id and trailing turn count without deciding whether GUI callers use it for branch preparation, source-thread editing, or another history-truncation workflow.
 - Thread-item injection normalization exposes stable app-server `thread/inject_items` with an exact
@@ -305,7 +309,10 @@ Own Beryl's integration boundary with `codex app-server`.
 - Thread-name setting normalization is not Beryl thread-title authority. A bounded maintenance
   session may produce a candidate, but only Syndic generated-title publication creates durable
   title authority; backend name publication is not reintroduced.
-- Config-read normalization exposes app-server `config/read` for cwd-scoped model and reasoning configuration fields without deciding GUI fallback or presentation policy.
+- Release-admission config-read normalization is private to the exact admission sequence and
+  exposes only the two required feature booleans and their dotted origins. The separate ordinary
+  post-admission `config/read` boundary exposes cwd-scoped model and reasoning configuration fields
+  without deciding GUI fallback or presentation policy.
 - Model-list normalization exposes one bounded app-server `model/list` cursor page at a time,
   including bounded model ids and display labels, fixed hidden/default facts, one recognized-effort
   bitset and closed default-effort value per record, and compact continuation authority without
@@ -323,15 +330,16 @@ Own Beryl's integration boundary with `codex app-server`.
   and local-image fields incrementally and returns only checked correlation metadata plus the CAS
   item identity. The full echoed text and complete user-input vector never enter retained JSON,
   pending queues, normalized events, diagnostics, or logs.
-- The correlation form requires retained exact-0.146.0 lifecycle evidence that `item/started`
+- The correlation form requires generated-schema and pinned-release source evidence that exact CAS
+  0.146.0 `item/started`
   carries the complete
   submitted vector and `item/completed` carries the same item again. Missing, reordered, regrouped,
   or unequal content fails closed; legacy or historical user-message reconstruction is never used
   as live normalization authority.
 - The sole serialized session worker installs that correlation form immediately before the exact
   streamed `turn/start` write and removes it only after the matching start request resolves or the
-  connection fails. Compatibility admission requires retained exact-0.146.0 evidence that CAS
-  publishes and awaits both lifecycle notifications before returning that request. The decoder may
+  connection fails. Generated-schema and pinned-release source evidence must establish that exact
+  CAS 0.146.0 publishes and awaits both lifecycle notifications before returning that request. The decoder may
   therefore compare item-first wire content against the one installed
   expectation, then validate the later thread and turn envelope before releasing checked evidence;
   it never selects among multiple candidate inputs or retains a verifier across requests.
@@ -340,9 +348,6 @@ Own Beryl's integration boundary with `codex app-server`.
   the session reusable; poison after dispatch fails the request and invalidates connection
   authority rather than continuing or installing a replacement verifier.
 - Developer-instructions payload normalization must preserve the caller-supplied developer-instructions text as hidden developer-instructions context rather than converting it into user input text or another transcript-visible record. The exact app-server request field may be a settings-shaped developer-instructions mechanism when app-server does not expose a standalone per-turn developer-instructions field.
-- The fixed private `turn/steer` compatibility probe remains non-destructive and distinct from
-  production steering. It sends one minimal typed input against absent thread and expected-turn
-  identities and accepts only the pinned method-recognized rejection as capability evidence.
 - This crate exposes one specialized public streamed `turn/steer` boundary. It accepts an exact CAS
   thread id, an exact expected active CAS turn id, one bounded opaque client-user-message
   correlation, and the same non-cloneable replayable descriptor source and compact
@@ -352,8 +357,8 @@ Own Beryl's integration boundary with `codex app-server`.
   generic `serde_json::Value`, arbitrary metadata, caller-owned escaping, whole input collection,
   or generic turn-mutation overload.
 - Public streamed steering is available only on the initialized production WebSocket session whose
-  full foreground observation profile and ordered sink are already proven. Detached stdio rejects
-  this specialized operation before source replay or transport dispatch.
+  full foreground observation profile and ordered sink are already proven. Request-only WebSocket
+  sessions reject this specialized operation before source replay or transport dispatch.
 - Every source pass independently validates exact source identity, revision, descriptor count,
   sequence digest, text bytes, local-image paths, details, and terminal state. Source, validation,
   serialization, masking, cancellation, or transport failure retains the same monotonic byte-level
@@ -369,7 +374,8 @@ Own Beryl's integration boundary with `codex app-server`.
   cancellation retain their exact typed causes for the app-owned lifecycle policy.
 - The exact structured `activeTurnNotSteerable` data is normalized to its closed review or compact
   verdict. No-active-turn and expected-turn-mismatch errors remain exact rejections without a
-  machine verdict unless retained exact-0.146.0 evidence proves otherwise; this crate never derives
+  machine verdict unless generated-schema and pinned-release source evidence establish otherwise;
+  this crate never derives
   retry authority from their diagnostic message text.
 - A successful steering response may precede the corresponding `UserMessage` lifecycle. The
   response does not claim that lifecycle has already arrived and does not keep the source installed
@@ -391,12 +397,20 @@ Own Beryl's integration boundary with `codex app-server`.
 - Turn-interrupt normalization exposes app-server `turn/interrupt` only on the admitted foreground
   session that owns the exact loaded thread and turn. The caller supplies exact thread, turn,
   runtime, managed-process and loaded-thread generations through one of two non-interchangeable
-  authority families. Durable stop carries bounded opaque stop-operation and attempt correlations.
-  Persistent-store-failure interruption carries one separately typed volatile, process-local
-  failure-attempt correlation and cannot authorize durable stop or cleanup. Correlations are
+  typed authorization families.
+- Durable soft-stop authorization carries bounded opaque stop-operation and attempt correlations.
+  Correlations are
   returned for local reconciliation but are never sent as or described as app-server idempotency
   keys. The empty-`turnId` startup-interrupt shape is rejected locally and never exposed as
   production turn interruption.
+- Volatile pre-admission authorization is a separate process-local, non-cloneable, single-use value.
+  It is accepted only with the caller's typed proof that durable admission failed before reaching a
+  writer or returned `NotCommitted`; `Committed`, `Indeterminate`, cancellation after writer
+  admission, or any possible durable authority rejects it before dispatch. It carries no durable
+  stop operation, correlation, receipt, claim, join, or recovery authority.
+- Volatile authorization binds the same existing authenticated foreground target and sole driver as
+  the failed admission. A detached, replacement, resumed, request-only, or newly selected session
+  cannot consume it.
 - The sole foreground driver explicitly binds its authenticated exact target into the managed
   session before interruption authority exists. Authorization and dispatch both compare every
   runtime, managed-process, loaded-thread, thread, and turn component to that binding. Replacement
@@ -405,17 +419,21 @@ Own Beryl's integration boundary with `codex app-server`.
 - The sole session driver serializes interruption with foreground polling, approval responses,
   target closure, and terminal handoff. Its non-cloneable authorization also proves that the caller
   holds the target-operation fence prohibiting a successor start across the request cut. Exact CAS
-  0.146.0 remains on the conservative checked-turn/untargeted-core boundary unless retained release-
-  scoped evidence proves one atomic targeted core interrupt. A detached stdio client, request-only
+  0.146.0 remains on the conservative checked-turn/untargeted-core boundary unless generated-schema
+  and pinned-release source evidence establish one atomic targeted core interrupt. A request-only
   client, newly resumed session, unfenced target, or cloned request facade therefore rejects the
   specialized operation before dispatch.
-- The normalized interruption outcome distinguishes matching response acceptance,
+- The durable interruption outcome distinguishes matching response acceptance,
   `RejectedBeforeCoreInterrupt`, local proven non-dispatch, and completion unknown after possible
   dispatch. On the exact pinned release, a correlated `-32600` response with absent `data` and the
   handler-local `-32603` submission-failure response with absent `data` normalize to
   `RejectedBeforeCoreInterrupt`; this closed matcher is version-scoped and never parses message
   text. The verdict proves no core interrupt was enqueued but does not classify the cause or prove
   that the supplied target remains current.
+- The volatile outcome is a separate closed family with matching response acceptance,
+  `RejectedBeforeCoreInterrupt`, local proven non-dispatch, and completion unknown after possible
+  dispatch. It cannot be converted into a durable attempt or success claim. Acceptance in either
+  family is request evidence only and never reports turn terminality.
 - Local proven non-dispatch requires writer evidence that every request byte was prevented.
   Timeout, malformed response, response-identity failure, any unrecognized remote error after a
   request byte may have crossed, transport loss, and connection loss before a matching response are
@@ -424,44 +442,12 @@ Own Beryl's integration boundary with `codex app-server`.
   text and arbitrary error data never become a target verdict.
 - This package never retries interruption and never reports its response as turn terminality. It
   preserves monotonic byte-level dispatch evidence and the separately ordered terminal or
-  authority-loss observation for the app-owned durable stop protocol. The volatile failure family
-  additionally supplies no durable admission, stop receipt, failure-generation guard, lifecycle
-  completion, or target-selection policy; those remain app and storage authority.
-- Hard-stop normalization exposes optional app-server execution-termination primitives for exact
-  caller-supplied backend handles without deciding GUI stop policy. Supported primitives may
-  include turn-owned background-process termination, thread-scoped background-terminal cleanup,
-  and exact interruption of an associated child or subagent turn only when the provider supplies a
-  truly targeted child operation and the caller owns its target fence. Exact CAS 0.146.0 supplies
-  no eligible child/subagent interruption unless retained release-scoped evidence proves that
-  targeted primitive and the required successor fence.
-- Exact CAS 0.146.0 exposes no exact individual turn-process operation unless retained release-
-  scoped evidence proves an ABA-safe identity.
-  `command/exec/terminate` addresses only standalone commands in a separate originating-connection
-  namespace. Experimental `thread/backgroundTerminals/terminate` reaches turn-owned processes but
-  compares only a reusable numeric process id and cannot compare the frozen provider item id. The
-  package therefore reports the individual target family unsupported and rejects either mapping
-  before serialization; a prior list request cannot upgrade it into an exact handle.
-- Experimental `thread/backgroundTerminals/clean` is a separate coarse thread target whose empty
-  response means only request acceptance. It has no per-process result or completion notification,
-  and the package does not normalize it as a frozen process set or selected-turn-only effect.
-- For the same loaded pinned session, the accepted response also proves cleanup was enqueued before
-  any later Beryl core operation submitted after that response; the sole core submission loop
-  fully handles cleanup first. The package exposes this only as a session-scoped ordering fact, not
-  cleanup completion, and never transfers it to a replacement session.
-- Cleanup capability admission uses exact pinned-release source evidence plus negotiated
-  experimental API support. The package never sends a destructive cleanup request to a user thread
-  as a compatibility probe.
-- With experimental capability already admitted and parameters validated locally, a pinned coarse-
-  cleanup JSON-RPC error normalizes as session-authority loss. Error message text cannot safely
-  distinguish unloaded thread, capability drift, or core-channel failure. The package retires the
-  exact session before another hard-target request.
-- Production hard-stop requests use the same admitted foreground session and sole driver as the
-  selected primary stop. A detached stdio client, request-only client, newly resumed session, or
-  changed loaded generation rejects before dispatch.
-- Each hard target returns its own matching acceptance, source-pinned rejection,
-  proven-nondispatch, completion-unknown, or unsupported result with its caller correlation. The
-  package neither retries nor collapses partial results, and it cannot synthesize a handle from
-  command text, working directory, local process inspection, names, or historical reads.
+  authority-loss observation for the app-owned durable soft-stop protocol.
+- The volatile family additionally cannot be retried, joined, recovered after restart, or reused
+  after its one consumption. It provides no durable convergence or target-selection policy.
+- This package exposes no hard stop, diagnostic hard stop, child/subagent termination,
+  command-process termination, coarse background-terminal cleanup, or managed-process shutdown as
+  turn control.
 - Thread-compaction normalization exposes app-server `thread/compact/start` as a thread-id-targeted
   non-idempotent backend operation without owning GUI admission policy. It accepts one exact bounded
   CAS thread identity and emits the pinned request shape; no caller may attach input, a guessed turn
@@ -551,16 +537,10 @@ Own Beryl's integration boundary with `codex app-server`.
   streamed observation. A size-unbounded string, list, object, or binary-excluded field is not an
   owned `String`, `Vec`, or `serde_json::Value` at the package boundary.
 - Turn-stream normalization exposes backend activity with stable stream identity, including thread id, turn id, item id, raw protocol item type, raw command text for command-execution items when the protocol provides it, raw tool-name fields when the protocol provides them, raw item status when the protocol provides it, lifecycle status, summary-only reasoning update detail when the protocol provides it, exact collab-agent spawn model/reasoning metadata when a collab-agent item provides it, file-change summary counts derived from explicit `fileChange` records when the protocol provides them, and the raw file-change path only when those explicit records identify exactly one unique path.
-- Turn-stream normalization preserves backend-exposed hard-stop handles on operational tool
-  activity only when the provider supplies lifetime-stable instance identity and an atomically
-  matching operation. Pinned `CommandExecution.processId` is retained as bounded activity metadata
-  but not exposed as an exact hard-stop handle. This crate must not synthesize hard-stop handles
-  from command text, working directory, standalone `command/exec` ids, reusable process ids, or
-  local process inspection.
 - Native app-server execution items, dynamic tool calls, collab-agent tool calls, external MCP tool calls, and reasoning activity remain distinct normalized activity sources; this crate must not treat external MCP server inventory as the universal registry for app-server activity.
 - Hosted Responses image generation and the standalone `image_gen.imagegen` extension remain
   distinct producer paths. Native hosted `image_generation` is not part of the exact CAS 0.146.0
-  producer contract unless retained release-scoped evidence proves that the client can declare it;
+  producer contract unless generated-schema and pinned-release source evidence establish that the client can declare it;
   parser tolerance of that response item is insufficient. Standalone extension image generation
   remains a supported typed
   generated-media source. Its normalized item retains identity, lifecycle timestamp, status,
@@ -569,17 +549,34 @@ Own Beryl's integration boundary with `codex app-server`.
   decoder to retain `result`. An unsolicited hosted item from a nonconforming custom provider is
   outside compatibility authority; parser tolerance does not synthesize a normalized activity row
   or a complete-history claim.
+- The package exposes one private bounded historical repair stream only to a caller transferring the
+  sole non-cloneable dispatch capability produced by Syndic's durable target-scoped request claim
+  under the exact same-thread no-successor fence. The capability authenticates the correlated CAS
+  thread and turn and is consumed on invocation; this package cannot clone, reconstruct, retry, or
+  persist it and does not infer newest-turn authority from response position.
+- Consuming that capability sends exactly one experimental `thread/turns/list` request using the
+  generated `ThreadTurnsListParams`: the authenticated `threadId`, no request cursor, `limit=1`,
+  `sortDirection=desc`, and `itemsView=full`. It accepts only the generated
+  `ThreadTurnsListResponse`. A bounded continuation cursor for older turns is structurally consumed
+  and discarded; the package does not follow it, retry within the attempt, request an adjacent
+  turn, fall back to whole-thread `thread/read` or item-history methods, expose thread enumeration,
+  or provide a normal transcript/history API.
+- The response must contain exactly the matching terminal target with the complete full-item view,
+  regardless of bounded cursor-field presence. The stream preserves exact CAS identities, ordered
+  item provenance, terminal evidence, and source ranges while incrementally normalizing the same
+  closed item union as live capture; it does not decide whether Syndic may admit the repair.
+- Exact CAS 0.146.0 generated-schema and pinned-release source evidence must establish that the one
+  request provides the required latest-turn identity, terminal status, and complete semantic item
+  view. Without that proof the adapter is unavailable and exposes no alternate history route.
 - Dynamic tool-call normalization retains bounded app-server thread, turn, call, namespace, and
   tool identity plus one exact-session response capability without interpreting Beryl-owned tool
-  semantics. Compatibility admission requires retained exact-0.146.0 evidence that CAS emits those
-  fields before `arguments`; after validating them, the backend lends argument structure and
+  semantics. Generated-schema and pinned-release source evidence must establish that exact CAS
+  0.146.0 emits those fields before `arguments`; after validating them, the backend lends argument structure and
   bounded scalar fragments to the exact caller-supplied
   registry sink under backpressure. The sink seals or rejects before a later message becomes
   visible. The generic backend owns no argument `serde_json::Value`, raw JSON spool, cloneable
   request, or post-allocation schema check. Reordered or duplicate discriminants fail closed under
-  the prior-release proof at
-  `doc/memory/github.com/openai/codex/commit/44918ea10c0f99151c6710411b4322c2f5c96bea/dynamic-tool-call-wire-order.md`.
-  Exact 0.146.0 evidence must refresh it before admission.
+  that exact pinned evidence boundary.
 - A valid pinned dynamic-tool envelope whose installed tool is unknown or whose arguments violate
   the selected product schema still preserves its exact route and response authority as one bounded
   typed rejection. Envelope-order, duplicate-discriminant, and late-identity failures instead
@@ -600,8 +597,9 @@ Own Beryl's integration boundary with `codex app-server`.
   rather than inferred from configuration defaults, model-list defaults, parent-thread state,
   receiver thread ids, `agentsStates`, nicknames, or caller state. Spawn model/reasoning item
   metadata remains distinct from metadata-only thread reads. The normalized read contract exposes
-  provider identity and an optional nickname but no model or reasoning value; exact 0.146.0 schema
-  and live evidence must prove those source fields absent before compatibility admission. Subagent
+  provider identity and an optional nickname but no model or reasoning value; exact 0.146.0
+  generated-schema and pinned-release source evidence must establish those source fields absent
+  before release admission. Subagent
   nicknames come from bounded backend thread metadata when the protocol provides them.
 - Activity normalization does not synthesize human-friendly labels, inspect command arguments for display names, or decide GUI visibility, retention, sorting, command-line truncation, or log presentation policy.
 - Turn-stream normalization exposes each approval server request as a non-cloneable compact event:

@@ -1,3 +1,4 @@
+use beryl_home_store::CommandOutcome;
 use syndic_storage::{
     BindingState, CompactionOperationState, CompactionSettlement, InputGateState,
     SettleCompactionOperation, SettleLifecycleCompaction, TurnKind, TurnLifecycle,
@@ -25,7 +26,7 @@ fn manual_success_consumes_exact_provider_evidence_and_reopens_idle_gate() {
     fixture.publish_request(id, syndic_storage::CompactionRequestDisposition::Accepted);
     fixture.publish_success(id, 20);
     let operation = fixture.operation(id);
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_compaction_operation(
             SettleCompactionOperation::new(
@@ -33,8 +34,13 @@ fn manual_success_consumes_exact_provider_evidence_and_reopens_idle_gate() {
                 operation.revision(),
                 CompactionSettlement::ManualSuccess,
             ),
-        ))
-        .unwrap();
+        )) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean manual compaction settlement, got {outcome:?}"),
+    }
 
     assert_eq!(
         consumed_settlement(&fixture, id),
@@ -72,10 +78,16 @@ fn lifecycle_continuation_uses_durable_home_and_preserves_current_draft() {
     let request = SettleLifecycleCompaction::new(&operation, content, timestamp(40));
     let turn_id = request.turn_id();
     let item_id = request.item_id();
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_lifecycle_compaction(request))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean lifecycle compaction settlement, got {outcome:?}"),
+    }
 
     let after = fixture
         .storage
@@ -134,10 +146,16 @@ fn accepted_user_work_wins_lifecycle_settlement_after_compaction_admission() {
     let operation = fixture.operation(id);
     let request = SettleLifecycleCompaction::new(&operation, content, timestamp(40));
     let unused_continuation = request.turn_id();
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_lifecycle_compaction(request))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean lifecycle user-work settlement, got {outcome:?}"),
+    }
 
     assert_eq!(
         consumed_settlement(&fixture, id),
@@ -166,10 +184,16 @@ fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen(
     let request = SettleLifecycleCompaction::new(&operation, content, timestamp(40));
     let turn_id = request.turn_id();
     let item_id = request.item_id();
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_lifecycle_compaction(request))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean descendant lifecycle settlement, got {outcome:?}"),
+    }
 
     let source = exact_cas::establish_turn(
         &fixture.store,

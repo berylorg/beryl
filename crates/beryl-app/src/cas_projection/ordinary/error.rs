@@ -1,4 +1,6 @@
-use beryl_home_store::{HomeGeneration, HomeHealthState};
+use beryl_home_store::{
+    CommandError, CommitReceipt, HomeGeneration, HomeHealthState, ReconciliationDescriptor,
+};
 use beryl_model::{BerylHomeId, SyndicThreadId};
 use beryl_state::AssetReadError;
 use syndic_storage::SyndicReadError;
@@ -18,8 +20,20 @@ pub enum OrdinaryTurnExecutionError {
     HomeRead(#[from] beryl_home_store::ReadError),
     #[error("ordinary history convergence command could not be built")]
     HomeCommandBuild(#[from] beryl_home_store::CommandBuildError),
-    #[error("ordinary history convergence command failed")]
-    HomeCommand(#[from] beryl_home_store::CommandError),
+    #[error("ordinary history convergence command was proven not committed")]
+    HomeCommandNotCommitted(#[source] CommandError),
+    #[error("ordinary history convergence command committed before a later failure: {later_failure}")]
+    HomeCommandCommitted {
+        receipt: CommitReceipt,
+        #[source]
+        later_failure: CommandError,
+    },
+    #[error("ordinary history convergence command has an indeterminate durable outcome: {failure}")]
+    HomeCommandIndeterminate {
+        #[source]
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
     #[error("ordinary input replay requires a healthy Beryl home, got {state:?}")]
     InputReplayHomeNotHealthy {
         state: HomeHealthState,
@@ -38,8 +52,6 @@ pub enum OrdinaryTurnExecutionError {
     TargetHandoff { message: Box<str> },
     #[error("CAS projection execution failed during ordinary turn capture")]
     ProjectionExecution(#[from] crate::cas_projection::ProjectionExecutionError),
-    #[error("loaded projection could not enter same-native reacquisition quarantine")]
-    ReacquisitionAnchor(#[from] crate::cas_projection::LoadedProjectionReleaseError),
     #[error(transparent)]
     Publication(#[from] ProjectionPublicationFailure),
     #[error("broker-owned source-loss convergence failed during ordinary execution")]

@@ -2,19 +2,21 @@
 
 This is a normative supplemental GUI composition file for `design.md`. It owns placement and widget composition for backend-unavailable recovery in main conversation windows. User-visible recovery behavior, command availability, preserved state, and exact backend binding remain in `design.md`.
 
-## Backend-Unavailable Notice
+## Backend-Unavailable Notice Contribution
 
-Mount-into: main-window.overlays
+This feature mounts no `main-window notice`. When `design.md` makes a backend-unavailable notice
+eligible, the feature supplies one owner-configured record to the Notifications per-window arbiter.
+The record uses a stable selected-thread/runtime identity, bounded owner title and detail, and the
+error and persistent variants.
 
-Each affected main conversation window mounts one `main-window notice` configured with the error and persistent variants. The notice is bound to that window's selected thread and identifies the exact unavailable runtime in its owner-supplied title and bounded detail.
+The owner-supplied command region contains a `command button` labeled `Retry`. The persistent variant
+omits the close command.
 
-The owner-supplied command region contains a `command button` labeled `Retry`. The persistent variant omits the close command, so the notice remains visually anchored near the top-trailing edge while the conversation shell stays in place.
-
-Retry progress and later notice revisions reuse the same stable notice identity. The composition does not add a modal backdrop, replace transcript content, reserve conversation-body layout space, or mount one process-global notice across multiple windows.
-
-The backend-unavailable notice remains the presentation for runtime launch, probe, compatibility,
-connection, and active-turn failures. It is not duplicated for the native-lineage recovery decision
-below when that prompt already presents the exact blocking condition.
+The feature maps Retry's design-owned enabled or disabled state, closest disabled explanation, and
+pending state to that control. Retry progress and later record revisions reuse the same stable
+notice identity. Notifications owns priority, persistence, replacement, and the sole visible notice
+instance; this contribution adds no modal backdrop, transcript replacement, or conversation-body
+layout space.
 
 ## Native-Lineage Recovery Prompt
 
@@ -25,13 +27,25 @@ lineage recovery prompt` in place of the ordinary composer. The prompt receives 
 owner-supplied explanation and exactly two `command button` controls labeled `Retry` and `Recover
 from Syndic history`.
 
+Before publishing the prompt, the outgoing composer host fences new editor mutations, settles any
+active composition or pre-commit edit through the ordinary exact edit boundary, waits for every
+already-admitted range-backed edit to reach its exact host terminal, incorporates each terminal
+result into the current authoritative draft binding and revision, and captures the external
+`text-input`'s exact compact restoration seed. Publishing then coherently unmounts the
+ordinary `conversation composer` and its range-backed `text-input`; it does not keep either widget
+hidden. Unmount cancels and releases the text-input's widget-owned requests, resident ranges,
+staged local capacity, and other local resources under the external contract. The prompt receives
+no draft content, editor source, or editor buffer and owns no composer restoration state.
+
 `Retry` is the default and initially focused command. `Recover from Syndic history` remains visible
-when unavailable and uses the expected-action-availability contract to explain the exact recovery
-budget, representation, capability, active-turn, or stale-command gate. The feature supplies exact
-command identities, pending state, and results; the canonical prompt owns only shared presentation,
-focus, and layout.
+when unavailable and uses the expected-action-availability contract to present the exact
+design-owned disabled reason. The feature maps each command's exact identity, enabled or disabled
+state, closest explanation, pending state, and result; the canonical prompt owns only shared
+presentation, focus, and layout.
 
 The prompt uses the existing pinned user-input-panel allocation. It adds no backdrop, overlay,
-dialog, persistent body row, or transcript replacement. Leaving the prompt returns focus to the
-restored composer editor when eligible; otherwise focus moves to the exact still-valid pending-turn
-control or thread selector chosen by the owning feature.
+dialog, persistent body row, or transcript replacement. Leaving the prompt does not reattach a
+hidden editor. When restoration is eligible, the composer feature mounts a range-backed editor from
+its compact host-owned restoration facts and bounded range requests, then returns focus to that
+coherent editor; otherwise focus moves to the exact still-valid pending-turn control or thread
+selector chosen by the owning feature.

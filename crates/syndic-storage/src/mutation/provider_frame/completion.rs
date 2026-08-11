@@ -1,14 +1,15 @@
 use beryl_home_store::{
     CurrentDomainCommand, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     MutationBuildError, MutationBuilder, MutationContribution, ReadError,
+    ReconciliationReservation,
 };
 use beryl_model::DomainRevision;
 
 use crate::{
-    ProviderItemBuildRecord, SyndicStorage,
     codec::*,
     domain::SyndicDomain,
-    validation::{ProviderFrameStorageValidationError, advance_provider_completion_comparison},
+    validation::{advance_provider_completion_comparison, ProviderFrameStorageValidationError},
+    ProviderItemBuildRecord, SyndicStorage,
 };
 
 /// Why one bounded completion-equality mutation was rejected.
@@ -75,6 +76,14 @@ impl DomainMutation<SyndicDomain> for CompareProviderCompletionMutation {
             return Err(ProviderCompletionComparisonMutationError::BuildConflict);
         }
         derive_next(reader, &current)?;
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ProviderItemBuildsCodec>(1)?;
         Ok(())
     }
 

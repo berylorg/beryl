@@ -11,14 +11,14 @@ use syndic_storage::{
 };
 
 use super::OrdinaryTurnExecutionError;
-use crate::cas_projection::{LoadedCasProjection, persistent_failure::PendingProjectionWitness};
+use crate::cas_projection::LoadedCasProjection;
 
 const TURN_ITEMS_READ_BYTES: usize = 4 * 1024;
 
 /// Exact immutable projection facts required to stabilize one pending ordinary turn.
 ///
-/// Keeping this witness separate from executable projection ownership lets recovery authenticate
-/// quarantined authority without first manufacturing a live wrapper.
+/// Keeping this witness separate from executable projection ownership lets startup recovery
+/// authenticate durable authority without first manufacturing a live wrapper.
 pub(in crate::cas_projection) trait PendingOrdinaryExecutionWitness {
     fn expected_syndic_thread_id(&self) -> SyndicThreadId;
     fn expected_binding_revision(&self) -> BindingRevision;
@@ -46,28 +46,6 @@ impl PendingOrdinaryExecutionWitness for LoadedCasProjection {
 
     fn expected_lineage_proof(&self) -> syndic_storage::CasLineageProof {
         self.lineage_proof()
-    }
-}
-
-impl PendingOrdinaryExecutionWitness for PendingProjectionWitness {
-    fn expected_syndic_thread_id(&self) -> SyndicThreadId {
-        *self.syndic_thread_id()
-    }
-
-    fn expected_binding_revision(&self) -> BindingRevision {
-        *self.binding_revision()
-    }
-
-    fn expected_execution_binding(&self) -> &beryl_model::ExecutionBinding {
-        self.execution_binding()
-    }
-
-    fn expected_cas_thread_id(&self) -> &beryl_model::CasThreadId {
-        self.cas_thread_id()
-    }
-
-    fn expected_lineage_proof(&self) -> syndic_storage::CasLineageProof {
-        *self.lineage_proof()
     }
 }
 

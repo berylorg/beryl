@@ -36,9 +36,8 @@ use pre_bind::PreBindApprovalPrefix;
 use crate::{
     ApprovalInterruption, ApprovalRequest, ApprovalRequestKind, ApprovalRequestSchemaError,
     ApprovalResponseDisposition, BackendCommandLineError, BackendConfigDefaults,
-    CompatibilityError, CompatibilityProbe, CompatibilityProbeSet, DynamicToolCall,
-    DynamicToolCallError, DynamicToolCallResponse, DynamicToolCallResponseDisposition,
-    InitializeResponse, JsonRpcError, StartedTurn, ThreadBranchCapabilities,
+    CompatibilityError, DynamicToolCall, DynamicToolCallError, DynamicToolCallResponse,
+    DynamicToolCallResponseDisposition, InitializeResponse, JsonRpcError, StartedTurn,
     ThreadInjectionSourceError, TurnStartOptions,
     thread_lineage::LoadedThreadSession,
     turn::{
@@ -75,7 +74,6 @@ pub struct ManagedBackendSession {
     foreground_authorization_epoch: u64,
     exact_foreground_thread: Option<ExactForegroundThread>,
     exact_foreground_turn: Option<crate::ExactForegroundTurn>,
-    experimental_api_negotiated: bool,
     pre_bind_approvals: PreBindApprovalPrefix,
     ordered_turn_stream_sink: Option<Box<dyn crate::OrderedTurnStreamSink>>,
 }
@@ -87,10 +85,8 @@ enum InitializedNotificationProfile {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ManagedBackendProbeReport {
+pub struct ManagedBackendReleaseAdmission {
     initialize: InitializeResponse,
-    probe_successes: CompatibilityProbeSet,
-    thread_branch_capabilities: ThreadBranchCapabilities,
     config_defaults: BackendConfigDefaults,
     launch_provenance: crate::server::ManagedLaunchProvenance,
 }
@@ -119,7 +115,7 @@ pub enum ManagedBackendError {
     ProcessGenerationExhausted,
     #[error("the managed backend stderr reader panicked")]
     StderrReaderPanicked,
-    #[error("managed backend launch identity does not match compatibility admission")]
+    #[error("managed backend launch identity does not match release admission")]
     ManagedLaunchIdentityMismatch,
     #[error("failed to write {method} request to backend transport")]
     WriteRequest {
@@ -374,14 +370,10 @@ pub enum ManagedBackendError {
     },
     #[error("backend {method} response did not match its closed result family")]
     UnexpectedBoundedResponse { method: &'static str },
-    #[error("mutating compatibility probe {probe:?} unexpectedly succeeded")]
-    CompatibilityMutatingSuccess { probe: CompatibilityProbe },
-    #[error("compatibility probe {probe:?} returned an unsafe successful state")]
-    CompatibilityUnsafeSuccess { probe: CompatibilityProbe },
-    #[error("compatibility admission requires managed-launch provenance")]
-    CompatibilityManagedLaunchProvenanceMissing,
-    #[error("compatibility config read did not prove both managed multi-agent settings")]
-    CompatibilityEffectiveConfigUnproven,
+    #[error("release admission requires production managed-launch provenance")]
+    ReleaseAdmissionManagedLaunchProvenanceMissing,
+    #[error("release admission config/read did not prove both required sessionFlags settings")]
+    ReleaseAdmissionEffectiveConfigUnproven,
     /// The method-owned response decoder has not yet been restored after ordinary ingress removal.
     #[error("backend response family {method} is unavailable before dispatch")]
     ResponseFamilyUnavailable { method: &'static str },
@@ -477,8 +469,6 @@ impl ManagedBackendError {
                 | Self::OrderedTurnStream { .. }
                 | Self::OrderedTurnStreamUnexpectedCompletion { .. }
                 | Self::UnexpectedBoundedResponse { .. }
-                | Self::CompatibilityMutatingSuccess { .. }
-                | Self::CompatibilityUnsafeSuccess { .. }
         ) || matches!(
             self,
             Self::StreamedInputSource {
@@ -668,7 +658,6 @@ impl ManagedBackendSession {
             foreground_authorization_epoch: 1,
             exact_foreground_thread: None,
             exact_foreground_turn: None,
-            experimental_api_negotiated: false,
             pre_bind_approvals: PreBindApprovalPrefix::disabled(),
             ordered_turn_stream_sink: None,
         })
@@ -1029,7 +1018,6 @@ impl ManagedBackendSession {
             foreground_authorization_epoch: 1,
             exact_foreground_thread: None,
             exact_foreground_turn: None,
-            experimental_api_negotiated: false,
             pre_bind_approvals: PreBindApprovalPrefix::new(pre_bind_control_capacity),
             ordered_turn_stream_sink: None,
         })
@@ -1053,7 +1041,6 @@ impl ManagedBackendSession {
             foreground_authorization_epoch: 1,
             exact_foreground_thread: None,
             exact_foreground_turn: None,
-            experimental_api_negotiated: false,
             pre_bind_approvals: PreBindApprovalPrefix::disabled(),
             ordered_turn_stream_sink: None,
         })
@@ -1149,18 +1136,14 @@ impl std::fmt::Debug for ManagedBackendSession {
     }
 }
 
-impl ManagedBackendProbeReport {
+impl ManagedBackendReleaseAdmission {
     pub(crate) fn new(
         initialize: InitializeResponse,
-        probe_successes: CompatibilityProbeSet,
-        thread_branch_capabilities: ThreadBranchCapabilities,
         config_defaults: BackendConfigDefaults,
         launch_provenance: crate::server::ManagedLaunchProvenance,
     ) -> Self {
         Self {
             initialize,
-            probe_successes,
-            thread_branch_capabilities,
             config_defaults,
             launch_provenance,
         }
@@ -1170,23 +1153,17 @@ impl ManagedBackendProbeReport {
         &self.initialize
     }
 
-    pub const fn probe_successes(&self) -> CompatibilityProbeSet {
-        self.probe_successes
-    }
-
-    pub fn thread_branch_capabilities(&self) -> &ThreadBranchCapabilities {
-        &self.thread_branch_capabilities
-    }
-
     pub fn config_defaults(&self) -> &BackendConfigDefaults {
         &self.config_defaults
     }
 
-    pub fn launch_identity(&self) -> Option<&crate::ManagedBackendLaunchIdentity> {
+    pub fn launch_identity(&self) -> &crate::ManagedBackendLaunchIdentity {
         match &self.launch_provenance {
-            crate::server::ManagedLaunchProvenance::Production(identity) => Some(identity),
+            crate::server::ManagedLaunchProvenance::Production(identity) => identity,
             #[cfg(feature = "lifecycle-test-support")]
-            crate::server::ManagedLaunchProvenance::LifecycleTest => None,
+            crate::server::ManagedLaunchProvenance::LifecycleTest => {
+                unreachable!("lifecycle-test provenance cannot create release admission")
+            }
         }
     }
 }

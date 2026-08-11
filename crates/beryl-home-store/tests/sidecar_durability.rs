@@ -5,13 +5,13 @@ mod support;
 use std::{fs, num::NonZeroU64};
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     SidecarByteLimit, SidecarError, SidecarNamespace,
-    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, PutBytes};
+use support::{committed, AlphaDomain, PutBytes};
 
 fn limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap())
@@ -50,7 +50,7 @@ fn sidecar_is_durable_before_its_first_metadata_reference_commits() {
             PutBytes::<AlphaDomain>::new(1, address.digest().as_bytes().to_vec()),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
     assert!(store.verify_sidecar(&address, limit()).is_ok());
 
     store.close().unwrap();
@@ -137,7 +137,9 @@ fn failed_temporary_flush_leaves_inert_bytes_and_gates_metadata_commands() {
         .unwrap();
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::HealthGate(_))
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::HealthGate(_)
+        }
     ));
 
     let temporary_count = count_temporary_files(directory.path());
@@ -214,7 +216,10 @@ fn sidecar_token_from_an_obsolete_generation_cannot_authorize_metadata() {
             PutBytes::<AlphaDomain>::new(7, b"fail".to_vec()),
         ))
         .unwrap();
-    assert!(store.execute(failed).is_err());
+    assert!(matches!(
+        store.execute(failed),
+        beryl_home_store::CommandOutcome::NotCommitted { .. }
+    ));
     faults.fail_next(FaultPoint::BeforeVerification);
     assert!(store.verify_health().is_err());
     store.recover_same_home().unwrap();
@@ -230,7 +235,9 @@ fn sidecar_token_from_an_obsolete_generation_cannot_authorize_metadata() {
         .unwrap();
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::ForeignSidecar)
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ForeignSidecar
+        }
     ));
 }
 

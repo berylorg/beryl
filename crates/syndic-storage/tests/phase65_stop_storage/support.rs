@@ -1,4 +1,4 @@
-use beryl_home_store::{HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     AcceptedInputAdmission, AdmitStopOperation, BindingState, ComposerAtom, ComposerPayload,
@@ -16,7 +16,13 @@ pub fn point_limit() -> SyndicPointReadLimit {
 pub fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stop fixture command, got {outcome:?}"),
+    }
 }
 
 pub struct ActiveStopFixture {
@@ -47,12 +53,17 @@ impl ActiveStopFixture {
     }
 
     pub fn admit_stop(&self) {
-        self.store
+        match self.store
             .execute_current(
                 self.storage
                     .current_admit_stop_operation(self.admission.clone()),
-            )
-            .unwrap();
+            ) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean stop admission, got {outcome:?}"),
+        }
     }
 
     pub fn reopen(self) -> Self {

@@ -1,72 +1,33 @@
 use std::sync::{Arc, Mutex, mpsc};
 
-use beryl_home_store::{HomeHealthState, HomeStore};
-
 use super::{
     RunningSessionRecoveryShutdownError, RunningSessionRecoveryStartError,
-    provider::ProviderFactoryOwner,
-    recovery::{
-        PersistentFailureDormantReplacementAdoptionFailure,
-        PersistentFailurePendingProjectionQuarantineDormantReplacementFailure,
-        RecoveryBuildOutcome, build_dormant_replacement_for_supervisor,
-    },
-    slot::RunningServiceSlot,
+    provider::ProviderFactoryOwner, slot::RunningServiceSlot,
 };
-#[cfg(test)]
-use crate::cas_projection::PersistentFailureServiceAdoptionMetadata;
 use crate::cas_projection::{
-    AdoptedUnpublishedProjectionConnectionService, PersistentFailureNotificationStatus,
-    ProjectionConnectionServiceCloseOutcome, ProjectionServiceConfig,
+    PersistentFailureNotificationStatus, ProjectionConnectionServiceCloseError,
+    ProjectionConnectionServiceCloseOutcome,
 };
 
 pub(super) struct RecoveryWorkerStart {
-    pub(super) home: Arc<HomeStore>,
-    pub(super) config: ProjectionServiceConfig,
     pub(super) slot: Arc<RunningServiceSlot>,
-    pub(super) signal: mpsc::SyncSender<()>,
     pub(super) receiver: mpsc::Receiver<()>,
     pub(super) provider_factory: ProviderFactoryOwner,
-    #[cfg(test)]
-    pub(super) phase93_observation: Arc<Mutex<Option<Phase93AdoptionObservation>>>,
 }
 
 pub(super) struct RecoveryWorkerExit {
-    service_error: Option<crate::cas_projection::ProjectionConnectionServiceCloseError>,
-    terminal_recovery: bool,
-    terminal_owner: Option<RecoveryTerminalOwner>,
+    service_error: Option<ProjectionConnectionServiceCloseError>,
+    terminal_unavailable: bool,
     provider_factory: Option<ProviderFactoryOwner>,
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct Phase93AdoptionObservation {
-    pub(super) metadata: PersistentFailureServiceAdoptionMetadata,
-    pub(super) startup_fence_closed: bool,
-    pub(super) adopted_connection_count: usize,
-}
-
-enum RecoveryTerminalOwner {
-    Adopted(AdoptedUnpublishedProjectionConnectionService),
-    AdoptionFailure(PersistentFailureDormantReplacementAdoptionFailure),
-    BuildFailure(PersistentFailurePendingProjectionQuarantineDormantReplacementFailure),
-}
-
-enum RecoveryWorkerAction {
-    Continue,
-    Shutdown,
-    Terminal,
-    TerminalWithBuildFailure(PersistentFailurePendingProjectionQuarantineDormantReplacementFailure),
-    Adopted(AdoptedUnpublishedProjectionConnectionService),
-    AdoptionFailure(PersistentFailureDormantReplacementAdoptionFailure),
 }
 
 enum RecoveryCutFailure {
     CurrentNotification,
     FailureNotification(PersistentFailureNotificationStatus),
     ServiceWithdrawal,
-    EpochOwnership,
+    ServiceOwnership,
     ServiceClosed,
-    ServiceClose,
+    ServiceClose(ProjectionConnectionServiceCloseError),
 }
 
 impl std::fmt::Display for RecoveryCutFailure {
@@ -77,9 +38,9 @@ impl std::fmt::Display for RecoveryCutFailure {
                 write!(formatter, "failure notification returned {status:?}")
             }
             Self::ServiceWithdrawal => formatter.write_str("service withdrawal"),
-            Self::EpochOwnership => formatter.write_str("service-epoch ownership recovery"),
-            Self::ServiceClosed => formatter.write_str("service was already closed"),
-            Self::ServiceClose => formatter.write_str("persistent-failure service close"),
+            Self::ServiceOwnership => formatter.write_str("service ownership recovery"),
+            Self::ServiceClosed => formatter.write_str("service was already ordinarily closed"),
+            Self::ServiceClose(error) => write!(formatter, "failed-service disposal: {error}"),
         }
     }
 }
@@ -89,14 +50,9 @@ impl RecoveryWorkerStart {
         self,
     ) -> Result<std::thread::JoinHandle<RecoveryWorkerExit>, RunningSessionRecoveryStartError> {
         let Self {
-            home,
-            config,
             slot,
-            signal,
             receiver,
             provider_factory,
-            #[cfg(test)]
-            phase93_observation,
         } = self;
         let factory = Arc::new(Mutex::new(Some(provider_factory)));
         let thread_factory = Arc::clone(&factory);
@@ -109,16 +65,7 @@ impl RecoveryWorkerStart {
                     .unwrap_or_else(|poison| poison.into_inner())
                     .take()
                     .expect("the recovery worker takes its provider factory once");
-                run(
-                    home,
-                    config,
-                    thread_slot,
-                    signal,
-                    receiver,
-                    provider_factory,
-                    #[cfg(test)]
-                    phase93_observation,
-                )
+                run(thread_slot, receiver, provider_factory)
             });
         match handle {
             Ok(handle) => Ok(handle),
@@ -129,7 +76,7 @@ impl RecoveryWorkerStart {
                     .lock()
                     .unwrap_or_else(|poison| poison.into_inner())
                     .take()
-                    .expect("a failed worker spawn leaves the provider factory in escrow");
+                    .expect("a failed worker spawn leaves the provider factory owned");
                 provider_factory.shutdown();
                 let suffix = service_error
                     .map(|failure| format!("; initial service cleanup failed: {failure}"))
@@ -143,167 +90,66 @@ impl RecoveryWorkerStart {
 }
 
 fn run(
-    home: Arc<HomeStore>,
-    config: ProjectionServiceConfig,
     slot: Arc<RunningServiceSlot>,
-    signal: mpsc::SyncSender<()>,
     receiver: mpsc::Receiver<()>,
     mut provider_factory: ProviderFactoryOwner,
-    #[cfg(test)] phase93_observation: Arc<Mutex<Option<Phase93AdoptionObservation>>>,
 ) -> RecoveryWorkerExit {
-    let mut terminal_recovery = false;
-    let mut terminal_owner = None;
+    let mut terminal_unavailable = false;
+    let mut service_error = None;
     while receiver.recv().is_ok() {
         if slot.is_shutting_down() {
             break;
         }
-        let Ok((flight_home_generation, flight_service_generation, flight_notification)) =
-            slot.current_notification()
+        let Ok((_home_generation, _service_generation, notification)) = slot.current_notification()
         else {
-            terminal_recovery = true;
+            terminal_unavailable = true;
             break;
         };
-        let mut completed_verification = None;
-        let action = match home.health().state() {
-            HomeHealthState::Healthy | HomeHealthState::Opening | HomeHealthState::Reopening => {
-                RecoveryWorkerAction::Continue
-            }
-            HomeHealthState::Verifying => match home.verify_health() {
-                Ok(health)
-                    if health.state() == HomeHealthState::Healthy
-                        && health.generation() == Some(flight_home_generation) =>
-                {
-                    if let Some(completed) = slot.complete_same_generation_verification(
-                        &home,
-                        flight_home_generation,
-                        flight_service_generation,
-                        &flight_notification,
-                    ) {
-                        completed_verification = Some(completed);
-                        RecoveryWorkerAction::Continue
-                    } else if slot.is_shutting_down() {
-                        RecoveryWorkerAction::Shutdown
-                    } else {
-                        RecoveryWorkerAction::Terminal
+        match notification.notify() {
+            PersistentFailureNotificationStatus::NotFailed => {}
+            PersistentFailureNotificationStatus::Unavailable => terminal_unavailable = true,
+            PersistentFailureNotificationStatus::Signaled
+            | PersistentFailureNotificationStatus::Joined => {
+                match cut_and_dispose_current_failed_service(&slot) {
+                    Ok(()) => terminal_unavailable = true,
+                    Err(RecoveryCutFailure::ServiceClose(error)) => {
+                        service_error = Some(error);
+                        terminal_unavailable = true;
+                    }
+                    Err(reason) => {
+                        #[cfg(test)]
+                        eprintln!(
+                            "running-session recovery became unavailable while disposing the failed service: {reason}"
+                        );
+                        let _ = reason;
+                        terminal_unavailable = true;
                     }
                 }
-                Ok(_) | Err(_) => recover_current_service(
-                    &home,
-                    config,
-                    &slot,
-                    &signal,
-                    &receiver,
-                    &mut provider_factory,
-                ),
-            },
-            HomeHealthState::Failed => recover_current_service(
-                &home,
-                config,
-                &slot,
-                &signal,
-                &receiver,
-                &mut provider_factory,
-            ),
-        };
-        match action {
-            RecoveryWorkerAction::Continue => {
-                flight_notification.finish_completed_recovery_supervisor_flight(
-                    completed_verification,
-                    !slot.is_shutting_down(),
-                );
             }
-            RecoveryWorkerAction::Shutdown => break,
-            RecoveryWorkerAction::Terminal => {
-                terminal_recovery = true;
-                slot.mark_terminal();
-                break;
-            }
-            RecoveryWorkerAction::TerminalWithBuildFailure(failure) => {
-                terminal_owner = Some(RecoveryTerminalOwner::BuildFailure(failure));
-                terminal_recovery = true;
-                slot.mark_terminal();
-                break;
-            }
-            RecoveryWorkerAction::Adopted(owner) => {
-                #[cfg(test)]
-                {
-                    let observation = Phase93AdoptionObservation {
-                        metadata: owner.metadata(),
-                        startup_fence_closed: owner.startup_fence_is_closed_for_test(),
-                        adopted_connection_count: owner.adopted_connection_count_for_test(),
-                    };
-                    *phase93_observation
-                        .lock()
-                        .unwrap_or_else(|poison| poison.into_inner()) = Some(observation);
-                }
-                terminal_owner = Some(RecoveryTerminalOwner::Adopted(owner));
-                terminal_recovery = true;
-                slot.mark_terminal();
-                break;
-            }
-            RecoveryWorkerAction::AdoptionFailure(failure) => {
-                terminal_owner = Some(RecoveryTerminalOwner::AdoptionFailure(failure));
-                terminal_recovery = true;
-                slot.mark_terminal();
-                break;
-            }
+        }
+        if terminal_unavailable {
+            slot.mark_terminal();
+            break;
         }
     }
     slot.begin_shutdown();
-    drop(home);
-    let service_error = settle_current_service(&slot).err();
+    if service_error.is_none() {
+        service_error = settle_current_service(&slot).err();
+    }
+    provider_factory.shutdown();
+    if terminal_unavailable {
+        slot.mark_terminal_settled();
+    }
     RecoveryWorkerExit {
         service_error,
-        terminal_recovery,
-        terminal_owner,
+        terminal_unavailable,
         provider_factory: Some(provider_factory),
     }
 }
 
-fn recover_current_service(
-    home: &Arc<HomeStore>,
-    config: ProjectionServiceConfig,
+fn cut_and_dispose_current_failed_service(
     slot: &Arc<RunningServiceSlot>,
-    signal: &mpsc::SyncSender<()>,
-    receiver: &mpsc::Receiver<()>,
-    provider_factory: &mut ProviderFactoryOwner,
-) -> RecoveryWorkerAction {
-    let handoff = match cut_current_failed_service(slot) {
-        Ok(handoff) => handoff,
-        Err(reason) => {
-            #[cfg(test)]
-            eprintln!(
-                "same-home recovery entered a terminal state while cutting the current service: {reason}"
-            );
-            let _ = reason;
-            return RecoveryWorkerAction::Terminal;
-        }
-    };
-    match build_dormant_replacement_for_supervisor(
-        handoff,
-        home,
-        config,
-        receiver,
-        slot,
-        provider_factory,
-    ) {
-        RecoveryBuildOutcome::Dormant(owner) => match owner.adopt(signal.clone()) {
-            Ok(adopted) => RecoveryWorkerAction::Adopted(adopted),
-            Err(failure) => RecoveryWorkerAction::AdoptionFailure(failure),
-        },
-        RecoveryBuildOutcome::Shutdown => RecoveryWorkerAction::Shutdown,
-        RecoveryBuildOutcome::Terminal(Some(failure)) => {
-            // Retain every typed conversion failure through explicit supervisor disposition.
-            // The old service is already withdrawn, so this remains unmounted.
-            RecoveryWorkerAction::TerminalWithBuildFailure(failure)
-        }
-        RecoveryBuildOutcome::Terminal(None) => RecoveryWorkerAction::Terminal,
-    }
-}
-
-fn cut_current_failed_service(
-    slot: &Arc<RunningServiceSlot>,
-) -> Result<crate::cas_projection::PersistentFailureCutHandoff, RecoveryCutFailure> {
+) -> Result<(), RecoveryCutFailure> {
     let (_home_generation, service_generation, notification) = slot
         .current_notification()
         .map_err(|_| RecoveryCutFailure::CurrentNotification)?;
@@ -314,66 +160,48 @@ fn cut_current_failed_service(
     ) {
         return Err(RecoveryCutFailure::FailureNotification(notification_status));
     }
-    let epoch = slot
+    let publication = slot
         .withdraw(service_generation)
         .map_err(|_| RecoveryCutFailure::ServiceWithdrawal)?;
     slot.wait_until_unleased();
-    let (service, _state) = epoch
+    let (service, _state) = publication
         .into_parts()
-        .map_err(|_| RecoveryCutFailure::EpochOwnership)?;
+        .map_err(|_| RecoveryCutFailure::ServiceOwnership)?;
     match service.close() {
-        Ok(ProjectionConnectionServiceCloseOutcome::PersistentFailure(handoff)) => Ok(handoff),
+        Ok(ProjectionConnectionServiceCloseOutcome::PersistentFailure(_evidence)) => Ok(()),
         Ok(ProjectionConnectionServiceCloseOutcome::Closed) => {
             Err(RecoveryCutFailure::ServiceClosed)
         }
-        Err(_) => Err(RecoveryCutFailure::ServiceClose),
+        Err(error) => Err(RecoveryCutFailure::ServiceClose(error)),
     }
 }
 
 fn settle_current_service(
     slot: &Arc<RunningServiceSlot>,
-) -> Result<(), crate::cas_projection::ProjectionConnectionServiceCloseError> {
-    let Some(epoch) = slot.take_for_shutdown() else {
+) -> Result<(), ProjectionConnectionServiceCloseError> {
+    let Some(publication) = slot.take_for_shutdown() else {
         return Ok(());
     };
     slot.wait_until_unleased();
-    let (service, _state) = epoch.into_parts().map_err(|_| {
-        crate::cas_projection::ProjectionConnectionServiceCloseError::HomeOwnershipLeaked
-    })?;
-    match service.close()? {
-        ProjectionConnectionServiceCloseOutcome::Closed => Ok(()),
-        ProjectionConnectionServiceCloseOutcome::PersistentFailure(_handoff) => Err(
-            crate::cas_projection::ProjectionConnectionServiceCloseError::PersistentFailureWorkerShutdown,
-        ),
-    }
+    let (service, _state) = publication
+        .into_parts()
+        .map_err(|_| ProjectionConnectionServiceCloseError::HomeOwnershipLeaked)?;
+    service.close().map(|_terminal_outcome| ())
 }
 
 impl RecoveryWorkerExit {
     pub(super) fn into_result(self) -> Result<(), RunningSessionRecoveryShutdownError> {
         let Self {
             service_error,
-            terminal_recovery,
-            terminal_owner,
-            provider_factory,
+            terminal_unavailable,
+            mut provider_factory,
         } = self;
-        let terminal_disposition_failed = match terminal_owner {
-            Some(RecoveryTerminalOwner::Adopted(owner)) => {
-                owner.dispose_after_recovery_failure().is_err()
-            }
-            Some(RecoveryTerminalOwner::AdoptionFailure(failure)) => {
-                failure.dispose_for_worker_terminal().is_err()
-            }
-            Some(RecoveryTerminalOwner::BuildFailure(failure)) => {
-                failure.dispose_for_worker_terminal().is_err()
-            }
-            None => false,
-        };
-        if let Some(mut provider_factory) = provider_factory {
+        if let Some(provider_factory) = provider_factory.as_mut() {
             provider_factory.shutdown();
         }
         if let Some(error) = service_error {
             Err(RunningSessionRecoveryShutdownError::Service(error))
-        } else if terminal_recovery || terminal_disposition_failed {
+        } else if terminal_unavailable {
             Err(RunningSessionRecoveryShutdownError::TerminalRecovery)
         } else {
             Ok(())

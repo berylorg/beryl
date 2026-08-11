@@ -4,7 +4,8 @@ use std::{
 };
 
 use beryl_backend::{
-    CallerNoSuccessorFence, PersistentFailureInterruptCorrelation, TurnInterruptDisposition,
+    CallerNoSuccessorFence, TurnInterruptDisposition, VolatileInterruptAdmissionFailure,
+    VolatileInterruptCorrelation,
 };
 
 use super::{ConnectionRegistryAuthority, driver::ConnectionRequestSession, router::EventRouter};
@@ -37,7 +38,7 @@ pub(in crate::cas_projection) enum PersistentFailureNoDispatchReason {
 pub(in crate::cas_projection) enum PersistentFailureDriverResult {
     NoDispatch(PersistentFailureNoDispatchReason),
     Attempted {
-        correlation: PersistentFailureInterruptCorrelation,
+        correlation: VolatileInterruptCorrelation,
         disposition: PersistentFailureInterruptDisposition,
         session_authority_invalidated: bool,
     },
@@ -179,7 +180,7 @@ impl InFlightPersistentFailureResult {
         }
     }
 
-    fn arm_interrupt_attempt(&mut self, correlation: PersistentFailureInterruptCorrelation) {
+    fn arm_interrupt_attempt(&mut self, correlation: VolatileInterruptCorrelation) {
         self.unwind_fallback = PersistentFailureDriverResult::Attempted {
             correlation,
             disposition: PersistentFailureInterruptDisposition::CompletionUnknown,
@@ -353,7 +354,7 @@ pub(in crate::cas_projection) fn dispatch_next_persistent_failure(
         session,
         router,
         authority,
-        &obligation.proof,
+        obligation.proof,
         &mut completion,
     );
     completion.publish(result);
@@ -364,7 +365,7 @@ fn dispatch_persistent_failure(
     session: &mut ConnectionRequestSession<'_>,
     router: &EventRouter,
     authority: &ConnectionRegistryAuthority,
-    proof: &PersistentFailureTargetProof,
+    proof: PersistentFailureTargetProof,
     completion: &mut InFlightPersistentFailureResult,
 ) -> PersistentFailureDriverResult {
     if authority.is_retired() {
@@ -386,7 +387,7 @@ fn dispatch_persistent_failure(
             PersistentFailureNoDispatchReason::RandomUnavailable,
         );
     }
-    let correlation = PersistentFailureInterruptCorrelation::from_bytes(correlation_bytes);
+    let correlation = VolatileInterruptCorrelation::from_bytes(correlation_bytes);
     let target = authorization.exact_target();
     if let Err(error) = session.backend.bind_exact_foreground_turn(target.clone()) {
         if error.invalidates_connection_authority() {
@@ -396,8 +397,9 @@ fn dispatch_persistent_failure(
             PersistentFailureNoDispatchReason::BindRejected,
         );
     }
-    let request = match session.backend.authorize_persistent_failure_interrupt(
+    let request = match session.backend.authorize_volatile_interrupt(
         target,
+        VolatileInterruptAdmissionFailure::FailedBeforeWriter,
         correlation,
         CallerNoSuccessorFence::issue(),
     ) {
@@ -418,7 +420,7 @@ fn dispatch_persistent_failure(
     completion.arm_interrupt_attempt(correlation);
     let outcome = session
         .backend
-        .interrupt_for_persistent_failure(request, authorization.request_timeout());
+        .interrupt_volatile(request, authorization.request_timeout());
     let (disposition, mut invalidated) = match outcome.disposition() {
         TurnInterruptDisposition::RequestAccepted => (
             PersistentFailureInterruptDisposition::RequestAccepted,
@@ -477,7 +479,7 @@ mod tests {
     #[test]
     fn unwind_after_interrupt_attempt_begins_completes_as_unknown_attempt() {
         let completion = PersistentFailureResultSlot::new();
-        let correlation = PersistentFailureInterruptCorrelation::from_bytes([7_u8; 16]);
+        let correlation = VolatileInterruptCorrelation::from_bytes([7_u8; 16]);
         let mut in_flight = InFlightPersistentFailureResult::new(completion.clone());
         in_flight.arm_interrupt_attempt(correlation);
         assert!(

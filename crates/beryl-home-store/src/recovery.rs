@@ -4,17 +4,17 @@ use fjall::PersistMode;
 use thiserror::Error;
 
 use crate::{
-    DomainRegistrationError, DomainValidationError, HomeGeneration, HomeHealthSnapshot,
-    HomeHealthState, HomeOpenError, HomeStore,
     domain::reopen::{reacquire_registry, validate_reopen_registry},
     fault::FaultPoint,
     health::{ClassifiedFjallError, HealthMaintenanceError},
-    layout::{DatabaseDisposition, HomeLayout, LayoutAdmissionError, inspect_database},
+    layout::{inspect_database, DatabaseDisposition, HomeLayout, LayoutAdmissionError},
     metadata::{
-        DomainMetadata, HEADER_KEY, HOME_REVISION_BYTES, HOME_REVISION_KEY,
-        MAX_DOMAIN_METADATA_BYTES, MAX_HOME_HEADER_BYTES, decode_home_revision,
+        decode_home_revision, DomainMetadata, HEADER_KEY, HOME_REVISION_BYTES, HOME_REVISION_KEY,
+        MAX_DOMAIN_METADATA_BYTES, MAX_HOME_HEADER_BYTES,
     },
-    store::{StoreGeneration, next_store_instance, open_existing_database},
+    store::{next_store_instance, open_existing_database, StoreGeneration},
+    DomainRegistrationError, DomainValidationError, HomeGeneration, HomeHealthSnapshot,
+    HomeHealthState, HomeOpenError, HomeStore,
 };
 
 /// Why the bounded in-place verification attempt could not restore admission.

@@ -4,9 +4,9 @@ fn started_agent_observation(
     identity_byte: u8,
     item_id: &str,
     message: &[u8],
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> BoundProviderObservation {
-    let mut stager = ProviderObservationStager::begin(
+    let mut stager = committed_stage_value(ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([identity_byte; 16]),
         ProviderObservationBegin::Item {
             lifecycle: ProviderObservationItemLifecycle::Started,
@@ -14,7 +14,7 @@ fn started_agent_observation(
         },
         callback,
     )
-    .unwrap();
+    .unwrap());
 
     // The compiler must select by field identity, not the provider's object-field order.
     field_text(

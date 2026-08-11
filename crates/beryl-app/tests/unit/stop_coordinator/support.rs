@@ -7,21 +7,24 @@ use std::{
     time::Duration,
 };
 
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
-    CasThreadId, CasTurnId, InputGateRevision, SyndicDraftId, SyndicItemId, SyndicThreadId,
-    SyndicTurnId,
+    BindingRevision, CasThreadId, CasTurnId, InputGateRevision, SyndicDraftId,
+    SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
 use syndic_storage::{
     ContentAppend, ContentBuild, CreateThread, PreparedContent, SourceEventPayload,
     StopAdmissionIneligibility, StopAdmissionRead, StopCause, StopOperationTarget,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnEndStatus,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnStateRevision,
 };
 
 use super::*;
 use crate::{
     LifecycleYieldOutcome,
-    cas_projection::connection::{TargetTurnRegistration, registry::LoadedThreadKey},
+    cas_projection::{
+        PendingTurnActivation,
+        connection::{TargetTurnRegistration, registry::LoadedThreadKey},
+    },
 };
 
 #[allow(dead_code)]
@@ -45,7 +48,12 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute(home: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     command.add(contribution).unwrap();
-    home.execute(command).unwrap();
+    match home.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("stop fixture command committed with later failure: {outcome:?}"),
+        CommandOutcome::NotCommitted { evidence } => panic!("stop fixture command was not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("stop fixture command was indeterminate: {outcome:?}"),
+    }
 }
 
 fn stage_prepared_content(home: &HomeStore, storage: SyndicStorage, content: &PreparedContent) {
@@ -144,10 +152,14 @@ impl StopFixture {
             command_gate.authorizer(),
         ));
         let router = Arc::new(
-            EventRouter::new(
+            EventRouter::new_with_scheduler(
                 target.runtime_id(),
                 target.loaded_generation().process(),
                 NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed),
+                crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(
+                ),
+                command_gate.authorizer(),
+                None,
             )
             .unwrap(),
         );
@@ -164,10 +176,19 @@ impl StopFixture {
                 target.loaded_generation(),
                 home_generation.get(),
                 Duration::from_secs(1),
-                TargetTurnRegistration::Active(target.cas_turn_id().clone()),
+                TargetTurnRegistration::Pending(PendingTurnActivation::new(
+                    thread,
+                    turn,
+                    BindingRevision::new(1).unwrap(),
+                    InputGateRevision::new(1).unwrap(),
+                    TurnStateRevision::FIRST,
+                    SyndicExecutionSnapshotId::from_bytes([seed.wrapping_add(4); 16]),
+                    timestamp(4),
+                )),
             )
             .unwrap();
         drop(router_command);
+        router.activate_stop_target_for_test(target.cas_thread_id(), target.cas_turn_id().clone());
         let proof = router
             .stop_target(thread, target.cas_thread_id(), target.cas_turn_id())
             .unwrap();
@@ -201,10 +222,20 @@ impl StopFixture {
                 self.target.loaded_generation(),
                 self.home.health().generation().unwrap().get(),
                 Duration::from_secs(1),
-                TargetTurnRegistration::Active(cas_turn.clone()),
+                TargetTurnRegistration::Pending(PendingTurnActivation::new(
+                    self.thread,
+                    self.turn,
+                    BindingRevision::new(1).unwrap(),
+                    InputGateRevision::new(1).unwrap(),
+                    TurnStateRevision::FIRST,
+                    SyndicExecutionSnapshotId::from_bytes([seed.wrapping_add(1); 16]),
+                    timestamp(5),
+                )),
             )
             .unwrap();
         drop(router_command);
+        self.router
+            .activate_stop_target_for_test(&cas_thread, cas_turn.clone());
         self.router
             .stop_target(self.thread, &cas_thread, &cas_turn)
             .unwrap()
@@ -231,40 +262,4 @@ fn failure_identity(
         fixture.command_gate.service_generation(),
         crate::cas_projection::persistent_failure::PersistentFailureGeneration::FIRST,
     )
-}
-
-
-fn other_turn(turn: SyndicTurnId) -> SyndicTurnId {
-    let mut bytes = *turn.as_bytes();
-    bytes[0] ^= 0xff;
-    SyndicTurnId::from_bytes(bytes)
-}
-
-fn published_activity(
-    fixture: &StopFixture,
-    seed: u8,
-    kind: PublishedHardStopActivityKind,
-    lifecycle: PublishedHardStopActivityLifecycle,
-) -> PublishedHardStopActivity {
-    PublishedHardStopActivity::new(
-        fixture.thread,
-        fixture.turn,
-        fixture.target.loaded_generation(),
-        fixture.target.cas_thread_id().clone(),
-        fixture.target.cas_turn_id().clone(),
-        SyndicItemId::from_bytes([seed; 16]),
-        kind,
-        lifecycle,
-    )
-}
-
-fn attach_hard(
-    fixture: &StopFixture,
-    operation_id: StopOperationId,
-) -> (hard::HardStopAttachment, Option<HardStopRunOwner>) {
-    fixture
-        .coordinator
-        .attach_hard_stop(operation_id)
-        .unwrap()
-        .into_parts()
 }

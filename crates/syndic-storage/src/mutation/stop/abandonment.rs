@@ -1,4 +1,4 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 use beryl_model::InputGateRevision;
 
 use crate::{
@@ -108,6 +108,34 @@ impl DomainMutation<SyndicDomain> for AbandonStopOperationMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BindingsCodec>(1)?;
+        reservation.reserve_records::<BindingHeadsCodec>(1)?;
+        reservation.reserve_records::<CasThreadIndexCodec>(1)?;
+        reservation.reserve_records::<CasThreadBindingIndexCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
+        reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reservation.reserve_records::<StopOperationsCodec>(1)?;
+        reservation.reserve_records::<CompactionOperationsCodec>(1)?;
+        reservation.reserve_records::<CompactionSettlementReceiptsCodec>(1)?;
+        reservation.reserve_records::<SourceEventsCodec>(1)?;
+        reservation.reserve_records::<TurnStatesCodec>(1)?;
+        reservation.reserve_records::<HistorySummariesCodec>(1)?;
+        reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
+        reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
+        reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
+        reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
+        reservation.reserve_records::<ActivityQueryEntriesCodec>(
+            crate::ACTIVITY_COMPLETED_RETAINED_ROWS as usize + 2,
+        )?;
+        Ok(())
     }
 
     fn contribute(

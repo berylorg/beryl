@@ -26,13 +26,16 @@ Widgets:
 The conversation composer consists of a root panel, editor surface, range-backed multiline
 text-input, inline-atom hosts, and optional transient state treatment.
 
-The external text-input's range-backed variant owns text editing, caret, compact logical selection,
-bounded clipboard primitives, IME, bounded undo and redo, opaque atom ranges, wrapping of resident
-ranges, visible byte-range demand, and inner vertical scrolling. The owner supplies a revision-bound
-document source and edit sink. The text-input retains only the visible range, bounded overscan,
-active editing/IME ranges, and compact range identities; it never requests or stores the complete
-document. The conversation composer owns the surrounding panel surface, adaptive panel
-measurement, state treatment, and integration of owner-supplied inline atom widgets.
+The external text-input's range-backed variant owns text-editing mechanics, caret, compact logical
+selection, bounded clipboard primitives, IME composition, opaque atom ranges, resident-range
+wrapping, visible byte-range demand, inner vertical scrolling, and routing edit, undo, and redo
+commands through its bounded pending-mutation protocol. The host supplies the authoritative
+revision-bound document source and edit sink and owns undo/redo authority and the authoritative
+undo/redo frontier. The conversation composer neither stores nor advances that frontier. The
+text-input retains only the visible range, bounded overscan, active editing/IME ranges, one bounded
+pending-mutation record, and compact range identities; it never requests or stores the complete
+document. The conversation composer owns the surrounding panel surface, adaptive panel measurement,
+state treatment, and integration of owner-supplied inline atom widgets.
 
 The widget does not contain a persistent submission button or a manual resize handle.
 
@@ -65,10 +68,12 @@ part of the incoming content.
 
 # Interaction
 
-Text editing, pointer selection, caret movement, clipboard behavior, IME, undo, redo, and inline-atom
-hit testing follow the external text-input contract's range-backed multiline variant. Crossing a
-nonresident boundary requests bounded document pages and preserves the last coherent editor frame
-until they arrive.
+Text editing, pointer selection, caret movement, clipboard behavior, IME, and inline-atom hit
+testing follow the external text-input contract's range-backed multiline variant. Undo and redo
+input is routed by text-input as an exact revision-bound host-mutation request. The host decides
+whether that request is available and advances or preserves the authoritative undo/redo frontier
+through the atomic result. Crossing a nonresident boundary requests bounded document pages and
+preserves the last coherent editor frame until they arrive.
 
 The owning feature chooses whether focused Enter propagates as a submission or edit-commit command and whether Shift+Enter inserts a newline. The widget reports those key events without defining acceptance, queueing, steering, or persistence effects.
 
@@ -81,12 +86,16 @@ only when the owner marks the retained range safe for that interaction.
 
 When inert, pointer and keyboard input cannot mutate text or atoms. Existing content remains selectable only if the owning feature's inert reason explicitly permits readonly selection; otherwise the editor does not accept focus.
 
-Inline image markers occupy indivisible opaque atom ranges in the text-input. The text-input owns caret traversal, range selection, deletion, cut, paste, undo, and redo around those atoms. Marker activation reports the exact stable atom identity and geometry to the owning feature.
+Inline image markers occupy indivisible opaque atom ranges in the text-input. The text-input owns
+caret traversal and range selection and routes deletion, cut, paste, undo, and redo requests around
+those atoms through the same bounded host-mutation protocol. The host owns acceptance, authoritative
+mutation, and the undo/redo frontier. Marker activation reports the exact stable atom identity and
+geometry to the owning feature.
 
 When wrapped content exceeds the current panel clamp, the text-input owns vertical scrolling and keeps the caret or active selection endpoint visible. Scroll input propagates outward when the inner editor cannot scroll further, following `scroll-ownership`.
 
 Panel growth or shrinkage remeasures surrounding layout without changing the editor document,
-caret, selection, bounded undo frontier, or inner scroll position except where the external
+caret, selection, host-owned undo/redo frontier, or inner scroll position except where the external
 text-input must reveal the active endpoint.
 
 Content-free diagnostics expose widget instance id, state family, focus presence, resident atom
@@ -108,6 +117,8 @@ size never determine resident layout or shaped-text storage.
 Inline atoms participate in text shaping as indivisible ranges. Their outer geometry contributes to line height without creating a separate panel row.
 
 The transient state treatment overlays the root without changing its measured size. No state transition adds a banner, action row, or replacement placeholder to the widget.
+
+`--owner-max-height` is a dynamic value supplied by the containing conversation layout after applying the feature-owned window and transcript constraints.
 
 Spec CSS:
 
@@ -157,8 +168,6 @@ Spec CSS:
   opacity: var(--opacity);
 }
 ```
-
-`--owner-max-height` is a dynamic value supplied by the containing conversation layout after applying the feature-owned window and transcript constraints.
 
 # Variants
 

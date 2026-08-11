@@ -2,8 +2,8 @@ use std::{
     fmt, io,
     path::{Path, PathBuf},
     sync::{
-        Mutex, RwLock,
         atomic::{AtomicU64, Ordering},
+        Mutex, RwLock,
     },
 };
 
@@ -11,16 +11,17 @@ use beryl_model::BerylHomeId;
 use fjall::{Database, Keyspace};
 
 use crate::{
-    CanonicalHomeIdentity, HomeCloseError, HomeHeader, HomeOpenError, HomeOpenStage,
-    HomeSchemaVersion,
     domain::{DomainBlueprint, DomainRegistry, StoreInstanceId},
     fault::FaultController,
     health::{ClassifiedFjallError, HealthGate},
     layout::{
-        DatabaseDisposition, HomeLayout, LayoutAdmissionError, inspect_database,
-        reject_database_as_home,
+        inspect_database, reject_database_as_home, DatabaseDisposition, HomeLayout,
+        LayoutAdmissionError,
     },
     ownership::{HomeOwnership, OpenedHomeDirectory},
+    reconciliation::ReconciliationLedger,
+    CanonicalHomeIdentity, HomeCloseError, HomeHeader, HomeOpenError, HomeOpenStage,
+    HomeSchemaVersion,
 };
 
 mod opening;
@@ -103,6 +104,7 @@ pub struct HomeStore {
     pub(crate) writer_id: StoreInstanceId,
     pub(crate) health: HealthGate,
     pub(crate) faults: FaultController,
+    pub(crate) reconciliation: ReconciliationLedger,
     ownership: Option<HomeOwnership>,
     pub(crate) storage_profile: StorageProfile,
     database_path: PathBuf,
@@ -203,6 +205,10 @@ impl HomeStore {
             writer_id,
             health: HealthGate::healthy(),
             faults,
+            reconciliation: ReconciliationLedger::new(
+                storage_profile.reconciliation_descriptor_bytes(),
+                storage_profile.reconciliation_reserved_bytes(),
+            ),
             ownership: Some(ownership),
             storage_profile,
             database_path: layout.database_path,

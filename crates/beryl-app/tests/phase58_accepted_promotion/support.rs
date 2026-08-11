@@ -1,5 +1,5 @@
 use beryl_home_store::{
-    CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
@@ -286,5 +286,10 @@ fn composer_image(
 fn execute_one(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed fixture mutation, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed fixture mutation, got {outcome:?}"),
+    }
 }

@@ -3,11 +3,45 @@
 use std::{convert::Infallible, error::Error, fmt, marker::PhantomData, path::Path};
 
 use beryl_home_store::{
-    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader, DomainSchemaVersion,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuildError,
-    MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily, RecordVersion,
-    StorageDomain,
+    CommandError, CommandOutcome, CommitReceipt, DomainCallbackError, DomainCallbackSource,
+    DomainMutation, DomainReader, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit,
+    ReadError, ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
+
+pub fn committed(outcome: CommandOutcome) -> CommitReceipt {
+    match outcome {
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => receipt,
+        CommandOutcome::Committed {
+            later_failure: Some(error),
+            ..
+        } => panic!("command committed with unexpected later failure: {error}"),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("command unexpectedly did not commit: {evidence}")
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation: _,
+        } => panic!("command outcome is unexpectedly indeterminate: {failure}"),
+    }
+}
+
+pub fn not_committed(outcome: CommandOutcome) -> CommandError {
+    match outcome {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        CommandOutcome::Committed {
+            receipt: _,
+            later_failure,
+        } => panic!("command unexpectedly committed: {later_failure:?}"),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation: _,
+        } => panic!("command outcome is unexpectedly indeterminate: {failure}"),
+    }
+}
 
 pub struct AlphaDomain;
 pub struct BetaDomain;
@@ -273,6 +307,14 @@ where
         if self.reject_validation {
             return Err(FixtureMutationError::Rejected("fixture validation failure"));
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, D>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<R>(1)?;
         Ok(())
     }
 

@@ -12,7 +12,7 @@ use beryl_model::BerylHomeId;
 use super::{
     AcceptedInputSchedulerContext, AcceptedInputSchedulerDiagnostics, AcceptedInputSchedulerExit,
     AcceptedInputSchedulerSignal, AcceptedInputWakeReason, ActiveSteeringCancellationLifecycle,
-    SchedulerRuntime, recovered_projection,
+    SchedulerRuntime,
 };
 use crate::cas_projection::{ProjectionCancellationToken, ProjectionCoordinatorError};
 
@@ -33,15 +33,15 @@ impl AcceptedInputScheduler {
     pub(in crate::cas_projection) fn start(
         context: AcceptedInputSchedulerContext,
     ) -> Result<Self, ProjectionCoordinatorError> {
-        Self::start_with_startup_gate(
+        Self::start_with_initial_start(
             context,
-            crate::cas_projection::service_startup::ServiceStartupGate::open_gate(),
+            crate::cas_projection::initial_start::InitialStartGate::ready(),
         )
     }
 
-    pub(in crate::cas_projection) fn start_with_startup_gate(
+    pub(in crate::cas_projection) fn start_with_initial_start(
         context: AcceptedInputSchedulerContext,
-        startup: Arc<crate::cas_projection::service_startup::ServiceStartupGate>,
+        initial_start: Arc<crate::cas_projection::initial_start::InitialStartGate>,
     ) -> Result<Self, ProjectionCoordinatorError> {
         let signal = context.signal.clone();
         let cancellation = context.cancellation.clone();
@@ -55,17 +55,12 @@ impl AcceptedInputScheduler {
         let handle = std::thread::Builder::new()
             .name("beryl-accepted-input-scheduler".to_owned())
             .spawn(move || {
-                if !startup.wait() {
-                    let failure = recovered_projection::dispose_retained(&context).err();
+                if !initial_start.wait() {
                     context.signal.update_diagnostics(|diagnostics| {
                         diagnostics.stopped = true;
-                        diagnostics.fatal = failure.is_some();
+                        diagnostics.fatal = false;
                     });
-                    return if failure.is_some() {
-                        AcceptedInputSchedulerExit::Fatal
-                    } else {
-                        AcceptedInputSchedulerExit::Clean
-                    };
+                    return AcceptedInputSchedulerExit::Clean;
                 }
                 let mut runtime = SchedulerRuntime::new(context);
                 match catch_unwind(AssertUnwindSafe(|| runtime.run())) {

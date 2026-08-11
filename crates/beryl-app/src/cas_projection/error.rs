@@ -1,5 +1,8 @@
 use beryl_backend::ManagedBackendError;
-use beryl_home_store::{HomeGeneration, HomeHealthState, ReadError};
+use beryl_home_store::{
+    CommandError, CommitReceipt, HomeGeneration, HomeHealthState, ReadError,
+    ReconciliationDescriptor,
+};
 use beryl_model::{BerylHomeId, CasProcessGeneration, CasThreadId, RuntimeId, SyndicThreadId};
 use thiserror::Error;
 
@@ -31,10 +34,8 @@ pub enum ProjectionSessionAdmissionError {
         #[source]
         source: Box<ManagedBackendError>,
     },
-    #[error(
-        "CAS compatibility admission failed for runtime {runtime_id} process {process_generation:?}"
-    )]
-    Compatibility {
+    #[error("CAS release admission failed for runtime {runtime_id} process {process_generation:?}")]
+    ReleaseAdmission {
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
         #[source]
@@ -86,12 +87,12 @@ impl ProjectionSessionAdmissionError {
         }
     }
 
-    pub(super) fn compatibility(
+    pub(super) fn release_admission(
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
         source: ManagedBackendError,
     ) -> Self {
-        Self::Compatibility {
+        Self::ReleaseAdmission {
             runtime_id,
             process_generation,
             source: Box::new(source),
@@ -117,7 +118,7 @@ impl ProjectionSessionAdmissionError {
             Self::ServiceClosed { runtime_id, .. }
             | Self::CandidateConnection { runtime_id, .. }
             | Self::Initialization { runtime_id, .. }
-            | Self::Compatibility { runtime_id, .. }
+            | Self::ReleaseAdmission { runtime_id, .. }
             | Self::ConnectionOwnership { runtime_id, .. } => *runtime_id,
         }
     }
@@ -135,7 +136,7 @@ impl ProjectionSessionAdmissionError {
             | Self::Initialization {
                 process_generation, ..
             }
-            | Self::Compatibility {
+            | Self::ReleaseAdmission {
                 process_generation, ..
             }
             | Self::ConnectionOwnership {
@@ -144,13 +145,13 @@ impl ProjectionSessionAdmissionError {
         }
     }
 
-    /// Returns the typed backend failure from connection, initialization, or probing.
+    /// Returns the typed backend failure from connection, initialization, or release admission.
     #[must_use]
     pub const fn backend_error(&self) -> Option<&ManagedBackendError> {
         match self {
             Self::CandidateConnection { source, .. }
             | Self::Initialization { source, .. }
-            | Self::Compatibility { source, .. } => Some(source),
+            | Self::ReleaseAdmission { source, .. } => Some(source),
             Self::ServiceClosed { .. } | Self::ConnectionOwnership { .. } => None,
         }
     }
@@ -186,6 +187,20 @@ impl std::fmt::Display for ProjectionRegistryKind {
 /// Closed failures produced by the app-owned CAS projection coordinator.
 #[derive(Debug, Error)]
 pub enum ProjectionCoordinatorError {
+    #[error("a coordinator mutation was proven not committed: {0}")]
+    CommandNotCommitted(#[source] CommandError),
+    #[error("a coordinator mutation committed before a later failure: {later_failure}")]
+    CommandCommitted {
+        receipt: CommitReceipt,
+        #[source]
+        later_failure: CommandError,
+    },
+    #[error("a coordinator mutation has an indeterminate durable outcome: {failure}")]
+    CommandIndeterminate {
+        #[source]
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
     /// Coordinator construction observed a home that was not healthy.
     #[error(
         "CAS projection coordination requires a healthy Beryl home, got {state:?} at generation {generation:?}"
@@ -255,9 +270,6 @@ pub enum ProjectionCoordinatorError {
     /// The process-local projection-service generation cannot advance safely.
     #[error("CAS projection service generation is exhausted")]
     ProjectionServiceGenerationExhausted,
-    /// An exact service-generation failure escrow identity was already reserved.
-    #[error("the persistent-failure service escrow identity is already reserved")]
-    PersistentFailureEscrowIdentityAlreadyReserved,
     /// The OS could not start the sole connection worker.
     #[error("failed to start the CAS projection connection worker: {message}")]
     ProjectionWorkerSpawn { message: String },
@@ -273,7 +285,7 @@ pub enum ProjectionCoordinatorError {
     /// The complete driver-and-ingester worker pair was unavailable.
     #[error("projection worker capacity is full: two permits are required and {available} remain")]
     ProjectionWorkerCapacityFull { available: usize },
-    /// No still-admitted worker can surrender a pre-activation projection.
+    /// No still-admitted worker can own a pre-activation projection.
     #[error("pre-activation projection worker admission is unavailable")]
     PreactivationProjectionAdmissionUnavailable,
     /// The app-owned projection worker pool could not be trusted after an unwind.
@@ -314,23 +326,6 @@ pub enum ProjectionCoordinatorError {
     /// The process-wide loaded-projection lease token cannot advance safely.
     #[error("CAS loaded-projection lease token is exhausted")]
     ProjectionLeaseTokenExhausted,
-    /// The process-wide same-native reacquisition anchor token cannot advance safely.
-    #[error("CAS same-native reacquisition anchor token is exhausted")]
-    ReacquisitionAnchorTokenExhausted,
-    /// The process-wide same-native reacquisition reservation token cannot advance safely.
-    #[error("CAS same-native reacquisition reservation token is exhausted")]
-    ReacquisitionReservationTokenExhausted,
-    /// A one-use reacquisition reservation exclusively owns this connection.
-    #[error(
-        "CAS projection connection for runtime {runtime_id} process {process_generation:?} is reserved for same-native reacquisition"
-    )]
-    ProjectionConnectionReservedForReacquisition {
-        runtime_id: RuntimeId,
-        process_generation: CasProcessGeneration,
-    },
-    /// A consumed loaded projection was no longer live when quarantine began.
-    #[error("CAS loaded projection for thread {thread_id} is no longer live")]
-    ProjectionLeaseNotLive { thread_id: CasThreadId },
     /// The exact admitted connection has been retired or lost.
     #[error(
         "CAS projection connection for runtime {runtime_id} process {process_generation:?} is unavailable"

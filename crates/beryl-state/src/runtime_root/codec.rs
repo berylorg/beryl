@@ -2,11 +2,11 @@ use beryl_home_store::{RecordCodec, RecordVersion};
 use beryl_model::{AdmittedHostPath, RootId, RuntimeId, RuntimeNativePath};
 
 use crate::encoding::{
-    CodecError, Decoder, Encoder, decode_root_id, decode_runtime_id, encode_root_id,
-    encode_runtime_id,
+    decode_root_id, decode_runtime_id, encode_root_id, encode_runtime_id, CodecError, Decoder,
+    Encoder,
 };
 
-use super::{ROOT_RECORD_LIMIT, RootRecord, RuntimeRecord, RuntimeRootDomain};
+use super::{RootRecord, RuntimeRecord, RuntimeRootDomain, ROOT_RECORD_LIMIT};
 
 pub(super) struct RuntimeRecordCodec;
 pub(super) struct ExecutableIndexCodec;

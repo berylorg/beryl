@@ -38,12 +38,22 @@ fn execute(
     storage: SyndicStorage,
     expected_domain_revision: beryl_model::DomainRevision,
     creation: CreateThread,
-) -> Result<(), CommandError> {
+) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(storage.create_thread(expected_domain_revision, creation))
         .unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
+}
+
+fn assert_committed(outcome: beryl_home_store::CommandOutcome) {
+    match outcome {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("unexpected child-thread command outcome: {outcome:?}"),
+    }
 }
 
 fn source_history(
@@ -249,7 +259,13 @@ fn from_tail_ordinary_submission_parents_to_the_current_tail() {
     let mut save = HomeCommand::new(store.home_revision().unwrap());
     save.add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
         .unwrap();
-    store.execute(save).unwrap();
+    match store.execute(save) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean child draft save, got {outcome:?}"),
+    }
 
     let current = storage
         .current_draft(&store, child_thread, limit())
@@ -276,7 +292,13 @@ fn from_tail_ordinary_submission_parents_to_the_current_tail() {
     submit
         .add(storage.submit_idle_draft(storage.revision(&store).unwrap(), submission))
         .unwrap();
-    store.execute(submit).unwrap();
+    match store.execute(submit) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean child draft submission, got {outcome:?}"),
+    }
 
     let submitted = storage
         .turn(&store, submitted_turn, limit())
@@ -313,7 +335,13 @@ fn source_activity_change_invalidates_a_captured_creation_proof() {
     let mut save = HomeCommand::new(store.home_revision().unwrap());
     save.add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
         .unwrap();
-    store.execute(save).unwrap();
+    match store.execute(save) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean conflicting draft save, got {outcome:?}"),
+    }
 
     let error = execute(&store, storage, storage.revision(&store).unwrap(), creation).unwrap_err();
     assert!(matches!(
@@ -353,7 +381,13 @@ fn draft_update_survives_a_same_draft_thread_revision_advance() {
     command
         .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean later draft save, got {outcome:?}"),
+    }
 
     let committed = storage
         .current_draft(&store, thread_id, limit())
@@ -467,8 +501,10 @@ fn surfaced_post_persist_failure_reconciles_the_whole_new_draft() {
         .unwrap();
     faults.fail_next(FaultPoint::AfterPersist);
     assert!(matches!(
-        store.execute(command),
-        Err(CommandError::Persistence { .. })
+        beryl_home_store::CommandOutcome::Committed {
+            receipt: _,
+            later_failure: Some(CommandError::Persistence { .. })
+        }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Verifying);
     store.verify_health().unwrap();

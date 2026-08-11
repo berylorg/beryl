@@ -1,4 +1,4 @@
-use beryl_home_store::CommandError;
+use beryl_home_store::CommandOutcome;
 use syndic_storage::{AcceptedInputPromotionStatus, AcceptedNextCandidate, PromoteAcceptedInput};
 
 use super::{
@@ -33,8 +33,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) use preparation::{
     current_selected_path, current_timestamp,
 };
 pub(in crate::cas_projection::accepted_input_scheduler) use settlement::{
-    OrdinaryTurnSettlement, ordinary_error_cut_correlated, ordinary_error_verification_pending,
-    settle_ordinary_outcome,
+    OrdinaryTurnSettlement, ordinary_error_cut_correlated, settle_ordinary_outcome,
 };
 
 pub(super) fn spawn_worker(
@@ -67,7 +66,6 @@ pub(super) fn spawn_worker(
             let disposition = result.unwrap_or(WorkerDisposition::Fatal);
             completions.publish(WorkerCompletion {
                 thread_id: std::thread::current().id(),
-                disposition,
             });
             drop(lease);
             signal.wake(AcceptedInputWakeReason::WorkerCompleted);
@@ -91,8 +89,8 @@ fn execute_candidate(
     }
     if let Err(error) = validator.validate(lease) {
         pause_obsolete_generation(candidate.thread_id(), obsolete_admission_generation(&error));
-        return if failure::is_verification_pending_admission(&error, validator.home_generation()) {
-            WorkerDisposition::VerificationPending
+        return if failure::is_current_health_loss_admission(&error, validator.home_generation()) {
+            WorkerDisposition::PersistentHomeFailure
         } else if failure::is_cut_correlated_admission(&error, validator.home_generation()) {
             WorkerDisposition::PersistentHomeFailure
         } else if expected_admission_drift(&error) {
@@ -140,9 +138,9 @@ fn execute_candidate(
             return WorkerDisposition::PersistentHomeFailure;
         }
         Err(error)
-            if failure::is_verification_pending_admission(&error, validator.home_generation()) =>
+            if failure::is_current_health_loss_admission(&error, validator.home_generation()) =>
         {
-            return WorkerDisposition::VerificationPending;
+            return WorkerDisposition::PersistentHomeFailure;
         }
         Err(error) if expected_admission_drift(&error) => {
             return WorkerDisposition::NextParked;
@@ -159,17 +157,28 @@ fn execute_candidate(
     crate::cas_projection::test_faults::pause_scheduled_promotion_reconciliation(
         promotion.thread_id(),
     );
-    let dispatch_verification_pending = dispatch.as_ref().err().is_some_and(|source| {
-        failure::is_verification_pending_command(source, validator.home_generation())
-    });
-    let dispatch_cut_correlated = dispatch.as_ref().err().is_some_and(|source| {
-        failure::is_cut_correlated_command(source, validator.home_generation())
-    });
-    let promotion_result = if matches!(dispatch, Err(CommandError::Conflict { .. })) {
-        Ok(None)
-    } else {
-        reconcile_promotion(validator, storage, lease.assets(), &promotion)
-            .map(|status| Some((dispatch.is_ok(), status)))
+    let command_failure = match dispatch {
+        CommandOutcome::NotCommitted { evidence } => {
+            Some(WorkerDisposition::CommandNotCommitted(evidence))
+        }
+        CommandOutcome::Committed {
+            receipt: _,
+            later_failure: None,
+        } => None,
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(later_failure),
+        } => Some(WorkerDisposition::CommandCommitted {
+            receipt,
+            later_failure,
+        }),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => Some(WorkerDisposition::CommandIndeterminate {
+            failure,
+            reconciliation,
+        }),
     };
     match reservation.release() {
         Ok(ConnectionPromotionReleaseOutcome::Ordinary) => {}
@@ -181,27 +190,21 @@ fn execute_candidate(
         }
         Err(_) => return WorkerDisposition::Fatal,
     }
+    if let Some(failure) = command_failure {
+        return failure;
+    }
+    let promotion_result = reconcile_promotion(validator, storage, lease.assets(), &promotion)
+        .map(|status| Some((true, status)));
     let Some((dispatch_succeeded, status)) = (match promotion_result {
         Ok(result) => result,
         Err(SchedulerFailure::PersistentHomeFailure) => {
             return WorkerDisposition::PersistentHomeFailure;
-        }
-        Err(SchedulerFailure::VerificationPending) => {
-            return WorkerDisposition::VerificationPending;
         }
         Err(SchedulerFailure::Fatal) => return WorkerDisposition::Fatal,
     }) else {
         signal.wake(AcceptedInputWakeReason::AcceptedNextReady);
         return WorkerDisposition::NextContinue;
     };
-    if !dispatch_succeeded && status == AcceptedInputPromotionStatus::Prior {
-        if dispatch_verification_pending {
-            return WorkerDisposition::VerificationPending;
-        }
-        if dispatch_cut_correlated {
-            return WorkerDisposition::PersistentHomeFailure;
-        }
-    }
     match (dispatch_succeeded, status) {
         (_, AcceptedInputPromotionStatus::Exact) => {}
         (false, AcceptedInputPromotionStatus::Prior) => {
@@ -222,9 +225,6 @@ fn execute_candidate(
         Err(SchedulerFailure::PersistentHomeFailure) => {
             return WorkerDisposition::PersistentHomeFailure;
         }
-        Err(SchedulerFailure::VerificationPending) => {
-            return WorkerDisposition::VerificationPending;
-        }
         Err(SchedulerFailure::Fatal) => return WorkerDisposition::Fatal,
     };
     match execute_pending_turn(
@@ -239,9 +239,6 @@ fn execute_candidate(
         PendingTurnExecutionDisposition::ExpectedInterruption => WorkerDisposition::NextParked,
         PendingTurnExecutionDisposition::PersistentHomeFailure => {
             WorkerDisposition::PersistentHomeFailure
-        }
-        PendingTurnExecutionDisposition::VerificationPending => {
-            WorkerDisposition::VerificationPending
         }
         PendingTurnExecutionDisposition::ProjectionRefused => WorkerDisposition::Fatal,
     }

@@ -1,10 +1,12 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, PointReadLimit};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, PointReadLimit, ReconciliationReservation,
+};
 use beryl_model::SyndicThreadId;
 
 use super::{
-    CATALOG_RECORD_LIMIT, CatalogDomain, CatalogFacts, CatalogFreshness, CatalogMutationError,
-    CatalogRevision, CatalogRow, CatalogRowExpectation, CatalogSourceRevisions,
     codec::{CatalogRecencyCodec, CatalogRowCodec},
+    CatalogDomain, CatalogFacts, CatalogFreshness, CatalogMutationError, CatalogRevision,
+    CatalogRow, CatalogRowExpectation, CatalogSourceRevisions, CATALOG_RECORD_LIMIT,
 };
 
 /// Publish one complete current compact projection, creating or replacing its row atomically.
@@ -62,6 +64,15 @@ impl DomainMutation<CatalogDomain> for PublishCatalogRow {
         }
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, CatalogDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CatalogRowCodec>(1)?;
+        reservation.reserve_records::<CatalogRecencyCodec>(2)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, CatalogDomain>,
@@ -100,6 +111,15 @@ impl DomainMutation<CatalogDomain> for MarkCatalogRowStale {
                 thread_id: self.thread_id,
             });
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, CatalogDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CatalogRowCodec>(1)?;
+        reservation.reserve_records::<CatalogRecencyCodec>(1)?;
         Ok(())
     }
 

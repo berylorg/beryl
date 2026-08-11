@@ -36,7 +36,7 @@ impl PreparedExecution {
             CasProcessGeneration::new(380_000_u64.checked_add(run_id).unwrap()).unwrap();
         let mut session = fixture
             .store
-            .admit(
+            .admit_lifecycle_test_candidate(
                 &connector,
                 execution_binding().runtime_id(),
                 generation,

@@ -1,36 +1,37 @@
 //! Typed physical storage and exclusive process-ownership boundary for one Beryl home.
 //!
-//! Opening retains a real directory handle and one fixed, exclusively locked
-//! `home.lock` file before Fjall is touched. A fresh home receives one opaque
-//! durable identity; an existing home is force-recovered and validated without
-//! any create-on-failure fallback. The exact ordinary `state` directory is
-//! retained without delete sharing across every Fjall generation, and recovery
-//! requires that same opened-object identity rather than accepting a copied
-//! database with a matching durable header.
+//! Opening acquires one fixed, exclusive `home.lock` before Fjall is touched. A fresh home receives
+//! one opaque durable identity; an existing nonempty `state` directory is force-recovered without
+//! create-on-failure fallback. The configured home is trusted Operator-selected storage: this
+//! package rejects an existing `state` reparse-point collision but does not promise detection of
+//! external replacement, rollback, or tampering inside the selected home.
 //! Logical owners register exact owner- and codec-bound record families and use
 //! typed, explicitly bounded point/cursor reads. One point limit bounds its
 //! stored value and decoded result while the request key remains independently
 //! schema-bounded; one cursor limit
 //! independently bounds the page's stored and practical decoded totals.
 //! Codecs may refine the default encoded-length decoded-size estimates.
-//! Cross-domain commands perform only bounded participant checks on one
-//! serialized writer snapshot. Explicit
-//! validation-only participants may guard another domain without changing its
-//! revision; at least one mutation remains required, and only mutations enter
-//! the physical batch and receipt. Success is acknowledged only after `SyncAll`.
-//! Registration, explicit verification, and recovery separately stream every
-//! physical record envelope through its exact codec with bounded memory.
-//! Each successful receipt carries its exact healthy home generation. Typed
-//! owners use [`HomeStore::receipt_domain_revision`] to distinguish an affected
-//! domain from an unaffected one and to reject foreign or obsolete completions.
-//! Surfaced persistence failures close the process-wide health gate. Callers
-//! may perform one bounded verification or force-recover only the same still
-//! locked home; successful recovery publishes a new generation, so domains
-//! must reacquire typed handles with [`HomeStore::domain_handle`].
-//! Content-addressed sidecars retain every ancestor and final file object,
-//! reject reparse or non-ordinary objects, and complete every parent and final
-//! directory durability barrier before a typed metadata command may retain an
-//! admission token. This package has no sidecar deletion API.
+//! Cross-domain commands perform bounded participant checks on one serialized writer snapshot.
+//! Before writer admission, every mutation declares schema- and count-bounded reconciliation
+//! capacity and reserves one of exactly 1,024 operation slots. Under admission, exact encoded old
+//! and intended-new record facts plus the intended receipt are materialized before Fjall batch
+//! construction or mutation. Per-descriptor or aggregate reservation exhaustion returns exact
+//! typed `NotCommitted` evidence without eager descriptor allocation. Explicit validation-only
+//! participants may guard another domain without changing its revision; at least one mutation
+//! remains required.
+//!
+//! [`HomeStore::execute`] and [`HomeStore::execute_current`] return exactly [`CommandOutcome`]:
+//! definitive rejection carries only `NotCommitted` evidence, durable completion always carries a
+//! generation-bound receipt and any later typed failure, and an uncertain durability cut carries
+//! only the failure plus one opaque concrete reconciliation descriptor. Success is never reported
+//! before `SyncAll`. Typed owners use [`HomeStore::receipt_domain_revision`] to reject foreign or
+//! obsolete completions and distinguish affected from unaffected domains.
+//!
+//! Registration at a schema-validation boundary and explicit scrub paths stream physical record
+//! envelopes through their exact codecs with bounded memory; routine command work remains
+//! operation-bounded. Content-addressed sidecars complete the strongest supported write, rename,
+//! and directory-persistence sequence before a typed metadata command may retain an admission
+//! token. This package has no sidecar deletion API.
 //! The `test-faults` feature adds only deterministic boundary controls and one
 //! bounded exact-codec-rejected physical-envelope fixture; production builds
 //! expose no corruption writer or raw storage handle.
@@ -38,9 +39,10 @@
 //! ```no_run
 //! use std::convert::Infallible;
 //! use beryl_home_store::{
-//!     DomainReader, DomainSchemaVersion, DomainValidator, HomeOpenOptions,
+//!     CommandOutcome, DomainMutation, DomainReader, DomainSchemaVersion, DomainValidator,
+//!     HomeCommand, HomeOpenOptions,
 //!     HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, PointReadLimit, RecordCodec,
-//!     RecordFamily, RecordVersion, StorageDomain,
+//!     MutationBuilder, RecordFamily, RecordVersion, ReconciliationReservation, StorageDomain,
 //! };
 //!
 //! struct ExampleDomain;
@@ -98,7 +100,36 @@
 //!     }
 //! }
 //!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! struct ExampleMutation;
+//! impl DomainMutation<ExampleDomain> for ExampleMutation {
+//!     type Error = Infallible;
+//!
+//!     fn validate(
+//!         &self,
+//!         _reader: &DomainReader<'_, ExampleDomain>,
+//!     ) -> Result<(), Self::Error> {
+//!         Ok(())
+//!     }
+//!
+//!     fn reserve_reconciliation(
+//!         &self,
+//!         reservation: &mut ReconciliationReservation<'_, ExampleDomain>,
+//!     ) -> Result<(), Self::Error> {
+//!         reservation.reserve_records::<ExampleCodec>(1).unwrap();
+//!         Ok(())
+//!     }
+//!
+//!     fn contribute(
+//!         &self,
+//!         _reader: &DomainReader<'_, ExampleDomain>,
+//!         mutations: &mut MutationBuilder<'_, ExampleDomain>,
+//!     ) -> Result<(), Self::Error> {
+//!         mutations.put::<ExampleCodec>(&1, &1).unwrap();
+//!         Ok(())
+//!     }
+//! }
+//!
+//! # fn example() -> Result<CommandOutcome, Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let mut store = HomeStore::open(HomeOpenOptions::new(
 //!     directory.path(),
@@ -113,10 +144,21 @@
 //!         PointReadLimit::new(6)?,
 //!     )?
 //!     .is_none());
-//! let _guard = domain.validation(store.domain_revision(domain)?, ExampleGuard);
-//! // Add the guard to a HomeCommand alongside a mutation for another domain.
+//! let mut command = HomeCommand::new(store.home_revision()?);
+//! command.add(domain.contribution(store.domain_revision(domain)?, ExampleMutation))?;
+//! let outcome = store.execute(command);
+//! match &outcome {
+//!     CommandOutcome::NotCommitted { evidence } => eprintln!("not committed: {evidence}"),
+//!     CommandOutcome::Committed { receipt, later_failure } => {
+//!         assert!(later_failure.is_none());
+//!         assert_eq!(receipt.home_revision().get(), 2);
+//!     }
+//!     CommandOutcome::Indeterminate { failure, reconciliation } => {
+//!         eprintln!("indeterminate and retained for reconciliation: {failure}; {reconciliation:?}");
+//!     }
+//! }
 //! store.close()?;
-//! # Ok(())
+//! # Ok(outcome)
 //! # }
 //! ```
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -132,6 +174,7 @@ mod layout;
 mod metadata;
 mod ownership;
 mod read;
+mod reconciliation;
 mod recovery;
 mod sidecar;
 mod store;
@@ -139,14 +182,15 @@ mod writer;
 
 pub use codec::{
     CursorDirection, CursorPage, CursorRange, CursorReadLimits, CursorRecord, DomainSchemaVersion,
-    KeyspaceSchemaVersion, PointReadLimit, RECORD_VERSION_BYTES, ReadLimitError, RecordCodec,
-    RecordFamily, RecordVersion,
+    KeyspaceSchemaVersion, PointReadLimit, ReadLimitError, RecordCodec, RecordFamily,
+    RecordVersion, RECORD_VERSION_BYTES,
 };
 pub use command::{
-    CommandBuildError, CommandCancellation, CommandError, CommitReceipt, CommitReceiptError,
-    ContributorCallbackStage, CurrentDomainCommand, DomainMutation, DomainValidator, HomeCommand,
-    MutationBuildError, MutationBuilder, MutationContribution, RevisionConflict,
-    ValidationContribution,
+    CommandBuildError, CommandCancellation, CommandError, CommandOutcome, CommitReceipt,
+    CommitReceiptError, ContributorCallbackStage, CurrentDomainCommand, DomainMutation,
+    DomainValidator, HomeCommand, MutationBuildError, MutationBuilder, MutationContribution,
+    ReconciliationDescriptor, ReconciliationReservation, RevisionConflict, StorageCommitState,
+    StorageErrorClass, StorageResource, ValidationContribution,
 };
 pub use domain::{
     DomainCallbackError, DomainCallbackSource, DomainDefinitionError, DomainHandle,

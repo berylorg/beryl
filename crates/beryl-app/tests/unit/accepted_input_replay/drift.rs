@@ -1,4 +1,6 @@
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore, StorageCommitState,
+};
 use beryl_model::{RuntimeMode, SyndicDraftId};
 use beryl_state::AssetOwner;
 use syndic_storage::{AcceptedInputAdmissionProof, AcceptedInputRecord};
@@ -188,7 +190,20 @@ fn recovered_home_generation_invalidates_factory_and_preparation_context() {
         ))
         .unwrap();
     faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(fixture.store.execute(command).is_err());
+    match fixture.store.execute(command) {
+        CommandOutcome::NotCommitted { evidence } => {
+            assert_eq!(
+                evidence.storage_commit_state(),
+                Some(StorageCommitState::NotCommitted)
+            );
+        }
+        outcome @ CommandOutcome::Committed { .. } => panic!(
+            "before-commit fault must not commit the command: {outcome:?}"
+        ),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("before-commit fault must not be indeterminate: {outcome:?}")
+        }
+    }
     faults.fail_next(FaultPoint::BeforeVerification);
     assert!(fixture.store.verify_health().is_err());
     let recovery = fixture.store.recover_same_home().unwrap();

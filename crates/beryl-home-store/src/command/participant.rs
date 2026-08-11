@@ -3,12 +3,12 @@ use std::marker::PhantomData;
 use beryl_model::DomainRevision;
 
 use crate::{
-    DomainReader, StorageDomain,
     command::{
         DomainMutation, DomainValidator, MutationBuilder, MutationContribution, PendingMutation,
-        ValidationContribution,
+        ReconciliationReservation, ReconciliationReservationOutput, ValidationContribution,
     },
-    domain::{DomainOwnerId, RegisteredDomain, StoreInstanceId, callback::ErasedCallbackError},
+    domain::{callback::ErasedCallbackError, DomainOwnerId, RegisteredDomain, StoreInstanceId},
+    DomainReader, StorageDomain,
 };
 
 trait ErasedValidation: Send {
@@ -20,6 +20,10 @@ trait ErasedValidation: Send {
 }
 
 trait ErasedMutation: ErasedValidation {
+    fn reserve_reconciliation(
+        &self,
+    ) -> Result<ReconciliationReservationOutput, ErasedCallbackError>;
+
     fn assemble(
         &self,
         snapshot: &fjall::Snapshot,
@@ -45,6 +49,16 @@ impl<D: StorageDomain, M: DomainMutation<D>> ErasedValidation for TypedMutation<
 }
 
 impl<D: StorageDomain, M: DomainMutation<D>> ErasedMutation for TypedMutation<D, M> {
+    fn reserve_reconciliation(
+        &self,
+    ) -> Result<ReconciliationReservationOutput, ErasedCallbackError> {
+        let mut reservation = ReconciliationReservation::<D>::new();
+        self.mutation
+            .reserve_reconciliation(&mut reservation)
+            .map_err(ErasedCallbackError::from_typed)?;
+        Ok(reservation.into_output())
+    }
+
     fn assemble(
         &self,
         snapshot: &fjall::Snapshot,
@@ -82,6 +96,14 @@ pub(crate) struct DomainMutationPlan {
     pub(crate) owner: DomainOwnerId,
     pub(crate) domain: &'static str,
     mutation: Box<dyn ErasedMutation>,
+}
+
+impl DomainMutationPlan {
+    pub(crate) fn reserve_reconciliation(
+        &self,
+    ) -> Result<ReconciliationReservationOutput, ErasedCallbackError> {
+        self.mutation.reserve_reconciliation()
+    }
 }
 
 pub(crate) struct DomainValidationPlan {
@@ -183,6 +205,15 @@ impl DomainParticipant {
             Self::Validation(contribution) => {
                 contribution.plan.validator.validate(snapshot, domain)
             }
+        }
+    }
+
+    pub(crate) fn reserve_reconciliation(
+        &self,
+    ) -> Option<Result<ReconciliationReservationOutput, ErasedCallbackError>> {
+        match self {
+            Self::Mutation(contribution) => Some(contribution.plan.reserve_reconciliation()),
+            Self::Validation(_) => None,
         }
     }
 

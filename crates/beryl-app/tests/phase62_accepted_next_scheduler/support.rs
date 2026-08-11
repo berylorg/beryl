@@ -9,7 +9,7 @@ use beryl_app::{
     input_admission::prepare_accepted_input_admission,
 };
 use beryl_home_store::{
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
@@ -120,7 +120,12 @@ pub fn install_next_records(
     command
         .add(storage.fixture_contribution(storage.revision(store).unwrap(), batch))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed fixture setup, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed fixture setup, got {outcome:?}"),
+    }
     store.validate_registered_domains().unwrap();
 
     NextRecordIds {
@@ -265,7 +270,12 @@ fn execute_syndic_contribution(store: &HomeStore, storage: SyndicStorage, batch:
 fn execute_contribution(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed contribution, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed contribution, got {outcome:?}"),
+    }
 }
 
 pub fn fail_home_generation_before_promotion(

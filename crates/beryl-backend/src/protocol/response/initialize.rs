@@ -120,7 +120,7 @@ impl BackendConfigDefaults {
     }
 
     #[must_use]
-    pub const fn proves_spawn_agent_model_overrides(&self) -> bool {
+    pub const fn proves_release_admission(&self) -> bool {
         self.multi_agent_v2_enabled && self.expose_spawn_agent_model_overrides
     }
 }

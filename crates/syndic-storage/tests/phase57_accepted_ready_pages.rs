@@ -5,7 +5,7 @@ mod support;
 #[path = "phase53_accepted_delivery/accepted_support.rs"]
 mod accepted_support;
 
-use beryl_home_store::CursorReadLimits;
+use beryl_home_store::{CommandOutcome, CursorReadLimits};
 use beryl_model::{AcceptedInputRevision, InputGateRevision};
 use syndic_storage::test_faults::{
     FixtureBatch, FixtureDelete, FixtureRecord, fixture_route_leaf_with_transition,
@@ -213,9 +213,12 @@ fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
     assert_eq!(first.records().len(), 1);
     let old_cursor = first.next_cursor().expect("source interval continues");
 
-    store
-        .execute_current(AcceptedOperation::Retry.current_command(storage))
-        .unwrap();
+    match store.execute_current(AcceptedOperation::Retry.current_command(storage)) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected retry command to commit without later failure, got {outcome:?}"),
+    }
     let new_source = source(&store, storage);
     assert_ne!(new_source, old_source);
     assert!(matches!(
@@ -232,9 +235,12 @@ fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
 fn claiming_the_last_ready_input_removes_global_source_authority() {
     let (_home, store, storage) = seeded("phase57-last-ready-claim", populated_records());
     assert_eq!(source(&store, storage).thread_id(), id(40));
-    store
-        .execute_current(AcceptedOperation::Begin.current_command(storage))
-        .unwrap();
+    match store.execute_current(AcceptedOperation::Begin.current_command(storage)) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected begin command to commit without later failure, got {outcome:?}"),
+    }
     let revision = storage.revision(&store).unwrap();
     let page = storage
         .accepted_ready_source_page(&store, revision, None, limits(256))

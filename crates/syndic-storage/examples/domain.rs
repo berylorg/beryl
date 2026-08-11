@@ -1,4 +1,7 @@
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    ReconciliationDescriptor,
+};
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
     SyndicThreadId,
@@ -26,7 +29,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let mut command = HomeCommand::new(home.home_revision()?);
     command.add(syndic.create_thread(syndic.revision(&home)?, creation))?;
-    home.execute(command)?;
+    match home.execute(command) {
+        CommandOutcome::NotCommitted { evidence } => {
+            return Err(Box::new(ExampleOutcome::NotCommitted(evidence)));
+        }
+        CommandOutcome::Committed {
+            receipt,
+            later_failure,
+        } => {
+            println!("thread creation committed: {receipt:?}");
+            if let Some(failure) = later_failure {
+                return Err(Box::new(ExampleOutcome::CommittedLaterFailure(failure)));
+            }
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            return Err(Box::new(ExampleOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            }))
+        }
+    }
     let current = syndic
         .current_draft(
             &home,
@@ -43,3 +68,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     home.close()?;
     Ok(())
 }
+
+#[derive(Debug)]
+enum ExampleOutcome {
+    NotCommitted(CommandError),
+    CommittedLaterFailure(CommandError),
+    Indeterminate {
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
+}
+
+impl std::fmt::Display for ExampleOutcome {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotCommitted(evidence) => write!(formatter, "command did not commit: {evidence}"),
+            Self::CommittedLaterFailure(failure) => {
+                write!(formatter, "command committed before later failure: {failure}")
+            }
+            Self::Indeterminate {
+                failure,
+                reconciliation,
+            } => write!(
+                formatter,
+                "command outcome is indeterminate ({failure}); retain {reconciliation:?} for reconciliation"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExampleOutcome {}

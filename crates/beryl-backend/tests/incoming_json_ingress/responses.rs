@@ -8,8 +8,6 @@ use beryl_backend::{
 
 use crate::support::{FRAGMENT_SIZES, assert_ingress_error, decode};
 
-#[path = "responses/compatibility.rs"]
-mod compatibility;
 #[path = "responses/initialize_config.rs"]
 mod initialize_config;
 #[path = "responses/lineage.rs"]

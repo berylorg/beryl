@@ -24,7 +24,7 @@ mod support;
 #[path = "phase13_provider_observation/validation.rs"]
 mod validation;
 
-use beryl_home_store::{CommandError, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeStore};
 use beryl_model::{CasThreadId, CasTurnId, ProviderObservationId};
 use syndic_storage::test_faults::{PhysicalFamily, ProviderObservationCorruption};
 use syndic_storage::*;
@@ -38,12 +38,8 @@ fn limit() -> SyndicPointReadLimit {
 fn commit_callback(
     store: &HomeStore,
     storage: SyndicStorage,
-) -> impl FnMut(&ProviderObservationStageBatch) -> Result<(), CommandError> + '_ {
-    move |batch| {
-        store
-            .execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
-            .map(|_| ())
-    }
+) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + '_ {
+    move |batch| store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
 }
 
 fn scalar<C: ProviderObservationStageCallback>(
@@ -51,7 +47,7 @@ fn scalar<C: ProviderObservationStageCallback>(
     field: ProviderField,
     value: ProviderScalar,
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     stager.control(
         ProviderObservationControl::Scalar {
             context: ProviderValueContext::Field(field),
@@ -66,7 +62,7 @@ fn text<C: ProviderObservationStageCallback>(
     field: ProviderField,
     pieces: &[&[u8]],
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     let context = ProviderValueContext::Field(field);
     stager.control(ProviderObservationControl::BeginField(context), callback)?;
     for piece in pieces {
@@ -81,7 +77,7 @@ fn text<C: ProviderObservationStageCallback>(
 fn common_item<C: ProviderObservationStageCallback>(
     stager: &mut ProviderObservationStager,
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     scalar(
         stager,
         ProviderField::LifecycleObservedAt,
@@ -94,7 +90,7 @@ fn common_item<C: ProviderObservationStageCallback>(
 fn begin_agent<C: ProviderObservationStageCallback>(
     identity: ProviderObservationId,
     callback: &mut C,
-) -> Result<ProviderObservationStager, ProviderObservationStagingError<C::Error>> {
+) -> Result<ProviderObservationStager, ProviderObservationStagingError> {
     let mut stager = ProviderObservationStager::begin(
         identity,
         ProviderObservationBegin::Item {
@@ -207,9 +203,18 @@ fn partial_build_reopens_resumes_and_exact_batches_reconcile() {
         .resume_provider_observation(&reopened, identity, limit())
         .unwrap()
         .unwrap();
-    let mut callback = |batch: &ProviderObservationStageBatch| -> Result<(), CommandError> {
-        reopened
-            .execute_current(storage.current_stage_provider_observation_batch(batch.clone()))?;
+    let mut callback = |batch: &ProviderObservationStageBatch| -> CommandOutcome {
+        let outcome = reopened
+            .execute_current(storage.current_stage_provider_observation_batch(batch.clone()));
+        if !matches!(
+            &outcome,
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ) {
+            return outcome;
+        }
         let current = storage
             .provider_observation_build(&reopened, identity, limit())
             .unwrap()
@@ -218,7 +223,7 @@ fn partial_build_reopens_resumes_and_exact_batches_reconcile() {
             batch.classify_current(Some(&current)),
             ProviderObservationStageBatchState::Next
         );
-        Ok(())
+        outcome
     };
     let context = ProviderValueContext::Field(ProviderField::AgentMessageText);
     stager
@@ -332,16 +337,20 @@ fn large_observation_stays_bounded_and_missing_chunk_is_rejected() {
     assert!(build.canonical_bytes() > 1_000_000);
     store.validate_registered_domains().unwrap();
     sealed.abandon();
-    store
-        .execute_current(
-            storage
-                .current_corrupt_provider_observation(
-                    &build,
-                    ProviderObservationCorruption::MissingChunk { ordinal: 1 },
-                )
-                .unwrap(),
-        )
-        .unwrap();
+    match store.execute_current(
+        storage
+            .current_corrupt_provider_observation(
+                &build,
+                ProviderObservationCorruption::MissingChunk { ordinal: 1 },
+            )
+            .unwrap(),
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed provider-observation corruption, got {outcome:?}"),
+    }
     let error = store.validate_registered_domains().unwrap_err();
     assert!(error.to_string().contains("missing chunk"));
     store.close().unwrap();
@@ -370,16 +379,17 @@ fn corrupted_build_digest_is_rejected_and_new_families_are_registered() {
         .unwrap()
         .unwrap()
         .clone();
-    store
-        .execute_current(
-            storage
-                .current_corrupt_provider_observation(
-                    &build,
-                    ProviderObservationCorruption::BuildDigest,
-                )
+    match store.execute_current(
+        storage
+            .current_corrupt_provider_observation(&build, ProviderObservationCorruption::BuildDigest)
                 .unwrap(),
-        )
-        .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed provider-observation corruption, got {outcome:?}"),
+    }
     let error = store.validate_registered_domains().unwrap_err();
     assert!(error.to_string().contains("disagrees with chunk replay"));
     assert_eq!(PhysicalFamily::ALL.len(), 61);

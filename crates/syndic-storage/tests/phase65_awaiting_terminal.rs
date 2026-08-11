@@ -12,7 +12,7 @@ mod recovery;
 mod resolution;
 
 use beryl_home_store::{
-    CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
+    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
@@ -48,10 +48,20 @@ fn cursor_limits() -> CursorReadLimits {
 fn execute(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
+}
+
+fn assert_clean(outcome: CommandOutcome) {
+    match outcome {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean awaiting-terminal command, got {outcome:?}"),
+    }
 }
 
 fn active_fixture(name: &str) -> ActiveFixture {
@@ -129,13 +139,12 @@ fn accept_text(
     else {
         panic!("test draft must become nonempty");
     };
-    execute(
+    assert_clean(execute(
         &fixture.store,
         fixture
             .storage
             .update_draft_payload(fixture.storage.revision(&fixture.store).unwrap(), update),
-    )
-    .unwrap();
+    ));
     let current = fixture
         .storage
         .current_draft(&fixture.store, fixture.thread, point_limit())
@@ -158,25 +167,23 @@ fn accept_text(
         timestamp(at + 1),
     );
     let input = admission.accepted_input_id();
-    execute(
+    assert_clean(execute(
         &fixture.store,
         fixture
             .storage
             .admit_accepted_input(fixture.storage.revision(&fixture.store).unwrap(), admission),
-    )
-    .unwrap();
+    ));
     input
 }
 
 fn admit_unknown(fixture: &ActiveFixture, at: u64) {
-    execute(
+    assert_clean(execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             unknown_event(fixture, at),
         ),
-    )
-    .unwrap();
+    ));
 }
 
 fn unknown_event(fixture: &ActiveFixture, at: u64) -> LiveSourceEvent {
@@ -256,7 +263,10 @@ fn next_sources(fixture: &ActiveFixture) -> Vec<AcceptedNextSource> {
         .to_vec()
 }
 
-fn typed_error(error: &CommandError) -> &SyndicMutationError {
+fn typed_error(outcome: &CommandOutcome) -> &SyndicMutationError {
+    let CommandOutcome::NotCommitted { evidence: error } = outcome else {
+        panic!("expected not-committed Syndic validation outcome, got {outcome:?}");
+    };
     let CommandError::ContributorValidation { source, .. } = error else {
         panic!("expected Syndic validation rejection, got {error}");
     };
@@ -321,7 +331,7 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
         AcceptedRouteEffectiveState::NextTurn(NextTurnReason::UnknownTerminal)
     );
 
-    let error = execute(
+    let outcome = execute(
         &fixture.store,
         fixture.storage.begin_accepted_input_delivery(
             fixture.storage.revision(&fixture.store).unwrap(),
@@ -332,17 +342,16 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
                 target,
             ),
         ),
-    )
-    .unwrap_err();
+    );
     assert!(
         matches!(
-            typed_error(&error),
+            typed_error(&outcome),
             SyndicMutationError::InputGateStateConflict
                 | SyndicMutationError::ActiveSteeringRouteConflict
                 | SyndicMutationError::AcceptedInputDeliveryConflict
         ),
         "unexpected refusal: {:?}",
-        typed_error(&error)
+        typed_error(&outcome)
     );
 
     exact_cas::admit_item_frame(

@@ -17,7 +17,8 @@ use syndic_storage::{
     advance_provider_narrative_chain, provider_narrative_chain_seed,
     test_faults::{
         PhysicalFamily, ProviderFixtureCorruption, ProviderFixtureFamily, ProviderFixtureRecord,
-        decode_corrupted_provider_fixture, roundtrip_provider_fixture,
+        decode_corrupted_provider_fixture, encoded_provider_fixture_value_bytes,
+        roundtrip_provider_fixture,
     },
 };
 
@@ -259,6 +260,8 @@ fn exact_provider_families_round_trip_and_registry_name_is_replaced_in_place() {
     assert_eq!(span.family().name(), "provider-narrative-spans");
     assert_eq!(span.family().record_version(), 1);
     assert_eq!(span.family().maximum_key_bytes(), 32);
+    assert_eq!(span.family().maximum_value_bytes(), 160);
+    assert_eq!(encoded_provider_fixture_value_bytes(&span).unwrap(), 160);
     assert_eq!(roundtrip_provider_fixture(&span).unwrap(), span);
 
     let names = ProviderFixtureFamily::domain_family_names();

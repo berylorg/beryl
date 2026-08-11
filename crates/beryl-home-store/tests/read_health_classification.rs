@@ -5,14 +5,14 @@ mod support;
 use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint, PersistedCorruptionError},
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackSource, DomainRegistrationError,
     HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
     ReadError,
-    test_faults::{FaultController, FaultPoint, PersistedCorruptionError},
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, PutBytes};
+use support::{committed, AlphaDomain, BytesRecord, PutBytes};
 
 const MAX_STORED_VALUE_BYTES: usize = 1_028;
 
@@ -43,7 +43,7 @@ fn put(
             PutBytes::<AlphaDomain>::new(key, value),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
 }
 
 fn assert_failed_gate(store: &HomeStore) {

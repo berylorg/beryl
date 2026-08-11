@@ -15,6 +15,18 @@ impl DomainMutation<SyndicDomain> for AdmitMutation {
         self.records(reader).map(|_| ())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<TurnsCodec>(1)?;
+        reservation.reserve_records::<TurnStatesCodec>(1)?;
+        reservation.reserve_records::<ExecutionSnapshotsCodec>(1)?;
+        reservation.reserve_records::<CompactionOperationsCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, SyndicDomain>,

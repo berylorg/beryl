@@ -1,18 +1,19 @@
-use beryl_home_store::HomeStore;
+use beryl_home_store::{CommandOutcome, HomeStore};
 use beryl_model::SyndicContentDigest;
 
 use crate::{
-    CONTENT_APPEND_MAX_CHUNKS, ContentByteSpanRecord, ContentChunkOrdinal, ContentChunkRecord,
+    advance_content_chain, ContentByteSpanRecord, ContentChunkOrdinal, ContentChunkRecord,
     ProviderFrameReferenceV1, ProviderFrameSinkV1, ProviderFrameStageBatch,
     ProviderFrameStageCallback, ProviderFrameTextSpanV1, ProviderItemBuildLifecycle,
     ProviderItemBuildRecord, ProviderLogicalTextRoleV1, ProviderNarrativeReference,
-    ProviderNarrativeSpanRecord, SyndicPointReadLimit, SyndicStorage, advance_content_chain,
+    ProviderNarrativeSpanRecord, SyndicPointReadLimit, SyndicStorage, CONTENT_APPEND_MAX_CHUNKS,
 };
 
 use super::super::{
-    PreparedProviderObservationFrame, ProviderObservationFrameStageError,
-    encode::{ObservationEncodeError, encode_observation},
+    encode::{encode_observation, ObservationEncodeError},
     replay::{ObservationReplayReader, ReplayError},
+    PreparedProviderObservationFrame, ProviderObservationFrameStageError,
+    ProviderObservationFrameStageOutcome,
 };
 
 mod count;
@@ -26,12 +27,12 @@ pub(super) fn stage<C: ProviderFrameStageCallback>(
     current: ProviderItemBuildRecord,
     limit: SyndicPointReadLimit,
     callback: &mut C,
-) -> Result<ProviderItemBuildRecord, ProviderObservationFrameStageError<C::Error>> {
+) -> Result<ProviderObservationFrameStageOutcome, ProviderObservationFrameStageError> {
     if !same_plan(&prepared.initial_build, &current) {
         return Err(ProviderObservationFrameStageError::BuildPlanMismatch);
     }
     if current.lifecycle() == ProviderItemBuildLifecycle::Sealed {
-        return Ok(current);
+        return Ok(ProviderObservationFrameStageOutcome::Unchanged { value: current });
     }
     let initial = &prepared.initial_build;
     let reader = ObservationReplayReader::new(storage, store, &prepared.replay, limit);
@@ -44,19 +45,51 @@ pub(super) fn stage<C: ProviderFrameStageCallback>(
         initial.staged_narrative(),
         callback,
     )?;
-    let encoded = encode_observation(
+    let encoded = match encode_observation(
         &reader,
         initial.source().item_id(),
         initial.target().frame().ordinal(),
         initial.target().frame().item_kind(),
         initial.target().frame().encoded_start(),
         &mut sink,
-    )
-    .map_err(map_stage_encode)?;
+    ) {
+        Ok(encoded) => encoded,
+        Err(error) => return map_stage_error(map_stage_encode(error)),
+    };
     if &encoded != initial.target().frame() {
         return Err(ProviderObservationFrameStageError::StagingTraversalMismatch);
     }
-    sink.finish(&encoded)
+    match sink.finish(&encoded) {
+        Ok(outcome) => Ok(outcome),
+        Err(error) => map_stage_error(error),
+    }
+}
+
+fn map_stage_error(
+    error: ProviderObservationFrameStageError,
+) -> Result<ProviderObservationFrameStageOutcome, ProviderObservationFrameStageError> {
+    match error {
+        ProviderObservationFrameStageError::NotCommitted { evidence } => {
+            Ok(ProviderObservationFrameStageOutcome::NotCommitted { evidence })
+        }
+        ProviderObservationFrameStageError::CommittedLaterFailure {
+            value,
+            receipt,
+            later_failure,
+        } => Ok(ProviderObservationFrameStageOutcome::Committed {
+            value,
+            receipt,
+            later_failure: Some(later_failure),
+        }),
+        ProviderObservationFrameStageError::Indeterminate {
+            failure,
+            reconciliation,
+        } => Ok(ProviderObservationFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        }),
+        error => Err(error),
+    }
 }
 
 fn same_plan(initial: &ProviderItemBuildRecord, current: &ProviderItemBuildRecord) -> bool {
@@ -86,6 +119,7 @@ struct StagingSink<'a, C: ProviderFrameStageCallback> {
     chunks: Vec<ContentChunkRecord>,
     byte_spans: Vec<ContentByteSpanRecord>,
     narrative_spans: Vec<ProviderNarrativeSpanRecord>,
+    last_receipt: Option<beryl_home_store::CommitReceipt>,
     callback: &'a mut C,
 }
 
@@ -99,7 +133,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
         prior_chain: SyndicContentDigest,
         narrative_seed: Option<ProviderNarrativeReference>,
         callback: &'a mut C,
-    ) -> Result<Self, ProviderObservationFrameStageError<C::Error>> {
+    ) -> Result<Self, ProviderObservationFrameStageError> {
         if current.staged_chunk_count() == prior_chunks
             && (current.staged_encoded_bytes() != prior_bytes
                 || current.staged_chain_digest() != prior_chain)
@@ -127,6 +161,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
             chunks: Vec::with_capacity(CONTENT_APPEND_MAX_CHUNKS),
             byte_spans: Vec::with_capacity(CONTENT_APPEND_MAX_CHUNKS),
             narrative_spans: Vec::with_capacity(crate::PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS),
+            last_receipt: None,
             callback,
         })
     }
@@ -134,7 +169,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
     fn finish(
         mut self,
         encoded: &ProviderFrameReferenceV1,
-    ) -> Result<ProviderItemBuildRecord, ProviderObservationFrameStageError<C::Error>> {
+    ) -> Result<ProviderObservationFrameStageOutcome, ProviderObservationFrameStageError> {
         let summary = self.target.content().summary();
         if encoded != self.target.frame()
             || self.seen_chunk_count != summary.chunk_count()
@@ -161,10 +196,19 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
         if self.current.lifecycle() != expected || self.current.target() != &self.target {
             return Err(ProviderObservationFrameStageError::IncompleteStagingTraversal);
         }
-        Ok(self.current)
+        match self.last_receipt {
+            Some(receipt) => Ok(ProviderObservationFrameStageOutcome::Committed {
+                value: self.current,
+                receipt,
+                later_failure: None,
+            }),
+            None => Ok(ProviderObservationFrameStageOutcome::Unchanged {
+                value: self.current,
+            }),
+        }
     }
 
-    fn verify_resumed_frontiers(&self) -> Result<(), ProviderObservationFrameStageError<C::Error>> {
+    fn verify_resumed_frontiers(&self) -> Result<(), ProviderObservationFrameStageError> {
         if self.seen_chunk_count < self.resume_chunk_count
             || (self.seen_chunk_count == self.resume_chunk_count
                 && (self.seen_encoded_bytes != self.resume_encoded_bytes
@@ -221,7 +265,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
             && narrative == self.target.narrative()
     }
 
-    fn maybe_flush(&mut self) -> Result<(), ProviderObservationFrameStageError<C::Error>> {
+    fn maybe_flush(&mut self) -> Result<(), ProviderObservationFrameStageError> {
         if (self.chunks.len() >= CONTENT_APPEND_MAX_CHUNKS
             || self.narrative_spans.len() >= crate::PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS)
             && !self.prospective_complete()
@@ -231,7 +275,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
         Ok(())
     }
 
-    fn flush(&mut self, seal: bool) -> Result<(), ProviderObservationFrameStageError<C::Error>> {
+    fn flush(&mut self, seal: bool) -> Result<(), ProviderObservationFrameStageError> {
         if self.chunks.is_empty() && self.narrative_spans.is_empty() {
             return if seal && !self.prospective_complete() {
                 Err(ProviderObservationFrameStageError::IncompleteStagingTraversal)
@@ -266,16 +310,40 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
             std::mem::take(&mut self.byte_spans),
             std::mem::take(&mut self.narrative_spans),
         )?;
-        self.callback
-            .stage_batch(&batch)
-            .map_err(ProviderObservationFrameStageError::Callback)?;
-        self.current = next;
-        Ok(())
+        match self.callback.stage_batch(&batch) {
+            CommandOutcome::NotCommitted { evidence } => {
+                Err(ProviderObservationFrameStageError::NotCommitted { evidence })
+            }
+            CommandOutcome::Committed {
+                receipt,
+                later_failure,
+            } => {
+                self.current = next;
+                self.last_receipt = Some(receipt.clone());
+                match later_failure {
+                    Some(later_failure) => {
+                        Err(ProviderObservationFrameStageError::CommittedLaterFailure {
+                            value: self.current.clone(),
+                            receipt,
+                            later_failure,
+                        })
+                    }
+                    None => Ok(()),
+                }
+            }
+            CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => Err(ProviderObservationFrameStageError::Indeterminate {
+                failure,
+                reconciliation,
+            }),
+        }
     }
 }
 
 impl<C: ProviderFrameStageCallback> ProviderFrameSinkV1 for StagingSink<'_, C> {
-    type Error = ProviderObservationFrameStageError<C::Error>;
+    type Error = ProviderObservationFrameStageError;
 
     fn write_text_span(&mut self, span: ProviderFrameTextSpanV1) -> Result<(), Self::Error> {
         let next = self
@@ -384,9 +452,9 @@ impl<C: ProviderFrameStageCallback> ProviderFrameSinkV1 for StagingSink<'_, C> {
     }
 }
 
-fn map_stage_encode<E: std::error::Error + Send + Sync + 'static>(
-    error: ObservationEncodeError<ProviderObservationFrameStageError<E>>,
-) -> ProviderObservationFrameStageError<E> {
+fn map_stage_encode(
+    error: ObservationEncodeError<ProviderObservationFrameStageError>,
+) -> ProviderObservationFrameStageError {
     match error {
         ObservationEncodeError::Replay(error) => match error {
             ReplayError::Cursor(error) => error.into(),

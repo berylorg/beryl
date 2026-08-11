@@ -48,7 +48,6 @@ fn normal_terminal_statuses_publish_exact_durable_outcomes() {
         let proven = fixture.registration.proven_terminal().unwrap();
         assert_eq!(proven.status(), durable.end_status().unwrap());
         assert_eq!(proven.observed_at(), durable.updated_at());
-        assert!(!proven.same_native_reacquisition_required());
         assert!(matches!(
             fixture
                 .storage

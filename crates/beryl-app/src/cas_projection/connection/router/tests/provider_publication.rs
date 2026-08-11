@@ -182,7 +182,6 @@ fn permit_first_defers_close_until_the_publication_owner_finishes() {
 
     assert!(!router.record_thread_closed(&thread).unwrap());
     assert_eq!(router.snapshot().unwrap().target_count(), 1);
-    assert!(!router.permits_reacquisition_thread(&thread).unwrap());
     assert!(matches!(
         permit.finish(),
         Err(SourcePublicationFinishError::Target(ref invalidation))

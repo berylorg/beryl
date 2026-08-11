@@ -1,12 +1,13 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 use beryl_model::{JobId, JobRevision};
 
+use super::codec::{JobRecordCodec, LiveJobIndexCodec};
 use super::{
-    BranchHandoffCheckpoint, BranchHandoffJobState, DurableJobDomain, DurableJobMutationError,
-    HandoffFailureEvidence,
     mutation::{
         advance, ensure_revision, put_live_transition, put_terminal_transition, required_job,
     },
+    BranchHandoffCheckpoint, BranchHandoffJobState, DurableJobDomain, DurableJobMutationError,
+    HandoffFailureEvidence,
 };
 
 pub(super) struct CorruptFailureState {
@@ -23,6 +24,15 @@ impl DomainMutation<DurableJobDomain> for CorruptFailureState {
     fn validate(&self, reader: &DomainReader<'_, DurableJobDomain>) -> Result<(), Self::Error> {
         let job = required_job(reader, self.job_id)?;
         ensure_revision(self.expected_job_revision, job.revision)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

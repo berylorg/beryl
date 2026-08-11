@@ -175,7 +175,7 @@ pub struct ScheduledOrdinaryAdmission {
     thread_id: SyndicThreadId,
     execution_binding: ExecutionBinding,
     worker: ProjectionWorkerPermit,
-    projection_retainer: super::persistent_failure::PersistentFailureProjectionRetainer,
+    terminal_disposer: super::persistent_failure::PersistentFailureTerminalDisposer,
     flight: ProjectionFlight,
 }
 
@@ -186,7 +186,7 @@ impl ScheduledOrdinaryAdmission {
         thread_id: SyndicThreadId,
         execution_binding: ExecutionBinding,
         worker: ProjectionWorkerPermit,
-        projection_retainer: super::persistent_failure::PersistentFailureProjectionRetainer,
+        terminal_disposer: super::persistent_failure::PersistentFailureTerminalDisposer,
         flight: ProjectionFlight,
     ) -> Self {
         Self {
@@ -195,7 +195,7 @@ impl ScheduledOrdinaryAdmission {
             thread_id,
             execution_binding,
             worker,
-            projection_retainer,
+            terminal_disposer,
             flight,
         }
     }
@@ -246,10 +246,6 @@ impl ScheduledOrdinaryAdmission {
         if policy.thread_options().is_ephemeral() {
             return Err(ScheduledOrdinaryAdmissionError::EphemeralThreadPolicy);
         }
-        admitted_session.install_preactivation_surrender_issuer(
-            self.worker
-                .preactivation_surrender_issuer(self.projection_retainer.clone())?,
-        );
         Ok(ScheduledOrdinaryExecutionLease {
             home_id: self.home_id,
             home_generation: self.home_generation,

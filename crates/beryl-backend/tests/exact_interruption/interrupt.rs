@@ -1,6 +1,6 @@
 use beryl_backend::{
-    CallerNoSuccessorFence, ExactHardStopLimitation, ManagedBackendError, StopAttemptCorrelation,
-    StopOperationCorrelation, TurnInterruptDisposition,
+    CallerNoSuccessorFence, ManagedBackendError, StopAttemptCorrelation, StopOperationCorrelation,
+    TurnInterruptDisposition,
 };
 
 use crate::{
@@ -57,6 +57,11 @@ fn exact_wire_omits_local_correlations_and_preserves_ordered_ingress() {
         &[0x5A; 16]
     );
     assert!(outcome.request().had_no_successor_fence());
+    assert_eq!(
+        session.unbind_exact_foreground_turn().unwrap(),
+        Some(target()),
+        "request acceptance must not be mistaken for target terminality"
+    );
     session.shutdown().unwrap();
     server.join().unwrap();
 }
@@ -87,17 +92,6 @@ fn pinned_rejections_are_closed_without_parsing_diagnostic_text() {
         session.shutdown().unwrap();
         server.join().unwrap();
     }
-}
-
-#[test]
-fn unsupported_exact_target_families_accept_no_handles() {
-    assert_eq!(
-        ExactHardStopLimitation::pinned(),
-        [
-            ExactHardStopLimitation::ChildOrSubagentInterruptionUnsupported,
-            ExactHardStopLimitation::IndividualTurnProcessTerminationIdentityUnsafe,
-        ]
-    );
 }
 
 #[test]

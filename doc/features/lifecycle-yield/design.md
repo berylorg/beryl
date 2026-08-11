@@ -21,17 +21,21 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 
 ## Outcomes
 
-- `phase_needs_review` stops after the current turn reaches terminal state so the operator can review or live-test the completed phase.
+- `phase_needs_review` stops after the current turn reaches terminal state and requests one review-
+  ready notification so the operator can review or live-test the completed phase.
 - `blocked_needs_operator` stops after the current turn reaches terminal state and requests an operator-attention notification.
 - `phase_continue` records process-local intent to continue after terminal completion. If separately
   accepted user input does not take precedence, Beryl runs selected-thread context compaction and
   starts the next turn with Beryl's fixed continuation message.
 - `plan_complete` stops after the current turn reaches terminal state and requests a completion notification.
 - Automatic lifecycle continuation does not play ordinary end-turn sound for the turn that requested continuation.
-- Any exact stop admitted for the turn before terminal completion cancels that turn's pending
+- Any exact soft stop admitted for the turn before terminal completion cancels that turn's pending
   automatic continuation. A user, diagnostic controller, window-close barrier, or Beryl-owned
   interrupting approval must not appear to stop a turn and then silently restart it; the stop does
   not discard separately accepted queued user input.
+- When CAS-live supplies an eligible pre-admission soft-stop fallback for the exact yielding turn,
+  pending automatic continuation is canceled before interruption dispatch. Separately accepted
+  user input remains visible, preserved, and ordered.
 
 ## Continuation Behavior
 
@@ -41,8 +45,8 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
   than input authored by the operator.
 - A pending automatic continuation does not survive Beryl process loss. Restart never recreates it
   from the yield tool item, transcript text, compaction history, or plan state.
-- Once the fixed continuation has been durably admitted as a conversation turn, it is no longer
-  pending lifecycle intent. That already visible/admitted turn survives and recovers like any other
+- Once Beryl reports the fixed continuation as accepted and it appears as a conversation turn, it
+  is no longer pending lifecycle intent. That visible turn survives and recovers like any other
   ordinary conversation turn; restart still does not create an additional one.
 - Beginning the owning window's close barrier cancels the pending continuation before Beryl decides
   whether there is still an interruptible turn. This remains true after the yielding turn has
@@ -59,12 +63,26 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 - Compaction failure, interruption, stop, or lost backend authority cancels automatic continuation
   without discarding accepted user input. Completion-wait timeout alone does not cancel it; exact
   success observed later in the same process still follows the same user-input precedence.
-- One lifecycle request can start at most one automatic continuation. An ambiguous local outcome
-  never causes Beryl to submit a compensating duplicate.
+- One lifecycle request can start at most one automatic continuation.
+- Automatic continuation uses the ordinary new-turn admission safeguards. If the required home
+  eligibility cannot be established, no backend turn starts, separately accepted input remains
+  preserved, and Beryl reports one bounded continuation failure.
+- An uncertain continuation-admission outcome never causes a compensating duplicate. A
+  continuation proven admitted remains visible and recovers as ordinary admitted work; otherwise
+  pending automatic continuation ends with bounded failure feedback.
 - If Beryl cannot prepare the fixed continuation after compaction succeeds, it reports the
   continuation failure, does not substitute different text, and preserves accepted user input.
 - Automatic continuation sends the latest applied non-empty global developer-instructions setting as hidden developer-instructions context, subject to the composer feature's developer-instructions rules.
 - Context compaction timeout behavior is governed by the settings/status-line contracts.
+
+## Notification Requests
+
+- Review-ready, operator-attention, completion, and automatic-continuation-failure notices use the
+  bounded destination, deduplication, priority, acknowledgement, content, and enqueue-failure
+  behavior defined by the [Notifications feature](../notifications/design.md#lifecycle-notifications).
+- Accepting a yield outcome does not claim that its requested notice was displayed or acknowledged.
+  Notice admission failure never changes the selected lifecycle outcome, validates its report, or
+  causes Beryl to repeat the yield request.
 
 ## Safety And Isolation
 

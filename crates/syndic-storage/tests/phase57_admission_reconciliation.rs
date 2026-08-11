@@ -2,7 +2,9 @@
 
 mod support;
 
-use beryl_home_store::{DomainCallbackSource, DomainRegistrationError, HomeCommand, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, DomainCallbackSource, DomainRegistrationError, HomeCommand, HomeStore,
+};
 use beryl_model::{
     AcceptedInputRevision, DraftRevision, InputGateRevision, SyndicAcceptedInputId, SyndicItemId,
     ThreadRevision,
@@ -32,7 +34,12 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected command to commit without later failure, got {outcome:?}"),
+    }
 }
 
 fn seeded(name: &str, records: Vec<FixtureRecord>) -> (TestHome, HomeStore, SyndicStorage) {
@@ -541,7 +548,14 @@ impl StableDeliveryRequest {
             }
             Self::Reject(request) => storage.current_record_steering_rejection(request.clone()),
         };
-        store.execute_current(command).unwrap();
+        match store.execute_current(command) {
+            CommandOutcome::Committed {
+                later_failure: None, ..
+            } => {}
+            outcome => {
+                panic!("expected delivery transition to commit without later failure, got {outcome:?}")
+            }
+        }
     }
 
     const fn source_revision(&self) -> AcceptedInputRevision {
@@ -661,9 +675,14 @@ fn sibling_admission_between_snapshot_and_abandonment_preserves_stable_intent() 
             BindingPublicationStatus::Prior
         );
 
-        store
-            .execute_current(storage.current_abandon_active_binding(request.clone()))
-            .unwrap();
+        match store.execute_current(storage.current_abandon_active_binding(request.clone())) {
+            CommandOutcome::Committed {
+                later_failure: None, ..
+            } => {}
+            outcome => {
+                panic!("expected active-binding abandonment to commit without later failure, got {outcome:?}")
+            }
+        }
         assert_eq!(
             storage
                 .abandoned_active_binding_publication_status(&store, &request, point_limit())
@@ -770,9 +789,14 @@ fn exact_projection_loss_successor_requires_its_transition_witness() {
         generic.stale().clone(),
         ExactRejectedInputDelivery::new(delivering_input(), AcceptedInputRevision::new(2).unwrap()),
     );
-    store
-        .execute_current(storage.current_abandon_active_binding(request))
-        .unwrap();
+    match store.execute_current(storage.current_abandon_active_binding(request)) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => {
+            panic!("expected active-binding abandonment to commit without later failure, got {outcome:?}")
+        }
+    }
     assert_missing_transition_witness_rejected(&home, store, storage, delivering_input());
 }
 

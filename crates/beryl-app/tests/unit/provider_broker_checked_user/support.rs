@@ -34,7 +34,7 @@ use beryl_backend::{
     OrderedTurnStreamSink, UserMessageEchoLifecycle, lifecycle_test_support::checked_user_message,
 };
 use beryl_home_store::{
-    CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::FaultController,
 };
 use beryl_model::{
@@ -167,8 +167,12 @@ impl CheckedUserFixture {
             SyndicTimestamp::from_unix_millis(3),
         );
         let turn_id = submission.submitted_turn_id();
-        home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap())
-            .unwrap();
+        match home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap()) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("checked-user submitted-turn command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("checked-user submitted-turn command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("checked-user submitted-turn command was indeterminate: {outcome:?}"),
+        }
 
         let item = storage
             .canonical_item(&home, item_id, point_limit())

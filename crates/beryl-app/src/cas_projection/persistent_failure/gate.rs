@@ -6,9 +6,6 @@ use thiserror::Error;
 
 use super::{
     PersistentFailureGeneration, PersistentFailureNotification, ProjectionServiceGeneration,
-    notification::{
-        RecoverySupervisorFlightCompletion, VerificationCompletionCell, VerificationJoinDisposition,
-    },
 };
 
 mod authorizer;
@@ -68,16 +65,22 @@ pub struct LiveCommandPermit {
     released: bool,
 }
 
-/// Pre-command witness for joining one exact supervisor-owned health verification.
+/// Short before/after health fence for one exact store operation.
 #[must_use]
-pub(in crate::cas_projection) struct LiveCommandVerificationJoin<'permit, 'home> {
+pub(in crate::cas_projection) struct LiveCommandHealthFence<'permit, 'home> {
     permit: &'permit LiveCommandPermit,
-    notification: PersistentFailureNotification,
     home: &'home HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    ticket: Arc<VerificationCompletionCell>,
-    observed_verifying: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::cas_projection) struct LiveCommandHealthSettlement;
+
+impl LiveCommandHealthSettlement {
+    pub(in crate::cas_projection) const fn requires_retry(self) -> bool {
+        false
+    }
 }
 
 /// Why a store-dependent command could not enter the live service generation.
@@ -102,7 +105,7 @@ pub(in crate::cas_projection) enum LiveCommandGateStatus {
 /// Exact command frontier sealed by one persistent-failure cut.
 ///
 /// The value is content-free and non-authorizing. It lets the stable connection driver prove that
-/// its out-of-band adoption control names the same gate epoch that invalidated every queued old
+/// its terminal disposition names the same gate epoch that invalidated every queued old
 /// command.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection) struct PersistentFailureCommandFrontier {

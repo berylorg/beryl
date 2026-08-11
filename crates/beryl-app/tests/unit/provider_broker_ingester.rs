@@ -18,7 +18,7 @@ use crate::cas_projection::{
     persistent_failure::MasterCommandGate,
     service_config::ProjectionWorkerPool,
     service_registry::ProjectionServiceConnectionRegistry,
-    service_startup::ServiceStartupGate,
+    initial_start::InitialStartGate,
     stop::StopCoordinator,
 };
 
@@ -112,7 +112,7 @@ impl BrokerBuildFixture {
         let mut workers = self.workers.try_acquire_pair().unwrap();
         let ingester_worker = workers.take_ingester();
         drop(workers.take_driver());
-        match ProviderBroker::prepare_with_startup_gate_inner(
+        match ProviderBroker::prepare_with_initial_start_inner(
             Arc::clone(&self.home),
             self.home_id,
             self.home_generation,
@@ -123,7 +123,7 @@ impl BrokerBuildFixture {
             self.commands.clone(),
             self.failure_notification.clone(),
             ingester_worker,
-            ServiceStartupGate::closed_gate(),
+            InitialStartGate::ready(),
             fault,
         ) {
             Err(error) => error,
@@ -135,7 +135,7 @@ impl BrokerBuildFixture {
         let mut workers = self.workers.try_acquire_pair().unwrap();
         let ingester_worker = workers.take_ingester();
         drop(workers.take_driver());
-        ProviderBroker::prepare_with_startup_gate(
+        ProviderBroker::prepare_with_initial_start(
             Arc::clone(&self.home),
             self.home_id,
             self.home_generation,
@@ -146,7 +146,7 @@ impl BrokerBuildFixture {
             self.commands.clone(),
             self.failure_notification.clone(),
             ingester_worker,
-            ServiceStartupGate::closed_gate(),
+            InitialStartGate::ready(),
         )
         .unwrap()
     }
@@ -158,25 +158,11 @@ impl Drop for BrokerBuildFixture {
     }
 }
 
-fn worker_disposition_escrow(
-    fixture: &BrokerBuildFixture,
-) -> Arc<ProviderBrokerWorkerEscrow> {
+fn worker_disposition_owner(fixture: &BrokerBuildFixture) -> Arc<ProviderBrokerWorkerOwner> {
     let mut workers = fixture.workers.try_acquire_pair().unwrap();
     let ingester = workers.take_ingester();
     drop(workers.take_driver());
-    Arc::new(ProviderBrokerWorkerEscrow::new(ingester))
-}
-
-fn worker_disposition_cut(
-    fixture: &BrokerBuildFixture,
-    home_id: BerylHomeId,
-) -> PersistentFailureCutIdentity {
-    PersistentFailureCutIdentity::new(
-        home_id,
-        fixture.home_generation,
-        fixture.commands.service_generation(),
-        crate::cas_projection::PersistentFailureGeneration::FIRST,
-    )
+    Arc::new(ProviderBrokerWorkerOwner::new(ingester))
 }
 
 #[test]
@@ -258,7 +244,7 @@ fn phase82_page_pool_failure_retains_the_acquired_worker() {
             control: false,
             ingester: false,
             start_gate: false,
-            startup_gate: false,
+            initial_start: false,
         }
     );
     assert_eq!(fixture.workers.diagnostics().active(), 1);
@@ -281,7 +267,7 @@ fn phase82_channel_failure_retains_the_worker_and_fixed_page_pool() {
             control: false,
             ingester: false,
             start_gate: false,
-            startup_gate: false,
+            initial_start: false,
         }
     );
     assert_eq!(fixture.workers.diagnostics().active(), 1);
@@ -304,7 +290,7 @@ fn phase82_spawn_failure_retains_the_complete_unstarted_broker() {
             control: true,
             ingester: true,
             start_gate: true,
-            startup_gate: true,
+            initial_start: true,
         }
     );
     assert_eq!(fixture.workers.diagnostics().active(), 1);
@@ -342,7 +328,7 @@ fn start_blocked_join_preserves_its_unarmed_worker_admission() {
 #[test]
 fn provider_worker_ordinary_disposition_before_terminal_releases_at_terminal() {
     let fixture = BrokerBuildFixture::new(194);
-    let worker = worker_disposition_escrow(&fixture);
+    let worker = worker_disposition_owner(&fixture);
     assert_eq!(fixture.workers.diagnostics().active(), 1);
 
     worker.arm_ordinary_release().unwrap();
@@ -357,7 +343,7 @@ fn provider_worker_ordinary_disposition_before_terminal_releases_at_terminal() {
 #[test]
 fn provider_worker_terminal_before_ordinary_disposition_releases_without_join() {
     let fixture = BrokerBuildFixture::new(195);
-    let worker = worker_disposition_escrow(&fixture);
+    let worker = worker_disposition_owner(&fixture);
     worker.mark_terminal();
     assert_eq!(fixture.workers.diagnostics().active(), 1);
 
@@ -367,98 +353,9 @@ fn provider_worker_terminal_before_ordinary_disposition_releases_without_join() 
 }
 
 #[test]
-fn provider_worker_adoption_disposition_retains_before_and_after_terminal() {
-    let fixture = BrokerBuildFixture::new(196);
-    let cut = worker_disposition_cut(&fixture, fixture.home_id);
-
-    let armed_before = worker_disposition_escrow(&fixture);
-    armed_before.arm_retain_for_adoption(cut).unwrap();
-    armed_before.mark_terminal();
-    assert_eq!(fixture.workers.diagnostics().active(), 1);
-    let joined_before = armed_before.take_joined_worker();
-    let stopped = ProviderBrokerStopped {
-        worker: joined_before.worker,
-        worker_disposition: joined_before.disposition,
-        receipt: ProviderBrokerTerminalReceipt {
-            service_generation: fixture.commands.service_generation(),
-            home_generation: fixture.home_generation,
-            clean: true,
-        },
-    };
-    let adopted = match stopped.into_adoption(cut) {
-        Ok(adopted) => adopted,
-        Err(_) => panic!("exact adoption disposition must produce typed retained ownership"),
-    };
-    assert_eq!(adopted.cut_identity(), cut);
-    assert_eq!(
-        adopted.receipt(),
-        ProviderBrokerTerminalReceipt {
-            service_generation: fixture.commands.service_generation(),
-            home_generation: fixture.home_generation,
-            clean: true,
-        }
-    );
-    let before_permit = adopted.into_worker();
-    drop(before_permit);
-    assert_eq!(fixture.workers.diagnostics().active(), 0);
-
-    let armed_after = worker_disposition_escrow(&fixture);
-    armed_after.mark_terminal();
-    armed_after.arm_retain_for_adoption(cut).unwrap();
-    assert_eq!(fixture.workers.diagnostics().active(), 1);
-    let after_permit = armed_after
-        .take_joined_worker()
-        .worker
-        .expect("adoption retains the exact admission armed after terminal");
-    drop(after_permit);
-    assert_eq!(fixture.workers.diagnostics().active(), 0);
-}
-
-#[test]
-fn provider_worker_disposition_contention_retains_conservatively() {
-    let fixture = BrokerBuildFixture::new(197);
-    let worker = worker_disposition_escrow(&fixture);
-    let cut = worker_disposition_cut(&fixture, fixture.home_id);
-    let foreign_cut = worker_disposition_cut(&fixture, BerylHomeId::from_bytes([198; 16]));
-
-    worker.arm_retain_for_adoption(cut).unwrap();
-    assert_eq!(
-        worker.arm_ordinary_release(),
-        Err(ProviderBrokerWorkerDispositionArmError::Contended)
-    );
-    assert_eq!(
-        worker.arm_retain_for_adoption(foreign_cut),
-        Err(ProviderBrokerWorkerDispositionArmError::Contended)
-    );
-    worker.mark_terminal();
-    assert_eq!(fixture.workers.diagnostics().active(), 1);
-    let joined = worker.take_joined_worker();
-    let stopped = ProviderBrokerStopped {
-        worker: joined.worker,
-        worker_disposition: joined.disposition,
-        receipt: ProviderBrokerTerminalReceipt {
-            service_generation: fixture.commands.service_generation(),
-            home_generation: fixture.home_generation,
-            clean: true,
-        },
-    };
-    let stopped = match stopped.into_adoption(foreign_cut) {
-        Ok(_) => panic!("a foreign cut cannot consume retained adoption ownership"),
-        Err(stopped) => stopped,
-    };
-    assert!(stopped.retains_worker());
-    drop(
-        stopped
-            .into_worker()
-            .expect("contention must preserve the exact retained admission"),
-    );
-    assert_eq!(fixture.workers.diagnostics().active(), 0);
-}
-
-#[test]
 fn provider_worker_terminal_guard_marks_terminal_during_unwind() {
     let fixture = BrokerBuildFixture::new(199);
-    let worker = worker_disposition_escrow(&fixture);
+    let worker = worker_disposition_owner(&fixture);
     worker.arm_ordinary_release().unwrap();
     let thread_worker = Arc::clone(&worker);
 
@@ -475,7 +372,7 @@ fn provider_worker_terminal_guard_marks_terminal_during_unwind() {
 #[test]
 fn provider_worker_poison_retains_without_claiming_a_disposition() {
     let fixture = BrokerBuildFixture::new(201);
-    let worker = worker_disposition_escrow(&fixture);
+    let worker = worker_disposition_owner(&fixture);
     let poison_worker = Arc::clone(&worker);
     let unwind = catch_unwind(AssertUnwindSafe(move || {
         let _state = poison_worker.state.lock().unwrap();

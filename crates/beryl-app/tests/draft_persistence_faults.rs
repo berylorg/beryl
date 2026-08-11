@@ -8,7 +8,7 @@ use beryl_app::draft_persistence::{
     execute_draft_save, read_draft_persistence_seed,
 };
 use beryl_home_store::{
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
@@ -52,7 +52,22 @@ impl Fixture {
         command
             .add(storage.create_thread(storage.revision(&store).unwrap(), creation))
             .unwrap();
-        store.execute(command).unwrap();
+        match store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("create thread unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("create thread committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("create thread indeterminate: {outcome:?}")
+            }
+        }
         Self {
             _directory: directory,
             faults,
@@ -199,7 +214,22 @@ impl Fixture {
                     .fixture_contribution(self.storage.revision(&self.store).unwrap(), fixture),
             )
             .unwrap();
-        self.store.execute(command).unwrap();
+        match self.store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("advance thread revision unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("advance thread revision committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("advance thread revision indeterminate: {outcome:?}")
+            }
+        }
         self.store.validate_registered_domains().unwrap();
         thread_revision
     }
@@ -251,7 +281,22 @@ fn stage_payload_prefix(fixture: &Fixture, payload: &ComposerPayload, command_co
             ContentBuild::from_prepared(&content),
         ))
         .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("stage content unexpectedly not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("stage content committed with later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("stage content indeterminate: {outcome:?}")
+        }
+    }
 
     let mut manifest = content.building_manifest();
     for _ in 1..command_count {
@@ -267,7 +312,22 @@ fn stage_payload_prefix(fixture: &Fixture, payload: &ComposerPayload, command_co
                     .append_content(fixture.storage.revision(&fixture.store).unwrap(), append),
             )
             .unwrap();
-        fixture.store.execute(command).unwrap();
+        match fixture.store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("append staged content unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("append staged content committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("append staged content indeterminate: {outcome:?}")
+            }
+        }
         manifest = next;
     }
 }

@@ -5,10 +5,6 @@ pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
 #[path = "phase10_projection/syndic.rs"]
 mod syndic;
 
-#[path = "phase62_accepted_next_scheduler/promotion_collision.rs"]
-mod promotion_collision;
-#[path = "phase62_accepted_next_scheduler/promotion_faults.rs"]
-mod promotion_faults;
 #[path = "phase62_accepted_next_scheduler/shutdown.rs"]
 mod shutdown;
 #[path = "phase62_accepted_next_scheduler/support.rs"]
@@ -23,8 +19,7 @@ use std::{
 use beryl_app::cas_projection::{
     ProjectionConnectionService, ProjectionServiceConfig, RunningSessionRecoverySupervisor,
     test_faults::{
-        install_scheduled_promotion_barrier, install_scheduled_promotion_reconciliation_barrier,
-        install_scheduled_promotion_reservation_barrier,
+        install_scheduled_promotion_barrier, install_scheduled_promotion_reservation_barrier,
     },
 };
 use beryl_backend::ManagedBackendClientConnector;
@@ -344,7 +339,7 @@ fn connection_retirement_before_reservation_leaves_the_candidate_queued() {
 }
 
 #[test]
-fn home_generation_recovery_before_reservation_fails_the_obsolete_service_closed() {
+fn home_generation_failure_before_reservation_makes_supervisor_terminally_unavailable() {
     let faults = FaultController::new();
     let slot = SessionSlot::default();
     let directory = tempfile::tempdir().unwrap();
@@ -382,10 +377,6 @@ fn home_generation_recovery_before_reservation_fails_the_obsolete_service_closed
     slot.replace(session);
     server.wait_for_admission();
 
-    let home_id = service.home_id();
-    let initial_home_generation = service.home_generation();
-    let initial_service_generation = service.service_generation();
-    let initial_service_pointer = std::ptr::from_ref::<ProjectionConnectionService>(&*service);
     let barrier = install_scheduled_promotion_reservation_barrier(thread_id);
     service.notify_scheduled_ordinary_execution_ready();
     assert!(
@@ -396,87 +387,18 @@ fn home_generation_recovery_before_reservation_fails_the_obsolete_service_closed
     barrier.release();
     drop(service);
 
-    let recovered = wait_until("supervisor-owned same-home recovery", || {
-        (supervisor.diagnostics().recovery_cycles() == 1)
-            .then(|| supervisor.acquire().ok())
-            .flatten()
+    wait_until("terminal service disposal", || {
+        supervisor.diagnostics().terminal_settled().then_some(())
     });
-    assert_eq!(recovered.home_id(), home_id);
-    assert!(recovered.home_generation() > initial_home_generation);
-    assert!(recovered.service_generation() > initial_service_generation);
-    assert_ne!(
-        std::ptr::from_ref::<ProjectionConnectionService>(&*recovered),
-        initial_service_pointer
-    );
-    assert_eq!(
-        supervisor.diagnostics().current_home_generation(),
-        Some(recovered.home_generation())
-    );
-    assert_eq!(
-        supervisor.diagnostics().current_service_generation(),
-        Some(recovered.service_generation())
-    );
-    let command_home = recovered.live_home_command().unwrap();
-    let recovered_storage = SyndicStorage::reacquire(command_home.home()).unwrap();
     assert!(matches!(
-        accepted_route_state(command_home.home(), recovered_storage, &ids),
-        AcceptedRouteEffectiveState::NextTurn(_)
+        supervisor.acquire(),
+        Err(beryl_app::cas_projection::RunningServiceAvailability::Unavailable)
     ));
-    drop(command_home);
-    wait_until("recovered scheduler unavailable outcome", || {
-        (recovered
-            .accepted_input_scheduler_diagnostics()
-            .next_execution_unavailable()
-            >= 1)
-            .then_some(())
-    });
-    assert!(!recovered.accepted_input_scheduler_diagnostics().fatal());
-    assert!(slot.is_ready());
-
-    drop(recovered);
-    supervisor.shutdown().unwrap();
+    assert!(matches!(
+        supervisor.shutdown(),
+        Err(beryl_app::cas_projection::RunningSessionRecoveryShutdownError::TerminalRecovery)
+    ));
     server.join();
     assert!(!slot.is_ready());
-    drop(directory);
-}
-
-#[test]
-fn preexisting_next_turn_work_is_released_by_phase63_restart_handoff() {
-    let (directory, home, storage, _state) = open_registered_home();
-    let ids = install_next_records(
-        &home,
-        storage,
-        164,
-        execution_binding(RuntimeId::from_bytes([164; 16])),
-    );
-    let service = ProjectionConnectionService::new(
-        home,
-        storage,
-        ProjectionServiceConfig::try_new(128, 8).unwrap(),
-        Box::new(UnavailableProvider),
-    )
-    .unwrap();
-    let before = service.accepted_input_scheduler_diagnostics();
-    assert!(before.recovery_handed_off());
-
-    service.notify_scheduled_ordinary_execution_ready();
-    wait_until("restart-handoff scheduler scan", || {
-        (service
-            .accepted_input_scheduler_diagnostics()
-            .next_source_page_reads()
-            >= 1)
-            .then_some(())
-    });
-    let after = service.accepted_input_scheduler_diagnostics();
-    assert!(after.next_source_page_reads() >= 1);
-    {
-        let command_home = service.live_home_command().unwrap();
-        assert_eq!(
-            accepted_route_state(command_home.home(), storage, &ids),
-            AcceptedRouteEffectiveState::NextTurn(syndic_storage::NextTurnReason::PendingTurn)
-        );
-    }
-
-    service.close().unwrap();
     drop(directory);
 }

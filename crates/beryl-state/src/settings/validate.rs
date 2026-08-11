@@ -1,6 +1,6 @@
 use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, DomainReader};
 
-use super::{SettingKey, SettingsDomain, SettingsValidationError, codec::SettingRecordCodec};
+use super::{codec::SettingRecordCodec, SettingKey, SettingsDomain, SettingsValidationError};
 
 const VALIDATION_PAGE_ITEMS: usize = 128;
 const VALIDATION_PAGE_BYTES: usize = 8 * 1024 * 1024;

@@ -3,6 +3,7 @@ use super::*;
 pub(super) enum LifecycleContentFailure {
     DefinitivePreparation,
     Home,
+    Command(ContextCompactionError),
 }
 
 impl ContextCompactionCoordinator {
@@ -40,10 +41,10 @@ impl ContextCompactionCoordinator {
             event,
             observed_at,
         );
-        let _ = self.home.execute_current(
+        require_committed_command(self.home.execute_current(
             self.storage
                 .current_publish_compaction_provider_event(request),
-        );
+        ))?;
         let after = self.read_operation(authority.operation_id())?;
         if after.provider_frontier() != Some(sequence) {
             return Err(ContextCompactionError::Storage);
@@ -117,12 +118,19 @@ impl ContextCompactionCoordinator {
                         .lock()
                         .map_err(|_| ContextCompactionError::Unavailable)?;
                     self.cancel_lifecycle_intent(local);
-                    self.execute_manual_settlement(operation, CompactionSettlement::ManualSuccess);
+                    self.execute_manual_settlement(
+                        operation,
+                        CompactionSettlement::ManualSuccess,
+                    )?;
                     return self.finish_settlement(local, successful);
                 }
                 Err(LifecycleContentFailure::Home) => {
                     self.cancel_lifecycle_intent(local);
                     return Err(ContextCompactionError::Storage);
+                }
+                Err(LifecycleContentFailure::Command(error)) => {
+                    self.cancel_lifecycle_intent(local);
+                    return Err(error);
                 }
             };
             #[cfg(feature = "test-faults")]
@@ -153,13 +161,14 @@ impl ContextCompactionCoordinator {
                     .is_some_and(|outcome| outcome == crate::LifecycleYieldOutcome::PhaseContinue)
             };
             if phase_continue {
-                let _ =
+                require_committed_command(
                     self.home
                         .execute_current(self.storage.current_settle_lifecycle_compaction(
                             SettleLifecycleCompaction::new(operation, content, settled_at),
-                        ));
+                        )),
+                )?;
             } else {
-                self.execute_manual_settlement(operation, CompactionSettlement::ManualSuccess);
+                self.execute_manual_settlement(operation, CompactionSettlement::ManualSuccess)?;
             }
         } else {
             let settlement = match (local.origin, successful) {
@@ -169,7 +178,7 @@ impl ContextCompactionCoordinator {
                 }
                 (CompactionOrigin::Lifecycle { .. }, true) => unreachable!(),
             };
-            self.execute_manual_settlement(operation, settlement);
+            self.execute_manual_settlement(operation, settlement)?;
         }
         self.finish_settlement(local, successful)
     }
@@ -178,12 +187,13 @@ impl ContextCompactionCoordinator {
         &self,
         operation: &CompactionOperationRecord,
         settlement: CompactionSettlement,
-    ) {
-        let _ = self
-            .home
-            .execute_current(self.storage.current_settle_compaction_operation(
+    ) -> Result<(), ContextCompactionError> {
+        require_committed_command(
+            self.home
+                .execute_current(self.storage.current_settle_compaction_operation(
                 SettleCompactionOperation::new(operation.id(), operation.revision(), settlement),
-            ));
+            )),
+        )
     }
 
     fn finish_settlement(
@@ -227,10 +237,11 @@ impl ContextCompactionCoordinator {
                 .content_manifest(&self.home, prepared.id(), point_limit())
                 .map_err(|_| LifecycleContentFailure::Home)?;
             let Some(manifest) = manifest else {
-                let _ = self.execute_content_contribution(|revision| {
+                self.execute_content_contribution(|revision| {
                     self.storage
                         .begin_content(revision, ContentBuild::from_prepared(&prepared))
-                });
+                })
+                .map_err(LifecycleContentFailure::Command)?;
                 continue;
             };
             if manifest.lifecycle() == ContentLifecycle::Sealed {
@@ -246,16 +257,18 @@ impl ContextCompactionCoordinator {
             let append = ContentAppend::prepare(&manifest, &prepared)
                 .map_err(|_| LifecycleContentFailure::Home)?;
             if let Some(append) = append {
-                let _ = self.execute_content_contribution(|revision| {
+                self.execute_content_contribution(|revision| {
                     self.storage.append_content(revision, append)
-                });
+                })
+                .map_err(LifecycleContentFailure::Command)?;
                 continue;
             }
-            let _ = self.home.execute_current(
+            require_committed_command(self.home.execute_current(
                 self.storage.current_seal_lifecycle_continuation_content(
                     SealLifecycleContinuationContent::new(manifest),
                 ),
-            );
+            ))
+            .map_err(LifecycleContentFailure::Command)?;
         }
         Err(LifecycleContentFailure::Home)
     }
@@ -276,10 +289,7 @@ impl ContextCompactionCoordinator {
         command
             .add(contribution(domain_revision))
             .map_err(|_| ContextCompactionError::Storage)?;
-        self.home
-            .execute(command)
-            .map_err(|_| ContextCompactionError::Storage)?;
-        Ok(())
+        require_committed_command(self.home.execute(command))
     }
 
     pub(super) fn cancel_lifecycle_intent(&self, local: &LocalCompaction) {
@@ -332,10 +342,10 @@ impl ContextCompactionCoordinator {
             local.attempt,
             disposition,
         );
-        let _ = self.home.execute_current(
+        require_committed_command(self.home.execute_current(
             self.storage
                 .current_publish_compaction_request_disposition(request),
-        );
+        ))?;
         let status = self
             .storage
             .compaction_request_disposition_status(&self.home, &request, point_limit())
@@ -359,11 +369,12 @@ impl ContextCompactionCoordinator {
             .lock()
             .map_err(|_| ContextCompactionError::AuthorityMismatch)?;
         let before = self.read_operation(local.operation_id)?;
-        let _ = self
-            .home
-            .execute_current(self.storage.current_settle_compaction_operation(
+        require_committed_command(
+            self.home
+                .execute_current(self.storage.current_settle_compaction_operation(
                 SettleCompactionOperation::new(local.operation_id, before.revision(), settlement),
-            ));
+            )),
+        )?;
         let after = self.read_operation(local.operation_id)?;
         if !matches!(after.state(), CompactionOperationState::Consumed(_)) {
             return Err(ContextCompactionError::Storage);
@@ -385,15 +396,16 @@ impl ContextCompactionCoordinator {
         if matches!(before.state(), CompactionOperationState::Consumed(_)) {
             return Ok(());
         }
-        let _ = self
-            .home
-            .execute_current(self.storage.current_abandon_compaction_operation(
+        require_committed_command(
+            self.home
+                .execute_current(self.storage.current_abandon_compaction_operation(
                 syndic_storage::AbandonCompactionOperation::new(
                     local.operation_id,
                     before.revision(),
                     reason,
                 ),
-            ));
+            )),
+        )?;
         let after = self.read_operation(local.operation_id)?;
         if !matches!(after.state(), CompactionOperationState::Consumed(_)) {
             return Err(ContextCompactionError::Storage);

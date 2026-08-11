@@ -1,5 +1,5 @@
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
@@ -34,7 +34,13 @@ fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStor
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean archive fixture command, got {outcome:?}"),
+    }
 }
 
 fn job(store: &HomeStore, state: BerylState, job_id: JobId) -> beryl_state::BranchHandoffJobRecord {
@@ -156,9 +162,13 @@ fn durable_job_success_and_intrinsic_archive_publish_atomically() {
     let syndic = SyndicStorage::register(&mut store).unwrap();
     let job_id = prepare_parent_active_job(&store, state, syndic);
 
-    store
-        .execute(terminal_command(&store, state, syndic, job_id))
-        .unwrap();
+    match store.execute(terminal_command(&store, state, syndic, job_id)) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean terminal archive command, got {outcome:?}"),
+    }
     assert_eq!(
         job(&store, state, job_id).lifecycle(),
         BranchHandoffJobLifecycle::Succeeded
@@ -188,11 +198,10 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
     let job_id = prepare_parent_active_job(&store, state, syndic);
 
     faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(
-        store
-            .execute(terminal_command(&store, state, syndic, job_id))
-            .is_err()
-    );
+    match store.execute(terminal_command(&store, state, syndic, job_id)) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected pre-commit archive fault, got {outcome:?}"),
+    }
     store.verify_health().unwrap();
     assert_eq!(
         job(&store, state, job_id).lifecycle(),

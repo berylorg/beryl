@@ -7,6 +7,14 @@ impl DomainMutation<SyndicDomain> for ClaimMutation {
         self.successor(reader).map(|_| ())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CompactionOperationsCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, SyndicDomain>,
@@ -40,6 +48,14 @@ impl DomainMutation<SyndicDomain> for RequestMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.successor(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CompactionOperationsCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -87,6 +103,19 @@ impl DomainMutation<SyndicDomain> for ProviderMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CompactionOperationsCodec>(1)?;
+        reservation.reserve_records::<TurnStatesCodec>(1)?;
+        reservation.reserve_records::<ActiveCasTurnsCodec>(1)?;
+        reservation.reserve_records::<CasTurnIndexCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reservation.reserve_records::<StopOperationsCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

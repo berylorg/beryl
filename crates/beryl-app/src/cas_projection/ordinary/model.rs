@@ -8,9 +8,7 @@ use thiserror::Error;
 use super::OrdinaryTurnExecutionError;
 #[cfg(feature = "test-faults")]
 use crate::cas_projection::input_replay::OrdinaryInputReplayDiagnostics;
-use crate::cas_projection::{
-    LiveEventTargetCloseReason, LoadedCasProjection, SameNativeReacquisitionAnchor,
-};
+use crate::cas_projection::{LiveEventTargetCloseReason, LoadedCasProjection};
 use crate::{
     BranchDiscussionResolutionRequest, BranchDiscussionResolutionRequestHandler,
     LifecycleYieldRequest, LifecycleYieldRequestHandler,
@@ -202,13 +200,6 @@ pub enum OrdinaryTurnExecutionOutcome {
     },
     /// Exact terminal history handed its valid projection to ownerless lifecycle compaction.
     LifecycleContinuationScheduled {
-        status: TurnEndStatus,
-    },
-    /// Provider terminal fact was durable, but the capture session must be replaced before reuse.
-    ReacquisitionRequired {
-        /// Sole non-execution subscription anchor for an exact fresh-connection handoff.
-        anchor: Box<SameNativeReacquisitionAnchor>,
-        /// Exact provider terminal outcome retained independently of history completeness.
         status: TurnEndStatus,
     },
     Incomplete {

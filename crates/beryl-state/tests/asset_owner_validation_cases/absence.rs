@@ -27,7 +27,13 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
         .unwrap()
         .add(probe.contribution(probe_before, PutProbe { key: 1, value: 9 }))
         .unwrap();
-    let receipt = store.execute(command).unwrap();
+    let receipt = match store.execute(command) {
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => receipt,
+        outcome => panic!("expected committed absent-owner command, got {outcome:?}"),
+    };
 
     assert_eq!(state.assets().revision(&store).unwrap(), assets_before);
     assert_eq!(
@@ -61,20 +67,16 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
         reopened_state.assets().revision(&reopened).unwrap(),
         assets_before
     );
-    assert!(
-        reopened_state
-            .assets()
-            .owner_head(&reopened, source)
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        reopened_state
-            .assets()
-            .owner_head(&reopened, destination)
-            .unwrap()
-            .is_none()
-    );
+    assert!(reopened_state
+        .assets()
+        .owner_head(&reopened, source)
+        .unwrap()
+        .is_none());
+    assert!(reopened_state
+        .assets()
+        .owner_head(&reopened, destination)
+        .unwrap()
+        .is_none());
     assert_eq!(
         reopened
             .read_point::<ProbeDomain, ProbeRecord>(

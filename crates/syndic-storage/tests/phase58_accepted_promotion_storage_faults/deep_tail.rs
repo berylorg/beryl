@@ -205,7 +205,12 @@ fn promotion_after_a_deep_tail_derives_child_digest_depth_and_deterministic_skip
         SyndicTurnId::from_bytes([162; 16]),
         SyndicItemId::from_bytes([163; 16]),
     );
-    execute_promotion(&store, storage, request.clone()).unwrap();
+    match execute_promotion(&store, storage, request.clone()) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected deep-tail promotion to commit without later failure, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .accepted_input_promotion_status(&store, &request, limit())
@@ -263,7 +268,12 @@ fn reconciliation_rejects_a_deep_successor_with_a_malformed_ancestor_skip() {
         SyndicTurnId::from_bytes([164; 16]),
         SyndicItemId::from_bytes([165; 16]),
     );
-    execute_promotion(&store, storage, request.clone()).unwrap();
+    match execute_promotion(&store, storage, request.clone()) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected deep-tail promotion to commit without later failure, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .accepted_input_promotion_status(&store, &request, limit())

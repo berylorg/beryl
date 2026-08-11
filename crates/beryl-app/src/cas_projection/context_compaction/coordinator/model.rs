@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use beryl_home_store::{CommandError, CommitReceipt, ReconciliationDescriptor};
 use beryl_model::SyndicThreadId;
 use syndic_storage::CompactionAdmissionIneligibility;
 use thiserror::Error;
@@ -65,6 +66,20 @@ pub enum ContextCompactionError {
     Ineligible(CompactionAdmissionIneligibility),
     #[error("the context-compaction durable transition failed")]
     Storage,
+    #[error("context-compaction transition was proven not committed: {0}")]
+    CommandNotCommitted(#[source] CommandError),
+    #[error("context-compaction transition committed before a later failure: {later_failure}")]
+    CommandCommitted {
+        receipt: CommitReceipt,
+        #[source]
+        later_failure: CommandError,
+    },
+    #[error("context-compaction transition has an indeterminate durable outcome: {failure}")]
+    CommandIndeterminate {
+        #[source]
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
     #[error("the context-compaction driver is unavailable")]
     Driver,
 }

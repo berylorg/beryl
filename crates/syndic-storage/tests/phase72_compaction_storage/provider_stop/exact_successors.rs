@@ -1,3 +1,5 @@
+use beryl_home_store::CommandOutcome;
+
 use super::*;
 
 fn safely_reopen(
@@ -11,14 +13,19 @@ fn safely_reopen(
         fixture.gate().revision(),
         current.revision(),
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_safely_reopen_stop_operation(request.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean provider safe-reopen, got {outcome:?}"),
+    }
     request
 }
 

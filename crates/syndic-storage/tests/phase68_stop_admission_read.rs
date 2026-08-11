@@ -11,6 +11,7 @@ mod stop_support;
 
 use std::{thread, time::Duration};
 
+use beryl_home_store::CommandOutcome;
 use beryl_model::{SyndicDraftId, SyndicItemId, SyndicThreadId};
 use syndic_storage::{
     BeginAcceptedInputDelivery, ClaimStopDispatch, CompactionOperationNonce, CreateThread,
@@ -64,14 +65,19 @@ fn empty_active_route_returns_an_exact_safe_admission_source() {
     );
     assert_eq!(request.operation_id().thread_id(), fixture.thread);
     assert_eq!(request.target(), &fixture.target);
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_admit_stop_operation(request.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stop admission, got {outcome:?}"),
+    }
 
     let StopAdmissionRead::Stopping(live) = fixture
         .storage
@@ -110,7 +116,7 @@ fn path_neutral_accepted_input_advance_returns_the_current_gate_and_route() {
         current.selected_route().unwrap()
     );
 
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
@@ -119,8 +125,13 @@ fn path_neutral_accepted_input_advance_returns_the_current_gate_and_route() {
                     StopOperationNonce::from_bytes([0x6a; 16]),
                     StopCauseSet::from(StopCause::DiagnosticControl),
                 )),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean path-neutral stop admission, got {outcome:?}"),
+    }
 }
 
 #[test]
@@ -132,7 +143,7 @@ fn a_delivering_steering_leaf_is_typed_ineligible() {
         .ready_steering_input(&fixture.store, admitted.accepted_input_id(), point_limit())
         .unwrap()
         .unwrap();
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_begin_accepted_input_delivery(
             BeginAcceptedInputDelivery::new(
@@ -141,8 +152,13 @@ fn a_delivering_steering_leaf_is_typed_ineligible() {
                 ready.accepted_input_revision(),
                 ready.target().clone(),
             ),
-        ))
-        .unwrap();
+        )) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean steering-delivery start, got {outcome:?}"),
+    }
     let gate = fixture.gate();
 
     assert!(matches!(
@@ -179,10 +195,16 @@ fn admitted_joined_and_claimed_stops_return_one_shared_live_authority() {
         admitted.stop_revision(),
         StopCause::HealthyHomeWindowClose,
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_join_stop_cause(join))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stop-cause join, got {outcome:?}"),
+    }
 
     let StopAdmissionRead::Stopping(joined) = fixture
         .storage
@@ -205,10 +227,16 @@ fn admitted_joined_and_claimed_stops_return_one_shared_live_authority() {
         joined.stop_revision(),
         attempt,
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_claim_stop_dispatch(claim))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stop-dispatch claim, got {outcome:?}"),
+    }
 
     let StopAdmissionRead::Stopping(claimed) = fixture
         .storage
@@ -322,10 +350,16 @@ fn awaiting_terminal_is_typed_ineligible_without_stop_authority() {
         timestamp(5),
     )
     .unwrap();
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_admit_live_source_event(event))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean unknown-terminal admission, got {outcome:?}"),
+    }
     let awaiting = fixture.gate();
 
     assert!(matches!(
@@ -405,10 +439,16 @@ fn a_stale_binding_successor_is_typed_ineligible() {
     let abandonment = active
         .generic_abandonment("phase68 deliberate target loss", active.minimum_timestamp())
         .unwrap();
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_abandon_active_binding(abandonment))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean active-binding abandonment, got {outcome:?}"),
+    }
     let gate = fixture.gate();
     assert!(matches!(
         fixture
@@ -465,10 +505,16 @@ fn a_stop_revision_change_between_complete_passes_is_concurrent_change() {
                 .stop_admission_read(&fixture.store, fixture.thread, point_limit())
         });
         assert!(blocks[32].wait_until_reached(Duration::from_secs(10)));
-        fixture
+        match fixture
             .store
             .execute_current(fixture.storage.current_join_stop_cause(join))
-            .unwrap();
+        {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean concurrent stop-cause join, got {outcome:?}"),
+        }
         blocks[32].release();
         reader.join().unwrap()
     });
@@ -530,10 +576,16 @@ fn matching_terminal_consumption_during_the_second_pass_is_concurrent_change() {
                 .stop_admission_read(&fixture.store, fixture.thread, point_limit())
         });
         assert!(blocks[32].wait_until_reached(Duration::from_secs(10)));
-        fixture
+        match fixture
             .store
             .execute_current(fixture.storage.current_admit_live_source_event(event))
-            .unwrap();
+        {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean concurrent terminal admission, got {outcome:?}"),
+        }
         blocks[32].release();
         reader.join().unwrap()
     });
@@ -696,7 +748,7 @@ fn a_missing_stopped_next_route_source_is_an_invariant_failure() {
     else {
         panic!("ready route must remain admissible")
     };
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
@@ -705,8 +757,13 @@ fn a_missing_stopped_next_route_source_is_an_invariant_failure() {
                     StopOperationNonce::from_bytes([0x74; 16]),
                     StopCauseSet::from(StopCause::SelectedOperationControl),
                 )),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean missing-next-source stop admission, got {outcome:?}"),
+    }
     let selected = fixture.gate().selected_route().unwrap();
     delete_fixture(
         &fixture.store,

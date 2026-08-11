@@ -1,3 +1,4 @@
+use beryl_home_store::CommandOutcome;
 use beryl_model::{AcceptedInputRevision, CasTurnId, InputGateRevision};
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
@@ -142,9 +143,12 @@ fn assert_witness_corruption_rejected(name: &str, corruption: WitnessCorruption)
         AcceptedInputRevision::new(1).unwrap(),
         AcceptedOperation::Begin.target(),
     );
-    store
-        .execute_current(storage.current_begin_accepted_input_delivery(request.clone()))
-        .unwrap();
+    match store.execute_current(storage.current_begin_accepted_input_delivery(request.clone())) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected delivery begin to commit without later failure, got {outcome:?}"),
+    }
     let gate = storage
         .input_gate(&store, id(40), limit())
         .unwrap()
@@ -258,16 +262,18 @@ fn target_and_leaf_revision_drift_classify_collision() {
             AcceptedInputDeliveryTransitionStatus::Collision
         );
     }
-    assert!(
-        store
-            .execute_current(storage.current_begin_accepted_input_delivery(wrong_target))
-            .is_err()
-    );
+    match store.execute_current(storage.current_begin_accepted_input_delivery(wrong_target)) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected definitive target-drift rejection, got {outcome:?}"),
+    }
 
     let abandonment = abandonment_request(&store, storage);
-    store
-        .execute_current(storage.current_abandon_active_binding(abandonment))
-        .unwrap();
+    match store.execute_current(storage.current_abandon_active_binding(abandonment)) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected binding abandonment to commit without later failure, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .begin_accepted_input_delivery_status(&store, &exact_prior, limit())
@@ -297,9 +303,12 @@ fn same_stable_intent_survives_unrelated_aggregate_advancement() {
         AcceptedInputRevision::new(1).unwrap(),
         AcceptedOperation::Begin.target(),
     );
-    store
-        .execute_current(storage.current_begin_accepted_input_delivery(unrelated))
-        .unwrap();
+    match store.execute_current(storage.current_begin_accepted_input_delivery(unrelated)) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected unrelated delivery begin to commit without later failure, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .begin_accepted_input_delivery_status(&store, &request_a, limit())
@@ -314,9 +323,12 @@ fn same_stable_intent_survives_unrelated_aggregate_advancement() {
         AcceptedInputRevision::new(2).unwrap(),
         AcceptedOperation::Begin.target(),
     );
-    store
-        .execute_current(storage.current_begin_accepted_input_delivery(request_b.clone()))
-        .unwrap();
+    match store.execute_current(storage.current_begin_accepted_input_delivery(request_b.clone())) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected compatible delivery begin to commit without later failure, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .begin_accepted_input_delivery_status(&store, &request_b, limit())
@@ -346,18 +358,24 @@ fn exact_leaf_witness_survives_unrelated_later_route_and_gate_work() {
         AcceptedInputRevision::new(2).unwrap(),
         AcceptedOperation::Begin.target(),
     );
-    store
-        .execute_current(storage.current_begin_accepted_input_delivery(claimed.clone()))
-        .unwrap();
+    match store.execute_current(storage.current_begin_accepted_input_delivery(claimed.clone())) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected claimed delivery begin to commit without later failure, got {outcome:?}"),
+    }
     let unrelated_retry = RetryAcceptedInputDelivery::new(
         id(40),
         delivering_input(),
         AcceptedInputRevision::new(2).unwrap(),
         AcceptedOperation::Retry.target(),
     );
-    store
-        .execute_current(storage.current_retry_accepted_input_delivery(unrelated_retry))
-        .unwrap();
+    match store.execute_current(storage.current_retry_accepted_input_delivery(unrelated_retry)) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected unrelated delivery retry to commit without later failure, got {outcome:?}"),
+    }
 
     assert_eq!(
         storage

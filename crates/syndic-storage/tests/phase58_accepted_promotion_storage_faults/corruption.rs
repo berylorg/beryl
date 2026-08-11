@@ -10,7 +10,12 @@ fn reopen_rejects_a_promoted_leaf_whose_successor_witness_was_removed() {
         SyndicTurnId::from_bytes([150; 16]),
         SyndicItemId::from_bytes([151; 16]),
     );
-    execute_promotion(&store, storage, request).unwrap();
+    match execute_promotion(&store, storage, request) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
+    }
     store.validate_registered_domains().unwrap();
 
     let initial_generation = fixture

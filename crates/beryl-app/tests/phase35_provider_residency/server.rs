@@ -11,7 +11,7 @@ use super::generator::{
     write_observation, write_prefix,
 };
 
-use beryl_backend::{BackendWebSocketEndpoint, CompatibilityProbe};
+use beryl_backend::BackendWebSocketEndpoint;
 use serde_json::Value;
 use tungstenite::{Message, WebSocket, accept_hdr};
 
@@ -248,24 +248,15 @@ fn complete_admission(socket: &mut WebSocket<TcpStream>) {
     let initialized = read_json(socket).unwrap();
     assert_eq!(initialized["method"], "initialized");
 
-    for probe in CompatibilityProbe::ALL {
-        let request = read_json(socket).unwrap();
-        assert_eq!(request["method"], probe.method());
-        let id = request["id"].as_u64().unwrap();
-        let response = match probe {
-            CompatibilityProbe::ConfigRead => format!(
-                r#"{{"id":{id},"result":{{"config":{{"model":"gpt-5.6","model_reasoning_effort":"high","features":{{"multi_agent_v2":{{"enabled":true,"expose_spawn_agent_model_overrides":true}}}}}},"origins":{{"features.multi_agent_v2.enabled":{{"name":{{"type":"sessionFlags"}},"version":"0"}},"features.multi_agent_v2.expose_spawn_agent_model_overrides":{{"name":{{"type":"sessionFlags"}},"version":"0"}}}}}}}}"#,
-            ),
-            CompatibilityProbe::ModelList => {
-                format!(r#"{{"id":{id},"result":{{"data":[],"nextCursor":null}}}}"#)
-            }
-            CompatibilityProbe::ThreadUnsubscribe => {
-                format!(r#"{{"id":{id},"result":{{"status":"notLoaded"}}}}"#)
-            }
-            _ => format!(r#"{{"error":{{"code":-32600,"message":"recognized"}},"id":{id}}}"#,),
-        };
-        send_json(socket, &response);
-    }
+    let request = read_json(socket).unwrap();
+    assert_eq!(request["method"], "config/read");
+    let id = request["id"].as_u64().unwrap();
+    send_json(
+        socket,
+        &format!(
+            r#"{{"id":{id},"result":{{"config":{{"model":"gpt-5.6","model_reasoning_effort":"high","features":{{"multi_agent_v2":{{"enabled":true,"expose_spawn_agent_model_overrides":true}}}}}},"origins":{{"features.multi_agent_v2.enabled":{{"name":{{"type":"sessionFlags"}},"version":"0"}},"features.multi_agent_v2.expose_spawn_agent_model_overrides":{{"name":{{"type":"sessionFlags"}},"version":"0"}}}}}}}}"#
+        ),
+    );
 }
 
 fn complete_projection(socket: &mut WebSocket<TcpStream>) {

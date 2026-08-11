@@ -3,13 +3,13 @@
 use std::{error::Error, fmt, io, num::NonZeroU64};
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HealthVerificationError,
     HomeCommand, HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
     KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit, RecordCodec,
     RecordFamily, RecordVersion, SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError,
     SidecarNamespace, SidecarVerifier, StorageDomain,
-    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
@@ -152,6 +152,16 @@ impl DomainMutation<ReferenceDomain> for PutReference {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, ReferenceDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation
+            .reserve_records::<ReferenceRecord>(1)
+            .map_err(ReferenceError::Build)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, ReferenceDomain>,
@@ -206,22 +216,27 @@ fn reopen_validator_accepts_a_durable_referenced_sidecar() {
     let address = sidecar.address().clone();
     let mut command = put_reference(&store, domain, address);
     command.require_sidecar(sidecar).unwrap();
-    store.execute(command).unwrap();
+    assert!(matches!(
+        store.execute(command),
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
 
     faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(
-        store
-            .execute(put_reference(
-                &store,
-                domain,
-                SidecarAddress::new(
-                    SidecarNamespace::new("images").unwrap(),
-                    SidecarDigest::from_bytes([1; 32]),
-                    1,
-                ),
-            ))
-            .is_err()
-    );
+    assert!(matches!(
+        store.execute(put_reference(
+            &store,
+            domain,
+            SidecarAddress::new(
+                SidecarNamespace::new("images").unwrap(),
+                SidecarDigest::from_bytes([1; 32]),
+                1,
+            ),
+        )),
+        beryl_home_store::CommandOutcome::NotCommitted { .. }
+    ));
     store.verify_health().unwrap();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 }
@@ -237,16 +252,19 @@ fn missing_referenced_sidecar_fails_verification_and_same_home_reopen() {
         SidecarDigest::from_bytes([9; 32]),
         10,
     );
-    store
-        .execute(put_reference(&store, domain, missing.clone()))
-        .unwrap();
+    assert!(matches!(
+        store.execute(put_reference(&store, domain, missing.clone())),
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
 
     faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(
-        store
-            .execute(put_reference(&store, domain, missing))
-            .is_err()
-    );
+    assert!(matches!(
+        store.execute(put_reference(&store, domain, missing)),
+        beryl_home_store::CommandOutcome::NotCommitted { .. }
+    ));
     assert!(matches!(
         store.verify_health(),
         Err(HealthVerificationError::DomainValidation(
@@ -280,9 +298,13 @@ fn existing_domain_registration_runs_its_sidecar_reopen_validator() {
         SidecarDigest::from_bytes([7; 32]),
         10,
     );
-    store
-        .execute(put_reference(&store, domain, missing))
-        .unwrap();
+    assert!(matches!(
+        store.execute(put_reference(&store, domain, missing)),
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
     store.close().unwrap();
 
     let mut reopened = open(directory.path(), faults);

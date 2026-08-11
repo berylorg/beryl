@@ -31,8 +31,7 @@ fn admit_next_turn_input(
     execute(
         store,
         storage.admit_accepted_input(storage.revision(store).unwrap(), admission),
-    )
-    .unwrap();
+    );
 }
 
 #[test]
@@ -97,8 +96,7 @@ fn consecutive_empty_active_epochs_allocate_distinct_generations() {
                 timestamp(8),
             ),
         ),
-    )
-    .unwrap();
+    );
     let gate = storage
         .input_gate(&store, thread, point_limit())
         .unwrap()
@@ -191,8 +189,7 @@ fn unselected_next_turn_generations_and_later_activation_share_one_allocator() {
                 timestamp(6),
             ),
         ),
-    )
-    .unwrap();
+    );
 
     let gate = storage
         .input_gate(&store, thread, point_limit())
@@ -259,7 +256,7 @@ fn route_generation_exhaustion_rejects_without_overwrite() {
             CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap(),
         ),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.activate_binding(
             storage.revision(&store).unwrap(),
@@ -274,8 +271,7 @@ fn route_generation_exhaustion_rejects_without_overwrite() {
                 timestamp(6),
             ),
         ),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::Value(SyndicValueError::OrdinalExhausted {

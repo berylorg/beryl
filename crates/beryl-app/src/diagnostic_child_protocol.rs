@@ -20,7 +20,6 @@ pub(crate) const READ_UI_STATE_COMMAND: &str = "read_ui_state";
 pub(crate) const CREATE_NEW_THREAD_COMMAND: &str = "create_new_thread";
 pub(crate) const START_TURN_COMMAND: &str = "start_turn";
 pub(crate) const SOFT_STOP_TURN_COMMAND: &str = "soft_stop_turn";
-pub(crate) const HARD_STOP_TURN_COMMAND: &str = "hard_stop_turn";
 pub(crate) const SWITCH_THREAD_COMMAND: &str = "switch_thread";
 pub(crate) const SCROLL_TRANSCRIPT_COMMAND: &str = "scroll_transcript";
 pub(crate) const CLOSE_POPUPS_COMMAND: &str = "close_popups";
@@ -53,7 +52,6 @@ pub(crate) enum DiagnosticChildCommand {
     CreateNewThread,
     StartTurn,
     SoftStopTurn,
-    HardStopTurn,
     SwitchThread,
     ScrollTranscript,
     ClosePopups,
@@ -139,7 +137,6 @@ impl DiagnosticChildCommand {
             Self::CreateNewThread => CREATE_NEW_THREAD_COMMAND,
             Self::StartTurn => START_TURN_COMMAND,
             Self::SoftStopTurn => SOFT_STOP_TURN_COMMAND,
-            Self::HardStopTurn => HARD_STOP_TURN_COMMAND,
             Self::SwitchThread => SWITCH_THREAD_COMMAND,
             Self::ScrollTranscript => SCROLL_TRANSCRIPT_COMMAND,
             Self::ClosePopups => CLOSE_POPUPS_COMMAND,
@@ -166,7 +163,6 @@ impl TryFrom<&str> for DiagnosticChildCommand {
             CREATE_NEW_THREAD_COMMAND => Ok(Self::CreateNewThread),
             START_TURN_COMMAND => Ok(Self::StartTurn),
             SOFT_STOP_TURN_COMMAND => Ok(Self::SoftStopTurn),
-            HARD_STOP_TURN_COMMAND => Ok(Self::HardStopTurn),
             SWITCH_THREAD_COMMAND => Ok(Self::SwitchThread),
             SCROLL_TRANSCRIPT_COMMAND => Ok(Self::ScrollTranscript),
             CLOSE_POPUPS_COMMAND => Ok(Self::ClosePopups),

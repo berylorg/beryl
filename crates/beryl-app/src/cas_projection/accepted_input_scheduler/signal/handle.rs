@@ -100,34 +100,6 @@ impl AcceptedInputSchedulerSignal {
         self.inner.changed.notify_one();
     }
 
-    pub(in crate::cas_projection) fn record_recovered_projection_stage(&self, count: usize) {
-        self.update_diagnostics(|diagnostics| {
-            diagnostics.recovered_projection_staged = u64::try_from(count).unwrap_or(u64::MAX);
-            diagnostics.recovered_projection_retained = count;
-            diagnostics.recovered_projection_high_water = count;
-        });
-    }
-
-    pub(in super::super) fn record_recovered_projection_dequeued(&self, count: usize) {
-        self.update_diagnostics(|diagnostics| {
-            diagnostics.recovered_projection_retained = diagnostics
-                .recovered_projection_retained
-                .saturating_sub(count);
-        });
-    }
-
-    pub(in super::super) fn record_recovered_projection_requeued(&self) {
-        self.update_diagnostics(|diagnostics| {
-            diagnostics.recovered_projection_retained =
-                diagnostics.recovered_projection_retained.saturating_add(1);
-            diagnostics.recovered_projection_high_water = diagnostics
-                .recovered_projection_high_water
-                .max(diagnostics.recovered_projection_retained);
-            diagnostics.recovered_projection_requeues =
-                diagnostics.recovered_projection_requeues.saturating_add(1);
-        });
-    }
-
     pub(in crate::cas_projection) fn request_shutdown(&self) {
         let mut state = self
             .inner

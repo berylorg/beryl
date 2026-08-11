@@ -30,7 +30,7 @@ fn idle_and_accepted_admission_validate_exact_owner_absence() {
         submission,
     )
     .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("expected committed marker setup: {evidence:?}"), outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate marker setup: {outcome:?}"), }
     assert!(
         fixture
             .state
@@ -143,7 +143,12 @@ fn admission_rejects_either_stray_owner_head_atomically() {
             submission,
         )
         .unwrap();
-        assert!(fixture.store.execute(command).is_err());
+        match fixture.store.execute(command) {
+            beryl_home_store::CommandOutcome::NotCommitted { evidence } => assert!(matches!(evidence, beryl_home_store::CommandError::ContributorValidation { .. })),
+            beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => panic!("expected rejected marker-free submission, got committed"),
+            outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected rejected marker-free submission, later failure: {outcome:?}"),
+            outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("expected rejected marker-free submission, indeterminate: {outcome:?}"),
+        }
         assert!(
             fixture
                 .syndic

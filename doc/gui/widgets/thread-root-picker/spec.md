@@ -13,6 +13,7 @@ Presents one reusable anchored flyout shell for searching and selecting Beryl th
 Contracts:
 
 - expected-action-availability
+- scroll-ownership
 
 Widgets:
 
@@ -58,11 +59,19 @@ The active theme may replace all color, typography, border, shadow, and metric f
 
 # States
 
-The widget supports closed, open, clamped, loading, ready, searching, empty, collection-transition, no-selection, selection-pending, commit-pending, and commit-failed states.
+The widget supports closed, open, clamped, loading, ready, searching, empty, collection-transition,
+collection-failed, page-failed, navigation-target-pending, retry-pending, no-selection,
+selection-pending, commit-pending, and commit-failed states.
 
 Collection rows support normal, hover, focused, selected, current, unavailable, and activation-pending states. Runtime rows additionally support active-scope and readonly-scope states.
 
 Loading preserves the complete flyout anatomy and replaces only the unavailable collection or registry body with its bounded loading presentation. Empty search results remain inside the primary collection viewport.
+
+Initial collection failure uses a bounded owner-supplied failure presentation inside the collection
+body rather than an empty result. Page failure preserves the last coherent resident rows, count,
+focus, selection, and scroll position and marks only the failed range unavailable. An optional
+owner-supplied Retry command remains in that same bounded feedback presentation; the widget owns its
+disabled/loading mechanics, while retry eligibility and effect remain with the feature.
 
 Selection and keyboard focus are separate states. Focus movement never implies selection or activation.
 
@@ -74,7 +83,14 @@ Opening the picker establishes one owning trigger. Dismissal returns focus to th
 
 The owning feature chooses whether initial focus enters the search field or a collection row according to the invocation path. The widget then owns focus traversal among its visible header command, search field, collection rows and row commands, runtime rows and commands, Add runtime command, and optional footer command.
 
-Up and Down move focus between enabled rows in the currently focused collection. Home and End move to the first and last eligible row. Page Up and Page Down move by one visible collection page while preserving a valid focused row. Enter activates the focused row or focused command; Space activates focused command buttons.
+When a collection row root has focus, Up and Down move through the collection's stable logical row
+order, including visible unavailable rows. Home and End target the first and last logical row of the
+complete current collection rather than the resident range. Page Up and Page Down move by one visible
+collection page while preserving a valid focused row. Enter activates an available focused row or
+focused command; Space activates available focused command buttons. These row-navigation bindings
+do not replace ordinary text-editing bindings while the search field has focus.
+
+Every visible unavailable selector row remains focusable so hover or focus can expose its owner-supplied disabled-reason tooltip. It never activates through pointer, keyboard, touch, or programmatic acceptance. Plain section headings and genuinely absent rows are outside row traversal because they are not represented selector rows.
 
 Tab and Shift+Tab move through the flyout's focusable regions without moving collection selection. Pointer activation targets the exact row or command under the pointer.
 
@@ -96,6 +112,28 @@ preserves the last coherent focus and scroll state while that page is pending. H
 Page Down, selected-row reveal, and scrollbar movement do not cause eager construction of
 intervening rows.
 
+Every query or page request settles as success, failure, cancellation, or obsolescence for its exact
+collection key, query revision, range, and request identity. Matching failure clears that request's
+pending state, preserves the last coherent collection presentation, and exposes the bounded failure
+feedback above. A navigation-target failure also clears the pending target without moving focus.
+Retry repeats only the owner-named failed request; while pending it remains visible and disabled and
+cannot enqueue a duplicate. A changed collection or query makes old success and failure results
+obsolete. The widget never chooses whether a failed request is retryable.
+
+Before a Home or End target's stable identity is resident, the widget retains only the compact
+`(stable collection key, query revision, logical target position)` request: position `0` for Home
+and `total row count - 1` for End. It preserves the last coherent actual focus while the request is
+pending. When the matching page returns, the widget binds that position to the returned stable row
+identity, reveals and focuses the row without activation, and clears the pending target. A changed
+collection key or query revision cancels the target, and a stale result never moves focus. An empty
+collection creates no target.
+
+A later row-navigation command supersedes the pending Home or End target. Tab or Shift+Tab focus
+departure, pointer focus transfer, search-field focus, or picker dismissal cancels it. The matching
+page result may reveal and focus its returned identity only while the originating collection
+traversal still owns focus and that request remains the latest navigation intent; otherwise the
+result is admitted only as ordinary resident page data and does not move focus.
+
 Every row has an owner-supplied stable identity independent of visible index. Focus, selection, current state, command dispatch, and selected-row reveal follow that identity across filtering, viewport entry, and viewport exit.
 
 Each stable collection key owns its scroll position and focused-row identity. Returning to a previously visited collection restores those facts when the rows still exist; otherwise the widget resolves to the nearest valid owner-supplied initial row without activating it.
@@ -106,8 +144,9 @@ Row hover, focus, selection, current, pending, and unavailable changes never alt
 
 Content-free diagnostics expose widget instance id, collection key, query revision, total row count,
 resident page count, pending page count, realized row count, visible range, overscan count,
-fixed row-height variant, scroll offset, focused stable row id, selected stable row id, and tooltip
-anchor presence. Diagnostics never include titles, paths, search text, labels, or tooltip content.
+fixed row-height variant, scroll offset, focused stable row id, selected stable row id, pending
+navigation-target kind and logical position, and tooltip anchor presence. Diagnostics never include
+titles, paths, search text, labels, or tooltip content.
 
 # Layout
 
@@ -119,7 +158,7 @@ The header, search field, headings, collection viewport, runtime/root section, A
 
 Runtime rows always form one vertical list. They never reflow into horizontal columns when unused inline space is available.
 
-The primary collection and runtime registry own independent vertical scroll state and independent external scrollbar widgets. The flyout itself does not own a third vertical scroll surface and never scrolls horizontally.
+The primary collection and runtime registry own independent vertical scroll state and independent external scrollbar widgets. Pointer-wheel and touchpad input over either viewport routes through that viewport; the flyout itself does not own a third vertical scroll surface and never scrolls horizontally. Scroll routing and boundary propagation follow `scroll-ownership`.
 
 Collection rows remain single-height. Primary and secondary labels truncate within their allocated region; trailing status or commands retain their trailing alignment. The owning feature supplies complete accessibility text and tooltips for truncated values.
 

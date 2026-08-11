@@ -66,7 +66,22 @@ fn creation_faults_reconcile_to_whole_old_or_whole_new_state() {
         let command = create_command(&store, storage, creation.clone());
 
         faults.fail_next(point);
-        assert!(store.execute(command).is_err());
+        match (point, store.execute(command)) {
+            (
+                FaultPoint::BeforeCommit,
+                beryl_home_store::CommandOutcome::NotCommitted {
+                    evidence: CommandError::Commit { .. },
+                },
+            )
+            | (
+                FaultPoint::AfterPersist,
+                beryl_home_store::CommandOutcome::Committed {
+                    later_failure: Some(CommandError::Persistence { .. }),
+                    ..
+                },
+            ) => {}
+            (_, outcome) => panic!("unexpected creation fault outcome: {outcome:?}"),
+        }
         assert_eq!(store.health().state(), HomeHealthState::Verifying);
         store.verify_health().unwrap();
         assert_eq!(
@@ -93,9 +108,13 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
         support::exact_cas::execution_binding(),
         timestamp(1),
     );
-    store
-        .execute(create_command(&store, storage, creation))
-        .unwrap();
+    match store.execute(create_command(&store, storage, creation)) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean creation command, got {outcome:?}"),
+    }
     let current = storage
         .current_draft(&store, thread_id, limit())
         .unwrap()
@@ -118,7 +137,13 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
     command
         .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean payload update command, got {outcome:?}"),
+    }
     block.release();
 
     assert!(matches!(

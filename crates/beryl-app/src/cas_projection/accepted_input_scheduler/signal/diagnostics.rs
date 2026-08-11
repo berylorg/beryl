@@ -14,7 +14,6 @@ impl AcceptedInputSchedulerDiagnostics {
     #[must_use]
     pub const fn pass_count(self) -> u64 {
         self.steering_pass_count
-            .saturating_add(self.recovered_projection_pass_count)
             .saturating_add(self.recovered_pending_pass_count)
             .saturating_add(self.next_pass_count)
     }
@@ -54,12 +53,6 @@ impl AcceptedInputSchedulerDiagnostics {
         self.recovery_handed_off
     }
 
-    /// Number of consumed scheduler wakes that parked on exact same-generation verification.
-    #[must_use]
-    pub const fn verification_pauses(self) -> u64 {
-        self.verification_pauses
-    }
-
     #[must_use]
     pub const fn steering_pass_count(self) -> u64 {
         self.steering_pass_count
@@ -73,11 +66,6 @@ impl AcceptedInputSchedulerDiagnostics {
     #[must_use]
     pub const fn recovered_pending_pass_count(self) -> u64 {
         self.recovered_pending_pass_count
-    }
-
-    #[must_use]
-    pub const fn recovered_projection_pass_count(self) -> u64 {
-        self.recovered_projection_pass_count
     }
 
     #[must_use]
@@ -188,11 +176,6 @@ impl AcceptedInputSchedulerDiagnostics {
     }
 
     #[must_use]
-    pub const fn recovered_projection_flight_waits(self) -> u64 {
-        self.recovered_projection_flight_waits
-    }
-
-    #[must_use]
     pub const fn next_execution_unavailable(self) -> u64 {
         self.next_execution_unavailable
     }
@@ -200,31 +183,6 @@ impl AcceptedInputSchedulerDiagnostics {
     #[must_use]
     pub const fn recovered_pending_execution_unavailable(self) -> u64 {
         self.recovered_pending_execution_unavailable
-    }
-
-    #[must_use]
-    pub const fn recovered_projection_execution_unavailable(self) -> u64 {
-        self.recovered_projection_execution_unavailable
-    }
-
-    #[must_use]
-    pub const fn recovered_projection_staged(self) -> u64 {
-        self.recovered_projection_staged
-    }
-
-    #[must_use]
-    pub const fn recovered_projection_retained(self) -> usize {
-        self.recovered_projection_retained
-    }
-
-    #[must_use]
-    pub const fn recovered_projection_high_water(self) -> usize {
-        self.recovered_projection_high_water
-    }
-
-    #[must_use]
-    pub const fn recovered_projection_requeues(self) -> u64 {
-        self.recovered_projection_requeues
     }
 
     #[must_use]
@@ -282,12 +240,6 @@ impl AcceptedInputSchedulerDiagnostics {
     #[must_use]
     pub const fn next_retained_candidate_cursor(self) -> bool {
         self.next_retained_candidate_cursor
-    }
-
-    /// The number of exact dormant recovered projections currently queued by the scheduler lane.
-    #[must_use]
-    pub const fn retained_candidates(self) -> usize {
-        self.recovered_projection_retained()
     }
 
     /// The mounted scheduler has no timer-eligible retry cause.

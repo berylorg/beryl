@@ -1,4 +1,4 @@
-use beryl_home_store::{CommandError, HomeStore};
+use beryl_home_store::HomeStore;
 use beryl_model::SyndicThreadId;
 use syndic_storage::{
     AdvanceTranscriptBuild, ProjectionLifecycle, StartTranscriptBuild, SyndicPointReadLimit,
@@ -88,65 +88,23 @@ fn start_build(
     store: &HomeStore,
     storage: SyndicStorage,
     thread_id: SyndicThreadId,
-    limit: SyndicPointReadLimit,
+    _limit: SyndicPointReadLimit,
     before: &snapshot::TranscriptSnapshot,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     let request =
         StartTranscriptBuild::new(thread_id, before.thread.revision(), before.head.revision());
-    let dispatch = command::dispatch(store, storage.current_start_transcript_build(request));
-    let Err(error) = dispatch else {
-        return Ok(());
-    };
-    let after = snapshot::transcript(store, storage, thread_id, limit)?;
-    if validate_snapshot(&after)?
-        || after.head.generation() == before.head.generation()
-            && after
-                .build
-                .as_ref()
-                .is_some_and(|build| active_build(&after, build))
-    {
-        return Ok(());
-    }
-    dispatch_or_concurrent(error, &after, before, thread_id)
+    command::dispatch(store, storage.current_start_transcript_build(request))
 }
 
 fn advance_build(
     store: &HomeStore,
     storage: SyndicStorage,
     thread_id: SyndicThreadId,
-    limit: SyndicPointReadLimit,
+    _limit: SyndicPointReadLimit,
     before: &snapshot::TranscriptSnapshot,
     build: &TranscriptBuildRecord,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     let request =
         AdvanceTranscriptBuild::new(thread_id, before.head.generation(), build.revision());
-    let dispatch = command::dispatch(store, storage.current_advance_transcript_build(request));
-    let Err(error) = dispatch else {
-        return Ok(());
-    };
-    let after = snapshot::transcript(store, storage, thread_id, limit)?;
-    if validate_snapshot(&after)? {
-        return Ok(());
-    }
-    if after.head.generation() == before.head.generation()
-        && after.build.as_ref().is_some_and(|advanced| {
-            active_build(&after, advanced) && advanced.revision() > build.revision()
-        })
-    {
-        return Ok(());
-    }
-    dispatch_or_concurrent(error, &after, before, thread_id)
-}
-
-fn dispatch_or_concurrent(
-    error: CommandError,
-    after: &snapshot::TranscriptSnapshot,
-    before: &snapshot::TranscriptSnapshot,
-    thread_id: SyndicThreadId,
-) -> Result<(), OrdinaryTurnExecutionError> {
-    if after == before {
-        Err(error.into())
-    } else {
-        Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id })
-    }
+    command::dispatch(store, storage.current_advance_transcript_build(request))
 }

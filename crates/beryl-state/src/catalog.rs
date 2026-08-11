@@ -31,8 +31,8 @@ use codec::{CatalogRecencyCodec, CatalogRowCodec};
 pub use error::CatalogValueError;
 pub use mutation::{MarkCatalogRowStale, PublishCatalogRow};
 pub use normalization::{
-    CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES, CatalogNormalizationProfile,
-    CatalogNormalizedQuery,
+    CatalogNormalizationProfile, CatalogNormalizedQuery, CATALOG_NORMALIZATION_PROFILE,
+    CATALOG_QUERY_MAX_BYTES,
 };
 pub use row::{CatalogFacts, CatalogRecencyCursor, CatalogRow};
 pub use value::{

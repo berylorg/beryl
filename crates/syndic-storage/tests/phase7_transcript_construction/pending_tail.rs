@@ -221,7 +221,10 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
             ),
         ))
         .unwrap();
-    let error = store.execute(rejected).unwrap_err();
+    let error = match store.execute(rejected) {
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected pending-tail command, got {outcome:?}"),
+    };
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::CanonicalFinalizationConflict

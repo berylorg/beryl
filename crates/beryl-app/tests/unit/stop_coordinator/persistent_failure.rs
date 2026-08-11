@@ -13,6 +13,19 @@ fn persistent_failure_freezes_claimed_owner_without_durable_settlement() {
     let operation_id = owner.operation_id;
     let revision = fixture.home.home_revision().unwrap();
     let identity = failure_identity(&fixture);
+    fixture
+        .coordinator
+        .state
+        .lock()
+        .unwrap()
+        .lifecycle_yields
+        .insert(
+            LifecycleYieldKey {
+                thread_id: fixture.thread,
+                turn_id: fixture.turn,
+            },
+            crate::LifecycleYieldOutcome::PhaseContinue,
+        );
 
     assert!(
         fixture
@@ -24,17 +37,31 @@ fn persistent_failure_freezes_claimed_owner_without_durable_settlement() {
         .coordinator
         .freeze_for_persistent_failure(identity)
         .unwrap();
+    assert!(
+        fixture
+            .coordinator
+            .state
+            .lock()
+            .unwrap()
+            .lifecycle_yields
+            .is_empty()
+    );
     assert!(matches!(
         owner.begin_dispatch(),
         Err(StopCoordinationError::HomeAuthorityLost)
     ));
-    assert_eq!(
+    assert!(matches!(
         fixture
             .coordinator
-            .persistent_failure_evidence(identity, fixture.thread)
-            .unwrap(),
-        PersistentFailureStopEvidence::ClaimedNotDispatched
-    );
+            .state
+            .lock()
+            .unwrap()
+            .stops
+            .get(&fixture.thread)
+            .unwrap()
+            .dispatch,
+        LocalDispatchState::FailureFrozenNondispatch
+    ));
     assert!(matches!(
         owner.settle_before_dispatch().unwrap(),
         StopDispatchSettlement::Stopping(stopping) if stopping == operation_id
@@ -92,13 +119,18 @@ fn persistent_failure_cut_and_stop_claim_have_deterministic_two_order_linearizat
         Err(error) => panic!("claim-first stop failed after winning its mutex fence: {error}"),
     };
     freeze.join().unwrap().unwrap();
-    assert_eq!(
+    assert!(matches!(
         claim_first
             .coordinator
-            .persistent_failure_evidence(identity, claim_first.thread)
-            .unwrap(),
-        PersistentFailureStopEvidence::ClaimedNotDispatched
-    );
+            .state
+            .lock()
+            .unwrap()
+            .stops
+            .get(&claim_first.thread)
+            .unwrap()
+            .dispatch,
+        LocalDispatchState::FailureFrozenNondispatch
+    ));
     assert!(matches!(
         owner.settle_before_dispatch().unwrap(),
         StopDispatchSettlement::Stopping(_)
@@ -133,27 +165,12 @@ fn persistent_failure_cut_and_stop_claim_have_deterministic_two_order_linearizat
         .coordinator
         .freeze_for_persistent_failure(identity)
         .unwrap();
-    assert_eq!(
-        cut_first
-            .coordinator
-            .persistent_failure_evidence(identity, cut_first.thread)
-            .unwrap(),
-        PersistentFailureStopEvidence::NoLocalStop
-    );
     claim_pause.release();
     assert!(matches!(
         claim.join().unwrap(),
         Err(StopCoordinationError::HomeAuthorityLost)
     ));
-    assert!(
-        cut_first
-            .coordinator
-            .state
-            .lock()
-            .unwrap()
-            .stops
-            .is_empty()
-    );
+    assert!(cut_first.coordinator.state.lock().unwrap().stops.is_empty());
     assert!(matches!(
         cut_first
             .storage
@@ -188,12 +205,18 @@ fn dispatch_winning_before_cut_is_retained_as_ambiguous() {
         .coordinator
         .freeze_for_persistent_failure(identity)
         .unwrap();
-    let evidence = fixture
-        .coordinator
-        .persistent_failure_evidence(identity, fixture.thread)
-        .unwrap();
-    assert_eq!(evidence, PersistentFailureStopEvidence::Dispatching);
-    assert!(!evidence.permits_volatile_interrupt());
+    assert!(matches!(
+        fixture
+            .coordinator
+            .state
+            .lock()
+            .unwrap()
+            .stops
+            .get(&fixture.thread)
+            .unwrap()
+            .dispatch,
+        LocalDispatchState::Dispatching
+    ));
     assert!(matches!(
         owner.settle_before_dispatch().unwrap(),
         StopDispatchSettlement::Stopping(stopping) if stopping == operation_id
@@ -248,13 +271,18 @@ fn persistent_failure_cut_and_begin_dispatch_have_deterministic_two_order_linear
     let (owner, dispatch_result) = dispatch.join().unwrap();
     dispatch_result.unwrap();
     freeze.join().unwrap().unwrap();
-    assert_eq!(
+    assert!(matches!(
         dispatch_first
             .coordinator
-            .persistent_failure_evidence(identity, dispatch_first.thread)
-            .unwrap(),
-        PersistentFailureStopEvidence::Dispatching
-    );
+            .state
+            .lock()
+            .unwrap()
+            .stops
+            .get(&dispatch_first.thread)
+            .unwrap()
+            .dispatch,
+        LocalDispatchState::Dispatching
+    ));
     assert!(matches!(
         owner.settle_before_dispatch().unwrap(),
         StopDispatchSettlement::Stopping(_)
@@ -298,13 +326,18 @@ fn persistent_failure_cut_and_begin_dispatch_have_deterministic_two_order_linear
         dispatch_result,
         Err(StopCoordinationError::HomeAuthorityLost)
     ));
-    assert_eq!(
+    assert!(matches!(
         cut_first
             .coordinator
-            .persistent_failure_evidence(identity, cut_first.thread)
-            .unwrap(),
-        PersistentFailureStopEvidence::ClaimedNotDispatched
-    );
+            .state
+            .lock()
+            .unwrap()
+            .stops
+            .get(&cut_first.thread)
+            .unwrap()
+            .dispatch,
+        LocalDispatchState::FailureFrozenNondispatch
+    ));
     assert!(matches!(
         owner.settle_before_dispatch().unwrap(),
         StopDispatchSettlement::Stopping(_)
@@ -312,107 +345,66 @@ fn persistent_failure_cut_and_begin_dispatch_have_deterministic_two_order_linear
 }
 
 #[test]
-fn persistent_failure_classifies_every_retained_stop_dispatch_state() {
-    let fixture = StopFixture::new(56);
-    let owner = match fixture.coordinator.coordinate(
-        &fixture.router,
-        fixture.proof.clone(),
-        StopCause::SelectedOperationControl,
-    ) {
-        Ok(StopOwnership::Primary(owner)) => owner,
-        Ok(StopOwnership::Joined { .. }) => panic!("first stop must own dispatch"),
-        Err(error) => panic!("stop coordination failed: {error}"),
-    };
-    let identity = failure_identity(&fixture);
+fn exact_gate_rejection_before_stop_writer_preserves_one_volatile_proof() {
+    let fixture = StopFixture::new(196);
     fixture
-        .command_gate
-        .elect_persistent_failure_for_test(identity.failure_generation)
-        .unwrap();
+        .coordinator
+        .state
+        .lock()
+        .unwrap()
+        .lifecycle_yields
+        .insert(
+            LifecycleYieldKey {
+                thread_id: fixture.thread,
+                turn_id: fixture.turn,
+            },
+            crate::LifecycleYieldOutcome::PhaseContinue,
+        );
+    let pause = fixture
+        .coordinator
+        .install_race_pause(StopRaceStage::ElectionHeldBeforeAdmissionGate);
+    let coordinator = Arc::clone(&fixture.coordinator);
+    let router = Arc::clone(&fixture.router);
+    let proof = fixture.proof.clone();
+    let coordinate = std::thread::spawn(move || {
+        coordinator.coordinate(&router, proof, StopCause::SelectedOperationControl)
+    });
+    assert!(pause.wait_until_reached(Duration::from_secs(10)));
+
+    let identity = failure_identity(&fixture);
+    let revision = fixture.home.home_revision().unwrap();
+    assert!(
+        fixture
+            .command_gate
+            .elect_persistent_failure_for_test(identity.failure_generation)
+            .unwrap()
+    );
+    pause.release();
+    assert!(matches!(
+        coordinate.join().unwrap(),
+        Err(StopCoordinationError::HomeAuthorityLost)
+    ));
+    assert_eq!(fixture.home.home_revision().unwrap(), revision);
+    assert!(fixture.coordinator.state.lock().unwrap().stops.is_empty());
+    assert!(
+        fixture
+            .coordinator
+            .state
+            .lock()
+            .unwrap()
+            .lifecycle_yields
+            .is_empty()
+    );
+
     fixture
         .coordinator
         .freeze_for_persistent_failure(identity)
         .unwrap();
-    let attempt = owner.attempt;
-
-    let cases = [
-        (
-            LocalDispatchState::AdmittedNotClaimed,
-            None,
-            PersistentFailureStopEvidence::AdmittedNotClaimed,
-            true,
-        ),
-        (
-            LocalDispatchState::ClaimUnresolved,
-            Some(attempt),
-            PersistentFailureStopEvidence::ClaimUnresolved,
-            false,
-        ),
-        (
-            LocalDispatchState::ClaimedNotDispatched,
-            Some(attempt),
-            PersistentFailureStopEvidence::ClaimedNotDispatched,
-            true,
-        ),
-        (
-            LocalDispatchState::Dispatching,
-            Some(attempt),
-            PersistentFailureStopEvidence::Dispatching,
-            false,
-        ),
-        (
-            LocalDispatchState::HardStopRunningProvenNondispatch,
-            Some(attempt),
-            PersistentFailureStopEvidence::HardStopRunning,
-            false,
-        ),
-        (
-            LocalDispatchState::ProvenNondispatchSettling,
-            Some(attempt),
-            PersistentFailureStopEvidence::ProvenNondispatchSettling,
-            false,
-        ),
-        (
-            LocalDispatchState::PrimaryAccepted,
-            Some(attempt),
-            PersistentFailureStopEvidence::PrimaryAccepted,
-            false,
-        ),
-        (
-            LocalDispatchState::PossiblyDispatched,
-            Some(attempt),
-            PersistentFailureStopEvidence::PossiblyDispatched,
-            false,
-        ),
-        (
-            LocalDispatchState::DurablyAbandoned,
-            Some(attempt),
-            PersistentFailureStopEvidence::DurablyAbandoned,
-            false,
-        ),
-        (
-            LocalDispatchState::FailureFrozenNondispatch,
-            Some(attempt),
-            PersistentFailureStopEvidence::ClaimedNotDispatched,
-            true,
-        ),
-    ];
-    for (dispatch, retained_attempt, expected, permits_volatile) in cases {
-        {
-            let mut state = fixture.coordinator.state.lock().unwrap();
-            let local = state.stops.get_mut(&fixture.thread).unwrap();
-            local.dispatch = dispatch;
-            local.attempt = retained_attempt;
-        }
-        let evidence = fixture
-            .coordinator
-            .persistent_failure_evidence(identity, fixture.thread)
-            .unwrap();
-        assert_eq!(evidence, expected);
-        assert_eq!(evidence.permits_volatile_interrupt(), permits_volatile);
-    }
-
-    assert!(matches!(
-        owner.settle_before_dispatch().unwrap(),
-        StopDispatchSettlement::Stopping(_)
-    ));
+    let mut candidates = fixture
+        .router
+        .freeze_persistent_failure_targets(identity)
+        .unwrap()
+        .into_candidates();
+    assert_eq!(candidates.len(), 1);
+    assert!(candidates.pop().unwrap().into_proof().is_ok());
 }

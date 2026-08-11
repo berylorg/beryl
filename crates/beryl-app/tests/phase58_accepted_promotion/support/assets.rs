@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use beryl_home_store::{HomeCommand, HomeStore, SidecarByteLimit, SidecarNamespace};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore, SidecarByteLimit, SidecarNamespace};
 use beryl_model::{AssetId, AssetReferenceSetId, SyndicDraftMarkerId};
 use beryl_state::{
     AppendAssetReferencePage, AssetMediaType, AssetOwner, AssetOwnerHeadUpdate,
@@ -48,7 +48,12 @@ pub(super) fn admit_owner_set(
         .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     metadata.add_to(&mut command).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed asset setup, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed asset setup, got {outcome:?}"),
+    }
 
     let source = content.sealed_marker_summary().unwrap();
     let begin =

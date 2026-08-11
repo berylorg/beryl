@@ -1,11 +1,12 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 use beryl_model::{SessionRevision, WindowId, WindowPlacement};
 
 use crate::RecordRevision;
 
 use crate::session::{
+    codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec},
     SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError, SessionWindowRecord,
-    ThreadClaimRecord, WindowClaimSelection, codec::SessionWindowCodec,
+    ThreadClaimRecord, WindowClaimSelection,
 };
 
 use super::shared::{
@@ -43,6 +44,15 @@ impl DomainMutation<SessionDomain> for UpdateWindowPlacement {
 
     fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
         prepare_placement(self, reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
+        reservation.reserve_records::<SessionWindowCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -109,6 +119,17 @@ impl DomainMutation<SessionDomain> for RemoveSessionWindow {
 
     fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
         prepare_remove(self, reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
+        reservation.reserve_records::<SessionWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByThreadCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -185,6 +206,14 @@ impl DomainMutation<SessionDomain> for MarkOrderlyExit {
         if header.exit_intent == SessionExitIntent::OrderlyExit {
             return Err(SessionMutationError::AlreadyOrderlyExit);
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
         Ok(())
     }
 

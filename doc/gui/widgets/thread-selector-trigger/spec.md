@@ -26,7 +26,7 @@ The thread selector trigger contains one command-capable root, primary selected-
 
 The owning feature supplies the selected-thread identity, bounded visible title or fallback, bounded
 accessible name, flyout label, activation command, readiness, unavailability reason, and associated
-popup state. The widget owns trigger geometry, title truncation, focus, command feedback, and stable
+flyout state. The widget owns trigger geometry, title truncation, focus, command feedback, and stable
 trailing-affordance placement.
 
 The widget does not contain runtime, root, catalog, thread status, metadata actions, or flyout content.
@@ -43,7 +43,12 @@ Loading dims the complete control while retaining its last coherent title or own
 
 The widget supports ready, hover, pressed, focused, closed, open, loading, unavailable, title present, fallback title, and truncated states.
 
-Loading is inert rather than command-disabled presentation: it rejects focus and activation while the catalog snapshot is not ready. Unavailable is a visible disabled command state with an owner-supplied explanation.
+Loading is inert rather than command-disabled presentation: it rejects focus and activation while
+the catalog snapshot is not ready. Loading is a readiness state outside
+`expected-action-availability`; it does not become a focusable disabled command merely because the
+widget references that contract. After readiness establishes that the open command is normally
+part of the current UI, any temporary state in which that expected command cannot run is
+unavailable and carries an owner-supplied actionable reason.
 
 # Interaction
 
@@ -51,17 +56,20 @@ Pointer activation or focused Enter and Space invoke the owner-supplied open com
 
 Opening the associated flyout sets open state without replacing the trigger. Dismissing the flyout returns focus to this exact trigger. A successful activation that moves focus to another window-level target follows the owning feature's focus rule.
 
-Loading rejects pointer, keyboard, touch, and programmatic activation and does not acquire focus. Catalog readiness changes the same widget instance to ready state.
+Loading remains dim and inert, rejects pointer, keyboard, touch, and programmatic activation, and
+does not acquire focus. Catalog readiness changes the same widget instance to ready state.
 
-Unavailable remains focusable for inspection but never invokes its command. It satisfies `disabled-command-tooltip` with the closest owner-supplied actionable reason.
+After readiness, unavailable remains focusable for inspection but never invokes its command. It
+satisfies `expected-action-availability` and, through that contract, `disabled-command-tooltip`
+with the closest owner-supplied actionable reason.
 
 When the title truncates geometrically, hover or focus exposes the complete owner-supplied bounded
-title projection through `tooltip`. Title updates retain trigger focus and popup anchoring because
+title projection through `tooltip`. Title updates retain trigger focus and flyout anchoring because
 root identity follows the main-window trigger instance, not the displayed title.
 
 While the associated flyout is open, selected-thread title updates occur in place and do not move or recreate the anchor. If the selected-thread identity changes through successful activation, the associated old flyout closes before the new identity is published.
 
-Content-free diagnostics expose widget instance id, selected-thread identity presence, readiness revision, state family, focus presence, open-popup presence, title truncation presence, and tooltip-anchor presence. Diagnostics never include thread titles, paths, runtime names, unavailability text, or tooltip content.
+Content-free diagnostics expose widget instance id, selected-thread identity presence, readiness revision, state family, focus presence, open-flyout presence, title truncation presence, and tooltip-anchor presence. Diagnostics never include thread titles, paths, runtime names, unavailability text, or tooltip content.
 
 # Layout
 

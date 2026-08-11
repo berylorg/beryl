@@ -6,7 +6,7 @@ use beryl_app::input_admission::{
     accepted_input_promotion_command, accepted_input_promotion_status,
 };
 use beryl_home_store::{
-    HomeCommand, HomeHealthState,
+    CommandError, CommandOutcome, HomeCommand, HomeHealthState,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{SyndicDraftId, SyndicItemId};
@@ -47,7 +47,12 @@ fn marker_free_promotion_reconciles_prior_exact_and_collisions() {
         promotion.clone(),
     )
     .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        CommandOutcome::NotCommitted { evidence } => panic!("expected committed promotion, got not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed promotion, got indeterminate: {outcome:?}"),
+    }
 
     assert_eq!(
         fixture.store.home_revision().unwrap().get(),
@@ -116,7 +121,13 @@ fn marker_free_promotion_reconciles_prior_exact_and_collisions() {
         colliding,
     )
     .unwrap();
-    assert!(collision_fixture.store.execute(command).is_err());
+    match collision_fixture.store.execute(command) {
+        CommandOutcome::NotCommitted { evidence: CommandError::ContributorValidation { .. } } => {}
+        CommandOutcome::NotCommitted { evidence } => panic!("expected validation rejection, got {evidence:?}"),
+        CommandOutcome::Committed { later_failure: None, .. } => panic!("expected validation rejection, got committed"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected validation rejection, later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected validation rejection, indeterminate: {outcome:?}"),
+    }
 
     let valid = collision_fixture.promotion(92);
     assert_eq!(
@@ -152,7 +163,13 @@ fn marker_free_promotion_reconciles_prior_exact_and_collisions() {
         valid.clone(),
     )
     .unwrap();
-    assert!(collision_fixture.store.execute(command).is_err());
+    match collision_fixture.store.execute(command) {
+        CommandOutcome::NotCommitted { evidence: CommandError::ContributorValidation { .. } } => {}
+        CommandOutcome::NotCommitted { evidence } => panic!("expected validation rejection, got {evidence:?}"),
+        CommandOutcome::Committed { later_failure: None, .. } => panic!("expected validation rejection, got committed"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected validation rejection, later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected validation rejection, indeterminate: {outcome:?}"),
+    }
     assert_eq!(
         collision_fixture
             .syndic
@@ -177,7 +194,12 @@ fn cross_domain_promotion_status_survives_later_pending_admission() {
         promotion.clone(),
     )
     .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        CommandOutcome::NotCommitted { evidence } => panic!("expected committed promotion, got not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed promotion, got indeterminate: {outcome:?}"),
+    }
 
     let current = fixture
         .syndic
@@ -208,7 +230,12 @@ fn cross_domain_promotion_status_survives_later_pending_admission() {
                 .admit_accepted_input(fixture.syndic.revision(&fixture.store).unwrap(), admission),
         )
         .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        CommandOutcome::NotCommitted { evidence } => panic!("expected committed accepted-input admission, got not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed accepted-input admission, got indeterminate: {outcome:?}"),
+    }
 
     assert_eq!(
         accepted_input_promotion_status(
@@ -236,7 +263,12 @@ fn cross_domain_promotion_status_survives_an_inflight_unrelated_home_commit() {
         promotion.clone(),
     )
     .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        CommandOutcome::NotCommitted { evidence } => panic!("expected committed promotion, got not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed promotion, got indeterminate: {outcome:?}"),
+    }
 
     let blocked = faults.block_next(FaultPoint::BeforeReadConfirmation);
     let status = std::thread::scope(|scope| {
@@ -305,7 +337,12 @@ fn image_promotion_moves_only_the_accepted_owner_in_one_home_command() {
         promotion.clone(),
     )
     .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        CommandOutcome::NotCommitted { evidence } => panic!("expected committed promotion setup, got not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed promotion setup, got indeterminate: {outcome:?}"),
+    }
 
     assert_eq!(
         fixture.store.home_revision().unwrap().get(),
@@ -424,7 +461,20 @@ fn promotion_fault_cuts_reopen_to_one_cross_domain_side() {
         .unwrap();
 
         faults.fail_next(point);
-        assert!(fixture.store.execute(command).is_err());
+        match fixture.store.execute(command) {
+            CommandOutcome::NotCommitted {
+                evidence: CommandError::Commit { .. },
+            } if point == FaultPoint::BeforeCommit => {}
+            CommandOutcome::Committed {
+                later_failure: Some(CommandError::Persistence { .. }),
+                ..
+            } if point == FaultPoint::AfterPersist => {}
+            CommandOutcome::Indeterminate {
+                failure: CommandError::Persistence { .. },
+                reconciliation: _,
+            } if point == FaultPoint::AfterCommitBeforePersist => {}
+            outcome => panic!("unexpected promotion fault outcome at {point:?}: {outcome:?}"),
+        }
         assert_eq!(fixture.store.health().state(), HomeHealthState::Verifying);
         fixture.store.verify_health().unwrap();
         let fixture = fixture.reopen();

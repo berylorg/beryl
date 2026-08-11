@@ -6,11 +6,11 @@
 
 The main conversation window is Beryl's primary OS window. Beryl may own multiple independent main conversation windows at once.
 
-Its top-level layout is a fixed toolbar strip, an optional fixed thread-lineage strip, a stretchable conversation body, and a fixed status line strip anchored to the OS window bottom edge. The thread-lineage strip appears directly below the toolbar when the selected thread has parent-thread lineage and otherwise consumes no layout space. The conversation body stacks the stretchable transcript region, optional bounded activity panel, optional fixed discussion-status strip, and pinned user input panel.
+Its top-level layout is a fixed-height toolbar strip, an optional fixed-height contribution strip directly below the toolbar, a stretchable conversation body, and a fixed-height status-line strip anchored to the OS window bottom edge. An unfilled optional strip consumes no layout space. The conversation body stacks a stretchable transcript-presentation region, an optional bounded-height panel region, an optional fixed-height status strip, and the pinned user-input panel.
 
 The minimum OS window size is derived from the minimum sizes of currently visible child widgets so pinned controls remain reachable. The main window content does not own vertical scrolling during normal operation; only explicitly designated child panels or regions own vertical scrolling.
 
-Feature-owned overlays, flyouts, menus, notices, and previews remain bounded within the OS window or the owning feature-declared region.
+Feature-owned transient in-window popups, including flyouts, menus, and previews, and feature-owned notices remain bounded within the OS window or the owning feature-declared region.
 
 ### Slots
 
@@ -24,9 +24,9 @@ The toolbar strip is controls-only and does not reserve persistent static runtim
 
 #### Slot: main-window.thread-lineage
 
-This slot is the conditional fixed-height strip directly below the toolbar. It is for selected-thread parent-lineage navigation.
+This slot is the optional fixed-height strip directly below the toolbar. It is for parent-lineage navigation contributions.
 
-When visible, the strip stretches horizontally with the OS window and keeps long lineage labels from causing outer window-content scrolling. When no lineage is visible, the slot contributes no persistent empty row.
+When filled, the strip stretches horizontally with the OS window and keeps long lineage labels from causing outer window-content scrolling. When unfilled, the slot contributes no persistent empty row.
 
 #### Slot: main-window.transcript-region
 
@@ -46,6 +46,12 @@ This slot is the routed command-contribution region inside an eligible transcrip
 
 The slot exists only for a code panel whose content and feature state admit at least one contribution. Multiple feature definitions may target this slot, but only commands applicable to the exact rendered panel are composed. When no command applies, the slot contributes no header control or reserved space.
 
+#### Slot: transcript.code-panel-feedback
+
+This slot is the routed feedback-contribution region inside an eligible transcript code panel. It is for feature-owned bounded localized feedback that applies to recognized code-panel content without making the contributing feature another owner of transcript layout or code-panel mechanics.
+
+The slot exists only for a code panel whose content and feature state admit a feedback contribution. Multiple feature definitions may target this slot, but only feedback applicable to the exact rendered panel is composed. When no feedback applies, the slot contributes no feedback region or reserved space.
+
 #### Slot: main-window.activity-panel
 
 This slot is the optional bounded panel between the transcript region and any visible discussion-status strip or user input panel. It is for live or recent selected-thread activity that should take height from the transcript region while preserving pinned lower chrome.
@@ -54,17 +60,25 @@ When visible, this slot remains within the conversation body and does not displa
 
 #### Slot: main-window.discussion-status
 
-This slot is the conditional fixed-height strip below any visible activity panel and immediately above the user input panel. It is for selected-thread discussion lifecycle status and compact input-gating actions.
+This slot is the optional fixed-height strip below any filled activity-panel slot and immediately above the user input panel. It is for discussion lifecycle status and compact input-gating contributions.
 
-When no branch discussion is selected, the slot contributes no persistent empty row. When visible, state changes retain one fixed height and do not resize or replace the user input panel.
+When unfilled, the slot contributes no persistent empty row. When filled, contribution state changes retain one fixed height and do not resize or replace the user input panel.
 
 #### Slot: main-window.user-input-panel
 
-This slot is the pinned panel near the bottom of the conversation body, above the status line. It is for user-authored draft input and draft-adjacent controls for the selected conversation thread.
+This slot is the pinned panel near the bottom of the conversation body, above the status line. It is
+for the active conversation-input surface or an inline recovery decision that temporarily replaces
+that surface.
 
-The ordinary conversation composer and an execution-blocking native-lineage recovery prompt are
-mutually exclusive contents of this slot. Replacing one with the other does not create an overlay,
-modal interaction boundary, second panel row, or different top-level window layout.
+At most one contributed UI is active in this slot at a time. Replacing that contribution does not
+create an overlay, modal interaction boundary, second panel row, or different top-level window
+layout.
+
+Contribution replacement is one coherent unmount-and-mount transition, not visibility toggling.
+Before publishing that transition, the outgoing feature completes any canonical pre-unmount fence
+and compact host handoff. The outgoing widget then releases its widget-owned state and work under
+its canonical contract, and the slot retains no hidden live contribution. Any compact facts needed
+to restore a later contribution remain outside the slot with that feature's host.
 
 #### Slot: main-window.status-line
 
@@ -72,7 +86,7 @@ This slot is the fixed-height strip anchored to the bottom edge of the main conv
 
 #### Slot: main-window.overlays
 
-This slot is the bounded layer above the main conversation window content. It is for feature-owned overlays, flyouts, persistent or transient notices, menus, and previews that must leave the conversation shell in place and remain within the OS window bounds.
+This slot is the bounded layer above the main conversation window content. It is for feature-owned transient in-window popups such as flyouts, menus, and previews, plus persistent or transient notices that must leave the conversation shell in place and remain within the OS window bounds.
 
 Content mounted here is clamped to the visible OS window or to the owning region declared by the feature doc.
 
@@ -104,7 +118,7 @@ This slot fills the home failure window. It is for the bounded startup failure e
 
 The external `settings-window` widget directly owns Beryl's top-level auxiliary OS window for application preferences. Beryl configures that window with its section identities, routed pages, settings content, and feature commands; it does not place the external window inside another Beryl-owned window body.
 
-The external window defines its own dedicated chrome and top-level layout and does not inherit the main conversation toolbar strip. Beryl-provided page content respects the external widget's sizing, focus, navigation, popup, and scrolling contracts.
+The external window defines its own dedicated chrome and top-level layout and does not inherit the main conversation toolbar strip. Beryl-provided page content respects the external widget's sizing, focus, navigation, transient in-window popup, and scrolling contracts.
 
 ### Slots
 

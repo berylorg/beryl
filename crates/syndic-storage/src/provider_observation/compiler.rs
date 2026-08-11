@@ -4,8 +4,6 @@ mod encode;
 mod replay;
 mod stage;
 
-use std::error::Error;
-
 use beryl_model::{CasItemId, RevisionError, SyndicContentId, SyndicItemId, SyndicTurnId};
 
 use crate::{
@@ -235,9 +233,29 @@ pub enum ProviderObservationFramePreparationError {
     NarrativeRoleMismatch,
 }
 
+/// Exact durable result of one prepared provider-observation frame staging traversal.
+#[derive(Debug)]
+pub enum ProviderObservationFrameStageOutcome {
+    /// The supplied build was already sealed, so no command was issued.
+    Unchanged { value: ProviderItemBuildRecord },
+    /// The offered batch definitely did not commit.
+    NotCommitted { evidence: beryl_home_store::CommandError },
+    /// The returned build is the exact durable successor of the last committed batch.
+    Committed {
+        value: ProviderItemBuildRecord,
+        receipt: beryl_home_store::CommitReceipt,
+        later_failure: Option<beryl_home_store::CommandError>,
+    },
+    /// The offered batch may have committed; no local successor is inferred.
+    Indeterminate {
+        failure: beryl_home_store::CommandError,
+        reconciliation: beryl_home_store::ReconciliationDescriptor,
+    },
+}
+
 /// Why exact replay could not stage the previously prepared observation frame.
 #[derive(Debug, thiserror::Error)]
-pub enum ProviderObservationFrameStageError<E: Error + Send + Sync + 'static> {
+pub enum ProviderObservationFrameStageError {
     #[error(transparent)]
     Cursor(#[from] ProviderObservationCursorError),
     #[error(transparent)]
@@ -270,8 +288,21 @@ pub enum ProviderObservationFrameStageError<E: Error + Send + Sync + 'static> {
     StagingTraversalMismatch,
     #[error("provider-observation staging traversal ended before every target frontier")]
     IncompleteStagingTraversal,
-    #[error("provider-observation frame stage callback rejected a batch: {0}")]
-    Callback(#[source] E),
+    #[error("provider-observation frame staging reached a committed batch with a later failure")]
+    CommittedLaterFailure {
+        value: ProviderItemBuildRecord,
+        receipt: beryl_home_store::CommitReceipt,
+        later_failure: beryl_home_store::CommandError,
+    },
+    #[error("provider-observation frame staging batch definitely did not commit")]
+    NotCommitted {
+        evidence: beryl_home_store::CommandError,
+    },
+    #[error("provider-observation frame staging batch has an indeterminate durable outcome")]
+    Indeterminate {
+        failure: beryl_home_store::CommandError,
+        reconciliation: beryl_home_store::ReconciliationDescriptor,
+    },
 }
 
 /// Consumes route-bound authority and extracts only its bounded exact item/lifecycle facts.

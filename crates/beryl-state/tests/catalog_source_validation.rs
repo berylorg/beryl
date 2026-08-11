@@ -1,6 +1,6 @@
 mod support;
 
-use beryl_home_store::{CommandError, HomeCommand};
+use beryl_home_store::{CommandError, CommandOutcome, HomeCommand};
 use beryl_model::{
     Availability, ProjectionRevision, RootId, RuntimeId, SyndicThreadId, UnavailableReason,
 };
@@ -100,7 +100,13 @@ fn runtime_root_and_unclaimed_sources_guard_one_catalog_publication() {
                 .validate_thread_claim_catalog_source(session_revision, claim_source),
         )
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed catalog-source command, got {outcome:?}"),
+    }
 
     let row = state
         .catalog()
@@ -125,7 +131,7 @@ fn exact_runtime_root_validator_rejects_a_same_revision_stale_snapshot() {
         )
         .unwrap();
 
-    execute(
+    let outcome = execute(
         &store,
         state.runtime_roots().set_runtime_availability(
             state.runtime_roots().revision(&store).unwrap(),
@@ -139,8 +145,14 @@ fn exact_runtime_root_validator_rejects_a_same_revision_stale_snapshot() {
                 .unwrap(),
             ),
         ),
-    )
-    .unwrap();
+    );
+    match outcome {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed source update, got {outcome:?}"),
+    }
 
     let thread_id = SyndicThreadId::from_bytes([4; 16]);
     let mutation = PublishCatalogRow::new(
@@ -165,17 +177,18 @@ fn exact_runtime_root_validator_rejects_a_same_revision_stale_snapshot() {
         ))
         .unwrap();
 
-    let error = store.execute(command).unwrap_err();
+    let error = match store.execute(command) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected catalog-source command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<RuntimeRootCatalogSourceError>(&error),
         Some(RuntimeRootCatalogSourceError::SourceChanged("runtime"))
     ));
     assert!(matches!(error, CommandError::ContributorValidation { .. }));
-    assert!(
-        state
-            .catalog()
-            .row(&store, thread_id, CatalogPointReadLimit::schema_maximum())
-            .unwrap()
-            .is_none()
-    );
+    assert!(state
+        .catalog()
+        .row(&store, thread_id, CatalogPointReadLimit::schema_maximum())
+        .unwrap()
+        .is_none());
 }

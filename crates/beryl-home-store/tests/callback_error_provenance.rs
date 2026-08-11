@@ -11,7 +11,7 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, PutBytes};
+use support::{committed, not_committed, AlphaDomain, PutBytes};
 
 struct AccessDomain;
 struct AccessRecord;
@@ -131,6 +131,14 @@ impl DomainMutation<AccessDomain> for Put {
         fail(self.validation, "validation")
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, AccessDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AccessRecord>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, AccessDomain>,
@@ -181,7 +189,7 @@ fn execute(
     store: &HomeStore,
     domain: beryl_home_store::DomainHandle<AccessDomain>,
     mutation: Put,
-) -> Result<beryl_home_store::CommitReceipt, CommandError> {
+) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(store.domain_revision(domain).unwrap(), mutation))
@@ -194,7 +202,7 @@ fn execute_with_validator(
     mutation_domain: beryl_home_store::DomainHandle<AlphaDomain>,
     validator_domain: beryl_home_store::DomainHandle<AccessDomain>,
     failure: Failure,
-) -> Result<beryl_home_store::CommitReceipt, CommandError> {
+) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(mutation_domain.contribution(
@@ -248,8 +256,8 @@ fn storage_access_from_either_callback_stage_enters_verification() {
                 validation,
                 contribution,
             },
-        )
-        .unwrap_err();
+        );
+        let error = not_committed(error);
         assert!(matches!(
             error,
             CommandError::ContributorAccess {
@@ -279,7 +287,7 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
         (Failure::None, Failure::Semantic),
     ] {
         let home_before = store.home_revision().unwrap();
-        assert!(
+        assert!(matches!(
             execute(
                 &store,
                 domain,
@@ -289,13 +297,13 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
                     validation,
                     contribution,
                 },
-            )
-            .is_err()
-        );
+            ),
+            beryl_home_store::CommandOutcome::NotCommitted { .. }
+        ));
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         assert_eq!(store.home_revision().unwrap(), home_before);
     }
-    execute(&store, domain, put(b"committed")).unwrap();
+    committed(execute(&store, domain, put(b"committed")));
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     store.close().unwrap();
 
@@ -311,8 +319,8 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
             validation: Failure::Structural,
             contribution: Failure::None,
         },
-    )
-    .unwrap_err();
+    );
+    let error = not_committed(error);
     assert!(matches!(
         error,
         CommandError::ContributorAccess {
@@ -334,8 +342,12 @@ fn validation_only_participant_preserves_semantic_and_access_provenance() {
         let mutation_before = store.domain_revision(mutation_domain).unwrap();
         let validator_before = store.domain_revision(validator_domain).unwrap();
 
-        let error =
-            execute_with_validator(&store, mutation_domain, validator_domain, failure).unwrap_err();
+        let error = not_committed(execute_with_validator(
+            &store,
+            mutation_domain,
+            validator_domain,
+            failure,
+        ));
         match failure {
             Failure::Storage => {
                 assert!(matches!(
@@ -394,7 +406,7 @@ fn registration_preserves_access_provenance_and_semantic_rejection() {
         let directory = tempdir().unwrap();
         let mut store = open(directory.path());
         let domain = store.register_domain::<AccessDomain>().unwrap();
-        execute(
+        committed(execute(
             &store,
             domain,
             Put {
@@ -403,8 +415,7 @@ fn registration_preserves_access_provenance_and_semantic_rejection() {
                 validation: Failure::None,
                 contribution: Failure::None,
             },
-        )
-        .unwrap();
+        ));
         store.close().unwrap();
 
         let mut reopened = open(directory.path());

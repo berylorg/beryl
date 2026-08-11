@@ -1,6 +1,6 @@
 use beryl_home_store::{
     DomainMutation, DomainReader, DomainValidator, MutationBuilder, MutationContribution,
-    ValidationContribution,
+    ReconciliationReservation, ValidationContribution,
 };
 
 use crate::{
@@ -54,6 +54,14 @@ impl DomainMutation<SyndicDomain> for RebuildThreadCatalogSummary {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         validate_prepared(reader, &self.prepared)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ThreadCatalogSummariesCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

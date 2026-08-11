@@ -1,4 +1,4 @@
-use beryl_home_store::{HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{
     CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasTurnId,
     SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId,
@@ -26,7 +26,13 @@ pub fn point_limit() -> SyndicPointReadLimit {
 pub fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean compaction fixture command, got {outcome:?}"),
+    }
 }
 
 pub fn loaded_generation() -> CasLoadedSessionGeneration {
@@ -164,20 +170,32 @@ impl CompactionFixture {
         );
         let id = admission.operation_id();
         assert_eq!(admission.home_id(), self.store.home_id());
-        self.store
+        match self.store
             .execute_current(self.storage.current_admit_compaction_operation(admission))
-            .unwrap();
+        {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean compaction admission, got {outcome:?}"),
+        }
         assert_eq!(self.operation(id).home_id(), self.store.home_id());
         id
     }
 
     pub fn claim(&self, id: CompactionOperationId) {
         let operation = self.operation(id);
-        self.store
+        match self.store
             .execute_current(self.storage.current_claim_compaction_dispatch(
                 ClaimCompactionDispatch::new(id, operation.revision(), operation.attempt()),
             ))
-            .unwrap();
+        {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean compaction claim, got {outcome:?}"),
+        }
     }
 
     pub fn publish_request(
@@ -186,7 +204,7 @@ impl CompactionFixture {
         disposition: CompactionRequestDisposition,
     ) {
         let operation = self.operation(id);
-        self.store
+        match self.store
             .execute_current(self.storage.current_publish_compaction_request_disposition(
                 PublishCompactionRequestDisposition::new(
                     id,
@@ -195,7 +213,13 @@ impl CompactionFixture {
                     disposition,
                 ),
             ))
-            .unwrap();
+        {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean compaction request publication, got {outcome:?}"),
+        }
     }
 
     pub fn publish_provider(
@@ -210,7 +234,7 @@ impl CompactionFixture {
             .map_or(CompactionProviderSequence::FIRST, |frontier| {
                 frontier.checked_next().unwrap()
             });
-        self.store
+        match self.store
             .execute_current(self.storage.current_publish_compaction_provider_event(
                 PublishCompactionProviderEvent::new(
                     id,
@@ -220,7 +244,13 @@ impl CompactionFixture {
                     timestamp(at),
                 ),
             ))
-            .unwrap();
+        {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean compaction provider publication, got {outcome:?}"),
+        }
     }
 
     pub fn reopen(self) -> Self {
@@ -297,11 +327,17 @@ impl CompactionFixture {
             .content_manifest(&self.store, prepared.id(), point_limit())
             .unwrap()
             .unwrap();
-        self.store
+        match self.store
             .execute_current(self.storage.current_seal_lifecycle_continuation_content(
                 SealLifecycleContinuationContent::new(manifest),
             ))
-            .unwrap();
+        {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean lifecycle content seal, got {outcome:?}"),
+        }
         self.storage
             .content_manifest(&self.store, prepared.id(), point_limit())
             .unwrap()

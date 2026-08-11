@@ -19,9 +19,7 @@ mod route_allocator;
 #[path = "phase9_binding_invariants/selected_prefix.rs"]
 mod selected_prefix;
 
-use beryl_home_store::{
-    CommandError, CursorReadLimits, DomainRegistrationError, HomeCommand, HomeStore,
-};
+use beryl_home_store::{CommandOutcome, CursorReadLimits, DomainRegistrationError, HomeCommand, HomeStore};
 use beryl_model::{
     BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasNativeTurnCount,
     CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding, InputGateRevision, PathFlavor,
@@ -42,15 +40,31 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+) {
+    match execute_outcome(store, contribution) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed binding-invariant command, got {outcome:?}"),
+    }
 }
 
-fn typed_error(error: &CommandError) -> &SyndicMutationError {
-    let CommandError::ContributorValidation { source, .. } = error else {
-        panic!("expected Syndic mutation rejection, got {error}");
+fn execute_outcome(
+    store: &HomeStore,
+    contribution: beryl_home_store::MutationContribution,
+) -> CommandOutcome {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    store.execute(command)
+}
+
+fn typed_error(outcome: &CommandOutcome) -> &SyndicMutationError {
+    let CommandOutcome::NotCommitted { evidence } = outcome else {
+        panic!("expected not-committed Syndic mutation rejection, got {outcome:?}");
+    };
+    let beryl_home_store::CommandError::ContributorValidation { source, .. } = evidence else {
+        panic!("expected Syndic mutation rejection, got {evidence}");
     };
     source.downcast_ref().expect("Syndic mutation error")
 }
@@ -87,8 +101,7 @@ fn create_thread(
             storage.revision(store).unwrap(),
             CreateThread::ordinary(thread, draft, execution_binding(), timestamp(1)),
         ),
-    )
-    .unwrap();
+    );
 }
 
 fn save_text(
@@ -112,8 +125,7 @@ fn save_text(
     execute(
         store,
         storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    )
-    .unwrap();
+    );
 }
 
 fn submit_current(
@@ -148,8 +160,7 @@ fn submit_current(
     execute(
         store,
         storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
-    )
-    .unwrap();
+    );
     let current = storage
         .current_draft(store, thread, point_limit())
         .unwrap()
@@ -195,8 +206,7 @@ fn admit_event(
     execute(
         store,
         storage.admit_live_source_event(storage.revision(store).unwrap(), event),
-    )
-    .unwrap();
+    );
 }
 
 fn activate_exact_turn(
@@ -274,8 +284,7 @@ fn activate_exact_turn(
                 timestamp(4),
             ),
         ),
-    )
-    .unwrap();
+    );
     let cas_turn = CasTurnId::new(format!("fixture-turn-{turn}")).unwrap();
     execute(
         store,
@@ -291,8 +300,7 @@ fn activate_exact_turn(
                 timestamp(4),
             ),
         ),
-    )
-    .unwrap();
+    );
     CasTurnSource::new(cas_thread, cas_turn)
 }
 

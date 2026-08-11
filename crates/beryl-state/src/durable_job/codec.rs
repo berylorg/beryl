@@ -7,10 +7,10 @@ use beryl_model::{
 use crate::encoding::{CodecError, Decoder, Encoder};
 
 use super::{
-    BRANCH_HANDOFF_JOB_RECORD_LIMIT, BranchHandoffJobRecord, DiscussionContextDigest,
+    branch_handoff_job_id, BranchHandoffJobRecord, DiscussionContextDigest,
     DiscussionContextOwnerId, DurableJobDomain, LatestBranchHandoffAttempt, ParentQueueOrdinal,
     ResolutionAttemptOrdinal, ResolutionRequestAdmission, ResolutionRequestIdentity,
-    ResolutionText, branch_handoff_job_id,
+    ResolutionText, BRANCH_HANDOFF_JOB_RECORD_LIMIT,
 };
 
 mod state;

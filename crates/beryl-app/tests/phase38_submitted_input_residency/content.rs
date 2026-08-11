@@ -1,6 +1,6 @@
 use std::{convert::Infallible, mem, path::PathBuf};
 
-use beryl_home_store::HomeCommand;
+use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_model::{AssetId, ContentRevision, ImageLabelOrdinal, SyndicDraftId, SyndicThreadId};
 use syndic_storage::{
     ContentEncoding, ContentLifecycle, ContentManifestRecord, ContentReference,
@@ -205,7 +205,12 @@ impl<'a> DurableRecordSink<'a> {
         );
         let mut command = HomeCommand::new(self.fixture.store.home_revision().unwrap());
         command.add(contribution).unwrap();
-        self.fixture.store.execute(command).unwrap();
+        match self.fixture.store.execute(command) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed content mutation, got {outcome:?}"),
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed content mutation, got {outcome:?}"),
+        }
         self.records = 0;
     }
 }

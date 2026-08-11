@@ -1,5 +1,5 @@
 use beryl_home_store::{
-    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, CommandOutcome, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use syndic_storage::*;
@@ -45,11 +45,31 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
             commit(&store, storage, batch(operation.records()));
 
             faults.fail_next(point);
-            assert!(
-                store
-                    .execute_current(operation.current_command(storage))
-                    .is_err()
-            );
+            match (point, store.execute_current(operation.current_command(storage))) {
+                (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
+                    assert!(matches!(evidence, CommandError::Commit { .. }));
+                }
+                (
+                    FaultPoint::AfterCommitBeforePersist,
+                    outcome @ CommandOutcome::Indeterminate { .. },
+                ) => {
+                    assert!(matches!(
+                        &outcome,
+                        CommandOutcome::Indeterminate {
+                            failure: CommandError::Persistence { .. },
+                            ..
+                        }
+                    ));
+                }
+                (
+                    FaultPoint::AfterPersist,
+                    CommandOutcome::Committed {
+                        later_failure: Some(CommandError::Persistence { .. }),
+                        ..
+                    },
+                ) => {}
+                (_, outcome) => panic!("unexpected delivery fault outcome: {outcome:?}"),
+            }
             assert_eq!(store.health().state(), HomeHealthState::Verifying);
             store.verify_health().unwrap();
             let recovered = operation.status(&store, storage);

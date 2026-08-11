@@ -160,7 +160,12 @@ pub(super) fn execute(
 ) {
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     command.add(contribution).unwrap();
-    home.execute(command).unwrap();
+    match home.execute(command) {
+        beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("active-steering storage command committed with later failure: {outcome:?}"),
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("active-steering storage command was not committed: {evidence:?}"),
+        outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("active-steering storage command was indeterminate: {outcome:?}"),
+    }
 }
 
 pub(super) fn point_limit() -> SyndicPointReadLimit {

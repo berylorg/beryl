@@ -7,11 +7,15 @@ use fjall::{
 
 const MIB_U32: u32 = 1_024 * 1_024;
 const MIB_U64: u64 = 1_024 * 1_024;
+const RECONCILIATION_DESCRIPTOR_BYTES: usize = 64 * 1_024 * 1_024;
+const RECONCILIATION_RESERVED_BYTES: usize = 256 * 1_024 * 1_024;
 
 /// The one practical V1 storage profile retained across same-home generations.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct StorageProfile {
     policy: StoragePolicy,
+    reconciliation_descriptor_bytes: usize,
+    reconciliation_reserved_bytes: usize,
 }
 
 impl StorageProfile {
@@ -36,11 +40,21 @@ impl StorageProfile {
         )?;
         Ok(Self {
             policy: StoragePolicy::new(tree, database)?,
+            reconciliation_descriptor_bytes: RECONCILIATION_DESCRIPTOR_BYTES,
+            reconciliation_reserved_bytes: RECONCILIATION_RESERVED_BYTES,
         })
     }
 
     /// Constructs a single-use configuration with a fresh cache and memtable owner.
     pub(crate) fn configuration(self, path: &Path) -> fjall::Result<Config> {
         Config::new(self.policy, path)
+    }
+
+    pub(crate) const fn reconciliation_descriptor_bytes(self) -> usize {
+        self.reconciliation_descriptor_bytes
+    }
+
+    pub(crate) const fn reconciliation_reserved_bytes(self) -> usize {
+        self.reconciliation_reserved_bytes
     }
 }

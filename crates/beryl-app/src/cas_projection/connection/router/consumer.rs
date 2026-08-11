@@ -57,7 +57,7 @@ impl ActiveSteeringRaceProbe {
     pub(in crate::cas_projection) fn target_loss_requested(&self) -> bool {
         self.connection
             .current_router()
-            .expect("test target retains an attached service epoch")
+            .expect("test target retains its service attachment")
             .target_loss_requested_for_test(&self.registration)
     }
 }
@@ -139,7 +139,7 @@ impl LiveEventTarget {
     ) -> super::AcceptedNextReadyNotifier {
         self.connection
             .current_router()
-            .expect("a live event target retains an attached service epoch")
+            .expect("a live event target retains its service attachment")
             .accepted_next_ready_notifier()
     }
 
@@ -360,20 +360,13 @@ impl LiveEventTarget {
         &mut self,
         requirement: TargetHandoffRequirement,
     ) -> Result<LoadedCasProjection, LiveEventTargetHandoffError> {
-        let surrender = self
-            .projection()
-            .prepare_preactivation_surrender()
-            .map_err(
-                |source| LiveEventTargetHandoffError::PreactivationSurrenderUnavailable { source },
-            )?;
         self.connection
             .handoff_target(self.registration(), requirement)?;
         self.registration.take();
-        let mut projection = self
+        let projection = self
             .projection
             .take()
             .expect("live-event target retains its projection until handoff");
-        projection.install_preactivation_surrender(surrender);
         Ok(projection)
     }
 }

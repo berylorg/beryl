@@ -83,11 +83,11 @@ impl EventRouter {
         connection_generation: u64,
         scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
         commands: crate::cas_projection::LiveCommandAuthorizer,
-        projection_retainer: Option<
-            crate::cas_projection::persistent_failure::PersistentFailureProjectionRetainer,
+        terminal_disposer: Option<
+            crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
         >,
     ) -> Result<Self, ProjectionCoordinatorError> {
-        let process = super::process::StableConnectionProcessFact::register(
+        let process = super::process::ConnectionProcessFact::register(
             runtime_id,
             process_generation,
             connection_generation,
@@ -98,7 +98,7 @@ impl EventRouter {
             connection_generation,
             scheduler_signal,
             commands,
-            projection_retainer,
+            terminal_disposer,
             process.observe(),
         )
     }
@@ -110,8 +110,8 @@ impl EventRouter {
         connection_generation: u64,
         scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
         commands: crate::cas_projection::LiveCommandAuthorizer,
-        projection_retainer: Option<
-            crate::cas_projection::persistent_failure::PersistentFailureProjectionRetainer,
+        terminal_disposer: Option<
+            crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
         >,
         process: super::process::ProcessEventObservation,
     ) -> Result<Self, ProjectionCoordinatorError> {
@@ -121,7 +121,7 @@ impl EventRouter {
             connection_generation,
             process,
             commands,
-            projection_retainer,
+            terminal_disposer,
             state: std::sync::Mutex::new(RouterState {
                 revision: 0,
                 next_registration: 0,
@@ -130,6 +130,7 @@ impl EventRouter {
                 active_steering_attempt_waiter: false,
                 next_stop_election: 0,
                 active_stop_election: None,
+                volatile_stop_admission: None,
                 persistent_failure: None,
                 retired: None,
                 targets: std::collections::HashMap::new(),
@@ -264,8 +265,8 @@ impl EventRouter {
             },
             GateSettlement::PersistentFailure => TargetProjectionDropSettlement::PersistentFailure,
             GateSettlement::RetainAfterCut(projection) => {
-                if let Some(retainer) = self.projection_retainer.clone() {
-                    retainer.retain_target(projection);
+                if let Some(disposer) = self.terminal_disposer.clone() {
+                    disposer.dispose_target(projection);
                     TargetProjectionDropSettlement::PersistentFailure
                 } else {
                     TargetProjectionDropSettlement::Unavailable(projection)
@@ -373,22 +374,6 @@ impl EventRouter {
         drop(state);
         self.publication_changed.notify_all();
         Ok(connection_retired)
-    }
-
-    pub(in crate::cas_projection) fn permits_reacquisition_thread(
-        &self,
-        thread_id: &CasThreadId,
-    ) -> Result<bool, ProjectionCoordinatorError> {
-        let state =
-            self.state
-                .lock()
-                .map_err(|_| ProjectionCoordinatorError::RegistryPoisoned {
-                    registry: crate::cas_projection::ProjectionRegistryKind::LiveEventRouter,
-                })?;
-        Ok(state.retired.is_none()
-            && state.persistent_failure.is_none()
-            && !state.targets.contains_key(thread_id)
-            && !state.retired_thread_lanes.contains(thread_id))
     }
 }
 

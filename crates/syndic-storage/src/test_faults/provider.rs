@@ -52,6 +52,14 @@ impl ProviderFixtureFamily {
             Self::NarrativeSpans => ProviderNarrativeSpansCodec::MAX_KEY_BYTES,
         }
     }
+
+    #[must_use]
+    pub const fn maximum_value_bytes(self) -> usize {
+        match self {
+            Self::ItemBuilds => ProviderItemBuildsCodec::MAX_VALUE_BYTES,
+            Self::NarrativeSpans => ProviderNarrativeSpansCodec::MAX_VALUE_BYTES,
+        }
+    }
 }
 
 /// One exact typed provider-family record used only by the test-fault codec seam.
@@ -69,6 +77,13 @@ impl ProviderFixtureRecord {
             Self::NarrativeSpan(_) => ProviderFixtureFamily::NarrativeSpans,
         }
     }
+}
+
+/// Returns the exact codec value length for one valid provider fixture record.
+pub fn encoded_provider_fixture_value_bytes(
+    record: &ProviderFixtureRecord,
+) -> Result<usize, ProviderFixtureCodecError> {
+    encode(record).map(|(_, value)| value.len())
 }
 
 /// One bounded structural corruption applied after exact family encoding.
@@ -322,6 +337,24 @@ impl DomainMutation<SyndicDomain> for PersistedProviderNarrativeFault {
                 .is_some()
         {
             return Err(PersistedProviderNarrativeCorruptionError::DestinationOccupied);
+        }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        match &self.replacement {
+            PersistedProviderNarrativeReplacement::Span(_) => {
+                reservation.reserve_records::<ProviderNarrativeSpansCodec>(1)?;
+            }
+            PersistedProviderNarrativeReplacement::MovedKey(_) => {
+                reservation.reserve_records::<ProviderNarrativeSpansCodec>(2)?;
+            }
+            PersistedProviderNarrativeReplacement::Build(_) => {
+                reservation.reserve_records::<ProviderItemBuildsCodec>(1)?;
+            }
         }
         Ok(())
     }

@@ -42,10 +42,10 @@ impl ContextCompactionCoordinator {
             command,
         ));
         self.install_local(Arc::clone(&local))?;
-        let _ = self.home.execute_current(
+        require_committed_command(self.home.execute_current(
             self.storage
                 .current_admit_compaction_operation(admission.clone()),
-        );
+        ))?;
         let operation = match self.read_operation(operation_id) {
             Ok(operation) => operation,
             Err(error) => {
@@ -108,10 +108,10 @@ impl ContextCompactionCoordinator {
             command,
         ));
         self.install_local(Arc::clone(&local))?;
-        let _ = self.home.execute_current(
+        require_committed_command(self.home.execute_current(
             self.storage
                 .current_admit_compaction_operation(admission.clone()),
-        );
+        ))?;
         let operation = match self.read_operation(operation_id) {
             Ok(operation) => operation,
             Err(error) => {
@@ -206,7 +206,6 @@ impl ContextCompactionCoordinator {
                     candidate.cas_thread_id(),
                     candidate.thread_id(),
                     COMPACTION_REQUEST_TIMEOUT,
-                    None,
                 )
                 .map_err(|_| ContextCompactionError::Driver)?
             {
@@ -216,8 +215,7 @@ impl ContextCompactionCoordinator {
                 ExistingLease::Exact(_) => return Err(ContextCompactionError::AuthorityMismatch),
                 ExistingLease::Absent
                 | ExistingLease::AnotherConnection
-                | ExistingLease::AnotherOwner { .. }
-                | ExistingLease::Quarantined => {}
+                | ExistingLease::AnotherOwner { .. } => {}
             }
         }
         let (connection, lease) = exact.ok_or(ContextCompactionError::Unavailable)?;

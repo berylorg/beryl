@@ -4,7 +4,7 @@ use beryl_backend::{
     ManagedBackendClientConnector, NonIdempotentRequestOutcome, ThreadStartOptions,
     TurnStartOptions,
 };
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     CasProcessGeneration, RuntimeId, SyndicAcceptedInputId, SyndicDraftId,
     SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId,
@@ -363,8 +363,12 @@ impl DeliveryFixture {
             timestamp(3),
         );
         let submitted_turn_id = submission.submitted_turn_id();
-        home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap())
-            .unwrap();
+        match home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap()) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("active-steering submitted-turn command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("active-steering submitted-turn command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("active-steering submitted-turn command was indeterminate: {outcome:?}"),
+        }
 
         let config = ProjectionServiceConfig::try_new(16, worker_capacity).unwrap();
         let service = ProjectionConnectionService::new(
@@ -563,10 +567,14 @@ impl DeliveryFixture {
             AdmissionMode::Manual => {
                 let live_home = service.live_home_command().unwrap();
                 let home = live_home.home();
-                home.execute(
+                match home.execute(
                     build_accepted_input_command(home, storage, state.assets(), admission).unwrap(),
-                )
-                .unwrap();
+                ) {
+                    CommandOutcome::Committed { later_failure: None, .. } => {}
+                    outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("manual active-steering admission committed with later failure: {outcome:?}"),
+                    CommandOutcome::NotCommitted { evidence } => panic!("manual active-steering admission was not committed: {evidence:?}"),
+                    outcome @ CommandOutcome::Indeterminate { .. } => panic!("manual active-steering admission was indeterminate: {outcome:?}"),
+                }
             }
             AdmissionMode::ScheduledDescendantReconciliation => {
                 let prepared = {
@@ -960,7 +968,7 @@ impl DeliveryFixture {
 
     pub(super) fn route_state_after_service_close(&self) -> AcceptedRouteEffectiveState {
         route_state_for(
-            self.service.retained_home_for_test(),
+            self.service.home_for_shutdown_test(),
             self.storage,
             self.thread_id,
             self.accepted_input_id,
@@ -1002,7 +1010,7 @@ impl DeliveryFixture {
 
     pub(super) fn route_lifecycle_after_service_close(&self) -> AcceptedInputLifecycle {
         route_entry(
-            self.service.retained_home_for_test(),
+            self.service.home_for_shutdown_test(),
             self.storage,
             self.thread_id,
             self.accepted_input_id,

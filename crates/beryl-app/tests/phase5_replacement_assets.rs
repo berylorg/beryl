@@ -1,7 +1,7 @@
 #![cfg(feature = "test-faults")]
 
 use beryl_app::input_admission::{InputAdmissionBuildError, start_replacement_edit_command};
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     BindingRevision, ContentRevision, DraftRevision, ExecutionBinding, InputGateRevision,
     PathFlavor, ProjectionRevision, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
@@ -276,7 +276,7 @@ fn replacement_start_copies_asset_ownership_without_moving_history() {
     let mut seed = HomeCommand::new(store.home_revision().unwrap());
     seed.add(syndic.fixture_contribution(syndic.revision(&store).unwrap(), fixture))
         .unwrap();
-    store.execute(seed).unwrap();
+    match store.execute(seed) { CommandOutcome::Committed { later_failure: None, .. } => {}, CommandOutcome::NotCommitted { evidence } => panic!("expected committed seed: {evidence:?}"), outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ CommandOutcome::Indeterminate { .. } => panic!("indeterminate seed: {outcome:?}"), }
 
     let selected = SelectedPathProof::new(
         Some(turn),
@@ -297,7 +297,7 @@ fn replacement_start_copies_asset_ownership_without_moving_history() {
         time(2),
     );
     let command = start_replacement_edit_command(&store, syndic, state.assets(), edit).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) { CommandOutcome::Committed { later_failure: None, .. } => {}, CommandOutcome::NotCommitted { evidence } => panic!("expected committed replacement: {evidence:?}"), outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ CommandOutcome::Indeterminate { .. } => panic!("indeterminate replacement: {outcome:?}"), }
     store.validate_registered_domains().unwrap();
 
     let draft_owner = AssetOwner::CurrentDraft(draft);
@@ -376,7 +376,7 @@ fn replacement_start_rejects_historical_asset_disagreement_before_building_a_com
     let mut seed = HomeCommand::new(store.home_revision().unwrap());
     seed.add(syndic.fixture_contribution(syndic.revision(&store).unwrap(), fixture))
         .unwrap();
-    store.execute(seed).unwrap();
+    match store.execute(seed) { CommandOutcome::Committed { later_failure: None, .. } => {}, CommandOutcome::NotCommitted { evidence } => panic!("expected committed seed: {evidence:?}"), outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ CommandOutcome::Indeterminate { .. } => panic!("indeterminate seed: {outcome:?}"), }
 
     let selected = SelectedPathProof::new(
         Some(turn),

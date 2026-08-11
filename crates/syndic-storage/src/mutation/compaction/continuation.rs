@@ -32,6 +32,33 @@ impl DomainMutation<SyndicDomain> for SettleLifecycleMutation {
         self.records(reader).map(|_| ())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CompactionOperationsCodec>(1)?;
+        reservation.reserve_records::<CompactionSettlementReceiptsCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reservation.reserve_records::<SourceEventsCodec>(1)?;
+        reservation.reserve_records::<TurnStatesCodec>(1)?;
+        reservation.reserve_records::<BindingsCodec>(1)?;
+        reservation.reserve_records::<BindingHeadsCodec>(1)?;
+        reservation.reserve_records::<CasThreadIndexCodec>(1)?;
+        reservation.reserve_records::<CasThreadBindingIndexCodec>(1)?;
+        reservation.reserve_records::<ThreadsCodec>(1)?;
+        reservation.reserve_records::<DraftByThreadCodec>(1)?;
+        reservation.reserve_records::<TurnsCodec>(1)?;
+        reservation.reserve_records::<TurnChildrenCodec>(1)?;
+        reservation.reserve_records::<CanonicalItemsCodec>(1)?;
+        reservation.reserve_records::<TurnItemsCodec>(1)?;
+        reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
+        reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
+        reservation.reserve_records::<HistorySummariesCodec>(1)?;
+        reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
+        reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, SyndicDomain>,

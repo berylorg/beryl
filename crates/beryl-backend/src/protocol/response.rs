@@ -1,10 +1,9 @@
-mod compatibility;
 mod error;
 mod fixed;
 mod initialize;
 mod model;
+mod result;
 
-pub use compatibility::*;
 pub use error::*;
 pub use fixed::{
     BoundedResponseTextError, MODEL_CURSOR_MAX_BYTES, MODEL_DISPLAY_NAME_MAX_BYTES,
@@ -12,5 +11,6 @@ pub use fixed::{
 };
 pub use initialize::*;
 pub use model::*;
+pub use result::*;
 
 use fixed::InlineUtf8;

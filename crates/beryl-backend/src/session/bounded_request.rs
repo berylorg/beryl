@@ -14,7 +14,9 @@ use crate::{
     ThreadUnsubscribeResponse, incoming_json::ResponseFamily,
 };
 
-mod compatibility;
+#[cfg(feature = "lifecycle-test-support")]
+use crate::BackendConfigDefaults;
+
 mod lineage;
 mod thread_read;
 mod wire;
@@ -96,7 +98,6 @@ impl ManagedBackendSession {
 
         self.initialize = Some(initialize);
         self.initialized_notification_profile = Some(profile);
-        self.experimental_api_negotiated = true;
         Ok(())
     }
 
@@ -136,6 +137,53 @@ impl ManagedBackendSession {
             return self.fail_unexpected_response(ResponseFamily::ConfigRead.method());
         };
         Ok(config)
+    }
+
+    /// Admits one production managed launch from this initialized session's exact release and
+    /// effective configuration facts. It dispatches only one `config/read` request.
+    pub fn admit_release(
+        &mut self,
+        cwd: &Path,
+        timeout: Duration,
+    ) -> Result<crate::ManagedBackendReleaseAdmission, ManagedBackendError> {
+        if !self.has_production_managed_launch_provenance() {
+            return Err(ManagedBackendError::ReleaseAdmissionManagedLaunchProvenanceMissing);
+        }
+        let initialize = self
+            .initialize
+            .clone()
+            .ok_or(ManagedBackendError::ClientNotInitialized)?;
+        let config_defaults = self.read_config(cwd, timeout)?.into_defaults();
+        if !config_defaults.proves_release_admission() {
+            self.retire_connection();
+            return Err(ManagedBackendError::ReleaseAdmissionEffectiveConfigUnproven);
+        }
+        let launch_provenance = self
+            .managed_launch_provenance
+            .clone()
+            .expect("production managed-launch provenance was checked before release admission");
+        Ok(crate::ManagedBackendReleaseAdmission::new(
+            initialize,
+            config_defaults,
+            launch_provenance,
+        ))
+    }
+
+    /// Exercises the exact release-admission request protocol without creating production
+    /// admission authority for lifecycle tests.
+    #[cfg(feature = "lifecycle-test-support")]
+    #[doc(hidden)]
+    pub fn admit_release_non_authorizing_for_lifecycle_test(
+        &mut self,
+        cwd: &Path,
+        timeout: Duration,
+    ) -> Result<BackendConfigDefaults, ManagedBackendError> {
+        let config_defaults = self.read_config(cwd, timeout)?.into_defaults();
+        if !config_defaults.proves_release_admission() {
+            self.retire_connection();
+            return Err(ManagedBackendError::ReleaseAdmissionEffectiveConfigUnproven);
+        }
+        Ok(config_defaults)
     }
 
     /// Unloads one exact thread from this foreground connection.

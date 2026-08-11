@@ -290,9 +290,9 @@ use beryl_backend::{
     DynamicToolSpec, parse_dynamic_tool_call_request,
 };
 use diagnostic_child_dynamic_tools::{
-    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
-    DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL, DIAGNOSTIC_CHILD_READ_PROCESS_TOOL,
-    DIAGNOSTIC_CHILD_READ_RENDERER_TOOL, DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL,
+    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL,
+    DIAGNOSTIC_CHILD_READ_PROCESS_TOOL, DIAGNOSTIC_CHILD_READ_RENDERER_TOOL,
+    DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL,
     DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL, DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
     DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL, DIAGNOSTIC_CHILD_START_TOOL,
     DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
@@ -635,10 +635,6 @@ fn diagnostic_child_stop_tools_require_and_forward_expected_turn_identity() {
         DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
         json!({ "expectedThreadId": "thread-a", "expectedTurnId": "turn-a" }),
     );
-    let hard_request = tool_request(
-        DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
-        json!({ "expectedThreadId": "thread-b", "expectedTurnId": "turn-b" }),
-    );
 
     let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
         &mut supervisor,
@@ -655,14 +651,8 @@ fn diagnostic_child_stop_tools_require_and_forward_expected_turn_identity() {
         &supervisor_home,
         &soft_request,
     );
-    let hard_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
-        &mut supervisor,
-        &supervisor_home,
-        &hard_request,
-    );
     let missing_payload = response_json(&missing_response);
     let soft_payload = response_json(&soft_response);
-    let hard_payload = response_json(&hard_response);
 
     assert!(!missing_response.success);
     assert_eq!(missing_payload["error"]["kind"], "invalid_arguments");
@@ -673,15 +663,38 @@ fn diagnostic_child_stop_tools_require_and_forward_expected_turn_identity() {
         "thread-a"
     );
     assert_eq!(soft_payload["result"]["params"]["expectedTurnId"], "turn-a");
-    assert!(hard_response.success);
-    assert_eq!(hard_payload["result"]["command"], "hard_stop_turn");
-    assert_eq!(
-        hard_payload["result"]["params"]["expectedThreadId"],
-        "thread-b"
-    );
-    assert_eq!(hard_payload["result"]["params"]["expectedTurnId"], "turn-b");
 
     child.close().unwrap();
+    root.close().unwrap();
+}
+
+#[test]
+fn diagnostic_child_hard_stop_tool_is_absent_and_rejected() {
+    let specs = beryl_diagnostic_child_dynamic_tool_specs();
+    let [DynamicToolSpec::Namespace(namespace)] = specs.as_slice() else {
+        panic!("diagnostic-child tools must use one canonical namespace");
+    };
+    assert!(
+        namespace
+            .tools
+            .iter()
+            .all(|spec| spec.name != "hard_stop_turn")
+    );
+
+    let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
+    let mut supervisor = DiagnosticChildSupervisor::default();
+    let request = tool_request(
+        "hard_stop_turn",
+        json!({ "expectedThreadId": "thread-a", "expectedTurnId": "turn-a" }),
+    );
+
+    let response =
+        dispatch_beryl_diagnostic_child_dynamic_tool_call(&mut supervisor, root.path(), &request);
+    let payload = response_json(&response);
+
+    assert!(!response.success);
+    assert_eq!(payload["error"]["kind"], "unsupported_tool");
+
     root.close().unwrap();
 }
 

@@ -71,11 +71,64 @@ fn detached_adapter_files_stay_removed_and_compact_inputs_remain() {
 }
 
 #[test]
-fn shell_sources_exclude_removed_hard_stop_caller_state_and_render_seams() {
-    let shell_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shell");
+fn production_sources_exclude_removed_hard_stop_and_coarse_cleanup_surfaces() {
+    let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for relative in [
+        "cas_projection/stop/hard.rs",
+        "shell/hard_stop.rs",
+        "shell/hard_stop_targets.rs",
+    ] {
+        assert!(
+            !src_dir.join(relative).exists(),
+            "removed hard-stop source returned at {relative}"
+        );
+    }
+
     let forbidden = [
         "hard_stop::",
         "mod hard_stop",
+        "mod hard;",
+        "hard::HardStop",
+        "HardStopRunOwner",
+        "HardStopAttachment",
+        "HardStopAdmission",
+        "HardStopCoordinatorState",
+        "HardStopActivityState",
+        "HardStopSlot",
+        "HardStopElection",
+        "HardStopLimitation",
+        "HardStopTargetKind",
+        "HardStopTargetDisposition",
+        "HardStopTargetResult",
+        "BoundedHardStopResult",
+        "StopDispatchSettlement::HardStop",
+        "HardStopRunningProvenNondispatch",
+        "attach_hard_stop",
+        "begin_hard_run",
+        "settle_primary_and_begin_hard_run",
+        "begin_racing_proven_nondispatch_hard_run",
+        "dispatch_exact_hard_stop",
+        "dispatch_hard_stop_owner",
+        "finish_authorized_hard_stop",
+        "finish_unavailable_hard_stop",
+        "finish_hard_without_run",
+        "consume_hard_slot",
+        "wait_for_finalization_release",
+        "hard_activity",
+        "hard_wake",
+        "PublishedHardStopActivity",
+        "PublishedHardStopActivityEffect",
+        "BoundPublishedHardStopActivity",
+        "hard_stop_activity_transition",
+        "record_published_activity",
+        "clear_published_activity",
+        "PersistentFailureStopEvidence",
+        "persistent_failure_evidence",
+        "permits_volatile_interrupt",
+        "ExactHardStopLimitation",
+        "CoarseThreadCleanup",
+        "admits_exact_thread_background_terminals_cleanup",
+        "clean_exact_thread_background_terminals",
         "HardStopTarget",
         "SelectedTurnHardStopTargets",
         "HardStopRequest",
@@ -86,11 +139,11 @@ fn shell_sources_exclude_removed_hard_stop_caller_state_and_render_seams() {
     ];
     let mut offenders = Vec::new();
 
-    for path in rust_files_under(&shell_dir) {
-        let source = fs::read_to_string(&path).expect("shell source should be readable");
+    for path in rust_files_under(&src_dir) {
+        let source = fs::read_to_string(&path).expect("production source should be readable");
         for removed in forbidden {
             if source.contains(removed) {
-                let relative = path.strip_prefix(&shell_dir).unwrap_or(&path);
+                let relative = path.strip_prefix(&src_dir).unwrap_or(&path);
                 offenders.push(format!("{} contains {removed}", relative.display()));
             }
         }
@@ -98,7 +151,7 @@ fn shell_sources_exclude_removed_hard_stop_caller_state_and_render_seams() {
 
     assert!(
         offenders.is_empty(),
-        "removed shell-owned hard-stop seams remain in app source: {offenders:?}"
+        "removed hard-stop or coarse-cleanup surfaces remain in app production source: {offenders:?}"
     );
 }
 

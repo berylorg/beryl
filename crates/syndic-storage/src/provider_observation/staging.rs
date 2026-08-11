@@ -1,5 +1,4 @@
-use std::error::Error;
-
+use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, ReconciliationDescriptor};
 use beryl_model::ProviderObservationId;
 
 use super::{
@@ -150,24 +149,37 @@ impl ProviderObservationStageBatch {
     }
 }
 
-/// Synchronous durability and exact reconciliation boundary.
+/// Synchronous exact durable-outcome boundary.
 pub trait ProviderObservationStageCallback {
-    type Error: Error + Send + Sync + 'static;
-
-    /// Returns success only after the batch is durably `Next`, including after ambiguity.
-    fn stage_batch(&mut self, batch: &ProviderObservationStageBatch) -> Result<(), Self::Error>;
+    /// Classifies the offered batch without hiding its durable result.
+    fn stage_batch(&mut self, batch: &ProviderObservationStageBatch) -> CommandOutcome;
 }
 
-impl<F, E> ProviderObservationStageCallback for F
+impl<F> ProviderObservationStageCallback for F
 where
-    F: FnMut(&ProviderObservationStageBatch) -> Result<(), E>,
-    E: Error + Send + Sync + 'static,
+    F: FnMut(&ProviderObservationStageBatch) -> CommandOutcome,
 {
-    type Error = E;
-
-    fn stage_batch(&mut self, batch: &ProviderObservationStageBatch) -> Result<(), Self::Error> {
+    fn stage_batch(&mut self, batch: &ProviderObservationStageBatch) -> CommandOutcome {
         self(batch)
     }
+}
+
+/// Exact durable outcome of one provider-observation staging step.
+#[derive(Debug)]
+pub enum ProviderObservationStageOutcome<T> {
+    /// The offered batch definitely did not commit and state did not advance.
+    NotCommitted { evidence: CommandError },
+    /// The batch committed and the returned state is its exact durable successor.
+    Committed {
+        value: T,
+        receipt: CommitReceipt,
+        later_failure: Option<CommandError>,
+    },
+    /// The offered batch may have committed and state did not advance locally.
+    Indeterminate {
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
 }
 
 /// Consuming, non-cloneable unpublished observation stager.
@@ -183,7 +195,7 @@ impl ProviderObservationStager {
         identity: ProviderObservationId,
         begin: ProviderObservationBegin,
         callback: &mut C,
-    ) -> Result<Self, ProviderObservationStagingError<C::Error>> {
+    ) -> Result<ProviderObservationStageOutcome<Self>, ProviderObservationStagingError> {
         let canonical = CanonicalObservationState::initial(begin);
         let current = ProviderObservationBuildRecord::initial(
             identity,
@@ -192,14 +204,30 @@ impl ProviderObservationStager {
             canonical.digest(),
         );
         let batch = ProviderObservationStageBatch::begin(current.clone());
-        callback
-            .stage_batch(&batch)
-            .map_err(ProviderObservationStagingError::Callback)?;
-        Ok(Self {
-            current,
-            validator: ProviderObservationValidatorState::initial(),
-            canonical,
-        })
+        match callback.stage_batch(&batch) {
+            CommandOutcome::NotCommitted { evidence } => {
+                Ok(ProviderObservationStageOutcome::NotCommitted { evidence })
+            }
+            CommandOutcome::Committed {
+                receipt,
+                later_failure,
+            } => Ok(ProviderObservationStageOutcome::Committed {
+                value: Self {
+                    current,
+                    validator: ProviderObservationValidatorState::initial(),
+                    canonical,
+                },
+                receipt,
+                later_failure,
+            }),
+            CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => Ok(ProviderObservationStageOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            }),
+        }
     }
 
     pub(crate) fn from_replayed(
@@ -226,7 +254,7 @@ impl ProviderObservationStager {
         &mut self,
         control: ProviderObservationControl,
         callback: &mut C,
-    ) -> Result<(), ProviderObservationStagingError<C::Error>> {
+    ) -> Result<ProviderObservationStageOutcome<()>, ProviderObservationStagingError> {
         let mut validator = self.validator.clone();
         validator.control(self.current.begin(), control)?;
         let mut canonical = self.canonical.clone();
@@ -246,7 +274,7 @@ impl ProviderObservationStager {
         &mut self,
         fragment: ProviderObservationStagingBytes<'_>,
         callback: &mut C,
-    ) -> Result<(), ProviderObservationStagingError<C::Error>> {
+    ) -> Result<ProviderObservationStageOutcome<()>, ProviderObservationStagingError> {
         let mut validator = self.validator.clone();
         for byte in fragment.bytes() {
             validator.fragment_byte(fragment.context(), *byte)?;
@@ -275,7 +303,7 @@ impl ProviderObservationStager {
         canonical: CanonicalObservationState,
         chunk: ProviderObservationChunkRecord,
         callback: &mut C,
-    ) -> Result<(), ProviderObservationStagingError<C::Error>> {
+    ) -> Result<ProviderObservationStageOutcome<()>, ProviderObservationStagingError> {
         let next = self.current.advance(
             canonical.canonical_bytes(),
             canonical.digest(),
@@ -285,20 +313,41 @@ impl ProviderObservationStager {
         )?;
         let batch =
             ProviderObservationStageBatch::advance(self.current.clone(), next.clone(), Some(chunk));
-        callback
-            .stage_batch(&batch)
-            .map_err(ProviderObservationStagingError::Callback)?;
-        self.current = next;
-        self.validator = validator;
-        self.canonical = canonical;
-        Ok(())
+        match callback.stage_batch(&batch) {
+            CommandOutcome::NotCommitted { evidence } => {
+                Ok(ProviderObservationStageOutcome::NotCommitted { evidence })
+            }
+            CommandOutcome::Committed {
+                receipt,
+                later_failure,
+            } => {
+                self.current = next;
+                self.validator = validator;
+                self.canonical = canonical;
+                Ok(ProviderObservationStageOutcome::Committed {
+                    value: (),
+                    receipt,
+                    later_failure,
+                })
+            }
+            CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => Ok(ProviderObservationStageOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            }),
+        }
     }
 
     /// Seals the exact structurally complete observation and consumes the stager.
     pub fn seal<C: ProviderObservationStageCallback>(
         self,
         callback: &mut C,
-    ) -> Result<SealedProviderObservationHandle, ProviderObservationStagingError<C::Error>> {
+    ) -> Result<
+        ProviderObservationStageOutcome<SealedProviderObservationHandle>,
+        ProviderObservationStagingError,
+    > {
         self.validator.finish(self.current.begin())?;
         let next = self.current.advance(
             self.canonical.canonical_bytes(),
@@ -308,10 +357,26 @@ impl ProviderObservationStager {
             false,
         )?;
         let batch = ProviderObservationStageBatch::advance(self.current, next.clone(), None);
-        callback
-            .stage_batch(&batch)
-            .map_err(ProviderObservationStagingError::Callback)?;
-        Ok(SealedProviderObservationHandle::from_build(&next))
+        match callback.stage_batch(&batch) {
+            CommandOutcome::NotCommitted { evidence } => {
+                Ok(ProviderObservationStageOutcome::NotCommitted { evidence })
+            }
+            CommandOutcome::Committed {
+                receipt,
+                later_failure,
+            } => Ok(ProviderObservationStageOutcome::Committed {
+                value: SealedProviderObservationHandle::from_build(&next),
+                receipt,
+                later_failure,
+            }),
+            CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => Ok(ProviderObservationStageOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            }),
+        }
     }
 
     /// Explicitly abandons this unpublished generation without a durable mutation.
@@ -339,15 +404,13 @@ pub enum ProviderObservationStageBatchError {
 
 /// Why unpublished staging could not advance one exact durable frontier.
 #[derive(Debug, thiserror::Error)]
-pub enum ProviderObservationStagingError<E: Error + Send + Sync + 'static> {
+pub enum ProviderObservationStagingError {
     #[error(transparent)]
     Validation(#[from] ProviderObservationValidatorError),
     #[error(transparent)]
     Batch(#[from] ProviderObservationStageBatchError),
     #[error(transparent)]
     Record(#[from] crate::SyndicRecordError),
-    #[error("provider-observation durable callback rejected the exact batch: {0}")]
-    Callback(#[source] E),
 }
 
 pub(crate) fn replay_chunk(

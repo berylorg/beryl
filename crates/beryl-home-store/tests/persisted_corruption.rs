@@ -5,16 +5,16 @@ mod support;
 use std::{convert::Infallible, error::Error, fmt, sync::Arc};
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint, PersistedCorruptionError},
     CodecOperation, CommandError, DomainCallbackSource, DomainHandle, DomainMutation, DomainReader,
     DomainSchemaVersion, DomainValidationError, HealthVerificationError, HomeCommand,
     HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
     KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily,
     RecordVersion, StorageDomain,
-    test_faults::{FaultController, FaultPoint, PersistedCorruptionError},
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, PutBytes};
+use support::{committed, AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, PutBytes};
 
 const MAX_STORED_VALUE_BYTES: usize = 1_028;
 const MAX_CORRUPTION_FIXTURE_BYTES: usize = 1_048_576;
@@ -105,6 +105,14 @@ impl DomainMutation<AlphaDomain> for CorruptionReentrantProbe {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, AlphaDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BytesRecord<AlphaDomain>>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, AlphaDomain>,
@@ -176,7 +184,7 @@ fn same_thread_writer_reentry_is_rejected_without_deadlock_or_corruption() {
         ))
         .unwrap();
 
-    store.execute(command).unwrap();
+    committed(store.execute(command));
     assert_eq!(
         store
             .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -420,7 +428,9 @@ fn verification_and_same_home_recovery_both_reject_the_persisted_envelope() {
     faults.fail_next(FaultPoint::BeforeCommit);
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::Commit { .. })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::Commit { .. }
+        }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Verifying);
 

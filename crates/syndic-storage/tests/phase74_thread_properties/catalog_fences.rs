@@ -1,4 +1,4 @@
-use beryl_home_store::HomeCommand;
+use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_model::{JobId, SyndicThreadId};
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{
@@ -22,7 +22,13 @@ fn execute(
 ) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean catalog-fence command, got {outcome:?}"),
+    }
 }
 
 fn stage_content(

@@ -6,7 +6,7 @@ use beryl_app::cas_projection::{
 use beryl_app::input_admission::{
     InputAdmissionBuildError, idle_submission_command, prepare_accepted_input_admission,
 };
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 #[cfg(feature = "test-faults")]
 use beryl_home_store::{
     HomeHealthState,
@@ -90,7 +90,12 @@ impl Fixture {
                 CreateThread::ordinary(thread, draft, execution_binding(name), time(1)),
             ))
             .unwrap();
-        store.execute(command).unwrap();
+        match store.execute(command) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed thread setup, got {outcome:?}"),
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed thread setup, got {outcome:?}"),
+        }
         let store = ProjectionConnectionService::new(
             store,
             syndic,
@@ -192,7 +197,12 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute_one(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed contribution, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed contribution, got {outcome:?}"),
+    }
 }
 
 #[test]
@@ -231,7 +241,12 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         submission,
     )
     .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed submission, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed submission, got {outcome:?}"),
+    }
 
     let old_owner = AssetOwner::CurrentDraft(fixture.draft);
     let submitted_owner = AssetOwner::SubmittedTurnItem(first_item);
@@ -448,7 +463,20 @@ fn persistence_cuts_keep_syndic_and_asset_ownership_on_the_same_side() {
         )
         .unwrap();
         faults.fail_next(point);
-        assert!(fixture.store.execute(command).is_err());
+        match fixture.store.execute(command) {
+            CommandOutcome::NotCommitted {
+                evidence: CommandError::Commit { .. },
+            } if point == FaultPoint::BeforeCommit => {}
+            CommandOutcome::Committed {
+                later_failure: Some(CommandError::Persistence { .. }),
+                ..
+            } if point == FaultPoint::AfterPersist => {}
+            CommandOutcome::Indeterminate {
+                failure: CommandError::Persistence { .. },
+                reconciliation: _,
+            } if point == FaultPoint::AfterCommitBeforePersist => {}
+            outcome => panic!("unexpected input-admission fault outcome at {point:?}: {outcome:?}"),
+        }
         assert_eq!(fixture.store.health().state(), HomeHealthState::Verifying);
         fixture.store.verify_health().unwrap();
         assert_eq!(

@@ -4,7 +4,6 @@ use super::WorkerDisposition;
 
 pub(super) struct WorkerCompletion {
     pub(super) thread_id: std::thread::ThreadId,
-    pub(super) disposition: WorkerDisposition,
 }
 
 #[derive(Clone)]

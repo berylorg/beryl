@@ -8,9 +8,9 @@ use std::{sync::Arc, thread, time::Duration};
 
 #[cfg(feature = "test-faults")]
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     DomainCallbackError, DomainMutation, DomainValidationError, HomeCommand, HomeRecoveryError,
     MutationBuilder,
-    test_faults::{FaultController, FaultPoint},
 };
 use beryl_home_store::{
     DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
@@ -252,6 +252,16 @@ impl DomainMutation<StrictDomain> for FailStructurally {
         }))
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, StrictDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation
+            .reserve_records::<StrictRecord>(1)
+            .expect("fixture reservation must be structurally valid");
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, StrictDomain>,
@@ -276,7 +286,10 @@ fn recovery_rejects_raw_corruption_inserted_after_old_handles_drop() {
     command
         .add(domain.contribution(store.domain_revision(domain).unwrap(), FailStructurally))
         .unwrap();
-    assert!(store.execute(command).is_err());
+    assert!(matches!(
+        store.execute(command),
+        beryl_home_store::CommandOutcome::NotCommitted { .. }
+    ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 
     let block = faults.block_next(FaultPoint::BeforeReopen);

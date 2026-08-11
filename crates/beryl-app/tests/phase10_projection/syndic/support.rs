@@ -1,4 +1,4 @@
-use beryl_home_store::{HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::SyndicItemId;
 use syndic_storage::*;
 
@@ -7,7 +7,22 @@ use super::point_limit;
 pub(super) fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("Syndic fixture contribution unexpectedly not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("Syndic fixture contribution committed with later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("Syndic fixture contribution indeterminate: {outcome:?}")
+        }
+    }
 }
 
 pub(super) fn stage_prepared_content(

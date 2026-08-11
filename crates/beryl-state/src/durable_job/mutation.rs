@@ -1,14 +1,16 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, PointReadLimit};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, PointReadLimit, ReconciliationReservation,
+};
 use beryl_model::{JobId, JobRevision, SyndicThreadId};
 
 use super::{
-    BRANCH_HANDOFF_JOB_RECORD_LIMIT, BranchHandoffJobAdmission, BranchHandoffJobRecord,
-    DurableJobDomain, DurableJobMutationError, LatestBranchHandoffAttempt,
-    REQUEST_IDEMPOTENCY_RECORD_LIMIT, ResolutionRequestAdmission,
     codec::{
         DiscussionAttemptIndexCodec, DiscussionAttemptKey, JobRecordCodec, LatestAttemptIndexCodec,
         LiveJobIndexCodec, RequestIdempotencyIndexCodec, RequestIndexKey,
     },
+    BranchHandoffJobAdmission, BranchHandoffJobRecord, DurableJobDomain, DurableJobMutationError,
+    LatestBranchHandoffAttempt, ResolutionRequestAdmission, BRANCH_HANDOFF_JOB_RECORD_LIMIT,
+    REQUEST_IDEMPOTENCY_RECORD_LIMIT,
 };
 
 mod transition;
@@ -75,6 +77,18 @@ impl DomainMutation<DurableJobDomain> for AdmitBranchHandoffJob {
                 actual: self.admission.attempt_ordinal(),
             });
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        reservation.reserve_records::<RequestIdempotencyIndexCodec>(1)?;
+        reservation.reserve_records::<DiscussionAttemptIndexCodec>(1)?;
+        reservation.reserve_records::<LatestAttemptIndexCodec>(1)?;
         Ok(())
     }
 

@@ -1,3 +1,5 @@
+use beryl_home_store::CommandOutcome;
+
 use super::*;
 
 fn continuation_successor_fixture(
@@ -14,7 +16,7 @@ fn continuation_successor_fixture(
     fixture.claim(id);
     fixture.publish_success(id, 20);
     let operation = fixture.operation(id);
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_lifecycle_compaction(
             SettleLifecycleCompaction::new(
@@ -22,8 +24,13 @@ fn continuation_successor_fixture(
                 fixture.prepare_lifecycle_content(),
                 timestamp(40),
             ),
-        ))
-        .unwrap();
+        )) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean continuation-successor settlement, got {outcome:?}"),
+    }
     let consumed = fixture.operation(id);
     let late_ack = request(
         &fixture,

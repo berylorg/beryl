@@ -1,6 +1,6 @@
 #[cfg(feature = "test-faults")]
 use std::{
-    any::{TypeId, type_name},
+    any::{type_name, TypeId},
     collections::{HashMap, VecDeque},
     io,
     sync::{Arc, Condvar, Mutex},

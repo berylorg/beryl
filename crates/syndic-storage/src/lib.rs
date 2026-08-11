@@ -17,20 +17,24 @@
 //! # Unpublished provider observations
 //!
 //! [`ProviderObservationStager`] durably validates the selected provider schema before a sealed
-//! observation can be bound to its admitted route. Every callback must commit the offered exact
-//! batch before returning success. [`inspect_provider_observation`] consumes that route-bound
+//! observation can be bound to its admitted route. A [`ProviderObservationStageCallback`] returns
+//! [`beryl_home_store::CommandOutcome`] for each offered exact batch; the stager then returns its
+//! typed [`ProviderObservationStageOutcome`] behind its semantic `Result` boundary. In particular,
+//! a committed batch may retain a later failure, while an indeterminate batch retains its opaque
+//! reconciliation descriptor. [`inspect_provider_observation`] consumes that route-bound
 //! authority and extracts fixed-resident identity and lifecycle facts. It can then be consumed into
 //! a private-constructible [`ProviderObservationIssue`] candidate; live-source publication still
 //! proves the supplied closed conflict reason against the exact durable source frontier.
 //!
 //! ```no_run
-//! use beryl_home_store::{CommandError, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+//! use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 //! use beryl_model::{CasThreadId, CasTurnId, ProviderObservationId};
 //! use syndic_storage::{
 //!     ProviderField, ProviderObservationBegin, ProviderObservationControl,
 //!     ProviderObservationIssueReason, ProviderObservationItemKind,
 //!     ProviderObservationItemLifecycle, ProviderObservationRoute,
 //!     ProviderObservationStageBatch, ProviderObservationStager,
+//!     ProviderObservationStageOutcome,
 //!     ProviderObservationStagingBytes, ProviderScalar, ProviderValueContext,
 //!     SyndicPointReadLimit, SyndicStorage, inspect_provider_observation,
 //! };
@@ -38,33 +42,99 @@
 //! # fn example(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
 //! let mut home = HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))?;
 //! let syndic = SyndicStorage::register(&mut home)?;
-//! let mut commit = |batch: &ProviderObservationStageBatch| -> Result<(), CommandError> {
-//!     home.execute_current(syndic.current_stage_provider_observation_batch(batch.clone()))?;
-//!     Ok(())
+//! let mut commit = |batch: &ProviderObservationStageBatch| -> CommandOutcome {
+//!     home.execute_current(syndic.current_stage_provider_observation_batch(batch.clone()))
 //! };
-//! let mut staging = ProviderObservationStager::begin(
+//! let mut staging = match ProviderObservationStager::begin(
 //!     ProviderObservationId::from_bytes([7; 16]),
 //!     ProviderObservationBegin::Item {
 //!         lifecycle: ProviderObservationItemLifecycle::Completed,
 //!         kind: ProviderObservationItemKind::ContextCompaction,
 //!     },
 //!     &mut commit,
-//! )?;
-//! staging.control(
+//! )? {
+//!     ProviderObservationStageOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     ProviderObservationStageOutcome::Committed { value, receipt, later_failure } => {
+//!         let _exact_receipt = receipt;
+//!         if let Some(failure) = later_failure {
+//!             return Err(failure.into());
+//!         }
+//!         value
+//!     }
+//!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
+//!         // Transfer both facts to the caller-owned later reconciliation workflow.
+//!         let _retained_reconciliation = reconciliation;
+//!         return Err(failure.into());
+//!     }
+//! };
+//! match staging.control(
 //!     ProviderObservationControl::Scalar {
 //!         context: ProviderValueContext::Field(ProviderField::LifecycleObservedAt),
 //!         value: ProviderScalar::Unsigned(42),
 //!     },
 //!     &mut commit,
-//! )?;
+//! )? {
+//!     ProviderObservationStageOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     ProviderObservationStageOutcome::Committed { receipt, later_failure, .. } => {
+//!         let _exact_receipt = receipt;
+//!         if let Some(failure) = later_failure {
+//!             return Err(failure.into());
+//!         }
+//!     }
+//!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
+//!         let _retained_reconciliation = reconciliation;
+//!         return Err(failure.into());
+//!     }
+//! }
 //! let item = ProviderValueContext::Field(ProviderField::ItemId);
-//! staging.control(ProviderObservationControl::BeginField(item), &mut commit)?;
-//! staging.fragment(
+//! match staging.control(ProviderObservationControl::BeginField(item), &mut commit)? {
+//!     ProviderObservationStageOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     ProviderObservationStageOutcome::Committed { receipt, later_failure, .. } => {
+//!         let _exact_receipt = receipt;
+//!         if let Some(failure) = later_failure { return Err(failure.into()); }
+//!     }
+//!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
+//!         let _retained_reconciliation = reconciliation;
+//!         return Err(failure.into());
+//!     }
+//! }
+//! match staging.fragment(
 //!     ProviderObservationStagingBytes::new(item, b"provider-item")?,
 //!     &mut commit,
-//! )?;
-//! staging.control(ProviderObservationControl::EndField(item), &mut commit)?;
-//! let sealed = staging.seal(&mut commit)?;
+//! )? {
+//!     ProviderObservationStageOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     ProviderObservationStageOutcome::Committed { receipt, later_failure, .. } => {
+//!         let _exact_receipt = receipt;
+//!         if let Some(failure) = later_failure { return Err(failure.into()); }
+//!     }
+//!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
+//!         let _retained_reconciliation = reconciliation;
+//!         return Err(failure.into());
+//!     }
+//! }
+//! match staging.control(ProviderObservationControl::EndField(item), &mut commit)? {
+//!     ProviderObservationStageOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     ProviderObservationStageOutcome::Committed { receipt, later_failure, .. } => {
+//!         let _exact_receipt = receipt;
+//!         if let Some(failure) = later_failure { return Err(failure.into()); }
+//!     }
+//!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
+//!         let _retained_reconciliation = reconciliation;
+//!         return Err(failure.into());
+//!     }
+//! }
+//! let sealed = match staging.seal(&mut commit)? {
+//!     ProviderObservationStageOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     ProviderObservationStageOutcome::Committed { value, receipt, later_failure } => {
+//!         let _exact_receipt = receipt;
+//!         if let Some(failure) = later_failure { return Err(failure.into()); }
+//!         value
+//!     }
+//!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
+//!         let _retained_reconciliation = reconciliation;
+//!         return Err(failure.into());
+//!     }
+//! };
 //! assert_eq!(sealed.identity(), ProviderObservationId::from_bytes([7; 16]));
 //! let route = ProviderObservationRoute::new(
 //!     CasThreadId::new("provider-thread")?,
@@ -112,7 +182,7 @@
 //! returns an explicit no-change result instead of scheduling an unchanged write.
 //!
 //! ```no_run
-//! use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+//! use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 //! use beryl_model::{
 //!     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
 //!     SyndicDraftId, SyndicThreadId,
@@ -138,7 +208,17 @@
 //! );
 //! let mut command = HomeCommand::new(home.home_revision()?);
 //! command.add(syndic.create_thread(syndic.revision(&home)?, creation))?;
-//! home.execute(command)?;
+//! match home.execute(command) {
+//!     CommandOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     CommandOutcome::Committed { receipt, later_failure } => {
+//!         let _exact_receipt = receipt;
+//!         if let Some(failure) = later_failure { return Err(failure.into()); }
+//!     }
+//!     CommandOutcome::Indeterminate { failure, reconciliation } => {
+//!         let _retained_reconciliation = reconciliation;
+//!         return Err(failure.into());
+//!     }
+//! }
 //! # Ok(())
 //! # }
 //! ```
@@ -151,7 +231,7 @@
 //! exact summary that the same command will publish, while retaining opaque mutation authority.
 //!
 //! ```no_run
-//! use beryl_home_store::{HomeCommand, HomeStore};
+//! use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 //! use beryl_model::SyndicThreadId;
 //! use syndic_storage::{SyndicStorage, ThreadCatalogSummaryPreparation};
 //!
@@ -168,7 +248,17 @@
 //!         let _post_commit_summary = prepared.replacement().clone();
 //!         let mut command = HomeCommand::new(home.home_revision()?);
 //!         command.add(syndic.rebuild_thread_catalog_summary(prepared))?;
-//!         home.execute(command)?;
+//!         match home.execute(command) {
+//!             CommandOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!             CommandOutcome::Committed { receipt, later_failure } => {
+//!                 let _exact_receipt = receipt;
+//!                 if let Some(failure) = later_failure { return Err(failure.into()); }
+//!             }
+//!             CommandOutcome::Indeterminate { failure, reconciliation } => {
+//!                 let _retained_reconciliation = reconciliation;
+//!                 return Err(failure.into());
+//!             }
+//!         }
 //!     }
 //!     None => {}
 //! }
@@ -189,7 +279,7 @@
 //! and replacement-draft descendants.
 //!
 //! ```no_run
-//! use beryl_home_store::{HomeCommand, HomeStore};
+//! use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 //! use beryl_model::{InputGateRevision, SyndicDraftId, SyndicItemId};
 //! use syndic_storage::{
 //!     IdleSubmission, SyndicCurrentDraft, SyndicStorage, SyndicTimestamp,
@@ -214,7 +304,17 @@
 //! );
 //! let mut command = HomeCommand::new(home.home_revision()?);
 //! command.add(syndic.submit_idle_draft(syndic.revision(home)?, submission))?;
-//! home.execute(command)?;
+//! match home.execute(command) {
+//!     CommandOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     CommandOutcome::Committed { receipt, later_failure } => {
+//!         let _exact_receipt = receipt;
+//!         if let Some(failure) = later_failure { return Err(failure.into()); }
+//!     }
+//!     CommandOutcome::Indeterminate { failure, reconciliation } => {
+//!         let _retained_reconciliation = reconciliation;
+//!         return Err(failure.into());
+//!     }
+//! }
 //! # Ok(())
 //! # }
 //! ```
@@ -299,7 +399,7 @@
 //! fixed-work `Prior`/`Exact`/`Collision` reconciliation read.
 //!
 //! ```no_run
-//! use beryl_home_store::HomeStore;
+//! use beryl_home_store::{CommandOutcome, HomeStore};
 //! use beryl_model::SyndicThreadId;
 //! use syndic_storage::{
 //!     StopAdmissionRead, StopCause, StopCauseSet, StopOperationNonce, SyndicPointReadLimit,
@@ -320,14 +420,24 @@
 //!         StopOperationNonce::from_bytes([7; 16]),
 //!         StopCauseSet::from(StopCause::SelectedOperationControl),
 //!     );
-//!     home.execute_current(syndic.current_admit_stop_operation(request))?;
+//!     match home.execute_current(syndic.current_admit_stop_operation(request)) {
+//!         CommandOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!         CommandOutcome::Committed { receipt, later_failure } => {
+//!             let _exact_receipt = receipt;
+//!             if let Some(failure) = later_failure { return Err(failure.into()); }
+//!         }
+//!         CommandOutcome::Indeterminate { failure, reconciliation } => {
+//!             let _retained_reconciliation = reconciliation;
+//!             return Err(failure.into());
+//!         }
+//!     }
 //! }
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! ```no_run
-//! use beryl_home_store::HomeStore;
+//! use beryl_home_store::{CommandOutcome, HomeStore};
 //! use syndic_storage::{
 //!     AdmitStopOperation, StopOperationTransitionStatus, SyndicPointReadLimit, SyndicStorage,
 //! };
@@ -343,7 +453,17 @@
 //!     SyndicPointReadLimit::new(65_536)?,
 //! )? {
 //!     StopOperationTransitionStatus::Prior => {
-//!         home.execute_current(syndic.current_admit_stop_operation(request.clone()))?;
+//!         match home.execute_current(syndic.current_admit_stop_operation(request.clone())) {
+//!             CommandOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!             CommandOutcome::Committed { receipt, later_failure } => {
+//!                 let _exact_receipt = receipt;
+//!                 if let Some(failure) = later_failure { return Err(failure.into()); }
+//!             }
+//!             CommandOutcome::Indeterminate { failure, reconciliation } => {
+//!                 let _retained_reconciliation = reconciliation;
+//!                 return Err(failure.into());
+//!             }
+//!         }
 //!     }
 //!     StopOperationTransitionStatus::Exact => {}
 //!     StopOperationTransitionStatus::Collision => {
@@ -800,7 +920,7 @@ pub use mutation::{
     ProviderCompletionComparisonMutationError, ProviderFrameMutationError,
     ProviderFramePreparationError, ProviderFramePreparationPlan, ProviderFrameStageBatch,
     ProviderFrameStageBatchError, ProviderFrameStageBatchState, ProviderFrameStageCallback,
-    ProviderFrameStageError, ProviderObservationMutationError, PublishActiveCasTurn,
+    ProviderFrameStageError, ProviderFrameStageOutcome, ProviderObservationMutationError, PublishActiveCasTurn,
     PublishActivityChildHandoff, PublishCompactionProviderEvent,
     PublishCompactionRequestDisposition, PublishStaleBinding, PublishThreadUsage,
     PublishUnboundBinding, PublishValidBinding, RetryAcceptedInputDelivery,

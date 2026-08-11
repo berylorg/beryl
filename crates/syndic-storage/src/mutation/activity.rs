@@ -1,5 +1,6 @@
 use beryl_home_store::{
     CurrentDomainCommand, DomainMutation, DomainReader, MutationBuilder, MutationContribution,
+    ReconciliationReservation,
 };
 use beryl_model::{DomainRevision, SyndicItemId, SyndicThreadId, SyndicTurnId};
 
@@ -266,6 +267,18 @@ impl DomainMutation<SyndicDomain> for PublishActivityChildHandoffMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
+        reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
+        reservation.reserve_records::<ActivityQueryEntriesCodec>(
+            crate::ACTIVITY_COMPLETED_RETAINED_ROWS as usize + 1,
+        )?;
+        Ok(())
     }
 
     fn contribute(

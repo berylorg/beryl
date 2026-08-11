@@ -1,6 +1,6 @@
 mod support;
 
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     MonitorHint, MonitorId, RootId, RuntimeId, SyndicThreadId, WindowBounds, WindowDisplayState,
     WindowId, WindowPlacement,
@@ -8,8 +8,8 @@ use beryl_model::{
 use beryl_state::{
     ActivateRestoringClaim, BeginSessionRestore, BerylStateBootstrap, BerylStateRegistrationError,
     CreateClaimedWindow, InitializeThreadlessWindow, MarkOrderlyExit, RememberedTarget,
-    RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
-    SessionExitIntent, SessionMutationError, SessionState, UpdateWindowPlacement,
+    RemoveSessionWindow, ReplaceWindowClaim, SessionExitIntent, SessionMutationError, SessionState,
+    UpdateWindowPlacement, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
 };
 use tempfile::tempdir;
 
@@ -57,14 +57,19 @@ fn minimal_bootstrap_is_session_only_and_accepts_fixed_all_zero_identity_shapes(
         Some(beryl_model::VirtualDesktopId::from_bytes([0; 16])),
     );
     let window_id = WindowId::from_bytes([0; 16]);
-    execute(
+    match execute(
         &store,
         state.session().initialize_threadless(
             state.session().revision(&store).unwrap(),
             InitializeThreadlessWindow::new(window_id, placement.clone()),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
 
     let snapshot = bootstrap(&store, state.session());
     assert_eq!(snapshot.header().revision().get(), 1);
@@ -98,17 +103,22 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
     let (store, state) = support::open(directory.path());
     let session = state.session();
     let first_window = WindowId::from_bytes([1; 16]);
-    execute(
+    match execute(
         &store,
         session.initialize_threadless(
             session.revision(&store).unwrap(),
             InitializeThreadlessWindow::new(first_window, placement(1)),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
 
     let initial = bootstrap(&store, session);
-    execute(
+    match execute(
         &store,
         session.replace_claim(
             session.revision(&store).unwrap(),
@@ -121,8 +131,13 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
                 SyndicThreadId::from_bytes([10; 16]),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let established = bootstrap(&store, session);
     let first_selection = established.windows()[0].selected_thread().unwrap();
     assert_eq!(established.header().revision().get(), 2);
@@ -132,7 +147,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
     assert_eq!(established.header().fallback(), Some(target(1, 2)));
 
     let second_window = WindowId::from_bytes([2; 16]);
-    execute(
+    match execute(
         &store,
         session.create_claimed_window(
             session.revision(&store).unwrap(),
@@ -144,8 +159,13 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
                 placement(2),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let created = bootstrap(&store, session);
     assert_eq!(created.header().revision().get(), 3);
     assert_eq!(created.header().fallback(), Some(target(3, 4)));
@@ -155,7 +175,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
     );
     assert_eq!(created.windows()[1].revision().get(), 1);
 
-    execute(
+    match execute(
         &store,
         session.update_placement(
             session.revision(&store).unwrap(),
@@ -166,14 +186,19 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
                 placement(9),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let moved = bootstrap(&store, session);
     assert_eq!(moved.header().revision().get(), 4);
     assert_eq!(moved.windows()[0].revision().get(), 3);
     assert_eq!(moved.windows()[0].selected_thread(), Some(first_selection));
 
-    execute(
+    match execute(
         &store,
         session.replace_claim(
             session.revision(&store).unwrap(),
@@ -186,8 +211,13 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
                 SyndicThreadId::from_bytes([30; 16]),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let replaced = bootstrap(&store, session);
     let replacement = replaced.windows()[0].selected_thread().unwrap();
     assert_eq!(replaced.header().revision().get(), 5);
@@ -195,7 +225,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
     assert_eq!(replacement.generation().get(), 5);
     assert_eq!(replacement.revision().get(), 2);
 
-    execute(
+    match execute(
         &store,
         session.remove_window(
             session.revision(&store).unwrap(),
@@ -206,10 +236,15 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
                 replaced.windows()[1].selected_thread(),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let one = bootstrap(&store, session);
-    execute(
+    match execute(
         &store,
         session.remove_window(
             session.revision(&store).unwrap(),
@@ -220,8 +255,13 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
                 one.windows()[0].selected_thread(),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let empty = bootstrap(&store, session);
     assert!(empty.windows().is_empty());
     assert_eq!(empty.header().revision().get(), 7);
@@ -234,16 +274,21 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
     let (store, state) = support::open(directory.path());
     let session = state.session();
     let window_id = WindowId::from_bytes([1; 16]);
-    execute(
+    match execute(
         &store,
         session.initialize_threadless(
             session.revision(&store).unwrap(),
             InitializeThreadlessWindow::new(window_id, placement(1)),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let initial = bootstrap(&store, session);
-    execute(
+    match execute(
         &store,
         session.replace_claim(
             session.revision(&store).unwrap(),
@@ -256,17 +301,27 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
                 SyndicThreadId::from_bytes([9; 16]),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let active = bootstrap(&store, session);
-    execute(
+    match execute(
         &store,
         session.mark_orderly_exit(
             session.revision(&store).unwrap(),
             MarkOrderlyExit::new(active.header().revision()),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let exited = bootstrap(&store, session);
     let active_hook = exited.windows()[0].selected_thread().unwrap();
     assert_eq!(
@@ -275,14 +330,19 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
     );
     assert_eq!(active_hook.revision().get(), 1);
 
-    execute(
+    match execute(
         &store,
         session.begin_restore(
             session.revision(&store).unwrap(),
             BeginSessionRestore::new(exited.header().revision()),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let restoring = bootstrap(&store, session);
     let restoring_hook = restoring.windows()[0].selected_thread().unwrap();
     assert_eq!(restoring.header().revision().get(), 4);
@@ -291,14 +351,19 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
     assert_eq!(restoring_hook.generation().get(), 4);
     assert_eq!(restoring_hook.revision().get(), 2);
 
-    execute(
+    match execute(
         &store,
         session.begin_restore(
             session.revision(&store).unwrap(),
             BeginSessionRestore::new(restoring.header().revision()),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let repeated = bootstrap(&store, session);
     assert_eq!(repeated.header().revision().get(), 5);
     assert_eq!(
@@ -310,7 +375,7 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
         Some(restoring_hook)
     );
 
-    execute(
+    match execute(
         &store,
         session.activate_restoring_claim(
             session.revision(&store).unwrap(),
@@ -321,8 +386,13 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
                 restoring_hook,
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let activated = bootstrap(&store, session);
     let hook = activated.windows()[0].selected_thread().unwrap();
     assert_eq!(activated.header().revision().get(), 6);
@@ -339,16 +409,21 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
     let session = state.session();
     let window_id = WindowId::from_bytes([1; 16]);
     let thread_id = SyndicThreadId::from_bytes([7; 16]);
-    execute(
+    match execute(
         &store,
         session.initialize_threadless(
             session.revision(&store).unwrap(),
             InitializeThreadlessWindow::new(window_id, placement(1)),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let initial = bootstrap(&store, session);
-    execute(
+    match execute(
         &store,
         session.replace_claim(
             session.revision(&store).unwrap(),
@@ -361,11 +436,16 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
                 thread_id,
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let current = bootstrap(&store, session);
 
-    let duplicate = execute(
+    let duplicate = match execute(
         &store,
         session.create_claimed_window(
             session.revision(&store).unwrap(),
@@ -377,14 +457,16 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
                 placement(2),
             ),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected duplicate session command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<SessionMutationError>(&duplicate),
         Some(SessionMutationError::ThreadAlreadyClaimed { .. })
     ));
 
-    let unchanged = execute(
+    let unchanged = match execute(
         &store,
         session.update_placement(
             session.revision(&store).unwrap(),
@@ -395,14 +477,16 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
                 current.windows()[0].placement().clone(),
             ),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected unchanged placement command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<SessionMutationError>(&unchanged),
         Some(SessionMutationError::PlacementUnchanged { .. })
     ));
 
-    let stale_claim = execute(
+    let stale_claim = match execute(
         &store,
         session.replace_claim(
             session.revision(&store).unwrap(),
@@ -415,23 +499,30 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
                 SyndicThreadId::from_bytes([8; 16]),
             ),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected stale claim command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<SessionMutationError>(&stale_claim),
         Some(SessionMutationError::ClaimExpectationConflict { .. })
     ));
 
-    execute(
+    match execute(
         &store,
         session.mark_orderly_exit(
             session.revision(&store).unwrap(),
             MarkOrderlyExit::new(current.header().revision()),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session command, got {outcome:?}"),
+    }
     let exited = bootstrap(&store, session);
-    let blocked = execute(
+    let blocked = match execute(
         &store,
         session.update_placement(
             session.revision(&store).unwrap(),
@@ -442,8 +533,10 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
                 placement(3),
             ),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected orderly-exit command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<SessionMutationError>(&blocked),
         Some(SessionMutationError::OrderlyExitInProgress)

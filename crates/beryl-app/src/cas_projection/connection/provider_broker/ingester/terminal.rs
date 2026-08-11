@@ -25,7 +25,6 @@ const TERMINAL_ITEM_PAGE_BYTES: usize = 64 * 1024;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TerminalAuditOutcome {
     incomplete_reason: Option<TurnIncompleteReason>,
-    same_native_reacquisition_required: bool,
 }
 
 struct TerminalAuditProof {
@@ -98,10 +97,7 @@ impl TerminalAudit {
         } else {
             None
         };
-        TerminalAuditOutcome {
-            incomplete_reason,
-            same_native_reacquisition_required: self.narrative_mismatch,
-        }
+        TerminalAuditOutcome { incomplete_reason }
     }
 }
 
@@ -195,14 +191,7 @@ impl Ingester {
         }
         self.stop_coordinator
             .terminal_consumed(target.thread_id(), target.turn_id());
-        self.finish_normal_terminal_permit(
-            permit,
-            ProvenTerminalOutcome::new_with_reacquisition(
-                status,
-                observed_at,
-                audit.outcome.same_native_reacquisition_required,
-            ),
-        )
+        self.finish_normal_terminal_permit(permit, ProvenTerminalOutcome::new(status, observed_at))
     }
 
     fn context_compaction_terminal(
@@ -230,10 +219,7 @@ impl Ingester {
             authority.operation_id().thread_id(),
             authority.provider_turn_id(),
         );
-        self.finish_normal_terminal_permit(
-            permit,
-            ProvenTerminalOutcome::new_with_reacquisition(status, observed_at, false),
-        )
+        self.finish_normal_terminal_permit(permit, ProvenTerminalOutcome::new(status, observed_at))
     }
 
     fn audit_terminal_items(

@@ -1,14 +1,16 @@
 use beryl_home_store::{
     DomainMutation, DomainReader, DomainValidator, MutationBuilder, PointReadLimit,
+    ReconciliationReservation,
 };
 use beryl_model::SealedAssetReferenceSetProof;
 
 use crate::RecordRevision;
 
 use super::super::{
-    ASSET_HEAD_LIMIT, ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, AssetDomain, AssetMutationError,
-    AssetOwner, AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdateError,
-    AssetOwnerHeadValidationError, AssetReferenceSetLifecycle, codec::AssetOwnerHeadCodec,
+    codec::AssetOwnerHeadCodec, AssetDomain, AssetMutationError, AssetOwner,
+    AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdateError,
+    AssetOwnerHeadValidationError, AssetReferenceSetLifecycle, ASSET_HEAD_LIMIT,
+    ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES,
 };
 use super::require_manifest;
 
@@ -187,6 +189,19 @@ impl DomainMutation<AssetDomain> for UpdateAssetOwnerHeads {
         for update in &self.updates {
             validate_head_update(reader, *update)?;
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        let count = self
+            .updates
+            .iter()
+            .filter(|update| update.mutates())
+            .count();
+        reservation.reserve_records::<AssetOwnerHeadCodec>(count)?;
         Ok(())
     }
 

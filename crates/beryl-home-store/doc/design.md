@@ -10,7 +10,8 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - Owning GPUI state, CAS launch, backend protocol, transcript rendering, or feature behavior.
 - Importing workspace-era state or exposing compatibility reads and dual writes.
 - Allowing callers to retain raw Fjall handles, keyspaces, batches, encodings, or writer guards.
-- Preventing an external actor from rewriting Fjall child files in place or rolling back storage below the filesystem while preserving the same retained directory object; surfaced or validation-visible disagreement still fails closed.
+- Detecting or surviving external replacement, rollback, or tampering inside an Operator-selected
+  trusted home. Surfaced or validation-visible disagreement still fails closed.
 
 # Decisions
 
@@ -23,24 +24,32 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   `doc/systems/bounded-resource-dataflow/design.md`; the package owns no universal process
   governor.
 - The sole home opener requires the configured Fjall block, value, topology, cache, memtable, read,
-  and batch limits needed by this boundary. It does not require typed process resource
-  capabilities, structural-slot currency, or an exact allocation baseline.
+  batch, and reconciliation-descriptor byte limits needed by this boundary. It does not require
+  typed process resource capabilities, universal structural-slot currency, or an exact allocation
+  baseline.
 - V1 uses one package-owned practical production profile for those dependency and
-  storage-concurrency limits. `HomeOpenOptions` remains the package-owned path-and-schema input and
-  never accepts or exposes a Fjall policy type. The opened store retains the validated profile and
-  constructs a fresh Fjall configuration from the same values for every same-home recovery, so
-  later internal tuning does not churn Beryl-state or Syndic caller APIs.
-- Logical domains register private record families, exact codecs, validation hooks, typed reads,
-  typed mutation contributors, and typed validation-only command participants through
-  package-owned traits.
+  storage-concurrency limits, including exactly 1,024 reconciliation-scope slots per home, a
+  64-MiB encoded-byte ceiling per descriptor, a 256-MiB aggregate retained descriptor-budget
+  ceiling, and at most four active reconciliation workers.
+  `HomeOpenOptions` remains the package-owned path-and-schema input and never accepts or exposes a
+  Fjall policy type. The opened store retains the validated profile and constructs a fresh Fjall
+  configuration from the same values for every same-home recovery, so later internal tuning does
+  not churn Beryl-state or Syndic caller APIs.
+- Logical domains register private record families, exact codecs, exhaustive validation hooks,
+  operation-scoped natural-record reconciliation hooks, typed reads, typed mutation contributors,
+  and typed validation-only command participants through package-owned traits.
 - Registration never gives a domain a raw database or keyspace handle.
 - Each live domain blueprint, handle, command contribution, and reacquired recovery registration carries the exact process-local Rust owner type. Each family likewise carries the exact process-local codec type. Stable names and schemas remain durable compatibility facts, but cannot impersonate either live Rust owner; neither `TypeId` is persisted.
 - Stable domain and family identifiers are bounded lowercase ASCII components. The persistent registry records the exact domain schema, complete sorted family declaration, exact family schemas, physical family names, and current domain revision; reopening rejects missing families or any incompatible declaration instead of creating or guessing it.
-- Registering an already-persisted domain exhaustively validates every snapshot-current
+- Routine open, reopen, and typed-handle reacquisition validate the exact live owner and codec
+  types, durable declarations, required physical families, and generation. They do not run the
+  exhaustive record or domain validator.
+- Registering an already-persisted domain at a schema-validation boundary exhaustively validates every snapshot-current
   application record in every declared physical family and then runs its sidecar-aware domain
   validator before publishing a typed handle. Fresh registration persists an empty declared
-  domain; explicit verification and recovery rerun exhaustive validation for every registered
-  domain. Retired LSM versions and tombstones are dependency internals, not application envelopes.
+  domain. Only a schema-validation boundary, explicit whole-home scrub, background maintenance, or
+  corruption-evidence investigation may rerun that exhaustive path; routine and ambiguous recovery
+  do not. Retired LSM versions and tombstones are dependency internals, not application envelopes.
 - An interrupted fresh registration may leave one or more empty physical families before the
   registry record becomes durable because Fjall intentionally exposes no keyspace deletion or
   multi-keyspace transaction. A later exact fresh registration may open and adopt only an empty
@@ -53,22 +62,52 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 ## Physical Open Contract
 
 - Open input is one absolute Host path and one exact supported home-schema version.
-- The home root contains the fixed retained ownership file `home.lock`; the sole Fjall database lives in the ordinary local directory `state`.
-- The package opens the real home directory without share-delete permission, resolves its final path, and identifies the opened object by volume serial plus 128-bit file id. Configured path spelling is retained only for presentation and diagnostics.
-- After acquiring `home.lock` and before opening Fjall, the package creates or opens the final `state` component without following a reparse point, validates its retained handle as an ordinary directory, flushes its home-directory link, and retains its volume serial, 128-bit file id, and no-delete handle outside every Fjall generation.
-- Generic UNC targets, mapped remote drives, and targets whose opened-object identity or local-storage status cannot be established fail closed before Fjall is opened.
+- The home root contains the fixed ownership file `home.lock`; the sole Fjall database lives in the
+  `state` directory.
+- The package canonicalizes the configured home path for process-local identity and retains the
+  configured spelling only for presentation and diagnostics. It does not retain filesystem-object
+  identity or deny external replacement of the home or `state` directory.
+- After acquiring `home.lock` and before opening Fjall, the package rejects an existing `state`
+  symlink, junction, file, or other reparse-point collision without following it, then creates or
+  opens the ordinary `state` directory and validates the expected home header and schema.
+- Native local NTFS is the fully supported durability tier. UNC, WSL-backed, removable,
+  synchronized, and other filesystem locations may open as best-effort storage only when basic
+  access and a reliable exclusive lifetime lock succeed. The package does not conditionally prove
+  remote durability.
 - A missing or empty `state` directory is fresh. A nonempty `state` directory must contain Fjall's version marker and is force-recovered; it is never passed through create-or-recover dispatch.
 - The configured home root may not itself be a Fjall database, and `state` may not be a symlink, junction, file, or other reparse-point collision.
 - The reserved home header contains one fixed-format encoding version, the exact home-schema version, and one randomly generated opaque `BerylHomeId`. Generation and first persistence occur only after the OS ownership lock succeeds.
-- An opened handle exposes only the durable home id, schema, canonical live identity, configured and canonical paths, and the diagnostic database path. It never exposes the retained files, raw Windows handles, Fjall database, header keyspace, or encoded header bytes.
-- Explicit close drops Fjall ownership, then the retained `state` directory, and only then unlocks `home.lock`; ordinary value drop provides the process-exit fallback.
+- An opened handle exposes only the durable home id, schema, durability tier, configured and
+  canonical paths, and diagnostic database path. It never exposes lock files, raw OS handles,
+  Fjall database, header keyspace, or encoded header bytes.
+- Explicit close drops Fjall ownership and then unlocks `home.lock`; ordinary value drop provides
+  the process-exit fallback.
 
 ## Inputs And Outputs
 
 - Open input contains the configured home path and supported home-schema version.
-- Open output is an opaque healthy home handle plus domain-specific typed handles.
+- Initial open and every fresh same-home reopen first yield an unpublished private candidate, its
+  full-durability or best-effort filesystem tier, and candidate-only domain registration or
+  reacquisition authority. Initial bootstrap keeps that candidate behind the `beryl` composition
+  root's startup fence; running same-home recovery keeps it behind the `beryl-app` home-recovery
+  supervisor's publication fence. The owning boundary publishes the opaque healthy handle and
+  complete typed stack only after its recovery sequence succeeds.
+- The candidate remains structurally `opening` or `reopening` and exposes no ordinary command,
+  read, sidecar, receipt-projection, or app-publication admission. Its one-shot publication
+  capability is consumable only by the system recovery boundary with the complete candidate stack;
+  bounded candidate-only reads and commits exist solely for that recovery sequence.
+- Candidate authority cannot expose session, restore-set, or other application discovery through
+  partial domain registration or partial typed handles. Every required Beryl and Syndic domain must
+  register or reacquire successfully before the initial `beryl` composition root or running
+  `beryl-app` recovery supervisor can consume the one-shot complete-stack publication capability.
 - Busy, unsupported-schema, lock-unsupported, open, validation, conflict, persistence, sidecar, and health-gate failures remain distinct typed errors.
-- Successful mutation output includes the exact process-local healthy home generation, committed home revision, and affected domain revisions needed by callers to reject stale asynchronous results.
+- A command returns exactly `NotCommitted { evidence }`, `Committed { receipt, later_failure }`, or
+  `Indeterminate { failure, reconciliation }`. `NotCommitted` evidence proves no part of the batch
+  committed and carries no receipt or descriptor. `Committed` always carries the exact receipt and
+  optionally carries a typed failure observed after commit. `Indeterminate` carries the surfaced
+  typed failure, no receipt, and one move-only custody value containing the sole opaque
+  operation-scoped reconciliation descriptor together with its already-reserved registry slot and
+  byte charge; it cannot authorize publication.
 - Receipt-bound domain revision access is admitted only against the exact current healthy store generation and matching typed domain handle. It returns `None` for an unaffected domain and a typed stale-or-foreign error for an obsolete generation rather than allowing revision values alone to authorize publication.
 - Read APIs require explicit item, byte, or range bounds unless the result is a documented exact fixed-size record set such as the active session header.
 - Cursor reads require two finite typed endpoints, materialize at most one caller-bounded page, report cumulative stored-byte cost and whether more matching records exist, and never return a Fjall iterator or guard.
@@ -119,7 +158,9 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - The opener applies the validated Fjall block, value, topology, cache, memtable, and batch policy
   before opening the database. This package neither requests exact dependency residency quotes nor
   reconstructs dependency-private allocation formulas.
-- Registration, explicit verification, and recovery use a separate store-owned exhaustive path. It
+- Only registration at a schema-validation boundary, an explicit whole-home scrub, background
+  maintenance, or corruption-evidence investigation may use the separate store-owned exhaustive
+  path. It
   walks every snapshot-current application key/value envelope with bounded memory, rejects empty or
   oversized keys and values before unbounded materialization, and delegates unknown, out-of-range,
   sentinel, version, and payload validation to the family's exact registered codec before the
@@ -134,46 +175,202 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   value totals against the configured batch limits and passes that same `BatchCapacity` to Fjall.
   Oversized batches fail before commit; no exact dependency allocation quote or structural-slot
   reservation is required.
-- A successful correctness-sensitive mutation includes batch commit and `PersistMode::SyncAll` completion.
-- The package never reports durable success before the required persistence barrier.
+- A successful Fjall `PersistMode::SyncAll` outcome means the complete write batch committed
+  atomically and is durable. The package never reports durable success before that outcome.
+- Command-outcome classification uses that complete durability boundary. A Fjall `Committed` error
+  from the preceding buffered journal step remains exactly retained in the typed failure but maps
+  to package `Indeterminate` with a reconciliation descriptor when the later `SyncAll` barrier did
+  not succeed. It carries no receipt. Only a failure after successful `SyncAll` may return
+  `Committed { receipt, later_failure }`.
+- Before writer admission, every mutation that could become indeterminate proves a conservative
+  encoded descriptor-byte budget from command-owned identities and
+  declared schema limits. After admission, validation and operation-bounded reads materialize the
+  exact natural-record old state, intended exact new state, and intended receipt facts into that
+  reservation before batch construction or any Fjall mutation. The package rejects a budget above
+  the configured ceiling as
+  `NotCommitted { evidence: ReconciliationDescriptorTooLarge }`.
+- Such a mutation must then obtain one move-only reservation for one of the home registry's 1,024
+  scope slots and its complete
+  conservative byte charge under the 256-MiB aggregate ceiling before it may acquire writer
+  admission. Slot or aggregate-byte saturation returns
+  `NotCommitted { evidence: ReconciliationCapacity }`, creates no scope or descriptor, and does not
+  change structural health. `NotCommitted` and `Committed` release the reservation with their
+  writer-time state. `Indeterminate` first transfers the reservation and sole descriptor into its
+  move-only custody value. The immediate recipient must synchronously and infallibly consume that
+  value into the already-reserved exact registry gate before translating or erasing the result,
+  installing an acknowledgement, releasing operation state, or honoring route cancellation. Once
+  accepted, the registry is the unique owner; no result, acknowledgement, caller, or service retains
+  a copy. Gate installation preserves custody and closes publication for that exact scope, but by
+  itself authorizes no reread, retry, rollback, publication, or reconciliation execution.
+- Reconciliation invokes each participating domain hook through the descriptor's bounded typed
+  reader and returns exactly `ExactOld`, `ExactNew` with the reconstructed exact receipt, or
+  `Collision`. All participants must prove the same exact side. Any participant-level collision,
+  mixed old/new classifications, or observation matching neither exact side is command-level
+  `Collision` and keeps that operation scope closed.
+- Reconciliation never guesses, merges, clears or crosses the old writer, scans unrelated natural
+  records, or invokes whole-home validation. A `Collision` is not filesystem path collision and is
+  not by itself structural store-failure evidence.
 - Cooperative cancellation is accepted only before writer admission. Once admitted, a command runs to one durable success or typed failure result; same-thread writer reentry is rejected explicitly rather than deadlocking.
 - Callers cannot hold transactions across await points or external work.
-- Sidecar helpers enforce write, flush, atomic rename, directory durability where supported, then metadata-commit ordering.
+- Exactly one command may hold the writer-admission permit. The package owns no writer wait queue:
+  callers await that permit with backpressure and may cancel while waiting. The admitted command
+  releases the permit only after its classified result is constructed and its batch, callbacks,
+  snapshot, and writer-time state have been dropped.
+
+## Free-Space Reserve Check
+
+- The package exposes one synchronous free-space reserve query that reports exactly
+  `FreeSpaceOutcome::Sufficient`, `FreeSpaceOutcome::BelowReserve`,
+  `FreeSpaceOutcome::Unavailable`, or `FreeSpaceOutcome::Indeterminate`. Each invocation queries the
+  filesystem once and retains no polling task, timer, cache, or hysteresis state.
+- `FreeSpaceOutcome::Sufficient` contains the observed available bytes and configured reserve.
+  `FreeSpaceOutcome::BelowReserve` contains those same exact values.
+  `FreeSpaceOutcome::Unavailable` means the platform returned no availability observation;
+  `FreeSpaceOutcome::Indeterminate` means an observation existed but could not be trusted for this
+  home. Neither failure outcome is silently treated as sufficient.
+- The query classifies one filesystem observation only. It performs no write or capacity
+  reservation, retains no caller input, and does not choose call sites, operation eligibility,
+  admission, retry, writer dispatch, or backend dispatch. Those cross-package decisions remain in
+  the [Beryl-home storage system](../../../doc/systems/beryl-home-storage/design.md).
+- The check does not reserve filesystem capacity. Later `ENOSPC` remains an ordinary storage error
+  and uses the same commit-outcome classification as any other failed write.
 
 ## Health And Recovery
 
-- The package exposes coherent `opening`, `healthy`, `verifying`, `failed`, and `reopening` states.
-- Every state-dependent read, write, domain registration or reacquisition, and sidecar operation enters the same generation-aware admission gate. A surfaced storage or persistence failure whose durable outcome needs checking moves a healthy generation to `verifying`; malformed records, invalid trusted contracts, poisoned authority, and other structural disagreement move it directly to `failed`. Domain-owned semantic mutation rejection does not change health. Once admission closes, no newly admitted operation can publish state.
+- The package exposes the structural lifecycle states `opening`, `healthy`, `failed`, and
+  `reopening`. A separate operation-scope gate has `open`, `verifying`, and `closed` states;
+  `verifying` is never a structural lifecycle state.
+- Every state-dependent read, write, domain registration or reacquisition, and sidecar operation is
+  generation-aware. Accepting an `Indeterminate` custody value moves only its exact operation scope to `verifying`;
+  `ExactOld` or `ExactNew` reopens it and `Collision` closes it. Malformed records, invalid trusted
+  contracts, poisoned current authority, and other separately proven structural disagreement move
+  the store to `failed`. Domain-owned semantic mutation rejection and reconciliation collision do
+  not change structural health.
 - Admission also observes Fjall's retained autonomous-maintenance health before a newly completed
   state-dependent result may publish. A direct pre-commit policy denial remains a typed bounded
   operation failure and leaves home health unchanged. Corruption, integrity, keyspace-identity, or
-  poison disagreement fails structurally; I/O, durability, committed or indeterminate mutation
-  outcomes, and maintenance terminals close the gate for verification or recovery according to
-  their stable Fjall class and commit state before the dependency error is erased.
+  poison disagreement fails structurally. `Committed` still returns its exact receipt when a later
+  maintenance observation separately closes publication or fails the lifecycle; `Indeterminate`
+  closes only its operation gate for reconciliation. The package retains the stable Fjall class
+  and commit state before erasing any dependency error.
 - Dependency-health observation and exact-generation confirmation are one store-owned publication
   operation. Reads, writes, registration, reacquisition, receipt revision projection, sidecar
   admission, sidecar verification, and test-only durable fixtures cannot invoke generation
   confirmation without first observing the exact admitted Fjall database.
-- An unwind from an admitted writer operation moves the store directly to `failed` before writer admission drains. Only exact same-home recovery may cross the poisoned unit writer mutex, and that poison is cleared only after a fully validated replacement generation is published; poison in registration or generation state remains fatal.
-- Verification is single-flight, waits for already admitted work to drain, releases the ordinary writer before exhaustive work, performs `SyncAll`, validates the home header, control records, exact domain registry, every physical record envelope, domain invariants, and referenced sidecars, and either reopens the same generation as healthy or leaves the store failed.
-- Recovery is single-flight and is accepted only from `failed`. It keeps the outer opened-directory, `home.lock`, and exact retained `state` object, drains every Fjall and keyspace handle from the failed generation, then reopens the final `state` component without following reparse points and requires the same complete opened-object identity before forced recovery. It never dispatches through create-or-recover, accepts a copied database merely because its header matches, or initializes replacement state.
+- An unwind from an admitted writer operation moves the store directly to `failed` before writer
+  admission drains. Recovery drops the poisoned writer with the failed service and creates a fresh
+  writer; it does not cross or clear the old mutex poison.
+- Ambiguous-outcome verification is single-flight per exact operation gate. It drains related
+  admitted work, performs a physical Fjall verification or reopen when needed, and invokes only
+  the descriptor's domain-owned natural-record hooks. It never requires an exhaustive whole-home
+  scan merely because one commit was ambiguous.
+- A verifying or collision-closed gate rejects only commands and publications dependent on that
+  exact operation scope. Unrelated work remains admitted while the structural lifecycle and its
+  own gates are healthy. Only separate structural evidence may move the whole store to `failed`.
+- The package owns one 1,024-slot reconciliation-scope registry with one 256-MiB aggregate retained
+  descriptor-budget ceiling per open home. The registry begins with home ownership, ends only after
+  final home close, and outlives individual Fjall generations, failed services, unpublished recovery
+  candidates, brokers, connections, and CAS-live services. Its count and byte charge include every pre-writer
+  reservation, verifying gate, and collision-closed gate, not only active workers. Each
+  verifying gate retains exactly one opaque descriptor; each collision-closed gate retains only its
+  bounded sealed facts. Another trigger joins the retained result and adds no descriptor,
+  sealed-fact copy, or queue item.
+- Orderly final close first rejects new reservations and drains admitted commands. It cannot dispose
+  a descriptor-bearing verifying gate: the caller must join its already admitted classification or
+  receive a close failure while the home remains open. Once no descriptor-bearing gate remains,
+  final close may dispose collision-sealed process-local facts with the registry. Forced process
+  termination publishes no in-memory command result or acknowledgement.
+- One home runs at most four reconciliation workers and at most one per exact scope. When all four
+  permits are held, another registered gate remains closed and awaits a worker without duplicating
+  its descriptor.
+- `ExactOld` and `ExactNew` remove the gate and release its registry slot, complete retained byte
+  charge, descriptor, worker permit, typed reader, snapshot, pages, and hook state. `Collision`
+  compacts its evidence into only its configured-byte-bounded sealed old/new identities, revisions,
+  digests, and collision facts. In the same registry transition it replaces the descriptor's
+  conservative retained-byte charge with the sealed facts' exact encoded-byte charge, discards the
+  descriptor, retains the closed gate, slot, and replacement charge, and drops the worker permit
+  plus every transient reader, snapshot, page, and hook allocation. The sealed-fact schema maximum
+  is included in the pre-writer reservation, so this transition never needs new registry capacity.
+  A typed worker failure also drops all transient execution state while retaining at most the one
+  bounded descriptor and its original retained-byte charge in that gate.
+- Registry or descriptor saturation returns the exact typed pre-writer `NotCommitted` result. It
+  fails that mutation closed without changing structural health, cancelling or blocking
+  already-admitted work, or blocking unrelated healthy reads and commands that require no
+  unavailable registry slot.
+- Recovery is single-flight and is accepted only from `failed`. It retains the lifetime lock and
+  per-home reconciliation registry,
+  drains and drops every Fjall and keyspace handle from the failed generation, constructs a fresh
+  service, and reopens `state` without requiring filesystem-object identity continuity. It never
+  initializes replacement state over a failed home.
 - Recovery constructs the candidate from a fresh Fjall configuration and retains no dependency
   cache from the failed generation. Block and blob residents are live-generation performance state,
   never reopen-validation evidence or authority for the replacement generation.
-- A recovered candidate must preserve the exact home identity and schema, reacquire every registered domain from its retained exact-owner blueprint, exhaustively validate all physical families plus domain and sidecar invariants away from the ordinary writer, and complete `SyncAll` before publication. Any disagreement or I/O failure leaves admission failed and permits a later retry.
-- Successful forced recovery increments the monotonic process-local home generation and replaces the private store-instance identity. Handles, commands, sidecar-admission tokens, command receipts, and asynchronous completions from the obsolete generation cannot authorize work; callers reacquire typed domain handles through `HomeStore::domain_handle`, and receipt consumers validate the receipt against that exact current generation.
+- A recovered private candidate must validate the home header, registry, required schema
+  declarations, and physical families, reacquire every registered domain through fresh typed
+  handles, and complete the required Fjall physical verification. These structural checks do not
+  create a schema-validation boundary or exhaustively scan application records during routine
+  recovery. Any disagreement or I/O failure discards the candidate and permits a later retry.
+- Successful forced reopen assigns the private candidate a new monotonic process-local home
+  generation and store-instance identity, but exposes no app-usable healthy handle. The system
+  recovery boundary consumes the candidate once and alone authorizes full-stack publication.
+  Handles, commands, sidecar tokens, receipts, and asynchronous completions from the obsolete
+  generation cannot authorize candidate work or later publication.
 - The package exposes the accepted recovery delays as `1`, `2`, `5`, `10`, and `30` seconds, remaining at `30` seconds until successful recovery resets the schedule. Scheduling and preserving caller-owned in-memory GUI values remain application responsibilities.
-- A health failure rejects new commands according to the system gate without closing application windows, mutating caller-owned coherent values, reading CAS, or inventing fallback data.
+- A health failure rejects new commands according to the system gate without closing application
+  windows, mutating caller-owned coherent values, reading CAS, or inventing fallback data. The
+  package never returns volatile CAS-interrupt authority; it can return only exact pre-writer
+  rejection evidence or `NotCommitted` proof for a command that performed no durable mutation.
 - Rebuildable domain projections may be invalidated and rebuilt only when their domain contract permits it.
+- Whole-home scrub is a separate bounded-memory explicit or background operation, or is invoked by
+  evidence of corruption or a schema-validation boundary. It is not the routine recovery gate for
+  an ambiguous mutation.
+- Exactly one whole-home scrub worker may run per home. Concurrent requests join that result and
+  evidence arriving mid-run may coalesce into at most one pending rerun. Every terminal path drops
+  the snapshot, cursor pages, sidecar verifier state, and worker permit before another scrub begins;
+  this local cap is independent of writer and reconciliation permits and is not a universal
+  governor.
+
+## Physical Theme Repository
+
+- This package implements the physical installed-theme repository boundary assigned by the
+  [Beryl-home storage system](../../../doc/systems/beryl-home-storage/design.md). It supplies bounded
+  range reads, staged immutable generation files, exact length and digest verification, file and
+  directory durability, and atomic owner-manifest replacement to the typed `beryl-state` theme
+  service.
+- The physical API accepts package-neutral file identities, byte ranges, exact expected file and
+  manifest identities, bounded staged byte streams, and explicit per-operation limits. It does not
+  parse theme documents, assign installed-theme ids or order, interpret settings, resolve appearance,
+  or expose raw file handles and paths to callers.
+- Publication flushes every required staged file before replacing the owner manifest and applies the
+  home filesystem tier's directory-durability rules. A document file is inert until selected by the
+  durable owner manifest; readers observe one complete old or new repository generation, never a
+  mixed set.
+- The terminal physical result proves non-publication, exact durable publication, or indeterminate
+  owner-manifest publication and carries only the bounded file evidence needed by the caller's exact
+  natural-record reconciliation hook. It cannot fabricate a repository generation or authorize a
+  retry, rollback, parse, or appearance publication.
+- Temporary or unreferenced staged files remain inert after cancellation, failure, or process exit.
+  Ordinary open and targeted reconciliation do not guess that those files are authoritative or safe
+  to delete.
 
 ## Sidecar Publication
 
 - Sidecars live under `sidecars/<namespace>/<first-two-SHA-256-hex>/<full-SHA-256-hex>`. Typed durable metadata owns the namespace, digest, and exact byte length; every admission and verification also requires an explicit nonzero caller byte limit.
-- Admission opens the canonical home, sidecar root, namespace, and shard as retained ordinary directories without following their final components. It flushes the exact parent link for the root, namespace, and shard on every attempt, including when each child already existed, so retry repairs an interrupted creation barrier rather than assuming it completed.
-- Admission writes a unique temporary file, flushes its complete content, records its opened-object identity, closes it, and atomically renames it without replacement. Fresh publication, existing reuse, retry after failed publication, and an exact concurrent rename collision then converge on one path that retains an ordinary non-reparse final file, verifies exact length, SHA-256, and caller bytes, and flushes the retained shard before returning.
-- A successful self-publisher additionally requires the retained final object to match the flushed temporary object's volume serial and 128-bit file id. Existing reuse and a verified no-replacement winner do not require another publisher's object identity, but no unrelated rename error is reclassified as a collision merely because the path exists.
-- The returned `AdmittedSidecar` keeps that exact final file retained without write or delete sharing and is valid only for its healthy store generation. A metadata command that first references those bytes retains this token through its batch and `SyncAll` barrier; a failed or obsolete token cannot authorize metadata publication.
-- Registered domains may use the bounded `SidecarVerifier` only during reopen validation to prove that their typed references still name ordinary retained final files with the declared length and digest.
+- Admission creates the sidecar directories needed for the digest path. On the fully supported local
+  NTFS tier it synchronizes each newly published directory link before dependent metadata may
+  commit; best-effort tiers perform the strongest available sequence.
+- Admission writes a unique temporary file, flushes its complete content, and renames it to the
+  digest path without replacement where supported. Fresh publication, existing reuse, and a
+  concurrent no-replacement winner converge by verifying the final file's exact length and SHA-256
+  digest. Existing reuse or a concurrent winner also compares that final file byte-for-byte with the
+  exact staged source through caller-bounded pages before returning an admission token; any differing
+  byte is a collision invariant failure. The containing directory is synchronized on the fully
+  supported tier before the admission token is returned.
+- The returned `AdmittedSidecar` is valid only for its healthy store generation. A metadata command
+  that first references those bytes retains this token through its batch and `SyncAll` barrier; a
+  failed or obsolete token cannot authorize metadata publication.
+- Registered domains may use the bounded `SidecarVerifier` to prove that typed references name
+  final files with the declared length and digest.
 - Failed admission may leave an inert temporary file or an unreferenced final file. The package never deletes either form and exposes no cleanup operation before the future home-wide garbage-collection design.
 
 ## Fault-Test Boundary
@@ -190,7 +387,27 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   terminal through Fjall's non-production fault boundary while deliberately leaving the Beryl gate
   healthy, exposes no database handle or generic engine operation, and exists only to prove that
   every state-dependent result observes dependency health before publication.
-- Package tests inject surfaced errors with exact I/O kinds, typed root/namespace/shard/final sidecar barriers, deterministic concurrency blocks, writer panics, subprocess aborts, parent-forced termination, callback-stage failures, closed-generation raw corruption, and bounded post-registration exact-codec-rejected envelopes. They prove exact owner and codec identity, bounded command work, writer-reentry rejection, exhaustive record-envelope rejection, ordinary-read fail-closed classification, stale-read publication rejection, single-flight maintenance, old-or-new batch recovery, exact physical-state non-replacement, obsolete-generation rejection, retained-final object safety, and sidecar publication ordering at the boundaries Beryl controls.
+- Package tests inject surfaced errors with exact I/O kinds, typed sidecar write/rename/sync
+  barriers, all four reserve-query outcomes, ordinary `ENOSPC`, deterministic concurrency blocks, writer
+  panics, subprocess aborts, parent-forced termination, callback-stage failures, closed-generation
+  raw corruption, and bounded post-registration exact-codec-rejected envelopes. They prove exact
+  owner and codec identity, bounded command work, writer-reentry rejection, whole-home scrub
+  behavior, ordinary-read fail-closed classification, stale-read publication rejection, all three
+  command-result payload contracts, exact-old and receipt-reconstructing exact-new reconciliation,
+  mixed-and-neither collision closure, and obsolete-generation rejection. Capacity tests fill all
+  1,024 retained scopes and the aggregate byte budget independently, prove the next potentially
+  indeterminate mutation returns pre-writer `NotCommitted` without disturbing admitted work,
+  reject a descriptor above 64 MiB, join duplicate
+  triggers without duplicate queue work, and prove immediate reservation release for directly
+  classified `NotCommitted` and `Committed` plus gate and slot release for `ExactOld` and
+  `ExactNew`. Collision tests prove opaque-descriptor disposal, one bounded sealed-fact set and its
+  closed slot remain, and every transient worker resource is released. Open tests prove that no
+  candidate application discovery is available before complete typed-stack publication.
+- Custody tests prove that an `Indeterminate` result is move-only, registry acceptance cannot fail
+  after reservation, route cancellation and service retirement cannot drop the descriptor, and
+  orderly final close refuses to dispose a descriptor-bearing verifying gate.
+- Package tests also cover four-worker saturation and release, filesystem-tier behavior, and
+  sidecar publication ordering at the boundaries Beryl controls.
 - The owned Fjall fork exposes a deterministic non-production journal-write failure seam. Package
   tests exercise that exact failure before in-memory batch publication and prove it cannot be
   followed by reported durable success; production builds expose neither the seam nor raw Fjall

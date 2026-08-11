@@ -3,52 +3,19 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IncomingJsonExpectation {
     Idle,
-    Initialize {
-        id: u64,
-    },
-    Compatibility {
-        id: u64,
-        probe: crate::CompatibilityProbe,
-    },
-    ConfigRead {
-        id: u64,
-    },
-    ModelList {
-        id: u64,
-    },
-    ThreadStart {
-        id: u64,
-    },
-    ThreadRead {
-        id: u64,
-    },
-    ThreadResume {
-        id: u64,
-    },
-    ThreadFork {
-        id: u64,
-    },
-    ThreadCompactStart {
-        id: u64,
-    },
-    ThreadInjectItems {
-        id: u64,
-    },
-    ThreadBackgroundTerminalsClean {
-        id: u64,
-    },
-    ThreadUnsubscribe {
-        id: u64,
-    },
-    TurnInterrupt {
-        id: u64,
-    },
-    TurnStart {
-        id: u64,
-    },
-    TurnSteer {
-        id: u64,
-    },
+    Initialize { id: u64 },
+    ConfigRead { id: u64 },
+    ModelList { id: u64 },
+    ThreadStart { id: u64 },
+    ThreadRead { id: u64 },
+    ThreadResume { id: u64 },
+    ThreadFork { id: u64 },
+    ThreadCompactStart { id: u64 },
+    ThreadInjectItems { id: u64 },
+    ThreadUnsubscribe { id: u64 },
+    TurnInterrupt { id: u64 },
+    TurnStart { id: u64 },
+    TurnSteer { id: u64 },
     Poisoned,
 }
 
@@ -61,21 +28,6 @@ pub(super) fn test_expectation_slot(
         IncomingJsonExpectation::Initialize { id } => slot
             .install_fixed(id, crate::incoming_json::ResponseFamily::Initialize)
             .expect("fresh response expectation slot accepts initialize"),
-        IncomingJsonExpectation::Compatibility { id, probe }
-            if probe == crate::CompatibilityProbe::ModelList =>
-        {
-            slot.install_fixed(
-                id,
-                crate::incoming_json::ResponseFamily::Compatibility(probe),
-            )
-            .expect("fresh response expectation slot accepts model compatibility probe")
-        }
-        IncomingJsonExpectation::Compatibility { id, probe } => slot
-            .install_fixed(
-                id,
-                crate::incoming_json::ResponseFamily::Compatibility(probe),
-            )
-            .expect("fresh response expectation slot accepts compatibility probe"),
         IncomingJsonExpectation::ConfigRead { id } => slot
             .install_fixed(id, crate::incoming_json::ResponseFamily::ConfigRead)
             .expect("fresh response expectation slot accepts config/read"),
@@ -100,12 +52,6 @@ pub(super) fn test_expectation_slot(
         IncomingJsonExpectation::ThreadInjectItems { id } => slot
             .install_fixed(id, crate::incoming_json::ResponseFamily::ThreadInjectItems)
             .expect("fresh response expectation slot accepts thread/inject_items"),
-        IncomingJsonExpectation::ThreadBackgroundTerminalsClean { id } => slot
-            .install_fixed(
-                id,
-                crate::incoming_json::ResponseFamily::ThreadBackgroundTerminalsClean,
-            )
-            .expect("fresh response expectation slot accepts thread/backgroundTerminals/clean"),
         IncomingJsonExpectation::ThreadUnsubscribe { id } => slot
             .install_fixed(id, crate::incoming_json::ResponseFamily::ThreadUnsubscribe)
             .expect("fresh response expectation slot accepts thread/unsubscribe"),

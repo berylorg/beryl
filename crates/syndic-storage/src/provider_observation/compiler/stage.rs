@@ -10,7 +10,7 @@ use crate::{
 use super::{
     PreparedProviderObservationFrame, ProviderObservationFramePreparationError,
     ProviderObservationFramePreparationPlan, ProviderObservationFrameStageError,
-    ProviderObservationReplay,
+    ProviderObservationFrameStageOutcome, ProviderObservationReplay,
 };
 
 pub(super) fn normalized_item_kind(
@@ -43,6 +43,6 @@ pub fn stage_provider_observation_frame<C: ProviderFrameStageCallback>(
     current: ProviderItemBuildRecord,
     limit: SyndicPointReadLimit,
     callback: &mut C,
-) -> Result<ProviderItemBuildRecord, ProviderObservationFrameStageError<C::Error>> {
+) -> Result<ProviderObservationFrameStageOutcome, ProviderObservationFrameStageError> {
     staging::stage(storage, store, prepared, current, limit, callback)
 }

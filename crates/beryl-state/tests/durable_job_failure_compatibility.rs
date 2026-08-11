@@ -1,5 +1,6 @@
 mod support;
 
+use beryl_home_store::CommandOutcome;
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, JobId, ResolutionIntentId, SyndicAcceptedInputId,
     SyndicDraftId, SyndicThreadId, SyndicTurnId,
@@ -70,12 +71,24 @@ fn mutation_admission_enforces_the_complete_failure_checkpoint_matrix() {
                         RecordTerminalHandoffFailure::new(job_id, job.revision(), evidence),
                     )
                 };
-                let result = execute(&store, contribution);
+                let outcome = execute(&store, contribution);
                 if compatible(retryable, kind, stage) {
-                    result.unwrap();
+                    match outcome {
+                        CommandOutcome::Committed {
+                            later_failure: None,
+                            ..
+                        } => {}
+                        outcome => panic!(
+                            "expected committed durable-job compatibility command, got {outcome:?}"
+                        ),
+                    }
                     accepted += 1;
                 } else {
-                    let error = result.unwrap_err();
+                    let CommandOutcome::NotCommitted { evidence: error } = outcome else {
+                        panic!(
+                            "expected rejected durable-job compatibility command, got {outcome:?}"
+                        );
+                    };
                     assert!(matches!(
                         contributor_source::<DurableJobMutationError>(&error),
                         Some(DurableJobMutationError::FailureKindMismatch { .. })
@@ -102,44 +115,59 @@ fn place_job(
 ) -> JobId {
     let admission = admission(seed);
     let job_id = admission.job_id();
-    execute(
+    match execute(
         store,
         state.durable_jobs().admit_branch_handoff(
             state.durable_jobs().revision(store).unwrap(),
             AdmitBranchHandoffJob::new(admission),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed durable-job admission, got {outcome:?}"),
+    }
     if stage == Stage::WaitingResolvingTurn {
         return job_id;
     }
 
-    execute(
+    match execute(
         store,
         state.durable_jobs().complete_resolving_turn(
             state.durable_jobs().revision(store).unwrap(),
             CompleteResolvingTurn::new(job_id, job_revision(store, state, job_id)),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed resolving-turn completion, got {outcome:?}"),
+    }
     if stage == Stage::WaitingParent {
         return job_id;
     }
 
     let parent = parent(seed);
-    execute(
+    match execute(
         store,
         state.durable_jobs().start_parent_handoff(
             state.durable_jobs().revision(store).unwrap(),
             StartParentHandoff::new(job_id, job_revision(store, state, job_id), parent),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed parent-handoff start, got {outcome:?}"),
+    }
     if stage == Stage::StartingParent {
         return job_id;
     }
 
-    execute(
+    match execute(
         store,
         state.durable_jobs().record_parent_cas_acceptance(
             state.durable_jobs().revision(store).unwrap(),
@@ -149,8 +177,13 @@ fn place_job(
                 parent_cas(seed),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed parent CAS acceptance, got {outcome:?}"),
+    }
     job_id
 }
 

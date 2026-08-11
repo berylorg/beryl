@@ -129,6 +129,119 @@ fn foreground_websocket_ingress_calls_only_the_incremental_decoder() {
     );
 }
 
+#[test]
+fn production_sources_exclude_runtime_probe_admission_and_target_touching_regressions() {
+    let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let removed_probe_symbols = [
+        "CompatibilityProbe",
+        "CompatibilityProbeSet",
+        "CompatibilityProbeResult",
+        "ManagedBackendProbeReport",
+        "probe_compatibility",
+        "CompatibilityRequest",
+        "CompatibilityResultMachine",
+        "CompatibilityProbeRecognized",
+        "CompatibilityMutatingSuccess",
+        "CompatibilityUnsafeSuccess",
+        "CompatibilityManagedLaunchProvenanceMissing",
+        "CompatibilityEffectiveConfigUnproven",
+        "ThreadBranchCapabilities",
+        "BoundedResponseResult::Compatibility",
+        "ResponseFamily::Compatibility",
+        "compatibility admission",
+        "Compatibility admission",
+    ];
+    let mut offenders = Vec::new();
+
+    for path in rust_files_under(&src_dir) {
+        let source = fs::read_to_string(&path).expect("production source should be readable");
+        let relative = path.strip_prefix(&src_dir).unwrap_or(&path);
+        let display = relative.display();
+
+        if relative == Path::new("thread_branch.rs")
+            || relative.ends_with(Path::new("compatibility.rs"))
+        {
+            offenders.push(format!("{display} retains a removed probe module"));
+        }
+
+        for symbol in removed_probe_symbols {
+            if source.contains(symbol) {
+                offenders.push(format!("{display} retains removed probe surface {symbol}"));
+            }
+        }
+    }
+
+    let bounded_request = fs::read_to_string(src_dir.join("session").join("bounded_request.rs"))
+        .expect("bounded request source should be readable");
+    let (_, after_admission) = bounded_request
+        .split_once("pub fn admit_release(")
+        .expect("production release admission must remain explicit");
+    let (admission, _) = after_admission
+        .split_once("/// Exercises the exact release-admission request protocol")
+        .expect("lifecycle seam must follow production release admission");
+
+    assert!(
+        admission.contains("self.read_config(cwd, timeout)?"),
+        "release admission must obtain its proof through one same-session config/read"
+    );
+    for forbidden in [
+        "list_model",
+        "start_turn",
+        "steer_turn",
+        "compact_",
+        "unsubscribe_thread",
+        "thread_id",
+        "turn_id",
+        "thread/",
+        "turn/",
+    ] {
+        if admission.contains(forbidden) {
+            offenders.push(format!(
+                "release admission contains target-touching or product request surface {forbidden}"
+            ));
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "runtime probe admission or target-touching regressions remain: {offenders:?}"
+    );
+}
+
+#[test]
+fn production_sources_exclude_removed_hard_stop_and_coarse_cleanup_surfaces() {
+    let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    assert!(!src_dir.join("hard_stop.rs").exists());
+    assert!(!src_dir.join("persistent_failure_interrupt.rs").exists());
+
+    let forbidden = [
+        "CoarseThreadCleanup",
+        "SameSessionCleanupOrdering",
+        "ExactHardStopLimitation",
+        "clean_exact_thread_background_terminals",
+        "admits_exact_thread_background_terminals_cleanup",
+        "ThreadBackgroundTerminalsClean",
+        "thread/backgroundTerminals/clean",
+        "experimental_api_negotiated",
+        "PersistentFailureInterrupt",
+    ];
+    let mut offenders = Vec::new();
+    for path in rust_files_under(&src_dir) {
+        let source = fs::read_to_string(&path).expect("production source should be readable");
+        let relative = path.strip_prefix(&src_dir).unwrap_or(&path);
+        for removed in forbidden {
+            if source.contains(removed) {
+                offenders.push(format!("{} retains {removed}", relative.display()));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "removed hard-stop or coarse-cleanup surfaces remain: {offenders:?}"
+    );
+}
+
 fn is_provider_ingress_source(relative: &Path) -> bool {
     relative == Path::new("incoming_json.rs")
         || relative.starts_with("incoming_json")

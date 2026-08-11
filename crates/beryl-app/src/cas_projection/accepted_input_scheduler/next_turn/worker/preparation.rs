@@ -24,9 +24,8 @@ pub(super) fn classify_unbuilt_promotion(
             promotion.thread_id(),
             obsolete_coordinator_generation(&error),
         );
-        return if failure::is_verification_pending_coordinator(&error, validator.home_generation())
-        {
-            WorkerDisposition::VerificationPending
+        return if failure::is_current_health_loss_coordinator(&error, validator.home_generation()) {
+            WorkerDisposition::PersistentHomeFailure
         } else if failure::is_cut_correlated_coordinator(&error, validator.home_generation()) {
             WorkerDisposition::PersistentHomeFailure
         } else if expected_coordinator_drift(&error) {
@@ -43,7 +42,6 @@ pub(super) fn classify_unbuilt_promotion(
         Ok(AcceptedInputPromotionStatus::Collision)
         | Err(SyndicReadError::ConcurrentChange { .. }) => WorkerDisposition::NextContinue,
         Err(error) => match failure::from_syndic_read(&error, validator.home_generation()) {
-            SchedulerFailure::VerificationPending => WorkerDisposition::VerificationPending,
             SchedulerFailure::PersistentHomeFailure => WorkerDisposition::PersistentHomeFailure,
             SchedulerFailure::Fatal => WorkerDisposition::Fatal,
         },

@@ -1,3 +1,4 @@
+use beryl_home_store::CommandOutcome;
 use syndic_storage::*;
 
 use crate::{
@@ -26,9 +27,14 @@ fn every_delivery_transition_executes_current_and_persists_exact_aggregates() {
             AcceptedInputDeliveryTransitionStatus::Prior
         );
 
-        store
-            .execute_current(operation.current_command(storage))
-            .unwrap();
+        match store.execute_current(operation.current_command(storage)) {
+            CommandOutcome::Committed {
+                later_failure: None, ..
+            } => {}
+            outcome => {
+                panic!("expected delivery transition to commit without later failure, got {outcome:?}")
+            }
+        }
 
         assert_eq!(
             operation.status(&store, storage),

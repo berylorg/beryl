@@ -3,7 +3,8 @@
 mod support;
 
 use beryl_home_store::{
-    CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::SyndicItemId;
@@ -43,7 +44,13 @@ fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStor
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean item-projection fixture command, got {outcome:?}"),
+    }
 }
 
 fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> PendingPublication {
@@ -256,7 +263,29 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
             ))
             .unwrap();
         faults.fail_next(point);
-        assert!(store.execute(command).is_err());
+        match (point, store.execute(command)) {
+            (
+                FaultPoint::BeforeCommit,
+                beryl_home_store::CommandOutcome::NotCommitted {
+                    evidence: CommandError::Commit { .. },
+                },
+            )
+            | (
+                FaultPoint::AfterPersist,
+                beryl_home_store::CommandOutcome::Committed {
+                    later_failure: Some(CommandError::Persistence { .. }),
+                    ..
+                },
+            ) => {}
+            (
+                FaultPoint::AfterCommitBeforePersist,
+                outcome @ beryl_home_store::CommandOutcome::Indeterminate {
+                    failure: CommandError::Persistence { .. },
+                    ..
+                },
+            ) => assert!(format!("{outcome:?}").contains("Indeterminate")),
+            (_, outcome) => panic!("unexpected projection fault outcome: {outcome:?}"),
+        }
         assert_eq!(store.health().state(), HomeHealthState::Verifying);
         store.verify_health().unwrap();
         assert_recovered_state(&store, storage, &pending, expected);

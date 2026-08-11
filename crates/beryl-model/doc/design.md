@@ -48,9 +48,12 @@ Provide shared pure-data identities and values used across Beryl packages withou
   branch-discussion archive state, exact usage observation, activity timestamp, parent-thread
   lineage summary, current Beryl window claim, and catalog availability without making this crate
   the persisted owner.
-- CAS thread names and CAS catalog rows never become thread-title or Beryl catalog authority.
-- Syndic thread-summary values represent the resolved generated, history-derived, or absent title
-  source explicitly. Beryl catalog values copy that resolved source and never own title precedence.
+- Thread-summary title-source values form a closed tagged set for generated, history-derived, or
+  absent sources; no untagged backend-name or catalog-row variant exists. Bounded catalog values
+  carry only their declared pure fields and confer no persistence or precedence authority.
+- The [conversation-threads feature](../../../doc/features/conversation-threads/design.md) owns title
+  behavior, while the [Syndic conversation-history system](../../../doc/systems/syndic-conversation-history/design.md)
+  owns title derivation and persistence.
 
 ## Revision And Command Values
 
@@ -67,6 +70,10 @@ Provide shared pure-data identities and values used across Beryl packages withou
 - Shared provenance values distinguish user-authored input, Beryl-generated handoff input, CAS live events, dynamic tool calls, and durable recovery actions.
 - Dynamic tool-call provenance may store exact app-server thread id, turn id, tool name, and tool-call id as opaque external identities.
 - Provenance values must not contain authentication material, capability tokens, hidden developer instructions, or unbounded payload text.
+- `CasThreadId`, `CasTurnId`, and `CasItemId` are opaque nonempty valid-UTF-8 identities whose
+  exact encoded value is at most 256 bytes. Construction and deserialization reject a larger value;
+  they never truncate, normalize, hash, or substitute it. This is only the pure identity contract
+  delegated by `syndic-storage`, not ownership of CAS correlation, repair, or stored-record policy.
 - Exact CAS item ids, managed-process generations, loaded-thread generations, and distinct discussion-context, selected-path, and recovery-sequence digest domains may cross the backend, Syndic, and orchestration boundaries without owning provider calls or stored proof records.
 - The recovery-sequence digest domain exposes one pure incremental accumulator shared by Syndic
   preflight and backend replay. It covers declared item and UTF-8 totals plus each exact one-based
@@ -85,5 +92,6 @@ Provide shared pure-data identities and values used across Beryl packages withou
   `AssetReferenceSetDigest`, and `SealedAssetReferenceSetProof` are shared pure cross-domain
   evidence that add one set identity, entry frontier, and asset-chain digest to that summary. These
   values own no staging lifecycle, owner mutation, storage revision, path, or byte-access authority.
-- Product features treat asset identity as opaque; storage and sidecar boundaries may inspect its version, digest, and length to prove exact byte identity.
+- Asset identity exposes only its version, digest, and length as pure identity fields; it encodes no
+  consumer-specific presentation, persistence, or sidecar policy.
 - The type owns no filesystem path, media metadata, reference record, sidecar operation, or garbage-collection policy.

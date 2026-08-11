@@ -1,18 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use beryl_backend::ExactForegroundTurn;
 use beryl_model::{
     CasLoadedSessionGeneration, CasThreadId, CasTurnId, SyndicThreadId, SyndicTurnId,
 };
 
-use super::{EventRouter, TargetTurn};
-use crate::cas_projection::connection::lifecycle::{
-    ProjectionConnection, ProjectionConnectionIdentityObservation,
-};
+use super::{EventRouter, TargetTurn, stop::VolatileStopAdmissionProof};
+use crate::cas_projection::connection::lifecycle::ProjectionConnectionIdentityObservation;
 use crate::cas_projection::{
     PendingTurnActivation,
     persistent_failure::{PersistentFailureCutIdentity, PersistentFailureGeneration},
-    stop::PersistentFailureStopEvidence,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,7 +27,7 @@ struct FailureTargetGuard {
 #[derive(Debug)]
 pub(super) struct PersistentFailureRouterCut {
     identity: PersistentFailureCutIdentity,
-    targets: Option<HashMap<CasThreadId, FailureTargetGuard>>,
+    targets: HashMap<CasThreadId, FailureTargetGuard>,
 }
 
 /// Exact immutable ordinary-turn proof frozen from last-coherent router evidence.
@@ -50,46 +47,10 @@ pub(in crate::cas_projection) struct PersistentFailureTargetWitness {
 }
 
 /// Dispatch proof for one complete eligible failure target.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub(in crate::cas_projection) struct PersistentFailureTargetProof {
     witness: PersistentFailureTargetWitness,
-}
-
-/// Exact observed state of one frozen router guard.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::cas_projection) enum PersistentFailureTargetGuardDisposition {
-    Frozen,
-    Spent,
-}
-
-/// Read-only guard observation paired with the complete frozen target witness it validates.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::cas_projection) struct PersistentFailureTargetGuardObservation {
-    witness: PersistentFailureTargetWitness,
-    disposition: PersistentFailureTargetGuardDisposition,
-}
-
-/// Failure to settle one router's complete frozen-target guard set.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::cas_projection) enum PersistentFailureTargetGuardSettlementError {
-    RouterPoisoned,
-    CutMismatch,
-    ConnectionMismatch,
-    TargetBatchMismatch,
-    GuardDispositionMismatch,
-    AlreadySettled,
-}
-
-impl PersistentFailureTargetGuardObservation {
-    pub(in crate::cas_projection) const fn witness(&self) -> &PersistentFailureTargetWitness {
-        &self.witness
-    }
-
-    pub(in crate::cas_projection) const fn disposition(
-        &self,
-    ) -> PersistentFailureTargetGuardDisposition {
-        self.disposition
-    }
+    admission: VolatileStopAdmissionProof,
 }
 
 /// Bounded reason why one retained target cannot receive the volatile failure request.
@@ -111,7 +72,7 @@ pub(in crate::cas_projection) enum PersistentFailureTargetIneligibility {
 }
 
 /// One exact snapshot of the bounded targets frozen by a router failure cut.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub(in crate::cas_projection) struct PersistentFailureTargetBatch {
     candidates: Vec<PersistentFailureTargetCandidate>,
 }
@@ -124,7 +85,7 @@ impl PersistentFailureTargetBatch {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub(in crate::cas_projection) struct PersistentFailureTargetCandidate {
     witness: PersistentFailureTargetWitness,
     proof: Result<PersistentFailureTargetProof, PersistentFailureTargetIneligibility>,
@@ -234,19 +195,6 @@ impl PersistentFailureTargetProof {
 }
 
 impl PersistentFailureTargetWitness {
-    pub(in crate::cas_projection) fn observe_guard(
-        &self,
-        connection: &ProjectionConnection,
-    ) -> Result<PersistentFailureTargetGuardObservation, PersistentFailureTargetIneligibility> {
-        if connection.identity_observation() != self.connection {
-            return Err(PersistentFailureTargetIneligibility::GenerationMismatch);
-        }
-        connection
-            .current_router()
-            .map_err(|_| PersistentFailureTargetIneligibility::RouterUnavailable)?
-            .observe_persistent_failure_target_guard(self)
-    }
-
     pub(in crate::cas_projection) const fn cut_identity(&self) -> PersistentFailureCutIdentity {
         self.cut_identity
     }
@@ -297,37 +245,9 @@ impl PersistentFailureTargetWitness {
 }
 
 impl EventRouter {
-    pub(in crate::cas_projection) fn persistent_failure_target_threads(
-        &self,
-        identity: PersistentFailureCutIdentity,
-    ) -> Result<Vec<SyndicThreadId>, PersistentFailureTargetIneligibility> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| PersistentFailureTargetIneligibility::RouterUnavailable)?;
-        if state.retired.is_some() || state.persistent_failure.is_some() {
-            return Err(PersistentFailureTargetIneligibility::RouterUnavailable);
-        }
-        let mut threads = Vec::with_capacity(state.targets.len());
-        for thread_id in sorted_target_keys(&state.targets) {
-            let target = state
-                .targets
-                .get(&thread_id)
-                .expect("bounded target key remains registered under one router lock");
-            if target.home_generation != identity.home_generation.get() {
-                continue;
-            }
-            if !threads.contains(&target.owner) {
-                threads.push(target.owner);
-            }
-        }
-        Ok(threads)
-    }
-
     pub(in crate::cas_projection) fn freeze_persistent_failure_targets(
         &self,
         identity: PersistentFailureCutIdentity,
-        stop_evidence: &HashMap<SyndicThreadId, PersistentFailureStopEvidence>,
     ) -> Result<PersistentFailureTargetBatch, PersistentFailureTargetIneligibility> {
         let mut state = self
             .state
@@ -336,7 +256,11 @@ impl EventRouter {
         if state.retired.is_some() || state.persistent_failure.is_some() {
             return Err(PersistentFailureTargetIneligibility::RouterUnavailable);
         }
+        if self.commands.service_generation() != identity.service_generation {
+            return Err(PersistentFailureTargetIneligibility::GenerationMismatch);
+        }
         let keys = sorted_target_keys(&state.targets);
+        let mut volatile_admission = state.volatile_stop_admission.take();
         let mut guards = HashMap::with_capacity(keys.len());
         let mut candidates = Vec::with_capacity(keys.len());
         let mut retained_target_projections = Vec::new();
@@ -345,15 +269,25 @@ impl EventRouter {
                 .targets
                 .get(&cas_thread_id)
                 .expect("bounded failure target remains registered under one router lock");
-            let syndic_thread_id = target.owner;
-            let token = u64::try_from(index + 1).expect("bounded live-target capacity fits u64");
+            let admission = if volatile_admission
+                .as_ref()
+                .is_some_and(|admission| admission.proof.cas_thread_id == cas_thread_id)
+            {
+                volatile_admission.take()
+            } else {
+                None
+            };
+            let token = admission.as_ref().map_or_else(
+                || u64::try_from(index + 1).expect("bounded live-target capacity fits u64"),
+                |admission| admission.token,
+            );
             let witness = build_witness(self, target, &cas_thread_id, identity, token);
             let proof = build_proof(
                 self,
                 target,
                 &witness,
-                stop_evidence.get(&syndic_thread_id).copied(),
-                state.active_steering_attempt.is_some() || state.active_stop_election.is_some(),
+                admission,
+                state.active_steering_attempt.is_some(),
             );
             guards.insert(
                 cas_thread_id.clone(),
@@ -362,7 +296,7 @@ impl EventRouter {
                     state: FailureTargetGuardState::Frozen,
                 },
             );
-            if self.projection_retainer.is_some()
+            if self.terminal_disposer.is_some()
                 && let Some(projection) = state
                     .targets
                     .get_mut(&cas_thread_id)
@@ -374,14 +308,14 @@ impl EventRouter {
         }
         state.persistent_failure = Some(PersistentFailureRouterCut {
             identity,
-            targets: Some(guards),
+            targets: guards,
         });
         super::state::advance_revision(&mut state);
         drop(state);
         self.publication_changed.notify_all();
-        if let Some(retainer) = self.projection_retainer.clone() {
+        if let Some(disposer) = self.terminal_disposer.clone() {
             for projection in retained_target_projections {
-                retainer.retain_target(projection);
+                disposer.dispose_target(projection);
             }
         }
         Ok(PersistentFailureTargetBatch { candidates })
@@ -389,7 +323,7 @@ impl EventRouter {
 
     pub(in crate::cas_projection) fn authorize_persistent_failure_dispatch(
         &self,
-        proof: &PersistentFailureTargetProof,
+        proof: PersistentFailureTargetProof,
     ) -> Result<PersistentFailureDispatchAuthorization, PersistentFailureTargetIneligibility> {
         let mut state = self
             .state
@@ -399,13 +333,11 @@ impl EventRouter {
             .persistent_failure
             .as_ref()
             .ok_or(PersistentFailureTargetIneligibility::GenerationMismatch)?;
-        if !proof_matches_router(self, proof, cut.identity) {
+        if !proof_matches_router(self, &proof, cut.identity) {
             return Err(PersistentFailureTargetIneligibility::GenerationMismatch);
         }
         let guard = cut
             .targets
-            .as_ref()
-            .ok_or(PersistentFailureTargetIneligibility::AlreadyFrozen)?
             .get(&proof.witness.cas_thread_id)
             .ok_or(PersistentFailureTargetIneligibility::IdentityMismatch)?;
         if guard.witness != proof.witness {
@@ -418,151 +350,17 @@ impl EventRouter {
             .targets
             .get(&proof.witness.cas_thread_id)
             .ok_or(PersistentFailureTargetIneligibility::Lost)?;
-        validate_frozen_target(target, proof)?;
+        validate_frozen_target(target, &proof)?;
         state
             .persistent_failure
             .as_mut()
             .expect("validated failure cut remains installed")
             .targets
-            .as_mut()
-            .expect("validated failure guards remain unsettled")
             .get_mut(&proof.witness.cas_thread_id)
             .expect("validated failure guard remains installed")
             .state = FailureTargetGuardState::Spent;
-        Ok(PersistentFailureDispatchAuthorization {
-            proof: proof.clone(),
-        })
+        Ok(PersistentFailureDispatchAuthorization { proof })
     }
-
-    pub(in crate::cas_projection) fn observe_persistent_failure_target_guard(
-        &self,
-        witness: &PersistentFailureTargetWitness,
-    ) -> Result<PersistentFailureTargetGuardObservation, PersistentFailureTargetIneligibility> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| PersistentFailureTargetIneligibility::RouterUnavailable)?;
-        let cut = state
-            .persistent_failure
-            .as_ref()
-            .ok_or(PersistentFailureTargetIneligibility::GenerationMismatch)?;
-        if !witness_matches_router(self, witness, cut.identity) {
-            return Err(PersistentFailureTargetIneligibility::GenerationMismatch);
-        }
-        let guard = cut
-            .targets
-            .as_ref()
-            .ok_or(PersistentFailureTargetIneligibility::AlreadyFrozen)?
-            .get(&witness.cas_thread_id)
-            .ok_or(PersistentFailureTargetIneligibility::IdentityMismatch)?;
-        if guard.witness != *witness {
-            return Err(PersistentFailureTargetIneligibility::IdentityMismatch);
-        }
-        let disposition = match guard.state {
-            FailureTargetGuardState::Frozen => PersistentFailureTargetGuardDisposition::Frozen,
-            FailureTargetGuardState::Spent => PersistentFailureTargetGuardDisposition::Spent,
-        };
-        Ok(PersistentFailureTargetGuardObservation {
-            witness: witness.clone(),
-            disposition,
-        })
-    }
-
-    pub(in crate::cas_projection) fn settle_persistent_failure_target_guards(
-        &self,
-        connection: ProjectionConnectionIdentityObservation,
-        identity: PersistentFailureCutIdentity,
-        observations: &[PersistentFailureTargetGuardObservation],
-    ) -> Result<(), PersistentFailureTargetGuardSettlementError> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| PersistentFailureTargetGuardSettlementError::RouterPoisoned)?;
-        let cut = state
-            .persistent_failure
-            .as_ref()
-            .ok_or(PersistentFailureTargetGuardSettlementError::CutMismatch)?;
-        validate_target_guard_batch(self, connection, identity, observations, cut)?;
-        state
-            .persistent_failure
-            .as_mut()
-            .expect("preflight-validated persistent-failure cut remains installed")
-            .targets
-            .take()
-            .expect("preflight-validated failure guards remain unsettled");
-        Ok(())
-    }
-
-    pub(in crate::cas_projection) fn validate_persistent_failure_target_guard_topology(
-        &self,
-        connection: ProjectionConnectionIdentityObservation,
-        identity: PersistentFailureCutIdentity,
-        observations: &[PersistentFailureTargetGuardObservation],
-    ) -> Result<(), PersistentFailureTargetGuardSettlementError> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| PersistentFailureTargetGuardSettlementError::RouterPoisoned)?;
-        let cut = state
-            .persistent_failure
-            .as_ref()
-            .ok_or(PersistentFailureTargetGuardSettlementError::CutMismatch)?;
-        validate_target_guard_batch(self, connection, identity, observations, cut)
-    }
-}
-
-fn validate_target_guard_batch(
-    router: &EventRouter,
-    connection: ProjectionConnectionIdentityObservation,
-    identity: PersistentFailureCutIdentity,
-    observations: &[PersistentFailureTargetGuardObservation],
-    cut: &PersistentFailureRouterCut,
-) -> Result<(), PersistentFailureTargetGuardSettlementError> {
-    let expected_connection = ProjectionConnectionIdentityObservation::new(
-        router.connection_generation,
-        router.runtime_id,
-        router.process_generation,
-    );
-    if connection != expected_connection {
-        return Err(PersistentFailureTargetGuardSettlementError::ConnectionMismatch);
-    }
-    if cut.identity != identity {
-        return Err(PersistentFailureTargetGuardSettlementError::CutMismatch);
-    }
-    let guards = cut
-        .targets
-        .as_ref()
-        .ok_or(PersistentFailureTargetGuardSettlementError::AlreadySettled)?;
-    if observations.len() != guards.len() {
-        return Err(PersistentFailureTargetGuardSettlementError::TargetBatchMismatch);
-    }
-    let mut seen = HashSet::with_capacity(observations.len());
-    for observation in observations {
-        let witness = observation.witness();
-        if witness.cut_identity != identity {
-            return Err(PersistentFailureTargetGuardSettlementError::CutMismatch);
-        }
-        if witness.connection != connection {
-            return Err(PersistentFailureTargetGuardSettlementError::ConnectionMismatch);
-        }
-        if !seen.insert(witness.cas_thread_id.clone()) {
-            return Err(PersistentFailureTargetGuardSettlementError::TargetBatchMismatch);
-        }
-        let guard = guards
-            .get(&witness.cas_thread_id)
-            .ok_or(PersistentFailureTargetGuardSettlementError::TargetBatchMismatch)?;
-        if guard.witness != *witness {
-            return Err(PersistentFailureTargetGuardSettlementError::TargetBatchMismatch);
-        }
-        let expected_disposition = match guard.state {
-            FailureTargetGuardState::Frozen => PersistentFailureTargetGuardDisposition::Frozen,
-            FailureTargetGuardState::Spent => PersistentFailureTargetGuardDisposition::Spent,
-        };
-        if observation.disposition() != expected_disposition {
-            return Err(PersistentFailureTargetGuardSettlementError::GuardDispositionMismatch);
-        }
-    }
-    Ok(())
 }
 
 fn build_witness(
@@ -598,7 +396,7 @@ fn build_proof(
     router: &EventRouter,
     target: &super::TargetEntry,
     witness: &PersistentFailureTargetWitness,
-    stop_evidence: Option<PersistentFailureStopEvidence>,
+    admission: Option<VolatileStopAdmissionProof>,
     active_steering: bool,
 ) -> Result<PersistentFailureTargetProof, PersistentFailureTargetIneligibility> {
     if target.home_generation != witness.cut_identity.home_generation.get() {
@@ -615,8 +413,11 @@ fn build_proof(
     {
         return Err(PersistentFailureTargetIneligibility::ActiveOperation);
     }
-    if !stop_evidence.is_some_and(PersistentFailureStopEvidence::permits_volatile_interrupt) {
-        return Err(PersistentFailureTargetIneligibility::PriorPrimaryAmbiguous);
+    let admission = admission.ok_or(PersistentFailureTargetIneligibility::PriorPrimaryAmbiguous)?;
+    if admission.service_generation != witness.cut_identity.service_generation
+        || admission.failure_generation != witness.cut_identity.failure_generation
+    {
+        return Err(PersistentFailureTargetIneligibility::GenerationMismatch);
     }
     if target.compaction.is_some() {
         return Err(PersistentFailureTargetIneligibility::ContextCompaction);
@@ -668,11 +469,20 @@ fn build_proof(
     if witness.syndic_turn_id != Some(pending.turn_id())
         || witness.cas_turn_id.as_ref() != Some(cas_turn_id)
         || witness.pending_activation.as_ref() != Some(pending)
+        || admission.proof.connection_generation != router.connection_generation
+        || admission.proof.registration != target.registration
+        || admission.proof.runtime_id != router.runtime_id
+        || admission.proof.loaded_generation != target.loaded_generation
+        || admission.proof.syndic_thread_id != target.owner
+        || admission.syndic_turn_id != pending.turn_id()
+        || admission.proof.cas_thread_id != witness.cas_thread_id
+        || admission.proof.cas_turn_id != *cas_turn_id
     {
         return Err(PersistentFailureTargetIneligibility::IdentityMismatch);
     }
     Ok(PersistentFailureTargetProof {
         witness: witness.clone(),
+        admission,
     })
 }
 

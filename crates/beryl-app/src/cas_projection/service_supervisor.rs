@@ -1,7 +1,6 @@
 //! Process-owned current-service publication and same-home recovery supervision.
 
 mod provider;
-mod recovery;
 mod slot;
 mod worker;
 
@@ -12,8 +11,6 @@ use beryl_state::{BerylState, BerylStateReacquireError};
 use syndic_storage::SyndicStorage;
 use thiserror::Error;
 
-#[cfg(test)]
-use self::worker::Phase93AdoptionObservation;
 use self::{
     provider::ProviderFactoryOwner,
     worker::{RecoveryWorkerExit, RecoveryWorkerStart},
@@ -24,7 +21,7 @@ use crate::cas_projection::{
     ScheduledOrdinaryProviderEpochContext,
 };
 pub use slot::RunningProjectionServiceLease;
-pub(in crate::cas_projection) use slot::{PublishedServiceEpoch, RunningServiceSlot};
+pub(in crate::cas_projection) use slot::RunningServiceSlot;
 
 /// Why the current process publication slot cannot issue a scoped service lease.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -45,9 +42,8 @@ pub struct RunningSessionRecoveryDiagnostics {
     pub(super) active_service_leases: usize,
     pub(super) recovering: bool,
     pub(super) shutting_down: bool,
-    pub(super) recovery_cycles: u64,
-    pub(super) verification_successes: u64,
     pub(super) terminal_failures: u64,
+    pub(super) terminal_settled: bool,
 }
 
 /// Failure before the process recovery worker became the sole service owner.
@@ -83,8 +79,6 @@ pub struct RunningSessionRecoverySupervisor {
     slot: Arc<RunningServiceSlot>,
     signal: mpsc::SyncSender<()>,
     worker: Mutex<Option<std::thread::JoinHandle<RecoveryWorkerExit>>>,
-    #[cfg(test)]
-    phase93_observation: Arc<Mutex<Option<Phase93AdoptionObservation>>>,
 }
 
 impl RunningSessionRecoverySupervisor {
@@ -135,34 +129,23 @@ impl RunningSessionRecoverySupervisor {
                 return Err(RunningSessionRecoveryStartError::Service(error));
             }
         };
-        let retained_home = service.retained_home_for_recovery();
         let (signal, receiver) = mpsc::sync_channel(1);
         if service.attach_recovery_supervisor(signal.clone()).is_err() {
-            drop(retained_home);
             let _ = service.close();
             provider_factory.shutdown();
             return Err(RunningSessionRecoveryStartError::NotificationAttachment);
         }
         let slot = RunningServiceSlot::new(service, state);
-        #[cfg(test)]
-        let phase93_observation = Arc::new(Mutex::new(None));
         let worker = RecoveryWorkerStart {
-            home: retained_home,
-            config,
             slot: Arc::clone(&slot),
-            signal: signal.clone(),
             receiver,
             provider_factory,
-            #[cfg(test)]
-            phase93_observation: Arc::clone(&phase93_observation),
         }
         .spawn()?;
         Ok(Self {
             slot,
             signal,
             worker: Mutex::new(Some(worker)),
-            #[cfg(test)]
-            phase93_observation,
         })
     }
 
@@ -175,14 +158,6 @@ impl RunningSessionRecoverySupervisor {
     #[must_use]
     pub fn diagnostics(&self) -> RunningSessionRecoveryDiagnostics {
         self.slot.diagnostics()
-    }
-
-    #[cfg(test)]
-    fn phase93_adoption_observation_for_test(&self) -> Option<Phase93AdoptionObservation> {
-        *self
-            .phase93_observation
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
     }
 
     /// Explicitly stops recovery, settles the current service, and finally closes the provider
@@ -230,18 +205,14 @@ impl RunningSessionRecoveryDiagnostics {
     }
 
     #[must_use]
-    pub const fn recovery_cycles(self) -> u64 {
-        self.recovery_cycles
-    }
-
-    #[must_use]
-    pub const fn verification_successes(self) -> u64 {
-        self.verification_successes
-    }
-
-    #[must_use]
     pub const fn terminal_failures(self) -> u64 {
         self.terminal_failures
+    }
+
+    /// Reports that terminal disposal and provider-factory shutdown have finished.
+    #[must_use]
+    pub const fn terminal_settled(self) -> bool {
+        self.terminal_settled
     }
 }
 

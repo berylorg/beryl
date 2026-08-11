@@ -7,17 +7,15 @@ use super::{
     ReceiveOutcome, TransportWriteFailure,
 };
 use crate::{
-    CallerNoSuccessorFence, CoarseThreadCleanupDisposition, CoarseThreadCleanupOutcome,
-    EmptyAcknowledgement, ExactForegroundTurn, ExactForegroundTurnAuthorization,
-    JsonRpcErrorVerdict, PersistentFailureInterruptAuthorization,
-    PersistentFailureInterruptCorrelation, PersistentFailureInterruptOutcome,
-    SameSessionCleanupOrdering, StopAttemptCorrelation, StopOperationCorrelation,
-    TurnInterruptDisposition, TurnInterruptOutcome,
+    CallerNoSuccessorFence, EmptyAcknowledgement, ExactForegroundTurn,
+    ExactForegroundTurnAuthorization, JsonRpcErrorVerdict, StopAttemptCorrelation,
+    StopOperationCorrelation, TurnInterruptDisposition, TurnInterruptOutcome,
+    VolatileInterruptAdmissionFailure, VolatileInterruptAuthorization,
+    VolatileInterruptCorrelation, VolatileInterruptOutcome,
     exact_interruption::ExactForegroundTurnAuthorizationCore, incoming_json::ResponseFamily,
 };
 
 const INTERRUPT_METHOD: &str = "turn/interrupt";
-const CLEANUP_METHOD: &str = "thread/backgroundTerminals/clean";
 
 #[derive(Serialize)]
 struct ExactRequest<P> {
@@ -31,12 +29,6 @@ struct ExactRequest<P> {
 struct InterruptParams<'a> {
     thread_id: &'a beryl_model::CasThreadId,
     turn_id: &'a beryl_model::CasTurnId,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CleanupParams<'a> {
-    thread_id: &'a beryl_model::CasThreadId,
 }
 
 enum EmptyRequestCompletion {
@@ -53,26 +45,6 @@ impl<P> ExactRequest<P> {
 }
 
 impl ManagedBackendSession {
-    /// Reports whether optional pinned coarse cleanup is admitted on this foreground session.
-    ///
-    /// Admission is a closed local fact established by the exact-release initialize handshake and
-    /// its negotiated experimental API capability. This read sends no compatibility probe and
-    /// does not imply that cleanup has completed, or that a target authorization is currently
-    /// available.
-    #[must_use]
-    pub fn admits_exact_thread_background_terminals_cleanup(&self) -> bool {
-        matches!(
-            self.transport,
-            BackendClientTransport::ForegroundWebSocket(_)
-        ) && !self.transport.is_closed()
-            && self.has_full_turn_stream()
-            && self.experimental_api_negotiated
-            && self
-                .initialize
-                .as_ref()
-                .is_some_and(|initialize| initialize.validate_required_app_server_version().is_ok())
-    }
-
     /// Binds the exact target currently owned by this sole foreground driver.
     ///
     /// The caller establishes this binding only after its CAS-live route has authenticated the
@@ -126,17 +98,20 @@ impl ManagedBackendSession {
 
     /// Mints one separately typed volatile interruption authorization.
     ///
-    /// The caller holds the exact target's no-successor fence and owns all persistent-failure
-    /// election policy. The returned capability cannot be passed to durable stop or cleanup.
-    pub fn authorize_persistent_failure_interrupt(
+    /// The caller supplies the closed proof that durable admission failed before the writer or
+    /// returned `NotCommitted` while holding the exact target's no-successor fence. The returned
+    /// capability carries no durable operation, retry, or terminal authority.
+    pub fn authorize_volatile_interrupt(
         &mut self,
         target: ExactForegroundTurn,
-        correlation: PersistentFailureInterruptCorrelation,
+        admission_failure: VolatileInterruptAdmissionFailure,
+        correlation: VolatileInterruptCorrelation,
         fence: CallerNoSuccessorFence,
-    ) -> Result<PersistentFailureInterruptAuthorization, ManagedBackendError> {
+    ) -> Result<VolatileInterruptAuthorization, ManagedBackendError> {
         let authorization_epoch = self.authorize_bound_exact_target(&target)?;
-        Ok(PersistentFailureInterruptAuthorization::new(
+        Ok(VolatileInterruptAuthorization::new(
             target,
+            admission_failure,
             correlation,
             fence,
             self.approval_response_authority_generation,
@@ -188,19 +163,19 @@ impl ManagedBackendSession {
         TurnInterruptOutcome::new(request, disposition)
     }
 
-    /// Issues one volatile pinned `turn/interrupt` for an already elected persistent failure.
+    /// Issues one volatile pinned `turn/interrupt` after exact durable-admission failure proof.
     ///
     /// The operation is one-shot and never retried. Its outcome is local diagnostics rather than a
     /// durable stop receipt or lifecycle-completion claim.
-    pub fn interrupt_for_persistent_failure(
+    pub fn interrupt_volatile(
         &mut self,
-        authorization: PersistentFailureInterruptAuthorization,
+        authorization: VolatileInterruptAuthorization,
         timeout: Duration,
-    ) -> PersistentFailureInterruptOutcome {
+    ) -> VolatileInterruptOutcome {
         let completion = self.dispatch_interrupt(authorization.core(), timeout);
         let request = authorization.into_request();
         let disposition = self.normalize_interrupt_completion(completion);
-        PersistentFailureInterruptOutcome::new(request, disposition)
+        VolatileInterruptOutcome::new(request, disposition)
     }
 
     fn normalize_interrupt_completion(
@@ -237,44 +212,6 @@ impl ManagedBackendSession {
         }
     }
 
-    /// Requests optional pinned coarse cleanup through the same exact foreground authority.
-    pub fn clean_exact_thread_background_terminals(
-        &mut self,
-        authorization: ExactForegroundTurnAuthorization,
-        timeout: Duration,
-    ) -> CoarseThreadCleanupOutcome {
-        let completion = self.dispatch_cleanup(authorization.core(), timeout);
-        let request = authorization.into_request();
-        let disposition = match completion {
-            EmptyRequestCompletion::Accepted => CoarseThreadCleanupDisposition::RequestAccepted {
-                ordering: SameSessionCleanupOrdering::new(
-                    self.approval_response_authority_generation,
-                ),
-            },
-            EmptyRequestCompletion::ProvenNotDispatched(error) => {
-                CoarseThreadCleanupDisposition::ProvenNotDispatched {
-                    error: Box::new(error),
-                }
-            }
-            EmptyRequestCompletion::Rejected(error) => {
-                self.retire_connection();
-                CoarseThreadCleanupDisposition::SessionAuthorityInvalidated {
-                    error: Box::new(ManagedBackendError::RequestFailed {
-                        method: CLEANUP_METHOD.to_string(),
-                        error: Box::new(error),
-                    }),
-                }
-            }
-            EmptyRequestCompletion::CompletionUnknown(error) => {
-                self.retire_connection();
-                CoarseThreadCleanupDisposition::CompletionUnknown {
-                    error: Box::new(error),
-                }
-            }
-        };
-        CoarseThreadCleanupOutcome::new(request, disposition)
-    }
-
     fn dispatch_interrupt(
         &mut self,
         authorization: &ExactForegroundTurnAuthorizationCore,
@@ -289,31 +226,6 @@ impl ManagedBackendSession {
             ResponseFamily::TurnInterrupt,
             params,
             EmptyAcknowledgement::TurnInterrupt,
-            timeout,
-        )
-    }
-
-    fn dispatch_cleanup(
-        &mut self,
-        authorization: &ExactForegroundTurnAuthorizationCore,
-        timeout: Duration,
-    ) -> EmptyRequestCompletion {
-        if !self.experimental_api_negotiated {
-            return EmptyRequestCompletion::ProvenNotDispatched(
-                ManagedBackendError::RequestProfileMismatch {
-                    method: CLEANUP_METHOD,
-                    required_profile: "foreground with negotiated experimental API",
-                },
-            );
-        }
-        let params = CleanupParams {
-            thread_id: authorization.target().thread_id(),
-        };
-        self.dispatch_exact_empty(
-            authorization,
-            ResponseFamily::ThreadBackgroundTerminalsClean,
-            params,
-            EmptyAcknowledgement::ThreadBackgroundTerminalsClean,
             timeout,
         )
     }

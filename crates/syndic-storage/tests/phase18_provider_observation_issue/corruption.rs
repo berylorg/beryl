@@ -18,14 +18,18 @@ fn publish_duplicate_start_issue(
         SourceEventPayload::ProviderObservationIssue(Box::new(issue)),
         timestamp(6),
     );
-    execute(
+    match execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    )
-    .unwrap();
+    ) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected issue publication to commit without later failure, got {outcome:?}"),
+    }
     let build = fixture
         .storage
         .provider_observation_build(&fixture.store, identity, limit())
@@ -41,15 +45,17 @@ fn assert_published_issue_corruption_detected(
     corruption: ProviderObservationCorruption,
 ) {
     fixture.store.validate_registered_domains().unwrap();
-    fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_corrupt_provider_observation(&build, corruption)
-                .unwrap(),
-        )
-        .unwrap();
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_corrupt_provider_observation(&build, corruption)
+            .unwrap(),
+    ) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected corruption command to commit without later failure, got {outcome:?}"),
+    }
 
     let current_error = fixture.store.validate_registered_domains().unwrap_err();
     assert!(

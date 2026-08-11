@@ -15,7 +15,7 @@ mod prior_delivery_witness;
 #[path = "phase58_accepted_promotion/support.rs"]
 mod promotion_support;
 
-use beryl_home_store::{CommandError, CursorReadLimits, HomeCommand};
+use beryl_home_store::{CommandError, CommandOutcome, CursorReadLimits, HomeCommand};
 use beryl_model::{SyndicItemId, SyndicPathDigest, SyndicTurnId};
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
@@ -84,7 +84,12 @@ fn execute(
 ) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected command to commit without later failure, got {outcome:?}"),
+    }
 }
 
 fn assert_transcript_advance_conflict(
@@ -99,7 +104,10 @@ fn assert_transcript_advance_conflict(
             AdvanceTranscriptBuild::new(build.thread_id(), build.generation(), build.revision()),
         ))
         .unwrap();
-    let error = store.execute(command).unwrap_err();
+    let error = match store.execute(command) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected definitive transcript conflict, got {outcome:?}"),
+    };
     let CommandError::ContributorValidation { source, .. } = error else {
         panic!("expected transcript mutation validation rejection");
     };
@@ -217,7 +225,12 @@ fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
     command
         .add(storage.promote_accepted_input(promotion.clone()))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
+    }
 
     assert_eq!(
         storage
@@ -589,7 +602,10 @@ fn stale_candidate_and_fresh_identity_collision_do_not_partially_promote() {
     collision_command
         .add(storage.promote_accepted_input(colliding.clone()))
         .unwrap();
-    assert!(store.execute(collision_command).is_err());
+    match store.execute(collision_command) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected definitive promotion collision, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .accepted_input_promotion_status(&store, &colliding, limit())
@@ -607,7 +623,12 @@ fn stale_candidate_and_fresh_identity_collision_do_not_partially_promote() {
     exact_command
         .add(storage.promote_accepted_input(stale.clone()))
         .unwrap();
-    store.execute(exact_command).unwrap();
+    match store.execute(exact_command) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected exact promotion to commit without later failure, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .accepted_input_promotion_status(&store, &stale, limit())

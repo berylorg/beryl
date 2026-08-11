@@ -1,15 +1,17 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, PointReadLimit};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, PointReadLimit, ReconciliationReservation,
+};
 use beryl_model::{RootId, RuntimeId};
 
 use crate::{AvailabilitySnapshot, RecordRevision, UnixMillis};
 
 use super::{
-    ROOT_RECORD_LIMIT, RUNTIME_RECORD_LIMIT, RootRecord, RootRegistration, RuntimeRecord,
-    RuntimeRegistration, RuntimeRootDomain, RuntimeRootMutationError,
     codec::{
         ExecutableIndexCodec, ExecutableKey, RootIdIndexCodec, RootPathIndexCodec, RootPathKey,
         RootRecordCodec, RuntimeHomeRootIndexCodec, RuntimeRecordCodec, RuntimeRootKey,
     },
+    RootRecord, RootRegistration, RuntimeRecord, RuntimeRegistration, RuntimeRootDomain,
+    RuntimeRootMutationError, ROOT_RECORD_LIMIT, RUNTIME_RECORD_LIMIT,
 };
 
 /// Atomic creation of one runtime and its sole non-removable home root.
@@ -44,6 +46,19 @@ impl DomainMutation<RuntimeRootDomain> for CreateRuntimeWithHomeRoot {
                 runtime_id: self.runtime.runtime_id,
             });
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, RuntimeRootDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<RuntimeRecordCodec>(1)?;
+        reservation.reserve_records::<ExecutableIndexCodec>(1)?;
+        reservation.reserve_records::<RootRecordCodec>(1)?;
+        reservation.reserve_records::<RootIdIndexCodec>(1)?;
+        reservation.reserve_records::<RootPathIndexCodec>(1)?;
+        reservation.reserve_records::<RuntimeHomeRootIndexCodec>(1)?;
         Ok(())
     }
 
@@ -95,6 +110,16 @@ impl DomainMutation<RuntimeRootDomain> for AddConfiguredRoot {
         ensure_root_missing(reader, self.runtime_id, &self.root)
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, RuntimeRootDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<RootRecordCodec>(1)?;
+        reservation.reserve_records::<RootIdIndexCodec>(1)?;
+        reservation.reserve_records::<RootPathIndexCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, RuntimeRootDomain>,
@@ -142,6 +167,14 @@ impl DomainMutation<RuntimeRootDomain> for SetRuntimeAvailability {
         ensure_record_revision("runtime", self.expected_record_revision, runtime.revision)
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, RuntimeRootDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<RuntimeRecordCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, RuntimeRootDomain>,
@@ -183,6 +216,14 @@ impl DomainMutation<RuntimeRootDomain> for SetRootAvailability {
     fn validate(&self, reader: &DomainReader<'_, RuntimeRootDomain>) -> Result<(), Self::Error> {
         let root = required_root(reader, self.root_id)?;
         ensure_record_revision("root", self.expected_record_revision, root.revision)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, RuntimeRootDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<RootRecordCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -233,6 +274,14 @@ impl DomainMutation<RuntimeRootDomain> for RootActivityUpdate {
         {
             return Err(RuntimeRootMutationError::RootActivityNotLater);
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, RuntimeRootDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<RootRecordCodec>(1)?;
         Ok(())
     }
 

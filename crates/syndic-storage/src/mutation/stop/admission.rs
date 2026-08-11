@@ -1,4 +1,4 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
     AcceptedNextSourceRecord, AcceptedRouteGenerationHeadRecord, AcceptedRouteGenerationRecord,
@@ -25,6 +25,20 @@ impl DomainMutation<SyndicDomain> for AdmitStopOperationMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
+        reservation.reserve_records::<AcceptedReadySourcesCodec>(1)?;
+        reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reservation.reserve_records::<StopOperationsCodec>(1)?;
+        reservation.reserve_records::<CompactionOperationsCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

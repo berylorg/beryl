@@ -5,7 +5,8 @@ mod cases;
 mod support;
 
 use beryl_home_store::{
-    CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore,
     MutationContribution,
     test_faults::{FaultController, FaultPoint},
 };
@@ -54,7 +55,13 @@ fn command(store: &HomeStore, contribution: MutationContribution) -> HomeCommand
 }
 
 fn execute(store: &HomeStore, contribution: MutationContribution) {
-    store.execute(command(store, contribution)).unwrap();
+    match store.execute(command(store, contribution)) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean transcript fixture command, got {outcome:?}"),
+    }
 }
 
 fn create_thread(store: &HomeStore, storage: SyndicStorage) -> SyndicThreadId {

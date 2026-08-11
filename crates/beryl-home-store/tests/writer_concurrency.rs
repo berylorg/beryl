@@ -3,9 +3,8 @@ mod support;
 use std::{
     marker::PhantomData,
     sync::{
-        Arc, Condvar, Mutex,
         atomic::{AtomicUsize, Ordering},
-        mpsc,
+        mpsc, Arc, Condvar, Mutex,
     },
     time::Duration,
 };
@@ -16,7 +15,9 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, open_home};
+use support::{
+    committed, open_home, AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes,
+};
 
 #[derive(Default)]
 struct AssemblyGate {
@@ -75,6 +76,14 @@ impl<D: beryl_home_store::StorageDomain> DomainMutation<D> for BlockingAssembly<
     type Error = FixtureMutationError;
 
     fn validate(&self, _reader: &DomainReader<'_, D>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, D>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BytesRecord<D>>(1)?;
         Ok(())
     }
 
@@ -163,16 +172,18 @@ fn writer_assembly_is_serialized_while_typed_reads_continue() {
     gate.release();
     assert!(matches!(
         first.join().unwrap(),
-        Err(CommandError::ContributorAssembly {
-            domain: "alpha",
-            ..
-        })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ContributorAssembly {
+                domain: "alpha",
+                ..
+            }
+        }
     ));
     assert_eq!(
         entered_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
         "second"
     );
-    second.join().unwrap().unwrap();
+    committed(second.join().unwrap());
     assert_eq!(gate.maximum.load(Ordering::SeqCst), 1);
 }
 
@@ -225,11 +236,15 @@ fn cancellation_while_waiting_is_observed_before_writer_admission() {
 
     assert!(matches!(
         first.join().unwrap(),
-        Err(CommandError::ContributorAssembly { .. })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ContributorAssembly { .. }
+        }
     ));
     assert!(matches!(
         second.join().unwrap(),
-        Err(CommandError::CancelledBeforeAdmission)
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::CancelledBeforeAdmission
+        }
     ));
     assert_eq!(store.home_revision().unwrap(), expected_home);
 }
@@ -242,5 +257,5 @@ fn seed(store: &beryl_home_store::HomeStore, alpha: beryl_home_store::DomainHand
             PutBytes::<AlphaDomain>::new(1, b"seed".to_vec()),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
 }

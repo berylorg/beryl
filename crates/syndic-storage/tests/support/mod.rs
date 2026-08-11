@@ -15,7 +15,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     BindingRevision, CasConversationToolProfile, ContentRevision, DraftRevision,
     ProjectionRevision, SyndicContentId, SyndicDraftId, SyndicPathDigest, SyndicThreadId,
@@ -75,7 +75,13 @@ pub fn commit(store: &HomeStore, storage: SyndicStorage, batch: FixtureBatch) {
     command
         .add(storage.fixture_contribution(storage.revision(store).unwrap(), batch))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean fixture-batch command, got {outcome:?}"),
+    }
 }
 
 pub fn id(byte: u8) -> SyndicThreadId {
@@ -272,7 +278,13 @@ pub fn stage_prepared_content(
             ContentBuild::from_prepared(content),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean content-build command, got {outcome:?}"),
+    }
 
     let mut manifest = content.building_manifest();
     while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
@@ -281,7 +293,13 @@ pub fn stage_prepared_content(
         command
             .add(storage.append_content(storage.revision(store).unwrap(), append))
             .unwrap();
-        store.execute(command).unwrap();
+        match store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean content-append command, got {outcome:?}"),
+        }
         manifest = next;
     }
 }

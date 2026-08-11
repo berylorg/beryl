@@ -1,4 +1,4 @@
-use beryl_home_store::{CommandError, HomeStore};
+use beryl_home_store::HomeStore;
 use beryl_model::{SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     AdvanceItemProjectionBuild, ContentLifecycle, FinalizeNextTurnItem, FreezeNextTurnItem,
@@ -9,12 +9,6 @@ use syndic_storage::{
 
 use super::super::OrdinaryTurnExecutionError;
 use super::{command, snapshot};
-
-#[derive(Clone, Copy)]
-struct TerminalTurnIdentity {
-    thread_id: SyndicThreadId,
-    turn_id: SyndicTurnId,
-}
 
 pub(super) fn converge_turn_items(
     store: &HomeStore,
@@ -130,7 +124,7 @@ fn freeze_live_item(
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     minimum_observed_at: SyndicTimestamp,
-    limit: SyndicPointReadLimit,
+    _limit: SyndicPointReadLimit,
     before: &snapshot::TurnFrontierSnapshot,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     let item = before
@@ -146,50 +140,7 @@ fn freeze_live_item(
         item.item.id(),
         updated_at,
     );
-    let dispatch = command::dispatch(store, storage.current_freeze_next_turn_item(request));
-    let Err(error) = dispatch else {
-        return Ok(());
-    };
-    reconcile_freeze_error(
-        store,
-        storage,
-        TerminalTurnIdentity { thread_id, turn_id },
-        updated_at,
-        limit,
-        before,
-        error,
-    )
-}
-
-fn reconcile_freeze_error(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    turn: TerminalTurnIdentity,
-    updated_at: SyndicTimestamp,
-    limit: SyndicPointReadLimit,
-    before: &snapshot::TurnFrontierSnapshot,
-    error: CommandError,
-) -> Result<(), OrdinaryTurnExecutionError> {
-    let after = snapshot::turn_frontier(store, storage, turn.thread_id, turn.turn_id, limit)?;
-    require_terminal(&after.state, turn.turn_id)?;
-    let ordinal = before
-        .next
-        .as_ref()
-        .expect("freeze reconciliation has a next item")
-        .index
-        .ordinal()
-        .get();
-    if after.state.finalized_item_count() >= ordinal
-        || exact_freeze_progress(before, &after, updated_at)
-    {
-        return Ok(());
-    }
-    if &after == before {
-        return Err(error.into());
-    }
-    Err(OrdinaryTurnExecutionError::ConcurrentChange {
-        thread_id: turn.thread_id,
-    })
+    command::dispatch(store, storage.current_freeze_next_turn_item(request))
 }
 
 fn exact_freeze_progress(
@@ -312,7 +263,7 @@ fn finalize_item(
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     minimum_observed_at: SyndicTimestamp,
-    limit: SyndicPointReadLimit,
+    _limit: SyndicPointReadLimit,
     before: &snapshot::TurnFrontierSnapshot,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     let item = before
@@ -327,19 +278,7 @@ fn finalize_item(
         item.item.id(),
         before.state.updated_at().max(minimum_observed_at),
     );
-    let dispatch = command::dispatch(store, storage.current_finalize_next_turn_item(request));
-    let Err(error) = dispatch else {
-        return Ok(());
-    };
-    let after = snapshot::turn_frontier(store, storage, thread_id, turn_id, limit)?;
-    require_terminal(&after.state, turn_id)?;
-    if after.state.finalized_item_count() >= item.index.ordinal().get() {
-        return Ok(());
-    }
-    if &after == before {
-        return Err(error.into());
-    }
-    Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id })
+    command::dispatch(store, storage.current_finalize_next_turn_item(request))
 }
 
 fn converge_item_projection(
@@ -443,27 +382,12 @@ fn start_projection(
     storage: SyndicStorage,
     thread_id: SyndicThreadId,
     source: &snapshot::CanonicalSnapshot,
-    limit: SyndicPointReadLimit,
+    _limit: SyndicPointReadLimit,
     before: &snapshot::ProjectionSnapshot,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     let request =
         StartItemProjectionBuild::new(source.item.id(), source.item.revision(), before.generation);
-    let dispatch = command::dispatch(store, storage.current_start_item_projection_build(request));
-    let Err(error) = dispatch else {
-        return Ok(());
-    };
-    let after = snapshot::item_projection(store, storage, thread_id, source.item.id(), limit)?;
-    validate_projection_source(&after, source)?;
-    if current_projection(&after)?
-        || after.generation == before.generation
-            && after
-                .build
-                .as_ref()
-                .is_some_and(|build| valid_parsing_build(&after, build))
-    {
-        return Ok(());
-    }
-    dispatch_or_concurrent(error, &after, before, thread_id)
+    command::dispatch(store, storage.current_start_item_projection_build(request))
 }
 
 fn advance_projection(
@@ -471,43 +395,14 @@ fn advance_projection(
     storage: SyndicStorage,
     thread_id: SyndicThreadId,
     source: &snapshot::CanonicalSnapshot,
-    limit: SyndicPointReadLimit,
+    _limit: SyndicPointReadLimit,
     before: &snapshot::ProjectionSnapshot,
     build: &syndic_storage::ItemProjectionBuildRecord,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     let request =
         AdvanceItemProjectionBuild::new(source.item.id(), before.generation, build.revision());
-    let dispatch = command::dispatch(
+    command::dispatch(
         store,
         storage.current_advance_item_projection_build(request),
-    );
-    let Err(error) = dispatch else {
-        return Ok(());
-    };
-    let after = snapshot::item_projection(store, storage, thread_id, source.item.id(), limit)?;
-    validate_projection_source(&after, source)?;
-    if current_projection(&after)? {
-        return Ok(());
-    }
-    if after.generation == before.generation
-        && after.build.as_ref().is_some_and(|advanced| {
-            valid_parsing_build(&after, advanced) && advanced.revision() > build.revision()
-        })
-    {
-        return Ok(());
-    }
-    dispatch_or_concurrent(error, &after, before, thread_id)
-}
-
-fn dispatch_or_concurrent(
-    error: CommandError,
-    after: &snapshot::ProjectionSnapshot,
-    before: &snapshot::ProjectionSnapshot,
-    thread_id: SyndicThreadId,
-) -> Result<(), OrdinaryTurnExecutionError> {
-    if after == before {
-        Err(error.into())
-    } else {
-        Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id })
-    }
+    )
 }

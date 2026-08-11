@@ -69,7 +69,7 @@ impl Ingester {
         {
             return self.failed_permit(route, permit);
         }
-        self.finish_provider_publication(route, permit, None)
+        self.finish_provider_publication(route, permit)
     }
 
     pub(super) fn thread_status_changed(

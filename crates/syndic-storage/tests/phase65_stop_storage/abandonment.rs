@@ -1,4 +1,4 @@
-use beryl_home_store::CursorReadLimits;
+use beryl_home_store::{CommandOutcome, CursorReadLimits};
 use syndic_storage::{
     AbandonStopOperation, BindingState, DeliveryRecoveryCase, InputGateState, JoinStopCause,
     SafelyReopenStopOperation, StopCause, StopOperationState, StopOperationTransitionStatus,
@@ -67,14 +67,19 @@ fn classified_abandonment_converges_without_losing_queued_input() {
         StopOperationTransitionStatus::Prior
     );
 
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_abandon_stop_operation(request.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean classified stop abandonment, got {outcome:?}"),
+    }
 
     assert_eq!(
         fixture
@@ -139,10 +144,16 @@ fn cause_join_racing_abandonment_requires_the_exact_new_revision() {
         fixture.stop().revision(),
         StopCause::DiagnosticControl,
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_join_stop_cause(join.clone()))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean abandonment-race stop join, got {outcome:?}"),
+    }
     assert_eq!(
         fixture
             .storage
@@ -158,14 +169,19 @@ fn cause_join_racing_abandonment_requires_the_exact_new_revision() {
         current_abandonment.expected_gate_revision(),
         current_abandonment.expected_stop_revision(),
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_abandon_stop_operation(current_abandonment),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean current stop abandonment, got {outcome:?}"),
+    }
     assert_eq!(
         fixture
             .storage

@@ -19,41 +19,23 @@ fn duplicate_wakes_coalesce_without_promoting_ordinary_reasons() {
     signal.wake(AcceptedInputWakeReason::NextWorkerCapacityReleased);
     signal.wake(AcceptedInputWakeReason::RecoveredPendingContinue);
     signal.wake(AcceptedInputWakeReason::RecoveredPendingContinue);
-    signal.wake(AcceptedInputWakeReason::SameGenerationVerified);
-    signal.wake(AcceptedInputWakeReason::SameGenerationVerified);
-
     let diagnostics = signal.diagnostics();
-    assert_eq!(diagnostics.wake_count(), 9);
-    assert_eq!(diagnostics.coalesced_wake_count(), 9);
+    assert_eq!(diagnostics.wake_count(), 8);
+    assert_eq!(diagnostics.coalesced_wake_count(), 8);
     let wake = signal.wait();
     assert!(!wake.opens_retry_pass());
     assert!(wake.opens_next_pass());
     assert!(wake.opens_steering_pass());
     assert!(wake.restarts_recovered_pending_pass());
-    assert!(wake.same_generation_verified());
     assert!(wake.next_worker_capacity_released());
     assert!(wake.continues_recovered_pending_pass());
 
     signal.wake(AcceptedInputWakeReason::CancellationLifecycle);
     signal.wake(AcceptedInputWakeReason::CancellationLifecycle);
     let diagnostics = signal.diagnostics();
-    assert_eq!(diagnostics.wake_count(), 10);
-    assert_eq!(diagnostics.coalesced_wake_count(), 10);
+    assert_eq!(diagnostics.wake_count(), 9);
+    assert_eq!(diagnostics.coalesced_wake_count(), 9);
     assert!(signal.wait().opens_retry_pass());
-}
-
-#[test]
-fn same_generation_verified_resumes_every_lane_without_retry_eligibility() {
-    let signal = AcceptedInputSchedulerSignal::new();
-    signal.wake(AcceptedInputWakeReason::SameGenerationVerified);
-
-    let wake = signal.wait();
-    assert!(wake.opens_steering_pass());
-    assert!(wake.opens_next_pass());
-    assert!(wake.restarts_recovered_pending_pass());
-    assert!(wake.same_generation_verified());
-    assert!(!wake.opens_retry_pass());
-    assert!(!wake.execution_ready());
 }
 
 #[test]

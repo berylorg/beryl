@@ -12,24 +12,27 @@ The surface is a compact centered vertical stack containing a heading that the B
 
 The home path is not required as persistent body text. If shown for diagnosis, it is bounded, selectable, and truncates visually without becoming an alternate home picker.
 
-The surface contains no Retry, Take Over, Choose Another Home, runtime, root, thread, Settings, or CAS controls. Closing the OS window has the same outcome as activating Exit.
+The surface contains no Retry, Take Over, Choose Another Home, runtime, root, thread, Settings, or CAS controls.
 
 ## Home Failure Surface
 
 Mount-into: home-failure-window.body
 
-This is an explicitly feature-local arrangement rather than a project-local widget. It is one startup-only heading, bounded selectable detail, and canonical `command button` row; the non-resizable integration window supplies its fixed bound, so the arrangement introduces no reusable viewport or layout contract.
+This is an explicitly feature-local arrangement rather than a project-local widget. It is one startup-only heading, bounded selectable detail, and group of canonical `command button` controls; the non-resizable integration window supplies its fixed bound, so the arrangement introduces no reusable viewport or layout contract.
 
-The surface is a compact centered vertical stack containing the heading `Beryl couldn't open its data`, bounded selectable failure detail, and a horizontal command row containing `Retry` and `Exit`.
+The surface is a compact centered vertical stack containing the heading `Beryl couldn't open its data`, bounded selectable failure detail, and a horizontal button group containing `Retry` and `Exit`.
 
-Retry is the emphasized command while no retry is running. During an exact same-home retry it remains visible and disabled with progress conveyed through its label and accessibility state; Exit remains available.
+`Retry` uses the primary `command button` variant. The feature supplies its current label, enabled state, progress accessibility state, and the ordinary `Exit` `command button` state from `design.md`.
 
-The surface contains no Reset, Continue, Take Over, Choose Another Home, runtime, root, thread, Settings, or CAS controls. Repeated failure updates the same detail region without adding stacked notices or resizing the window.
+The surface contains no Reset, Continue, Take Over, Choose Another Home, runtime, root, thread, Settings, or CAS controls. The bounded detail region retains one stable location without stacked notices or window resizing.
 
-## Running Store Failure Notice
+## Running Store Notice Contributions
 
-Mount-into: main-window.overlays
+This feature mounts no `main-window notice`. From the failure, reopening, and recovered states owned
+by `design.md`, it supplies owner-configured records to the Notifications per-window arbiter.
 
-Each existing main conversation window configures one project-local `main-window notice` in its persistent error variant while the shared Beryl-home store is failed or reopening. The notice identifies that Beryl cannot currently save or load application state, keeps bounded selectable detail, exposes no dismissal or manual home-selection command, and leaves the entire conversation shell visible beneath it.
-
-Automatic same-home recovery updates the same stable notice rather than stacking retries. After validation succeeds, the persistent error notice is replaced by one ordinary dismissible informational recovery notice in each affected window.
+The failed/reopening configuration uses one stable home-condition identity, the persistent error
+variant, bounded selectable detail, and no close or manual home-selection command. The recovered
+configuration uses a distinct dismissible informational record identity. Notifications owns their
+priority, persistence, replacement, and sole visible notice composition, so these contributions add
+no competing overlay or stacked panel.

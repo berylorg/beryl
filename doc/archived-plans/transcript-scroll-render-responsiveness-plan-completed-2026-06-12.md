@@ -1,6 +1,9 @@
 # Scope
 
-Implement the transcript scroll/render responsiveness architecture described by `doc/features/transcript/design.md`, `doc/ui.md`, `doc/features/diagnostics/design.md`, and `crates/beryl-app/doc/design.md`.
+Implement the transcript scroll/render responsiveness architecture then described by
+`doc/features/transcript/design.md`, the now-archived
+`doc/rework/beryl-home/old-doc/ui.md`, `doc/features/diagnostics/design.md`, and
+`crates/beryl-app/doc/design.md`.
 
 The implementation must keep transcript residency, render snapshots, media admission, speculative media preload, row presentation, code-panel state, scrollbar invalidation, and diagnostics on clean ownership boundaries. Ordinary transcript render, prepaint, scroll, scrollbar, status-line, and frame-metric paths must not scan resident or indexed history, parse offscreen Markdown, schedule resident history loads, initiate completed-media readiness for visible rows, or perform broad retained-state diagnostics.
 

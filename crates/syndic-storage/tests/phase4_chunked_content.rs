@@ -2,9 +2,7 @@
 
 mod support;
 
-use beryl_home_store::{
-    CommandError, CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-};
+use beryl_home_store::{CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     AcceptedInputRevision, ContentRevision, DraftRevision, ImageLabelOrdinal, InputGateRevision,
     ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
@@ -36,17 +34,16 @@ fn execute(
     store: &HomeStore,
     storage: SyndicStorage,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    let receipt = store.execute(command)?;
-    assert!(
-        storage
-            .committed_revision(store, &receipt)
-            .unwrap()
-            .is_some()
-    );
-    Ok(())
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => assert!(storage.committed_revision(store, &receipt).unwrap().is_some()),
+        outcome => panic!("expected clean chunked-content command, got {outcome:?}"),
+    }
 }
 
 fn create_thread(
@@ -65,8 +62,7 @@ fn create_thread(
         store,
         storage,
         storage.create_thread(storage.revision(store).unwrap(), creation),
-    )
-    .unwrap();
+    );
 }
 
 fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
@@ -82,8 +78,7 @@ fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
             storage.revision(store).unwrap(),
             StartItemProjectionBuild::new(item, canonical.revision(), generation),
         ),
-    )
-    .unwrap();
+    );
     loop {
         if storage
             .item_projection_set(store, item, generation, point_limit())
@@ -103,8 +98,7 @@ fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
                 storage.revision(store).unwrap(),
                 AdvanceItemProjectionBuild::new(item, generation, build.revision()),
             ),
-        )
-        .unwrap();
+        );
     }
 }
 
@@ -123,8 +117,7 @@ fn append_one_batch(
         store,
         storage,
         storage.append_content(storage.revision(store).unwrap(), append),
-    )
-    .unwrap();
+    );
     Some(next)
 }
 

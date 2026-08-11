@@ -13,71 +13,120 @@ Give users a durable, validated settings window for Beryl-owned application pref
 
 ## GUI Supplement
 
-- `gui.md` is a normative supplemental GUI composition file for settings toolbar entry, settings window shell layout, sections, rows, and settings-window widget usage.
+- [`gui.md`](gui.md) is a normative supplemental GUI composition file for settings toolbar entry, settings window shell layout, sections, rows, and settings-window widget usage.
+- Durable settings commit and same-home reconciliation mechanics are defined in
+  `doc/systems/beryl-home-storage/design.md`; the typed supported-setting storage boundary is
+  defined in `crates/beryl-state/doc/design.md`.
 
 ## Settings Window
 
 - Application settings live in a dedicated top-level settings window, not an in-place modal or main-conversation panel.
-- The main conversation toolbar exposes a Settings control that opens or reveals the dedicated settings window.
-- The settings window is created ahead of first use and hidden when inactive so opening it feels immediate.
+- The main conversation toolbar exposes a Settings control that opens or reveals the dedicated
+  settings window immediately with the latest coherent settings presentation. A slower
+  feature-owned page may show localized loading or unavailable state without delaying the window.
 - The settings window does not include the main conversation toolbar strip.
 - It uses a left sidebar of broad sections and one right-pane page or subpage at a time.
 - Sidebar rows do not expand into nested trees. Subpages open in the right pane with breadcrumb/back navigation while the sidebar remains at the broad section level.
 - Current V1 sections are `Themes`, `Operations`, `Notifications`, and `Agent`.
 - The `Themes` section's product behavior is owned by `doc/features/theming/design.md`.
-- The settings window root layout stretches with the OS window. The sidebar has a bounded fixed logical width; the main pane takes remaining width.
-- Page content is organized as section headings followed by grouped row lists. Pages must not nest cards inside cards.
-- The settings shell itself is not an outer scrolling container. The sidebar and current page body own their own scrolling while headers and apply/action areas remain reachable.
 - Unavailable sections, invalid staged values, failed saves, and failed feature-owned settings operations render localized page or row feedback without replacing the settings shell.
 
-## Settings Rows
+## Color-Valued Settings
 
-- Settings rows are schema-backed key/value rows with stable setting ids or action ids, label, optional description, value/control area, modified state, and context actions.
-- Row value controls use type-appropriate widgets such as switches, segmented controls, dropdowns, steppers, sliders, text fields, multiline fields, color inputs, file path pickers, action buttons, or step-in affordances.
-- Labels and descriptions wrap before controls shrink below useful widths.
-- Numeric fields use compact widths sized for short numeric values.
-- Step-in rows use a right-facing triangle affordance and navigate the right pane to a subpage.
-- Modified rows expose reset when reset is valid.
-- Apply, Revert, Save, Save As, Install Theme, and similar feature-owned actions belong to settings-window chrome, page headers, row value areas, or page-level action areas, not the main conversation toolbar.
-- Color-valued settings use a dedicated color input with canonical `#rrggbb` text, a preview swatch for the latest valid color, and an in-window color picker from the swatch or a field hotkey.
+- Color-valued settings expose canonical `#rrggbb` text, a preview swatch for the latest valid
+  color, and an in-window color picker from the swatch or a field hotkey.
 - If a color text draft is temporarily invalid, the preview swatch and picker channel values continue to use the latest valid color for that setting until a new valid color is staged.
+
+## Startup Values And Availability
+
+- A supported setting with no saved value starts at its owning feature's declared default and is
+  presented as clean rather than as an unsaved modification.
+- A saved value that is invalid or rejected by its owning feature never becomes active. The affected
+  row or page shows localized unavailable feedback and the declared default remains the active
+  value; Beryl does not silently claim that the rejected value loaded successfully.
+- When no coherent settings snapshot can be presented, the settings window shell still opens and
+  shows the affected pages as unavailable. It does not fabricate editable values or block unrelated
+  feature pages whose coherent state is known.
+- A setting removed from the current product has no row, fallback control, or compatibility page.
+  Its former saved value is never applied to another setting.
 
 ## Drafts, Validation, And Persistence
 
-- Beryl owns settings schemas, validation, staged drafts, apply behavior, and persistence.
+- The settings window maintains one window-wide staged draft with shared modified, reset, discard,
+  commit, and visible outcome behavior. Each feature that owns a setting defines its default,
+  meaning, accepted domain, and domain validation.
 - GUI-owned user settings are persisted separately from backend-owned Codex configuration.
 - Operation preferences, notification preferences, developer-instructions preferences, and AI-control preferences are app-wide Beryl-home settings.
-- Explicit scalar GUI preferences are stored in the Beryl settings keyspace under the configured Beryl home.
-- Settings update operations commit through validation, active-update, persistence, and recovery paths used by settings-window Apply.
-- Applying settings validates staged values before they become active, updates the running UI, and persists accepted settings without requiring the window to close.
-- The settings-window footer retains `OK`, `Apply`, and `Cancel`. `Apply` performs that operation and leaves the window open. `OK` performs the same operation and hides the window only after the complete durable update succeeds.
+- Applying settings validates the complete modified draft before any value becomes active. One
+  Apply or modified OK action commits every modified setting together or commits none of them.
+- Navigating between sidebar sections, pages, or subpages preserves the complete staged draft,
+  modified indicators, and validation feedback. Navigation alone never applies, resets, or discards
+  a setting.
+- Reset on a modified row restores that row to its current proven active value and clears only that
+  row's staged modification and draft-local validation feedback. If no coherent active value is
+  available for the row, Reset is unavailable; Cancel remains the whole-draft discard command when
+  no reconciliation is active.
+- Apply is enabled only when at least one row is modified, every modified row is available and
+  valid, and no settings commit is reconciling. With no modified rows, Apply is disabled and OK may
+  hide the window without issuing a commit.
+- When modified rows contain any invalid or unavailable value, Apply and OK are disabled and each
+  blocking row or page presents localized feedback. Valid modified rows remain staged, but Beryl
+  never commits that valid subset separately from the invalid or unavailable remainder.
+- The settings-window footer retains `OK`, `Apply`, and `Cancel`. `Apply` performs that operation
+  and leaves the window open. `OK` performs the same operation and hides the window only after a
+  complete durable commit is proven.
 - Validation or persistence failure keeps the settings window open, preserves its staged draft, and reports the exact failure without partially accepting the update.
-- `Cancel` and ordinary settings-window close discard unapplied staged edits and hide the window without changing active settings.
-- Closing or hiding the settings window without applying discards unapplied staged edits and does not mutate active theme, operation, notification, developer-instructions, or other active settings.
+- An indeterminate Apply or OK outcome keeps the window open on its current page with the exact
+  within-cap staged draft and last coherent active values visibly reconciling. Field edits, Reset,
+  navigation, Apply, OK, and Cancel are unavailable until the outcome resolves; content may remain
+  readable, selectable, scrollable, and copyable.
+- Ordinary settings-window close and application Exit do not complete or queue a later close while
+  reconciliation is active. Repeated Apply, OK, close, or Exit activation cannot duplicate the
+  update. The user must invoke close or Exit again after controls are re-enabled.
+- If reconciliation proves the complete commit, all accepted values become active together and the
+  matching draft becomes clean. Apply leaves the window open; OK then hides it. Normal editing,
+  navigation, Reset, Cancel, close, and Exit behavior is re-enabled.
+- If reconciliation proves non-commit, the prior active values remain and the exact staged draft is
+  restored with failure feedback. Controls are re-enabled, and a later Apply or OK is a new explicit
+  attempt rather than an automatic retry.
+- If reconciliation cannot prove either complete outcome, only the affected settings rows show an
+  unresolved outcome. Those rows retain their last coherent presentation with localized feedback
+  but are unavailable for editing, Reset, or another commit; Beryl does not claim that either the
+  old or intended new value is active.
+- After that scoped unresolved outcome, navigation, unrelated healthy rows, Cancel, ordinary window
+  close, and application Exit are re-enabled. Apply and OK remain unavailable while the preserved
+  draft contains affected modifications. Cancel or close may discard the complete local draft and
+  hide the window, and Exit may proceed normally; none resolves the affected durable state or
+  authorizes a duplicate commit. On a later same-process opening, the affected rows remain
+  unavailable while unrelated valid rows may form and commit a new draft normally.
+- Only structural Beryl-home failure or reopening uses the shared home-failure presentation and
+  makes settings that require the home unavailable. A scoped unresolved settings outcome never
+  escalates to that presentation merely because it remains unresolved.
+- Ordinary `Cancel` and settings-window close discard the complete unapplied draft and hide the
+  window without changing active settings when no reconciliation is active.
+- If the process is forcibly terminated while an indeterminate outcome is reconciling or remains
+  scoped unresolved, the window-local staged draft is lost and is not restored on restart. Normal
+  startup loads whichever complete valid settings snapshot is durably present and opens a clean
+  draft without claiming proof of the prior operation's old or intended new outcome. If startup
+  cannot establish a coherent snapshot, the ordinary startup unavailable behavior above applies.
 - Ordinary settings drafts do not live-preview unapplied changes. User-visible theme Preview behavior is owned by `doc/features/theming/design.md`.
 
 ## Feature-Owned Settings Rows
 
-- The settings feature owns row mechanics, staging, validation dispatch, apply sequencing, and persistence plumbing.
-- The feature that owns a setting owns that setting's semantics.
+- Settings rows share staged-value, modified, availability, commit, and Reset behavior. The feature
+  that owns a setting defines its semantics, default, domain validation, and feature-specific
+  actions.
 - The Operations section includes `Context compaction timeout`; its selected-thread compaction semantics are owned by `doc/features/status-line/design.md`.
 - The Operations section includes `Draft autosave interval`; its required 5-through-300-second range and 30-second default are owned by `doc/features/composer/design.md`.
-- The Agent section includes `Developer Instructions`; send-time developer-instructions behavior is owned by `doc/features/composer/design.md`.
+- The Agent section includes `Developer Instructions`. A saved value accepts at most 60 KiB of
+  UTF-8, while the editor and window-wide staged draft impose a 64 KiB UTF-8 hard cap for this
+  field. Values above 60 KiB through 64 KiB remain exact, visibly invalid drafts that can be edited
+  down; Apply and OK remain disabled.
+- Any typing, paste, drop, replacement, or IME commit whose resulting Developer Instructions value
+  would exceed 64 KiB is rejected atomically before editor mutation. Beryl inserts no prefix or
+  truncation and preserves the prior within-cap text, caret, selection, and undo state with
+  row-local feedback. Exact draft preservation is promised only through the 64 KiB cap.
+- Send-time Developer Instructions behavior is owned by `doc/features/composer/design.md`.
 - The Notifications section includes `End-turn sound`; notification playback semantics are owned by `doc/features/notifications/design.md`.
 - The Themes section and theme editor are owned by `doc/features/theming/design.md`.
 - Feature-owned rows must keep controls reachable and labels readable at supported minimum settings-window width.
-
-## Settings Dynamic Tools
-
-- Beryl may expose bounded app-server dynamic tools for reading Beryl-owned GUI settings, validating settings updates, and committing typed settings updates.
-- Settings tools operate only on Beryl-owned GUI settings. They must not expose or mutate backend-owned Codex authentication, session storage, configuration, skills, MCP state, transcript history, Syndic thread state, runtime/root records, or durable image assets.
-- Settings read tools return bounded snapshots for model use.
-- Literal values are returned only for non-sensitive scalar settings.
-- Notification sound reads return configured/disabled state and non-identifying file metadata, never the full path.
-- Developer-instructions reads return enabled state, character count, line count, and stable content fingerprint, never literal instruction text.
-- Settings write tools use typed operation-specific schemas.
-- Validation-only calls are non-mutating.
-- Accepted settings updates commit immediately through the same validation and persistence path as Apply, without creating unapplied settings-window drafts.
-- AI-control preferences that govern model authority are read-only to the model unless a later design adds an operator-confirmed write operation.
-- Tool calls must cross bounded shell-owned request/response bridges. Turn workers must not hold direct access to `ShellView`, GPUI handles, settings-window internals, or repository mutation handles.
-- Tool calls that cannot be correlated to the active app-server thread/turn context, fail validation, target unavailable settings, or conflict with unapplied settings-window drafts reject with bounded structured results.

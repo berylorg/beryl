@@ -10,7 +10,8 @@ use beryl_backend::{
     UserMessageEchoLifecycle,
 };
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, SidecarByteLimit, SidecarNamespace,
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, SidecarByteLimit,
+    SidecarNamespace,
 };
 use beryl_model::{
     AssetId, AssetReferenceSetId, CasItemId, CasNativeTurnCount, CasProcessGeneration, CasThreadId,
@@ -149,8 +150,12 @@ impl SteeringFixture {
             timestamp(3),
         );
         let turn_id = submission.submitted_turn_id();
-        home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap())
-            .unwrap();
+        match home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap()) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("steering-user submitted-turn command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("steering-user submitted-turn command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user submitted-turn command was indeterminate: {outcome:?}"),
+        }
 
         let selected = selected_path(&home, storage, thread_id);
         let process_generation = CasProcessGeneration::new(52_000 + u64::from(seed)).unwrap();
@@ -290,10 +295,14 @@ impl SteeringFixture {
             timestamp(7),
         );
         let accepted_input_id = admission.accepted_input_id();
-        home.execute(
+        match home.execute(
             build_accepted_input_command(&home, storage, state.assets(), admission).unwrap(),
-        )
-        .unwrap();
+        ) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("steering-user admission command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("steering-user admission command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user admission command was indeterminate: {outcome:?}"),
+        }
 
         let gate = storage
             .input_gate(&home, thread_id, point_limit())
@@ -796,7 +805,12 @@ fn publish_image_asset(home: &HomeStore, state: &BerylState) -> AssetId {
         .unwrap();
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     metadata.add_to(&mut command).unwrap();
-    home.execute(command).unwrap();
+    match home.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("steering-user image metadata command committed with later failure: {outcome:?}"),
+        CommandOutcome::NotCommitted { evidence } => panic!("steering-user image metadata command was not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user image metadata command was indeterminate: {outcome:?}"),
+    }
     asset
 }
 
@@ -954,7 +968,12 @@ fn execution_binding(runtime_id: RuntimeId, seed: u8) -> ExecutionBinding {
 fn execute(home: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     command.add(contribution).unwrap();
-    home.execute(command).unwrap();
+    match home.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("steering-user fixture contribution command committed with later failure: {outcome:?}"),
+        CommandOutcome::NotCommitted { evidence } => panic!("steering-user fixture contribution command was not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user fixture contribution command was indeterminate: {outcome:?}"),
+    }
 }
 
 pub(super) fn point_limit() -> SyndicPointReadLimit {

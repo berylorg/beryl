@@ -13,14 +13,18 @@ absorbing Syndic thread ownership.
   turns, items, projections, resources, compact thread summaries, or CAS-binding records.
 - Owning product workflows, GPUI presentation, backend launch, CAS protocol, transcript rendering, or feature-specific GUI behavior.
 - Importing workspace-era records, supporting compatibility schemas, or providing dual reads and writes.
-- Owning installed theme documents or heavy asset and Syndic sidecar bytes.
+- Owning physical installed-theme file placement, handles, or durability, or heavy asset and Syndic
+  sidecar bytes.
 
 # Decisions
 
 ## Public Boundary
 
 - `beryl-state` registers the Beryl-owned logical record families required by `doc/systems/beryl-home-storage/design.md` through the typed-domain boundary exposed by `beryl-home-store`.
-- It owns each domain's exact Rust owner type, one exact codec type per family, record schemas, domain validation, typed bounded queries, mutation validation, revision rules, and batch contributions. Stable names and schema versions remain durable declarations rather than substitutes for live type identity.
+- It owns each domain's exact Rust owner type, one exact codec type per family, record schemas,
+  exhaustive domain validation, operation-scoped natural-record reconciliation hooks, typed bounded
+  queries, mutation validation, revision rules, and batch contributions. Stable names and schema
+  versions remain durable declarations rather than substitutes for live type identity.
 - Every owned codec enforces its stored and decoded schema limits through the bounded home-store read
   boundary. Ordinary point and fixed bootstrap values carry no accounting wrapper; their limits
   pass before publication. Natural pages and composite paged reads report checked item,
@@ -29,8 +33,25 @@ absorbing Syndic thread ownership.
 - It receives an opaque registered-domain handle. It never receives or exposes a raw database, keyspace, Fjall batch, transaction, writer guard, lock, or byte encoding.
 - Callers use stable Beryl and Syndic identity values plus expected revisions. Stored key layout and codec versions remain private.
 - Commands that affect only Beryl domains execute through this package's typed command contributors. Commands that must be atomic with Syndic changes contribute both domain mutations to one `beryl-home-store` command coordinated by the owning system.
-- Successful mutation results contain the exact process-local healthy home generation, committed home revision, and affected Beryl domain revisions. Each Beryl domain projects only its own receipt-bound revision through its opaque state handle, returns `None` when that domain was unaffected, and never exposes the underlying home-store domain handle.
-- After successful same-home recovery, callers reacquire the complete `BerylState` handle set for the new generation. Handles, prepared commands, sidecar tokens, and successful command receipts from the prior generation cannot authorize later work; a delayed receipt is rejected even when its durable revision numbers still equal the current records.
+- State commands preserve `NotCommitted { evidence }`,
+  `Committed { receipt, later_failure }`, and `Indeterminate { failure, reconciliation }` without
+  erasing, wrapping, or reclassifying their proof. `NotCommitted` proves no commit and carries no
+  receipt or reconciliation custody. `Committed` always carries the exact
+  process-local home generation, committed home revision, and affected Beryl-domain revisions even
+  when its optional later failure is present. Only `Indeterminate` carries the opaque
+  operation-scoped descriptor together with its complete already-reserved registry capacity, carries no receipt,
+  and authorizes no publication. The package immediately moves that sole custody value onward
+  unchanged to the command coordinator under the synchronous per-home registry-handoff contract in
+  the [Beryl-home storage system](../../../doc/systems/beryl-home-storage/design.md); it retains no
+  copy, domain-local ambiguity flag, or separately publishable result. Each Beryl domain projects
+  only its own receipt-bound revision through its opaque state handle, returns `None` when
+  unaffected, and never exposes the underlying home-store domain handle.
+- Initial open and same-home recovery construct the complete `BerylState` handle set against one
+  unpublished healthy home generation. This package neither constructs the surrounding app/backend
+  stack nor owns its publication fence; its handles become caller-visible only as part of the
+  composition owner's complete typed-stack publication. Prior-generation handles, prepared
+  commands, sidecar tokens, and receipts cannot authorize candidate or later work; an old receipt is
+  rejected even when its revisions equal current records.
 
 ## Runtime And Root Domain
 
@@ -59,19 +80,27 @@ absorbing Syndic thread ownership.
   heads, and rebuildable catalog projection rows. None of those records may duplicate intrinsic
   thread authority or expose a mutation for it.
 - Cross-domain commands validate and mutate final Beryl and Syndic records atomically through
-  `beryl-home-store`; this package does not add a relationship-shaped compatibility replacement for
-  the removed metadata bucket.
+  `beryl-home-store`; this package owns no duplicate relationship record and does not absorb either
+  domain's final authority.
 
 ## Session And Window Domain
 
-- One `beryl-session` domain owns the active header, window records, claims by window, and claims by thread. Keeping those families together lets its ordinary reopen validator prove exact session and reverse-claim invariants through the sealed per-domain reader.
+- One `beryl-session` domain owns the active header, window records, claims by window, and claims by
+  thread. Keeping those families together lets its exhaustive domain validator prove exact session
+  and reverse-claim invariants through the sealed per-domain reader when an exhaustive validation
+  boundary is requested.
 - The active session header stores generation, orderly-Exit intent, sorted unique restore-set window references, and the last successfully used runtime/root fallback retained when the restore set becomes empty. Each reference contains the exact window id and expected window-record revision.
 - One home supports at most 256 restorable main-window records. The V1 header uses a fixed-capacity encoding and each V1 window record uses a fixed-size encoding with canonical tagged padding for optional identities and monitor facts; all-zero identities remain ordinary valid identities rather than absence sentinels.
 - Each restorable main-window record stores window id, selected Syndic thread id, remembered runtime/root ids, placement and size facts, virtual-desktop identity when supported, and record revision.
 - Auxiliary windows, flyouts, menus, notices, and previews never receive session records.
 - Session commands preserve exclusive thread claims and reject missing or multiply referenced window/thread identities.
 - The only valid threadless record is the sole zero-runtime initial window; it has no remembered target, selected thread, claim, or fallback.
-- Minimal startup first registers and validates only the bounded four-family session domain. Its discovery query returns only the fixed-size session header and exact referenced window records, then rereads the header and rejects concurrent publication. This path registers no unrelated Beryl domain and returns no catalog, transcript, CAS, or placeholder-draft state.
+- Startup privately registers or reacquires every required Beryl domain into the complete candidate
+  without an exhaustive application-record scan, then publishes that handle set only with the full
+  stack.
+  The later minimal discovery query still returns only the fixed-size session header and exact
+  referenced window records, rereads the header, and rejects concurrent publication. It loads no
+  catalog, transcript, CAS, or placeholder-draft state.
 
 ## Thread Claims
 
@@ -85,20 +114,46 @@ absorbing Syndic thread ownership.
   copies agree, or proves the thread-keyed copy absent. The resulting present-or-absent fact is an
   exact validation-only participant in the cross-domain publication command.
 
+## Theme Domain Service
+
+- This package owns the typed repository, schema, parser, validator, resolver, mutation, and
+  reconciliation service required by the [theme runtime system](../../../doc/systems/theme-runtime/design.md).
+  It consumes physical repository and durability operations from the Beryl-home storage boundary
+  without exposing raw files or storage handles to callers.
+- The service owns stable installed theme ids, repository generations, manifest cursor pages,
+  document revisions and digests, the finite role/property schema, bounded compact-TOML parsing,
+  and complete resolved appearance values.
+- Install, rename, delete, reorder, update, Save, and Save As use revision-checked typed commands
+  with exact `NotCommitted`, `Committed`, or `Indeterminate` results and targeted
+  `ExactOld`, `ExactNew`, or `Collision` reconciliation.
+- Public reads and queries are point, range, or revision-bound page operations with explicit item
+  and decoded-byte limits. No API returns the complete installed collection or requires a whole
+  document to be resident.
+- This package owns no GPUI entities, window subscriptions, preview arbitration, feature editor
+  draft, Settings draft, tool worker, or visible failure presentation.
+
 ## Settings Domain
 
 - Settings records store only validated Beryl-owned scalar preferences and stable setting-schema versions.
-- Feature-owned setting schemas define accepted values and defaults; this package supplies typed storage and revision behavior without redefining those semantics.
-- Applying multiple staged settings is atomic when the settings feature presents it as one Apply operation.
-- Installed theme documents remain in the file-based theme repository. Only active theme identity and declared scalar theme settings use this domain.
+- Feature-owned setting schemas define accepted values and defaults. The
+  [settings feature](../../../doc/features/settings/design.md) owns their product workflow; this
+  package supplies typed scalar storage and revision behavior without redefining those semantics.
+- Installed theme documents and order remain in the separate theme repository service above. Only
+  active theme identity and declared scalar theme settings use the Settings domain.
 - Backend-owned Codex configuration, authentication, skills, MCP, sandbox, policy, and session state are rejected from Beryl settings records.
 - Schema V1 is a closed typed set: active theme identity, context-compaction timeout, draft-autosave interval, developer instructions, and optional end-turn-sound Host path. There is no arbitrary key or byte-payload variant.
 - Active-theme identity is bounded to 256 UTF-8 bytes and developer instructions to 60 KiB. Numeric preference values are caller-validated feature scalars; this package preserves their exact typed representation without taking ownership of feature ranges or defaults.
-- Context-compaction timeout is stored as exact validated milliseconds. The status-line feature owns
-  its whole-second `1..=86400` range and 180-second absent-setting default; this package neither
-  applies a second default nor interprets timeout expiry as operation state.
-- One Apply contribution is nonempty and duplicate-free, validates every absent-or-exact record expectation before mutation assembly, and advances every affected record atomically or none of them.
-- Each key carries its exact supported setting-schema version. Unknown setting schemas and unsupported record versions fail decode or reopen rather than being interpreted as defaults.
+- Context-compaction timeout is stored as an exact caller-validated millisecond scalar under its
+  record revision. Its accepted range, absent-value default, and operation meaning are owned by the
+  [status-line feature](../../../doc/features/status-line/design.md); this package supplies no
+  semantic default and does not interpret expiry.
+- One settings mutation is nonempty and duplicate-free, validates every absent-or-exact record
+  expectation before mutation assembly, and advances every affected record atomically or none of
+  them.
+- Each key carries its exact supported setting-schema version. Unknown setting schemas and
+  unsupported record versions fail any read that decodes them and every applicable exhaustive
+  validation boundary rather than being interpreted as defaults; routine structural reopen alone
+  does not scan dormant settings.
 
 ## Durable Job Domain
 
@@ -110,9 +165,14 @@ absorbing Syndic thread ownership.
 - Job ids are deterministically derived from the admitted resolution-intent identity. Exact CAS thread, turn, and tool-call identity forms the durable request-idempotency key; repeated delivery is answered from that index rather than creating another job.
 - Lifecycle states are exactly `waiting_resolving_turn`, `waiting_parent`, `starting_parent`, `parent_active`, `retryable_failed`, `terminal_failed`, and `succeeded`. Retryable failure retains the exact checkpoint and resumes the same job and parent identities; terminal states leave the live-job index and never regress.
 - Runtime unavailable, root unavailable, CAS unavailable, and delivery failure proven before dispatch are retryable at every non-failure checkpoint. Exact CAS rejection before acceptance is retryable only at `starting_parent`. Remote completion unknown after possible parent-start dispatch is not retryable; proven execution-session loss converges the parent turn incomplete and the job terminally. Invariant violation and missing parent are terminal at every non-failure checkpoint; unrecoverable post-append is terminal only at `starting_parent` or `parent_active`; parent interruption, incomplete termination, and terminal failure are terminal only at `parent_active`.
-- One compatibility rule owns both retryable-versus-terminal classification and checkpoint eligibility. Mutation admission and every persisted-record decode use that same rule, so ordinary registration, verification, and recovery reject structurally decodable but semantically incompatible failure records.
+- One compatibility rule owns both retryable-versus-terminal classification and checkpoint
+  eligibility. Mutation admission and every persisted-record decode use that same rule. A bounded
+  recovery read rejects an incompatible record it actually decodes, and exhaustive validation
+  rejects every incompatible stored job record; routine structural recovery does not claim to scan
+  dormant jobs.
 - Resolution text is bounded to 64 KiB and failure detail to 2 KiB. Failure kinds must agree with retryability and with the retained lifecycle checkpoint.
-- Records, live jobs, request admissions, ordered discussion attempts, and latest-attempt pointers occupy separate typed families whose reopen validator proves their two-way agreement.
+- Records, live jobs, request admissions, ordered discussion attempts, and latest-attempt pointers
+  occupy separate typed families whose exhaustive domain validator proves their two-way agreement.
 
 ## Catalog Domain
 
@@ -146,7 +206,9 @@ absorbing Syndic thread ownership.
 - One row or recency record is bounded to a 256 KiB payload. Point limits pass before a bare row
   publishes; natural cursor pages report practical stored and decoded totals. Reads fail rather
   than silently returning an apparently complete collection outside caller bounds.
-- Publishing a changed recency fact replaces the old index key in the same contribution. Marking stale updates the row and index copy together; reopen validation rejects missing, duplicate, or disagreeing copies.
+- Publishing a changed recency fact replaces the old index key in the same contribution. Marking
+  stale updates the row and index copy together; exhaustive domain validation rejects missing,
+  duplicate, or disagreeing copies.
 
 ## Asset Metadata Domain
 
@@ -159,8 +221,8 @@ absorbing Syndic thread ownership.
   disposition without an in-memory seen-label set. Compact owner-head records bind one current
   draft, accepted input, submitted item, retry record, or
   transcript projection to one sealed set and owner revision.
-- Asset schema V2 directly replaces the incompatible V1 record shapes inside the Beryl-home rework.
-  This package exposes no V1 decoder, migration path, dual write, or compatibility adapter.
+- Asset schema V2 is the only supported asset record shape. This package exposes no V1 decoder,
+  migration path, dual write, or compatibility adapter.
 - Reference-set construction is typed unpublished staging. Bounded commands append entries and a
   final seal proves the exact source content identity, marker-only digest/count, maximum label,
   entry frontier, and asset-chain digest. One final
@@ -174,9 +236,8 @@ absorbing Syndic thread ownership.
   owner-head mutation participant may include bounded no-write assertions for unchanged heads
   alongside at least one actual put, replacement, or removal. An all-assertion batch is `NoEffect`
   and cannot disguise validation-only work as an empty contribution. This lets reference-set copy
-  assert its historical head and publish its new owner through one Asset-domain participant; the
-  rejected duplicate-participant shape is recorded in
-  `doc/failures/beryl-state-phase13-duplicate-asset-participant-on-copy.md`.
+  assert its historical head and publish its new owner through one Asset-domain participant;
+  duplicate same-domain participants remain invalid.
 - Sidecar bytes and runtime-path projection remain outside this package. `AssetState` owns
   construction of the private `images` content address and streams exact-length/digest verification
   through bounded pages. The verification boundary returns bounded file-backed authority without
@@ -197,6 +258,20 @@ absorbing Syndic thread ownership.
 - First metadata publication requires the matching admitted `images` sidecar authority. Digest,
   length, namespace, and media facts must agree before metadata publication; a crash may leave
   unreferenced metadata or a sealed reference set, but no owner head can select missing bytes.
+- Package-private repair-asset staging records are keyed by the existing Syndic target thread,
+  turn, item, resource ordinal, and asset identity; they introduce no shared repair-snapshot
+  identity. This package's participant in the system-owned bounded repair-media stage command
+  consumes the current-generation `AdmittedSidecar` and records exact digest/length, media facts,
+  authenticated repair provenance, and the command's matching media commitment. It publishes no
+  ordinary asset metadata, owner head, transcript reference, or canonical resource disposition.
+  Ordinary asset APIs cannot read or select these records.
+- The sole repair publication participant validates the complete expected staging set and every
+  final sidecar through bounded verification, then promotes the exact asset metadata, references,
+  and resource dispositions. It participates only in the final cross-domain `HomeCommand` defined
+  by `doc/systems/cas-live-syndic-transcript/design.md` and cannot independently assert whole-command
+  success. Missing, disagreeing, or unstaged Beryl-state media rejects this participant. A failed or
+  incomplete repair leaves its staging records and prepared sidecars inert and unreachable; only a
+  future home-wide garbage collector may reclaim them.
 - Mutable draft reference changes build a replacement set by streaming the prior set plus exact
   edits, then atomically swap the one draft owner head. Duplicate markers, label/asset disagreement,
   stale owner revision, count overflow, and digest mismatch reject publication.
@@ -208,13 +283,12 @@ absorbing Syndic thread ownership.
   `SealedAssetReferenceSetProof`, not a caller-supplied set id. Every read rechecks the selected
   manifest against that proof's exact content, marker, label, frontier, and digest authority before
   returning data; a different proof for the same set identity is rejected. Unsealed construction
-  inspection uses separate typed build authority and cannot select sealed state. The invalid
-  bare-id sealed-manifest boundary is recorded in
-  `doc/failures/beryl-state-phase13-bare-set-sealed-manifest.md`.
-- Reopen validation walks owner heads and sealed set entries in bounded pages, proves every selected
-  asset metadata record and sidecar, and checks exact set counts/digests/frontiers. It does not build a reverse
-  reference set or trust a mutable metadata reference count; future garbage collection must perform
-  its own bounded reachability pass.
+  inspection uses separate typed build authority and cannot select sealed state. A bare set id
+  never authorizes a sealed-manifest read.
+- Exhaustive asset-domain validation walks owner heads and sealed set entries in bounded pages,
+  proves every selected asset metadata record and sidecar, and checks exact set
+  counts/digests/frontiers. It does not build a reverse reference set or trust a mutable metadata
+  reference count; future garbage collection must perform its own bounded reachability pass.
 
 ## Bounds And Validation
 
@@ -225,18 +299,39 @@ absorbing Syndic thread ownership.
   home-store read provenance and is not semantic corruption.
 - Stored labels, paths, normalized search fields, failure evidence, setting values, and job payloads have schema-specific byte limits enforced before batch contribution.
 - Ordinary mutation validation and contribution perform only operation-bounded typed reads. They never invoke a complete domain scan while holding the home writer.
-- During registration, explicit health verification, and recovery, the home store first visits every
-  raw record envelope and applies the family's exact codec, including its stored-key legality hook.
-  Beryl-state domain validation then checks runtime/root uniqueness, non-removable roots,
-  session/window references, claim reverse uniqueness, job state machines, catalog projection and
-  exact-source-revision agreement, and asset-metadata-to-sidecar references with bounded memory.
+- Routine open, same-home reopen, and typed-handle reacquisition validate the exact owner and codec
+  types, durable domain and family declarations, required physical families, and generation. They
+  do not visit every application record or run complete domain invariants.
+- Only a schema-validation boundary, explicit or background whole-home scrub, or investigation
+  triggered by separate corruption evidence first visits every raw record envelope through the
+  family's exact codec and stored-key legality hook. Beryl-state's exhaustive validators then check
+  runtime/root uniqueness, non-removable roots, session/window references, claim reverse
+  uniqueness, job state machines, catalog projection and exact-source-revision agreement, and
+  asset-metadata-to-sidecar references with bounded memory.
+- Each mutation domain also supplies a separate bounded reconciliation hook over only the command's
+  natural records. It classifies its exact descriptor-bound observations as `ExactOld`, `ExactNew`
+  with the receipt facts needed for reconstruction, or `Collision`. A mixed old/new observation or
+  one matching neither exact side is `Collision`; the hook never scans the domain, guesses or
+  merges state, requests a whole-home scrub, clears writer poison, or treats CAS as authority.
+- Repair-media staging reconciliation observes only the target turn/item/resource natural identity,
+  inert prepared-asset record, and exact sidecar commitment. Final repair publication
+  reconciliation observes that evidence plus the canonical asset metadata, reference, and resource
+  disposition named by the same command. It contributes those sealed old/new facts to the
+  cross-domain classifier; it never turns a Beryl-only successor into repair success or exposes
+  inert staging through an ordinary asset read.
+- Reconciliation collision keeps only the command's operation scope closed. It is not structural
+  corruption unless another admitted read or validation boundary supplies separate structural
+  evidence; unrelated structurally healthy domain work remains admissible.
 - Every mutation and validation error explicitly extracts a direct typed home-store read failure, and asset validation additionally extracts a direct sidecar failure. Other errors remain semantic domain rejections; Beryl-state does not hide storage provenance behind an arbitrary source chain.
-- Reopen validation reports authoritative corruption instead of dropping records, narrowing a scan to typed cursor sentinels, or consulting CAS history.
+- Exhaustive validation reports authoritative corruption instead of dropping records, narrowing a
+  scan to typed cursor sentinels, or consulting CAS history.
 
 ## Fault-Test Boundary
 
 - The `test-faults` Cargo feature exposes only typed schema-corruption contributions needed to prove persisted Beryl-state rejection. Normal builds contain no corruption command, alternate codec, compatibility reader, or storage bypass.
 - Durable-job corruption fixtures preserve otherwise coherent indexes so tests prove the exact failure-kind/checkpoint rule rather than succeeding because an unrelated index invariant failed first.
+- Domain tests prove exact-old, exact-new receipt-fact, mixed, and neither-state reconciliation hook
+  classifications without giving a hook a whole-domain cursor or raw storage authority.
 
 ## Dependency Boundary
 

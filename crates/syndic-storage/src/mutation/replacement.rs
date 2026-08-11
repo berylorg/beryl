@@ -1,4 +1,6 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
+};
 use beryl_model::{
     DomainRevision, DraftRevision, InputGateRevision, SealedAssetReferenceSetProof, SyndicDraftId,
     SyndicItemId, SyndicThreadId, SyndicTurnId, ThreadRevision,
@@ -172,6 +174,16 @@ impl DomainMutation<SyndicDomain> for StartReplacementEditMutation {
         self.records(reader).map(|_| ())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftsCodec>(1)?;
+        reservation.reserve_records::<DraftByThreadCodec>(1)?;
+        reservation.reserve_records::<HistorySummariesCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, SyndicDomain>,
@@ -186,6 +198,16 @@ impl DomainMutation<SyndicDomain> for CancelReplacementEditMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftsCodec>(1)?;
+        reservation.reserve_records::<DraftByThreadCodec>(1)?;
+        reservation.reserve_records::<HistorySummariesCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

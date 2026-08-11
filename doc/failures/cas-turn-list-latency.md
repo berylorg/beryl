@@ -2,7 +2,11 @@
 
 ## Superseded Context
 
-This note records measurements from older CAS transcript-loading paths. The CAS 0.137 `thread/turns/list itemsView` path discussed below is now superseded as live Beryl transcript-history architecture by the CAS-live Syndic transcript rework; see `doc/design.md` and `doc/rework/cas-live-syndic-transcript/REWORK.md` for current authority.
+This note records measurements from older CAS transcript-loading paths. The CAS 0.137
+`thread/turns/list itemsView` path discussed below is superseded as ordinary live Beryl transcript
+history; current authority is `doc/design.md` and the active Beryl-home target docs. The completed
+CAS-live rework tracker is archived at
+`doc/rework/cas-live-syndic-transcript/old-doc/REWORK.md` as historical evidence only.
 
 ## 2026-05-10: Large Generated-Image Thread First-Byte Stall
 

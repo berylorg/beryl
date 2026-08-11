@@ -1,17 +1,17 @@
 use beryl_model::{ContentRevision, RevisionError, SyndicContentId, SyndicItemId, SyndicTurnId};
 
 use crate::{
-    CasItemSource, ContentChunkOrdinal, ContentChunkRecord, ContentEncoding, ContentReference,
-    ContentSummary, ProviderFrameEncodeError, ProviderFrameObservationSummaryV1,
-    ProviderFrameSinkV1, ProviderFrameTextSpanV1, ProviderFrameTextSpanValidatorV1,
-    ProviderItemBuildLifecycle, ProviderItemBuildRecord, ProviderItemBuildRevision,
-    ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemStreamValidatorV1,
-    ProviderItemValidationError, ProviderLogicalTextRoleV1, ProviderNarrativeComparisonFrontier,
+    advance_content_chain, content_chain_seed, encode_provider_item_frame_v1, CasItemSource,
+    ContentChunkOrdinal, ContentChunkRecord, ContentEncoding, ContentReference, ContentSummary,
+    ProviderFrameEncodeError, ProviderFrameObservationSummaryV1, ProviderFrameSinkV1,
+    ProviderFrameTextSpanV1, ProviderFrameTextSpanValidatorV1, ProviderItemBuildLifecycle,
+    ProviderItemBuildRecord, ProviderItemBuildRevision, ProviderItemFrameV1,
+    ProviderItemObservationV1, ProviderItemStreamValidatorV1, ProviderItemValidationError,
+    ProviderLogicalTextRoleV1, ProviderNarrativeComparisonFrontier,
     ProviderNarrativeCompletionCheck, ProviderNarrativeCompletionState,
     ProviderNarrativeGeneration, ProviderNarrativeReference, ProviderNarrativeSpanRecord,
     ProviderStorageRecordError, SealedProviderFrameReference, SourceEventSequence,
-    SyndicRecordError, SyndicValueError, advance_content_chain, content_chain_seed,
-    encode_provider_item_frame_v1,
+    SyndicRecordError, SyndicValueError,
 };
 
 /// Immutable inputs for preparing one provider frame without retaining its encoded payload.

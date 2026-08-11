@@ -1,4 +1,6 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
+};
 use beryl_model::{
     DomainRevision, SealedAssetReferenceSetProof, SyndicAcceptedInputId, SyndicItemId,
     SyndicThreadId, SyndicTurnId,
@@ -6,7 +8,7 @@ use beryl_model::{
 
 use crate::{
     AcceptedInputPromotionProof, AcceptedNextCandidate, ContentReference, SyndicMutationError,
-    SyndicStorage, SyndicTimestamp, domain::SyndicDomain,
+    SyndicStorage, SyndicTimestamp, codec::*, domain::SyndicDomain,
 };
 
 mod records;
@@ -138,6 +140,33 @@ impl DomainMutation<SyndicDomain> for PromoteAcceptedInputMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         PromotionRecords::build(reader, &self.promotion).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteLeavesCodec>(1)?;
+        reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
+        reservation.reserve_records::<ThreadsCodec>(1)?;
+        reservation.reserve_records::<DraftByThreadCodec>(1)?;
+        reservation.reserve_records::<TurnsCodec>(1)?;
+        reservation.reserve_records::<TurnStatesCodec>(1)?;
+        reservation.reserve_records::<TurnChildrenCodec>(1)?;
+        reservation.reserve_records::<CanonicalItemsCodec>(1)?;
+        reservation.reserve_records::<TurnItemsCodec>(1)?;
+        reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
+        reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
+        reservation.reserve_records::<HistorySummariesCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
+        reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
+        reservation.reserve_records::<BindingsCodec>(1)?;
+        reservation.reserve_records::<BindingHeadsCodec>(1)?;
+        reservation.reserve_records::<ThreadParentCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

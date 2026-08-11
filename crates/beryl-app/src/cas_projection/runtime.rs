@@ -1,8 +1,5 @@
 use std::{sync::Arc, time::Duration};
 
-use beryl_backend::ManagedBackendProbeReport;
-#[cfg(any(test, feature = "test-faults"))]
-use beryl_backend::{BackendConfigDefaults, CompatibilityProbeSet, ThreadBranchCapabilities};
 use beryl_model::{CasProcessGeneration, RuntimeId};
 
 use super::{
@@ -10,42 +7,19 @@ use super::{
     connection::{ConnectionRequestSession, ExistingLease, ProjectionConnection, ThreadRetirement},
 };
 
-/// Compatibility-admitted authority over one exact initialized backend session.
+/// Release-admitted authority over one exact initialized backend session.
 ///
-/// The value owns the session that was synchronously probed, so later
+/// The value owns the connection that was synchronously admitted, so later
 /// crate-internal projection requests cannot substitute a session from another
-/// runtime or managed-process generation. No constructor accepts a precomputed
-/// report or boolean compatibility claim.
+/// runtime or managed-process generation.
 #[derive(Debug)]
 pub struct AdmittedProjectionSession {
     connection: Arc<ProjectionConnection>,
-    compatibility_evidence: SessionCompatibilityEvidence,
-    preactivation_surrender_issuer:
-        Option<super::service_config::ProjectionPreactivationSurrenderIssuer>,
 }
 
 impl AdmittedProjectionSession {
-    pub(super) const fn from_production_connection(
-        connection: Arc<ProjectionConnection>,
-        compatibility_report: ManagedBackendProbeReport,
-    ) -> Self {
-        Self {
-            connection,
-            compatibility_evidence: SessionCompatibilityEvidence::Production(compatibility_report),
-            preactivation_surrender_issuer: None,
-        }
-    }
-
-    #[cfg(any(test, feature = "test-faults"))]
-    pub(super) const fn from_lifecycle_test_connection(
-        connection: Arc<ProjectionConnection>,
-        lifecycle_facts: LifecycleTestCompatibilityFacts,
-    ) -> Self {
-        Self {
-            connection,
-            compatibility_evidence: SessionCompatibilityEvidence::LifecycleTest(lifecycle_facts),
-            preactivation_surrender_issuer: None,
-        }
+    pub(super) const fn from_admitted_connection(connection: Arc<ProjectionConnection>) -> Self {
+        Self { connection }
     }
 
     /// Returns the exact configured runtime associated with the owned session.
@@ -58,18 +32,6 @@ impl AdmittedProjectionSession {
     #[must_use]
     pub fn process_generation(&self) -> CasProcessGeneration {
         self.connection.process_generation()
-    }
-
-    /// Returns the successful report retained from this exact session's probe.
-    #[must_use]
-    pub const fn compatibility_report(&self) -> &ManagedBackendProbeReport {
-        match &self.compatibility_evidence {
-            SessionCompatibilityEvidence::Production(report) => report,
-            #[cfg(any(test, feature = "test-faults"))]
-            SessionCompatibilityEvidence::LifecycleTest(_) => {
-                panic!("lifecycle-test session has no production compatibility report")
-            }
-        }
     }
 
     /// Returns named content-free metrics for the last foreground WebSocket message.
@@ -167,31 +129,14 @@ impl AdmittedProjectionSession {
         &self.connection
     }
 
-    pub(super) fn install_preactivation_surrender_issuer(
-        &mut self,
-        issuer: super::service_config::ProjectionPreactivationSurrenderIssuer,
-    ) {
-        self.preactivation_surrender_issuer = Some(issuer);
-    }
-
-    pub(super) fn preactivation_surrender_issuer(
-        &self,
-    ) -> Option<&super::service_config::ProjectionPreactivationSurrenderIssuer> {
-        self.preactivation_surrender_issuer.as_ref()
-    }
-
     pub(super) fn acquire_loaded(
         &self,
         cas_thread_id: &beryl_model::CasThreadId,
         owner: beryl_model::SyndicThreadId,
         timeout: Duration,
     ) -> Result<ExistingLease, super::ProjectionCoordinatorError> {
-        self.connection.acquire_existing(
-            cas_thread_id,
-            owner,
-            timeout,
-            self.preactivation_surrender_issuer(),
-        )
+        self.connection
+            .acquire_existing(cas_thread_id, owner, timeout)
     }
 
     pub(super) fn register_loaded(
@@ -200,12 +145,7 @@ impl AdmittedProjectionSession {
         owner: beryl_model::SyndicThreadId,
         timeout: Duration,
     ) -> Result<super::connection::LoadedProjectionLease, super::ProjectionCoordinatorError> {
-        self.connection.register_new(
-            cas_thread_id,
-            owner,
-            timeout,
-            self.preactivation_surrender_issuer(),
-        )
+        self.connection.register_new(cas_thread_id, owner, timeout)
     }
 
     pub(super) fn retire_loaded_thread(
@@ -220,36 +160,6 @@ impl AdmittedProjectionSession {
     /// Retires this exact connection and revokes every loaded projection it owns.
     pub fn invalidate_connection(&self) {
         self.connection.retire();
-    }
-}
-
-#[derive(Debug)]
-enum SessionCompatibilityEvidence {
-    Production(ManagedBackendProbeReport),
-    #[cfg(any(test, feature = "test-faults"))]
-    LifecycleTest(LifecycleTestCompatibilityFacts),
-}
-
-#[cfg(any(test, feature = "test-faults"))]
-#[derive(Debug)]
-pub(super) struct LifecycleTestCompatibilityFacts {
-    probe_successes: CompatibilityProbeSet,
-    config_defaults: BackendConfigDefaults,
-    thread_branch_capabilities: ThreadBranchCapabilities,
-}
-
-#[cfg(any(test, feature = "test-faults"))]
-impl LifecycleTestCompatibilityFacts {
-    pub(super) const fn new(
-        probe_successes: CompatibilityProbeSet,
-        config_defaults: BackendConfigDefaults,
-        thread_branch_capabilities: ThreadBranchCapabilities,
-    ) -> Self {
-        Self {
-            probe_successes,
-            config_defaults,
-            thread_branch_capabilities,
-        }
     }
 }
 

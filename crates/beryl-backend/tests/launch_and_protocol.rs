@@ -278,7 +278,7 @@ mod managed_launch_lifecycle {
     }
 
     #[test]
-    fn lifecycle_test_connector_is_rejected_before_compatibility_admission() {
+    fn lifecycle_test_connector_is_rejected_before_release_admission() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).expect("test listener should bind");
         let endpoint = BackendWebSocketEndpoint::loopback(
             listener
@@ -286,7 +286,7 @@ mod managed_launch_lifecycle {
                 .expect("test listener should report a port")
                 .port(),
         );
-        let server = thread::spawn(move || assert_no_compatibility_request(listener));
+        let server = thread::spawn(move || assert_no_release_admission_request(listener));
 
         let connector = ManagedBackendClientConnector::for_lifecycle_test(endpoint, AUTHORIZATION);
         assert!(connector.launch_identity().is_none());
@@ -294,18 +294,18 @@ mod managed_launch_lifecycle {
             .connect_request_candidate_for_lifecycle_test(TIMEOUT)
             .expect("test connector should open its isolated test endpoint");
         let error = session
-            .probe_compatibility(Path::new(r"C:\\work\\beryl"), TIMEOUT)
-            .expect_err("a test-only connector must not admit compatibility");
+            .admit_release(Path::new(r"C:\\work\\beryl"), TIMEOUT)
+            .expect_err("a test-only connector must not create production release admission");
         assert!(matches!(
             error,
-            ManagedBackendError::CompatibilityManagedLaunchProvenanceMissing
+            ManagedBackendError::ReleaseAdmissionManagedLaunchProvenanceMissing
         ));
         session
             .shutdown()
             .expect("test session should release its task-owned connection");
         server
             .join()
-            .expect("test endpoint should observe no compatibility request");
+            .expect("test endpoint should observe no release-admission request");
     }
 
     fn host_launch_spec(token_directory: &Path) -> ManagedBackendLaunchSpec {
@@ -368,7 +368,7 @@ mod managed_launch_lifecycle {
         token_file
     }
 
-    fn assert_no_compatibility_request(listener: TcpListener) {
+    fn assert_no_release_admission_request(listener: TcpListener) {
         let (stream, _) = listener
             .accept()
             .expect("test endpoint should accept one client");
@@ -381,7 +381,7 @@ mod managed_launch_lifecycle {
             Ok(Message::Close(_))
             | Err(tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed) => {}
             Ok(message) => {
-                panic!("test-only connector crossed compatibility admission: {message:?}")
+                panic!("test-only connector crossed release admission: {message:?}")
             }
             Err(error) => panic!("test endpoint read failed: {error}"),
         }

@@ -6,7 +6,7 @@ mod support;
 use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use syndic_storage::{
@@ -76,7 +76,13 @@ fn revision_change_during_recovery_assembly_rejects_the_whole_result() {
     command
         .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed recovery-race update, got {outcome:?}"),
+    }
     block.release();
 
     assert!(matches!(

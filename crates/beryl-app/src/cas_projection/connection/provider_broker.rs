@@ -9,16 +9,14 @@ mod staging;
 mod steering_result;
 mod translation;
 
-#[cfg(test)]
+pub(in crate::cas_projection) use ingester::ProviderBrokerStopped;
+#[cfg(feature = "test-faults")]
 pub(super) use ingester::fail_next_provider_broker_join_for_test;
 pub(super) use ingester::{
     PreparedProviderBroker, ProviderBroker, ProviderBrokerControl,
     ProviderBrokerResponseActivationFailure, ProviderBrokerStartToken,
     ProviderBrokerTerminalReceipt, RunningProviderBrokerIngester,
     StartBlockedProviderBrokerIngester,
-};
-pub(in crate::cas_projection) use ingester::{
-    ProviderBrokerAdoptionStopped, ProviderBrokerStopped,
 };
 pub(in crate::cas_projection) use loss::ActiveBindingLossDisposition;
 pub(super) use loss::DetachedActivationAuthority;

@@ -6,8 +6,8 @@ use beryl_model::{AdmittedHostPath, PathFlavor};
 use crate::RecordRevision;
 
 use super::{
-    SETTINGS_RECORD_LIMIT, SettingKey, SettingRecord, SettingSchemaVersion, SettingValue,
-    SettingsDomain, value::SettingValueKind,
+    value::SettingValueKind, SettingKey, SettingRecord, SettingSchemaVersion, SettingValue,
+    SettingsDomain, SETTINGS_RECORD_LIMIT,
 };
 
 pub(super) struct SettingRecordCodec;

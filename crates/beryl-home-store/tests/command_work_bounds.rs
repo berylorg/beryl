@@ -99,6 +99,14 @@ impl DomainMutation<CountedDomain> for Put {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, CountedDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CountedRecord>(1).map_err(PutError)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, CountedDomain>,
@@ -140,5 +148,11 @@ fn execute(store: &HomeStore, domain: beryl_home_store::DomainHandle<CountedDoma
     command
         .add(domain.contribution(store.domain_revision(domain).unwrap(), Put(key)))
         .unwrap();
-    store.execute(command).unwrap();
+    assert!(matches!(
+        store.execute(command),
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
 }

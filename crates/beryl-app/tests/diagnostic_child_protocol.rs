@@ -5,11 +5,10 @@ use std::io::{BufReader, Cursor};
 
 use diagnostic_child_protocol::{
     BoundedLineRead, CLOSE_POPUPS_COMMAND, CREATE_NEW_THREAD_COMMAND, DiagnosticChildCommand,
-    DiagnosticProtocolResponse, HANDSHAKE_COMMAND, HARD_STOP_TURN_COMMAND,
-    MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, PREPARE_RENDERER_WINDOW_COMMAND, READ_RENDERER_COMMAND,
-    READ_TRANSCRIPT_FRAME_METRICS_COMMAND, READ_UI_STATE_COMMAND, SOFT_STOP_TURN_COMMAND,
-    START_TURN_COMMAND, parse_request_frame, parse_response_frame, read_bounded_line_bytes,
-    request_frame, response_frame,
+    DiagnosticProtocolResponse, HANDSHAKE_COMMAND, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES,
+    PREPARE_RENDERER_WINDOW_COMMAND, READ_RENDERER_COMMAND, READ_TRANSCRIPT_FRAME_METRICS_COMMAND,
+    READ_UI_STATE_COMMAND, SOFT_STOP_TURN_COMMAND, START_TURN_COMMAND, parse_request_frame,
+    parse_response_frame, read_bounded_line_bytes, request_frame, response_frame,
 };
 use serde_json::json;
 
@@ -35,6 +34,15 @@ fn request_frames_reject_malformed_json_without_retaining_payload() {
 #[test]
 fn request_frames_reject_unknown_commands() {
     let frame = br#"{"id":"req-1","command":"unknown","params":{}}"#;
+
+    let error = parse_request_frame(frame).unwrap_err();
+
+    assert_eq!(error.kind(), "unsupported_command");
+}
+
+#[test]
+fn request_frames_reject_removed_hard_stop_turn_command() {
+    let frame = br#"{"id":"req-hard","command":"hard_stop_turn","params":{}}"#;
 
     let error = parse_request_frame(frame).unwrap_err();
 
@@ -146,9 +154,5 @@ fn command_constants_match_protocol_command_names() {
     assert_eq!(
         DiagnosticChildCommand::SoftStopTurn.as_str(),
         SOFT_STOP_TURN_COMMAND
-    );
-    assert_eq!(
-        DiagnosticChildCommand::HardStopTurn.as_str(),
-        HARD_STOP_TURN_COMMAND
     );
 }

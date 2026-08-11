@@ -160,6 +160,14 @@ impl ClassifiedFjallError {
     pub(crate) const fn severity(&self) -> Option<FailureSeverity> {
         self.severity
     }
+
+    pub(crate) const fn class(&self) -> fjall::ErrorClass {
+        self.source.class()
+    }
+
+    pub(crate) const fn commit_state(&self) -> Option<fjall::CommitState> {
+        self.source.commit_state()
+    }
 }
 
 fn fjall_failure_severity(

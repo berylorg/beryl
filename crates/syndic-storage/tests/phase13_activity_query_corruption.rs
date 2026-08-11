@@ -4,7 +4,7 @@
 mod activity_handoff;
 mod support;
 
-use beryl_home_store::{CommandError, CursorReadLimits, HomeCommand};
+use beryl_home_store::{CommandError, CommandOutcome, CursorReadLimits, HomeCommand};
 use syndic_storage::test_faults::{
     FixtureBatch, FixtureRecord, fixture_activity_query_entry_stored_bytes,
 };
@@ -30,7 +30,10 @@ fn publication_rejects_a_final_answer_with_later_activity_before_terminal() {
             ),
         ))
         .unwrap();
-    let error = candidate.store.execute(command).unwrap_err();
+    let error = match candidate.store.execute(command) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected not-committed activity handoff, got {outcome:?}"),
+    };
     let CommandError::ContributorValidation { source, .. } = error else {
         panic!("expected non-terminal-adjacent handoff rejection")
     };
@@ -87,7 +90,10 @@ fn reopen_rejects_handoff_entry_fact_that_disagrees_with_membership() {
             corruption,
         ))
         .unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome => panic!("expected committed activity corruption, got {outcome:?}"),
+    }
     fixture.store.close().unwrap();
     let mut reopened = open(fixture.home.path());
     let error = match SyndicStorage::register(&mut reopened) {

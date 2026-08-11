@@ -8,7 +8,7 @@ impl ProviderBrokerUnstarted {
     ) -> Result<PreparedProviderBroker, ProviderBrokerBuildError> {
         let thread_gate = Arc::clone(&self.start_gate);
         let thread_worker = Arc::clone(&self.worker);
-        let thread_startup_gate = Arc::clone(&self.startup_gate);
+        let thread_initial_start = Arc::clone(&self.initial_start);
         let thread_launch = Arc::clone(&self.launch);
         let handle = if let Some(error) = build_fault.spawn_failure() {
             Err(error)
@@ -19,7 +19,7 @@ impl ProviderBrokerUnstarted {
                     let _worker_terminal = ProviderBrokerWorkerTerminalGuard::new(thread_worker);
                     let ingester = thread_launch.take();
                     if thread_gate.wait_until_started() {
-                        if thread_startup_gate.wait() {
+                        if thread_initial_start.wait() {
                             ingester.run()
                         } else {
                             ingester.cancel_before_start()
@@ -45,7 +45,7 @@ impl ProviderBrokerUnstarted {
             control,
             launch: _,
             start_gate,
-            startup_gate,
+            initial_start,
             worker,
         } = self;
         Ok(PreparedProviderBroker {
@@ -55,7 +55,7 @@ impl ProviderBrokerUnstarted {
                 control: Arc::clone(&control),
                 worker,
                 handle: Some(handle),
-                startup_gate,
+                initial_start,
             },
             start: ProviderBrokerStartToken {
                 gate: start_gate,
@@ -75,7 +75,7 @@ impl ProviderBrokerLaunchEscrow {
             .expect("the provider broker launch escrow owns one ingester")
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     pub(super) fn retains_ingester(&self) -> bool {
         self.ingester
             .lock()
@@ -133,7 +133,7 @@ impl ProviderBrokerStartGate {
     }
 }
 
-impl ProviderBrokerWorkerEscrow {
+impl ProviderBrokerWorkerOwner {
     pub(super) fn new(worker: ProjectionWorkerPermit) -> Self {
         Self {
             state: Mutex::new(ProviderBrokerWorkerState {
@@ -157,37 +157,11 @@ impl ProviderBrokerWorkerEscrow {
                     state.disposition = ProviderBrokerWorkerDisposition::OrdinaryRelease;
                 }
                 ProviderBrokerWorkerDisposition::OrdinaryRelease => {}
-                ProviderBrokerWorkerDisposition::RetainForAdoption(_) => {
-                    return Err(ProviderBrokerWorkerDispositionArmError::Contended);
-                }
             }
             state.terminal.then(|| state.worker.take()).flatten()
         };
         drop(release);
         Ok(())
-    }
-
-    pub(super) fn arm_retain_for_adoption(
-        &self,
-        cut: PersistentFailureCutIdentity,
-    ) -> Result<(), ProviderBrokerWorkerDispositionArmError> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| ProviderBrokerWorkerDispositionArmError::Poisoned)?;
-        match state.disposition {
-            ProviderBrokerWorkerDisposition::Undecided => {
-                state.disposition = ProviderBrokerWorkerDisposition::RetainForAdoption(cut);
-                Ok(())
-            }
-            ProviderBrokerWorkerDisposition::RetainForAdoption(existing) if existing == cut => {
-                Ok(())
-            }
-            ProviderBrokerWorkerDisposition::OrdinaryRelease
-            | ProviderBrokerWorkerDisposition::RetainForAdoption(_) => {
-                Err(ProviderBrokerWorkerDispositionArmError::Contended)
-            }
-        }
     }
 
     pub(super) fn mark_terminal(&self) {
@@ -224,7 +198,7 @@ impl ProviderBrokerWorkerEscrow {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     pub(super) fn retains_worker(&self) -> bool {
         self.state
             .lock()
@@ -235,7 +209,7 @@ impl ProviderBrokerWorkerEscrow {
 }
 
 impl ProviderBrokerWorkerTerminalGuard {
-    pub(super) fn new(worker: Arc<ProviderBrokerWorkerEscrow>) -> Self {
+    pub(super) fn new(worker: Arc<ProviderBrokerWorkerOwner>) -> Self {
         Self { worker }
     }
 }
@@ -293,36 +267,6 @@ impl StartBlockedProviderBrokerIngester {
         }
     }
 
-    /// Arms this replacement ingester while retaining the exact closed process-publication gate.
-    pub(in crate::cas_projection::connection) fn arm_for_publication(
-        mut self,
-        token: ProviderBrokerStartToken,
-        startup_gate: &Arc<ServiceStartupGate>,
-    ) -> Result<
-        RunningProviderBrokerIngester,
-        (StartBlockedProviderBrokerIngester, ProviderBrokerStartToken),
-    > {
-        let startup_guard = match startup_gate.lock_for_publication() {
-            Ok(guard) => guard,
-            Err(()) => return Err((self, token)),
-        };
-        if !Arc::ptr_eq(&self.startup_gate, startup_gate)
-            || !Arc::ptr_eq(&self.control, &token.control)
-        {
-            return Err((self, token));
-        }
-        if let Err(token) = token.try_activate() {
-            return Err((self, token));
-        }
-        drop(startup_guard);
-        Ok(RunningProviderBrokerIngester {
-            control: Arc::clone(&self.control),
-            worker: Arc::clone(&self.worker),
-            handle: self.handle.take(),
-            active: true,
-        })
-    }
-
     pub(in crate::cas_projection::connection) fn cancel_and_join(
         mut self,
         token: ProviderBrokerStartToken,
@@ -348,13 +292,6 @@ impl RunningProviderBrokerIngester {
         &self,
     ) -> Result<(), ProviderBrokerWorkerDispositionArmError> {
         self.worker.arm_ordinary_release()
-    }
-
-    pub(in crate::cas_projection::connection) fn arm_worker_retention_for_adoption(
-        &self,
-        cut: PersistentFailureCutIdentity,
-    ) -> Result<(), ProviderBrokerWorkerDispositionArmError> {
-        self.worker.arm_retain_for_adoption(cut)
     }
 
     pub(in crate::cas_projection::connection) fn request_cancel(&self) {
@@ -399,7 +336,7 @@ fn join_provider_ingester(
                 home_generation,
                 clean: false,
             });
-    #[cfg(test)]
+    #[cfg(feature = "test-faults")]
     if take_forced_provider_broker_join_failure(_home_id, home_generation, service_generation) {
         return ProviderBrokerTerminalReceipt {
             clean: false,
@@ -409,7 +346,7 @@ fn join_provider_ingester(
     receipt
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-faults")]
 fn take_forced_provider_broker_join_failure(
     home_id: BerylHomeId,
     home_generation: HomeGeneration,

@@ -126,6 +126,21 @@ impl DomainMutation<SyndicDomain> for ProviderObservationFault {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        match &self.replacement {
+            ProviderObservationFaultReplacement::MissingChunk(_) => {
+                reservation.reserve_records::<ProviderObservationChunksCodec>(1)?;
+            }
+            ProviderObservationFaultReplacement::Build(_) => {
+                reservation.reserve_records::<ProviderObservationBuildsCodec>(1)?;
+            }
+        }
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, SyndicDomain>,

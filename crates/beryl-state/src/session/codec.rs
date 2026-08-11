@@ -4,14 +4,14 @@ use beryl_home_store::{RecordCodec, RecordVersion};
 use beryl_model::{ClaimRevision, RootId, RuntimeId, SessionRevision, SyndicThreadId, WindowId};
 
 use crate::{
-    RecordRevision,
     encoding::{CodecError, Decoder, Encoder},
+    RecordRevision,
 };
 
 use super::{
-    CLAIM_V1_BYTES, MAX_RESTORABLE_WINDOWS, RememberedTarget, SESSION_HEADER_V1_BYTES,
-    SESSION_WINDOW_V1_BYTES, SessionDomain, SessionExitIntent, SessionHeader, SessionWindowRecord,
+    RememberedTarget, SessionDomain, SessionExitIntent, SessionHeader, SessionWindowRecord,
     SessionWindowReference, ThreadClaimRecord, ThreadClaimState, WindowClaimSelection,
+    CLAIM_V1_BYTES, MAX_RESTORABLE_WINDOWS, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
 };
 
 mod placement;

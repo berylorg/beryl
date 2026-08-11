@@ -1,6 +1,4 @@
-use std::convert::Infallible;
-
-use beryl_home_store::{HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{
     BindingRevision, CasConversationToolProfile, CasItemId, CasLoadedSessionGeneration,
     CasLoadedThreadGeneration, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId,
@@ -12,7 +10,7 @@ use syndic_storage::{
     ActivateBinding, BindingState, CasItemSource, CasLineageProof, CasRepresentedPrefixProof,
     CasTurnSource, ComposerAtom, ComposerPayload, DraftPayloadUpdate, DraftPayloadUpdateDecision,
     IdleSubmission, LiveSourceEvent, NativeCasLineage, PreparedContent, ProviderFrameOrdinalV1,
-    ProviderFramePreparationPlan, ProviderItemBuildLifecycle, ProviderItemFrameV1,
+    ProviderFramePreparationPlan, ProviderFrameStageOutcome, ProviderItemBuildLifecycle, ProviderItemFrameV1,
     ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
     ProviderSubmittedContentV1, ProviderUserMessageV1, PublishActiveCasTurn, PublishValidBinding,
     SealedProviderFrameReference, SourceEventPayload, SourceEventSequence, SyndicPointReadLimit,
@@ -29,7 +27,13 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean exact-CAS fixture command, got {outcome:?}"),
+    }
 }
 
 pub fn execution_binding() -> ExecutionBinding {
@@ -337,18 +341,28 @@ pub fn admit_item_frame(
         store,
         storage.begin_provider_frame_build(storage.revision(store).unwrap(), &prepared),
     );
-    let mut build = stage_provider_frame(
+    let mut build = match stage_provider_frame(
         &prepared,
         prepared.initial_build().clone(),
         &mut |batch: &syndic_storage::ProviderFrameStageBatch| {
-            execute(
-                store,
-                storage.stage_provider_frame_batch(storage.revision(store).unwrap(), batch.clone()),
-            );
-            Ok::<(), Infallible>(())
+            let mut command = HomeCommand::new(store.home_revision().unwrap());
+            command
+                .add(storage.stage_provider_frame_batch(
+                    storage.revision(store).unwrap(),
+                    batch.clone(),
+                ))
+                .unwrap();
+            store.execute(command)
         },
     )
-    .unwrap();
+    .unwrap() {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            later_failure: None,
+            ..
+        } => value,
+        outcome => panic!("expected clean provider-frame staging, got {outcome:?}"),
+    };
     for _ in 0..4_096 {
         if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
             let sealed = prepared.target().clone();

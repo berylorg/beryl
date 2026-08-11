@@ -53,7 +53,6 @@ pub const DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL: &str = "read_settings_wind
 pub const DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL: &str = "create_new_thread";
 pub const DIAGNOSTIC_CHILD_START_TURN_TOOL: &str = "start_turn";
 pub const DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL: &str = "soft_stop_turn";
-pub const DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL: &str = "hard_stop_turn";
 pub const DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL: &str = "wait_for_state";
 pub const DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL: &str = "switch_thread";
 pub const DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL: &str = "scroll_transcript";
@@ -157,11 +156,6 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             stop_turn_schema(),
         ),
         diagnostic_child_tool_spec(
-            DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
-            "Request hard stop for the diagnostic child's exact selected active turn using probed targets only.",
-            stop_turn_schema(),
-        ),
-        diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
             "Poll bounded diagnostic child UI or turn state until a predicate matches or times out.",
             wait_for_state_schema(),
@@ -212,7 +206,6 @@ pub fn is_beryl_diagnostic_child_dynamic_tool(request: &DynamicToolCallRequest) 
                 | DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
                 | DIAGNOSTIC_CHILD_START_TURN_TOOL
                 | DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL
-                | DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL
                 | DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL
                 | DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL
                 | DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL
@@ -334,7 +327,6 @@ fn diagnostic_child_tool_result(
         | DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
         | DIAGNOSTIC_CHILD_START_TURN_TOOL
         | DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL
-        | DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL
         | DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL
         | DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL
         | DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL => {
@@ -417,19 +409,6 @@ fn child_command_and_params(
             })?;
             Ok((
                 DiagnosticChildCommand::SoftStopTurn,
-                json!({
-                    "expectedThreadId": arguments.expected_thread_id,
-                    "expectedTurnId": arguments.expected_turn_id,
-                }),
-            ))
-        }
-        DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL => {
-            let arguments = parse_arguments::<DiagnosticStopTurnArguments>(request.arguments())?;
-            arguments.validate().map_err(|message| {
-                DiagnosticChildDynamicToolError::new("invalid_arguments", message)
-            })?;
-            Ok((
-                DiagnosticChildCommand::HardStopTurn,
                 json!({
                     "expectedThreadId": arguments.expected_thread_id,
                     "expectedTurnId": arguments.expected_turn_id,

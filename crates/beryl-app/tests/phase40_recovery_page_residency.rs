@@ -45,7 +45,7 @@ fn production_recovery_rendezvous_holds_one_fixed_page_then_releases() {
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let mut session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             execution_binding().runtime_id(),
             CasProcessGeneration::new(400_001).unwrap(),
@@ -115,7 +115,7 @@ fn production_recovery_cancellation_returns_typed_failure_and_releases() {
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let mut session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             execution_binding().runtime_id(),
             CasProcessGeneration::new(400_002).unwrap(),

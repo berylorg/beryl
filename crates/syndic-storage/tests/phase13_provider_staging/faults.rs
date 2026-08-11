@@ -1,5 +1,5 @@
 use beryl_home_store::{
-    CommandError, DomainRegistrationError, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, CommandOutcome, DomainRegistrationError, HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
 use syndic_storage::test_faults::PersistedProviderNarrativeCorruption;
 
@@ -41,9 +41,13 @@ fn provable_partial_narrative_corruption_is_rejected_on_reopen() {
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
         let prepared = narrative_ahead_prepared();
-        store
-            .execute_current(storage.current_begin_provider_frame_build(&prepared))
-            .unwrap();
+        match store.execute_current(storage.current_begin_provider_frame_build(&prepared)) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean provider-frame build begin, got {outcome:?}"),
+        }
 
         let mut first = None;
         let stopped = stage_provider_frame(
@@ -68,7 +72,13 @@ fn provable_partial_narrative_corruption_is_rejected_on_reopen() {
         let command = storage
             .current_corrupt_staged_provider_narrative(build, span, corruption)
             .unwrap();
-        store.execute_current(command).unwrap();
+        match store.execute_current(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected committed staged-provider corruption, got {outcome:?}"),
+        }
         store.close().unwrap();
 
         let mut reopened = HomeStore::open(HomeOpenOptions::new(

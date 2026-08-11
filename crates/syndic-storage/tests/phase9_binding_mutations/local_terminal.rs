@@ -53,11 +53,11 @@ fn source_less_terminal_requires_a_retired_or_unbound_projection() {
         timestamp(4),
     )
     .unwrap();
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), local_terminal.clone()),
     )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceIdentityConflict

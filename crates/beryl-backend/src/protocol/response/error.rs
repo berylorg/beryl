@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::{CompatibilityProbe, InlineUtf8};
+use super::InlineUtf8;
 
 pub const JSON_RPC_DIAGNOSTIC_MAX_BYTES: usize = 4_096;
 
@@ -8,9 +8,6 @@ pub const JSON_RPC_DIAGNOSTIC_MAX_BYTES: usize = 4_096;
 pub enum JsonRpcErrorVerdict {
     ActiveTurnNotSteerable {
         turn_kind: JsonRpcTurnKind,
-    },
-    CompatibilityProbeRecognized {
-        probe: CompatibilityProbe,
     },
     /// Pinned `turn/interrupt` handling did not enqueue the core interrupt.
     RejectedBeforeCoreInterrupt,

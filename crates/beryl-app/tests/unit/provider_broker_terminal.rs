@@ -35,7 +35,6 @@ fn completion_mismatch_has_priority_and_only_narrative_mismatch_reacquires() {
         issue.incomplete_reason,
         Some(TurnIncompleteReason::CompletionMismatch)
     );
-    assert!(!issue.same_native_reacquisition_required);
 
     let narrative = TerminalAudit {
         narrative_mismatch: true,
@@ -48,7 +47,6 @@ fn completion_mismatch_has_priority_and_only_narrative_mismatch_reacquires() {
         narrative.incomplete_reason,
         Some(TurnIncompleteReason::CompletionMismatch)
     );
-    assert!(narrative.same_native_reacquisition_required);
 }
 
 #[test]
@@ -65,7 +63,6 @@ fn unsupported_history_precedes_an_unresolved_item() {
             UnsupportedHistoryReason::ImpossibleLifecycle,
         ))
     );
-    assert!(!unsupported.same_native_reacquisition_required);
 
     let unresolved = TerminalAudit {
         unresolved_item: true,
@@ -76,5 +73,4 @@ fn unsupported_history_precedes_an_unresolved_item() {
         unresolved.incomplete_reason,
         Some(TurnIncompleteReason::ItemAuditFailed)
     );
-    assert!(!unresolved.same_native_reacquisition_required);
 }

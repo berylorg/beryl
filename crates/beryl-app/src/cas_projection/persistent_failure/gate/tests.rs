@@ -151,7 +151,7 @@ fn authority_settlement_and_existing_permit_transfer_choose_one_exact_side_of_cu
     close_for_failure(&gate);
     assert_eq!(
         permit
-            .commit_or_transfer(|| "current", |_| "failure", || "closed")
+            .commit_or_transfer_persistent_only(|| "current", |_| "failure", || "closed")
             .unwrap(),
         "failure"
     );
@@ -164,20 +164,17 @@ fn authority_settlement_and_existing_permit_transfer_choose_one_exact_side_of_cu
 }
 
 #[test]
-fn pair_commit_handles_shared_and_distinct_gates_without_partial_commit() {
-    let shared = gate();
-    let first = shared.authorizer().authorize().unwrap();
-    let second = shared.authorizer().authorize().unwrap();
-    assert_eq!(first.commit_pair_if_current(&second, || 1).unwrap(), 1);
+fn local_failure_cannot_transfer_a_failed_command_as_persistent_failure() {
+    let gate = gate();
+    let permit = gate.authorizer().authorize().unwrap();
 
-    let distinct = gate();
-    let distinct_permit = distinct.authorizer().authorize().unwrap();
-    close_for_failure(&distinct);
+    gate.close_for_local_failure();
+
     assert_eq!(
-        first
-            .commit_pair_if_current(&distinct_permit, || 2)
-            .unwrap_err(),
-        LiveCommandAdmissionError::Closed
+        permit
+            .commit_or_transfer_persistent_only(|| "current", |_| "failure", || "closed")
+            .unwrap(),
+        "closed"
     );
 }
 

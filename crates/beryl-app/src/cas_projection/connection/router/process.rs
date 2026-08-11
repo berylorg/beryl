@@ -94,18 +94,18 @@ pub(super) struct ProcessEventProjection {
 }
 
 #[derive(Debug)]
-struct StableConnectionFactInner {
+struct ConnectionFactInner {
     process: Arc<ProcessEventProjection>,
     connection_generation: u64,
     retired: AtomicBool,
 }
 
-/// Stable-core ownership of one connection fact in its managed process.
-pub(in crate::cas_projection::connection) struct StableConnectionProcessFact {
-    inner: StableConnectionFactInner,
+/// Ownership of one connection fact in its managed process.
+pub(in crate::cas_projection::connection) struct ConnectionProcessFact {
+    inner: ConnectionFactInner,
 }
 
-/// Read-only process projection supplied to replaceable epoch routers.
+/// Read-only process projection supplied to connection-local routers.
 #[derive(Clone, Debug)]
 pub(in crate::cas_projection::connection) struct ProcessEventObservation {
     process: Arc<ProcessEventProjection>,
@@ -153,7 +153,7 @@ pub(super) fn acquire_process_projection(
     Ok(projection)
 }
 
-impl StableConnectionProcessFact {
+impl ConnectionProcessFact {
     pub(in crate::cas_projection::connection) fn register(
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
@@ -162,7 +162,7 @@ impl StableConnectionProcessFact {
         let process = acquire_process_projection(runtime_id, process_generation)?;
         process.register_connection(connection_generation)?;
         Ok(Self {
-            inner: StableConnectionFactInner {
+            inner: ConnectionFactInner {
                 process,
                 connection_generation,
                 retired: AtomicBool::new(false),
@@ -187,7 +187,7 @@ impl ProcessEventObservation {
     }
 }
 
-impl StableConnectionFactInner {
+impl ConnectionFactInner {
     fn retire(&self, reason: LiveEventTargetCloseReason) {
         if !self.retired.swap(true, Ordering::AcqRel) {
             self.process
@@ -196,7 +196,7 @@ impl StableConnectionFactInner {
     }
 }
 
-impl Drop for StableConnectionProcessFact {
+impl Drop for ConnectionProcessFact {
     fn drop(&mut self) {
         self.inner.retire(LiveEventTargetCloseReason::WorkerStopped);
     }

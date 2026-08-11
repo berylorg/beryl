@@ -164,7 +164,7 @@ fn append_rejects_stale_cross_page_duplicate_mismatched_label_and_missing_metada
         .staged_reference_set_manifest(&store, staging)
         .unwrap();
 
-    let stale = execute_result(
+    let stale = execute_outcome(
         &store,
         state.assets().append_reference_page(
             state.assets().revision(&store).unwrap(),
@@ -178,14 +178,16 @@ fn append_rejects_stale_cross_page_duplicate_mismatched_label_and_missing_metada
             )
             .unwrap(),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted { evidence: stale } = stale else {
+        panic!("expected rejected stale asset command, got {stale:?}");
+    };
     assert!(matches!(
         asset_mutation_error(&stale),
         AssetMutationError::BuildProofMismatch(actual) if *actual == set_id
     ));
 
-    let duplicate = execute_result(
+    let duplicate = execute_outcome(
         &store,
         state.assets().append_reference_page(
             state.assets().revision(&store).unwrap(),
@@ -199,14 +201,19 @@ fn append_rejects_stale_cross_page_duplicate_mismatched_label_and_missing_metada
             )
             .unwrap(),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted {
+        evidence: duplicate,
+    } = duplicate
+    else {
+        panic!("expected rejected duplicate asset command, got {duplicate:?}");
+    };
     assert!(matches!(
         asset_mutation_error(&duplicate),
         AssetMutationError::MarkerAlreadyExists(actual) if *actual == marker(1)
     ));
 
-    let mismatched_label = execute_result(
+    let mismatched_label = execute_outcome(
         &store,
         state.assets().append_reference_page(
             state.assets().revision(&store).unwrap(),
@@ -220,15 +227,20 @@ fn append_rejects_stale_cross_page_duplicate_mismatched_label_and_missing_metada
             )
             .unwrap(),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted {
+        evidence: mismatched_label,
+    } = mismatched_label
+    else {
+        panic!("expected rejected label-mismatch asset command, got {mismatched_label:?}");
+    };
     assert!(matches!(
         asset_mutation_error(&mismatched_label),
         AssetMutationError::LabelAssetMismatch { label }
             if *label == ImageLabelOrdinal::FIRST
     ));
 
-    let missing_metadata = execute_result(
+    let missing_metadata = execute_outcome(
         &store,
         state.assets().append_reference_page(
             state.assets().revision(&store).unwrap(),
@@ -242,8 +254,13 @@ fn append_rejects_stale_cross_page_duplicate_mismatched_label_and_missing_metada
             )
             .unwrap(),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted {
+        evidence: missing_metadata,
+    } = missing_metadata
+    else {
+        panic!("expected rejected missing-metadata asset command, got {missing_metadata:?}");
+    };
     assert!(matches!(
         asset_mutation_error(&missing_metadata),
         AssetMutationError::MetadataMissing(actual) if *actual == missing_asset

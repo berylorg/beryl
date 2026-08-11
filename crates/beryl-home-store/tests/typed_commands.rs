@@ -9,7 +9,10 @@ use beryl_home_store::{
 use beryl_model::DomainRevision;
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, open_home};
+use support::{
+    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord,
+    FixtureMutationError, PutBytes,
+};
 
 #[test]
 fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
@@ -30,7 +33,7 @@ fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
         ))
         .unwrap();
 
-    let receipt = store.execute(command).unwrap();
+    let receipt = committed(store.execute(command));
     assert_eq!(receipt.home_revision().get(), 2);
     assert_eq!(receipt.generation(), store.health().generation().unwrap());
     assert_eq!(
@@ -75,7 +78,7 @@ fn receipt_reports_only_affected_domains_in_its_exact_generation() {
         ))
         .unwrap();
 
-    let receipt = store.execute(command).unwrap();
+    let receipt = committed(store.execute(command));
     assert_eq!(receipt.generation(), store.health().generation().unwrap());
     let debug = format!("{receipt:?}");
     assert!(debug.contains("affected_domain_count: 1"));
@@ -104,7 +107,7 @@ fn receipt_rejects_another_home_and_another_registration() {
             PutBytes::<AlphaDomain>::new(1, b"first home".to_vec()),
         ))
         .unwrap();
-    let receipt = first.execute(command).unwrap();
+    let receipt = committed(first.execute(command));
 
     assert!(matches!(
         second.receipt_domain_revision(&receipt, second_alpha),
@@ -139,7 +142,7 @@ fn later_validation_or_assembly_failure_commits_nothing() {
             .add(beta.contribution(store.domain_revision(beta).unwrap(), rejected))
             .unwrap();
 
-        let error = store.execute(command).unwrap_err();
+        let error = not_committed(store.execute(command));
         if reject_assembly {
             assert!(matches!(
                 error,
@@ -180,7 +183,7 @@ fn stale_conflicts_are_home_first_then_domain_name_order() {
         ))
         .unwrap();
 
-    let error = store.execute(stale).unwrap_err();
+    let error = not_committed(store.execute(stale));
     assert_eq!(
         error.conflicts().unwrap(),
         &[
@@ -220,7 +223,9 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
         .unwrap();
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::CancelledBeforeAdmission)
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::CancelledBeforeAdmission
+        }
     ));
     assert_eq!(read(&store, alpha, 1), None);
 
@@ -236,7 +241,7 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
             },
         ))
         .unwrap();
-    store.execute(admitted).unwrap();
+    committed(store.execute(admitted));
     assert!(after_admission.is_cancelled());
     assert_eq!(read(&store, alpha, 2), Some(b"admitted".to_vec()));
 
@@ -247,7 +252,9 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
         .with_cancellation(cancelled_current);
     assert!(matches!(
         store.execute_current(current),
-        Err(CommandError::CancelledBeforeAdmission)
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::CancelledBeforeAdmission
+        }
     ));
     assert_eq!(read(&store, alpha, 3), None);
 
@@ -258,7 +265,7 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
             key: 4,
         })
         .with_cancellation(current_after_admission.clone());
-    store.execute_current(current).unwrap();
+    committed(store.execute_current(current));
     assert!(current_after_admission.is_cancelled());
     assert_eq!(read(&store, alpha, 4), Some(b"admitted".to_vec()));
 }
@@ -282,7 +289,7 @@ fn same_thread_writer_reentrancy_is_rejected_without_deadlock() {
         ))
         .unwrap();
 
-    store.execute(outer).unwrap();
+    committed(store.execute(outer));
     assert_eq!(read(&store, alpha, 7), Some(b"outer".to_vec()));
     assert_eq!(read(&store, alpha, 8), None);
     assert_eq!(read(&store, alpha, 9), None);
@@ -299,7 +306,9 @@ fn empty_duplicate_and_foreign_commands_are_rejected_before_mutation() {
 
     assert!(matches!(
         first.execute(HomeCommand::new(first.home_revision().unwrap())),
-        Err(CommandError::EmptyCommand)
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::EmptyCommand
+        }
     ));
 
     let mut duplicate = HomeCommand::new(first.home_revision().unwrap());
@@ -309,14 +318,12 @@ fn empty_duplicate_and_foreign_commands_are_rejected_before_mutation() {
             PutBytes::<AlphaDomain>::new(1, b"one".to_vec()),
         ))
         .unwrap();
-    assert!(
-        duplicate
-            .add(alpha.contribution(
-                first.domain_revision(alpha).unwrap(),
-                PutBytes::<AlphaDomain>::new(2, b"two".to_vec()),
-            ))
-            .is_err()
-    );
+    assert!(duplicate
+        .add(alpha.contribution(
+            first.domain_revision(alpha).unwrap(),
+            PutBytes::<AlphaDomain>::new(2, b"two".to_vec()),
+        ))
+        .is_err());
 
     let mut foreign = HomeCommand::new(second.home_revision().unwrap());
     foreign
@@ -327,7 +334,9 @@ fn empty_duplicate_and_foreign_commands_are_rejected_before_mutation() {
         .unwrap();
     assert!(matches!(
         second.execute(foreign),
-        Err(CommandError::ForeignDomain { domain: "alpha" })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ForeignDomain { domain: "alpha" }
+        }
     ));
 }
 
@@ -375,6 +384,14 @@ impl DomainMutation<AlphaDomain> for CancelDuringValidation {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, AlphaDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BytesRecord<AlphaDomain>>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, AlphaDomain>,
@@ -405,7 +422,9 @@ impl DomainMutation<AlphaDomain> for ReentrantProbe {
             .unwrap();
         if !matches!(
             self.store.execute(nested),
-            Err(CommandError::ReentrantWriter)
+            beryl_home_store::CommandOutcome::NotCommitted {
+                evidence: CommandError::ReentrantWriter
+            }
         ) {
             return Err(FixtureMutationError::Rejected(
                 "nested writer did not reject reentrancy",
@@ -416,12 +435,22 @@ impl DomainMutation<AlphaDomain> for ReentrantProbe {
                 self.domain
                     .current_command(PutBytes::<AlphaDomain>::new(9, b"current inner".to_vec()))
             ),
-            Err(CommandError::ReentrantWriter)
+            beryl_home_store::CommandOutcome::NotCommitted {
+                evidence: CommandError::ReentrantWriter
+            }
         ) {
             return Err(FixtureMutationError::Rejected(
                 "nested current writer did not reject reentrancy",
             ));
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, AlphaDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BytesRecord<AlphaDomain>>(1)?;
         Ok(())
     }
 
@@ -450,7 +479,7 @@ fn commit_one<D: beryl_home_store::StorageDomain>(
             PutBytes::<D>::new(key, value),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
 }
 
 fn read<D: beryl_home_store::StorageDomain>(

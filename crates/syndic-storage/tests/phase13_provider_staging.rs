@@ -1,5 +1,4 @@
-use std::convert::Infallible;
-
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{CasItemId, CasThreadId, CasTurnId, SyndicContentId, SyndicItemId, SyndicTurnId};
 use syndic_storage::*;
 
@@ -100,16 +99,44 @@ fn prepare_next(
 fn stage_collect(
     prepared: &PreparedProviderFrame,
 ) -> (ProviderItemBuildRecord, Vec<ProviderFrameStageBatch>) {
+    let home = restart::TestHome::new("stage-collect");
+    let mut store = HomeStore::open(HomeOpenOptions::new(
+        home.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    match store.execute_current(storage.current_begin_provider_frame_build(prepared)) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean provider-frame build begin, got {outcome:?}"),
+    }
     let mut batches = Vec::new();
-    let final_build = stage_provider_frame(
+    let final_build = match stage_provider_frame(
         prepared,
         prepared.initial_build().clone(),
         &mut |batch: &ProviderFrameStageBatch| {
             batches.push(batch.clone());
-            Ok::<_, Infallible>(())
+            let mut command = HomeCommand::new(store.home_revision().unwrap());
+            command
+                .add(storage.stage_provider_frame_batch(
+                    storage.revision(&store).unwrap(),
+                    batch.clone(),
+                ))
+                .unwrap();
+            store.execute(command)
         },
     )
-    .unwrap();
+    .unwrap() {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            later_failure: None,
+            ..
+        } => value,
+        outcome => panic!("expected clean provider-frame staging, got {outcome:?}"),
+    };
     (final_build, batches)
 }
 
@@ -353,7 +380,7 @@ fn malformed_narrative_chain_and_resume_frontier_are_rejected() {
     let resume_error = stage_provider_frame(
         &delta,
         malformed_resume,
-        &mut |_batch: &ProviderFrameStageBatch| Ok::<_, Infallible>(()),
+        &mut |_batch: &ProviderFrameStageBatch| unreachable!("malformed resume must reject before staging"),
     )
     .unwrap_err();
     assert!(matches!(
@@ -380,17 +407,39 @@ fn malformed_narrative_chain_and_resume_frontier_are_rejected() {
 fn batch_state_classification_and_uncommitted_expected_retry_are_exact() {
     let text = "b".repeat(CONTENT_CHUNK_MAX_BYTES * (CONTENT_APPEND_MAX_CHUNKS + 2));
     let prepared = prepare_first(agent_start("batch-state", text), 10);
+    let home = restart::TestHome::new("batch-state");
+    let mut store = HomeStore::open(HomeOpenOptions::new(
+        home.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let stale_home_revision = store.home_revision().unwrap();
+    match store.execute_current(storage.current_begin_provider_frame_build(&prepared)) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean provider-frame build begin, got {outcome:?}"),
+    }
     let mut offered = None;
     let rejected = stage_provider_frame(
         &prepared,
         prepared.initial_build().clone(),
         &mut |batch: &ProviderFrameStageBatch| {
             offered = Some(batch.clone());
-            Err(std::io::Error::other("batch remained uncommitted"))
+            let mut command = HomeCommand::new(stale_home_revision);
+            command
+                .add(storage.stage_provider_frame_batch(
+                    storage.revision(&store).unwrap(),
+                    batch.clone(),
+                ))
+                .unwrap();
+            store.execute(command)
         },
     )
-    .unwrap_err();
-    assert!(matches!(rejected, ProviderFrameStageError::Callback(_)));
+    .unwrap();
+    assert!(matches!(rejected, ProviderFrameStageOutcome::NotCommitted { .. }));
 
     let offered = offered.unwrap();
     assert_eq!(
@@ -423,10 +472,24 @@ fn batch_state_classification_and_uncommitted_expected_retry_are_exact() {
         offered.expected_build().clone(),
         &mut |batch: &ProviderFrameStageBatch| {
             retried_first.get_or_insert_with(|| batch.clone());
-            Ok::<_, Infallible>(())
+            let mut command = HomeCommand::new(store.home_revision().unwrap());
+            command
+                .add(storage.stage_provider_frame_batch(
+                    storage.revision(&store).unwrap(),
+                    batch.clone(),
+                ))
+                .unwrap();
+            store.execute(command)
         },
     )
     .unwrap();
+    let ProviderFrameStageOutcome::Committed {
+        value: sealed,
+        later_failure: None,
+        ..
+    } = sealed else {
+        panic!("expected clean retry staging outcome, got {sealed:?}");
+    };
     assert_eq!(retried_first.as_ref(), Some(&offered));
     assert_eq!(sealed.lifecycle(), ProviderItemBuildLifecycle::Sealed);
 }

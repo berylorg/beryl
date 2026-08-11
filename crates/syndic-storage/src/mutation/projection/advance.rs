@@ -1,6 +1,6 @@
 mod finish;
 
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
     ItemProjectionBuildPhase, ItemProjectionBuildRecord, SyndicMutationError, codec::*,
@@ -142,6 +142,21 @@ impl DomainMutation<SyndicDomain> for AdvanceBuildMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ProjectionsCodec>(64)?;
+        reservation.reserve_records::<StableItemProjectionsCodec>(64)?;
+        reservation.reserve_records::<ItemProjectionsCodec>(64)?;
+        reservation.reserve_records::<ResourcesCodec>(64)?;
+        reservation.reserve_records::<ProjectionResourcesCodec>(64)?;
+        reservation.reserve_records::<ItemProjectionBuildsCodec>(1)?;
+        reservation.reserve_records::<ItemProjectionSetsCodec>(1)?;
+        reservation.reserve_records::<ItemProjectionHeadsCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

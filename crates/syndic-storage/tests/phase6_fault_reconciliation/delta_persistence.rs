@@ -54,7 +54,29 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
             .unwrap();
 
         faults.fail_next(point);
-        assert!(store.execute(command).is_err());
+        match (point, store.execute(command)) {
+            (
+                FaultPoint::BeforeCommit,
+                beryl_home_store::CommandOutcome::NotCommitted {
+                    evidence: CommandError::Commit { .. },
+                },
+            )
+            | (
+                FaultPoint::AfterPersist,
+                beryl_home_store::CommandOutcome::Committed {
+                    later_failure: Some(CommandError::Persistence { .. }),
+                    ..
+                },
+            ) => {}
+            (
+                FaultPoint::AfterCommitBeforePersist,
+                outcome @ beryl_home_store::CommandOutcome::Indeterminate {
+                    failure: CommandError::Persistence { .. },
+                    ..
+                },
+            ) => assert!(format!("{outcome:?}").contains("Indeterminate")),
+            (_, outcome) => panic!("unexpected live-event fault outcome: {outcome:?}"),
+        }
         assert_eq!(store.health().state(), HomeHealthState::Verifying);
         store.verify_health().unwrap();
         assert_eq!(

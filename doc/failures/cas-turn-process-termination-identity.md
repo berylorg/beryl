@@ -47,3 +47,14 @@ feature, backend package, app package, and the Phase 66 backend implementation
 boundary. Neither standalone command probing nor the reusable-id thread
 termination family can substitute for lifetime-stable process-instance
 identity.
+
+# Later Course Correction
+
+The admission of coarse `thread/backgroundTerminals/clean` above is superseded. Beryl now supports
+only exact soft interruption and does not invoke hard stop, individual command-process termination,
+or thread-wide background-terminal cleanup. A future cleanup capability requires both an exact safe
+target and meaningful completion evidence; request acceptance or a thread-wide effect is
+insufficient.
+
+The ABA and namespace evidence still explains why the pinned individual termination methods are
+unsafe. It no longer justifies broad cleanup as a fallback.

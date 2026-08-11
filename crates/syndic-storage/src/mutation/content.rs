@@ -1,4 +1,6 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
+};
 use beryl_model::{DomainRevision, DraftRevision, SyndicContentId, SyndicDraftId, SyndicThreadId};
 
 use crate::{
@@ -297,6 +299,14 @@ impl DomainMutation<SyndicDomain> for BeginContentMutation {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ContentManifestsCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, SyndicDomain>,
@@ -351,6 +361,19 @@ impl DomainMutation<SyndicDomain> for AppendContentMutation {
                 return Err(SyndicMutationError::ContentChunkConflict);
             }
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ContentChunksCodec>(self.append.chunks.len())?;
+        reservation.reserve_records::<ContentByteSpansCodec>(self.append.spans.len())?;
+        reservation
+            .reserve_records::<ContentTextSpansCodec>(self.append.text_spans.len().max(1))?;
+        reservation.reserve_records::<ContentPiecesCodec>(self.append.pieces.len().max(1))?;
+        reservation.reserve_records::<ContentManifestsCodec>(1)?;
         Ok(())
     }
 
@@ -424,6 +447,17 @@ impl DomainMutation<SyndicDomain> for PublishDraftMutation {
         }
         let manifest = required::<ContentManifestsFamily>(reader, &self.update.content_id)?;
         validate_publishable(&manifest, self.update.content_summary)?;
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ContentManifestsCodec>(1)?;
+        reservation.reserve_records::<DraftsCodec>(1)?;
+        reservation.reserve_records::<DraftByThreadCodec>(1)?;
+        reservation.reserve_records::<HistorySummariesCodec>(1)?;
         Ok(())
     }
 

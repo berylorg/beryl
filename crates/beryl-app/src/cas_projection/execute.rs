@@ -241,11 +241,6 @@ impl CasProjectionCoordinator {
                     },
                 );
             }
-            ExistingLease::Quarantined => {
-                return Err(ProjectionExecutionError::ReacquisitionInProgress {
-                    thread_id: source.binding().cas_thread_id().clone(),
-                });
-            }
             ExistingLease::AnotherOwner { existing_owner } => {
                 return Err(ProjectionCoordinatorError::CasThreadOwnerCollision {
                     runtime_id: session.runtime_id(),
@@ -317,11 +312,6 @@ impl CasProjectionCoordinator {
                         thread_id: source.binding().cas_thread_id().clone(),
                     },
                 );
-            }
-            ExistingLease::Quarantined => {
-                return Err(ProjectionExecutionError::ReacquisitionInProgress {
-                    thread_id: source.binding().cas_thread_id().clone(),
-                });
             }
             ExistingLease::AnotherOwner { existing_owner } => {
                 return Err(ProjectionCoordinatorError::CasThreadOwnerCollision {

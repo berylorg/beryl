@@ -1,7 +1,8 @@
 # Goals
 
-Prevent externally supplied, durable, decoded, rendered, or queued data from causing runaway
-memory, GPU, or background-work growth in the parts of Beryl that handle substantial payloads.
+Prevent externally supplied, durable, decoded, rendered, or queued data from causing unbounded
+monotonic memory, GPU, or background-work accumulation in the parts of Beryl that handle
+substantial payloads.
 
 Keep the CAS-to-Syndic-to-Beryl-to-renderer path responsive through practical paging, streaming,
 virtualization, cache budgets, queue limits, and concurrency limits.
@@ -11,7 +12,8 @@ of every allocation made by Beryl or its dependencies.
 
 ## Non-goals
 
-- Proving that total process memory is independent of every logical input size.
+- Proving a global RSS theorem or that total process memory is independent of every logical input
+  size.
 - Accounting for allocator metadata, ordinary structs, paths, handles, dependency bookkeeping, or
   every temporary allocation.
 - Requiring one process-wide resource governor, typed allocation capabilities, structural-slot
@@ -19,20 +21,25 @@ of every allocation made by Beryl or its dependencies.
 - Requiring every allocation to be predicted or rejected before it occurs.
 - Hiding an unavoidable whole-value allocation inside CAS, GPUI, the operating system, or another
   dependency.
+- Governing CAS process memory, allocator internals, or GPU-driver allocations outside Beryl's
+  owned API and buffer boundaries.
 - Treating physical transport, storage, parser, or renderer chunks as semantic product records.
 
 # Decisions
 
-## Risk-Based Scope
+## Beryl-Owned Risk Boundaries
 
-- Hard resource rules apply at boundaries with a moderate or high chance of large amplification or
-  accumulation:
+- Hard resource rules apply only where Beryl owns a boundary with a moderate or high chance of
+  large amplification or accumulation:
   - CAS ingress and normalization before Syndic capture;
   - Beryl-to-CAS request and recovery-context projection;
   - Syndic and Beryl-home durable reads into application memory;
   - transcript and editor working sets passed toward GPUI;
   - image, media, decompression, parsing, shaping, and GPU upload;
   - queues, caches, concurrent workers, windows, and retained pages whose count can grow.
+- CAS internals, allocator behavior, GPU-driver residency, and dependency-private global memory are
+  outside these rules. Beryl bounds only its own inputs, buffers, queues, caches, pages, uploads,
+  and concurrent work around those dependencies.
 - Small control records, ordinary object graphs, path storage, fixed metadata, allocator overhead,
   and dependency-private bookkeeping do not require exact byte accounting.
 - A boundary may use a hard byte limit, item limit, page limit, concurrency limit, cache budget, or
@@ -55,6 +62,18 @@ of every allocation made by Beryl or its dependencies.
   owning semantic contract.
 - Caches have coarse byte or item budgets and observable eviction. Several subsystem budgets may
   coexist; no cache or package becomes universal process-memory authority.
+- Every named Beryl-owned queue, cache, retained-page set, staged payload set, and worker pool has a
+  configured local cap plus release or eviction behavior. Repeating completed operations must not
+  cause unbounded monotonic accumulation at that boundary.
+- Each configured cap defines its exact admission or reservation point, every permitted ownership
+  transfer, its eviction behavior when eviction is valid, and release on every completion,
+  cancellation, failure, supersession, disposal, and generation-loss path. A transfer moves the
+  existing charge; it never duplicates or temporarily forgets that charge.
+- The core working-set invariant explicitly covers editor and transcript resident windows,
+  admitted media decoders, reserved and cached CPU thumbnail/tile surfaces, upload-staging buffers
+  and bytes, and Beryl-owned GPU textures. Each uses its exact configured item, byte, and/or
+  concurrency caps; admission reserves capacity before work begins, and cancellation, supersession,
+  completion, eviction, window release, and device loss release the capacity owned by that state.
 - Canonical conversation or user content is never silently truncated to satisfy a resource limit.
   A boundary either preserves exact bytes through bounded pieces or reports an explicit failure or
   unavailable state. Diagnostic excerpts and other declared non-authoritative projections may be
@@ -129,8 +148,9 @@ of every allocation made by Beryl or its dependencies.
 
 ## Syndic To Transcript Presentation
 
-- Transcript activation and scrolling request revision-bound pages around the selected viewport.
-  The host retains a configured visible working set plus modest overscan and evicts obsolete pages.
+- Transcript activation and scrolling request revision-bound pages and only the indexed source-byte
+  or resource ranges needed around the selected viewport. The host retains a configured visible
+  working set plus modest overscan and evicts obsolete pages.
 - Live text deltas use bounded queues and bounded transient coalescing. Durable reconciliation
   prevents the live suffix from becoming a second permanent copy of the response.
 - Activity, catalog, lineage, model, and history collections remain paged when their logical count
@@ -145,9 +165,9 @@ of every allocation made by Beryl or its dependencies.
 - GPUI receives only the realized transcript frame, bounded overscan, and explicitly retained
   nested-widget data. Scrolling does not accumulate one element, measurement, or shaped line per
   visited record.
-- Large text records are divided into stable presentation ranges before Markdown parsing, syntax
-  work, line layout, or `SharedString` construction would create an unreasonable whole-record
-  working set.
+- Large text records expose indexed source-byte ranges, and Beryl retains only the ranges needed
+  for the realized frame and bounded overscan before presentation adaptation, syntax work, line
+  layout, or `SharedString` construction would create an unreasonable whole-record working set.
 - Markdown, code, tables, logs, and accessibility projections have practical per-record or
   per-window work limits. Optional decoration may degrade explicitly while canonical durable text
   remains available.
@@ -160,8 +180,10 @@ of every allocation made by Beryl or its dependencies.
   frame, decoded-byte, upload, and texture-cache limits prevent decompression bombs and accidental
   full-resolution presentation.
 - Original media remains file-, sidecar-, or storage-backed. Transcript and preview surfaces use
-  bounded thumbnails, tiles, or an explicit unavailable state rather than decoding an arbitrary
-  original merely to downscale it.
+  bounded thumbnails, tiles, or an explicit unavailable state. Full media bytes, decode work, and
+  GPU upload are never retained speculatively or acquired merely to downscale an arbitrary
+  original. Only needed source byte ranges, decode work, and GPU upload are acquired on demand for
+  the visible or explicitly requested range.
 - CPU media caches and GPU texture caches use coarse process-level budgets with eviction and
   high-water diagnostics. Shared immutable resources may be reused across windows.
 - File hashing, save, export, and upload stream when practical. Clipboard operations that require
@@ -170,8 +192,12 @@ of every allocation made by Beryl or its dependencies.
 
 ## Editors And User-Created Collections
 
-- Drafts may be durably chunked and presented through a range-backed editor so very large content
-  need not be duplicated across storage, app state, undo, and rendering.
+- Logically unbounded drafts are durably chunked and presented through revision-bound range and
+  page sources. Editor activation, app state, undo, autosave, and rendering never require a whole-
+  draft resident value or proportional duplicate.
+- Draft image-marker metadata remains paged or range-indexed. An editor realizes only the marker
+  pages needed for its current ranges plus configured overscan; it does not materialize every
+  marker merely because the draft is open.
 - Undo, history, autosave staging, image markers, and navigation histories use practical count or
   byte limits. Limits protect the working set without redefining the durable logical content.
 - Window, popup, preview, background-session, and worker counts have explicit generous caps where
@@ -200,16 +226,21 @@ of every allocation made by Beryl or its dependencies.
   cancellation reports cancellation observations and outcomes.
 - OS process memory and renderer-resource counters are observational evidence, not exact
   reconciliation against every Beryl allocation.
-- Stress tests focus on the major risk paths:
+- Verification is factored by named Beryl-owned boundary. Each boundary proves its configured cap,
+  over-limit behavior, repeated-operation release or eviction, cancellation/closure behavior, and
+  non-monotonic steady state with representative inputs:
   - large and fragmented CAS provider payloads captured into Syndic;
   - large drafts and recovery contexts sent toward CAS;
   - repeated and deep Syndic history reads into Beryl;
   - long transcript scrolling and live-delta reconciliation;
   - large or adversarial image/media inputs;
   - full queues, cache churn, many windows, and bounded worker concurrency.
-- Tests verify that these paths remain within their configured working-set intent, apply
-  backpressure or explicit failure, release reusable capacity, and do not grow without bound when
-  operations repeat. They do not require exact allocator-byte equality.
+- Cross-boundary tests cover only the interface invariants that composition can violate, such as
+  exact ordering, backpressure propagation, cancellation, and ownership transfer. Verification
+  does not construct a combinatorial cross-product of payload sizes, queues, caches, windows,
+  renderers, media, and failures.
+- Tests do not require exact allocator-byte equality, CAS process accounting, GPU-driver residency
+  accounting, or a global RSS ceiling.
 - Reviews and source scans target unbounded channels, whole-history collections, obvious
   clone-heavy bulk payloads, unrestricted decode/layout expansion, and caches without eviction at
   the named risk boundaries. They do not reject every `Vec`, `String`, `PathBuf`, iterator, or

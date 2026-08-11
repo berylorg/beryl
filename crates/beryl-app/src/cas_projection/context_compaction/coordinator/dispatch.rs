@@ -151,9 +151,10 @@ impl ContextCompactionCoordinator {
         let before = self.read_operation(local.operation_id)?;
         let request =
             ClaimCompactionDispatch::new(local.operation_id, before.revision(), local.attempt);
-        let _ = self
-            .home
-            .execute_current(self.storage.current_claim_compaction_dispatch(request));
+        require_committed_command(
+            self.home
+                .execute_current(self.storage.current_claim_compaction_dispatch(request)),
+        )?;
         let after = self.read_operation(local.operation_id)?;
         if after.dispatch_claim().is_none()
             || after.attempt() != local.attempt

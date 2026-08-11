@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     sync::{
         Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -16,51 +15,27 @@ use super::{
     PersistentFailureNotification, ProjectionServiceGeneration,
 };
 #[cfg(test)]
-use crate::cas_projection::connection::{
-    PersistentFailureTargetGuardDisposition, PersistentFailureTargetIneligibility,
-};
+use crate::cas_projection::connection::PersistentFailureTargetIneligibility;
 use crate::cas_projection::{
-    LoadedCasProjection, SameNativeReacquisitionAnchor,
+    LoadedCasProjection,
     connection::{
-        CleanupFailureTransfer, ConnectionPromotionReservation, FailureRetainedCleanupOwner,
-        FailureRetainedPromotionReservation, FailureRetainedRawLoadedLease,
-        FailureRetainedRawQuarantinedAnchor, FailureRetainedRawReacquisitionReservation,
         PersistentFailureCompletion, PersistentFailureDriverResult,
-        PersistentFailureNoDispatchReason, PersistentFailureTargetWitness, ProjectionConnection,
-        PromotionFailureTransfer,
+        PersistentFailureInterruptDisposition, PersistentFailureNoDispatchReason,
+        ProjectionConnection,
     },
     stop::StopCoordinator,
 };
 
-mod recovery;
-
-#[cfg(test)]
-mod test_support;
-
-pub(in crate::cas_projection) use recovery::{
-    PendingProjectionAdoptionCheckout, PersistentFailureAdoptionFence,
-    PersistentFailureAdoptionFenceRetirementError, PersistentFailureAdoptionRetirementWitness,
-};
-
-pub(in crate::cas_projection::persistent_failure) use recovery::{
-    PendingProjectionTerminalDispositionFence, PersistentFailureRecoveryDrain,
-    PersistentFailureRecoveryDrainError, PersistentFailureTerminalDispositionCoordinatorWitness,
-    PersistentFailureTerminalDispositionDrain,
-};
-
 mod lifecycle;
-mod retainer;
+mod terminal_disposer;
 mod types;
 mod worker;
 
 use types::*;
 pub(in crate::cas_projection) use types::{
-    PersistentFailureCoordinator, PersistentFailureProjectionRetainer,
+    PersistentFailureCoordinator, PersistentFailureTerminalDisposer,
 };
 pub use types::{
-    PersistentFailureCutSnapshot, PersistentFailureCutState,
-    PersistentFailureRecoveryInventoryCounts,
-};
-pub(in crate::cas_projection::persistent_failure) use types::{
-    PersistentFailureRecoveryInventoryObservation, PersistentFailureRetainedTarget,
+    PersistentFailureCutCompletion, PersistentFailureCutSnapshot, PersistentFailureCutState,
+    PersistentFailureTerminalEvidence,
 };

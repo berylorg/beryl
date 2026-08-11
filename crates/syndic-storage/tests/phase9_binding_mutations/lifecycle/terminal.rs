@@ -18,11 +18,11 @@ fn activation_cancellation_rejects_any_published_cas_turn() {
         fixture.snapshot,
         fixture.turn,
     );
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         &store,
         storage.cancel_binding_activation(storage.revision(&store).unwrap(), cancellation),
     )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingStateConflict
@@ -46,11 +46,11 @@ fn active_terminal_requires_the_exact_published_cas_turn() {
         TurnTerminalOutcome::Complete,
         timestamp(5),
     );
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), source_less),
     )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceIdentityConflict
@@ -195,11 +195,11 @@ fn active_terminal_requires_the_exact_published_cas_turn() {
         beryl_model::CasConversationToolProfile::v1([0x3c; 32]),
         continuation.lineage(),
     );
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), changed_profile),
     )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingStateConflict
@@ -259,7 +259,13 @@ fn active_terminal_requires_the_exact_published_cas_turn() {
     command
         .add(storage.fixture_contribution(storage.revision(&reopened).unwrap(), corruption))
         .unwrap();
-    reopened.execute(command).unwrap();
+    match reopened.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed terminal corruption, got {outcome:?}"),
+    }
     reopened.close().unwrap();
 
     let mut rejected = open(home.path());

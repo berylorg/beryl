@@ -1,6 +1,6 @@
 use beryl_home_store::{
-    CommandBuildError, CommandError, CommitReceiptError, HomeCommand, HomeHealthState, HomeStore,
-    ReadError,
+    CommandBuildError, CommandError, CommandOutcome, CommitReceipt, CommitReceiptError,
+    HomeCommand, HomeHealthState, HomeStore, ReadError, ReconciliationDescriptor,
 };
 use beryl_model::DomainRevision;
 use syndic_storage::{
@@ -72,8 +72,20 @@ pub enum DraftSaveExecutionFailure {
     ContentPreparation(#[source] SyndicRecordError),
     #[error("home command construction failed: {0}")]
     CommandBuild(#[source] CommandBuildError),
-    #[error("home command failed: {0}")]
-    Command(#[source] CommandError),
+    #[error("home command was proven not committed: {0}")]
+    CommandNotCommitted(#[source] CommandError),
+    #[error("home command committed before a later failure: {later_failure}")]
+    CommandCommitted {
+        receipt: CommitReceipt,
+        #[source]
+        later_failure: CommandError,
+    },
+    #[error("home command has an indeterminate durable outcome: {failure}")]
+    CommandIndeterminate {
+        #[source]
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
     #[error("successful receipt was not current: {0}")]
     Receipt(#[source] CommitReceiptError),
     #[error("successful receipt omitted or misreported the Syndic domain revision")]
@@ -229,9 +241,28 @@ fn execute_auxiliary_command(
                 DraftSaveExecutionFailure::CommandBuild(error),
             ))
         })?;
-    let receipt = store
-        .execute(command)
-        .map_err(|error| Box::new(classify_command_error(request, error)))?;
+    let (receipt, later_failure) = match store.execute(command) {
+        CommandOutcome::NotCommitted { evidence } => {
+            return Err(Box::new(classify_not_committed(request, evidence)));
+        }
+        CommandOutcome::Committed {
+            receipt,
+            later_failure,
+        } => (receipt, later_failure),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            return Err(Box::new(suspended(
+                request,
+                DraftSuspensionCause::AmbiguousStorageFailure,
+                DraftSaveExecutionFailure::CommandIndeterminate {
+                    failure,
+                    reconciliation,
+                },
+            )));
+        }
+    };
     if receipt.generation() != request.binding().home_generation() {
         return Err(Box::new(suspended(
             request,
@@ -253,6 +284,16 @@ fn execute_auxiliary_command(
             request,
             DraftSuspensionCause::AmbiguousStorageFailure,
             DraftSaveExecutionFailure::ReceiptInvariant,
+        )));
+    }
+    if let Some(later_failure) = later_failure {
+        return Err(Box::new(suspended(
+            request,
+            DraftSuspensionCause::AmbiguousStorageFailure,
+            DraftSaveExecutionFailure::CommandCommitted {
+                receipt,
+                later_failure,
+            },
         )));
     }
     Ok(())
@@ -292,9 +333,27 @@ fn execute_update(
             DraftSaveExecutionFailure::CommandBuild(error),
         );
     }
-    let receipt = match store.execute(command) {
-        Ok(receipt) => receipt,
-        Err(error) => return classify_command_error(request, error),
+    let (receipt, later_failure) = match store.execute(command) {
+        CommandOutcome::NotCommitted { evidence } => {
+            return classify_not_committed(request, evidence);
+        }
+        CommandOutcome::Committed {
+            receipt,
+            later_failure,
+        } => (receipt, later_failure),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            return suspended(
+                request,
+                DraftSuspensionCause::AmbiguousStorageFailure,
+                DraftSaveExecutionFailure::CommandIndeterminate {
+                    failure,
+                    reconciliation,
+                },
+            );
+        }
     };
     if receipt.generation() != request.binding().home_generation() {
         return suspended(
@@ -331,7 +390,12 @@ fn execute_update(
         Ok(revision) => DraftSaveExecution {
             token: request.token(),
             outcome: DraftSaveOutcome::Committed { revision },
-            failure: None,
+            failure: later_failure.map(|later_failure| {
+                DraftSaveExecutionFailure::CommandCommitted {
+                    receipt,
+                    later_failure,
+                }
+            }),
         },
         Err(_) => suspended(
             request,
@@ -347,17 +411,17 @@ fn matches_request(current: &SyndicCurrentDraft, request: &DraftSaveRequest) -> 
         && current.draft().revision() == request.expected_revision()
 }
 
-fn classify_command_error(request: &DraftSaveRequest, error: CommandError) -> DraftSaveExecution {
-    let outcome = command_error_outcome(&error);
+fn classify_not_committed(request: &DraftSaveRequest, evidence: CommandError) -> DraftSaveExecution {
+    let outcome = not_committed_outcome(&evidence);
     DraftSaveExecution {
         token: request.token(),
         outcome,
-        failure: Some(DraftSaveExecutionFailure::Command(error)),
+        failure: Some(DraftSaveExecutionFailure::CommandNotCommitted(evidence)),
     }
 }
 
-fn command_error_outcome(error: &CommandError) -> DraftSaveOutcome {
-    match error {
+fn not_committed_outcome(evidence: &CommandError) -> DraftSaveOutcome {
+    match evidence {
         CommandError::CancelledBeforeAdmission => {
             DraftSaveOutcome::KnownUnchanged(DraftKnownUnchanged::CancelledBeforeAdmission)
         }

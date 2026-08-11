@@ -1,4 +1,4 @@
-use beryl_home_store::{HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{
     CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasNativeTurnCount,
     CasProcessGeneration, CasThreadId, CasTurnId, SyndicDraftId, SyndicExecutionSnapshotId,
@@ -72,7 +72,13 @@ pub fn pending_home(name: &str, value: u64) -> RecoveryHome {
 pub fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean phase-63 fixture command, got {outcome:?}"),
+    }
 }
 
 pub fn loaded_generation() -> CasLoadedSessionGeneration {

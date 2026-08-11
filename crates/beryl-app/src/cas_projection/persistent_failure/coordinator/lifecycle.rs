@@ -15,7 +15,7 @@ impl PersistentFailureCoordinator {
             crate::cas_projection::service_registry::ProjectionServiceConnectionRegistry,
         >,
     ) -> Result<Self, std::io::Error> {
-        Self::start_with_startup_gate(
+        Self::start_with_initial_start(
             home,
             home_id,
             home_generation,
@@ -25,12 +25,12 @@ impl PersistentFailureCoordinator {
             receiver,
             stop_coordinator,
             connections,
-            crate::cas_projection::service_startup::ServiceStartupGate::open_gate(),
+            crate::cas_projection::initial_start::InitialStartGate::ready(),
         )
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::cas_projection) fn start_with_startup_gate(
+    pub(in crate::cas_projection) fn start_with_initial_start(
         home: Arc<HomeStore>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
@@ -42,7 +42,7 @@ impl PersistentFailureCoordinator {
         connections: Arc<
             crate::cas_projection::service_registry::ProjectionServiceConnectionRegistry,
         >,
-        startup: Arc<crate::cas_projection::service_startup::ServiceStartupGate>,
+        initial_start: Arc<crate::cas_projection::initial_start::InitialStartGate>,
     ) -> Result<Self, std::io::Error> {
         let stop_requested = Arc::new(AtomicBool::new(false));
         let state = Arc::new((
@@ -50,19 +50,9 @@ impl PersistentFailureCoordinator {
                 phase: PersistentFailureCutState::Armed,
                 failure_generation: None,
                 target_count: 0,
-                retained_connections: Vec::new(),
-                retained_results: Vec::new(),
-                retained_projections: Vec::new(),
-                retained_target_projections: Vec::new(),
-                retained_reacquisition_anchors: Vec::new(),
-                retained_raw_loaded_leases: Vec::new(),
-                retained_raw_quarantined_anchors: Vec::new(),
-                retained_raw_reacquisition_reservations: Vec::new(),
-                retained_promotion_reservations: Vec::new(),
-                retained_cleanup_owners: Vec::new(),
-                sealed_counts: None,
-                late_publication_count: 0,
-                pending_quarantine: PendingQuarantineStage::Available,
+                proven_nondispatch_count: 0,
+                possible_dispatch_count: 0,
+                disposed_projection_count: 0,
             }),
             Condvar::new(),
         ));
@@ -81,7 +71,7 @@ impl PersistentFailureCoordinator {
         let handle = std::thread::Builder::new()
             .name("beryl-persistent-failure-cut".to_owned())
             .spawn(move || {
-                if startup.wait() {
+                if initial_start.wait() {
                     super::worker::run_worker(receiver, context);
                 }
             })?;
@@ -109,156 +99,18 @@ impl PersistentFailureCoordinator {
             service_generation: self.service_generation,
             failure_generation: state.failure_generation,
             target_count: state.target_count,
-            retained_projection_count: state
-                .retained_projections
-                .len()
-                .checked_add(state.retained_target_projections.len())
-                .and_then(|count| count.checked_add(state.retained_reacquisition_anchors.len()))
-                .and_then(|count| count.checked_add(state.retained_raw_loaded_leases.len()))
-                .and_then(|count| count.checked_add(state.retained_raw_quarantined_anchors.len()))
-                .and_then(|count| {
-                    count.checked_add(state.retained_raw_reacquisition_reservations.len())
-                })
-                .expect("retained projection allocations fit the process address space"),
-            retained_promotion_count: state.retained_promotion_reservations.len(),
-            retained_cleanup_count: state.retained_cleanup_owners.len(),
+            proven_nondispatch_count: state.proven_nondispatch_count,
+            possible_dispatch_count: state.possible_dispatch_count,
+            disposed_projection_count: state.disposed_projection_count,
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn retained_loaded_projection_counts_for_test(
-        &self,
-    ) -> (usize, usize) {
-        let state = self
-            .state
-            .0
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        (
-            state.retained_projections.len(),
-            state.retained_raw_loaded_leases.len(),
-        )
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn retained_reacquisition_anchor_counts_for_test(
-        &self,
-    ) -> (usize, usize) {
-        let state = self
-            .state
-            .0
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        (
-            state.retained_reacquisition_anchors.len(),
-            state.retained_raw_quarantined_anchors.len(),
-        )
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection::persistent_failure) fn orphan_one_retained_promotion_for_test(
-        &self,
-    ) -> bool {
-        let mut state = self
-            .state
-            .0
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        assert_eq!(state.phase, PersistentFailureCutState::Finished);
-        assert!(state.sealed_counts.is_none());
-        state.retained_promotion_reservations.pop().is_some()
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection::persistent_failure) fn orphan_one_retained_connection_for_test(
-        &self,
-    ) -> bool {
-        let mut state = self
-            .state
-            .0
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        assert_eq!(state.phase, PersistentFailureCutState::Finished);
-        assert!(state.sealed_counts.is_none());
-        state.retained_connections.pop().is_some()
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection::persistent_failure) fn orphan_one_retained_target_result_for_test(
-        &self,
-    ) -> bool {
-        let mut state = self
-            .state
-            .0
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        assert_eq!(state.phase, PersistentFailureCutState::Finished);
-        assert!(state.sealed_counts.is_none());
-        state.retained_results.pop().is_some()
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection::persistent_failure) fn corrupt_one_target_disposition_for_test(
-        &self,
-    ) -> bool {
-        let (witness, connections) = {
-            let state = self
-                .state
-                .0
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner());
-            assert_eq!(state.phase, PersistentFailureCutState::Finished);
-            assert!(state.sealed_counts.is_none());
-            let Some(target) = state.retained_results.first() else {
-                return false;
-            };
-            (target.witness.clone(), state.retained_connections.clone())
-        };
-        let Some(connection) = connections
-            .iter()
-            .find(|connection| connection.identity_observation() == witness.connection())
-        else {
-            return false;
-        };
-        let Ok(observation) = witness.observe_guard(connection) else {
-            return false;
-        };
-        let mismatched = match observation.disposition() {
-            PersistentFailureTargetGuardDisposition::Frozen => {
-                PersistentFailureDriverResult::NoDispatch(
-                    PersistentFailureNoDispatchReason::RandomUnavailable,
-                )
-            }
-            PersistentFailureTargetGuardDisposition::Spent => {
-                PersistentFailureDriverResult::NoDispatch(
-                    PersistentFailureNoDispatchReason::Router(
-                        PersistentFailureTargetIneligibility::RouterUnavailable,
-                    ),
-                )
-            }
-        };
-        let mut state = self
-            .state
-            .0
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        let Some(target) = state
-            .retained_results
-            .iter_mut()
-            .find(|target| target.witness == witness)
-        else {
-            return false;
-        };
-        target.result = mismatched;
-        true
-    }
-
-    pub(in crate::cas_projection) fn projection_retainer(
+    pub(in crate::cas_projection) fn terminal_disposer(
         &self,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
-    ) -> PersistentFailureProjectionRetainer {
-        PersistentFailureProjectionRetainer {
+    ) -> PersistentFailureTerminalDisposer {
+        PersistentFailureTerminalDisposer {
             home_id,
             home_generation,
             notification: self.notification.clone(),
@@ -282,52 +134,16 @@ impl PersistentFailureCoordinator {
         Ok(())
     }
 
-    pub(in crate::cas_projection::persistent_failure) fn seal_retention(
+    pub(in crate::cas_projection) fn dispose_terminal_authority(
         &self,
-    ) -> Result<PersistentFailureRecoveryInventoryCounts, ()> {
-        let mut state = self.state.0.lock().map_err(|_| ())?;
-        if state.phase != PersistentFailureCutState::Finished || state.sealed_counts.is_some() {
+        identity: PersistentFailureCutIdentity,
+    ) -> Result<(), ()> {
+        let state = self.state.0.lock().map_err(|_| ())?;
+        if state.failure_generation != Some(identity.failure_generation)
+            || self.service_generation != identity.service_generation
+        {
             return Err(());
         }
-        let counts = state.recovery_inventory_counts();
-        state.sealed_counts = Some(counts);
-        Ok(counts)
-    }
-
-    pub(in crate::cas_projection::persistent_failure) fn recovery_inventory_observation(
-        &self,
-    ) -> PersistentFailureRecoveryInventoryObservation {
-        match self.state.0.lock() {
-            Ok(state) => PersistentFailureRecoveryInventoryObservation {
-                retained_counts: state.recovery_inventory_counts(),
-                late_publication_count: state.late_publication_count,
-                retention_poisoned: false,
-                pending_quarantine_available: state.pending_quarantine.is_available(),
-            },
-            Err(poison) => {
-                let state = poison.into_inner();
-                PersistentFailureRecoveryInventoryObservation {
-                    retained_counts: state.recovery_inventory_counts(),
-                    late_publication_count: state.late_publication_count,
-                    retention_poisoned: true,
-                    pending_quarantine_available: state.pending_quarantine.is_available(),
-                }
-            }
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection::persistent_failure) fn poison_recovery_inventory_retention_for_test(
-        &self,
-    ) {
-        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _state = self
-                .state
-                .0
-                .lock()
-                .expect("retention state starts unpoisoned");
-            panic!("poison retained capability state for inventory test");
-        }));
-        assert!(panicked.is_err());
+        Ok(())
     }
 }

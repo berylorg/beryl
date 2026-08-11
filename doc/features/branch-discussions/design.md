@@ -16,112 +16,155 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 
 ## Supplemental Material
 
-- `gui.md` is the normative supplemental GUI composition file for the in-transcript discussion-context record and composer-adjacent discussion status strip.
+- [`gui.md`](gui.md) is the normative supplemental GUI composition file for the in-transcript discussion-context record and composer-adjacent discussion status strip.
 - Internal provenance, queue, idempotency, and recovery behavior are defined in `doc/systems/branch-discussion-handoff/design.md`.
 - CAS projection of selected context is defined in `doc/systems/cas-live-syndic-transcript/design.md`.
 
 ## Discuss In New Branch
 
 - A stable rendered assistant-text selection from a finalized reply exposes `Discuss in new branch` alongside Quote.
-- Activating it creates a new durable Syndic discussion thread and switches the invoking window to that exact thread through ordinary activation.
-- The discussion's first current draft owns an immutable context envelope containing the exact
-  selected text plus source turn, item, finalized projection revision, and selected-range
-  provenance. Drafts have no generic parent field; the envelope source is the explicit branch
-  point.
-- The discussion thread separately owns the exact parent Syndic thread id used for eventual handoff.
-- Creation performs no CAS request and runs no model.
-- Selected context longer than the approved 65,536-byte UTF-8 limit is rejected before thread creation and the source selection remains intact.
-- The new discussion is an ordinary catalog thread with lineage, title behavior, runtime/root binding, durable draft, navigation history, and exclusive window claim.
+- Activating it captures one creation request containing the exact selected UTF-8 bytes and their
+  exact source provenance. That request preserves the captured bytes and provenance through
+  pending and reconciliation instead of recapturing a later selection. Creation performs no model
+  request.
+- While creation is pending, the command remains visibly busy and cannot be activated again. The
+  invoking window stays on the source thread with the exact selection intact while creation is
+  classified as proven success, proven noncommit, or terminally unavailable.
+- An indeterminate durable outcome changes the command to a visible reconciling state. Duplicate
+  activation remains suppressed while Beryl classifies that exact request.
+- A proven creation success first creates exactly one durable ordinary discussion thread that is
+  discoverable through the catalog, then requests ordinary activation of that exact thread. The
+  discussion preserves the source thread as its handoff destination and the exact selected passage
+  as immutable historical context with its assistant provenance.
+- Successful activation switches the invoking window to that discussion exactly once. If activation
+  has a proven ordinary failure after durable creation, the source thread and its exact selection
+  remain coherent, the created discussion remains discoverable, and the failure exposes `Retry`.
+  Retry activates that same discussion through the ordinary activation path; it never repeats
+  creation or creates a substitute discussion. A terminally unavailable activation follows the
+  conversation-thread mutation contract and exposes no activation retry.
+- A proven noncommit or ordinary creation failure leaves the source thread current, preserves the
+  exact selection, reports the failure, and creates no discussion. Reconciliation never creates a
+  second branch for the same request or switches to a substitute thread.
+- A creation `Collision` instead makes that exact request terminally `Unavailable`. It neither
+  reports a created discussion nor claims that none was created, and it keeps the coherent source
+  thread, exact selected bytes and provenance, and local outcome evidence intact. The command stays
+  unavailable and the exact creation request can never be repeated. Its persistent bounded
+  explanation points only to established same-home recovery and bounded diagnostic reporting; it
+  exposes no creation retry, resubmission, rollback, or manual repair command. Unrelated source-
+  thread and discussion work remains available when otherwise healthy.
+- Selected context longer than the approved 65,536-byte UTF-8 limit is rejected before creation;
+  the source thread and selection remain intact.
+- The new discussion follows ordinary catalog, lineage, title, runtime/root, navigation, composer,
+  and exclusive-window behavior.
 
 ## Context Presentation
 
 - The selected context appears as one readonly synthetic context item in the discussion thread's transcript presentation.
 - The item is positioned at the branch boundary immediately after the source turn and before the first branch-local submitted turn. It is the first branch-local presentation item, not necessarily the first item in inherited history.
-- The item derives from the immutable context/provenance envelope. It is not a Syndic turn, does not change DAG parentage or turn counts, and is never projected to CAS as transcript input.
-- The context item scrolls, anchors, virtualizes, and remeasures with the transcript instead of reserving fixed window space. Large selected passages use the transcript's existing bounded chunk presentation.
+- The item is not a user-authored or assistant-authored transcript turn and does not change visible turn counts.
+- The context item scrolls and anchors with the transcript instead of reserving fixed window space. Large selected passages remain usable through the transcript's bounded presentation behavior.
 - The context remains selectable and copyable but cannot be edited, quoted as if it were a transcript message, branched again, or targeted by ordinary turn actions.
 - Missing or invalid provenance never causes Beryl to substitute similar transcript text. The stable branch-boundary item shows an explicit unavailable-context state while preserving the discussion thread.
 - Later replacement or divergence in the parent thread does not remove or invalidate an already admitted discussion context. The recorded parent thread remains the handoff destination while the quoted source turn remains immutable historical context.
-- Replacing the discussion's first submitted input likewise does not remove or relocate the synthetic context item; its stable context-owner identity remains durable even when that original first turn is no longer on the discussion's selected path.
+- Replacing the discussion's first submitted input likewise does not remove or relocate the synthetic context item, even when the original first turn is no longer on the discussion's selected path.
 
 ## Discussion Status
 
-- Every selected branch-discussion thread shows one fixed-height discussion status strip immediately above the composer and below any visible activity panel.
-- The strip remains mounted for the complete branch-discussion lifecycle so resolution state changes do not move or resize the composer.
-- Its states are `Open`, `Resolution pending`, `Handing off`, `Handoff failed`, and `Archived`.
+- Every selected branch-discussion thread shows one discussion status surface for the complete
+  branch-discussion lifecycle.
+- Its states are `Open`, `Resolution pending`, `Handing off`, `Handoff failed`, `Unavailable`, and
+  `Archived`.
 - `Open` means discussion input remains allowed subject to ordinary composer gates. A deferred resolution tool call caused by queued input leaves the strip in `Open`.
 - `Resolution pending` begins when resolution intent is admitted and remains while the resolving turn or parent eligibility is pending. `Handing off` means the exact parent handoff turn is active.
-- `Handoff failed` represents either a retryable failure with the same admitted job still live or a terminally failed attempt. `Retry handoff` appears only for the live retryable job. `Archived` begins only after successful parent handoff and durable archive publication.
-- `Resolution pending`, `Handing off`, and retryable `Handoff failed` keep the composer inert. Terminal `Handoff failed` leaves the discussion unarchived and makes the composer editable again subject to ordinary composer gates; the failed status remains visible until a fresh resolution attempt is admitted.
-- `Archived` is readonly. The strip state, retry availability, and composer writable or inert state publish atomically from the same discussion revision.
-- The strip never exposes Resolve or Archive. `Handoff failed` may expose `Retry handoff` for the already admitted immutable job.
-- Long failure detail uses the established per-window notice rather than expanding the strip.
+- `Handoff failed` distinguishes a retryable failure from a terminally failed attempt through the presence or absence of `Retry handoff`. `Archived` begins only after successful parent handoff and durable archive publication.
+- `Unavailable` is the terminal result when reconciliation of exact resolution admission, parent
+  handoff, or archive publication proves neither success nor noncommit. It preserves the last
+  coherent strip presentation, exact resolution intent and parent binding, any already visible
+  parent turn, and exact locally held evidence without claiming archive or restoring the earlier
+  state as a proven noncommit.
+- `Resolution pending`, `Handing off`, retryable `Handoff failed`, and `Unavailable` keep the
+  composer inert. Terminal non-collision `Handoff failed` leaves the discussion unarchived and makes
+  the composer editable again subject to ordinary composer gates; the failed status remains visible
+  until a fresh resolution attempt is admitted.
+- `Archived` is readonly. The strip state, retry availability, and composer writable or inert state change together without an inconsistent intermediate presentation.
+- The strip never exposes Resolve or Archive. `Handoff failed` may expose `Retry handoff` for the
+  already accepted resolution attempt. `Unavailable` exposes no retry, resubmission, rollback, or
+  manual repair command and suppresses every duplicate or repeated mutation for that exact attempt.
+- Long failure or unavailable detail is reported persistently and within bounded detail through the
+  established per-window notice. It points only to established same-home recovery and bounded
+  diagnostic reporting; unrelated healthy threads remain available.
 
 ## First Submission
 
 - The user types and submits through the ordinary composer.
-- Submission freezes the same context-bearing draft as the first submitted discussion turn,
-  derives that turn's immutable parent from the exact envelope source, proves the source agrees
-  with the discussion's branch authority, and atomically creates the replacement current draft.
-- Beryl supplies selected context to CAS once through the exact lossless selected-context projection owned by the CAS-live Syndic system; it is neither ordinary user input nor developer instructions.
-- The selected text remains untrusted source context and cannot gain application-instruction authority merely because Beryl forwards it. Its CAS projection preserves its actual assistant provenance as one assistant-role output-text history item rather than fabricating a user turn.
-- Later discussion turns do not copy the immutable context into new Syndic drafts or resend it to an already established CAS lineage.
+- The first submission uses the exact immutable selected passage at the branch point as prior assistant context. It is neither ordinary user input nor developer instructions.
+- The selected text remains untrusted source context and cannot gain application-instruction authority merely because Beryl supplies it to the discussion. Its actual assistant provenance is preserved rather than presented as a fabricated user turn.
+- The exact selected context is supplied once for the discussion lineage. Later turns neither duplicate it nor present it as newly authored content.
 
 ## Resolution Tool
 
-- Every persistent Beryl conversation CAS lineage receives the same versioned, deterministically
-  ordered conversation-tool registry at its initial `thread/start`, including the branch-discussion
-  resolution tool. Native continuation, resume, and fork retain that unchanged tool profile so a
-  frequently used discussion branch does not require a fresh reconstructed prompt prefix.
-- Registration advertises a cache-stable capability; it does not authorize resolution. The
-  resolution handler admits a call only when exact CAS thread, active CAS turn, Syndic discussion
-  thread, current attempt state, and durable revisions prove that the correlated turn is an open
-  branch discussion.
-- The user initiates resolution conversationally. The AI calls the tool with one nonempty proposed
-  resolution of at most 65,536 Unicode scalar values; it does not supply authoritative parent,
-  child, thread, job, or archive identities. Invalid or oversized resolution input is rejected
-  before durable mutation.
-- A tool call outside the exact bound discussion and active turn is rejected.
-- If accepted future-turn input is queued, the call returns a structured retryable deferred result and changes no state. Beryl does not retry automatically.
+- The user initiates resolution conversationally. The AI may propose one nonempty resolution of at most 65,536 Unicode scalar values only for the open discussion in which that conversation is occurring.
+- Invalid, oversized, out-of-context, stale, or otherwise ineligible resolution requests are rejected without accepting resolution intent or changing the discussion.
+- If accepted future-turn input is queued, resolution is deferred as retryable without changing discussion state. Beryl does not retry automatically.
 - Deferred resolution leaves the composer enabled, leaves the discussion unarchived, and lets queued turns run normally.
 - Intervening user input or steering may change or cancel the AI's intention to retry.
+- Once an otherwise eligible resolution admission is durably attempted, an indeterminate result
+  keeps the last coherent `Open` presentation, exact proposed resolution, parent binding, and local
+  evidence while the tool reply remains unresolved and duplicate admission is suppressed. Proven
+  success enters `Resolution pending`; proven noncommit leaves the discussion `Open` without
+  reporting admission. `Collision` enters terminal `Unavailable` and neither tells the AI that
+  admission succeeded nor reopens the discussion as if noncommit were proved.
 
 ## Accepted Resolution
 
-- Successful tool admission durably records the exact resolution intent before returning success to CAS.
+- Successful admission preserves the exact resolution intent before the AI is told it succeeded.
 - The discussion immediately enters resolution-pending state and accepts no new composer submission, steering, replacement edit, or other mutation that could alter the resolving path.
-- The composer remains disabled while the admitted attempt is waiting, running, or retryably failed with its retryable job still live.
+- The composer remains disabled while the admitted attempt is waiting, running, or available for retry after a retryable failure.
 - The discussion remains unarchived until the exact parent handoff turn reaches terminal success.
-- If the parent is active, unavailable, or temporarily ineligible, the durable handoff waits without blocking other threads.
-- A retry of already admitted intent retries only the durable handoff job and cannot change the stored resolution payload or create duplicate parent input.
+- If the parent is active, unavailable, or temporarily ineligible, the handoff waits without blocking other threads.
+- A retry of already admitted intent retries only that same handoff and cannot change the accepted resolution or create duplicate parent input.
 - A discussion may have only one live admitted attempt. A second resolution cannot be admitted while the current attempt is pending, active, or retryably failed.
+- An unavailable attempt likewise admits no retry or fresh resolution for that exact unresolved
+  scope. Unrelated threads and operations remain available, but no action dependent on that result
+  is admitted.
 
 ## Parent Availability
 
 - A parent open in another main window remains the same handoff destination; successful handoff activity appears in that owning window.
-- Parent runtime, root, or CAS failure leaves the handoff pending or retryable and leaves the discussion unarchived.
+- Parent runtime, root, or CAS unavailability leaves the same handoff pending or retryable with its
+  exact parent binding intact and leaves the discussion unarchived. Temporary unavailability alone
+  never terminalizes or redirects the handoff or admits the resolution again.
 - Beryl exposes no parent-thread deletion command. If exact parent identity is nevertheless missing or invalid before resolution admission, the tool rejects without accepting intent and the discussion remains editable and unarchived.
 - Beryl never silently redirects resolution to an ancestor, sibling, replacement thread, or newly created thread.
 
 ## Completion And Navigation
 
-- Archive state is an intrinsic Syndic discussion-thread attribute and does not depend on CAS
-  archive or thread-list state.
+- Archive state is shown consistently on every discussion surface and does not depend on whether the parent is currently visible.
 - After successful parent handoff and archival, the current window remains on the archived readonly discussion rather than switching automatically.
 - The lineage strip remains the explicit route to the parent. If the parent is open elsewhere or unavailable, its breadcrumb remains represented and unavailable according to the conversation-thread contract.
 - No successful or failed handoff automatically activates the parent or changes the owning window's selected thread.
 - Archived discussions accept no new input. Their transcript and context remain readable.
-- Click-to-focus of a parent open in another window remains deferred.
+- Activating a parent already open in another window does not move focus to that other window; the unavailable breadcrumb explains that the parent is open elsewhere.
 
 ## Failure And Retry
 
 - Retryable handoff failure keeps the admitted resolution, disabled composer, unarchived discussion, and exact parent binding.
-- The discussion status strip exposes a `Retry handoff` command that retries the existing job only; it is not a resolve or archive command.
+- The discussion status strip exposes a `Retry handoff` command that retries the same accepted handoff only; it is not a resolve or archive command.
 - Terminal handoff failure ends the live attempt, leaves the discussion unarchived, preserves `Handoff failed`, removes `Retry handoff`, and makes the composer editable again subject to ordinary gates.
-- A parent handoff start with unknown remote completion becomes terminal failure after its owning
-  execution session is proven gone. Beryl retains the incomplete parent turn and never exposes
-  `Retry handoff` for a request that might already have executed.
-- The terminally failed attempt and any parent handoff turn already appended for it remain durable. Beryl never creates a second parent turn or starts a fresh resolution attempt automatically.
-- The user may continue the discussion and later initiate resolution conversationally again. A later tool admission creates a fresh intent and job from the then-current discussion; it is not a retry or replacement of the terminally failed attempt.
-- Multiple attempts are allowed only sequentially after terminal failure. A retryable failure retains the sole live attempt, while successful handoff archives the discussion and permits no later attempt.
-- Post-admission missing-parent, store, oversized context/recovery projection, or invariant failure is reported explicitly, transitions the attempt terminally when it cannot be retried safely, and never counts as successful archive.
+- If external parent-handoff completion is unknown, Beryl does not expose `Retry handoff` or resend
+  while doing so could duplicate delivery. A non-collision attempt that cannot complete safely
+  becomes a visible terminal failure and retains any incomplete parent turn.
+- A durable-mutation `Collision` is not converted into terminal `Handoff failed`: it remains
+  `Unavailable`, retains the exact admitted resolution, parent binding, incomplete parent turn and
+  local evidence, and neither archives nor releases the discussion for another handoff or
+  resolution attempt.
+- The terminally failed attempt and any parent handoff turn already shown for it remain available as history. Beryl never creates a second parent turn or starts a fresh resolution attempt automatically.
+- After a terminal non-collision handoff failure, the user may continue the discussion and later
+  initiate resolution conversationally again. A later accepted resolution is a fresh attempt from
+  the then-current discussion; it is not a retry or replacement of the terminally failed attempt.
+- Multiple attempts are allowed only sequentially after terminal non-collision failure. A retryable
+  failure retains the sole live attempt, `Unavailable` permanently suppresses another attempt for
+  its exact terminal scope, and successful handoff archives the discussion and permits no later
+  attempt.
+- Any non-collision unrecoverable post-admission failure is reported explicitly, ends the attempt
+  without archive, and never counts as a successful handoff.

@@ -2,7 +2,7 @@ use std::{convert::Infallible, error::Error};
 
 use thiserror::Error;
 
-use crate::{ReadError, SidecarError, health::FailureSeverity};
+use crate::{health::FailureSeverity, ReadError, SidecarError};
 
 /// Storage-owned failure provenance returned by a logical-domain callback.
 #[derive(Debug, Error)]

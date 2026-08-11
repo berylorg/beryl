@@ -1,4 +1,5 @@
 use beryl_home_store::{
+    CommandError, CommandOutcome,
     HomeHealthState,
     test_faults::{FaultController, FaultPoint},
 };
@@ -42,6 +43,37 @@ fn verify_whole_state(
     fixture.store.validate_registered_domains().unwrap();
 }
 
+fn assert_fault_outcome(point: FaultPoint, outcome: CommandOutcome) {
+    match (point, outcome) {
+        (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
+            assert!(matches!(evidence, CommandError::Commit { .. }));
+        }
+        (
+            FaultPoint::AfterCommitBeforePersist,
+            outcome @ CommandOutcome::Indeterminate {
+                failure: CommandError::Persistence { .. },
+                reconciliation: _,
+            },
+        ) => {
+            assert!(matches!(
+                &outcome,
+                CommandOutcome::Indeterminate {
+                    failure: CommandError::Persistence { .. },
+                    reconciliation: _,
+                }
+            ));
+        }
+        (
+            FaultPoint::AfterPersist,
+            CommandOutcome::Committed {
+                later_failure: Some(CommandError::Persistence { .. }),
+                ..
+            },
+        ) => {}
+        (_, outcome) => panic!("expected exact fault-cut command outcome, got {outcome:?}"),
+    }
+}
+
 #[test]
 fn admission_fault_cuts_reconcile_to_one_whole_state() {
     for (name, point, expected) in cuts() {
@@ -49,16 +81,11 @@ fn admission_fault_cuts_reconcile_to_one_whole_state() {
         let fixture =
             active_stop_fixture_with_faults(&format!("phase65-stop-admit-{name}"), faults.clone());
         faults.fail_next(point);
-        assert!(
+        assert_fault_outcome(point, fixture.store.execute_current(
             fixture
-                .store
-                .execute_current(
-                    fixture
-                        .storage
-                        .current_admit_stop_operation(fixture.admission.clone()),
-                )
-                .is_err()
-        );
+                .storage
+                .current_admit_stop_operation(fixture.admission.clone()),
+        ));
         assert_eq!(fixture.store.health().state(), HomeHealthState::Verifying);
         fixture.store.verify_health().unwrap();
         let status = fixture
@@ -90,12 +117,9 @@ fn cause_join_fault_cuts_reconcile_to_one_whole_state() {
             StopCause::DiagnosticControl,
         );
         faults.fail_next(point);
-        assert!(
-            fixture
-                .store
-                .execute_current(fixture.storage.current_join_stop_cause(request.clone()),)
-                .is_err()
-        );
+        assert_fault_outcome(point, fixture
+            .store
+            .execute_current(fixture.storage.current_join_stop_cause(request.clone())));
         fixture.store.verify_health().unwrap();
         let status = fixture
             .storage
@@ -129,12 +153,9 @@ fn dispatch_claim_fault_cuts_reconcile_to_one_whole_state() {
             StopAttemptNonce::from_bytes([170; 16]),
         );
         faults.fail_next(point);
-        assert!(
-            fixture
-                .store
-                .execute_current(fixture.storage.current_claim_stop_dispatch(request.clone()),)
-                .is_err()
-        );
+        assert_fault_outcome(point, fixture
+            .store
+            .execute_current(fixture.storage.current_claim_stop_dispatch(request.clone())));
         fixture.store.verify_health().unwrap();
         let status = fixture
             .storage
@@ -163,16 +184,11 @@ fn safe_reopen_fault_cuts_reconcile_to_one_whole_state() {
             fixture.stop().revision(),
         );
         faults.fail_next(point);
-        assert!(
+        assert_fault_outcome(point, fixture.store.execute_current(
             fixture
-                .store
-                .execute_current(
-                    fixture
-                        .storage
-                        .current_safely_reopen_stop_operation(request.clone()),
-                )
-                .is_err()
-        );
+                .storage
+                .current_safely_reopen_stop_operation(request.clone()),
+        ));
         fixture.store.verify_health().unwrap();
         let status = fixture
             .storage
@@ -193,16 +209,11 @@ fn abandonment_fault_cuts_reconcile_to_one_whole_state() {
         fixture.admit_stop();
         let request = super::abandonment::startup_abandonment(&fixture).1;
         faults.fail_next(point);
-        assert!(
+        assert_fault_outcome(point, fixture.store.execute_current(
             fixture
-                .store
-                .execute_current(
-                    fixture
-                        .storage
-                        .current_abandon_stop_operation(request.clone()),
-                )
-                .is_err()
-        );
+                .storage
+                .current_abandon_stop_operation(request.clone()),
+        ));
         fixture.store.verify_health().unwrap();
         let status = fixture
             .storage
@@ -250,16 +261,11 @@ fn matching_terminal_fault_cuts_reconcile_to_one_whole_state() {
         )
         .unwrap();
         faults.fail_next(point);
-        assert!(
+        assert_fault_outcome(point, fixture.store.execute_current(
             fixture
-                .store
-                .execute_current(
-                    fixture
-                        .storage
-                        .current_admit_live_source_event(event.clone()),
-                )
-                .is_err()
-        );
+                .storage
+                .current_admit_live_source_event(event.clone()),
+        ));
         fixture.store.verify_health().unwrap();
         let status = fixture
             .storage

@@ -13,8 +13,8 @@ use fjall::{Database, PersistMode};
 use tempfile::tempdir;
 
 use support::{
-    AlphaDomain, AlphaDomainSchema2, AlphaFamilySchema2, DuplicateFamilyDomain, EmptyDomain,
-    PutBytes, ValidatedDomain, open_home,
+    committed, open_home, AlphaDomain, AlphaDomainSchema2, AlphaFamilySchema2,
+    DuplicateFamilyDomain, EmptyDomain, PutBytes, ValidatedDomain,
 };
 
 #[test]
@@ -212,7 +212,7 @@ fn existing_domain_validator_runs_before_registration_is_published() {
             PutBytes::<ValidatedDomain>::new(1, b"reject".to_vec()),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
 
     let mut rejected = HomeCommand::new(store.home_revision().unwrap());
     rejected
@@ -221,7 +221,7 @@ fn existing_domain_validator_runs_before_registration_is_published() {
             PutBytes::<ValidatedDomain>::new(2, b"later".to_vec()),
         ))
         .unwrap();
-    store.execute(rejected).unwrap();
+    committed(store.execute(rejected));
     assert!(matches!(
         store.validate_registered_domains(),
         Err(DomainValidationError::Rejected {

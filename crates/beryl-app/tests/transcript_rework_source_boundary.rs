@@ -397,7 +397,6 @@ fn backend_source_exposes_no_cas_catalog_protocol() {
         "ThreadListResponse",
         "ThreadSortKey",
         "SortDirection",
-        "CompatibilityProbe::ThreadList",
         "list_thread_page",
         "list_threads_with_options",
         "list_threads(",

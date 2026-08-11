@@ -81,7 +81,7 @@ fn config_read_retains_two_optional_identities_and_discards_incidental_values() 
                 assert_eq!(id, 42);
                 assert_eq!(response.defaults().model(), Some("gpt-5"));
                 assert_eq!(response.defaults().model_reasoning_effort(), Some("high"));
-                assert!(response.defaults().proves_spawn_agent_model_overrides());
+                assert!(response.defaults().proves_release_admission());
             }
             other => panic!("unexpected config result: {other:?}"),
         }
@@ -164,7 +164,7 @@ fn config_read_discards_unrelated_feature_fields_without_weakening_the_proof() {
         IncomingJsonTestOutcome::Response {
             result: BoundedResponseResult::ConfigRead(response),
             ..
-        } => assert!(response.defaults().proves_spawn_agent_model_overrides()),
+        } => assert!(response.defaults().proves_release_admission()),
         other => panic!("unexpected config result: {other:?}"),
     }
 }

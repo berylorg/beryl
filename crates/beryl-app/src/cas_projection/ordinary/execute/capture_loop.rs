@@ -254,7 +254,6 @@ pub(super) fn converge_target_loss(
     limit: SyndicPointReadLimit,
 ) -> Result<Option<OrdinaryTurnExecutionOutcome>, OrdinaryTurnExecutionError> {
     let accepted_next_ready = target.accepted_next_ready_notifier();
-    let stop_coordinator = target.stop_coordinator()?;
     match target.converge_source_loss(cause)? {
         LiveEventTargetLossOutcome::Incomplete => {
             converge_terminal_history(
@@ -264,7 +263,6 @@ pub(super) fn converge_target_loss(
                 pending.turn_id,
                 pending.minimum_observed_at,
                 limit,
-                Some(&stop_coordinator),
             )?;
             accepted_next_ready.notify();
             Ok(None)
@@ -311,7 +309,6 @@ fn finish_proven_terminal(
             "terminal outcome disagreed with the durable valid binding",
         ));
     }
-    let must_reacquire_same_native = outcome.same_native_reacquisition_required();
     let accepted_next_ready = target.accepted_next_ready_notifier();
     let stop_coordinator = target.stop_coordinator()?;
     let context_compaction = target.context_compaction_coordinator()?;
@@ -325,23 +322,8 @@ fn finish_proven_terminal(
         pending.turn_id,
         outcome.observed_at(),
         limit,
-        Some(&stop_coordinator),
     )?;
     accepted_next_ready.notify();
-    if must_reacquire_same_native {
-        if stop_coordinator
-            .has_terminal_phase_continue(pending.thread_id, pending.turn_id)
-            .unwrap_or(false)
-        {
-            let _ =
-                stop_coordinator.take_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
-        }
-        let anchor = projection.into_same_native_reacquisition_anchor()?;
-        return Ok(OrdinaryTurnExecutionOutcome::ReacquisitionRequired {
-            anchor: Box::new(anchor),
-            status: outcome.status(),
-        });
-    }
     match context_compaction.begin_lifecycle_continuation(
         projection,
         pending.turn_id,

@@ -21,7 +21,7 @@ Widgets:
 
 # Anatomy
 
-The table panel consists of a root frame, optional header strip, optional title or summary, optional command controls, grid viewport, realized grid window, optional row headers, optional column headers, cells, local range-state layer, and vertical and horizontal scrollbar affordances.
+The table panel consists of a root frame, optional header strip, optional title or summary, optional command controls, grid viewport, realized grid window, optional row headers, optional column headers, body cells, header cells, local range-state layer, and vertical and horizontal scrollbar affordances. Every header cell uses both the base cell part and the header-cell part, so it retains ordinary cell geometry while receiving header-specific styling.
 
 The owner supplies table identity, revision, row and column counts when known, stable row and column identities, resident cell ranges, cell presentation, copy payloads, range-demand outcomes, and local fallback meaning.
 
@@ -133,7 +133,7 @@ Spec CSS:
   overflow: hidden;
 }
 
-.table-panel__cell[data-kind~="header"] {
+.table-panel__header-cell {
   background: var(--background);
   color: var(--foreground);
   font-weight: var(--font-weight);
@@ -194,7 +194,7 @@ Default variant: column-header.
   --foreground: #dbe4ef;
 }
 
-.table-panel__cell[data-kind~="header"] {
+.table-panel__header-cell {
   --background: #111827;
   --foreground: #f1f5f9;
   --font-weight: 650;

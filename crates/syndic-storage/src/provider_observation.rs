@@ -31,6 +31,7 @@ pub use compiler::{
     InspectedProviderObservation, PreparedProviderObservationFrame,
     ProviderObservationFramePreparationError, ProviderObservationFramePreparationPlan,
     ProviderObservationFrameSemanticError, ProviderObservationFrameStageError,
+    ProviderObservationFrameStageOutcome,
     inspect_provider_observation, prepare_provider_observation_frame,
     stage_provider_observation_frame,
 };
@@ -49,7 +50,7 @@ pub use staging::{
     PROVIDER_OBSERVATION_CHUNK_MAX_BYTES, ProviderObservationStageBatch,
     ProviderObservationStageBatchError, ProviderObservationStageBatchState,
     ProviderObservationStageCallback, ProviderObservationStager, ProviderObservationStagingBytes,
-    ProviderObservationStagingError,
+    ProviderObservationStageOutcome, ProviderObservationStagingError,
 };
 pub use validator::ProviderObservationValidatorError;
 pub(crate) use validator::{

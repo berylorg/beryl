@@ -1,3 +1,4 @@
+use beryl_home_store::CommandOutcome;
 use beryl_model::{BerylHomeId, SyndicThreadId};
 use syndic_storage::{
     BindingRecord, BindingState, CasTurnSource, CompactionConsumedWitness,
@@ -23,7 +24,7 @@ fn successful_fixture(name: &str, id_byte: u8) -> (CompactionFixture, Compaction
     fixture.claim(id);
     fixture.publish_success(id, 20);
     let operation = fixture.operation(id);
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_compaction_operation(
             SettleCompactionOperation::new(
@@ -31,8 +32,13 @@ fn successful_fixture(name: &str, id_byte: u8) -> (CompactionFixture, Compaction
                 operation.revision(),
                 CompactionSettlement::ManualSuccess,
             ),
-        ))
-        .unwrap();
+        )) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean corrupt-fixture compaction settlement, got {outcome:?}"),
+    }
     fixture.store.validate_registered_domains().unwrap();
     (fixture, id)
 }
@@ -44,7 +50,7 @@ fn continuation_fixture(name: &str, seed: u8) -> (CompactionFixture, CompactionO
     fixture.publish_success(id, 20);
     let content = fixture.prepare_lifecycle_content();
     let operation = fixture.operation(id);
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_lifecycle_compaction(
             syndic_storage::SettleLifecycleCompaction::new(
@@ -52,8 +58,13 @@ fn continuation_fixture(name: &str, seed: u8) -> (CompactionFixture, CompactionO
                 content,
                 crate::support::timestamp(40),
             ),
-        ))
-        .unwrap();
+        )) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean continuation fixture settlement, got {outcome:?}"),
+    }
     (fixture, id)
 }
 

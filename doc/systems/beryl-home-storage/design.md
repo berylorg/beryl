@@ -12,6 +12,8 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Making the database, raw keyspaces, encodings, or Fjall transactions available to GUI or backend code.
 - Storing CAS authentication, Codex configuration, app-server capability tokens, or backend-owned conversation history.
 - Maintaining a second session snapshot outside Fjall.
+- Detecting or surviving external replacement, rollback, or tampering inside an Operator-selected
+  Beryl home while Beryl is not the actor performing those changes.
 
 # Decisions
 
@@ -21,15 +23,17 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   reads, result pages, staging, queues, caches, and scans. Storage packages use shared
   `beryl-stream` paging and bounded-channel primitives where useful, but no process-wide allocation
   capability is required.
-- A new `beryl-home-store` package owns the physical database supplied by the unpublishable owned
-  Fjall fork, process-wide writer, state-store health, home lock, and typed domain registration
-  boundary.
+- `beryl-home-store` owns the physical database supplied by the unpublishable owned
+  Fjall fork, process-wide writer, state-store health, home lock, typed domain registration
+  boundary, and physical installed-theme repository operations.
 - Opening that store supplies explicit cache, memtable, stored-record, decoded-result, page, batch,
   and storage-concurrency limits. These are practical store configuration, not exact reservations
   against a universal process-memory account.
 - `beryl-state` owns the typed Beryl runtime/root, session/window, claim, settings, durable-job,
   catalog, and asset-metadata schemas and command contributors registered through that physical
-  boundary. It owns no canonical per-thread metadata domain.
+  boundary. It also owns the typed repository/parser/resolver service assigned by the
+  [theme runtime system](../theme-runtime/design.md), while this system retains physical theme-file
+  access and durability. It owns no canonical per-thread metadata domain.
 - `syndic-storage` owns typed Syndic records, codecs, queries, and mutations within its assigned keyspace family. It does not open a second database or expose raw Fjall handles.
 - `beryl-app` consumes typed Beryl-home and Syndic APIs for shell orchestration. It does not own on-disk encodings or direct database access.
 - `beryl-model` owns only pure identities and values shared across packages.
@@ -39,20 +43,33 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 ## Physical Home Layout
 
 - One Beryl home owns exactly one Fjall database for durable Syndic records and Beryl application metadata.
-- After the home lock is acquired and before Fjall opens, Beryl creates or opens the final `state` component without following a reparse point, validates an ordinary local directory, and retains its opened-object identity and no-delete handle for the complete store lifetime. A durable header with the same home id does not make another physical directory the same recovery candidate.
-- The home also owns bounded sidecar directories for large image and Syndic resource payloads and the file-based installed-theme repository.
+- After the home lock is acquired and before Fjall opens, Beryl rejects an existing `state`
+  symlink, junction, file, or other reparse-point collision, then creates or opens the ordinary
+  `state` directory and validates the expected home header and schema. The Beryl home is trusted
+  storage; Beryl does not retain filesystem-object identity or deny external replacement for the
+  store lifetime.
+- The home also owns bounded sidecar directories for large image and Syndic resource payloads and
+  the physical file-based installed-theme repository.
 - Image bytes are ordinary content-addressed sidecar files under the Beryl home, never Fjall values or blob payloads. Fjall stores their typed metadata, durable references, and sidecar state.
 - Scalar application settings, runtime/root configuration, window/session state, durable
   orchestration jobs, catalog projections, and asset references live in Beryl-owned Fjall keyspaces.
   Intrinsic thread properties live in Syndic keyspaces in the same physical home.
-- Installed theme documents remain in the theme repository; the active theme identity and other scalar theme settings live in Beryl settings records.
-- The file-based theme repository is an owned bounded-source domain: installed order is read through
-  immutable-generation manifest cursor pages, compact documents are parsed incrementally, and
-  manifest/document replacement streams into typed staged files before atomic publication. Store
-  bootstrap and settings snapshots never load every installed theme or one arbitrarily large source
-  document into memory.
-- Two configured home paths must not resolve to or contain the same physical database directory.
-- Every stored record includes a schema version appropriate to its logical domain. Unsupported versions fail open or read with a typed error rather than being guessed or rewritten opportunistically.
+- Installed theme documents and order remain in that physical repository; the active theme identity
+  and other scalar theme settings live in Beryl Settings records.
+- Physical theme access supplies bounded range reads, staged immutable generation files, exact
+  length/digest verification, file and directory durability, and an atomic owner-manifest
+  publication step to the `beryl-state` theme service. New document files become authoritative only
+  through the durable owner manifest, so readers observe one complete old or new repository
+  generation.
+- The physical boundary reports proven non-publication, exact durable publication, or indeterminate
+  owner-manifest publication with the exact file evidence needed for targeted reread. It does not
+  parse compact TOML, assign theme ids, interpret installed order, resolve roles, arbitrate preview,
+  or publish appearance.
+- Within one process, canonicalized configured paths must not select the same home twice.
+- Every stored record includes a schema version appropriate to its logical domain. An unsupported
+  version fails the ordinary read that decodes it or an exhaustive validation boundary with a typed
+  error rather than being guessed or rewritten opportunistically; routine structural open alone
+  does not claim to discover a dormant record.
 
 ## Keyspace Ownership
 
@@ -62,7 +79,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   thread summaries, and Syndic revisions.
 - Beryl runtime keyspaces own runtime records and configured-root records.
 - One Beryl session domain owns the current restore-set generation, durable window records, selected thread ids, geometry, virtual-desktop identity, window-local remembered runtime/root values, exclusive main-window claims, and the last successfully used runtime/root fallback retained when the restore set becomes empty.
-- Session, window, and both claim-index families share one typed domain so ordinary reopen validation can prove their forward and reverse invariants without a cross-domain raw-storage escape hatch.
+- Session, window, and both claim-index families share one typed domain so exhaustive domain
+  validation can prove their forward and reverse invariants without a cross-domain raw-storage
+  escape hatch.
 - Beryl job keyspaces own durable resolution-handoff and other explicitly designed host-orchestration jobs.
 - Beryl catalog keyspaces own compact rebuildable catalog rows and deterministic recency indexes
   derived from Syndic thread summaries plus Beryl runtime/root availability and claim facts.
@@ -74,8 +93,16 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 ## Typed Domain Authority And Validation
 
 - Every live logical-domain blueprint, handle, and command contribution is bound to its exact Rust owner type in addition to the durable stable name and schema. Every declared record family is bound to one exact codec type. These process-local identities are not persisted, and a same-name/schema type or alternate same-name codec cannot reacquire another live owner's authority.
-- Registration of existing state, explicit health verification, and same-home recovery use one
-  store-owned exhaustive validation path. It streams every snapshot-current application record in
+- Routine open, reopen, and handle reacquisition validate those exact live types, durable
+  declarations, required families, and generation without scanning every application record.
+- Every mutation domain also registers a separate bounded natural-record reconciliation hook. That
+  hook can read only the exact operation identities admitted by the command's pre-writer
+  descriptor reservation and materialized under the serialized writer before physical mutation;
+  it cannot be substituted by the domain's exhaustive validator.
+- Only registration at a schema-validation boundary, an explicit whole-home scrub, background
+  maintenance, or corruption-evidence investigation may use the store-owned exhaustive validation
+  path. It streams
+  every snapshot-current application record in
   every physical family with bounded memory, checks physical key/value bounds, applies the exact
   owning codec to every key and versioned value envelope, and only then runs the domain's
   cross-record and sidecar invariants. "Physical record" here means a current stored application
@@ -89,19 +116,24 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - The owned Fjall boundary supplies configured block, separated-value, merge-source, retained-
   topology, cache, memtable, and batch limits plus metadata-first reads. Beryl neither reconstructs
   dependency allocation formulas nor requires exact database or operation residency quotes.
-- Exhaustive work runs only during lifecycle maintenance, away from the serialized writer and GPUI thread. It may take total work proportional to durable domain size but retains only bounded records and state at once.
+- Exhaustive work runs away from the serialized writer and GPUI thread. It may take total work
+  proportional to durable domain size but retains only bounded records and state at once.
 
 ## Home Ownership Lock
 
 - Before opening Fjall, Beryl creates or opens one fixed lock file inside the requested home and attempts a non-blocking exclusive OS file lock.
 - The process retains the locked file handle until orderly shutdown completes. Normal release is explicit; handle release on process death is the crash fallback.
 - Lock-file existence is not ownership evidence. A file left after a crash is reusable when its OS lock is no longer held, so no stale-lock deletion protocol is required.
-- The lock decision is based on the opened file object, which prevents case, symlink, junction, and path-alias spellings from creating independent locks for the same physical file.
-- Beryl canonicalizes the opened home directory for in-process identity after obtaining a real directory handle. User-facing paths may preserve their configured spelling, but ownership and registry keys use canonical identity.
-- UNC homes are supported only when the filesystem supplies reliable exclusive file locking and durable rename/sync behavior. If those guarantees cannot be established, opening fails closed rather than weakening ownership.
-- The Beryl home is a host-owned directory. WSL runtime paths never acquire or identify its lock.
+- Opening requires a reliable exclusive lock for the complete home lifetime. If the selected
+  filesystem cannot provide that lock, opening fails.
+- Beryl canonicalizes the configured home path for in-process identity. User-facing paths may
+  preserve their configured spelling, but ownership and registry keys use the canonical path.
+- Native local NTFS homes receive the full crash-durability contract in this system. Other
+  filesystems, including UNC, WSL-backed, removable, and synchronized locations, may open only when
+  basic access and the reliable exclusive lock work. They receive best-effort durability and a
+  feature-owned timed warning; Beryl does not attempt to prove remote or synchronized durability
+  conditionally at open time.
 - Diagnostic lock contents may include bounded process identity, but Beryl never trusts file contents as proof that the owner is alive and never breaks a live OS lock.
-- The retained `state` directory handle is separate from a replaceable Fjall generation. It denies compatible rename, deletion, and replacement until every Fjall handle has drained and the home is being released, and recovery compares the live final path with that exact retained object before opening an engine candidate.
 
 ## Serialized Writer And Revision Checks
 
@@ -125,15 +157,90 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   participation by the same typed domain remains invalid across both roles. An ordinary mutation
   that emits no changes remains an error, so validation intent cannot hide an accidental empty
   write path.
-- One accepted command writes every participating keyspace mutation in one Fjall write batch, commits the batch, and completes the required persistence barrier before reporting durable success.
+- One accepted command writes every participating keyspace mutation in one Fjall write batch. A
+  successful Fjall `SyncAll` outcome means that complete batch committed atomically and is durable;
+  only then may Beryl report durable success.
+- The Beryl command outcome is classified against that complete durability boundary. A Fjall
+  `Committed` error from the preceding buffered journal step remains exactly retained in the typed
+  failure but maps to Beryl `Indeterminate` with a reconciliation descriptor when `SyncAll` did not
+  subsequently succeed; it never fabricates a durable receipt. Only a failure observed after
+  successful `SyncAll` may produce `Committed { receipt, later_failure }`.
 - Cancellation is authoritative only before writer admission. Once an operation enters the serialized writer, callers drain its outcome and never interpret a later cancellation request as proof that the batch did not commit.
-- A surfaced storage or persistence failure after writer admission is an ambiguous durable outcome, not proof that the old records remain current. Callers gate publication, retain their coherent local user state, and wait for same-home verification or recovery before rereading the exact natural identities and revisions needed to reconcile whether the whole old or whole new atomic state became durable.
-- Durable success returns an opaque receipt carrying the exact process-local healthy home generation, committed home revision, and revisions of only the participating domains. Domain owners project their own affected revision from that receipt; an unaffected domain yields no revision.
+- The home-store command result has exactly three variants: `NotCommitted { evidence }`, whose
+  typed evidence proves that no part of the batch committed and which carries no receipt or
+  reconciliation descriptor; `Committed { receipt, later_failure }`, which always carries the
+  exact durable command receipt and an optional typed failure observed after commit; and
+  `Indeterminate { failure, reconciliation }`, which carries the surfaced typed failure and one
+  move-only custody value containing the sole opaque operation-scoped reconciliation descriptor
+  together with its already-reserved registry slot and byte charge. It carries no receipt and
+  authorizes no publication.
+- Each mutation domain contributes a typed natural-record reconciliation hook when it builds an
+  operation that could become indeterminate. The opaque descriptor retains only the exact old
+  natural-record identities, revisions, and values needed by those hooks plus the intended exact
+  new state and receipt facts; it is not a raw keyspace reader or general recovery capability.
+- Targeted reconciliation returns exactly `ExactOld`, `ExactNew` with the reconstructed exact
+  durable receipt, or `Collision`. `ExactOld` proves the operation did not become authoritative.
+  `ExactNew` proves the complete intended atomic state and reconstructs the same receipt a direct
+  `Committed` result would have carried. Any mixed old/new state or state matching neither exact
+  side is `Collision`.
+- An indeterminate result closes publication and further admission only for its exact operation
+  scope. `Collision` leaves that scope closed; it never guesses, merges records, invokes a
+  whole-home scrub, clears or crosses the old writer, or turns CAS into storage authority.
+  Structurally healthy unrelated work remains admitted. Only separately observed corruption,
+  invalid schema or registry state, poisoned current authority, or another structural failure may
+  fail the complete store lifecycle.
+- `beryl-home-store` owns one process-local reconciliation-scope registry for each open home. Its
+  lifetime begins with home ownership and ends only after final home close; it outlives individual
+  Fjall generations, failed services, unpublished recovery candidates, brokers, connections, and
+  CAS-live services. The registry has exactly 1,024 slots, a 64-MiB encoded-byte ceiling for each
+  potential descriptor, and a 256-MiB aggregate retained descriptor-budget ceiling. Before writer
+  admission, every mutation that could become indeterminate obtains one move-only reservation and
+  proves from its
+  command-owned identities plus declared schema limits that its conservative descriptor-byte
+  budget fits that ceiling. After writer admission, the command materializes the exact old state,
+  intended new state, and intended receipt facts from the admitted snapshot into that reserved
+  budget before batch construction or any Fjall mutation. Scope saturation returns
+  `NotCommitted { evidence: ReconciliationCapacity }`; an oversized descriptor returns the
+  exact `NotCommitted { evidence: ReconciliationDescriptorTooLarge }` result. Neither rejection
+  enters writer admission, creates a scope, or changes structural health.
+- Orderly final home close first stops new reservations and drains every admitted command. It cannot
+  dispose the registry while a verifying scope still owns a descriptor: close joins its already
+  admitted classification work or remains failed and leaves the home open. After no descriptor-
+  bearing scope remains, final home close may dispose collision-sealed process-local facts together
+  with the registry; the exact durable natural records remain authoritative on the next process
+  open. Forced process termination publishes no in-memory result or acknowledgement.
+- A directly classified `NotCommitted` or `Committed` command releases its reservation with its
+  writer-time state. `Indeterminate` first transfers the reservation and sole descriptor into its
+  move-only custody value. The immediate recipient must synchronously consume that value into the
+  already-reserved exact registry gate before it translates or erases the result, installs an
+  acknowledgement, releases operation state, or observes route cancellation. Registry acceptance
+  is infallible because capacity was reserved before writer admission. Once accepted, the registry
+  is the unique owner; no other result, acknowledgement, broker, or service retains a copy.
+- Provider ingress uses the same rule: the app-owned `Ingester` performs the registry handoff before
+  completing `BrokerReply`, closing `AckSlot`, or releasing `ActiveObservation`. The acknowledgement
+  may report that publication did not occur and reconciliation is required, but it carries neither
+  a receipt nor the descriptor. Connection loss, target retirement, caller cancellation, and
+  service failure cannot discard or retract registry-owned custody.
+- Installing custody closes the exact publication scope but authorizes no reread, retry, rollback,
+  publication, or reconciliation execution. A separately admitted targeted-reconciliation trigger
+  may later consume that retained scope under the worker and natural-record-hook rules below.
+- Registry installation is also the lifetime cut for process-local command continuations. The
+  caller may release its old operation or stager after handoff; a domain hook reconstructs any
+  `ExactNew` successor, permitted same-live-owner `ExactOld` continuation, or terminal `Collision`
+  disposition solely from descriptor-bound natural records. No failed service, connection, broker,
+  acknowledgement, or process object must survive until classification.
+- Every `Committed` result carries an opaque exact receipt with the process-local home generation,
+  committed home revision, and revisions of only the participating domains. Domain owners project
+  their own affected revision from that receipt; an unaffected domain yields no revision.
 - Publication based on a successful asynchronous completion must validate its receipt against the exact current healthy generation and private store instance. Equal durable revision numbers do not make a prior-generation or foreign receipt current.
 - A command that spans Syndic and Beryl domains is all-or-nothing at the typed home-store boundary.
   Partial logical success is not published even if later background work such as CAS delivery has
   not yet occurred.
 - Callers cannot hold a transaction or writer guard across asynchronous CAS, filesystem, windowing, or model work. External work uses prepare, short revision-checked commit, execute, and short result-commit steps with durable intent records where recovery is required.
+- Exactly one command may hold writer admission. The store owns no unbounded writer queue: callers
+  await the single admission permit with backpressure, may cancel only while waiting, and release
+  the permit only after the command has produced its classified result and dropped all writer-time
+  batch and callback state.
 
 ## Durability Classes
 
@@ -152,13 +259,37 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Rebuildable catalog indexes may lag their source records only when a durable stale marker makes that state explicit. Catalog publication waits for a coherent rebuilt durable index generation rather than mixing source and stale index revisions or materializing all rows.
 - No caller may request weaker persistence for a correctness-sensitive class merely to reduce latency. A later design decision is required to weaken one of these guarantees.
 
+## Turn-Start Free-Space Admission
+
+- The home-store query reports exactly `FreeSpaceOutcome::Sufficient`,
+  `FreeSpaceOutcome::BelowReserve`, `FreeSpaceOutcome::Unavailable`, or
+  `FreeSpaceOutcome::Indeterminate`. The latter two distinguish a proven inability to query from a
+  query whose platform result cannot be trusted; neither is treated as sufficient.
+- Every direct or queued new-turn start invokes the query exactly once, synchronously and
+  immediately before its durable turn-admission command. Beryl does not poll free space, run a
+  timer, cache the result, or apply hysteresis. Steering an already active turn is not a new-turn
+  admission and performs no reserve query.
+- Every outcome except `FreeSpaceOutcome::Sufficient` denies that admission before writer
+  admission, preserves the exact input for a later attempt, and dispatches zero CAS work.
+  `FreeSpaceOutcome::Sufficient` permits the ordinary revision-checked admission attempt but
+  reserves no bytes.
+- The reserve check is an early admission guard, not a promise that later writes cannot encounter
+  `ENOSPC`. Ordinary storage-error and ambiguous-outcome handling still applies to every write.
+
 ## Sidecar Commit Ordering
 
 - Large asset and Syndic resource bytes may live in content-addressed sidecar files under the Beryl home.
-- Sidecar creation writes a new temporary file, flushes its contents, atomically renames it to its digest-derived final path, and flushes the containing directory where the platform supports that guarantee before committing a first durable metadata reference.
-- Admission opens each sidecar ancestor without following its final component, validates and retains an ordinary directory through publication, and flushes the exact parent link for the sidecar root, namespace, and shard on every token-producing attempt. Existing directories receive the same bounded barriers so an earlier interrupted creation is repaired rather than assumed durable.
-- Fresh publication, existing-file reuse, retry after an interrupted post-rename barrier, and concurrent no-replacement collision all converge on one retained final-object path. It rejects a reparse point or non-ordinary object, verifies exact content through that handle, and flushes the retained shard before an admission token exists.
-- A successful publisher also requires the retained final file to have the same opened-object identity as its already-flushed temporary file. Another verified content-addressed publisher may win a no-replacement collision, but an identical-byte replacement between this publisher's rename and final open is not accepted as its publication.
+- On the fully supported local NTFS tier, sidecar publication writes a unique temporary file,
+  flushes its complete bytes, atomically renames it without replacement to the digest-derived final
+  path, and synchronizes the containing directory before durable metadata may reference the bytes.
+- Fresh publication, existing-file reuse, and a concurrent no-replacement winner converge by
+  verifying the final file's exact length and digest. Reuse of an existing file or concurrent
+  winner additionally requires one bounded page-by-page byte-for-byte comparison with the exact
+  staged source before an admission token can publish; a differing byte is a collision invariant
+  failure. Metadata is committed only after those bytes are present and verified. Best-effort
+  filesystem tiers perform the same ordering with the
+  strongest available rename and directory-sync operations, including no-replacement rename where
+  supported, but do not gain the full durability promise.
 - A committed asset owner head must never select a set entry whose sidecar was not fully written,
   renamed, and represented by matching durable metadata.
 - A crash may leave an unreferenced completed sidecar or temporary file. Such files remain inert until the future explicit garbage-collection design; ordinary startup does not guess that they are safe to delete.
@@ -166,85 +297,114 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 
 ## Store Health State
 
-- The process-wide store health state is `opening`, `healthy`, `verifying`, `failed`, or `reopening`.
-- A surfaced transient storage or persistence error rejects the current operation and moves a healthy store to `verifying` before another state-dependent command is admitted. Malformed durable records, invalid trusted codec or registration contracts, poisoned authoritative locks, missing required keyspaces, and sidecar invariant violations move it directly to `failed`. Semantic mutation rejection leaves a healthy store healthy.
+- Structural store lifecycle is exactly `opening`, `healthy`, `failed`, or `reopening`. Exact
+  operation-scoped publication gates separately move through `open`, `verifying`, and `closed`;
+  scoped verification is never a structural store lifecycle state.
+- Acceptance of a surfaced `Indeterminate` custody value rejects publication and moves only its
+  affected gate from `open` to `verifying`. `ExactOld` or `ExactNew` reopens that gate; `Collision` moves it to
+  `closed`. Malformed durable records, invalid trusted codec or registration contracts, poisoned
+  current authority, missing required keyspaces, and sidecar invariant violations separately move
+  the structural store lifecycle to `failed`. Semantic mutation rejection leaves both lifecycle
+  and unrelated gates unchanged.
 - Every state-dependent result passes one store-owned publication confirmation that first observes
   the exact admitted Fjall database's retained autonomous-maintenance terminal and then confirms
   the Beryl health generation. This includes reads, writes, domain registration and reacquisition,
   command-receipt revision projection, and sidecar admission and verification; no result path may
   invoke only the cached Beryl gate check.
-- A panic unwinding through an admitted writer fails the store closed immediately. Same-home recovery may cross the resulting poisoned unit writer lock, but clears that poison only after it publishes a fully validated replacement generation; it never clears poisoned authoritative registration or generation state.
-- Verification performs its persistence barrier plus bounded-memory exhaustive physical-family and domain-invariant validation away from both the serialized writer and GPUI thread. Any failed verification leaves the store `failed`; only complete success reopens the same generation.
-- While `verifying`, mutating commands and reads that could publish new application state are gated. Already coherent in-memory windows remain intact.
+- A panic unwinding through an admitted writer fails the store closed immediately. Recovery does not
+  reuse that poisoned writer; it creates a fresh store service and fresh writer after the physical
+  database and required schema are reopened successfully.
+- Ambiguous-outcome verification is targeted: it drains affected admission, verifies or reopens the
+  physical Fjall database as needed, and invokes only the descriptor's domain-owned natural-record
+  hooks. A physical or hook error keeps that gate closed unless its independent evidence also
+  proves a structural store failure. `Collision` never escalates merely because it is unresolved.
+- The registry's 1,024 slots and 256-MiB aggregate byte budget bound the total of pre-writer
+  reservations, verifying scopes, and collision-closed scopes, not only active workers. Each
+  verifying scope retains exactly one opaque
+  descriptor; each collision-closed scope retains only its bounded sealed facts. Another trigger
+  for the same retained scope joins its existing result and never adds a descriptor, sealed-fact
+  copy, or queue item.
+- One home runs at most four targeted reconciliation workers and at most one worker for any exact
+  scope. When all four worker permits are held, a registered scope remains gated and awaits a
+  permit without duplicating its descriptor.
+- `ExactOld` and `ExactNew` remove the scope and release its registry slot, complete retained byte
+  charge, descriptor, worker permit, snapshot, reader, pages, and hook state. `Collision` compacts
+  its evidence into only the configured-byte-bounded sealed old/new identities, revisions, digests,
+  and collision facts. In the same registry transition it replaces the descriptor's conservative
+  retained-byte charge with the sealed facts' exact encoded-byte charge, discards the descriptor,
+  retains that closed scope, slot, and replacement charge, and releases the worker permit plus every
+  transient reader, snapshot, page, and hook allocation. The sealed-fact schema maximum is included
+  in the pre-writer reservation, so this transition never needs new registry capacity. A typed
+  reconciliation failure likewise releases all transient worker state while leaving at most the one
+  bounded descriptor and its original retained-byte charge in the gated scope.
+- Registry or descriptor-capacity saturation fails the new mutation closed through its typed
+  `NotCommitted` result without failing the structural store. Unrelated already-admitted healthy
+  work continues, and later unrelated work may proceed whenever it needs no unavailable scope
+  slot.
+- While an affected gate is `verifying`, related commands and reads that could publish dependent
+  state are gated. Unrelated healthy work and already coherent in-memory windows remain intact
+  unless the evidence requires store-wide failure.
 - `failed` closes the shared Fjall admission gate for every operation identified by `doc/features/beryl-home/design.md` and retains each current window's identity, placement, selected thread, and last coherent resident surface in memory. The store does not fall back to CAS or cached projections as durable authority.
-- On the transition to `failed`, CAS-live coordination first closes new live-command
-  authorization, then may use each last coherent exact active-turn identity for one volatile
-  best-effort interruption only when retained dispatch evidence proves no earlier primary
-  interruption may have crossed. This emergency path cannot admit or join a durable stop
-  operation, duplicate or retry an ambiguous request, infer terminal history, close a window, or
-  release its thread claim. One fixed failure-generation guard permits at most one request per
-  exact target.
-- Exact typed failure observation and ordinary home shutdown elect one winner under the same
-  process command-gate synchronization. If ordinary shutdown wins first, it owns the normal
-  destructive join-and-close sequence. If failure observation wins first, shutdown joins the cut
-  and consumes a non-cloneable retained-cut handoff; it cannot stop the cut worker, retire the
-  preserved connections, unwrap or close the home, or substitute ordinary teardown.
-- The retained-cut handoff owns the exact opened home, home/service/failure generations, frozen
-  router and stop evidence, bounded target dispositions, strong connection/session ownership, and
-  every already-admitted pre-activation loaded projection returned across the cut. It performs no
-  verification, reopen, durable mutation, quarantine, rebind, retry, or service-generation
-  publication. A finished handoff is consumed exactly once into one inert recovery inventory only
-  after old scheduler workers that can still surrender a projection have joined. Its exact escrow
-  identity stays reserved while the service owners are checked out. Rejection by the same exact
-  failed home generation is expected scheduler quiescence, not a second recovery failure; unrelated
-  scheduler fatality or panic keeps the inventory non-promotable. Scheduler-main containment
-  classifies that panic only after its runtime has cancelled and joined every child; parent
-  unwind cannot drop or detach an unjoined worker, and retention cannot seal before that containment
-  finishes. The causal distinction comes from the invalidated command permit's exact gate cause,
-  never from a later health sample; local failure
-  or a poisoned ownership boundary dominates exit classification on either side of the failed-home
-  election without displacing the cut's retained ownership. The gate is reconciled again after
-  scheduler join so a pre-seal fatality cannot be hidden by an earlier cut-correlated thread exit.
-  Poison recovery may preserve and join retained owners but cannot make the inventory promotable.
-  Inventory drop returns the owners
-  to the same slot without store work. The inventory preserves the entire worker-bounded candidate
-  set and its exact retained barriers; it does not select one projection. Only a stable inventory
-  may then be consumed into the grouped local quarantine. Those capabilities remain inert input to
-  later connection-epoch adoption and same-home recovery.
+- Store failure does not itself authorize or dispatch a volatile CAS interruption. Storage exposes
+  only exact evidence that a command was rejected before writer admission or returned
+  `NotCommitted`; that evidence may prove that preserved new-turn input had zero CAS dispatch, but
+  it grants no CAS command capability. Every other affected turn remains for the CAS-live outage
+  and repair boundary after a fresh service exists.
+- Failure observation closes the affected publication and command-admission gates. Ordinary
+  shutdown may join that quiescence, but storage recovery retains no live CAS connection,
+  projection, quarantine, service epoch, or adoption capability.
 - CAS events, command results, and other incoming work observed while the Fjall gate is closed cannot be committed or published as durable Syndic state. The last successfully committed lifecycle record remains the recovery starting point.
-- Recovery closes and reopens only the database in the exact retained physical `state` directory, reacquires each retained exact-owner domain blueprint and typed family, exhaustively validates required schema, every record envelope, domain invariants, and sidecars, and confirms a persistence barrier before returning to `healthy`.
+- Recovery drains and drops the failed Fjall generation, constructs a fresh Fjall configuration,
+  reopens `state`, validates the home header, registry, and required schema, and reacquires fresh
+  typed handles into an unpublished private home-store candidate behind the startup fence. It does
+  not require opened-object identity continuity or retain dependency handles from the failed
+  generation.
 - Each Fjall database generation owns a fresh dependency cache. Recovery drops the failed
   generation's cache and constructs the candidate with a new Fjall configuration; no block or blob
   resident crosses reopen or contributes evidence to reopen validation. Cache reuse is confined to
   trees and immutable versions inside one live database generation.
 - A failed recovery leaves the process in `failed`; it never initializes an empty replacement database at the same path.
 - Running-session recovery uses one process-wide single-flight loop with delays of 1, 2, 5, 10, and 30 seconds, then repeats at 30 seconds while failure persists.
-- A new failure signal while recovery is active joins that attempt instead of creating another loop. Successful validation cancels later retries and publishes one new healthy home generation.
-- Publishing a new healthy generation invalidates every prior-generation typed handle, prepared command, sidecar token, and command receipt before any delayed completion may update caller-visible state.
-- After successful same-home validation, CAS-live recovery reconciles every affected turn from its exact Syndic thread, Syndic turn, CAS thread, CAS turn, binding, and sequence identities before new turn work is admitted for that thread. It never guesses an identity, imports CAS history, or starts a second same-thread turn while exact terminal state remains unresolved.
-- Recovery does not make an old-generation loaded CAS projection current merely because its remote
-  lease survived. For a still-pending turn whose structural input preparation failed before
-  activation, the CAS-live system must first adopt the retained stable connection into one complete
-  replacement service epoch without reopening the old command gate or mixing old and new
-  publication authority. It may then consume each quarantined capability only through its explicit
-  generation-rebind proof: exact recovered-home admission, bounded stable pending-turn and binding
-  reauthentication, unchanged stable connection/lease identity, and final generation
-  reconfirmation. The home store supplies generation and typed-read authority only; it does not
-  select, mutate, resume, adopt, or bless a CAS capability itself.
+- A new failure signal while recovery is active joins that attempt instead of creating another
+  loop. Successful physical reopen alone does not cancel retries or publish application state.
+- Behind the startup fence, the system reacquires the complete Beryl and Syndic typed handle set,
+  runs every pending operation descriptor to `ExactOld`, `ExactNew`, or scoped-closed `Collision`,
+  installs those scope gates, and constructs a fresh CAS-live service. That service repairs each
+  eligible affected turn from its exact durable natural identities. Storage supplies fresh typed
+  reads and commits but never retains, selects, resumes, adopts, or blesses a CAS capability.
+- A repair-required turn may consume at most one exact correlated terminal CAS turn snapshot and
+  commit the result through Syndic; storage does not globally prohibit that bounded repair read or
+  treat CAS as canonical history.
+- Only after that system recovery sequence completes does one startup-fence transition publish the
+  app-visible home-store, typed-state, Syndic, and CAS-live stack together as the new healthy
+  generation. A scope classified `Collision` remains closed in that published stack while
+  unrelated structurally healthy scopes remain usable. Publication cancels later recovery retries
+  and invalidates every prior-generation typed handle, prepared command, sidecar token, command
+  receipt, and asynchronous completion.
 
-## Reopen Validation
+## Whole-Home Validation
 
-- Before domain-specific invariant reads, store-owned validation visits every snapshot-current
+- A bounded-memory whole-home scrub runs only at a schema-validation boundary, as an explicit
+  requested operation, in background maintenance, or upon corruption evidence. Routine recovery
+  and ambiguous-outcome reconciliation never invoke it.
+- Exactly one whole-home scrub worker may run for one home. Concurrent requests join its result;
+  evidence arriving during the run may set one coalesced pending rerun, never an unbounded work
+  queue. Every terminal path releases the worker, snapshot, cursor pages, sidecar verifier state,
+  and pending-rerun flag before another scrub starts. This local limit is independent of the writer
+  and reconciliation limits and does not create a universal process governor.
+- During that scrub, store-owned validation visits every snapshot-current
   application key and value in every registered physical family through its exact codec. Typed
   cursor endpoints cannot hide malformed records outside an ordinary query range; retired LSM
   history and tombstones remain storage-engine internals rather than codec inputs.
-- Reopen validation checks the active session generation, window-record references, thread/draft
+- Whole-home validation checks the active session generation, window-record references, thread/draft
   uniqueness, committed-tail reachability, monotonic revisions, exclusive thread claims, CAS
   binding reverse uniqueness, pending-job state, catalog stale markers, asset owner-head to sealed
   reference-set agreement, and metadata-to-sidecar references.
 - Rebuildable catalog projections may be marked stale and rebuilt from validated source records.
 - Missing or corrupt authoritative thread, draft, session, job, binding, or asset-reference records fail validation rather than being silently dropped.
-- Incomplete live work remains explicit through its owning lifecycle records and is recoverable without CAS historical reads.
+- Incomplete live work remains explicit through its owning lifecycle records. When those records
+  cannot prove one turn's terminal state, only the bounded delegated terminal-turn repair above may
+  consult CAS.
 
 ## Runtime And Root Registry
 
@@ -305,7 +465,23 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Dedicated application Exit flushes the already-open window set and marks shutdown mode without processing those windows as ordinary closes.
 - External process termination leaves the last `SyncAll`-completed active generation intact.
 - In-memory window identity, placement, or selection retained during a failed store cannot survive process termination unless it was part of that last `SyncAll`-completed generation.
-- Startup first runs the session domain's bounded reopen validator over its header, window, and two claim families; it does not register or validate unrelated Beryl domains. The following minimal discovery query reads only the active generation and referenced fixed-size window records, rereads the active header after those point reads, and rejects a concurrent publication rather than combining generations. After that set is known and before each restored window becomes visible, startup performs one bounded typed read for that window's selected thread and current draft.
+- During initial bootstrap, the `beryl` executable opens the home behind its startup fence,
+  registers or structurally reacquires every required Beryl and Syndic domain into one private typed
+  candidate, constructs every required dependent service, and atomically publishes the complete
+  healthy stack.
+- During running same-home recovery, the process-wide `beryl-app` home-recovery supervisor reopens
+  that home behind its recovery publication fence, structurally reacquires the complete required
+  domain stack into one private typed candidate, constructs the fresh dependent stack, and
+  atomically publishes the complete newer healthy generation only after convergence succeeds.
+  Routine reacquisition validates declarations and required physical families but is not an
+  exhaustive application-record scan. Neither boundary may run session, restore-set, or other
+  application discovery through partial registration, partial typed handles, or a session-only
+  candidate.
+- Only after complete-stack publication does the minimal discovery query read the active session
+  generation and referenced fixed-size window records, reread the active header, and reject
+  concurrent publication rather than combine generations. After that set is known and before each
+  restored window becomes visible, startup performs one bounded typed read for that window's
+  selected thread and current draft.
 - If validated session discovery finds an empty restore set and at least one runtime, startup chooses the most recently used runtime and its most recently used still-configured root, falling back to that runtime's non-removable home root. One command then creates the replacement window record and claims or creates an eligible empty thread in that scope before the window becomes visible.
 - If the restore set and runtime registry are both empty, startup creates the one permitted threadless initial window record.
 - The pre-window path does not load the full catalog, transcript records, or CAS state.
@@ -336,10 +512,50 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 
 - Release verification includes subprocess harnesses that terminate writers at every
   Beryl-controlled cut before commit, after commit but before `SyncAll`, and after `SyncAll`, then
-  reopen the same home and validate every domain invariant. The owned Fjall fork supplies
-  deterministic journal-write failure coverage so the previously suppressed issue #304 path is
-  included rather than treated as an external gap.
-- Fault injection covers full disk, denied writes, disappearing removable or network storage, truncated sidecar creation, failed rename, failed directory sync, process abort, panic, forced termination, repeated reopen failure, and bounded exact-codec-rejected physical record envelopes through the non-production `test-faults` boundary.
-- Lock tests cover concurrent processes, process death with the lock file left in place, path case aliases, symlinks, junctions, UNC paths, and explicit orderly release.
+  perform the routine structural reopen followed by a separately requested exhaustive scrub that
+  validates every domain invariant. Release verification includes the owned Fjall fork's
+  deterministic journal-write failure seam and proves that every such failure propagates through
+  the classified command result without reported durable success.
+- Theme-repository subprocess coverage terminates at staged-document creation and flush, staged
+  owner-manifest creation and flush, manifest replacement, and parent-directory synchronization.
+  Reopen proves one complete old or new repository generation, or retains exact indeterminate
+  evidence for targeted reconciliation; an orphan staged file or mixed document/manifest set never
+  becomes authoritative.
+- Fault injection covers below-reserve turn-start admission, ordinary `ENOSPC`, denied writes,
+  disappearing removable or network storage, truncated sidecar creation, failed rename, failed
+  directory sync, process abort, panic, forced termination, repeated reopen failure, and bounded
+  exact-codec-rejected physical record envelopes through the non-production `test-faults`
+  boundary.
+- Theme-file fault injection covers truncated staged documents and manifests, denied file writes,
+  failed flush, failed manifest replacement, failed directory synchronization, and disappearance
+  of the repository directory. Every case proves exact non-publication, exact durable publication,
+  or indeterminate owner-manifest publication without reporting a mixed generation as committed.
+- Open and lock tests cover concurrent processes, process death with the lock file left in place,
+  canonical path aliases, initial `state` symlink, junction, and other reparse-point collision
+  rejection, fully supported local NTFS homes, best-effort filesystem tiers, unreliable-lock
+  rejection, and explicit orderly release.
 - Concurrency tests cover competing draft saves, simultaneous different-thread submissions, claim-or-create races, session close versus Exit, resolution admission versus queued input, CAS binding transitions, and stale expected revisions.
-- Tests assert that no failed command is reported accepted, no two windows own one thread, no thread has two current drafts or active turns, no durable metadata points at missing committed sidecar bytes, and no recovery path reads CAS history.
+- Admission tests cover all four free-space outcomes and prove exactly one immediate query for each
+  direct or queued new turn, no query for steering, exact input preservation and zero CAS dispatch
+  on denial, and ordinary later `ENOSPC` classification.
+- Tests assert that no failed command is reported accepted, no two windows own one thread, no thread
+  has two current drafts or active turns, and no durable metadata points at missing committed
+  sidecar bytes. Recovery tests permit only the one exact correlated terminal CAS turn snapshot
+  delegated for a repair-required turn and reject broader or repeated historical reads. They also
+  prove that a fresh reopen remains private until one complete app-visible stack is published, and
+  that neither initial bootstrap nor reopen discovery can observe partial domain registration or
+  partial typed handles.
+- Reconciliation tests independently fill all 1,024 registry slots and the 256-MiB aggregate byte
+  budget, prove the next potentially indeterminate mutation receives typed pre-writer
+  `NotCommitted` capacity evidence without global failure or interruption of already-admitted work,
+  and reject descriptors above the 64-MiB per-descriptor ceiling.
+  They also prove immediate reservation release for directly classified `NotCommitted` and
+  `Committed`, one descriptor and no duplicate queue work per joined verifying scope, four-worker
+  saturation, and exact-old and exact-new slot release. Collision tests prove opaque-descriptor
+  disposal, retention of only one bounded sealed-fact set and its closed slot, and release of
+  transient readers, snapshots, pages, hooks, and the worker permit.
+- Provider-ingress fault tests force `Indeterminate` at every staging operation and prove the
+  move-only reservation and descriptor reach the exact per-home registry before acknowledgement,
+  cancellation, connection retirement, service disposal, or operation-state release. No path may
+  publish, retry, fabricate a receipt, or drop custody; orderly final close cannot dispose a
+  descriptor-bearing gate.

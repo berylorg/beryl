@@ -7,10 +7,20 @@ pub(super) fn limit() -> SyndicPointReadLimit {
 pub(super) fn execute(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
+}
+
+pub(super) fn assert_committed(outcome: beryl_home_store::CommandOutcome) {
+    match outcome {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("unexpected live-history command outcome: {outcome:?}"),
+    }
 }
 
 pub(super) fn provider_timestamp(at: SyndicTimestamp) -> ProviderLifecycleTimestampMsV1 {

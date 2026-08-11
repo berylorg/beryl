@@ -35,7 +35,7 @@ pub(super) const DELTAS: [ProviderDeltaKind; 9] = [
 fn begin_item(
     byte: u8,
     kind: ProviderObservationItemKind,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
     ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),
@@ -51,7 +51,7 @@ fn begin_item(
 fn begin_delta(
     byte: u8,
     kind: ProviderDeltaKind,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
     ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),
@@ -62,7 +62,7 @@ fn begin_delta(
 }
 
 fn validation_error(
-    result: Result<(), ProviderObservationStagingError<CommandError>>,
+    result: Result<(), ProviderObservationStagingError>,
 ) -> ProviderObservationValidatorError {
     match result {
         Err(ProviderObservationStagingError::Validation(error)) => error,
@@ -74,7 +74,7 @@ fn validation_error(
 fn wrong_scalar(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationValidatorError {
     validation_error(scalar(stager, field, ProviderScalar::Signed(-1), callback))
 }
@@ -82,7 +82,7 @@ fn wrong_scalar(
 fn wrong_enum(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationValidatorError {
     validation_error(stager.control(
         ProviderObservationControl::Enum {
@@ -96,7 +96,7 @@ fn wrong_enum(
 fn wrong_item_value(
     stager: &mut ProviderObservationStager,
     kind: ProviderObservationItemKind,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationValidatorError {
     match kind {
         ProviderObservationItemKind::HookPrompt => {
@@ -156,7 +156,7 @@ fn wrong_item_value(
 fn wrong_delta_value(
     stager: &mut ProviderObservationStager,
     kind: ProviderDeltaKind,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationValidatorError {
     match kind {
         ProviderDeltaKind::AgentMessage

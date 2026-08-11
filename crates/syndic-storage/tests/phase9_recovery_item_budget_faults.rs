@@ -3,7 +3,7 @@
 #[path = "phase9_recovery_projection/support.rs"]
 mod support;
 
-use beryl_home_store::{HomeCommand, HomeHealthState, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeHealthState, HomeStore};
 use syndic_storage::{
     RecoveryBudgetKind, RecoveryItemCount, RecoveryProjectionError, RecoveryProjectionRequest,
     SyndicStorage, TurnItemOrdinal, TurnStateRecord, TurnTerminalOutcome,
@@ -67,7 +67,13 @@ fn build_budget_fixture(name: &str, root_item_count: u64) -> BudgetFixture {
     command
         .add(storage.fixture_contribution(storage.revision(&store).unwrap(), fault))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed recovery-budget fixture command, got {outcome:?}"),
+    }
 
     BudgetFixture {
         _home: home,

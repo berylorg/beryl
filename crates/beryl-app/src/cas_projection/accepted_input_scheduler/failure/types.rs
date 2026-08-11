@@ -13,9 +13,6 @@ impl AcceptedInputSchedulerExit {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection::accepted_input_scheduler) enum SchedulerFailure {
-    /// Exact current-generation verification is owned by the process supervisor. Scheduler work
-    /// returns this nonterminal disposition so the scheduler can park without closing its gate.
-    VerificationPending,
     PersistentHomeFailure,
     Fatal,
 }
@@ -32,7 +29,7 @@ impl SchedulerFailure {
         {
             Self::PersistentHomeFailure
         } else {
-            Self::VerificationPending
+            Self::PersistentHomeFailure
         }
     }
 }

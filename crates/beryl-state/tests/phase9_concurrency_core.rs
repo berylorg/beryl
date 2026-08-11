@@ -1,6 +1,6 @@
 mod support;
 
-use beryl_home_store::{CursorReadLimits, HomeCommand};
+use beryl_home_store::{CommandOutcome, CursorReadLimits, HomeCommand};
 use beryl_model::{
     AdmittedHostPath, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
 };
@@ -16,6 +16,19 @@ use support::phase9::{
     assert_one_success_one_conflict, command, placement, race_commands, target, thread, window,
 };
 use support::{contributor_source, execute, host_runtime};
+
+macro_rules! expect_committed {
+    ($outcome:expr) => {{
+        let outcome = $outcome;
+        match outcome {
+            CommandOutcome::Committed {
+                receipt,
+                later_failure: None,
+            } => receipt,
+            outcome => panic!("expected committed command, got {outcome:?}"),
+        }
+    }};
+}
 
 fn theme(value: &str) -> SettingUpdate {
     SettingUpdate::new(
@@ -65,14 +78,13 @@ fn different_domains_serialize_without_lost_state() {
         .unwrap()
         .is_none()
     {
-        execute(
+        expect_committed!(execute(
             &store,
             state.settings().apply(
                 state.settings().revision(&store).unwrap(),
                 ApplySettings::new(vec![theme("different-domain")]).unwrap(),
             ),
-        )
-        .unwrap();
+        ));
     }
     if state
         .runtime_roots()
@@ -80,14 +92,13 @@ fn different_domains_serialize_without_lost_state() {
         .unwrap()
         .is_none()
     {
-        execute(
+        expect_committed!(execute(
             &store,
             state.runtime_roots().create_runtime_with_home_root(
                 state.runtime_roots().revision(&store).unwrap(),
                 host_runtime(1, 2, r"C:\Codex\codex.exe", r"C:\Work\ten"),
             ),
-        )
-        .unwrap();
+        ));
     }
 
     store.close().unwrap();
@@ -102,13 +113,11 @@ fn different_domains_serialize_without_lost_state() {
             .as_active_theme_id(),
         Some("different-domain")
     );
-    assert!(
-        state
-            .runtime_roots()
-            .runtime(&reopened, RuntimeId::from_bytes([1; 16]))
-            .unwrap()
-            .is_some()
-    );
+    assert!(state
+        .runtime_roots()
+        .runtime(&reopened, RuntimeId::from_bytes([1; 16]))
+        .unwrap()
+        .is_some());
 }
 
 #[test]
@@ -156,8 +165,13 @@ fn runtime_executable_and_per_runtime_root_uniqueness_survive_concurrent_admissi
                 r"C:\Users\retry",
             ),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted {
+        evidence: duplicate,
+    } = duplicate
+    else {
+        panic!("expected rejected duplicate runtime command, got {duplicate:?}");
+    };
     assert!(matches!(
         contributor_source::<RuntimeRootMutationError>(&duplicate),
         Some(RuntimeRootMutationError::ExecutableExists { .. })
@@ -202,8 +216,13 @@ fn runtime_executable_and_per_runtime_root_uniqueness_survive_concurrent_admissi
             state.runtime_roots().revision(&store).unwrap(),
             AddConfiguredRoot::new(runtime_id, root_registration(loser_root, shared_path)),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted {
+        evidence: duplicate,
+    } = duplicate
+    else {
+        panic!("expected rejected duplicate root command, got {duplicate:?}");
+    };
     assert!(matches!(
         contributor_source::<RuntimeRootMutationError>(&duplicate),
         Some(RuntimeRootMutationError::RootPathExists { .. })
@@ -231,13 +250,11 @@ fn runtime_executable_and_per_runtime_root_uniqueness_survive_concurrent_admissi
 
     store.close().unwrap();
     let (reopened, state) = support::open(directory.path());
-    assert!(
-        state
-            .runtime_roots()
-            .runtime(&reopened, runtime_id)
-            .unwrap()
-            .is_some()
-    );
+    assert!(state
+        .runtime_roots()
+        .runtime(&reopened, runtime_id)
+        .unwrap()
+        .is_some());
     assert_eq!(
         state
             .runtime_roots()
@@ -262,17 +279,16 @@ fn session_claim_conflicts_and_close_vs_exit_publish_one_coherent_generation() {
     let (store, state) = support::open(directory.path());
     let session = state.session();
     let initial_window = window(1);
-    execute(
+    expect_committed!(execute(
         &store,
         session.initialize_threadless(
             session.revision(&store).unwrap(),
             InitializeThreadlessWindow::new(initial_window, placement(1)),
         ),
-    )
-    .unwrap();
+    ));
 
     let threadless = session.minimal_bootstrap(&store).unwrap().unwrap();
-    execute(
+    expect_committed!(execute(
         &store,
         session.replace_claim(
             session.revision(&store).unwrap(),
@@ -285,8 +301,7 @@ fn session_claim_conflicts_and_close_vs_exit_publish_one_coherent_generation() {
                 thread(80),
             ),
         ),
-    )
-    .unwrap();
+    ));
     let initial = session.minimal_bootstrap(&store).unwrap().unwrap();
     let claimed_thread = thread(90);
     let expected_domain = session.revision(&store).unwrap();
@@ -342,8 +357,13 @@ fn session_claim_conflicts_and_close_vs_exit_publish_one_coherent_generation() {
                 placement(4),
             ),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted {
+        evidence: duplicate,
+    } = duplicate
+    else {
+        panic!("expected rejected duplicate claim command, got {duplicate:?}");
+    };
     assert!(matches!(
         contributor_source::<SessionMutationError>(&duplicate),
         Some(SessionMutationError::ThreadAlreadyClaimed { .. })
@@ -380,18 +400,14 @@ fn session_claim_conflicts_and_close_vs_exit_publish_one_coherent_generation() {
 
     let final_session = session.minimal_bootstrap(&store).unwrap().unwrap();
     match final_session.header().exit_intent() {
-        SessionExitIntent::Running => assert!(
-            final_session
-                .windows()
-                .iter()
-                .all(|record| record.window_id() != initial_window)
-        ),
-        SessionExitIntent::OrderlyExit => assert!(
-            final_session
-                .windows()
-                .iter()
-                .any(|record| record.window_id() == initial_window)
-        ),
+        SessionExitIntent::Running => assert!(final_session
+            .windows()
+            .iter()
+            .all(|record| record.window_id() != initial_window)),
+        SessionExitIntent::OrderlyExit => assert!(final_session
+            .windows()
+            .iter()
+            .any(|record| record.window_id() == initial_window)),
     }
     let expected_header = final_session.header().clone();
     let expected_windows = final_session.windows().to_vec();

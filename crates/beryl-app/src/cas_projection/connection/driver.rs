@@ -26,36 +26,28 @@ use beryl_backend::{
 use beryl_model::{CasThreadId, CasTurnId};
 
 use super::{
-    ConnectionEpochIdentity, ConnectionRegistryAuthority, ConnectionServiceEpoch, ForwardingHub,
+    ConnectionAttachment, ConnectionAttachmentIdentity, ConnectionRegistryAuthority, ForwardingHub,
     driver_outcome::{ConnectionCommandOutcome, ConnectionRoutingFailure},
     persistent_failure::dispatch_next_persistent_failure,
     provider_broker::ProviderBrokerControl,
     recovery_source_broker::{self, PreparedRecoverySource},
     registry,
-    router::{EventRouter, LiveEventTargetCloseReason, RouteOutcome, StopTargetProof},
+    router::{EventRouter, LiveEventTargetCloseReason, RouteOutcome},
     source_broker::{
         self, RemoteStreamedInputSource, SourceBrokerEvent, StreamedInputBrokerService,
     },
 };
 use crate::cas_projection::stop::{
-    HardStopRunOwner, StopCoordinationError, StopDispatchOwner, StopDispatchSettlement,
+    StopCoordinationError, StopDispatchOwner, StopDispatchSettlement,
 };
 use crate::cas_projection::{
     ProjectionCoordinatorError,
     persistent_failure::{
-        LiveCommandAuthorizer, LiveCommandPermit, PersistentFailureCommandFrontier,
-        PersistentFailureCutIdentity, PersistentFailureGeneration,
+        LiveCommandPermit, PersistentFailureCommandFrontier, PersistentFailureCutIdentity,
+        PersistentFailureGeneration,
     },
     service_config::ProjectionWorkerPermit,
 };
-
-mod adoption;
-
-pub(in crate::cas_projection) use adoption::{
-    AdoptedDriverParkToken, DriverParkBindError, DriverParkError, DriverParkErrorReason,
-    DriverParkToken, ParkedDriver,
-};
-use adoption::{DriverAdoptionPoll, DriverAdoptionSlot, DriverParkControl, DriverParkWaitOutcome};
 
 const CONNECTION_COMMAND_QUEUE_LIMIT: usize = 64;
 const STREAM_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -79,7 +71,7 @@ enum DriverCommandNondispatch {
         frontier: PersistentFailureCommandFrontier,
     },
     OrdinaryShutdown,
-    EpochMismatch,
+    AttachmentMismatch,
     WorkerUnavailable,
 }
 
@@ -89,7 +81,7 @@ enum DriverOperationDisposition {
 }
 
 struct DriverCommand {
-    admitted_epoch: Option<ConnectionEpochIdentity>,
+    admitted_attachment: Option<ConnectionAttachmentIdentity>,
     permit: LiveCommandPermit,
     operation: DriverOperation,
     rejection: DriverRejection,
@@ -126,7 +118,7 @@ impl DriverCommandNondispatch {
             }
             Self::PersistentHomeFailure { .. }
             | Self::OrdinaryShutdown
-            | Self::EpochMismatch
+            | Self::AttachmentMismatch
             | Self::WorkerUnavailable => ProjectionCoordinatorError::ProjectionWorkerStopped,
         }
     }
@@ -135,12 +127,6 @@ impl DriverCommandNondispatch {
 struct StopDriverOutcome {
     settlement: Result<StopDispatchSettlement, StopCoordinationError>,
     invalidates_connection: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DriverShutdownAuthorization {
-    OrdinaryLifecycle,
-    ExplicitInertDisposition,
 }
 
 #[cfg(test)]
@@ -209,7 +195,7 @@ fn test_driver_command(operation: DriverOperation) -> DriverCommand {
         None,
     );
     DriverCommand {
-        admitted_epoch: None,
+        admitted_attachment: None,
         permit: gate
             .authorizer()
             .authorize()
@@ -422,28 +408,32 @@ struct DriverContext {
     authority: Arc<ConnectionRegistryAuthority>,
     stop: Arc<AtomicBool>,
     forwarding_hub: Arc<ForwardingHub>,
-    adoption: Arc<DriverAdoptionSlot>,
 }
 
 impl DriverContext {
-    fn epoch(&self) -> Result<Arc<ConnectionServiceEpoch>, ProjectionCoordinatorError> {
-        self.forwarding_hub.current_epoch()
+    fn attachment(&self) -> Result<Arc<ConnectionAttachment>, ProjectionCoordinatorError> {
+        self.forwarding_hub.current_attachment()
     }
 
-    fn epoch_for(&self, command: &LiveCommandPermit) -> Option<Arc<ConnectionServiceEpoch>> {
-        let epoch = self.epoch().ok()?;
-        (epoch.identity.service_generation() == command.service_generation()).then_some(epoch)
+    fn attachment_for(&self, command: &LiveCommandPermit) -> Option<Arc<ConnectionAttachment>> {
+        let attachment = self.attachment().ok()?;
+        (attachment.identity.service_generation() == command.service_generation())
+            .then_some(attachment)
     }
 
     fn retire(&self, reason: LiveEventTargetCloseReason) {
-        let Ok(epoch) = self.epoch() else {
+        let Ok(attachment) = self.attachment() else {
             return;
         };
-        self.retire_epoch(&epoch, reason);
+        self.retire_attachment(&attachment, reason);
     }
 
-    fn retire_epoch(&self, epoch: &ConnectionServiceEpoch, reason: LiveEventTargetCloseReason) {
-        let command = match epoch.commands.authorize() {
+    fn retire_attachment(
+        &self,
+        attachment: &ConnectionAttachment,
+        reason: LiveEventTargetCloseReason,
+    ) {
+        let command = match attachment.commands.authorize() {
             Ok(command) => command,
             Err(_) => return,
         };
@@ -451,20 +441,20 @@ impl DriverContext {
             Ok(authority) => authority,
             Err(_) => {
                 let elected = command
-                    .commit_if_current(|| epoch.begin_ordinary_retirement())
+                    .commit_if_current(|| attachment.begin_ordinary_retirement())
                     .unwrap_or(false);
                 drop(command);
                 if elected {
                     self.stop.store(true, Ordering::Release);
-                    epoch.broker.request_cancel();
-                    epoch.router.retire(reason);
+                    attachment.broker.request_cancel();
+                    attachment.router.retire(reason);
                 }
                 return;
             }
         };
         let elected = command
             .commit_if_current(|| {
-                let elected = epoch.begin_ordinary_retirement();
+                let elected = attachment.begin_ordinary_retirement();
                 if elected {
                     self.authority.retire_locked(&mut authority);
                 }
@@ -475,25 +465,25 @@ impl DriverContext {
         drop(command);
         if elected {
             self.stop.store(true, Ordering::Release);
-            epoch.broker.request_cancel();
-            epoch.router.retire(reason);
+            attachment.broker.request_cancel();
+            attachment.router.retire(reason);
         }
     }
 
     fn retire_backend(&self, reason: LiveEventTargetCloseReason) {
-        let Ok(epoch) = self.epoch() else {
+        let Ok(attachment) = self.attachment() else {
             return;
         };
-        epoch.broker.record_backend_failure();
-        self.retire_epoch(&epoch, reason);
+        attachment.broker.record_backend_failure();
+        self.retire_attachment(&attachment, reason);
     }
 
     fn retire_router(&self, reason: LiveEventTargetCloseReason) {
-        let Ok(epoch) = self.epoch() else {
+        let Ok(attachment) = self.attachment() else {
             return;
         };
-        epoch.broker.record_router_failure();
-        self.retire_epoch(&epoch, reason);
+        attachment.broker.record_router_failure();
+        self.retire_attachment(&attachment, reason);
     }
 
     fn drain_approval_interruptions(
@@ -502,13 +492,13 @@ impl DriverContext {
         command: &LiveCommandPermit,
         expected_target_failure: Option<&ApprovalRequest>,
     ) -> bool {
-        let Some(epoch) = self.epoch_for(command) else {
+        let Some(attachment) = self.attachment_for(command) else {
             return false;
         };
         let expects_permission = expected_target_failure
             .is_some_and(|request| request.kind().separate_interruption_required());
         let mut first = true;
-        while let Some(mut pending) = epoch.broker.take_approval_interruption() {
+        while let Some(mut pending) = attachment.broker.take_approval_interruption() {
             if first
                 && expected_target_failure
                     .is_some_and(|request| !pending.obligation().matches_request(request))
@@ -533,11 +523,8 @@ impl DriverContext {
                 Ok(StopDispatchSettlement::SafelyReopened(_)) => {
                     unreachable!("interrupting approval cannot safely reopen its durable stop")
                 }
-                Ok(StopDispatchSettlement::HardStop(_)) => {
-                    unreachable!("the stop driver must finish its hard continuation before return")
-                }
                 Ok(StopDispatchSettlement::Abandoned(_)) | Err(_) => {
-                    match epoch
+                    match attachment
                         .router
                         .fail_approval_interruption(command, pending.obligation())
                     {
@@ -573,23 +560,23 @@ impl DriverContext {
         true
     }
 
-    fn admitted_epoch(
+    fn admitted_attachment(
         &self,
         command: &LiveCommandPermit,
-    ) -> Result<Arc<ConnectionServiceEpoch>, DriverCommandNondispatch> {
-        let epoch = self
-            .epoch_for(command)
+    ) -> Result<Arc<ConnectionAttachment>, DriverCommandNondispatch> {
+        let attachment = self
+            .attachment_for(command)
             .ok_or(DriverCommandNondispatch::WorkerUnavailable)?;
-        if !epoch.commands.is_open() {
-            return Err(command_nondispatch(&epoch));
+        if !attachment.commands.is_open() {
+            return Err(command_nondispatch(&attachment));
         }
         if !self.stop.load(Ordering::Acquire)
             && !self.authority.is_retired()
-            && epoch.broker.routing_failure().is_none()
+            && attachment.broker.routing_failure().is_none()
         {
-            return Ok(epoch);
+            return Ok(attachment);
         }
-        self.retire_epoch(&epoch, LiveEventTargetCloseReason::StreamFailure);
+        self.retire_attachment(&attachment, LiveEventTargetCloseReason::StreamFailure);
         Err(DriverCommandNondispatch::WorkerUnavailable)
     }
 }
@@ -599,7 +586,6 @@ pub(super) struct ConnectionDriver {
     stop: Arc<AtomicBool>,
     handle: Mutex<Option<JoinHandle<()>>>,
     forwarding_hub: Arc<ForwardingHub>,
-    adoption: Arc<DriverAdoptionSlot>,
 }
 
 impl std::fmt::Debug for ConnectionDriver {
@@ -620,12 +606,10 @@ impl ConnectionDriver {
     ) -> Result<Self, ProjectionCoordinatorError> {
         let (sender, receiver) = connection_command_channel()?;
         let stop = Arc::new(AtomicBool::new(false));
-        let adoption = DriverAdoptionSlot::new();
         let context = DriverContext {
             authority,
             stop: Arc::clone(&stop),
             forwarding_hub: Arc::clone(&forwarding_hub),
-            adoption: Arc::clone(&adoption),
         };
         let handle = std::thread::Builder::new()
             .name("beryl-cas-connection".to_string())
@@ -638,7 +622,6 @@ impl ConnectionDriver {
             stop,
             handle: Mutex::new(Some(handle)),
             forwarding_hub,
-            adoption,
         })
     }
 
@@ -668,46 +651,6 @@ impl ConnectionDriver {
             |outcome| outcome.invalidates_connection,
         )?;
         Ok(command.into_parts().0.settlement)
-    }
-
-    pub(super) fn dispatch_exact_hard_stop(
-        &self,
-        owner: HardStopRunOwner,
-        proof: StopTargetProof,
-    ) -> Result<Result<StopDispatchSettlement, StopCoordinationError>, ProjectionCoordinatorError>
-    {
-        if self.stop.load(Ordering::Acquire) {
-            return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
-        }
-        let (result_sender, result_receiver) = mpsc::sync_channel(1);
-        let rejection_sender = result_sender.clone();
-        self.send_command(
-            Box::new(move |session, context, command| {
-                let epoch = match context.admitted_epoch(&command) {
-                    Ok(epoch) => epoch,
-                    Err(cause) => return DriverOperationDisposition::Rejected(cause),
-                };
-                let outcome = dispatch_hard_stop_owner(
-                    session,
-                    &epoch.router,
-                    &epoch.commands,
-                    command,
-                    owner,
-                    &proof,
-                );
-                if outcome.invalidates_connection {
-                    context.retire_epoch(&epoch, LiveEventTargetCloseReason::StreamFailure);
-                } else if let Ok(followup) = epoch.commands.authorize() {
-                    let _ = context.drain_approval_interruptions(session, &followup, None);
-                }
-                let _ = result_sender.send(Ok(outcome.settlement));
-                DriverOperationDisposition::Settled
-            }),
-            Box::new(move |cause| {
-                let _ = rejection_sender.send(Err(cause));
-            }),
-        )?;
-        receive_driver_result(result_receiver)
     }
 
     pub(super) fn call_classified<T>(
@@ -745,26 +688,28 @@ impl ConnectionDriver {
         let rejection_sender = result_sender.clone();
         self.send_command(
             Box::new(move |session, context, command| {
-                let epoch = match context.admitted_epoch(&command) {
-                    Ok(epoch) => epoch,
+                let attachment = match context.admitted_attachment(&command) {
+                    Ok(attachment) => attachment,
                     Err(cause) => return DriverOperationDisposition::Rejected(cause),
                 };
-                if let Err(error) = authorize(&epoch.router, &command) {
+                if let Err(error) = authorize(&attachment.router, &command) {
                     let _ = result_sender.send(Ok(Err(error)));
                     return DriverOperationDisposition::Settled;
                 }
                 let operation = operation(session);
                 if invalidates_connection(&operation) {
-                    context.retire_epoch(&epoch, LiveEventTargetCloseReason::StreamFailure);
-                } else if epoch.commands.is_open() {
+                    context
+                        .retire_attachment(&attachment, LiveEventTargetCloseReason::StreamFailure);
+                } else if attachment.commands.is_open() {
                     let _ = context.drain_approval_interruptions(session, &command, None);
                 }
-                let routing_failure = epoch.broker.routing_failure();
+                let routing_failure = attachment.broker.routing_failure();
                 if matches!(
                     routing_failure,
                     Some(ConnectionRoutingFailure::Backend | ConnectionRoutingFailure::Router)
                 ) {
-                    context.retire_epoch(&epoch, LiveEventTargetCloseReason::StreamFailure);
+                    context
+                        .retire_attachment(&attachment, LiveEventTargetCloseReason::StreamFailure);
                 }
                 let _ = result_sender.send(Ok(Ok(ConnectionCommandOutcome::new(
                     operation,
@@ -801,27 +746,29 @@ impl ConnectionDriver {
         let (rejection_sender, rejection_receiver) = mpsc::sync_channel(1);
         self.send_command(
             Box::new(move |session, context, command| {
-                let epoch = match context.admitted_epoch(&command) {
-                    Ok(epoch) => epoch,
+                let attachment = match context.admitted_attachment(&command) {
+                    Ok(attachment) => attachment,
                     Err(cause) => return DriverOperationDisposition::Rejected(cause),
                 };
-                if let Err(error) = authorize(&epoch.router, &command) {
+                if let Err(error) = authorize(&attachment.router, &command) {
                     let _ = events.send(SourceBrokerEvent::Finished(Err(error)));
                     return DriverOperationDisposition::Settled;
                 }
                 let operation = operation(session);
-                let classification = classify_operation(&epoch.broker, &operation);
+                let classification = classify_operation(&attachment.broker, &operation);
                 if invalidates_connection(&operation) {
-                    context.retire_epoch(&epoch, LiveEventTargetCloseReason::StreamFailure);
-                } else if epoch.commands.is_open() {
+                    context
+                        .retire_attachment(&attachment, LiveEventTargetCloseReason::StreamFailure);
+                } else if attachment.commands.is_open() {
                     let _ = context.drain_approval_interruptions(session, &command, None);
                 }
-                let routing_failure = epoch.broker.routing_failure();
+                let routing_failure = attachment.broker.routing_failure();
                 if matches!(
                     routing_failure,
                     Some(ConnectionRoutingFailure::Backend | ConnectionRoutingFailure::Router)
                 ) {
-                    context.retire_epoch(&epoch, LiveEventTargetCloseReason::StreamFailure);
+                    context
+                        .retire_attachment(&attachment, LiveEventTargetCloseReason::StreamFailure);
                 }
                 let _ = events.send(SourceBrokerEvent::Finished(Ok(
                     ConnectionCommandOutcome::new((operation, classification), routing_failure),
@@ -865,22 +812,24 @@ impl ConnectionDriver {
         let (rejection_sender, rejection_receiver) = mpsc::sync_channel(1);
         self.send_command(
             Box::new(move |session, context, command| {
-                let epoch = match context.admitted_epoch(&command) {
-                    Ok(epoch) => epoch,
+                let attachment = match context.admitted_attachment(&command) {
+                    Ok(attachment) => attachment,
                     Err(cause) => return DriverOperationDisposition::Rejected(cause),
                 };
                 let operation = operation(session, &mut source);
                 if invalidates_connection(&operation) {
-                    context.retire_epoch(&epoch, LiveEventTargetCloseReason::StreamFailure);
-                } else if epoch.commands.is_open() {
+                    context
+                        .retire_attachment(&attachment, LiveEventTargetCloseReason::StreamFailure);
+                } else if attachment.commands.is_open() {
                     let _ = context.drain_approval_interruptions(session, &command, None);
                 }
-                let routing_failure = epoch.broker.routing_failure();
+                let routing_failure = attachment.broker.routing_failure();
                 if matches!(
                     routing_failure,
                     Some(ConnectionRoutingFailure::Backend | ConnectionRoutingFailure::Router)
                 ) {
-                    context.retire_epoch(&epoch, LiveEventTargetCloseReason::StreamFailure);
+                    context
+                        .retire_attachment(&attachment, LiveEventTargetCloseReason::StreamFailure);
                 }
                 source.finish(ConnectionCommandOutcome::new(operation, routing_failure));
                 DriverOperationDisposition::Settled
@@ -900,48 +849,6 @@ impl ConnectionDriver {
 
     pub(super) fn request_stop(&self) {
         self.stop.store(true, Ordering::Release);
-        self.adoption.notify_stop();
-    }
-
-    pub(super) fn park_for_adoption(
-        &self,
-        cut: PersistentFailureCutIdentity,
-    ) -> Result<ParkedDriver, DriverParkError> {
-        let epoch = self
-            .forwarding_hub
-            .current_epoch()
-            .map_err(|_| DriverParkError::new(DriverParkErrorReason::DriverStopped))?;
-        if epoch.identity.home_id() != cut.home_id
-            || epoch.identity.home_generation() != cut.home_generation
-            || epoch.identity.service_generation() != cut.service_generation
-            || !epoch
-                .persistent_failure
-                .matches_finished_cut(cut)
-                .map_err(|_| DriverParkError::new(DriverParkErrorReason::CoordinationPoisoned))?
-        {
-            return Err(DriverParkError::new(
-                DriverParkErrorReason::IdentityMismatch,
-            ));
-        }
-        let frontier = epoch
-            .commands
-            .persistent_failure_frontier(cut.service_generation, cut.failure_generation)
-            .map_err(|_| DriverParkError::new(DriverParkErrorReason::IdentityMismatch))?;
-        self.adoption
-            .park(DriverParkControl::new(epoch.identity, cut, frontier))
-    }
-
-    pub(super) fn disable_for_adoption_failure(&self, cut: PersistentFailureCutIdentity) {
-        self.adoption.disable_for_failure(cut);
-    }
-
-    pub(super) fn dispose_inert_after_adoption_failure(
-        &self,
-    ) -> Result<(), ProjectionCoordinatorError> {
-        if !self.adoption.release_inert_for_disposition() {
-            return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
-        }
-        self.join()
     }
 
     pub(super) fn is_finished(&self) -> bool {
@@ -982,13 +889,13 @@ impl ConnectionDriver {
         operation: DriverOperation,
         rejection: DriverRejection,
     ) -> Result<(), ProjectionCoordinatorError> {
-        let epoch = self.forwarding_hub.current_epoch()?;
-        let permit = epoch
+        let attachment = self.forwarding_hub.current_attachment()?;
+        let permit = attachment
             .commands
             .authorize()
             .map_err(|_| ProjectionCoordinatorError::ProjectionWorkerStopped)?;
         let mut command = DriverCommand {
-            admitted_epoch: Some(epoch.identity),
+            admitted_attachment: Some(attachment.identity),
             permit,
             operation,
             rejection,
@@ -1035,109 +942,6 @@ impl Drop for ConnectionDriver {
     }
 }
 
-fn dispatch_hard_stop_owner(
-    session: &mut ConnectionRequestSession<'_>,
-    router: &Arc<EventRouter>,
-    commands: &LiveCommandAuthorizer,
-    command: LiveCommandPermit,
-    owner: HardStopRunOwner,
-    proof: &StopTargetProof,
-) -> StopDriverOutcome {
-    if !owner.requires_fresh_election() {
-        return StopDriverOutcome {
-            settlement: owner.finish_unavailable_without_dispatch(),
-            invalidates_connection: false,
-        };
-    }
-    if owner.target().is_none() {
-        return StopDriverOutcome {
-            settlement: owner.finish(None),
-            invalidates_connection: false,
-        };
-    }
-    if !owner.matches_proof(proof)
-        || !session
-            .backend
-            .admits_exact_thread_background_terminals_cleanup()
-    {
-        return StopDriverOutcome {
-            settlement: owner.finish_unavailable_without_dispatch(),
-            invalidates_connection: false,
-        };
-    }
-    let permit = match router.acquire_stop_election(command, proof) {
-        Ok(permit) => permit,
-        Err(_) => {
-            return StopDriverOutcome {
-                settlement: owner.finish_unavailable_without_dispatch(),
-                invalidates_connection: false,
-            };
-        }
-    };
-    let _operation_command = match commands.authorize() {
-        Ok(command) => command,
-        Err(_) => {
-            return StopDriverOutcome {
-                settlement: owner.finish_unavailable_without_dispatch(),
-                invalidates_connection: false,
-            };
-        }
-    };
-    let target = owner.exact_target();
-    if let Err(error) = session.backend.bind_exact_foreground_turn(target.clone()) {
-        let invalidates_connection = error.invalidates_connection_authority();
-        return StopDriverOutcome {
-            settlement: owner.finish_unavailable_without_dispatch(),
-            invalidates_connection,
-        };
-    }
-    let authorization = match session.backend.authorize_exact_foreground_turn(
-        target,
-        owner.operation_correlation(),
-        owner.attempt_correlation(),
-        CallerNoSuccessorFence::issue(),
-    ) {
-        Ok(authorization) => authorization,
-        Err(error) => {
-            let mut invalidates_connection = error.invalidates_connection_authority();
-            let unbind = session.backend.unbind_exact_foreground_turn();
-            invalidates_connection |= unbind
-                .as_ref()
-                .is_err_and(ManagedBackendError::invalidates_connection_authority);
-            return StopDriverOutcome {
-                settlement: owner.finish_unavailable_without_dispatch(),
-                invalidates_connection,
-            };
-        }
-    };
-    // Authorization is minted while the exact router election excludes a successor. Releasing
-    // the election before the bounded provider wait lets terminal ingress converge concurrently;
-    // the hard-stop slot itself retains the finalization hold.
-    permit.finish();
-    let outcome = session
-        .backend
-        .clean_exact_thread_background_terminals(authorization, owner.timeout());
-    let invalidates_connection = match outcome.disposition() {
-        beryl_backend::CoarseThreadCleanupDisposition::RequestAccepted { .. } => false,
-        beryl_backend::CoarseThreadCleanupDisposition::ProvenNotDispatched { error } => {
-            error.invalidates_connection_authority()
-        }
-        beryl_backend::CoarseThreadCleanupDisposition::SessionAuthorityInvalidated { .. }
-        | beryl_backend::CoarseThreadCleanupDisposition::CompletionUnknown { .. } => true,
-    };
-    let settlement = owner.finish(Some(&outcome));
-    let unbind = session.backend.unbind_exact_foreground_turn();
-    let invalidates_connection = invalidates_connection
-        || unbind
-            .as_ref()
-            .is_err_and(ManagedBackendError::invalidates_connection_authority)
-        || stop_settlement_retires_projection(&settlement);
-    StopDriverOutcome {
-        settlement,
-        invalidates_connection,
-    }
-}
-
 fn dispatch_stop_owner(
     session: &mut ConnectionRequestSession<'_>,
     owner: StopDispatchOwner,
@@ -1151,7 +955,7 @@ fn dispatch_stop_owner(
     let target = owner.exact_target();
     if let Err(error) = session.backend.bind_exact_foreground_turn(target.clone()) {
         let mut invalidates_connection = error.invalidates_connection_authority();
-        let settlement = finish_unavailable_hard_stop(owner.settle_before_dispatch());
+        let settlement = owner.settle_before_dispatch();
         invalidates_connection |= stop_settlement_retires_projection(&settlement);
         return StopDriverOutcome {
             settlement,
@@ -1171,7 +975,7 @@ fn dispatch_stop_owner(
             invalidates_connection |= unbind
                 .as_ref()
                 .is_err_and(ManagedBackendError::invalidates_connection_authority);
-            let settlement = finish_unavailable_hard_stop(owner.settle_before_dispatch());
+            let settlement = owner.settle_before_dispatch();
             invalidates_connection |= stop_settlement_retires_projection(&settlement);
             return StopDriverOutcome {
                 settlement,
@@ -1191,11 +995,8 @@ fn dispatch_stop_owner(
         | beryl_backend::TurnInterruptDisposition::RejectedBeforeCoreInterrupt => false,
     };
     let settlement = owner.settle_interrupt(&outcome);
-    let (settlement, hard_invalidates_connection) =
-        finish_authorized_hard_stop(session, settlement);
     let unbind = session.backend.unbind_exact_foreground_turn();
     let invalidates_connection = invalidates_connection
-        || hard_invalidates_connection
         || unbind
             .as_ref()
             .is_err_and(ManagedBackendError::invalidates_connection_authority);
@@ -1207,72 +1008,6 @@ fn dispatch_stop_owner(
     }
 }
 
-fn finish_unavailable_hard_stop(
-    settlement: Result<StopDispatchSettlement, StopCoordinationError>,
-) -> Result<StopDispatchSettlement, StopCoordinationError> {
-    match settlement {
-        Ok(StopDispatchSettlement::HardStop(owner)) => owner.finish_unavailable_without_dispatch(),
-        other => other,
-    }
-}
-
-fn finish_authorized_hard_stop(
-    session: &mut ConnectionRequestSession<'_>,
-    settlement: Result<StopDispatchSettlement, StopCoordinationError>,
-) -> (Result<StopDispatchSettlement, StopCoordinationError>, bool) {
-    let Ok(StopDispatchSettlement::HardStop(mut owner)) = settlement else {
-        return (settlement, false);
-    };
-    if owner.requires_fresh_election() {
-        return (owner.finish_unavailable_without_dispatch(), false);
-    }
-    if owner.target().is_none() {
-        return (owner.finish(None), false);
-    }
-    if !session
-        .backend
-        .admits_exact_thread_background_terminals_cleanup()
-    {
-        return (owner.finish_unavailable_without_dispatch(), false);
-    }
-    let authorization = match session.backend.authorize_exact_foreground_turn(
-        owner.exact_target(),
-        owner.operation_correlation(),
-        owner.attempt_correlation(),
-        CallerNoSuccessorFence::issue(),
-    ) {
-        Ok(authorization) => authorization,
-        Err(error) => {
-            let invalidates_connection = error.invalidates_connection_authority();
-            return (
-                owner.finish_unavailable_without_dispatch(),
-                invalidates_connection,
-            );
-        }
-    };
-    // The original stop election crosses primary settlement and remains held through this fresh
-    // cleanup authorization. Release it before the bounded provider wait so terminal ingress can
-    // converge while the hard-stop slot retains the finalization hold.
-    if owner
-        .release_inherited_election_after_authorization()
-        .is_err()
-    {
-        return (owner.finish_unavailable_without_dispatch(), false);
-    }
-    let outcome = session
-        .backend
-        .clean_exact_thread_background_terminals(authorization, owner.timeout());
-    let invalidates_connection = match outcome.disposition() {
-        beryl_backend::CoarseThreadCleanupDisposition::RequestAccepted { .. } => false,
-        beryl_backend::CoarseThreadCleanupDisposition::ProvenNotDispatched { error } => {
-            error.invalidates_connection_authority()
-        }
-        beryl_backend::CoarseThreadCleanupDisposition::SessionAuthorityInvalidated { .. }
-        | beryl_backend::CoarseThreadCleanupDisposition::CompletionUnknown { .. } => true,
-    };
-    (owner.finish(Some(&outcome)), invalidates_connection)
-}
-
 fn stop_settlement_retires_projection(
     settlement: &Result<StopDispatchSettlement, StopCoordinationError>,
 ) -> bool {
@@ -1280,27 +1015,28 @@ fn stop_settlement_retires_projection(
 }
 
 fn persistent_failure_nondispatch(
-    epoch: &ConnectionServiceEpoch,
+    attachment: &ConnectionAttachment,
 ) -> Option<DriverCommandNondispatch> {
     let failure_generation = PersistentFailureGeneration::FIRST;
-    let frontier = epoch
+    let frontier = attachment
         .commands
-        .persistent_failure_frontier(epoch.identity.service_generation(), failure_generation)
+        .persistent_failure_frontier(attachment.identity.service_generation(), failure_generation)
         .ok()?;
     Some(DriverCommandNondispatch::PersistentHomeFailure {
         cut: PersistentFailureCutIdentity::new(
-            epoch.identity.home_id(),
-            epoch.identity.home_generation(),
-            epoch.identity.service_generation(),
+            attachment.identity.home_id(),
+            attachment.identity.home_generation(),
+            attachment.identity.service_generation(),
             failure_generation,
         ),
         frontier,
     })
 }
 
-fn command_nondispatch(epoch: &ConnectionServiceEpoch) -> DriverCommandNondispatch {
-    if epoch.commands.is_persistent_failure_cut() {
-        persistent_failure_nondispatch(epoch).unwrap_or(DriverCommandNondispatch::WorkerUnavailable)
+fn command_nondispatch(attachment: &ConnectionAttachment) -> DriverCommandNondispatch {
+    if attachment.commands.is_persistent_failure_cut() {
+        persistent_failure_nondispatch(attachment)
+            .unwrap_or(DriverCommandNondispatch::WorkerUnavailable)
     } else {
         DriverCommandNondispatch::OrdinaryShutdown
     }
@@ -1484,68 +1220,23 @@ fn run_driver(
     worker: ProjectionWorkerPermit,
 ) {
     let _retirement = DriverRetirementGuard { context: &context };
-    let mut worker = Some(worker);
+    let _worker = worker;
     let mut initial_approval_drain_pending = true;
-    let shutdown_authorization = 'driver: loop {
+    'driver: loop {
         #[cfg(test)]
         pause_before_driver_cycle_if_requested(context.authority.generation.get());
-
-        let execution = match context.adoption.begin_cycle(&mut worker) {
-            DriverAdoptionPoll::Work(execution) => execution,
-            DriverAdoptionPoll::Park { attempt } => {
-                let rejection = context
-                    .adoption
-                    .pending_park_control(attempt)
-                    .map(|control| DriverCommandNondispatch::PersistentHomeFailure {
-                        cut: control.cut(),
-                        frontier: control.frontier(),
-                    })
-                    .unwrap_or(DriverCommandNondispatch::WorkerUnavailable);
-                drain_invalidated_driver_commands(&receiver, rejection);
-                match context.adoption.park_and_wait(attempt, &mut worker) {
-                    DriverParkWaitOutcome::Resumed(replacement) => {
-                        worker = Some(replacement);
-                        continue;
-                    }
-                    DriverParkWaitOutcome::Disposed => {
-                        break 'driver DriverShutdownAuthorization::ExplicitInertDisposition;
-                    }
-                }
-            }
-            DriverAdoptionPoll::AwaitDisposition => match context.adoption.wait_inert() {
-                DriverParkWaitOutcome::Disposed => {
-                    break 'driver DriverShutdownAuthorization::ExplicitInertDisposition;
-                }
-                DriverParkWaitOutcome::Resumed(_) => {
-                    unreachable!("an inert driver cannot resume during explicit disposition")
-                }
-            },
-            DriverAdoptionPoll::Disposed => {
-                break 'driver DriverShutdownAuthorization::ExplicitInertDisposition;
-            }
-        };
 
         #[cfg(test)]
         pause_after_driver_work_guard_if_requested(context.authority.generation.get());
 
-        let epoch = match context.epoch() {
-            Ok(epoch) => epoch,
-            Err(_) => {
-                execution.quiesce_after_coordination_loss(&mut worker);
-                match context.adoption.wait_inert() {
-                    DriverParkWaitOutcome::Disposed => {
-                        break 'driver DriverShutdownAuthorization::ExplicitInertDisposition;
-                    }
-                    DriverParkWaitOutcome::Resumed(_) => {
-                        unreachable!("a quiesced driver cannot resume without an epoch")
-                    }
-                }
-            }
+        let attachment = match context.attachment() {
+            Ok(attachment) => attachment,
+            Err(_) => break 'driver,
         };
 
         if initial_approval_drain_pending {
             initial_approval_drain_pending = false;
-            if let Ok(initial) = epoch.commands.authorize() {
+            if let Ok(initial) = attachment.commands.authorize() {
                 let mut requests = ConnectionRequestSession {
                     backend: &mut backend,
                 };
@@ -1557,46 +1248,52 @@ fn run_driver(
             }
         }
 
-        if !epoch.commands.is_open() {
-            let rejection = command_nondispatch(&epoch);
+        if !attachment.commands.is_open() {
+            let rejection = command_nondispatch(&attachment);
             drain_invalidated_driver_commands(&receiver, rejection);
-            if !epoch.commands.is_persistent_failure_cut() {
-                break 'driver DriverShutdownAuthorization::OrdinaryLifecycle;
+            if context.stop.load(Ordering::Acquire) {
+                break 'driver;
             }
-            if epoch.persistent_failure.ordinary_retirement_won() {
-                break 'driver DriverShutdownAuthorization::OrdinaryLifecycle;
+            if !attachment.commands.is_persistent_failure_cut() {
+                break 'driver;
+            }
+            if attachment.persistent_failure.ordinary_retirement_won() {
+                break 'driver;
             }
             let mut requests = ConnectionRequestSession {
                 backend: &mut backend,
             };
             if dispatch_next_persistent_failure(
                 &mut requests,
-                &epoch.router,
+                &attachment.router,
                 &context.authority,
-                &epoch.persistent_failure,
+                &attachment.persistent_failure,
             ) {
                 continue;
             }
-            epoch
+            attachment
                 .persistent_failure
                 .wait_for_change(STREAM_IDLE_POLL_INTERVAL);
             continue;
         }
         if context.authority.is_retired() {
-            break 'driver DriverShutdownAuthorization::OrdinaryLifecycle;
+            break 'driver;
         }
         if context.stop.load(Ordering::Acquire) {
-            context.retire_epoch(&epoch, LiveEventTargetCloseReason::WorkerStopped);
-            if context.authority.is_retired() || epoch.persistent_failure.ordinary_retirement_won()
+            context.retire_attachment(&attachment, LiveEventTargetCloseReason::WorkerStopped);
+            if context.authority.is_retired()
+                || attachment.persistent_failure.ordinary_retirement_won()
             {
-                break 'driver DriverShutdownAuthorization::OrdinaryLifecycle;
+                break 'driver;
             }
             continue;
         }
         match receiver.try_receive() {
             Ok(command) => {
-                if command.admitted_epoch != Some(epoch.identity) || !command.permit.is_current() {
-                    command.reject(DriverCommandNondispatch::EpochMismatch);
+                if command.admitted_attachment != Some(attachment.identity)
+                    || !command.permit.is_current()
+                {
+                    command.reject(DriverCommandNondispatch::AttachmentMismatch);
                     continue;
                 }
                 let mut requests = ConnectionRequestSession {
@@ -1605,10 +1302,13 @@ fn run_driver(
                 command.execute(&mut requests, &context);
             }
             Err(ReceiveError::Empty) => {
-                let Ok(poll_permit) = epoch.commands.authorize() else {
+                let Ok(poll_permit) = attachment.commands.authorize() else {
                     continue;
                 };
-                if checked_steering_blocks_stream_poll(&epoch.broker, STREAM_IDLE_POLL_INTERVAL) {
+                if checked_steering_blocks_stream_poll(
+                    &attachment.broker,
+                    STREAM_IDLE_POLL_INTERVAL,
+                ) {
                     continue;
                 }
                 let progress = backend.poll_ordered_turn_stream_progress(STREAM_IDLE_POLL_INTERVAL);
@@ -1625,7 +1325,7 @@ fn run_driver(
                             continue;
                         }
                         if progress == OrderedTurnStreamProgress::Quiet {
-                            epoch.router.record_quiet_poll(&poll_permit);
+                            attachment.router.record_quiet_poll(&poll_permit);
                         }
                     }
                     Err(ManagedBackendError::ApprovalTargetFailed { request, cause }) => {
@@ -1643,10 +1343,10 @@ fn run_driver(
                         context.retire_backend(LiveEventTargetCloseReason::StreamFailure);
                     }
                     Err(_) => {
-                        epoch.broker.clear_approval_interruption();
+                        attachment.broker.clear_approval_interruption();
                     }
                 }
-                match epoch.broker.routing_failure() {
+                match attachment.broker.routing_failure() {
                     Some(ConnectionRoutingFailure::Backend | ConnectionRoutingFailure::Router) => {
                         context.retire(LiveEventTargetCloseReason::StreamFailure);
                     }
@@ -1655,14 +1355,9 @@ fn run_driver(
             }
             Err(ReceiveError::Closed) => context.retire(LiveEventTargetCloseReason::WorkerStopped),
         }
-    };
-    drain_invalidated_driver_commands(&receiver, DriverCommandNondispatch::WorkerUnavailable);
-    match shutdown_authorization {
-        DriverShutdownAuthorization::OrdinaryLifecycle
-        | DriverShutdownAuthorization::ExplicitInertDisposition => {
-            let _ = backend.shutdown();
-        }
     }
+    drain_invalidated_driver_commands(&receiver, DriverCommandNondispatch::WorkerUnavailable);
+    let _ = backend.shutdown();
 }
 
 fn drain_invalidated_driver_commands(
@@ -1694,11 +1389,11 @@ struct DriverRetirementGuard<'a> {
 
 impl Drop for DriverRetirementGuard<'_> {
     fn drop(&mut self) {
-        if let Ok(epoch) = self.context.epoch() {
-            epoch.persistent_failure.driver_stopped();
-            if epoch.commands.is_open() {
+        if let Ok(attachment) = self.context.attachment() {
+            attachment.persistent_failure.driver_stopped();
+            if attachment.commands.is_open() {
                 self.context
-                    .retire_epoch(&epoch, LiveEventTargetCloseReason::WorkerStopped);
+                    .retire_attachment(&attachment, LiveEventTargetCloseReason::WorkerStopped);
             }
         }
     }

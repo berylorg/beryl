@@ -6,7 +6,7 @@ const MAX_DEPTH: u8 = 128;
 fn control(
     stager: &mut ProviderObservationStager,
     control: ProviderObservationControl,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     stager.control(control, callback).unwrap();
 }
@@ -37,7 +37,7 @@ fn entry_context(depth: u8, key: bool) -> ProviderValueContext {
 
 fn begin_mcp(
     byte: u8,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
     let mut stager = ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),
@@ -77,7 +77,7 @@ fn begin_mcp(
 
 fn open_worst_location(
     stager: &mut ProviderObservationStager,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     let result = ProviderValueContext::Field(ProviderField::McpResult);
     control(
@@ -151,7 +151,7 @@ fn open_worst_location(
 
 fn close_worst_location(
     stager: &mut ProviderObservationStager,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     control(
         stager,

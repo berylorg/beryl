@@ -108,7 +108,9 @@
 //! # Example
 //!
 //! ```no_run
-//! use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+//! use beryl_home_store::{
+//!     CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+//! };
 //! use beryl_model::{
 //!     AdmittedHostPath, Availability, PathFlavor, RootId, RuntimeId, RuntimeMode,
 //!     RuntimeNativePath,
@@ -118,7 +120,7 @@
 //!     RuntimeRegistration, UnixMillis,
 //! };
 //!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn example() -> Result<CommandOutcome, Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let mut home = HomeStore::open(HomeOpenOptions::new(
 //!     directory.path(),
@@ -153,12 +155,18 @@
 //!     expected_domain,
 //!     CreateRuntimeWithHomeRoot::new(runtime, root)?,
 //! ))?;
-//! let receipt = home.execute(command)?;
-//! assert_eq!(
-//!     state.runtime_roots().committed_revision(&home, &receipt)?,
-//!     Some(expected_domain.checked_next()?),
-//! );
-//! # Ok(())
+//! let outcome = home.execute(command);
+//! if let CommandOutcome::Committed {
+//!     receipt,
+//!     later_failure,
+//! } = &outcome {
+//!     assert!(later_failure.is_none());
+//!     assert_eq!(
+//!         state.runtime_roots().committed_revision(&home, receipt)?,
+//!         Some(expected_domain.checked_next()?),
+//!     );
+//! }
+//! Ok(outcome)
 //! # }
 //! ```
 #![forbid(unsafe_code)]
@@ -174,39 +182,38 @@ mod state;
 mod value;
 
 pub use asset::{
-    ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES,
-    ASSET_REFERENCE_PAGE_MAX_STORED_BYTES, AppendAssetReferencePage, AssetAdmissionError,
-    AssetDimensions, AssetLabelDisposition, AssetMediaType, AssetMetadataContribution,
-    AssetMetadataRecord, AssetMutationError, AssetOwner, AssetOwnerHeadAssertion,
-    AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdate,
+    AppendAssetReferencePage, AssetAdmissionError, AssetDimensions, AssetLabelDisposition,
+    AssetMediaType, AssetMetadataContribution, AssetMetadataRecord, AssetMutationError, AssetOwner,
+    AssetOwnerHeadAssertion, AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdate,
     AssetOwnerHeadUpdateError, AssetOwnerHeadValidationError, AssetReadError,
     AssetReferenceEntryRecord, AssetReferenceOrdinal, AssetReferencePageEntry,
     AssetReferencePageError, AssetReferenceSetBuildProof, AssetReferenceSetLifecycle,
     AssetReferenceSetManifest, AssetReferenceSetStagingAuthority, AssetSidecarState, AssetState,
     AssetValueError, BeginAssetReferenceSet, PublishAssetMetadata, SealAssetReferenceSet,
-    UpdateAssetOwnerHeads, ValidateAssetOwnerHeads,
+    UpdateAssetOwnerHeads, ValidateAssetOwnerHeads, ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES,
+    ASSET_REFERENCE_PAGE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_STORED_BYTES,
 };
 pub use catalog::{
-    CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES,
     CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
     CatalogExecutionSummary, CatalogFacts, CatalogFreshness, CatalogLineageSummary,
     CatalogMutationError, CatalogNormalizationProfile, CatalogNormalizedQuery, CatalogPage,
     CatalogPointReadLimit, CatalogReadError, CatalogRecencyCursor, CatalogResolvedTitle,
     CatalogRevision, CatalogRow, CatalogRowExpectation, CatalogSearchFields,
     CatalogSourceRevisions, CatalogState, CatalogTitleSource, CatalogValueError,
-    MarkCatalogRowStale, PublishCatalogRow,
+    MarkCatalogRowStale, PublishCatalogRow, CATALOG_MAX_STORED_RECENCY_BYTES,
+    CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES,
 };
 pub use durable_job::{
-    AdmitBranchHandoffJob, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
-    BranchHandoffJobLifecycle, BranchHandoffJobRecord, BranchHandoffJobState,
-    CompleteResolvingTurn, DiscussionContextDigest, DiscussionContextOwnerId,
-    DurableJobMutationError, DurableJobState, DurableJobValueError,
-    HANDOFF_FAILURE_DETAIL_MAX_BYTES, HandoffFailureEvidence, HandoffFailureKind,
-    LatestBranchHandoffAttempt, ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal,
-    RESOLUTION_TEXT_MAX_BYTES, RecordParentCasAcceptance, RecordRetryableHandoffFailure,
-    RecordTerminalHandoffFailure, ResolutionAttemptOrdinal, ResolutionRequestAdmission,
-    ResolutionRequestIdentity, ResolutionText, RetryBranchHandoff, StartParentHandoff,
-    SucceedBranchHandoff, branch_handoff_job_id,
+    branch_handoff_job_id, AdmitBranchHandoffJob, BranchHandoffCheckpoint,
+    BranchHandoffJobAdmission, BranchHandoffJobLifecycle, BranchHandoffJobRecord,
+    BranchHandoffJobState, CompleteResolvingTurn, DiscussionContextDigest,
+    DiscussionContextOwnerId, DurableJobMutationError, DurableJobState, DurableJobValueError,
+    HandoffFailureEvidence, HandoffFailureKind, LatestBranchHandoffAttempt, ParentCasIdentity,
+    ParentHandoffIdentity, ParentQueueOrdinal, RecordParentCasAcceptance,
+    RecordRetryableHandoffFailure, RecordTerminalHandoffFailure, ResolutionAttemptOrdinal,
+    ResolutionRequestAdmission, ResolutionRequestIdentity, ResolutionText, RetryBranchHandoff,
+    StartParentHandoff, SucceedBranchHandoff, HANDOFF_FAILURE_DETAIL_MAX_BYTES,
+    RESOLUTION_TEXT_MAX_BYTES,
 };
 pub use runtime_root::{
     AddConfiguredRoot, CreateRuntimeWithHomeRoot, RootActivityUpdate, RootRecord, RootRegistration,
@@ -215,12 +222,11 @@ pub use runtime_root::{
 };
 pub use session::{
     ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow, InitializeThreadlessWindow,
-    MAX_RESTORABLE_WINDOWS, MarkOrderlyExit, MinimalSessionBootstrap, RememberedTarget,
-    RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
-    SessionExitIntent, SessionHeader, SessionMutationError, SessionReadError, SessionState,
-    SessionWindowRecord, SessionWindowReference, ThreadClaimCatalogSource,
+    MarkOrderlyExit, MinimalSessionBootstrap, RememberedTarget, RemoveSessionWindow,
+    ReplaceWindowClaim, SessionExitIntent, SessionHeader, SessionMutationError, SessionReadError,
+    SessionState, SessionWindowRecord, SessionWindowReference, ThreadClaimCatalogSource,
     ThreadClaimCatalogSourceError, ThreadClaimRecord, ThreadClaimState, UpdateWindowPlacement,
-    WindowClaimSelection,
+    WindowClaimSelection, MAX_RESTORABLE_WINDOWS, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
 };
 pub use settings::{
     ApplySettings, ApplySettingsError, ExpectedSettingRevision, SettingKey, SettingRecord,

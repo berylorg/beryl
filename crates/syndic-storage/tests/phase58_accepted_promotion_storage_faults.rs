@@ -18,7 +18,7 @@ mod promotion_support;
 mod races;
 
 use beryl_home_store::{
-    CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
+    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
@@ -85,12 +85,12 @@ fn execute_promotion(
     store: &HomeStore,
     storage: SyndicStorage,
     promotion: PromoteAcceptedInput,
-) -> Result<(), CommandError> {
+) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(storage.promote_accepted_input(promotion))
         .unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
 }
 
 fn mutation_error(error: &CommandError) -> &SyndicMutationError {
@@ -137,7 +137,28 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
             .unwrap();
 
         faults.fail_next(point);
-        assert!(store.execute(command).is_err());
+        match (point, store.execute(command)) {
+            (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
+                assert!(matches!(evidence, CommandError::Commit { .. }));
+            }
+            (FaultPoint::AfterCommitBeforePersist, outcome @ CommandOutcome::Indeterminate { .. }) => {
+                assert!(matches!(
+                    &outcome,
+                    CommandOutcome::Indeterminate {
+                        failure: CommandError::Persistence { .. },
+                        ..
+                    }
+                ));
+            }
+            (
+                FaultPoint::AfterPersist,
+                CommandOutcome::Committed {
+                    later_failure: Some(CommandError::Persistence { .. }),
+                    ..
+                },
+            ) => {}
+            (_, outcome) => panic!("unexpected promotion fault outcome: {outcome:?}"),
+        }
         assert_eq!(store.health().state(), HomeHealthState::Verifying);
         store.verify_health().unwrap();
         let recovered = storage
@@ -423,7 +444,10 @@ fn same_domain_revision_still_fences_every_exact_promotion_authority() {
             "{} substitution must not preserve Prior",
             drift.name(),
         );
-        let error = execute_promotion(&store, storage, request.clone()).unwrap_err();
+        let error = match execute_promotion(&store, storage, request.clone()) {
+            CommandOutcome::NotCommitted { evidence } => evidence,
+            outcome => panic!("expected definitive promotion conflict, got {outcome:?}"),
+        };
         assert!(
             matches!(
                 mutation_error(&error),

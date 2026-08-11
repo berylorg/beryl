@@ -23,7 +23,7 @@ use worker::spawn_worker;
 pub(super) use worker::{
     OrdinaryTurnSettlement, PendingTurnExecutionDisposition, current_selected_path,
     current_timestamp, execute_pending_turn, ordinary_error_cut_correlated,
-    ordinary_error_verification_pending, settle_ordinary_outcome,
+    settle_ordinary_outcome,
 };
 
 #[derive(Default)]
@@ -282,10 +282,10 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<(), SchedulerFa
                         return Ok(());
                     }
                     Err(SyndicReadError::Read(ReadError::HealthGate(error)))
-                        if error.state() == beryl_home_store::HomeHealthState::Verifying
+                        if error.state() != beryl_home_store::HomeHealthState::Healthy
                             && error.generation() == runtime.context.home_generation =>
                     {
-                        return Err(SchedulerFailure::VerificationPending);
+                        return Err(SchedulerFailure::PersistentHomeFailure);
                     }
                     Err(SyndicReadError::Read(ReadError::HealthGate(error)))
                         if error.state() != beryl_home_store::HomeHealthState::Failed
@@ -316,8 +316,7 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<(), SchedulerFa
                     Err(error)
                         if matches!(
                             failure::from_admission(&error, runtime.context.home_generation),
-                            SchedulerFailure::VerificationPending
-                                | SchedulerFailure::PersistentHomeFailure
+                            SchedulerFailure::PersistentHomeFailure
                         ) =>
                     {
                         return Err(failure::from_admission(

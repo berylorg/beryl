@@ -79,7 +79,6 @@ fn automatic_scheduler_claims_delivers_and_joins_at_minimum_capacity() {
     assert_eq!(diagnostics.workers_started(), 1);
     assert_eq!(diagnostics.workers_high_water(), 1);
     assert_eq!(diagnostics.capacity_waits(), 0);
-    assert_eq!(diagnostics.retained_candidates(), 0);
     assert_eq!(diagnostics.armed_retry_timers(), 0);
     assert_eq!(workers.capacity(), 4);
     assert_eq!(workers.active(), 2);
@@ -114,7 +113,6 @@ fn same_source_inputs_deliver_in_accepted_order_with_one_active_attempt() {
     assert_eq!(diagnostics.workers_started(), 2);
     assert_eq!(diagnostics.workers_high_water(), 1);
     assert!(diagnostics.attempt_waits() >= 1);
-    assert_eq!(diagnostics.retained_candidates(), 0);
 
     fixture.close(server);
 }

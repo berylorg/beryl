@@ -80,7 +80,7 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
             );
             return;
         }
-        let Ok(results) = freeze_and_dispatch_targets(&context, identity, &connections) else {
+        let Ok(results) = freeze_and_dispatch_targets(identity, &connections) else {
             finish_worker(
                 &context,
                 PersistentFailureCutState::Incomplete,
@@ -119,33 +119,17 @@ fn snapshot_connections(
 }
 
 fn freeze_and_dispatch_targets(
-    context: &WorkerContext,
     identity: PersistentFailureCutIdentity,
     connections: &[Arc<ProjectionConnection>],
-) -> Result<Vec<PersistentFailureRetainedTarget>, ()> {
-    let mut stop_evidence_by_connection = Vec::with_capacity(connections.len());
-    for connection in connections {
-        let mut stop_evidence = HashMap::new();
-        let threads = connection
-            .persistent_failure_target_threads(identity)
-            .map_err(|_| ())?;
-        for thread_id in threads {
-            let evidence = context
-                .stop_coordinator
-                .persistent_failure_evidence(identity, thread_id)
-                .map_err(|_| ())?;
-            stop_evidence.insert(thread_id, evidence);
-        }
-        stop_evidence_by_connection.push(stop_evidence);
-    }
+) -> Result<Vec<PersistentFailureDriverResult>, ()> {
     let mut frozen = Vec::with_capacity(connections.len());
-    for (connection, stop_evidence) in connections.iter().zip(&stop_evidence_by_connection) {
+    for connection in connections {
         let candidates = connection
-            .freeze_persistent_failure_targets(identity, stop_evidence)
+            .freeze_persistent_failure_targets(identity)
             .map_err(|_| ())?;
         frozen.push((connection, candidates));
     }
-    let mut retained_results = Vec::new();
+    let mut results = Vec::new();
     let mut pending_results = Vec::new();
     for (connection, batch) in frozen {
         let candidates = batch.into_candidates();
@@ -158,12 +142,12 @@ fn freeze_and_dispatch_targets(
                     proof_witnesses.push(witness);
                     proofs.push(proof);
                 }
-                Err(reason) => retained_results.push(PersistentFailureRetainedTarget {
-                    witness,
-                    result: PersistentFailureDriverResult::NoDispatch(
+                Err(reason) => {
+                    drop(witness);
+                    results.push(PersistentFailureDriverResult::NoDispatch(
                         PersistentFailureNoDispatchReason::Router(reason),
-                    ),
-                }),
+                    ));
+                }
             }
         }
         match connection.install_persistent_failure_obligations(identity, proofs) {
@@ -175,32 +159,61 @@ fn freeze_and_dispatch_targets(
                 );
             }
             Ok(_) | Err(()) => {
-                retained_results.extend(proof_witnesses.into_iter().map(|witness| {
-                    PersistentFailureRetainedTarget {
-                        witness,
-                        result: PersistentFailureDriverResult::NoDispatch(
-                            PersistentFailureNoDispatchReason::DriverUnavailable,
-                        ),
-                    }
+                results.extend(proof_witnesses.into_iter().map(|witness| {
+                    drop(witness);
+                    PersistentFailureDriverResult::NoDispatch(
+                        PersistentFailureNoDispatchReason::DriverUnavailable,
+                    )
                 }));
             }
         }
     }
-    retained_results.extend(pending_results.into_iter().map(|pending| {
-        let completed = pending.completion.wait_with_witness();
-        let (witness, result) = completed.into_parts();
-        PersistentFailureRetainedTarget { witness, result }
-    }));
-    Ok(retained_results)
+    results.extend(
+        pending_results
+            .into_iter()
+            .map(|pending| pending.completion.wait()),
+    );
+    Ok(results)
 }
 
 fn finish_worker(
     context: &WorkerContext,
     phase: PersistentFailureCutState,
     failure_generation: Option<PersistentFailureGeneration>,
-    retained_connections: Vec<Arc<ProjectionConnection>>,
-    retained_results: Vec<PersistentFailureRetainedTarget>,
+    connections: Vec<Arc<ProjectionConnection>>,
+    results: Vec<PersistentFailureDriverResult>,
 ) {
+    drop(connections);
+    let target_count = results.len();
+    let proven_nondispatch_count = results
+        .iter()
+        .filter(|result| {
+            matches!(
+                result,
+                PersistentFailureDriverResult::NoDispatch(_)
+                    | PersistentFailureDriverResult::Attempted {
+                        disposition:
+                            PersistentFailureInterruptDisposition::RejectedBeforeCoreInterrupt
+                                | PersistentFailureInterruptDisposition::ProvenNotDispatched,
+                        ..
+                    }
+            )
+        })
+        .count();
+    let possible_dispatch_count = results
+        .iter()
+        .filter(|result| {
+            matches!(
+                result,
+                PersistentFailureDriverResult::Attempted {
+                    disposition: PersistentFailureInterruptDisposition::RequestAccepted
+                        | PersistentFailureInterruptDisposition::CompletionUnknown,
+                    ..
+                }
+            )
+        })
+        .count();
+    drop(results);
     let mut state = context
         .state
         .0
@@ -208,8 +221,8 @@ fn finish_worker(
         .unwrap_or_else(|poison| poison.into_inner());
     state.phase = phase;
     state.failure_generation = failure_generation;
-    state.target_count = retained_results.len();
-    state.retained_connections = retained_connections;
-    state.retained_results = retained_results;
+    state.target_count = target_count;
+    state.proven_nondispatch_count = proven_nondispatch_count;
+    state.possible_dispatch_count = possible_dispatch_count;
     context.state.1.notify_all();
 }

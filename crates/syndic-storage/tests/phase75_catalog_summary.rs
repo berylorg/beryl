@@ -2,7 +2,7 @@
 
 mod support;
 
-use beryl_home_store::{CommandError, HomeCommand};
+use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_model::{
     AssetReferenceSetDigest, AssetReferenceSetId, ProjectionRevision, SealedAssetReferenceSetProof,
     SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicThreadId,
@@ -25,10 +25,16 @@ fn limit() -> SyndicPointReadLimit {
 fn execute(
     store: &beryl_home_store::HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean catalog-summary command, got {outcome:?}"),
+    }
 }
 
 fn stage_content(
@@ -42,16 +48,14 @@ fn stage_content(
             storage.revision(store).unwrap(),
             ContentBuild::from_prepared(content),
         ),
-    )
-    .unwrap();
+    );
     let mut manifest = content.building_manifest();
     while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
         let next = append.next_manifest().clone();
         execute(
             store,
             storage.append_content(storage.revision(store).unwrap(), append),
-        )
-        .unwrap();
+        );
         manifest = next;
     }
 }
@@ -97,8 +101,7 @@ fn submit_payload(
     execute(
         store,
         storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    )
-    .unwrap();
+    );
     let current = storage
         .current_draft(store, thread, limit())
         .unwrap()
@@ -121,8 +124,7 @@ fn submit_payload(
                 timestamp(at + 1),
             ),
         ),
-    )
-    .unwrap();
+    );
 }
 
 fn title_for_payload(name: &str, payload: ComposerPayload) -> Option<String> {
@@ -170,7 +172,7 @@ fn title_for_payload(name: &str, payload: ComposerPayload) -> Option<String> {
         );
         title.text().to_owned()
     });
-    execute(&store, storage.rebuild_thread_catalog_summary(replacement)).unwrap();
+    execute(&store, storage.rebuild_thread_catalog_summary(replacement));
     let revision = storage.revision(&store).unwrap();
     let exact = storage
         .prepare_thread_catalog_summary(&store, thread)
@@ -223,8 +225,7 @@ fn scalar_utf8_and_scan_limits_stop_without_an_ellipsis() {
     let title = title_for_payload(
         "phase75-title-scalar-limit",
         ComposerPayload::new(vec![ComposerAtom::text(source).unwrap()]).unwrap(),
-    )
-    .unwrap();
+    );
     assert_eq!(title.chars().count(), 80);
     assert_eq!(title, format!("{}界", "a".repeat(79)));
 
@@ -309,9 +310,15 @@ fn generated_title_precedes_history_and_invalidates_an_older_preparation() {
             storage.revision(&store).unwrap(),
             AcceptGeneratedThreadTitle::new(thread, ThreadAttributesRevision::FIRST, generated),
         ),
-    )
-    .unwrap();
-    assert!(execute(&store, storage.rebuild_thread_catalog_summary(stale),).is_err());
+    );
+    let mut stale_command = HomeCommand::new(store.home_revision().unwrap());
+    stale_command
+        .add(storage.rebuild_thread_catalog_summary(stale))
+        .unwrap();
+    match store.execute(stale_command) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected stale catalog-summary rebuild rejection, got {outcome:?}"),
+    }
     let prepared = match storage
         .prepare_thread_catalog_summary(&store, thread)
         .unwrap()
@@ -326,7 +333,7 @@ fn generated_title_precedes_history_and_invalidates_an_older_preparation() {
         title.source(),
         syndic_storage::ThreadCatalogTitleSource::Generated
     );
-    execute(&store, storage.rebuild_thread_catalog_summary(prepared)).unwrap();
+    execute(&store, storage.rebuild_thread_catalog_summary(prepared));
     store.validate_registered_domains().unwrap();
 }
 
@@ -348,8 +355,7 @@ fn reopen_accepts_a_valid_stale_summary_then_prepares_its_exact_rebuild() {
                     timestamp(1),
                 ),
             ),
-        )
-        .unwrap();
+        );
         support::exact_cas::submit_current_draft(
             &store,
             storage,
@@ -390,8 +396,7 @@ fn from_tail_creation_publishes_the_entire_selected_path_fallback_immediately() 
                 timestamp(1),
             ),
         ),
-    )
-    .unwrap();
+    );
     let item = SyndicItemId::from_bytes([52; 16]);
     let turn = support::exact_cas::submit_current_draft(
         &store,
@@ -449,8 +454,7 @@ fn from_tail_creation_publishes_the_entire_selected_path_fallback_immediately() 
             storage.revision(&store).unwrap(),
             CreateThread::from_tail(child, draft_id(55), timestamp(10), tail).unwrap(),
         ),
-    )
-    .unwrap();
+    );
     let prepared = storage
         .prepare_thread_catalog_summary(&store, child)
         .unwrap()

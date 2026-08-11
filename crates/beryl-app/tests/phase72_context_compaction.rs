@@ -19,7 +19,7 @@ use beryl_app::cas_projection::{
     ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
 };
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasTurnId,
     SyndicThreadId,
@@ -100,7 +100,7 @@ fn publish_provider_event(
         .map_or(CompactionProviderSequence::FIRST, |frontier| {
             frontier.checked_next().unwrap()
         });
-    home.execute_current(storage.current_publish_compaction_provider_event(
+    let outcome = home.execute_current(storage.current_publish_compaction_provider_event(
         PublishCompactionProviderEvent::new(
             operation_id,
             operation.revision(),
@@ -108,8 +108,8 @@ fn publish_provider_event(
             event,
             SyndicTimestamp::from_unix_millis(observed_at),
         ),
-    ))
-    .unwrap();
+    ));
+    match outcome { CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ CommandOutcome::NotCommitted { .. } | outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed provider event, got {outcome:?}"), }
 }
 
 #[test]
@@ -232,21 +232,19 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
         SyndicTimestamp::from_unix_millis(72_100),
     );
     let operation_id = admission.operation_id();
-    source
+    let outcome = source
         .store
-        .execute_current(source.storage.current_admit_compaction_operation(admission))
-        .unwrap();
+        .execute_current(source.storage.current_admit_compaction_operation(admission));
+    match outcome { CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ CommandOutcome::NotCommitted { .. } | outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed compaction admission, got {outcome:?}"), }
     let operation = source
         .storage
         .compaction_operation(&source.store, operation_id, point_limit())
         .unwrap()
         .unwrap();
-    source
-        .store
-        .execute_current(source.storage.current_claim_compaction_dispatch(
+    let outcome = source.store.execute_current(source.storage.current_claim_compaction_dispatch(
             ClaimCompactionDispatch::new(operation_id, operation.revision(), attempt),
-        ))
-        .unwrap();
+        ));
+    match outcome { CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ CommandOutcome::NotCommitted { .. } | outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed dispatch claim, got {outcome:?}"), }
     publish_provider_event(
         &source.store,
         source.storage,
@@ -275,10 +273,10 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
         StopCauseSet::from(StopCause::SelectedOperationControl),
     );
     let stop_id = stop.operation_id();
-    source
+    let outcome = source
         .store
-        .execute_current(source.storage.current_admit_stop_operation(stop))
-        .unwrap();
+        .execute_current(source.storage.current_admit_stop_operation(stop));
+    match outcome { CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ CommandOutcome::NotCommitted { .. } | outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed stop admission, got {outcome:?}"), }
     assert!(matches!(
         source
             .storage

@@ -1,7 +1,7 @@
 use super::*;
 
 impl ProjectionConnectionService {
-    /// Creates, initializes, probes, and admits one exact foreground candidate.
+    /// Creates, initializes, and release-admits one exact foreground candidate.
     ///
     /// The service selects the candidate's home, healthy generation, registered
     /// storage, process identity, immutable foreground configuration, and worker
@@ -19,7 +19,7 @@ impl ProjectionConnectionService {
                 || identity.process_generation() != process_generation
                 || config_cwd.to_str() != Some(identity.working_directory().as_str())
         }) {
-            return Err(ProjectionSessionAdmissionError::compatibility(
+            return Err(ProjectionSessionAdmissionError::release_admission(
                 runtime_id,
                 process_generation,
                 ManagedBackendError::ManagedLaunchIdentityMismatch,
@@ -32,18 +32,17 @@ impl ProjectionConnectionService {
             process_generation,
             timeout,
         )?;
-        let compatibility_report =
-            backend
-                .probe_compatibility(config_cwd, timeout)
-                .map_err(|source| {
-                    ProjectionSessionAdmissionError::compatibility(
-                        runtime_id,
-                        process_generation,
-                        source,
-                    )
-                })?;
-        if connector.launch_identity() != compatibility_report.launch_identity() {
-            return Err(ProjectionSessionAdmissionError::compatibility(
+        let release_admission = backend
+            .admit_release(config_cwd, timeout)
+            .map_err(|source| {
+                ProjectionSessionAdmissionError::release_admission(
+                    runtime_id,
+                    process_generation,
+                    source,
+                )
+            })?;
+        if connector.launch_identity() != Some(release_admission.launch_identity()) {
+            return Err(ProjectionSessionAdmissionError::release_admission(
                 runtime_id,
                 process_generation,
                 ManagedBackendError::ManagedLaunchIdentityMismatch,
@@ -51,9 +50,8 @@ impl ProjectionConnectionService {
         }
         let connection =
             self.finish_session_admission(backend, runtime_id, process_generation, prepared)?;
-        Ok(AdmittedProjectionSession::from_production_connection(
+        Ok(AdmittedProjectionSession::from_admitted_connection(
             connection,
-            compatibility_report,
         ))
     }
 
@@ -69,7 +67,7 @@ impl ProjectionConnectionService {
         timeout: Duration,
     ) -> Result<AdmittedProjectionSession, ProjectionSessionAdmissionError> {
         if connector.launch_identity().is_some() {
-            return Err(ProjectionSessionAdmissionError::compatibility(
+            return Err(ProjectionSessionAdmissionError::release_admission(
                 runtime_id,
                 process_generation,
                 ManagedBackendError::ManagedLaunchIdentityMismatch,
@@ -82,10 +80,10 @@ impl ProjectionConnectionService {
             process_generation,
             timeout,
         )?;
-        let (probe_successes, config_defaults, thread_branch_capabilities) = backend
-            .probe_non_authorizing_compatibility_for_lifecycle_test(config_cwd, timeout)
+        backend
+            .admit_release_non_authorizing_for_lifecycle_test(config_cwd, timeout)
             .map_err(|source| {
-                ProjectionSessionAdmissionError::compatibility(
+                ProjectionSessionAdmissionError::release_admission(
                     runtime_id,
                     process_generation,
                     source,
@@ -93,13 +91,8 @@ impl ProjectionConnectionService {
             })?;
         let connection =
             self.finish_session_admission(backend, runtime_id, process_generation, prepared)?;
-        Ok(AdmittedProjectionSession::from_lifecycle_test_connection(
+        Ok(AdmittedProjectionSession::from_admitted_connection(
             connection,
-            LifecycleTestCompatibilityFacts::new(
-                probe_successes,
-                config_defaults,
-                thread_branch_capabilities,
-            ),
         ))
     }
 
@@ -194,7 +187,7 @@ impl ProjectionConnectionService {
             self.persistent_failure
                 .as_ref()
                 .expect("open service retains its persistent-failure coordinator")
-                .projection_retainer(self.home_id, self.home_generation),
+                .terminal_disposer(self.home_id, self.home_generation),
         )
         .map_err(|source| {
             ProjectionSessionAdmissionError::connection_ownership(

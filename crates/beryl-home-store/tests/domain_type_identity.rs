@@ -101,6 +101,14 @@ impl DomainMutation<OwnerDomain> for AliasPut {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, OwnerDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AliasCodec>(1).map_err(MutationError)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, OwnerDomain>,
@@ -144,11 +152,12 @@ fn stable_names_cannot_alias_live_domain_or_family_rust_owners() {
     command
         .add(owner.contribution(store.domain_revision(owner).unwrap(), AliasPut))
         .unwrap();
-    let error = store.execute(command).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("record codec does not own family `records`")
-    );
+    let error = match store.execute(command) {
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => evidence,
+        other => panic!("expected definitive non-commit, got {other:?}"),
+    };
+    assert!(error
+        .to_string()
+        .contains("record codec does not own family `records`"));
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 }

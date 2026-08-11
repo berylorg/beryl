@@ -3,7 +3,12 @@ use super::*;
 pub(super) fn execute(home: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     command.add(contribution).unwrap();
-    home.execute(command).unwrap();
+    match home.execute(command) {
+        beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("checked-user storage command committed with later failure: {outcome:?}"),
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("checked-user storage command was not committed: {evidence:?}"),
+        outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("checked-user storage command was indeterminate: {outcome:?}"),
+    }
 }
 
 pub(super) fn stage_prepared_content(

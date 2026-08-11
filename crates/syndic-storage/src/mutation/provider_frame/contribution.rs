@@ -1,10 +1,11 @@
 use beryl_home_store::{
     CurrentDomainCommand, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     HomeStore, MutationBuildError, MutationBuilder, MutationContribution, ReadError,
+    ReconciliationReservation,
 };
 use beryl_model::{DomainRevision, SyndicItemId};
 
-use crate::{SyndicStorage, codec::*, domain::SyndicDomain};
+use crate::{codec::*, domain::SyndicDomain, SyndicStorage};
 
 use super::{PreparedProviderFrame, ProviderFrameStageBatch, ProviderFrameStageBatchError};
 use crate::PreparedProviderObservationFrame;
@@ -159,6 +160,15 @@ impl DomainMutation<SyndicDomain> for BeginProviderFrameBuildMutation {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ContentManifestsCodec>(1)?;
+        reservation.reserve_records::<ProviderItemBuildsCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, SyndicDomain>,
@@ -228,6 +238,23 @@ impl DomainMutation<SyndicDomain> for StageProviderFrameBatchMutation {
                 return Err(ProviderFrameMutationError::NarrativeSpanIdentityCollision);
             }
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        if !self.batch.chunks().is_empty() {
+            reservation.reserve_records::<ContentChunksCodec>(self.batch.chunks().len())?;
+            reservation.reserve_records::<ContentByteSpansCodec>(self.batch.byte_spans().len())?;
+        }
+        if !self.batch.narrative_spans().is_empty() {
+            reservation.reserve_records::<ProviderNarrativeSpansCodec>(
+                self.batch.narrative_spans().len(),
+            )?;
+        }
+        reservation.reserve_records::<ProviderItemBuildsCodec>(1)?;
         Ok(())
     }
 

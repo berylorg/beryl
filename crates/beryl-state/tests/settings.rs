@@ -3,10 +3,10 @@ mod support;
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
-    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily, RecordVersion,
-    StorageDomain,
+    CommandOutcome, CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError,
+    DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec,
+    RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::{AdmittedHostPath, PathFlavor};
 use beryl_state::{
@@ -25,11 +25,7 @@ fn replace(key: SettingKey, revision: RecordRevision, value: SettingValue) -> Se
     SettingUpdate::new(key, ExpectedSettingRevision::Exact(revision), value)
 }
 
-fn apply(
-    store: &HomeStore,
-    state: BerylState,
-    updates: Vec<SettingUpdate>,
-) -> Result<beryl_home_store::CommitReceipt, beryl_home_store::CommandError> {
+fn apply(store: &HomeStore, state: BerylState, updates: Vec<SettingUpdate>) -> CommandOutcome {
     let contribution = state.settings().apply(
         state.settings().revision(store).unwrap(),
         ApplySettings::new(updates).unwrap(),
@@ -44,7 +40,7 @@ fn every_closed_scalar_shape_persists_and_reopens() {
     let sound =
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\Sounds\done.wav").unwrap();
 
-    apply(
+    match apply(
         &store,
         state,
         vec![
@@ -69,8 +65,13 @@ fn every_closed_scalar_shape_persists_and_reopens() {
                 SettingValue::end_turn_sound(Some(sound.clone())),
             ),
         ],
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed settings command, got {outcome:?}"),
+    }
     store.close().unwrap();
 
     let (store, state) = open(directory.path());
@@ -135,18 +136,23 @@ fn every_closed_scalar_shape_persists_and_reopens() {
 fn one_invalid_update_rejects_the_whole_apply() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
-    apply(
+    match apply(
         &store,
         state,
         vec![create(
             SettingKey::ActiveThemeId,
             SettingValue::active_theme_id("old").unwrap(),
         )],
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed settings command, got {outcome:?}"),
+    }
     let domain_before = state.settings().revision(&store).unwrap();
 
-    let error = apply(
+    let outcome = apply(
         &store,
         state,
         vec![
@@ -161,8 +167,10 @@ fn one_invalid_update_rejects_the_whole_apply() {
                 SettingValue::draft_autosave_interval_seconds(10),
             ),
         ],
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted { evidence: error } = outcome else {
+        panic!("expected rejected settings command, got {outcome:?}");
+    };
     assert!(matches!(
         contributor_source::<SettingsMutationError>(&error),
         Some(SettingsMutationError::SettingMissing {
@@ -177,29 +185,32 @@ fn one_invalid_update_rejects_the_whole_apply() {
         .unwrap();
     assert_eq!(active.value().as_active_theme_id(), Some("old"));
     assert_eq!(active.revision(), RecordRevision::INITIAL);
-    assert!(
-        state
-            .settings()
-            .setting(&store, SettingKey::DraftAutosaveInterval)
-            .unwrap()
-            .is_none()
-    );
+    assert!(state
+        .settings()
+        .setting(&store, SettingKey::DraftAutosaveInterval)
+        .unwrap()
+        .is_none());
 }
 
 #[test]
 fn record_revisions_advance_and_stale_updates_reject() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
-    apply(
+    match apply(
         &store,
         state,
         vec![create(
             SettingKey::DraftAutosaveInterval,
             SettingValue::draft_autosave_interval_seconds(30),
         )],
-    )
-    .unwrap();
-    apply(
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed settings command, got {outcome:?}"),
+    }
+    match apply(
         &store,
         state,
         vec![replace(
@@ -207,8 +218,13 @@ fn record_revisions_advance_and_stale_updates_reject() {
             RecordRevision::INITIAL,
             SettingValue::draft_autosave_interval_seconds(45),
         )],
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed settings command, got {outcome:?}"),
+    }
     let current = state
         .settings()
         .setting(&store, SettingKey::DraftAutosaveInterval)
@@ -220,7 +236,7 @@ fn record_revisions_advance_and_stale_updates_reject() {
         Some(45)
     );
 
-    let error = apply(
+    let outcome = apply(
         &store,
         state,
         vec![replace(
@@ -228,8 +244,10 @@ fn record_revisions_advance_and_stale_updates_reject() {
             RecordRevision::INITIAL,
             SettingValue::draft_autosave_interval_seconds(60),
         )],
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted { evidence: error } = outcome else {
+        panic!("expected rejected settings command, got {outcome:?}");
+    };
     assert!(matches!(
         contributor_source::<SettingsMutationError>(&error),
         Some(SettingsMutationError::RecordRevisionConflict {
@@ -293,7 +311,7 @@ fn apply_shape_rejects_empty_duplicate_mismatched_and_oversized_values() {
 fn settings_cursor_obeys_item_and_byte_bounds() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
-    apply(
+    match apply(
         &store,
         state,
         vec![
@@ -310,8 +328,13 @@ fn settings_cursor_obeys_item_and_byte_bounds() {
                 SettingValue::draft_autosave_interval_seconds(30),
             ),
         ],
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed settings command, got {outcome:?}"),
+    }
 
     let first = state
         .settings()
@@ -432,15 +455,20 @@ impl Error for ProbeCodecError {}
 fn settings_reopen_rejects_an_unsupported_record_version() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
-    apply(
+    match apply(
         &store,
         state,
         vec![create(
             SettingKey::ActiveThemeId,
             SettingValue::active_theme_id("theme").unwrap(),
         )],
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed settings command, got {outcome:?}"),
+    }
     store.close().unwrap();
 
     let mut probe = HomeStore::open(HomeOpenOptions::new(

@@ -156,13 +156,13 @@ impl LiveSourceFrontier {
     ) -> Result<Self, LiveSourcePublicationError> {
         loop {
             let verification = command
-                .await_current_or_verification(store, expected_home_id, expected_home_generation)
+                .enter_current_home(store, expected_home_id, expected_home_generation)
                 .map_err(LiveSourcePublicationError::Authority)?;
             let frontier = Self::read(store, storage, target, limit);
             let settlement = verification
                 .settle_after_operation()
                 .map_err(LiveSourcePublicationError::Authority)?;
-            if settlement.verified_current() {
+            if settlement.requires_retry() {
                 continue;
             }
             return frontier;
@@ -269,11 +269,11 @@ pub(super) fn publish_provider_reconciled(
     expected_home_generation: HomeGeneration,
     storage: SyndicStorage,
     event: &LiveSourceEvent,
-    limit: SyndicPointReadLimit,
+    _limit: SyndicPointReadLimit,
     command: &crate::cas_projection::LiveCommandPermit,
 ) -> Result<(), LiveSourcePublicationError> {
     let verification = command
-        .await_current_or_verification(store, expected_home_id, expected_home_generation)
+        .enter_current_home(store, expected_home_id, expected_home_generation)
         .map_err(LiveSourcePublicationError::Authority)?;
     let dispatch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         store.execute_current(storage.current_admit_live_source_event(event.clone()))
@@ -282,26 +282,33 @@ pub(super) fn publish_provider_reconciled(
         .settle_after_operation()
         .map_err(LiveSourcePublicationError::Authority)?;
     let dispatch = dispatch.map_err(|_| LiveSourcePublicationError::PublicationPanicked)?;
-    match read_provider_event_status(
-        store,
-        expected_home_id,
-        expected_home_generation,
-        storage,
-        event,
-        limit,
-        command,
-    )? {
-        LiveSourceEventStatus::Exact => Ok(()),
-        LiveSourceEventStatus::Absent => match dispatch {
-            Ok(_) => Err(LiveSourcePublicationError::Publication(
-                ProjectionPublicationFailure::Prior,
+    match dispatch {
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => Err(
+            LiveSourcePublicationError::Publication(ProjectionPublicationFailure::Command(
+                evidence,
             )),
-            Err(source) => Err(LiveSourcePublicationError::Publication(
-                ProjectionPublicationFailure::Command(source),
-            )),
-        },
-        LiveSourceEventStatus::Collision => Err(LiveSourcePublicationError::Publication(
-            ProjectionPublicationFailure::Collision,
+        ),
+        beryl_home_store::CommandOutcome::Committed {
+            receipt: _,
+            later_failure: None,
+        } => Ok(()),
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(later_failure),
+        } => Err(LiveSourcePublicationError::Publication(
+            ProjectionPublicationFailure::CommandCommitted {
+                receipt,
+                later_failure,
+            },
+        )),
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => Err(LiveSourcePublicationError::Publication(
+            ProjectionPublicationFailure::CommandIndeterminate {
+                failure,
+                reconciliation,
+            },
         )),
     }
 }
@@ -317,7 +324,7 @@ fn read_provider_event_status(
 ) -> Result<LiveSourceEventStatus, LiveSourcePublicationError> {
     loop {
         let verification = command
-            .await_current_or_verification(store, expected_home_id, expected_home_generation)
+            .enter_current_home(store, expected_home_id, expected_home_generation)
             .map_err(LiveSourcePublicationError::Authority)?;
         let status = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             storage.live_source_event_status(store, event, limit)
@@ -325,7 +332,7 @@ fn read_provider_event_status(
         let settlement = verification
             .settle_after_operation()
             .map_err(LiveSourcePublicationError::Authority)?;
-        if settlement.verified_current() {
+        if settlement.requires_retry() {
             continue;
         }
         return status

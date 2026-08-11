@@ -17,7 +17,6 @@ use crate::cas_projection::{
 pub(in crate::cas_projection::accepted_input_scheduler) enum PendingTurnExecutionDisposition {
     Settled,
     ExpectedInterruption,
-    VerificationPending,
     PersistentHomeFailure,
     ProjectionRefused,
 }
@@ -34,14 +33,6 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
     let execution_binding = lease.execution_binding().clone();
     let coordinator = match CasProjectionCoordinator::for_healthy_home(&validator.home) {
         Ok(coordinator) => coordinator,
-        Err(error)
-            if failure::is_verification_pending_coordinator(
-                &error,
-                validator.home_generation(),
-            ) =>
-        {
-            return PendingTurnExecutionDisposition::VerificationPending;
-        }
         Err(error)
             if failure::is_cut_correlated_coordinator(&error, validator.home_generation()) =>
         {
@@ -85,9 +76,6 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
         );
         match settle_ordinary_outcome(validator, outcome) {
             OrdinaryTurnSettlement::Settled => PendingTurnExecutionDisposition::Settled,
-            OrdinaryTurnSettlement::VerificationPending => {
-                PendingTurnExecutionDisposition::VerificationPending
-            }
             OrdinaryTurnSettlement::PersistentHomeFailure => {
                 PendingTurnExecutionDisposition::PersistentHomeFailure
             }
@@ -98,20 +86,12 @@ fn classify_projection_error(
     error: ProjectionExecutionError,
     home_generation: beryl_home_store::HomeGeneration,
 ) -> PendingTurnExecutionDisposition {
-    if projection_error_verification_pending(&error, home_generation) {
-        return PendingTurnExecutionDisposition::VerificationPending;
-    }
     if projection_error_cut_correlated(&error, home_generation) {
         return PendingTurnExecutionDisposition::PersistentHomeFailure;
     }
     match error {
         ProjectionExecutionError::Cancelled => {
             PendingTurnExecutionDisposition::ExpectedInterruption
-        }
-        ProjectionExecutionError::Coordinator(error)
-            if failure::is_verification_pending_coordinator(&error, home_generation) =>
-        {
-            PendingTurnExecutionDisposition::VerificationPending
         }
         ProjectionExecutionError::Coordinator(error)
             if failure::is_cut_correlated_coordinator(&error, home_generation) =>
@@ -166,50 +146,6 @@ pub(super) fn projection_error_cut_correlated(
                 })
                 || publication.as_deref().is_some_and(|source| {
                     failure::is_cut_correlated_publication(source, home_generation)
-                })
-        }
-        _ => false,
-    }
-}
-
-pub(super) fn projection_error_verification_pending(
-    error: &ProjectionExecutionError,
-    home_generation: beryl_home_store::HomeGeneration,
-) -> bool {
-    match error {
-        ProjectionExecutionError::Coordinator(source) => {
-            failure::is_verification_pending_coordinator(source, home_generation)
-        }
-        ProjectionExecutionError::SyndicRead(syndic_storage::SyndicReadError::Read(source))
-        | ProjectionExecutionError::NativePlanning(syndic_storage::NativeProjectionError::Read(
-            source,
-        ))
-        | ProjectionExecutionError::RecoveryProjection(
-            syndic_storage::RecoveryProjectionError::Read(source),
-        ) => failure::is_verification_pending_read(source, home_generation),
-        ProjectionExecutionError::Publication(source) => {
-            failure::is_verification_pending_publication(source, home_generation)
-        }
-        ProjectionExecutionError::LeaseRelease(source) => matches!(
-            source.as_ref(),
-            LoadedProjectionReleaseError::Registry(source)
-                if failure::is_verification_pending_coordinator(source, home_generation)
-        ),
-        ProjectionExecutionError::AbandonmentFailed {
-            primary,
-            release,
-            publication,
-        } => {
-            projection_error_verification_pending(primary, home_generation)
-                || release.as_deref().is_some_and(|source| {
-                    matches!(
-                        source,
-                        LoadedProjectionReleaseError::Registry(source)
-                            if failure::is_verification_pending_coordinator(source, home_generation)
-                    )
-                })
-                || publication.as_deref().is_some_and(|source| {
-                    failure::is_verification_pending_publication(source, home_generation)
                 })
         }
         _ => false,

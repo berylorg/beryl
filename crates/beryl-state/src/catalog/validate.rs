@@ -4,8 +4,8 @@ use beryl_home_store::{
 use beryl_model::SyndicThreadId;
 
 use super::{
-    CATALOG_RECORD_LIMIT, CatalogDomain, CatalogRecencyCursor, CatalogValidationError,
     codec::{CatalogRecencyCodec, CatalogRowCodec},
+    CatalogDomain, CatalogRecencyCursor, CatalogValidationError, CATALOG_RECORD_LIMIT,
 };
 
 const VALIDATION_PAGE_ITEMS: usize = 64;

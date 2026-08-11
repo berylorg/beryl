@@ -66,7 +66,7 @@ pub(super) fn admit_asset_at_label(
         .unwrap();
     let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
     metadata.add_to(&mut command).unwrap();
-    fixture.store.execute(command).unwrap();
+    match fixture.store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("expected committed asset admission: {evidence:?}"), outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate asset admission: {outcome:?}"), }
 
     let proof = admit_reference_set(fixture, marker_id, label, asset_id, owner_draft, set_seed);
     (asset_id, proof)

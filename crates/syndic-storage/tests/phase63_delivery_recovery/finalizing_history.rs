@@ -76,13 +76,12 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
         .unwrap()
         .unwrap();
     let stale = completion_request(&store, storage, thread, turn);
-    let error = execute_result(
+    let outcome = execute_result(
         &store,
         storage.complete_terminal_history(storage.revision(&store).unwrap(), stale),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::TerminalHistoryCompletionConflict
     ));
     assert_eq!(
@@ -172,16 +171,15 @@ fn release_refuses_a_finalizable_item_until_item_and_transcript_converge() {
         recovery.thread,
         recovery.turn,
     );
-    let error = execute_result(
+    let outcome = execute_result(
         &recovery.store,
         recovery.storage.complete_terminal_history(
             recovery.storage.revision(&recovery.store).unwrap(),
             request,
         ),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::TerminalHistoryCompletionConflict
     ));
     assert_eq!(
@@ -512,7 +510,7 @@ fn completion_rejects_an_impossible_finalizing_gate_descendant() {
         .transcript_view_head(&recovery.store, recovery.thread, point_limit())
         .unwrap()
         .unwrap();
-    let error = execute_result(
+    let outcome = execute_result(
         &recovery.store,
         recovery.storage.complete_terminal_history(
             recovery.storage.revision(&recovery.store).unwrap(),
@@ -525,10 +523,9 @@ fn completion_rejects_an_impossible_finalizing_gate_descendant() {
                 head.revision(),
             ),
         ),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::TerminalHistoryCompletionConflict
     ));
     assert_eq!(

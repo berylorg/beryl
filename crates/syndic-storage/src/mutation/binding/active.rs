@@ -1,4 +1,4 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
     AcceptedRouteGenerationHeadRecord, AcceptedRouteGenerationRecord, AcceptedRouteHeadProof,
@@ -24,6 +24,21 @@ impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BindingsCodec>(1)?;
+        reservation.reserve_records::<BindingHeadsCodec>(1)?;
+        reservation.reserve_records::<ExecutionSnapshotsCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
+        reservation.reserve_records::<CasThreadIndexCodec>(1)?;
+        reservation.reserve_records::<CasThreadBindingIndexCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -257,6 +272,20 @@ impl DomainMutation<SyndicDomain> for PublishActiveCasTurnMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.records(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ActiveCasTurnsCodec>(1)?;
+        reservation.reserve_records::<CasTurnIndexCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
+        reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
+        reservation.reserve_records::<AcceptedReadySourcesCodec>(1)?;
+        reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

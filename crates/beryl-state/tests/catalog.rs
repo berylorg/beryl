@@ -5,21 +5,21 @@ pub use beryl_state::{RecordRevision, UnixMillis};
 mod catalog;
 
 use beryl_home_store::{
-    CommandError, CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    ReadError,
+    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, ReadError,
 };
 use beryl_model::{
     AdmittedHostPath, Availability, ClaimRevision, PathFlavor, ProjectionRevision, RootId,
     RuntimeId, SyndicPathDigest, SyndicThreadId, WindowId,
 };
 use catalog::{
-    CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES,
     CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
     CatalogExecutionSummary, CatalogFacts, CatalogFreshness, CatalogLineageSummary,
     CatalogMutationError, CatalogNormalizationProfile, CatalogNormalizedQuery,
     CatalogPointReadLimit, CatalogReadError, CatalogResolvedTitle, CatalogRowExpectation,
     CatalogSourceRevisions, CatalogState, CatalogTitleSource, MarkCatalogRowStale,
-    PublishCatalogRow,
+    PublishCatalogRow, CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE,
+    CATALOG_QUERY_MAX_BYTES,
 };
 
 fn open(path: &std::path::Path) -> (HomeStore, CatalogState) {
@@ -29,16 +29,28 @@ fn open(path: &std::path::Path) -> (HomeStore, CatalogState) {
     (store, state)
 }
 
+macro_rules! assert_committed {
+    ($outcome:expr) => {
+        assert!(matches!(
+            $outcome,
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+    };
+}
+
 fn execute(
     store: &HomeStore,
     state: CatalogState,
     mutation: impl FnOnce(beryl_model::DomainRevision) -> beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(mutation(state.revision(store).unwrap()))
         .unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
 }
 
 fn sources(revision: u64, claimed: bool) -> CatalogSourceRevisions {
@@ -94,7 +106,7 @@ fn publish(
     source_revision: u64,
     activity: u64,
     title: CatalogResolvedTitle,
-) -> Result<(), CommandError> {
+) -> CommandOutcome {
     let thread_id = SyndicThreadId::from_bytes([thread_byte; 16]);
     let mutation = PublishCatalogRow::new(
         thread_id,
@@ -155,18 +167,16 @@ fn resolved_title_and_catalog_owned_search_are_exact() {
 
     let absent = facts(2, 2, CatalogResolvedTitle::absent(), false);
     assert_eq!(absent.search().title(), "");
-    assert!(
-        CatalogFacts::new(
-            CatalogResolvedTitle::history_derived("\u{fdfa}".repeat(80)).unwrap(),
-            absent.execution().clone(),
-            CatalogArchiveSummary::Ordinary,
-            UnixMillis::new(2),
-            true,
-            CatalogClaimSummary::Unclaimed,
-            CatalogLineageSummary::TopLevel,
-        )
-        .is_err()
-    );
+    assert!(CatalogFacts::new(
+        CatalogResolvedTitle::history_derived("\u{fdfa}".repeat(80)).unwrap(),
+        absent.execution().clone(),
+        CatalogArchiveSummary::Ordinary,
+        UnixMillis::new(2),
+        true,
+        CatalogClaimSummary::Unclaimed,
+        CatalogLineageSummary::TopLevel,
+    )
+    .is_err());
 
     let lineage = CatalogLineageSummary::descendant(
         SyndicThreadId::from_bytes([9; 16]),
@@ -186,7 +196,7 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
     for thread in [3, 1, 2] {
-        publish(
+        assert_committed!(publish(
             &store,
             state,
             thread,
@@ -194,8 +204,7 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
             1,
             100,
             CatalogResolvedTitle::history_derived("History").unwrap(),
-        )
-        .unwrap();
+        ));
     }
 
     let limits = CursorReadLimits::new(10, 10 * CATALOG_MAX_STORED_RECENCY_BYTES).unwrap();
@@ -230,7 +239,7 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
         )
         .unwrap()
         .unwrap();
-    publish(
+    assert_committed!(publish(
         &store,
         state,
         2,
@@ -238,8 +247,7 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
         2,
         200,
         CatalogResolvedTitle::generated("Generated").unwrap(),
-    )
-    .unwrap();
+    ));
 
     let page = state.recency_page(&store, None, limits).unwrap();
     assert_eq!(page.rows().len(), 3, "old recency key must be deleted");
@@ -261,7 +269,7 @@ fn point_limits_and_page_costs_cover_stored_and_decoded_bytes() {
 
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
-    publish(
+    assert_committed!(publish(
         &store,
         state,
         1,
@@ -269,8 +277,7 @@ fn point_limits_and_page_costs_cover_stored_and_decoded_bytes() {
         1,
         100,
         CatalogResolvedTitle::absent(),
-    )
-    .unwrap();
+    ));
 
     let thread_id = SyndicThreadId::from_bytes([1; 16]);
     let row = state
@@ -299,11 +306,9 @@ fn point_limits_and_page_costs_cover_stored_and_decoded_bytes() {
     assert!(page.stored_bytes() > 0);
     assert!(page.decoded_bytes() > 0);
     let exact_page = page.stored_bytes().max(page.decoded_bytes());
-    assert!(
-        state
-            .recency_page(&store, None, CursorReadLimits::new(1, exact_page).unwrap(),)
-            .is_ok()
-    );
+    assert!(state
+        .recency_page(&store, None, CursorReadLimits::new(1, exact_page).unwrap(),)
+        .is_ok());
 }
 
 #[test]
@@ -311,7 +316,7 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
     let visible_title = "Stra\u{00df}e";
-    publish(
+    assert_committed!(publish(
         &store,
         state,
         1,
@@ -319,8 +324,7 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
         1,
         100,
         CatalogResolvedTitle::history_derived(visible_title).unwrap(),
-    )
-    .unwrap();
+    ));
     let current = state
         .row(
             &store,
@@ -333,10 +337,9 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
     assert_eq!(current.facts().search().title(), "strasse");
     let sources = current.sources();
     let command = MarkCatalogRowStale::new(current.thread_id(), current.revision());
-    execute(&store, state, |revision| {
+    assert_committed!(execute(&store, state, |revision| {
         state.mark_stale(revision, command)
-    })
-    .unwrap();
+    }));
 
     let page = state
         .recency_page(
@@ -372,7 +375,7 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
 fn publish_rejects_regressing_authoritative_source_revisions() {
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
-    publish(
+    assert_committed!(publish(
         &store,
         state,
         1,
@@ -380,8 +383,7 @@ fn publish_rejects_regressing_authoritative_source_revisions() {
         2,
         100,
         CatalogResolvedTitle::history_derived("History").unwrap(),
-    )
-    .unwrap();
+    ));
     let current = state
         .row(
             &store,
@@ -390,7 +392,7 @@ fn publish_rejects_regressing_authoritative_source_revisions() {
         )
         .unwrap()
         .unwrap();
-    let error = publish(
+    let error = match publish(
         &store,
         state,
         1,
@@ -398,8 +400,10 @@ fn publish_rejects_regressing_authoritative_source_revisions() {
         1,
         101,
         CatalogResolvedTitle::history_derived("Older").unwrap(),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected catalog command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<CatalogMutationError>(&error),
         Some(CatalogMutationError::SourceRevisionRegressed {
@@ -424,7 +428,7 @@ fn reopen_rejects_a_recency_copy_that_disagrees_with_its_row() {
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
     for thread in [1, 2] {
-        publish(
+        assert_committed!(publish(
             &store,
             state,
             thread,
@@ -432,8 +436,7 @@ fn reopen_rejects_a_recency_copy_that_disagrees_with_its_row() {
             1,
             100,
             CatalogResolvedTitle::history_derived("History").unwrap(),
-        )
-        .unwrap();
+        ));
     }
     let read = |thread| {
         state
@@ -447,10 +450,9 @@ fn reopen_rejects_a_recency_copy_that_disagrees_with_its_row() {
     };
     let first = read(1);
     let second = read(2);
-    execute(&store, state, |revision| {
+    assert_committed!(execute(&store, state, |revision| {
         state.corrupt_recency_copy_for_test(revision, first.recency_cursor(), second)
-    })
-    .unwrap();
+    }));
     drop(store);
 
     let mut reopened = HomeStore::open(HomeOpenOptions::new(

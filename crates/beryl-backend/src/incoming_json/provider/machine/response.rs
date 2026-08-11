@@ -19,7 +19,7 @@ include!("response/turn_steer.rs");
 include!("response/model/efforts.rs");
 include!("response/model/record.rs");
 include!("response/model/page.rs");
-include!("response/compatibility.rs");
+include!("response/unsubscribe.rs");
 include!("response/success.rs");
 
 enum ResponseMachine {
@@ -412,10 +412,8 @@ impl ErrorObject {
         }
         let code = self.code?;
         let diagnostic = std::str::from_utf8(&self.diagnostic[..self.diagnostic_len]).ok()?;
-        let verdict =
-            turn_steer_rejection_verdict(family, code, self.turn_steer_data_probe.as_ref())
-                .or_else(|| turn_interrupt_rejection_verdict(family, code, self.data_was_present))
-                .or_else(|| compatibility_rejection_verdict(family, code, self.data_was_present));
+        let verdict = turn_steer_rejection_verdict(family, code, self.turn_steer_data_probe.as_ref())
+            .or_else(|| turn_interrupt_rejection_verdict(family, code, self.data_was_present));
         Some(crate::JsonRpcError::projected(
             code,
             diagnostic,
@@ -453,31 +451,3 @@ fn turn_steer_rejection_verdict(
 const CODE_ERROR_NAME: [&[u8]; 1] = [b"code"];
 const MESSAGE_ERROR_NAME: [&[u8]; 1] = [b"message"];
 const DATA_OR_MESSAGE_NAMES: [&[u8]; 2] = [b"data", b"message"];
-
-fn compatibility_rejection_verdict(
-    family: ResponseFamily,
-    code: i64,
-    data_was_present: bool,
-) -> Option<crate::JsonRpcErrorVerdict> {
-    if code != -32_600 || data_was_present {
-        return None;
-    }
-    let ResponseFamily::Compatibility(probe) = family else {
-        return None;
-    };
-    if matches!(
-        probe,
-        crate::CompatibilityProbe::ThreadCompactStart
-            | crate::CompatibilityProbe::ThreadFork
-            | crate::CompatibilityProbe::ThreadInjectItems
-            | crate::CompatibilityProbe::ThreadResume
-            | crate::CompatibilityProbe::ThreadRollback
-            | crate::CompatibilityProbe::TurnInterrupt
-            | crate::CompatibilityProbe::TurnStart
-            | crate::CompatibilityProbe::TurnSteer
-    ) {
-        Some(crate::JsonRpcErrorVerdict::CompatibilityProbeRecognized { probe })
-    } else {
-        None
-    }
-}

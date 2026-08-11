@@ -7,7 +7,7 @@ fn recursive_structured_values_match_materialized_provider_encoding() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let bound = {
         let mut callback = observation_callback(&store, storage);
-        let mut stager = ProviderObservationStager::begin(
+        let mut stager = committed_stage_value(ProviderObservationStager::begin(
             ProviderObservationId::from_bytes([4; 16]),
             ProviderObservationBegin::Item {
                 lifecycle: ProviderObservationItemLifecycle::Started,
@@ -15,7 +15,7 @@ fn recursive_structured_values_match_materialized_provider_encoding() {
             },
             &mut callback,
         )
-        .unwrap();
+        .unwrap());
         field_text(
             &mut stager,
             ProviderField::ItemId,
@@ -163,7 +163,7 @@ fn variant_fields_may_precede_their_discriminant_without_changing_encoding() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let bound = {
         let mut callback = observation_callback(&store, storage);
-        let mut stager = ProviderObservationStager::begin(
+        let mut stager = committed_stage_value(ProviderObservationStager::begin(
             ProviderObservationId::from_bytes([5; 16]),
             ProviderObservationBegin::Item {
                 lifecycle: ProviderObservationItemLifecycle::Started,
@@ -171,7 +171,7 @@ fn variant_fields_may_precede_their_discriminant_without_changing_encoding() {
             },
             &mut callback,
         )
-        .unwrap();
+        .unwrap());
         field_text(
             &mut stager,
             ProviderField::ItemId,

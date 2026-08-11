@@ -1,3 +1,4 @@
+use beryl_home_store::CommandOutcome;
 use beryl_model::CasTurnId;
 use syndic_storage::{
     ClaimStopDispatch, InputGateState, JoinStopCause, LiveSourceEvent, SafelyReopenStopOperation,
@@ -39,16 +40,14 @@ fn admission_reconciles_and_retains_the_exact_stop_cut() {
     ));
     fixture.store.validate_registered_domains().unwrap();
 
-    assert!(
+    match fixture.store.execute_current(
         fixture
-            .store
-            .execute_current(
-                fixture
-                    .storage
-                    .current_admit_stop_operation(fixture.admission.clone()),
-            )
-            .is_err()
-    );
+            .storage
+            .current_admit_stop_operation(fixture.admission.clone()),
+    ) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected duplicate stop admission rejection, got {outcome:?}"),
+    }
 }
 
 #[test]
@@ -63,14 +62,19 @@ fn multiple_admission_causes_share_first_and_reconcile_as_the_exact_initial_set(
         fixture.admission.expected_route(),
         initial,
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_admit_stop_operation(admission.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stop admission, got {outcome:?}"),
+    }
 
     let stop = fixture.stop();
     assert_eq!(stop.admission_causes(), initial);
@@ -120,10 +124,16 @@ fn an_admission_cause_is_not_an_exact_later_join_after_an_unrelated_join() {
         source_revision,
         StopCause::DiagnosticControl,
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_join_stop_cause(unrelated.clone()))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean unrelated stop-cause join, got {outcome:?}"),
+    }
 
     assert_eq!(
         fixture
@@ -215,14 +225,19 @@ fn pending_published_target_stops_and_consumes_a_matching_terminal_without_activ
             .unwrap(),
         StopOperationTransitionStatus::Prior
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_admit_live_source_event(event.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean matching-terminal admission, got {outcome:?}"),
+    }
     assert_eq!(
         fixture
             .storage
@@ -260,10 +275,16 @@ fn cause_claim_and_safe_reopen_are_exact_monotonic_transitions() {
             .unwrap(),
         StopOperationTransitionStatus::Prior
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_join_stop_cause(join.clone()))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stop-cause join, got {outcome:?}"),
+    }
     assert_eq!(
         fixture
             .storage
@@ -288,10 +309,16 @@ fn cause_claim_and_safe_reopen_are_exact_monotonic_transitions() {
             .unwrap(),
         StopOperationTransitionStatus::Prior
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_claim_stop_dispatch(claim.clone()))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stop claim, got {outcome:?}"),
+    }
     assert_eq!(
         fixture
             .storage
@@ -314,12 +341,13 @@ fn cause_claim_and_safe_reopen_are_exact_monotonic_transitions() {
             .unwrap(),
         StopOperationTransitionStatus::Collision
     );
-    assert!(
-        fixture
-            .store
-            .execute_current(fixture.storage.current_claim_stop_dispatch(alternate))
-            .is_err()
-    );
+    match fixture
+        .store
+        .execute_current(fixture.storage.current_claim_stop_dispatch(alternate))
+    {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected conflicting stop claim rejection, got {outcome:?}"),
+    }
 
     let claimed = fixture.stop();
     let stopped_route = fixture.gate().selected_route().unwrap();
@@ -329,14 +357,19 @@ fn cause_claim_and_safe_reopen_are_exact_monotonic_transitions() {
         gate_revision,
         claimed.revision(),
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_safely_reopen_stop_operation(reopen.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean safe-stop reopen, got {outcome:?}"),
+    }
     assert_eq!(
         fixture
             .storage
@@ -361,16 +394,14 @@ fn cause_claim_and_safe_reopen_are_exact_monotonic_transitions() {
             .unwrap(),
         StopOperationTransitionStatus::Exact
     );
-    assert!(
+    match fixture.store.execute_current(
         fixture
-            .store
-            .execute_current(
-                fixture
-                    .storage
-                    .current_admit_stop_operation(fixture.admission.clone()),
-            )
-            .is_err()
-    );
+            .storage
+            .current_admit_stop_operation(fixture.admission.clone()),
+    ) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected stale stop admission rejection, got {outcome:?}"),
+    }
     fixture.store.validate_registered_domains().unwrap();
 }
 
@@ -386,10 +417,16 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         join_first.stop().revision(),
         StopCause::DiagnosticControl,
     );
-    join_first
+    match join_first
         .store
         .execute_current(join_first.storage.current_join_stop_cause(join.clone()))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean initial stop-cause join, got {outcome:?}"),
+    }
     let join_first_attempt = StopAttemptNonce::from_bytes([121; 16]);
     let claim = ClaimStopDispatch::new(
         join_first.operation_id,
@@ -398,14 +435,19 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         join_first.stop().revision(),
         join_first_attempt,
     );
-    join_first
+    match join_first
         .store
         .execute_current(
             join_first
                 .storage
                 .current_claim_stop_dispatch(claim.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean joined stop claim, got {outcome:?}"),
+    }
     let latest_join = JoinStopCause::new(
         join_first.operation_id,
         join_first.target.clone(),
@@ -413,14 +455,19 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         join_first.stop().revision(),
         StopCause::HealthyHomeWindowClose,
     );
-    join_first
+    match join_first
         .store
         .execute_current(
             join_first
                 .storage
                 .current_join_stop_cause(latest_join.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean late stop-cause join, got {outcome:?}"),
+    }
     let join_then_claim = join_first.stop();
     assert_eq!(
         join_then_claim
@@ -450,14 +497,19 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         claim_first.stop().revision(),
         claim_first_attempt,
     );
-    claim_first
+    match claim_first
         .store
         .execute_current(
             claim_first
                 .storage
                 .current_claim_stop_dispatch(early_claim.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean initial stop claim, got {outcome:?}"),
+    }
     let middle_join = JoinStopCause::new(
         claim_first.operation_id,
         claim_first.target.clone(),
@@ -465,14 +517,19 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         claim_first.stop().revision(),
         StopCause::HealthyHomeWindowClose,
     );
-    claim_first
+    match claim_first
         .store
         .execute_current(
             claim_first
                 .storage
                 .current_join_stop_cause(middle_join.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean middle stop-cause join, got {outcome:?}"),
+    }
     let later_join = JoinStopCause::new(
         claim_first.operation_id,
         claim_first.target.clone(),
@@ -480,14 +537,19 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         claim_first.stop().revision(),
         StopCause::DiagnosticControl,
     );
-    claim_first
+    match claim_first
         .store
         .execute_current(
             claim_first
                 .storage
                 .current_join_stop_cause(later_join.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean later stop-cause join, got {outcome:?}"),
+    }
     let claim_then_join = claim_first.stop();
     assert_eq!(
         claim_then_join.dispatch_claim().unwrap().source_revision(),
@@ -516,14 +578,19 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         join_first_gate,
         join_first.stop().revision(),
     );
-    join_first
+    match join_first
         .store
         .execute_current(
             join_first
                 .storage
                 .current_safely_reopen_stop_operation(reopen),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stale join safe reopen, got {outcome:?}"),
+    }
     assert_eq!(
         join_first
             .storage
@@ -589,10 +656,16 @@ fn claim_before_an_intervening_cause_join_does_not_authenticate_the_later_claim(
         initial_revision,
         StopCause::DiagnosticControl,
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_join_stop_cause(join))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean current stop-cause join, got {outcome:?}"),
+    }
     let current_claim = ClaimStopDispatch::new(
         fixture.operation_id,
         fixture.target.clone(),
@@ -600,14 +673,19 @@ fn claim_before_an_intervening_cause_join_does_not_authenticate_the_later_claim(
         fixture.stop().revision(),
         attempt,
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_claim_stop_dispatch(current_claim.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean current stop claim, got {outcome:?}"),
+    }
 
     assert_eq!(
         fixture
@@ -637,10 +715,16 @@ fn interrupting_approval_prevents_safe_reopen() {
         fixture.stop().revision(),
         StopCause::InterruptingApproval,
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_join_stop_cause(join))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean stop-cause join before stale reopen, got {outcome:?}"),
+    }
     let reopen = SafelyReopenStopOperation::new(
         fixture.operation_id,
         fixture.target.clone(),
@@ -654,12 +738,13 @@ fn interrupting_approval_prevents_safe_reopen() {
             .unwrap(),
         StopOperationTransitionStatus::Collision
     );
-    assert!(
-        fixture
-            .store
-            .execute_current(fixture.storage.current_safely_reopen_stop_operation(reopen),)
-            .is_err()
-    );
+    match fixture
+        .store
+        .execute_current(fixture.storage.current_safely_reopen_stop_operation(reopen))
+    {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected stale safe-reopen rejection, got {outcome:?}"),
+    }
     assert!(fixture.stop().state().is_live());
     fixture.store.validate_registered_domains().unwrap();
 }
@@ -710,14 +795,19 @@ fn matching_terminal_atomically_consumes_the_live_stop() {
             .unwrap(),
         StopOperationTransitionStatus::Prior
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_admit_live_source_event(event.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean matching terminal admission, got {outcome:?}"),
+    }
 
     assert!(matches!(
         fixture.stop().state(),
@@ -761,14 +851,19 @@ fn consuming_transitions_win_cleanly_against_a_stale_cause_join() {
         reopened.gate().revision(),
         reopened.stop().revision(),
     );
-    reopened
+    match reopened
         .store
         .execute_current(
             reopened
                 .storage
                 .current_safely_reopen_stop_operation(reopen),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean reopened safe-stop transition, got {outcome:?}"),
+    }
     assert_eq!(
         reopened
             .storage

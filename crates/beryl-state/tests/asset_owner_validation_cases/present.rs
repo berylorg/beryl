@@ -46,7 +46,13 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
                     PutProbe { key: 3, value: 8 },
                 ))
                 .unwrap();
-            store.execute(command).unwrap()
+            match store.execute(command) {
+                CommandOutcome::Committed {
+                    receipt,
+                    later_failure: None,
+                } => receipt,
+                outcome => panic!("expected committed owner-validation command, got {outcome:?}"),
+            }
         };
         assert_eq!(
             state.assets().revision(&store).unwrap(),
@@ -89,7 +95,10 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
             .unwrap()
             .add(probe.contribution(probe_before, PutProbe { key: 2, value: 7 }))
             .unwrap();
-        let error = store.execute(rejected).unwrap_err();
+        let error = match store.execute(rejected) {
+            CommandOutcome::NotCommitted { evidence } => evidence,
+            outcome => panic!("expected rejected owner-validation command, got {outcome:?}"),
+        };
         assert!(matches!(
             error,
             CommandError::ContributorValidation {
@@ -131,7 +140,13 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
                     ),
                 )
                 .unwrap();
-            store.execute(command).unwrap()
+            match store.execute(command) {
+                CommandOutcome::Committed {
+                    receipt,
+                    later_failure: None,
+                } => receipt,
+                outcome => panic!("expected committed owner replacement command, got {outcome:?}"),
+            }
         };
         let replaced = state.assets().owner_head(&store, owner).unwrap().unwrap();
         assert_eq!(
@@ -163,10 +178,12 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
             .unwrap();
         assert!(matches!(
             store.execute(stale_command),
-            Err(CommandError::ContributorValidation {
-                domain: "beryl-assets",
-                ..
-            })
+            CommandOutcome::NotCommitted {
+                evidence: CommandError::ContributorValidation {
+                    domain: "beryl-assets",
+                    ..
+                },
+            }
         ));
         assert_eq!(store.home_revision().unwrap(), stale_home);
         assert_eq!(state.assets().revision(&store).unwrap(), stale_assets);
@@ -282,16 +299,16 @@ fn mutation_participant_asserts_unchanged_head_while_publishing_another() {
         .unwrap();
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::ContributorValidation {
-            domain: "beryl-assets",
-            ..
-        })
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::ContributorValidation {
+                domain: "beryl-assets",
+                ..
+            },
+        }
     ));
-    assert!(
-        state
-            .assets()
-            .owner_head(&store, destination)
-            .unwrap()
-            .is_none()
-    );
+    assert!(state
+        .assets()
+        .owner_head(&store, destination)
+        .unwrap()
+        .is_none());
 }

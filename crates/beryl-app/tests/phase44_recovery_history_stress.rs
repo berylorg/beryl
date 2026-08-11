@@ -332,7 +332,7 @@ fn admit(fixture: &Fixture, server: &RecoveryServer, generation: u64) -> Admitte
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             execution_binding().runtime_id(),
             CasProcessGeneration::new(generation).unwrap(),

@@ -5,7 +5,7 @@ fn enum_value<C: ProviderObservationStageCallback>(
     field: ProviderField,
     value: ProviderEnumValue,
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     stager.control(
         ProviderObservationControl::Enum {
             context: ProviderValueContext::Field(field),
@@ -20,7 +20,7 @@ fn empty_container<C: ProviderObservationStageCallback>(
     field: ProviderField,
     container: ProviderContainer,
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     let context = ProviderValueContext::Field(field);
     stager.control(
         ProviderObservationControl::BeginContainer { context, container },
@@ -36,7 +36,7 @@ fn required_item<C: ProviderObservationStageCallback>(
     stager: &mut ProviderObservationStager,
     kind: ProviderObservationItemKind,
     callback: &mut C,
-) -> Result<(), ProviderObservationStagingError<C::Error>> {
+) -> Result<(), ProviderObservationStagingError> {
     use ProviderObservationItemKind as I;
     match kind {
         I::HookPrompt => empty_container(

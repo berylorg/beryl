@@ -70,17 +70,15 @@ impl LifecycleFixture {
             SyndicTimestamp::from_unix_millis(72_000),
         );
         let operation_id = admission.operation_id();
-        source
+        let outcome = source
             .store
-            .execute_current(source.storage.current_admit_compaction_operation(admission))
-            .unwrap();
+            .execute_current(source.storage.current_admit_compaction_operation(admission));
+        match outcome { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. } | outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("expected committed compaction admission, got {outcome:?}"), }
         let admitted = operation(&source.store, source.storage, operation_id);
-        source
-            .store
-            .execute_current(source.storage.current_claim_compaction_dispatch(
+        let outcome = source.store.execute_current(source.storage.current_claim_compaction_dispatch(
                 ClaimCompactionDispatch::new(operation_id, admitted.revision(), attempt),
-            ))
-            .unwrap();
+            ));
+        match outcome { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. } | outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("expected committed dispatch claim, got {outcome:?}"), }
         let harness = source
             .store
             .context_compaction_lifecycle_test_harness()

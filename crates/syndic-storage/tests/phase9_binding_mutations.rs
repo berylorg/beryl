@@ -9,7 +9,7 @@ mod lifecycle;
 #[path = "phase9_binding_mutations/local_terminal.rs"]
 mod local_terminal;
 
-use beryl_home_store::{CommandError, DomainRegistrationError, HomeCommand, HomeStore};
+use beryl_home_store::{CommandError, CommandOutcome, DomainRegistrationError, HomeCommand, HomeStore};
 use beryl_model::{
     BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration,
     CasThreadId, CasTurnId, ExecutionBinding, InputGateRevision, PathFlavor, RootId, RuntimeId,
@@ -28,16 +28,29 @@ fn point_limit() -> SyndicPointReadLimit {
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed binding-mutation command, got {outcome:?}"),
+    }
 }
 
-fn execute_result(
+fn execute_outcome(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
+}
+
+fn not_committed_error(outcome: CommandOutcome) -> CommandError {
+    match outcome {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected not-committed binding-mutation command, got {outcome:?}"),
+    }
 }
 
 fn typed_error(error: &CommandError) -> &SyndicMutationError {
@@ -233,11 +246,11 @@ fn activate_root_turn(
         timestamp(4),
     )
     .unwrap();
-    let error = execute_result(
+    let error = not_committed_error(execute_outcome(
         store,
         storage.admit_live_source_event(storage.revision(store).unwrap(), premature_activation),
     )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceIdentityConflict

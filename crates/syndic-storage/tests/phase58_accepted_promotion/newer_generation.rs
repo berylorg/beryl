@@ -1,4 +1,4 @@
-use beryl_home_store::{CursorReadLimits, HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, CursorReadLimits, HomeCommand, HomeStore};
 use beryl_model::{SyndicItemId, SyndicTurnId};
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
@@ -122,7 +122,12 @@ fn promoting_generation_one_preserves_a_newer_same_thread_route_head() {
     command
         .add(storage.promote_accepted_input(promotion.clone()))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
+    }
 
     assert_exact_with_preserved_head(&store, storage, &promotion);
     assert_newer_authority(&store, storage, thread, newer_head, newer_accepted_input);

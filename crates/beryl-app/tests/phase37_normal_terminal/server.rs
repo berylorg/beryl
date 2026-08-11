@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use beryl_backend::{BackendWebSocketEndpoint, CompatibilityProbe};
+use beryl_backend::BackendWebSocketEndpoint;
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket, accept_hdr};
 
@@ -25,10 +25,6 @@ enum ServerEvent {
     AdmissionReady,
     ProjectionReady,
     TurnStartObserved,
-    ActiveCommandSent,
-    InterruptObserved,
-    CleanupObserved,
-    TerminalSentBeforeCleanupResponse,
     Closed,
 }
 
@@ -41,17 +37,12 @@ enum ServerScenario {
     ResumeDelayedRejection(Box<str>),
     ConnectionLoss,
     SteeringCorrelationLoss,
-    HardStopTerminal,
-    HardStopUnclassifiedRejection,
-    SoftThenHardStopTerminal,
 }
 
 enum ServerCommand {
     AssertQuietAndClose,
     ReleaseTurnStartRejection,
     SendSteeringCorrelationLoss(String),
-    AcceptInterrupt,
-    AcceptCleanup,
 }
 
 #[derive(Clone)]
@@ -97,18 +88,6 @@ impl NormalTerminalServer {
 
     pub fn spawn_steering_correlation_loss() -> Self {
         Self::spawn_scenario(ServerScenario::SteeringCorrelationLoss)
-    }
-
-    pub fn spawn_hard_stop_terminal() -> Self {
-        Self::spawn_scenario(ServerScenario::HardStopTerminal)
-    }
-
-    pub fn spawn_hard_stop_unclassified_rejection() -> Self {
-        Self::spawn_scenario(ServerScenario::HardStopUnclassifiedRejection)
-    }
-
-    pub fn spawn_soft_then_hard_stop_terminal() -> Self {
-        Self::spawn_scenario(ServerScenario::SoftThenHardStopTerminal)
     }
 
     pub fn spawn_admission_only() -> Self {
@@ -162,30 +141,6 @@ impl NormalTerminalServer {
         SteeringFailureTrigger {
             commands: self.commands.clone(),
         }
-    }
-
-    pub fn wait_for_active_command(&self) {
-        self.expect(ServerEvent::ActiveCommandSent);
-    }
-
-    pub fn wait_for_interrupt(&self) {
-        self.expect(ServerEvent::InterruptObserved);
-    }
-
-    pub fn accept_interrupt(&self) {
-        self.commands.send(ServerCommand::AcceptInterrupt).unwrap();
-    }
-
-    pub fn wait_for_cleanup(&self) {
-        self.expect(ServerEvent::CleanupObserved);
-    }
-
-    pub fn wait_for_terminal_before_cleanup_response(&self) {
-        self.expect(ServerEvent::TerminalSentBeforeCleanupResponse);
-    }
-
-    pub fn accept_cleanup(&self) {
-        self.commands.send(ServerCommand::AcceptCleanup).unwrap();
     }
 
     pub fn assert_quiet_and_close(&self) {
@@ -283,24 +238,6 @@ fn run_server(
             events.send(ServerEvent::ProjectionReady).unwrap();
             complete_steering_correlation_loss(&mut socket, &commands, CAS_THREAD_ID);
         }
-        ServerScenario::HardStopTerminal => {
-            complete_projection(&mut socket);
-            events.send(ServerEvent::ProjectionReady).unwrap();
-            complete_hard_stop_terminal(&mut socket, &events, &commands, CAS_THREAD_ID);
-            read_until_close(&mut socket).unwrap();
-        }
-        ServerScenario::HardStopUnclassifiedRejection => {
-            complete_projection(&mut socket);
-            events.send(ServerEvent::ProjectionReady).unwrap();
-            reject_hard_stop_without_dispatch_verdict(&mut socket, &events, CAS_THREAD_ID);
-            read_until_close(&mut socket).unwrap();
-        }
-        ServerScenario::SoftThenHardStopTerminal => {
-            complete_projection(&mut socket);
-            events.send(ServerEvent::ProjectionReady).unwrap();
-            complete_soft_then_hard_stop_terminal(&mut socket, &events, &commands, CAS_THREAD_ID);
-            read_until_close(&mut socket).unwrap();
-        }
     }
     events.send(ServerEvent::Closed).unwrap();
 }
@@ -318,24 +255,15 @@ fn complete_admission(socket: &mut WebSocket<TcpStream>) {
     let initialized = read_json(socket).unwrap();
     assert_eq!(initialized["method"], "initialized");
 
-    for probe in CompatibilityProbe::ALL {
-        let request = read_json(socket).unwrap();
-        assert_eq!(request["method"], probe.method());
-        let id = request["id"].as_u64().unwrap();
-        let response = match probe {
-            CompatibilityProbe::ConfigRead => format!(
-                r#"{{"id":{id},"result":{{"config":{{"model":"gpt-5.6","model_reasoning_effort":"high","features":{{"multi_agent_v2":{{"enabled":true,"expose_spawn_agent_model_overrides":true}}}}}},"origins":{{"features.multi_agent_v2.enabled":{{"name":{{"type":"sessionFlags"}},"version":"0"}},"features.multi_agent_v2.expose_spawn_agent_model_overrides":{{"name":{{"type":"sessionFlags"}},"version":"0"}}}}}}}}"#,
-            ),
-            CompatibilityProbe::ModelList => {
-                format!(r#"{{"id":{id},"result":{{"data":[],"nextCursor":null}}}}"#)
-            }
-            CompatibilityProbe::ThreadUnsubscribe => {
-                format!(r#"{{"id":{id},"result":{{"status":"notLoaded"}}}}"#)
-            }
-            _ => format!(r#"{{"error":{{"code":-32600,"message":"recognized"}},"id":{id}}}"#,),
-        };
-        send_json(socket, &response);
-    }
+    let request = read_json(socket).unwrap();
+    assert_eq!(request["method"], "config/read");
+    let id = request["id"].as_u64().unwrap();
+    send_json(
+        socket,
+        &format!(
+            r#"{{"id":{id},"result":{{"config":{{"model":"gpt-5.6","model_reasoning_effort":"high","features":{{"multi_agent_v2":{{"enabled":true,"expose_spawn_agent_model_overrides":true}}}}}},"origins":{{"features.multi_agent_v2.enabled":{{"name":{{"type":"sessionFlags"}},"version":"0"}},"features.multi_agent_v2.expose_spawn_agent_model_overrides":{{"name":{{"type":"sessionFlags"}},"version":"0"}}}}}}}}"#
+        ),
+    );
 }
 
 fn complete_projection(socket: &mut WebSocket<TcpStream>) {
@@ -501,10 +429,7 @@ fn complete_steering_correlation_loss(
         .expect("steering-loss test must supply the accepted-input correlation")
     {
         ServerCommand::SendSteeringCorrelationLoss(correlation) => correlation,
-        ServerCommand::AssertQuietAndClose
-        | ServerCommand::ReleaseTurnStartRejection
-        | ServerCommand::AcceptInterrupt
-        | ServerCommand::AcceptCleanup => {
+        ServerCommand::AssertQuietAndClose | ServerCommand::ReleaseTurnStartRejection => {
             panic!("steering-loss server received a turn-start rejection release")
         }
     };
@@ -524,164 +449,6 @@ fn complete_steering_correlation_loss(
         ),
     );
     read_until_close(socket).unwrap();
-}
-
-fn complete_hard_stop_terminal(
-    socket: &mut WebSocket<TcpStream>,
-    events: &SyncSender<ServerEvent>,
-    commands: &Receiver<ServerCommand>,
-    cas_thread_id: &str,
-) {
-    let turn_start_id = read_ordinary_turn_start(socket, cas_thread_id);
-    send_checked_user(
-        socket,
-        cas_thread_id,
-        "item/started",
-        "startedAtMs",
-        STARTED_AT_MS,
-    );
-    send_checked_user(
-        socket,
-        cas_thread_id,
-        "item/completed",
-        "completedAtMs",
-        COMPLETED_AT_MS,
-    );
-    send_command_execution(socket, cas_thread_id, "item/started", "inProgress", 37_004);
-    send_turn_start_response(socket, turn_start_id);
-    events.send(ServerEvent::ActiveCommandSent).unwrap();
-
-    let interrupt = read_json(socket).expect("hard stop must send one primary interrupt");
-    assert_eq!(interrupt["method"], "turn/interrupt");
-    assert_eq!(interrupt["params"]["threadId"], cas_thread_id);
-    assert_eq!(interrupt["params"]["turnId"], CAS_TURN_ID);
-    assert_eq!(interrupt["params"].as_object().unwrap().len(), 2);
-    let interrupt_id = interrupt["id"].as_u64().unwrap();
-    events.send(ServerEvent::InterruptObserved).unwrap();
-    assert!(matches!(
-        commands.recv_timeout(TIMEOUT).unwrap(),
-        ServerCommand::AcceptInterrupt
-    ));
-    send_json(socket, &format!(r#"{{"id":{interrupt_id},"result":{{}}}}"#));
-
-    let cleanup = read_json(socket).expect("hard stop must finish with one coarse cleanup");
-    assert_eq!(cleanup["method"], "thread/backgroundTerminals/clean");
-    assert_eq!(cleanup["params"]["threadId"], cas_thread_id);
-    assert_eq!(cleanup["params"].as_object().unwrap().len(), 1);
-    let cleanup_id = cleanup["id"].as_u64().unwrap();
-    assert!(
-        cleanup_id > interrupt_id,
-        "same-session cleanup must follow the accepted primary interrupt"
-    );
-    events.send(ServerEvent::CleanupObserved).unwrap();
-
-    send_command_execution(socket, cas_thread_id, "item/completed", "completed", 37_005);
-    send_json(socket, &terminal_wire_for(cas_thread_id));
-    events
-        .send(ServerEvent::TerminalSentBeforeCleanupResponse)
-        .unwrap();
-    assert!(matches!(
-        commands.recv_timeout(TIMEOUT).unwrap(),
-        ServerCommand::AcceptCleanup
-    ));
-    send_json(socket, &format!(r#"{{"id":{cleanup_id},"result":{{}}}}"#));
-}
-
-fn reject_hard_stop_without_dispatch_verdict(
-    socket: &mut WebSocket<TcpStream>,
-    events: &SyncSender<ServerEvent>,
-    cas_thread_id: &str,
-) {
-    let turn_start_id = read_ordinary_turn_start(socket, cas_thread_id);
-    send_checked_user(
-        socket,
-        cas_thread_id,
-        "item/started",
-        "startedAtMs",
-        STARTED_AT_MS,
-    );
-    send_checked_user(
-        socket,
-        cas_thread_id,
-        "item/completed",
-        "completedAtMs",
-        COMPLETED_AT_MS,
-    );
-    send_command_execution(socket, cas_thread_id, "item/started", "inProgress", 37_008);
-    send_turn_start_response(socket, turn_start_id);
-    events.send(ServerEvent::ActiveCommandSent).unwrap();
-
-    let interrupt = read_json(socket).expect("hard stop must send one primary interrupt");
-    assert_eq!(interrupt["method"], "turn/interrupt");
-    assert_eq!(interrupt["params"]["threadId"], cas_thread_id);
-    assert_eq!(interrupt["params"]["turnId"], CAS_TURN_ID);
-    let interrupt_id = interrupt["id"].as_u64().unwrap();
-    events.send(ServerEvent::InterruptObserved).unwrap();
-    send_json(
-        socket,
-        &format!(
-            r#"{{"id":{interrupt_id},"error":{{"code":-32001,"message":"unclassified interrupt rejection"}}}}"#
-        ),
-    );
-}
-
-fn complete_soft_then_hard_stop_terminal(
-    socket: &mut WebSocket<TcpStream>,
-    events: &SyncSender<ServerEvent>,
-    commands: &Receiver<ServerCommand>,
-    cas_thread_id: &str,
-) {
-    let turn_start_id = read_ordinary_turn_start(socket, cas_thread_id);
-    send_checked_user(
-        socket,
-        cas_thread_id,
-        "item/started",
-        "startedAtMs",
-        STARTED_AT_MS,
-    );
-    send_checked_user(
-        socket,
-        cas_thread_id,
-        "item/completed",
-        "completedAtMs",
-        COMPLETED_AT_MS,
-    );
-    send_command_execution(socket, cas_thread_id, "item/started", "inProgress", 37_006);
-    send_turn_start_response(socket, turn_start_id);
-    events.send(ServerEvent::ActiveCommandSent).unwrap();
-
-    let interrupt = read_json(socket).expect("soft stop must send one primary interrupt");
-    assert_eq!(interrupt["method"], "turn/interrupt");
-    assert_eq!(interrupt["params"]["threadId"], cas_thread_id);
-    assert_eq!(interrupt["params"]["turnId"], CAS_TURN_ID);
-    assert_eq!(interrupt["params"].as_object().unwrap().len(), 2);
-    let interrupt_id = interrupt["id"].as_u64().unwrap();
-    events.send(ServerEvent::InterruptObserved).unwrap();
-    assert!(matches!(
-        commands.recv_timeout(TIMEOUT).unwrap(),
-        ServerCommand::AcceptInterrupt
-    ));
-    send_json(socket, &format!(r#"{{"id":{interrupt_id},"result":{{}}}}"#));
-
-    let cleanup = read_json(socket)
-        .expect("late hard escalation must reuse the session for one coarse cleanup");
-    assert_eq!(cleanup["method"], "thread/backgroundTerminals/clean");
-    assert_eq!(cleanup["params"]["threadId"], cas_thread_id);
-    assert_eq!(cleanup["params"].as_object().unwrap().len(), 1);
-    let cleanup_id = cleanup["id"].as_u64().unwrap();
-    assert!(
-        cleanup_id > interrupt_id,
-        "late cleanup must follow, not repeat, the accepted primary interrupt"
-    );
-    events.send(ServerEvent::CleanupObserved).unwrap();
-    assert!(matches!(
-        commands.recv_timeout(TIMEOUT).unwrap(),
-        ServerCommand::AcceptCleanup
-    ));
-    send_json(socket, &format!(r#"{{"id":{cleanup_id},"result":{{}}}}"#));
-
-    send_command_execution(socket, cas_thread_id, "item/completed", "completed", 37_007);
-    send_json(socket, &terminal_wire_for(cas_thread_id));
 }
 
 fn send_command_execution(

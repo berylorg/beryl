@@ -88,13 +88,13 @@
 //! complete sealed asset-reference proof, verifies each first-occurrence sidecar, and projects its
 //! exact Host or drive-backed WSL path one descriptor at a time. The caller supplies the current
 //! [`beryl_state::AssetState`]; any preparation failure before activation returns the same loaded
-//! projection for exact same-generation retry. Cross-generation recovery instead retains that
-//! authority in the adopted service's owning reauthentication ledger.
+//! projection for exact same-generation retry. Persistent home failure instead terminally disposes
+//! the failed generation; it does not transfer projection authority into another service.
 //!
 //! [`cas_projection::ProjectionConnectionService::admit`] accepts a managed connector rather than
 //! an externally initialized session. It fixes the home, generation, registered storage,
 //! runtime/process identity, immutable foreground capacity, and the atomic pair of app worker
-//! permits before the connector creates, initializes, and probes the candidate. Every failure
+//! permits before the connector creates, initializes, and release-admits the candidate. Every failure
 //! remains typed without exposing either the candidate or an admitted session.
 //!
 //! ```
@@ -155,36 +155,28 @@
 //! [`cas_projection::WindowCloseStopBarrier`] and may release its thread claim only after the
 //! barrier proves terminal-history or authority-loss convergence. The same service owns lifecycle-
 //! yield state so admitting an exact stop cancels only that turn's automatic phase continuation.
-//! Deliberate and diagnostic hard-stop entry points attach once to that same durable operation,
-//! run their bounded immutable target snapshot through the surviving foreground driver, and return
-//! a shared [`cas_projection::BoundedHardStopResult`]. Pinned unsupported families remain explicit
-//! limitations; no detached session or guessed process identity is used.
+//! Exact soft interruption is the sole turn-stop path; it never becomes process control or coarse
+//! cleanup, and no detached session or guessed process identity can exercise it.
 //!
 //! Persistent Beryl-home failure uses a separate process-local safety cut. Typed failed-health
 //! observation and ordinary shutdown elect under the same master command gate; a failure that
 //! wins invalidates every live command permit before the dedicated worker freezes exact router and
 //! stop evidence. Stop admission, claim, and dispatch revalidate that generation inside the same
 //! stop-state mutex used by freeze, so either already-admitted command work or the cut wins one
-//! exact fence. Each eligible ordinary target receives at most one volatile exact interruption,
-//! and every ambiguous, active-only, compaction, closing, lost, terminal, or mismatched target is
-//! retained as a no-dispatch result. Each pre-activation projection or quarantine anchor carries a
-//! surrender child derived from its actual admitted worker, while each router independently admits
-//! at most 64 targets. Router mutations commit through their exact scoped gate permit; implicit
-//! teardown performs bounded in-memory preserve, request, wake, and detach work only. Consuming
-//! service close owns I/O and joins, fills its identity-pre-reserved escrow, and returns a
-//! [`cas_projection::PersistentFailureCutHandoff`] without closing the failed home. A finished
-//! handoff can be consumed exactly once into a sealed
-//! [`cas_projection::PersistentFailureRecoveryInventory`] after its old accepted-input scheduler
-//! has joined; the inventory keeps every bounded retained authority and detects any late
-//! publication without selecting or relabeling a projection. That inventory may be consumed into
-//! one opaque pending-projection quarantine which proves complete registry, target-guard, and
-//! connection-barrier topology, then retains a retirement hold for every stable connection without
-//! backend or storage work. A never-published recovered service can adopt those stable connections
-//! and consume the quarantine into one exact candidate ledger. The ledger stabilizes each pending
-//! turn between live registry and adopted-epoch checks, keeps accepted candidates dormant with
-//! their exact lease and replacement worker hold, and retains every rejection for retry or explicit
-//! local disposition. It yields candidate-set-converged authority only after all candidates are
-//! accepted or disposed and every connection-quarantine owner is discharged.
+//! exact fence. A volatile request exists only when the original exact stop election transfers its
+//! same command permit specifically to persistent failure immediately before any HomeStore writer
+//! call, and remains single-use and bound to that exact target and sole driver. Broad persistent
+//! failure, local absence or failure, and durable stop state cannot mint it. A writer-returned
+//! `NotCommitted` outcome remains unavailable as app proof until Phase 100 preserves that typed
+//! mutation result. Each pre-activation projection remains owned by its actual admitted worker,
+//! while each router independently admits at most 64 targets. Router
+//! mutations commit through their exact scoped gate permit. Consuming service close owns all
+//! terminal I/O and joins: it settles retained queued work and local registry authority, shuts
+//! down the old scheduler, context-compaction worker, connections, and execution provider, and
+//! returns only bounded [`cas_projection::PersistentFailureTerminalEvidence`]. Possible-dispatch
+//! outcomes remain explicitly unknown in that evidence. No service, connection, worker, home, or
+//! publication authority crosses the failed-generation boundary, so the process supervisor
+//! reports running-session recovery unavailable.
 //!
 //! Context compaction is likewise process-owned by
 //! [`cas_projection::ProjectionConnectionService`]. Manual callers supply one exact thread and a

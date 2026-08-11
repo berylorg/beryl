@@ -1,9 +1,11 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, PointReadLimit};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, PointReadLimit, ReconciliationReservation,
+};
 use beryl_model::SealedAssetReferenceSetProof;
 
 use super::{
-    ASSET_HEAD_LIMIT, AssetDomain, AssetMutationError, AssetOwner, AssetOwnerHeadExpectation,
-    AssetOwnerHeadRecord, codec::AssetOwnerHeadCodec,
+    codec::AssetOwnerHeadCodec, AssetDomain, AssetMutationError, AssetOwner,
+    AssetOwnerHeadExpectation, AssetOwnerHeadRecord, ASSET_HEAD_LIMIT,
 };
 
 pub(super) struct CorruptOwnerHeadProof {
@@ -17,6 +19,14 @@ impl DomainMutation<AssetDomain> for CorruptOwnerHeadProof {
 
     fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
         require_expected(reader, self.owner, self.expected).map(drop)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AssetOwnerHeadCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

@@ -1,4 +1,4 @@
-use beryl_home_store::{CommandError, HomeCommand, HomeStore};
+use beryl_home_store::{CommandError, CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{SyndicDraftId, SyndicItemId};
 use syndic_storage::{
     AcceptedInputAdmission, AdvanceItemProjectionBuild, AdvanceTranscriptBuild,
@@ -17,13 +17,16 @@ use crate::{
 pub(super) fn execute_result(
     store: &HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
 }
 
-pub(super) fn typed_error(error: &CommandError) -> &SyndicMutationError {
+pub(super) fn typed_error(outcome: &CommandOutcome) -> &SyndicMutationError {
+    let CommandOutcome::NotCommitted { evidence: error } = outcome else {
+        panic!("expected not-committed Syndic validation outcome, got {outcome:?}");
+    };
     let CommandError::ContributorValidation { source, .. } = error else {
         panic!("expected Syndic validation rejection, got {error}");
     };

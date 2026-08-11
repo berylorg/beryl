@@ -6,13 +6,13 @@ use thiserror::Error;
 
 use super::{HomeControl, OpenedDatabase, StorageProfile};
 use crate::{
-    HomeHeader, HomeOpenError, HomeOpenStage, HomeSchemaVersion, HomeUnreadableStage,
     health::ClassifiedFjallError,
     layout::HomeLayout,
     metadata::{
-        DOMAINS_KEYSPACE, HEADER_KEY, HEADER_KEYSPACE, HOME_REVISION_BYTES, HOME_REVISION_KEY,
-        MAX_HOME_HEADER_BYTES, decode_home_revision, encode_home_revision,
+        decode_home_revision, encode_home_revision, DOMAINS_KEYSPACE, HEADER_KEY, HEADER_KEYSPACE,
+        HOME_REVISION_BYTES, HOME_REVISION_KEY, MAX_HOME_HEADER_BYTES,
     },
+    HomeHeader, HomeOpenError, HomeOpenStage, HomeSchemaVersion, HomeUnreadableStage,
 };
 
 pub(super) fn create_fresh_database(

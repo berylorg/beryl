@@ -1,9 +1,9 @@
 use std::error::Error;
 
 use crate::{
-    CodecOperation, CommandError, ContributorCallbackStage, ReadError, ReadStage,
-    domain::callback::{ErasedCallbackError, callback_failure_severity},
+    domain::callback::{callback_failure_severity, ErasedCallbackError},
     health::{ClassifiedFjallError, FailureSeverity},
+    CodecOperation, CommandError, ContributorCallbackStage, ReadError, ReadStage,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -22,6 +22,9 @@ pub(super) fn callback_command_error(
             source,
         },
         ErasedCallbackError::Rejected(source) => match stage {
+            ContributorCallbackStage::Reservation => {
+                CommandError::ContributorReservation { domain, source }
+            }
             ContributorCallbackStage::Validation => {
                 CommandError::ContributorValidation { domain, source }
             }
@@ -73,15 +76,29 @@ pub(super) fn command_failure_severity(error: &CommandError) -> Option<FailureSe
         | CommandError::ForeignDomain { .. }
         | CommandError::ForeignSidecar
         | CommandError::Conflict { .. }
+        | CommandError::ContributorReservation { .. }
         | CommandError::ContributorValidation { .. }
         | CommandError::ContributorAssembly { .. }
         | CommandError::EmptyContribution { .. }
+        | CommandError::ReconciliationCapacity
+        | CommandError::ReconciliationDescriptorTooLarge { .. }
+        | CommandError::ReconciliationReservationMismatch { .. }
         | CommandError::RevisionExhausted { .. }
         | CommandError::Metadata { .. } => None,
         CommandError::ContributorAccess { source, .. } => Some(callback_failure_severity(source)),
         CommandError::Commit { source } | CommandError::Persistence { source } => {
             erased_storage_failure_severity(source.as_ref())
         }
+        CommandError::PersistenceAfterCommitFailure {
+            commit,
+            persistence,
+        } => command_failure_severity(commit)
+            .into_iter()
+            .chain(command_failure_severity(persistence))
+            .max_by_key(|severity| match severity {
+                FailureSeverity::Verify => 0,
+                FailureSeverity::Structural => 1,
+            }),
         CommandError::RevisionRead { source } => read_failure_severity(source),
         CommandError::WriterPoisoned
         | CommandError::GenerationPoisoned

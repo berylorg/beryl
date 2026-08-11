@@ -6,7 +6,12 @@ use super::*;
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected mutation to commit without later failure, got {outcome:?}"),
+    }
 }
 
 #[test]
@@ -45,7 +50,10 @@ fn committed_autosave_invalidates_only_the_stale_promotion_basis() {
             .unwrap(),
         AcceptedInputPromotionStatus::Collision,
     );
-    assert!(execute_promotion(&store, storage, stale.clone()).is_err());
+    match execute_promotion(&store, storage, stale.clone()) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected definitive stale-promotion rejection, got {outcome:?}"),
+    }
 
     let fresh = PromoteAcceptedInput::new(
         candidate(&store, storage),
@@ -53,7 +61,12 @@ fn committed_autosave_invalidates_only_the_stale_promotion_basis() {
         stale.successor_item_id(),
         timestamp(22),
     );
-    execute_promotion(&store, storage, fresh.clone()).unwrap();
+    match execute_promotion(&store, storage, fresh.clone()) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected fresh promotion to commit without later failure, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .accepted_input_promotion_status(&store, &fresh, limit())
@@ -104,7 +117,10 @@ fn ordinary_submit_cannot_overtake_live_next_turn_promotion() {
     command
         .add(storage.submit_idle_draft(storage.revision(&store).unwrap(), ordinary))
         .unwrap();
-    assert!(store.execute(command).is_err());
+    match store.execute(command) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected definitive ordinary-submit rejection, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .accepted_input_promotion_status(&store, &request, limit())
@@ -112,7 +128,12 @@ fn ordinary_submit_cannot_overtake_live_next_turn_promotion() {
         AcceptedInputPromotionStatus::Prior,
     );
 
-    execute_promotion(&store, storage, request.clone()).unwrap();
+    match execute_promotion(&store, storage, request.clone()) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
+    }
     assert_eq!(
         storage
             .accepted_input_promotion_status(&store, &request, limit())
@@ -134,7 +155,12 @@ fn gate_only_revision_advance_is_not_a_compatible_promotion_descendant() {
         SyndicTurnId::from_bytes([156; 16]),
         SyndicItemId::from_bytes([157; 16]),
     );
-    execute_promotion(&store, storage, request.clone()).unwrap();
+    match execute_promotion(&store, storage, request.clone()) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
+    }
     let gate = storage
         .input_gate(&store, fixture.thread, limit())
         .unwrap()

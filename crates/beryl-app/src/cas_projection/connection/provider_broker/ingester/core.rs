@@ -267,10 +267,6 @@ impl Ingester {
     pub(super) fn current_observation_authority_typed(
         &self,
     ) -> Result<(HomeGeneration, SyndicStorage), CurrentObservationAuthorityError> {
-        #[cfg(all(test, feature = "test-faults"))]
-        if operations::tests::take_begin_non_health_authority_failure(self.home_id) {
-            return Err(CurrentObservationAuthorityError::InjectedNonHealth);
-        }
         let actual_home_id = self.home.home_id();
         if actual_home_id != self.home_id {
             return Err(CurrentObservationAuthorityError::HomeIdentity {

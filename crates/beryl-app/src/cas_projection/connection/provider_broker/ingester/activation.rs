@@ -86,11 +86,7 @@ impl Ingester {
             } else {
                 Some(
                     self.live_command()
-                        .await_current_or_verification(
-                            &self.home,
-                            self.home_id,
-                            self.home_generation,
-                        )
+                        .enter_current_home(&self.home, self.home_id, self.home_generation)
                         .map_err(SourceActivationError::Authority)?,
                 )
             };
@@ -108,7 +104,7 @@ impl Ingester {
             let settlement = verification
                 .settle_after_operation()
                 .map_err(SourceActivationError::Authority)?;
-            if settlement.verified_current() {
+            if settlement.requires_retry() {
                 match &authority {
                     Ok(_) => {
                         verified_continuation = true;
@@ -129,14 +125,7 @@ impl Ingester {
         &self,
         permit: &SourcePublicationPermit,
     ) -> Result<(beryl_home_store::HomeGeneration, SyndicStorage), SourceActivationError> {
-        #[cfg(all(test, feature = "test-faults"))]
-        let inject_non_health =
-            super::submitted_user::tests::pause_source_activation_authority_and_take_non_health_failure(
-                self.home_id,
-            );
-        #[cfg(not(all(test, feature = "test-faults")))]
-        let inject_non_health = false;
-        if inject_non_health || !permit.matches_home_generation(self.home_generation) {
+        if !permit.matches_home_generation(self.home_generation) {
             return Err(SourceActivationError::PermitGeneration(
                 self.home_generation,
             ));
@@ -195,10 +184,8 @@ impl Ingester {
     ) -> Result<(SyndicStorage, beryl_model::InputGateRevision), SourceActivationError> {
         let verification = self
             .live_command()
-            .await_current_or_verification(&self.home, self.home_id, home_generation)
+            .enter_current_home(&self.home, self.home_id, home_generation)
             .map_err(SourceActivationError::Authority)?;
-        #[cfg(all(test, feature = "test-faults"))]
-        super::submitted_user::tests::record_source_activation_dispatch(self.home_id);
         let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             publication::publish_active_turn(&self.home, storage, active_turn, limit)
         }))
@@ -207,7 +194,7 @@ impl Ingester {
         let settlement = verification
             .settle_after_operation()
             .map_err(SourceActivationError::Authority)?;
-        if settlement.verified_current()
+        if settlement.requires_retry()
             && attempt
                 .as_ref()
                 .is_err_and(|error| error.verification_ambiguous(home_generation))
@@ -245,7 +232,7 @@ impl Ingester {
             {
                 let verification = self
                     .live_command()
-                    .await_current_or_verification(&self.home, self.home_id, self.home_generation)
+                    .enter_current_home(&self.home, self.home_id, self.home_generation)
                     .map_err(SourceActivationError::Authority)?;
                 storage = SyndicStorage::reacquire(&self.home)
                     .map_err(SourceActivationError::Reacquire)?;
@@ -263,7 +250,7 @@ impl Ingester {
                 let settlement = verification
                     .settle_after_operation()
                     .map_err(SourceActivationError::Authority)?;
-                if settlement.verified_current()
+                if settlement.requires_retry()
                     && status
                         .as_ref()
                         .is_err_and(|error| error.verification_ambiguous(self.home_generation))
@@ -287,7 +274,7 @@ impl Ingester {
     ) -> Result<SyndicStorage, SourceActivationError> {
         let verification = self
             .live_command()
-            .await_current_or_verification(&self.home, self.home_id, home_generation)
+            .enter_current_home(&self.home, self.home_id, home_generation)
             .map_err(SourceActivationError::Authority)?;
         let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             publication::admit_live_event(&self.home, storage, activation, limit)
@@ -297,7 +284,7 @@ impl Ingester {
         let settlement = verification
             .settle_after_operation()
             .map_err(SourceActivationError::Authority)?;
-        if settlement.verified_current()
+        if settlement.requires_retry()
             && attempt
                 .as_ref()
                 .is_err_and(|error| error.verification_ambiguous(home_generation))
@@ -340,7 +327,7 @@ impl Ingester {
             {
                 let verification = self
                     .live_command()
-                    .await_current_or_verification(&self.home, self.home_id, self.home_generation)
+                    .enter_current_home(&self.home, self.home_id, self.home_generation)
                     .map_err(SourceActivationError::Authority)?;
                 storage = SyndicStorage::reacquire(&self.home)
                     .map_err(SourceActivationError::Reacquire)?;
@@ -358,7 +345,7 @@ impl Ingester {
                 let settlement = verification
                     .settle_after_operation()
                     .map_err(SourceActivationError::Authority)?;
-                if settlement.verified_current()
+                if settlement.requires_retry()
                     && status
                         .as_ref()
                         .is_err_and(|error| error.verification_ambiguous(self.home_generation))

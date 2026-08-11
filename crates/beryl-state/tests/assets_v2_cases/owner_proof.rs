@@ -36,7 +36,7 @@ fn every_owner_variant_round_trips_and_multi_head_rejection_is_atomic() {
         proof.asset_chain_digest(),
     )
     .unwrap();
-    let rejected = execute_result(
+    let rejected = execute_outcome(
         &store,
         state.assets().update_owner_heads(
             state.assets().revision(&store).unwrap(),
@@ -46,20 +46,20 @@ fn every_owner_variant_round_trips_and_multi_head_rejection_is_atomic() {
             ]))
             .unwrap(),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted { evidence: rejected } = rejected else {
+        panic!("expected rejected owner-proof command, got {rejected:?}");
+    };
     assert!(matches!(
         asset_mutation_error(&rejected),
         AssetMutationError::ReferenceSetMissing(actual)
             if *actual == missing_proof.set_id()
     ));
-    assert!(
-        owners[..2].iter().all(|owner| state
-            .assets()
-            .owner_head(&store, *owner)
-            .unwrap()
-            .is_none())
-    );
+    assert!(owners[..2].iter().all(|owner| state
+        .assets()
+        .owner_head(&store, *owner)
+        .unwrap()
+        .is_none()));
 
     let first_batch = owners[..ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES]
         .iter()

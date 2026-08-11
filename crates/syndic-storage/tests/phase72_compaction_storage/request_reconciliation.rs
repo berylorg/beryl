@@ -1,4 +1,4 @@
-use beryl_home_store::CursorReadLimits;
+use beryl_home_store::{CommandOutcome, CursorReadLimits};
 use beryl_model::{InputGateRevision, SyndicItemId, SyndicTurnId};
 use syndic_storage::{
     ACCEPTED_NEXT_PAGE_MAX_BYTES, CompactionAttemptNonce, CompactionConsumedWitness,
@@ -25,7 +25,7 @@ fn settled_fixture(
     fixture.claim(id);
     fixture.publish_success(id, 20);
     let operation = fixture.operation(id);
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_compaction_operation(
             SettleCompactionOperation::new(
@@ -33,8 +33,13 @@ fn settled_fixture(
                 operation.revision(),
                 CompactionSettlement::ManualSuccess,
             ),
-        ))
-        .unwrap();
+        )) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean settled-compaction setup, got {outcome:?}"),
+    }
     (fixture, id)
 }
 
@@ -71,14 +76,19 @@ fn live_request_publication_reconciles_prior_then_exact() {
             .unwrap(),
         CompactionRequestTransitionStatus::Prior
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_publish_compaction_request_disposition(request),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean live request publication, got {outcome:?}"),
+    }
     assert_eq!(
         fixture
             .storage
@@ -99,11 +109,14 @@ fn late_matching_acknowledgement_reconciles_without_mutating_terminal_successor(
         CompactionRequestDisposition::Accepted,
     );
 
-    let _ = fixture.store.execute_current(
+    match fixture.store.execute_current(
         fixture
             .storage
             .current_publish_compaction_request_disposition(request),
-    );
+    ) {
+        CommandOutcome::NotCommitted { .. } => {}
+        outcome => panic!("expected terminal request reconciliation rejection, got {outcome:?}"),
+    }
     assert_eq!(fixture.operation(id), before);
     assert_eq!(
         fixture
@@ -143,7 +156,7 @@ fn late_acknowledgement_survives_progress_beyond_user_work_settlement() {
     fixture.publish_success(id, 20);
     let accepted = fixture.admit_current_draft_as_accepted("accepted work wins", 195, 35);
     let operation = fixture.operation(id);
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_settle_lifecycle_compaction(
             SettleLifecycleCompaction::new(
@@ -151,8 +164,13 @@ fn late_acknowledgement_survives_progress_beyond_user_work_settlement() {
                 fixture.prepare_lifecycle_content(),
                 timestamp(40),
             ),
-        ))
-        .unwrap();
+        )) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean user-work compaction settlement, got {outcome:?}"),
+    }
     let consumed = fixture.operation(id);
     let late_ack = request(
         &fixture,

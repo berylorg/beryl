@@ -5,7 +5,7 @@ mod issue_cases;
 #[path = "support/mod.rs"]
 mod support;
 
-use beryl_home_store::{CommandError, HomeCommand, HomeStore, MutationContribution};
+use beryl_home_store::{CommandError, CommandOutcome, HomeCommand, HomeStore, MutationContribution};
 use beryl_model::{
     CasItemId, ProviderObservationId, SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
@@ -28,10 +28,10 @@ fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
-fn execute(store: &HomeStore, contribution: MutationContribution) -> Result<(), CommandError> {
+fn execute(store: &HomeStore, contribution: MutationContribution) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    store.execute(command)
 }
 
 fn typed_error(error: &CommandError) -> &SyndicMutationError {
@@ -46,7 +46,7 @@ fn setup(name: &str) -> Fixture {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread = SyndicThreadId::from_bytes([1; 16]);
-    execute(
+    match execute(
         &store,
         storage.create_thread(
             storage.revision(&store).unwrap(),
@@ -57,8 +57,12 @@ fn setup(name: &str) -> Fixture {
                 timestamp(1),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected thread creation to commit without later failure, got {outcome:?}"),
+    }
     let turn = exact_cas::submit_current_draft(
         &store,
         storage,
@@ -121,11 +125,27 @@ fn admit_agent_start(fixture: &Fixture) {
 fn observation_callback(
     store: &HomeStore,
     storage: SyndicStorage,
-) -> impl FnMut(&ProviderObservationStageBatch) -> Result<(), CommandError> + '_ {
-    move |batch| {
-        store
-            .execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
-            .map(|_| ())
+) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + '_ {
+    move |batch| store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+}
+
+fn committed_stage_value<T>(outcome: ProviderObservationStageOutcome<T>) -> T {
+    match outcome {
+        ProviderObservationStageOutcome::Committed {
+            value,
+            receipt: _,
+            later_failure: None,
+        } => value,
+        ProviderObservationStageOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("expected staging to commit without later failure, got {failure:?}"),
+        ProviderObservationStageOutcome::NotCommitted { evidence } => {
+            panic!("expected staging to commit, got NotCommitted: {evidence:?}")
+        }
+        ProviderObservationStageOutcome::Indeterminate { failure, .. } => {
+            panic!("expected staging to commit, got Indeterminate: {failure:?}")
+        }
     }
 }
 
@@ -133,61 +153,71 @@ fn scalar(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     value: ProviderScalar,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
-    stager
-        .control(
+    committed_stage_value(
+        stager
+            .control(
             ProviderObservationControl::Scalar {
                 context: ProviderValueContext::Field(field),
                 value,
             },
             callback,
         )
-        .unwrap();
+            .unwrap(),
+    );
 }
 
 fn enum_value(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     value: ProviderEnumValue,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
-    stager
-        .control(
+    committed_stage_value(
+        stager
+            .control(
             ProviderObservationControl::Enum {
                 context: ProviderValueContext::Field(field),
                 value,
             },
             callback,
         )
-        .unwrap();
+            .unwrap(),
+    );
 }
 
 fn text(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     value: &str,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     let context = ProviderValueContext::Field(field);
-    stager
-        .control(ProviderObservationControl::BeginField(context), callback)
-        .unwrap();
-    stager
-        .fragment(
+    committed_stage_value(
+        stager
+            .control(ProviderObservationControl::BeginField(context), callback)
+            .unwrap(),
+    );
+    committed_stage_value(
+        stager
+            .fragment(
             ProviderObservationStagingBytes::new(context, value.as_bytes()).unwrap(),
             callback,
         )
-        .unwrap();
-    stager
-        .control(ProviderObservationControl::EndField(context), callback)
-        .unwrap();
+            .unwrap(),
+    );
+    committed_stage_value(
+        stager
+            .control(ProviderObservationControl::EndField(context), callback)
+            .unwrap(),
+    );
 }
 
 fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProviderObservation {
     let sealed = {
         let mut callback = observation_callback(&fixture.store, fixture.storage);
-        let mut stager = ProviderObservationStager::begin(
+        let mut stager = committed_stage_value(ProviderObservationStager::begin(
             ProviderObservationId::from_bytes([observation_byte; 16]),
             ProviderObservationBegin::Item {
                 lifecycle: ProviderObservationItemLifecycle::Started,
@@ -195,7 +225,7 @@ fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProv
             },
             &mut callback,
         )
-        .unwrap();
+        .unwrap());
         scalar(
             &mut stager,
             ProviderField::LifecycleObservedAt,
@@ -214,7 +244,7 @@ fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProv
             "conflicting replacement",
             &mut callback,
         );
-        stager.seal(&mut callback).unwrap()
+        committed_stage_value(stager.seal(&mut callback).unwrap())
     };
     let route = ProviderObservationRoute::new(
         fixture.source.thread_id().clone(),
@@ -227,7 +257,7 @@ fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProv
 fn inspect_completion_only(fixture: &Fixture) -> InspectedProviderObservation {
     let sealed = {
         let mut callback = observation_callback(&fixture.store, fixture.storage);
-        let mut stager = ProviderObservationStager::begin(
+        let mut stager = committed_stage_value(ProviderObservationStager::begin(
             ProviderObservationId::from_bytes([31; 16]),
             ProviderObservationBegin::Item {
                 lifecycle: ProviderObservationItemLifecycle::Completed,
@@ -235,7 +265,7 @@ fn inspect_completion_only(fixture: &Fixture) -> InspectedProviderObservation {
             },
             &mut callback,
         )
-        .unwrap();
+        .unwrap());
         scalar(
             &mut stager,
             ProviderField::LifecycleObservedAt,
@@ -266,7 +296,7 @@ fn inspect_completion_only(fixture: &Fixture) -> InspectedProviderObservation {
             "root/worker",
             &mut callback,
         );
-        stager.seal(&mut callback).unwrap()
+        committed_stage_value(stager.seal(&mut callback).unwrap())
     };
     let route = ProviderObservationRoute::new(
         fixture.source.thread_id().clone(),
@@ -325,14 +355,18 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         SourceEventPayload::ProviderObservationIssue(Box::new(issue.clone())),
         timestamp(6),
     );
-    execute(
+    match execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected issue admission to commit without later failure, got {outcome:?}"),
+    }
 
     assert_eq!(canonical_item(&fixture), canonical_before);
     let state = fixture
@@ -368,14 +402,16 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         LiveSourceEventStatus::Exact
     );
 
-    let retry_error = execute(
+    let retry_error = match execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected definitive retry rejection, got {outcome:?}"),
+    };
     assert!(matches!(
         typed_error(&retry_error),
         SyndicMutationError::SourceEventAlreadyAdmitted
@@ -398,13 +434,15 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
             .unwrap(),
         LiveSourceEventStatus::Collision
     );
-    let collision_error = execute(
+    let collision_error = match execute(
         &fixture.store,
         fixture
             .storage
             .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), collision),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected definitive collision rejection, got {outcome:?}"),
+    };
     assert!(matches!(
         typed_error(&collision_error),
         SyndicMutationError::SourceEventCollision
@@ -447,11 +485,13 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         ),
         timestamp(7),
     );
-    let terminal_error = execute(
+    let terminal_error = match execute(
         &reopened,
         storage.admit_live_source_event(storage.revision(&reopened).unwrap(), rejected_terminal),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected definitive terminal rejection, got {outcome:?}"),
+    };
     assert!(matches!(
         typed_error(&terminal_error),
         SyndicMutationError::ProviderObservationIssueConflict
@@ -472,11 +512,15 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         ),
         timestamp(8),
     );
-    execute(
+    match execute(
         &reopened,
         storage.admit_live_source_event(storage.revision(&reopened).unwrap(), accepted_terminal),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None, ..
+        } => {}
+        outcome => panic!("expected terminal issue admission to commit without later failure, got {outcome:?}"),
+    }
     let terminal_state = storage
         .turn_state(&reopened, fixture.turn, limit())
         .unwrap()

@@ -5,10 +5,10 @@ use fjall::{Keyspace, PersistMode};
 use super::reopen::validate_registry;
 use super::*;
 use crate::{
-    HomeStore,
     health::{ClassifiedFjallError, FailureSeverity},
     metadata::MAX_DOMAIN_METADATA_BYTES,
     store::StoreGeneration,
+    HomeStore,
 };
 
 impl HomeStore {

@@ -17,7 +17,7 @@ use crate::cas_projection::{
     stop::StopCoordinator,
 };
 use beryl_backend::{CompactThreadDisposition, CompactionAttemptCorrelation};
-use beryl_home_store::{HomeCommand, HomeGeneration, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     BindingState, ClaimCompactionDispatch, CompactionAbandonmentReason,
@@ -45,6 +45,32 @@ pub use model::{
     ContextCompactionDiagnostics, ContextCompactionError, ContextCompactionOutcome,
     ContextCompactionRequest,
 };
+
+fn require_committed_command(outcome: CommandOutcome) -> Result<(), ContextCompactionError> {
+    match outcome {
+        CommandOutcome::NotCommitted { evidence } => {
+            Err(ContextCompactionError::CommandNotCommitted(evidence))
+        }
+        CommandOutcome::Committed {
+            receipt: _,
+            later_failure: None,
+        } => Ok(()),
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(later_failure),
+        } => Err(ContextCompactionError::CommandCommitted {
+            receipt,
+            later_failure,
+        }),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => Err(ContextCompactionError::CommandIndeterminate {
+            failure,
+            reconciliation,
+        }),
+    }
+}
 #[cfg(feature = "test-faults")]
 pub use test_faults::{
     ContextCompactionCapacityTestGuard, ContextCompactionLifecycleTestHarness,
@@ -143,7 +169,7 @@ impl ContextCompactionCoordinator {
         commands: LiveCommandAuthorizer,
         scheduler_signal: AcceptedInputSchedulerSignal,
     ) -> Result<Arc<Self>, ContextCompactionError> {
-        Self::new_with_startup_gate(
+        Self::new_with_initial_start(
             home,
             home_id,
             home_generation,
@@ -152,12 +178,12 @@ impl ContextCompactionCoordinator {
             stop,
             commands,
             scheduler_signal,
-            crate::cas_projection::service_startup::ServiceStartupGate::open_gate(),
+            crate::cas_projection::initial_start::InitialStartGate::ready(),
         )
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::cas_projection) fn new_with_startup_gate(
+    pub(in crate::cas_projection) fn new_with_initial_start(
         home: Arc<HomeStore>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
@@ -166,7 +192,7 @@ impl ContextCompactionCoordinator {
         stop: Arc<StopCoordinator>,
         commands: LiveCommandAuthorizer,
         scheduler_signal: AcceptedInputSchedulerSignal,
-        startup: Arc<crate::cas_projection::service_startup::ServiceStartupGate>,
+        initial_start: Arc<crate::cas_projection::initial_start::InitialStartGate>,
     ) -> Result<Arc<Self>, ContextCompactionError> {
         let (work, receiver) = mpsc::sync_channel(COMPACTION_QUEUE_CAPACITY);
         let receiver = Arc::new(Mutex::new(receiver));
@@ -199,12 +225,12 @@ impl ContextCompactionCoordinator {
         for index in 0..COMPACTION_WORKER_CAPACITY {
             let weak = Arc::downgrade(&coordinator);
             let receiver = Arc::clone(&receiver);
-            let startup = Arc::clone(&startup);
+            let initial_start = Arc::clone(&initial_start);
             workers.push(
                 std::thread::Builder::new()
                     .name(format!("beryl-context-compaction-{index}"))
                     .spawn(move || {
-                        if startup.wait() {
+                        if initial_start.wait() {
                             dispatch::run_worker(weak, receiver);
                         }
                     })
@@ -309,13 +335,14 @@ impl ContextCompactionCoordinator {
 
     pub(in crate::cas_projection) fn shutdown(&self) -> Result<(), ContextCompactionError> {
         self.request_shutdown();
-        let workers = std::mem::take(
-            &mut *self
-                .workers
-                .lock()
-                .map_err(|_| ContextCompactionError::Unavailable)?,
-        );
-        if workers.into_iter().any(|worker| worker.join().is_err()) {
+        let (workers, poisoned) = match self.workers.lock() {
+            Ok(mut workers) => (std::mem::take(&mut *workers), false),
+            Err(poison) => {
+                let mut workers = poison.into_inner();
+                (std::mem::take(&mut *workers), true)
+            }
+        };
+        if join_all_workers(workers) || poisoned {
             return Err(ContextCompactionError::Unavailable);
         }
         Ok(())
@@ -368,6 +395,62 @@ impl ContextCompactionCoordinator {
                 .lifecycle_continuation_failures
                 .load(Ordering::Acquire),
         }
+    }
+}
+
+fn join_all_workers(workers: Vec<std::thread::JoinHandle<()>>) -> bool {
+    let mut failed = false;
+    for worker in workers {
+        failed |= worker.join().is_err();
+    }
+    failed
+}
+
+#[cfg(test)]
+mod join_tests {
+    use super::join_all_workers;
+
+    #[test]
+    fn join_failure_does_not_detach_later_workers() {
+        let failed = std::thread::spawn(|| panic!("synthetic first worker failure"));
+        let (settled, observed) = std::sync::mpsc::sync_channel(1);
+        let later = std::thread::spawn(move || {
+            settled.send(()).expect("observer remains live");
+        });
+
+        assert!(join_all_workers(vec![failed, later]));
+        observed
+            .try_recv()
+            .expect("the later worker was joined despite the earlier failure");
+    }
+
+    #[test]
+    fn poisoned_worker_registry_still_yields_every_exact_handle_for_join() {
+        let (settled, observed) = std::sync::mpsc::sync_channel(2);
+        let workers = std::sync::Mutex::new(vec![
+            std::thread::spawn({
+                let settled = settled.clone();
+                move || settled.send(1).expect("observer remains live")
+            }),
+            std::thread::spawn(move || settled.send(2).expect("observer remains live")),
+        ]);
+        std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let _guard = workers.lock().expect("worker registry begins usable");
+                    panic!("poison worker registry while preserving its handles");
+                })
+                .join()
+                .expect_err("poison worker must panic");
+        });
+        let mut recovered = workers
+            .lock()
+            .expect_err("worker registry must remain poisoned")
+            .into_inner();
+        assert!(!join_all_workers(std::mem::take(&mut *recovered)));
+        assert!(observed.recv().is_ok());
+        assert!(observed.recv().is_ok());
+        assert!(recovered.is_empty());
     }
 }
 

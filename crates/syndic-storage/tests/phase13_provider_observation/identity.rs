@@ -36,7 +36,7 @@ fn invalid_context_text(
     stager: &mut ProviderObservationStager,
     context: ProviderValueContext,
     bytes: &[u8],
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationValidatorError {
     stager
         .control(ProviderObservationControl::BeginField(context), callback)
@@ -61,7 +61,7 @@ fn invalid_context_text(
 fn begin_item(
     byte: u8,
     kind: ProviderObservationItemKind,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
     let mut stager = ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),
@@ -241,7 +241,7 @@ fn enum_value(
     stager: &mut ProviderObservationStager,
     field: ProviderField,
     value: ProviderEnumValue,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) {
     stager
         .control(
@@ -256,7 +256,7 @@ fn enum_value(
 
 fn prepare_collab(
     byte: u8,
-    callback: &mut impl ProviderObservationStageCallback<Error = CommandError>,
+    callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
     let mut stager = begin_item(
         byte,

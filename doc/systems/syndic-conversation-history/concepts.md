@@ -1,8 +1,14 @@
 # Syndic Concepts
 
-This supplemental system doc captures the current model for Syndic's conversation, branching, item, and reference concepts.
+This normative supplemental system doc captures the current model for Syndic's conversation,
+branching, item, and reference concepts.
 
 It is authoritative for current Syndic vocabulary and accepted model statements.
+
+The primary [Syndic conversation-history design](design.md) owns terminal-repair concepts,
+snapshot storage and selection, `FinalizingHistory`, and gate-release lifecycle. The terminal-
+repair section below is a non-owning vocabulary summary; the CAS-live system owns repair
+eligibility, correlation, the sole historical-request authorization, and adapter behavior.
 
 # Turn DAG
 
@@ -20,7 +26,9 @@ Transcript projections may hide or collapse them when they are not parent transc
 
 Every turn has either one parent turn or no parent. A turn with no parent is a root turn.
 
-The parent chain of a turn defines the conversation context that should be replayed or summarized before running a child turn.
+The parent chain of a turn defines the candidate conversation context for a child turn. When an
+execution workflow must reconstruct context from Syndic, it may use only the exact eligible
+complete prefix; it never substitutes a summary, suffix, omission, or truncation.
 
 When a turn has more than one child, that is a branch point. Each child represents an alternate continuation from the same prior context.
 
@@ -76,7 +84,7 @@ envelope names the selected source turn without turning that source into a gener
 replacement intent instead names its exact historical target and path proof. These cases cannot
 coexist. Beryl may derive one presentation-only synthetic context group at that branch boundary.
 
-`DiscussionContextRange` is a half-open range in absolute canonical logical UTF-8 byte coordinates within the source item, not a projection-local range. It must lie within one finalized source projection, and admission and reopen resolve its exact bytes through bounded logical-range reads over the canonical content indexes.
+`DiscussionContextRange` is a half-open range in absolute canonical logical UTF-8 byte coordinates within the source item, not a projection-local range. It must lie within one finalized source projection, and admission and scoped context resolution read its exact bytes through bounded logical-range reads over the canonical content indexes.
 
 Draft autosave may change only the sealed content reference and mutable draft timestamps. Thread
 ownership and the submission intent remain unchanged by autosave; branch context is immutable,
@@ -106,10 +114,20 @@ selected generation head resolves steering, pending, next-turn, and terminal del
 retaining the same accepted-input identity and marker ownership; queueing does not manufacture
 another queued-input identity or a competing active turn.
 
-Terminal publication does not make the input gate idle before derived history settles. It enters a
-durable finalizing-history state for the exact terminal turn. Input accepted during that state joins
+Terminal publication does not make the input gate idle before derived history settles. It enters
+durable `FinalizingHistory` for the exact terminal turn. Input accepted during that state joins
 the ordered next-turn route, and promotion remains blocked until bounded item and transcript
 convergence reaches a durable fixed point and an exact completion command releases the gate.
+
+A terminal turn with a proven or conservatively suspected capture gap instead enters
+`RepairRequired`. That gate blocks same-thread successor execution, fork, replacement execution,
+rollback, and compaction. It carries one durable target-scoped historical-request disposition:
+`Available` initially, then an immutable consumed request-attempt witness before the sole backend
+dispatch capability can exist. Recovery never resets a consumed disposition. Either one complete
+terminal repair snapshot is atomically selected or the turn's explicit incomplete authority is
+fixed without selecting staged data; both outcomes enter `FinalizingHistory`, publish their bounded
+derived history to a coherent fixed point, and only then release the gate. It does not block
+unrelated threads.
 
 Accepted-input order is permanent thread history. Separately, one revisioned per-thread input gate
 owns the accepted-order high-water mark, exact route-generation head, and checked `u64` live
@@ -161,6 +179,11 @@ authority retains every cause and claim witness and leaves an inert durable rece
 successor witness so the same-thread nonce cannot be reused. An interrupting-approval cause cannot
 be safely reopened after local nondispatch.
 
+When matching terminal evidence consumes the stop, that receipt's exact cause-first revisions,
+optional dispatch-claim witness, and terminal successor witness are the sole authentication for any
+delayed finalization release. Backend acceptance of the stop request is not terminal evidence, and
+no process-local state can substitute for the durable receipt.
+
 A stop attempt is the one caller-generated identity durably claimed before any interrupt request
 byte may be issued. `Admitted` proves no Beryl stop request has yet been authorized.
 `DispatchClaimed(source_revision, attempt)` means that exact attempt consumed the named live record
@@ -168,6 +191,10 @@ revision and owns the sole dispatch capability; after process loss it is possibl
 provenance, not retry authority. Every post-admission record revision is occupied exactly once by a
 new cause, this sole claim, or consumption, so cause joins and the claim remain exactly
 reconcilable across later compatible descendants.
+
+Recovery invalidates every prior-service handle and dispatch capability. A fresh service reads the
+exact durable thread, gate, target, and stop-operation natural closure before converging it; the
+failed service generation contributes no live authority.
 
 Ordinary stop admission changes already ready or retryable accepted input into effective next-turn
 work. Provider-operation stop admission leaves compaction-routed next-turn work unchanged. Later
@@ -234,19 +261,72 @@ Large outputs are represented as references.
 
 Live provider traffic is normalized into one monotonic per-turn event sequence rather than retained as an unbounded protocol object.
 
-The current canonical subset is turn activation, text-item start, bounded coalesced text delta, text-item completion, and turn-ending outcome. Assistant text starts with the provider phase when known, retains `unknown` when absent, and may refine `unknown` only from later non-conflicting completion metadata. Operational text remains canonical but is not parent transcript narrative.
+Normal canonical capture covers the full admitted pinned provider union: turn activation, every
+admitted public field of narrative and operational item variants through their exact typed
+lifecycle, and the turn-ending outcome. Assistant text starts with the provider phase when known,
+retains `unknown` when absent, and may refine `unknown` only from later non-conflicting completion
+metadata. Operational content remains canonical but is not parent transcript narrative.
 
-Every externally sourced item event retains the exact CAS thread, turn, and item identity. Each canonical item separately indexes the exact source-event subsequence that built it, allowing reopen to reconstruct and validate the item without buffering a whole response or scanning unrelated turn events.
+Every externally sourced item event retains the exact CAS thread, turn, and item identity. Each canonical item separately indexes the exact source-event subsequence that built it, allowing scoped item validation to reconstruct the item without buffering a whole response or scanning unrelated turn events.
 
 Exact replay at an occupied turn sequence means the event was already admitted. Different data at that sequence is an identity collision, and a gap is an ordering conflict. A proven-terminal event closes the source sequence permanently.
 
 A turn state retains the admitted event count, complete item count, and contiguous finalized-item count. If a terminal turn ends with an open item, finalization may freeze that already captured content and advance the frontier, but it cannot append bytes or manufacture a missing provider event.
 
+Normal capture preserves exact operational as well as narrative provider content. Only during a
+durable-store outage may a hard-limited process-local buffer evict operational facts before
+narrative, final-output, identity, and terminal facts. Any dropped canonical fact makes the whole
+turn repair-required; retained buffer content may support transient presentation but cannot become
+a canonical prefix for a later snapshot.
+
+# Terminal Repair Snapshot Vocabulary
+
+This section summarizes vocabulary only. The primary design governs every repair-snapshot storage,
+selection, finalization, and release invariant.
+
+A terminal repair snapshot is one complete, bounded, release-pinned historical view of one exact
+correlated terminal CAS turn.
+
+It is not notification replay. Snapshot entries are semantic final-item authority and retain
+explicit historical-repair provenance without fabricated starts, deltas, approvals, or live source
+sequence positions.
+
+Storage stages metadata plus paged item, content, and finalized-media evidence behind an opaque
+package-local snapshot reference. That reference is storage-owned, is not a shared repair identity,
+and cannot be used as CAS/Syndic correlation. Staging has hard item-count, encoded-byte, page-count,
+per-page item, and per-page byte limits.
+
+Partial staging is unreachable from ordinary Syndic reads and is never canonical. An indeterminate
+stage or seal reconciles by the existing target thread/turn, correlated CAS thread/turn, staging
+family, and page ordinal natural identity rather than by inventing another cross-package id.
+
+One atomic seal-and-selection validates the exact CAS/Syndic correlation, terminal outcome,
+complete ordered item identities and fields, page and aggregate digests, adapter/release
+provenance, and required finalized-media witnesses. Syndic then selects the complete ordered item
+set and enters `FinalizingHistory`, or selects none of it. The primary design governs the later
+bounded projection fixed point, coherent generation publication, and gate release. No step splices
+a live prefix, outage buffer, GUI projection, or partial snapshot into repaired canonical history.
+
+Missing full-turn view, required thread/turn/item identity, final item field, terminal outcome, or
+required media makes the repair incomplete. Similar text, inferred ordering, or guessed paths never
+substitute.
+
+Ordinary transcript, catalog, replay, and projection reads remain Syndic-only after repair. The
+repair adapter cannot enumerate or backfill unrelated history.
+
 # Canonical Messages
 
-Syndic should preserve the original provider message exactly as received through bounded ordered canonical content chunks referenced by the item's metadata record.
+For normal capture, Syndic preserves the original provider message exactly as received through
+bounded ordered canonical content chunks referenced by the item's metadata record. For repaired
+capture, the one complete terminal snapshot is the exclusive canonical item source for that turn.
 
-This canonical message is the source of truth for rare recovery, replay, export, debugging, and projection rebuilds.
+Repair publication stores each complete semantic final item in snapshot-backed canonical manifests
+and ranges with exact snapshot provenance. Those ranges directly source narrative and other derived
+projections; they do not require fabricated live source events, item-start or delta lifecycles, or
+`ProviderItemV1` live-frame ranges.
+
+This canonical authority is the source of truth for replay, export, debugging, and projection
+rebuilds. Normal and repaired item authority are never combined within one turn.
 
 The canonical message does not have to live in the hot read path. Its manifest and chunks can remain cold as long as they are durable, range-readable, and recoverable. Per-record chunk limits never become a whole-message limit.
 
@@ -320,9 +400,11 @@ A code block resource should expose metadata such as language, line count, byte 
 
 It should support line-range reads.
 
-A table resource should expose metadata such as row count, column count, header information, byte count, digest, and optional preview rows.
+A table resource exposes metadata such as row count, column count, header information, byte count,
+digest, and optional preview rows.
 
-It should support row-range reads, and may eventually need column-range reads for very wide tables.
+Its payload read surface uses bounded half-open resource-relative logical UTF-8 ranges with exact
+continuation. Syndic storage does not expose semantic row-range or column-range reads.
 
 The parent answer projection should contain lightweight placeholders or refs for these resources rather than embedding the full code block or table body.
 
@@ -381,13 +463,17 @@ Syndic does not automatically expand a reference into model context. An owning f
 
 # Heavy Item Storage
 
-Heavy item bytes should live outside turn items.
+Heavy item bytes live outside canonical turn-item records.
 
-Turn items should contain stable references, media type, size, digest, storage location, preview metadata, and authorization or retention metadata where needed.
+Canonical items retain bounded typed metadata and stable content or resource references. The
+resource metadata owned by the relevant Syndic projection or feature records media type, byte
+length, digest, preview ranges, exact backing identity, and required provenance without embedding
+the payload in the turn item.
 
-Transcript and history reads should be able to load item metadata without loading generated image bytes, attachment bytes, large log contents, or other heavy payloads.
-
-The heavy-item backing store can choose its own technology independently of the turn graph, as long as references remain stable and recoverable.
+Transcript and history metadata reads never load generated-image bytes, attachment bytes, large
+logs, or other heavy payloads. Textual code and table resources remain indexed ranges over their
+canonical logical-text backing. Images, attachments, and other externally owned byte payloads use
+Beryl-home sidecars only through their owning feature and storage contracts.
 
 # File Generation
 
@@ -397,7 +483,8 @@ Images are a first-class OpenAI API output mode, and image result bytes or refer
 
 Arbitrary files are better modeled as ordinary filesystem outputs created by tools. For example, an agent can write files under an execution root, create archives through a shell or code tool, or produce files in a sandbox/container.
 
-Absolute filesystem paths remain the local stable references for those files for now.
+Absolute filesystem paths are local mutable references for those files, not immutable content
+identities or preservation proof.
 
 A file path can change contents over time, can be deleted, and can be affected by branch checkout.
 
@@ -405,7 +492,7 @@ If a turn must preserve the exact file content observed at submit time, Syndic n
 
 # Lazy History Access
 
-The turn DAG should support cursor-based walking.
+The turn DAG supports revision-bound, bounded cursor walking.
 
 Useful walking directions include:
 
@@ -415,17 +502,21 @@ Useful walking directions include:
 - Forward and backward through the items of a turn.
 - Forward and backward through independently loadable Markdown block ranges.
 
-Cursor reads should return lightweight metadata by default.
+Cursor reads return lightweight metadata by default.
 
-Generated image bytes, attachment bytes, large logs, and other heavy payloads should only load through explicit fetch operations.
+Generated-image bytes, attachment bytes, large logs, and other heavy payloads load only through
+explicit bounded range or feature-owned fetch operations.
 
 # Replay And Context
 
-The canonical graph must be sufficient to reconstruct the context for a new agent turn.
+The canonical graph must be sufficient to supply the exact eligible complete Syndic prefix for a
+new agent turn. Replay or recovery injection never substitutes a summary, suffix, omission, or
+truncation for that prefix.
 
 That does not mean every UI projection must load the full graph or every heavy item byte.
 
-Syndic can maintain separate projections for fast UI reads, search, activity, and media browsing.
+Syndic maintains only the derived projections declared by the system and package authority for
+transcript presentation, activity, and resource access.
 The activity projection is a revision-bound paged index over exact lifecycle sources and bounded
 derived facts, not a second payload store or parent transcript narrative. Ephemeral or unfinished
 derived projections may be rebuilt or invalidated from the canonical turn graph and reference
@@ -435,7 +526,7 @@ selected path changes, but it only reorders or selects those frozen historical p
 
 Markdown block projections are one such derived projection.
 
-They should be rebuildable from canonical provider messages.
+They are rebuildable from each canonical item's selected content source and resource metadata.
 
 # Derived Lineage
 

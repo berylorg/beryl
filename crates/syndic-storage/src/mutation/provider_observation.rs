@@ -1,6 +1,7 @@
 use beryl_home_store::{
     CurrentDomainCommand, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    MutationBuildError, MutationBuilder, MutationContribution, ReadError,
+    MutationBuildError, MutationBuilder, MutationContribution, ReconciliationReservation,
+    ReadError,
 };
 use beryl_model::DomainRevision;
 
@@ -98,6 +99,17 @@ impl DomainMutation<SyndicDomain> for StageProviderObservationMutation {
                 return Err(ProviderObservationMutationError::ChunkIdentityCollision);
             }
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        if self.batch.chunk().is_some() {
+            reservation.reserve_records::<ProviderObservationChunksCodec>(1)?;
+        }
+        reservation.reserve_records::<ProviderObservationBuildsCodec>(1)?;
         Ok(())
     }
 

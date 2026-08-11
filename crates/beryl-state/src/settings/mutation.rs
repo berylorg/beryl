@@ -2,14 +2,14 @@ use std::{collections::BTreeSet, error::Error, fmt};
 
 use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader, MutationBuildError,
-    MutationBuilder, PointReadLimit, ReadError,
+    MutationBuilder, PointReadLimit, ReadError, ReconciliationReservation,
 };
 
 use crate::{RecordRevision, ValueError};
 
 use super::{
-    SETTINGS_RECORD_LIMIT, SettingKey, SettingRecord, SettingValue, SettingsDomain,
-    codec::SettingRecordCodec,
+    codec::SettingRecordCodec, SettingKey, SettingRecord, SettingValue, SettingsDomain,
+    SETTINGS_RECORD_LIMIT,
 };
 
 /// Exact record state expected by one staged setting update.
@@ -130,6 +130,14 @@ impl DomainMutation<SettingsDomain> for ApplySettings {
         for update in &self.updates {
             validate_update(reader, update)?;
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SettingsDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SettingRecordCodec>(self.updates.len())?;
         Ok(())
     }
 

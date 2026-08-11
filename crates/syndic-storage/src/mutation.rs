@@ -69,7 +69,7 @@ pub use provider_frame::{
     ProviderCompletionComparisonMutationError, ProviderFrameMutationError,
     ProviderFramePreparationError, ProviderFramePreparationPlan, ProviderFrameStageBatch,
     ProviderFrameStageBatchError, ProviderFrameStageBatchState, ProviderFrameStageCallback,
-    ProviderFrameStageError, prepare_provider_frame, stage_provider_frame,
+    ProviderFrameStageError, ProviderFrameStageOutcome, prepare_provider_frame, stage_provider_frame,
 };
 pub use provider_observation::ProviderObservationMutationError;
 #[cfg(feature = "test-faults")]
@@ -463,6 +463,37 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             validate_source_tail(reader, source, self.creation.created_at)?;
         }
         validate_initial_content(reader, &records)?;
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        let records = self.creation.records();
+        reservation.reserve_records::<ContentManifestsCodec>(1)?;
+        if !records.content_chunks.is_empty() {
+            reservation.reserve_records::<ContentChunksCodec>(records.content_chunks.len())?;
+        }
+        if !records.content_spans.is_empty() {
+            reservation.reserve_records::<ContentByteSpansCodec>(records.content_spans.len())?;
+        }
+        reservation.reserve_records::<ThreadsCodec>(1)?;
+        reservation.reserve_records::<ThreadExecutionsCodec>(1)?;
+        reservation.reserve_records::<ThreadAttributesCodec>(1)?;
+        reservation.reserve_records::<ThreadUsageCodec>(1)?;
+        reservation.reserve_records::<ThreadCatalogSummariesCodec>(1)?;
+        reservation.reserve_records::<DraftsCodec>(1)?;
+        reservation.reserve_records::<DraftByThreadCodec>(1)?;
+        reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
+        if records.transcript_build.is_some() {
+            reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
+        }
+        reservation.reserve_records::<HistorySummariesCodec>(1)?;
+        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
+        reservation.reserve_records::<BindingsCodec>(1)?;
+        reservation.reserve_records::<BindingHeadsCodec>(1)?;
         Ok(())
     }
 

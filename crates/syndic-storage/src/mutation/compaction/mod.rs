@@ -1,5 +1,6 @@
 use beryl_home_store::{
     CurrentDomainCommand, DomainMutation, DomainReader, MutationBuilder, MutationContribution,
+    ReconciliationReservation,
 };
 use beryl_model::{
     BerylHomeId, BindingRevision, CasThreadId, CasTurnId, DomainRevision, InputGateRevision,
@@ -381,6 +382,14 @@ impl DomainMutation<SyndicDomain> for SealLifecycleContentMutation {
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         self.successor(reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ContentManifestsCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

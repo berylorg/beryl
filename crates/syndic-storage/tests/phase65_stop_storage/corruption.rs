@@ -1,3 +1,4 @@
+use beryl_home_store::CommandOutcome;
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::{
     LiveSourceEvent, SafelyReopenStopOperation, SourceEventPayload, SourceEventSequence,
@@ -54,14 +55,19 @@ fn safe_reopen_reconciliation_rejects_a_missing_successor_route_half() {
         fixture.gate().revision(),
         fixture.stop().revision(),
     );
-    fixture
+    match fixture
         .store
         .execute_current(
             fixture
                 .storage
                 .current_safely_reopen_stop_operation(request.clone()),
-        )
-        .unwrap();
+        ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean safe-reopen setup, got {outcome:?}"),
+    }
     let StopOperationState::SafeReopened(witness) = fixture.stop().state() else {
         panic!("stop did not retain its safe-reopen witness");
     };

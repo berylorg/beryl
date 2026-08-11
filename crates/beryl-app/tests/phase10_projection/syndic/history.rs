@@ -330,7 +330,7 @@ impl Fixture {
             .transcript_view_head(home, thread, point_limit())
             .unwrap()
             .unwrap();
-        home.execute_current(self.storage.current_complete_terminal_history(
+        match home.execute_current(self.storage.current_complete_terminal_history(
             CompleteTerminalHistory::new(
                 thread,
                 turn,
@@ -339,8 +339,22 @@ impl Fixture {
                 head.generation(),
                 head.revision(),
             ),
-        ))
-        .unwrap();
+        )) {
+            beryl_home_store::CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+                panic!("complete terminal history unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ beryl_home_store::CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("complete terminal history committed with later failure: {outcome:?}"),
+            outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
+                panic!("complete terminal history indeterminate: {outcome:?}")
+            }
+        }
     }
 
     pub(super) fn finish_transcript(&self, thread: SyndicThreadId) {

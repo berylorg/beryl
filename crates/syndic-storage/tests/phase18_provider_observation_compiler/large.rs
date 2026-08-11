@@ -11,7 +11,7 @@ fn multi_page_text_replays_with_bounded_compiler_batches() {
         .collect::<Vec<_>>();
     let bound = {
         let mut callback = observation_callback(&store, storage);
-        let mut stager = ProviderObservationStager::begin(
+        let mut stager = committed_stage_value(ProviderObservationStager::begin(
             ProviderObservationId::from_bytes([3; 16]),
             ProviderObservationBegin::Item {
                 lifecycle: ProviderObservationItemLifecycle::Started,
@@ -19,7 +19,7 @@ fn multi_page_text_replays_with_bounded_compiler_batches() {
             },
             &mut callback,
         )
-        .unwrap();
+        .unwrap());
         field_text(
             &mut stager,
             ProviderField::ItemId,

@@ -18,11 +18,10 @@ fn pending_root_rejects_a_binding_that_claims_the_undelivered_turn() {
         CasLineageProof::native(NativeCasLineage::Continuation, represented).unwrap(),
     );
 
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), request),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingPathConflict
@@ -56,11 +55,10 @@ fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
         empty,
         CasLineageProof::native(NativeCasLineage::Fresh, empty).unwrap(),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), non_parent),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingPathConflict
@@ -90,11 +88,10 @@ fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
         parent_prefix,
         CasLineageProof::native(NativeCasLineage::Fresh, empty_establishment).unwrap(),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), fresh_mismatch),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingPathConflict
@@ -156,11 +153,10 @@ fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
         off_path,
         CasLineageProof::native(NativeCasLineage::Continuation, off_path).unwrap(),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), request),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingPathConflict
@@ -197,11 +193,10 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
         full,
         CasLineageProof::native(NativeCasLineage::Continuation, full).unwrap(),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), active_claim),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingStateConflict
@@ -275,8 +270,7 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
                 stale,
             ),
         ),
-    )
-    .unwrap();
+    );
     execute(
         &store,
         storage.publish_unbound_binding(
@@ -289,8 +283,7 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
             )
             .unwrap(),
         ),
-    )
-    .unwrap();
+    );
     let unknown_claim = valid_request(
         &store,
         storage,
@@ -300,11 +293,10 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
         full,
         CasLineageProof::native(NativeCasLineage::Continuation, full).unwrap(),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), unknown_claim),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::TurnLifecycleConflict

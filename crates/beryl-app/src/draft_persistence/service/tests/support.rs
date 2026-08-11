@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
     SyndicThreadId,
@@ -50,7 +50,13 @@ impl Fixture {
                 storage.create_thread(storage.revision(&store).expect("domain revision"), creation),
             )
             .expect("add creation");
-        store.execute(command).expect("create thread");
+        assert!(matches!(
+            store.execute(command),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
         Self {
             _directory: directory,
             store,
@@ -119,7 +125,13 @@ impl Fixture {
                 apply,
             ))
             .expect("add setting update");
-        self.store.execute(command).expect("publish setting");
+        assert!(matches!(
+            self.store.execute(command),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
         settings
             .setting(&self.store, SettingKey::DraftAutosaveInterval)
             .expect("read setting")

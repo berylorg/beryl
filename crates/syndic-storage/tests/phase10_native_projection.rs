@@ -10,7 +10,7 @@ mod inclusive_fork;
 #[path = "support/mod.rs"]
 mod support;
 
-use beryl_home_store::{HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{
     CasConversationToolProfile, CasNativeTurnCount, CasThreadId, CasTurnId, ExecutionBinding,
     PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId, SyndicItemId,
@@ -23,7 +23,13 @@ use builder_support::{Builder, TestHome, exact_cas, open, point_limit, stage_pre
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed native-projection command, got {outcome:?}"),
+    }
 }
 
 fn plan(

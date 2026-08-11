@@ -1,10 +1,11 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 use beryl_model::{JobId, JobRevision};
 
+use super::super::codec::{JobRecordCodec, LiveJobIndexCodec};
 use super::super::{
-    BranchHandoffJobLifecycle, BranchHandoffJobState, DurableJobDomain, DurableJobMutationError,
-    HandoffFailureEvidence, ParentCasIdentity, ParentHandoffIdentity,
-    record::failure_state_is_compatible,
+    record::failure_state_is_compatible, BranchHandoffJobLifecycle, BranchHandoffJobState,
+    DurableJobDomain, DurableJobMutationError, HandoffFailureEvidence, ParentCasIdentity,
+    ParentHandoffIdentity,
 };
 use super::{advance, ensure_revision, put_live_transition, put_terminal_transition, required_job};
 
@@ -156,6 +157,15 @@ impl DomainMutation<DurableJobDomain> for CompleteResolvingTurn {
         )
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, DurableJobDomain>,
@@ -178,6 +188,15 @@ impl DomainMutation<DurableJobDomain> for StartParentHandoff {
             self.expected_job_revision,
             BranchHandoffJobLifecycle::WaitingParent,
         )
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -204,6 +223,15 @@ impl DomainMutation<DurableJobDomain> for RecordParentCasAcceptance {
             self.expected_job_revision,
             BranchHandoffJobLifecycle::StartingParent,
         )
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -250,6 +278,15 @@ impl DomainMutation<DurableJobDomain> for RecordRetryableHandoffFailure {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, DurableJobDomain>,
@@ -276,6 +313,15 @@ impl DomainMutation<DurableJobDomain> for RetryBranchHandoff {
             self.expected_job_revision,
             BranchHandoffJobLifecycle::RetryableFailed,
         )
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -310,6 +356,15 @@ impl DomainMutation<DurableJobDomain> for RecordTerminalHandoffFailure {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         reader: &DomainReader<'_, DurableJobDomain>,
@@ -336,6 +391,15 @@ impl DomainMutation<DurableJobDomain> for SucceedBranchHandoff {
             self.expected_job_revision,
             BranchHandoffJobLifecycle::ParentActive,
         )
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<JobRecordCodec>(1)?;
+        reservation.reserve_records::<LiveJobIndexCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

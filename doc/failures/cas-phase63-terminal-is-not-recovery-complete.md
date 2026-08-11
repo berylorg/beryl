@@ -87,6 +87,12 @@ This gate protocol applies to normal provider terminals and source-less loss con
 secondary recovery queue or a best-effort idle scan would create competing authority and is not an
 acceptable repair.
 
+The same distinction applies to the later exact terminal-repair path. An explicit incomplete repair
+disposition is terminal but not presentation-finalized: it enters `FinalizingHistory`, selects no
+replacement snapshot, rebuilds and publishes one coherent incomplete transcript generation, and
+only then releases the repair-required gate. Releasing directly from the terminal disposition would
+repeat the invalid assumption that terminal authority is already recovery-complete.
+
 ## Test-Fault Boundary
 
 An older submitted-input test simulated post-dispatch source revision drift and read failure by

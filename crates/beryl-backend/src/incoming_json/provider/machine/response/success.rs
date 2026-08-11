@@ -97,18 +97,16 @@ enum SuccessResultMachine {
         schema: OrderedObjectMachine,
     },
     ThreadUnsubscribe(UnsubscribeResultMachine),
-    Compatibility(CompatibilityResultMachine),
     Unavailable(ValueTracker),
     Discard(ValueTracker),
 }
+
+const EMPTY_RESULT_FIELDS: [OrderedField; 0] = [];
 
 impl SuccessResultMachine {
     fn new(family: ResponseFamily) -> Self {
         match family {
             ResponseFamily::Initialize => Self::Initialize(InitializeResultMachine::new()),
-            ResponseFamily::Compatibility(probe) => {
-                Self::Compatibility(CompatibilityResultMachine::new(probe))
-            }
             ResponseFamily::ConfigRead => Self::ConfigRead(ConfigResultMachine::new()),
             ResponseFamily::ModelList => Self::ModelList(ModelPageMachine::new()),
             ResponseFamily::ThreadStart => {
@@ -128,9 +126,6 @@ impl SuccessResultMachine {
             }
             ResponseFamily::ThreadInjectItems => {
                 Self::empty(crate::EmptyAcknowledgement::ThreadInjectItems)
-            }
-            ResponseFamily::ThreadBackgroundTerminalsClean => {
-                Self::empty(crate::EmptyAcknowledgement::ThreadBackgroundTerminalsClean)
             }
             ResponseFamily::TurnInterrupt => {
                 Self::empty(crate::EmptyAcknowledgement::TurnInterrupt)
@@ -160,7 +155,6 @@ impl SuccessResultMachine {
             Self::TurnSteer(machine) => machine.scratch_bytes(bytes),
             Self::EmptyAcknowledgement { schema, .. } => schema.scratch_bytes(bytes),
             Self::ThreadUnsubscribe(machine) => machine.scratch_bytes(bytes),
-            Self::Compatibility(machine) => machine.scratch_bytes(bytes),
             Self::Unavailable(_) | Self::Discard(_) => {}
         }
     }
@@ -176,7 +170,6 @@ impl SuccessResultMachine {
             Self::TurnSteer(machine) => machine.event(event),
             Self::EmptyAcknowledgement { schema, .. } => schema.event(event),
             Self::ThreadUnsubscribe(machine) => machine.event(event),
-            Self::Compatibility(machine) => machine.event(event),
             Self::Unavailable(value) | Self::Discard(value) => {
                 value.event(event);
             }
@@ -194,7 +187,6 @@ impl SuccessResultMachine {
             Self::TurnSteer(machine) => machine.is_complete(),
             Self::EmptyAcknowledgement { schema, .. } => schema.is_complete(),
             Self::ThreadUnsubscribe(machine) => machine.is_complete(),
-            Self::Compatibility(machine) => machine.is_complete(),
             Self::Unavailable(value) | Self::Discard(value) => value.is_complete(),
         }
     }
@@ -243,10 +235,6 @@ impl SuccessResultMachine {
             Self::ThreadUnsubscribe(machine) => machine
                 .take_status()
                 .map(crate::BoundedResponseResult::ThreadUnsubscribe)
-                .map_or(SuccessResult::Malformed, SuccessResult::Decoded),
-            Self::Compatibility(machine) => machine
-                .take_result()
-                .map(crate::BoundedResponseResult::Compatibility)
                 .map_or(SuccessResult::Malformed, SuccessResult::Decoded),
             Self::Unavailable(value) if value.is_complete() => SuccessResult::Unavailable,
             Self::Unavailable(_) | Self::Discard(_) => SuccessResult::Malformed,

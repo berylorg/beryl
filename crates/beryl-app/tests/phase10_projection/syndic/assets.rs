@@ -1,6 +1,6 @@
 use std::{num::NonZeroU64, path::PathBuf};
 
-use beryl_home_store::{HomeCommand, SidecarByteLimit, SidecarNamespace};
+use beryl_home_store::{CommandOutcome, HomeCommand, SidecarByteLimit, SidecarNamespace};
 use beryl_model::{AssetId, AssetReferenceSetId, SyndicDraftMarkerId};
 use beryl_state::{
     ASSET_REFERENCE_PAGE_MAX_ENTRIES, AppendAssetReferencePage, AssetMediaType, AssetOwner,
@@ -104,7 +104,22 @@ impl Fixture {
             submission,
         )
         .unwrap();
-        command_home.home().execute(command).unwrap();
+        match command_home.home().execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("image submission unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("image submission committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("image submission indeterminate: {outcome:?}")
+            }
+        }
         SubmittedTurn { turn, user_item }
     }
 
@@ -139,7 +154,22 @@ impl Fixture {
             .unwrap();
         let mut command = HomeCommand::new(home.home_revision().unwrap());
         metadata.add_to(&mut command).unwrap();
-        home.execute(command).unwrap();
+        match home.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("publish image metadata unexpectedly not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("publish image metadata committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("publish image metadata indeterminate: {outcome:?}")
+            }
+        }
         (asset, path)
     }
 

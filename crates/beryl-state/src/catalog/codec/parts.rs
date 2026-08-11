@@ -5,11 +5,11 @@ use beryl_model::{
 
 use crate::RecordRevision;
 
-use super::{CatalogCodecError, Decoder, Encoder, invalid};
+use super::{invalid, CatalogCodecError, Decoder, Encoder};
 use crate::catalog::{
-    CATALOG_NORMALIZATION_PROFILE, CatalogArchiveSummary, CatalogAvailabilitySummary,
-    CatalogClaimKind, CatalogClaimSummary, CatalogExecutionSummary, CatalogLineageSummary,
-    CatalogResolvedTitle, CatalogSearchFields, CatalogSourceRevisions, CatalogTitleSource,
+    CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
+    CatalogExecutionSummary, CatalogLineageSummary, CatalogResolvedTitle, CatalogSearchFields,
+    CatalogSourceRevisions, CatalogTitleSource, CATALOG_NORMALIZATION_PROFILE,
 };
 
 pub(super) fn encode_sources(encoder: &mut Encoder, value: CatalogSourceRevisions) {

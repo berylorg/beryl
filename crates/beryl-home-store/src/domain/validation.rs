@@ -1,4 +1,4 @@
-use super::{DomainValidationError, RegisteredDomain, callback::ErasedCallbackError};
+use super::{callback::ErasedCallbackError, DomainValidationError, RegisteredDomain};
 use crate::{DomainCallbackSource, ReadError, SidecarVerifier};
 
 impl RegisteredDomain {

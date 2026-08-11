@@ -13,7 +13,7 @@ use beryl_app::cas_projection::{
     },
 };
 use beryl_backend::{ManagedBackendClientConnector, ThreadStartOptions};
-use beryl_home_store::{HomeHealthState, ReadError, test_faults::FaultController};
+use beryl_home_store::{CommandOutcome, HomeHealthState, ReadError, test_faults::FaultController};
 use beryl_model::{
     CasProcessGeneration, CasTurnId, SyndicExecutionSnapshotId, SyndicThreadId, SyndicTurnId,
 };
@@ -58,7 +58,7 @@ impl LiveHarness {
         let process_generation = CasProcessGeneration::new(35_000 + u64::from(seed)).unwrap();
         let mut session = fixture
             .store
-            .admit(
+            .admit_lifecycle_test_candidate(
                 &connector,
                 execution_binding().runtime_id(),
                 process_generation,
@@ -325,9 +325,7 @@ fn activate_projection(
     let selected = fixture.selected_path(fixture.thread);
     let snapshot = SyndicExecutionSnapshotId::from_bytes(*submitted.turn.as_bytes());
     let started_at = SyndicTimestamp::from_unix_millis(35_001);
-    fixture
-        .store
-        .execute_current(
+    let outcome = fixture.store.execute_current(
             fixture
                 .storage
                 .current_activate_binding(ActivateBinding::new(
@@ -340,8 +338,13 @@ fn activate_projection(
                     projection.loaded_session_generation(),
                     started_at,
                 )),
-        )
-        .unwrap();
+        );
+    match outcome {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed binding activation, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed binding activation, got {outcome:?}"),
+    }
     let binding = fixture
         .storage
         .current_binding(&fixture.store, fixture.thread, point_limit())
@@ -353,9 +356,7 @@ fn activate_projection(
         .unwrap()
         .unwrap();
     let cas_turn = CasTurnId::new(CAS_TURN_ID).unwrap();
-    fixture
-        .store
-        .execute_current(fixture.storage.current_publish_active_cas_turn(
+    let outcome = fixture.store.execute_current(fixture.storage.current_publish_active_cas_turn(
             PublishActiveCasTurn::new(
                 fixture.thread,
                 binding.binding().revision(),
@@ -365,8 +366,13 @@ fn activate_projection(
                 cas_turn.clone(),
                 started_at,
             ),
-        ))
-        .unwrap();
+        ));
+    match outcome {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed CAS publication, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed CAS publication, got {outcome:?}"),
+    }
     let source = CasTurnSource::new(projection.cas_thread_id().clone(), cas_turn);
     let state = fixture
         .storage
@@ -389,10 +395,15 @@ fn activate_projection(
         started_at,
     )
     .unwrap();
-    fixture
+    let outcome = fixture
         .store
-        .execute_current(fixture.storage.current_admit_live_source_event(activation))
-        .unwrap();
+        .execute_current(fixture.storage.current_admit_live_source_event(activation));
+    match outcome {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed live event, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed live event, got {outcome:?}"),
+    }
     source
 }
 

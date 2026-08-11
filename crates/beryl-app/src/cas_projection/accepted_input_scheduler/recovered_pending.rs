@@ -275,10 +275,10 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<PassOutcome, Sc
             return Ok(PassOutcome::Settled);
         }
         Err(SyndicReadError::Read(ReadError::HealthGate(error)))
-            if error.state() == beryl_home_store::HomeHealthState::Verifying
+            if error.state() != beryl_home_store::HomeHealthState::Healthy
                 && error.generation() == runtime.context.home_generation =>
         {
-            return Err(SchedulerFailure::VerificationPending);
+            return Err(SchedulerFailure::PersistentHomeFailure);
         }
         Err(SyndicReadError::Read(ReadError::HealthGate(error)))
             if error.state() != beryl_home_store::HomeHealthState::Failed
@@ -313,7 +313,7 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<PassOutcome, Sc
         Err(error)
             if matches!(
                 failure::from_admission(&error, runtime.context.home_generation),
-                SchedulerFailure::VerificationPending | SchedulerFailure::PersistentHomeFailure
+                SchedulerFailure::PersistentHomeFailure
             ) =>
         {
             return Err(failure::from_admission(
@@ -358,7 +358,6 @@ fn spawn_worker(
             let disposition = result.unwrap_or(WorkerDisposition::Fatal);
             completions.publish(WorkerCompletion {
                 thread_id: std::thread::current().id(),
-                disposition,
             });
             drop(lease);
             signal.wake(AcceptedInputWakeReason::WorkerCompleted);
@@ -380,8 +379,8 @@ fn execute_source(
         return WorkerDisposition::RecoveredPendingContinue;
     }
     if let Err(error) = validator.validate(lease) {
-        return if failure::is_verification_pending_admission(&error, validator.home_generation()) {
-            WorkerDisposition::VerificationPending
+        return if failure::is_current_health_loss_admission(&error, validator.home_generation()) {
+            WorkerDisposition::PersistentHomeFailure
         } else if failure::is_cut_correlated_admission(&error, validator.home_generation()) {
             WorkerDisposition::PersistentHomeFailure
         } else if super::next_turn::expected_admission_drift(&error) {
@@ -399,9 +398,6 @@ fn execute_source(
         Ok(path) => path,
         Err(SchedulerFailure::PersistentHomeFailure) => {
             return WorkerDisposition::PersistentHomeFailure;
-        }
-        Err(SchedulerFailure::VerificationPending) => {
-            return WorkerDisposition::VerificationPending;
         }
         Err(SchedulerFailure::Fatal) => return WorkerDisposition::Fatal,
     };
@@ -426,9 +422,6 @@ fn execute_source(
         }
         super::next_turn::PendingTurnExecutionDisposition::PersistentHomeFailure => {
             WorkerDisposition::PersistentHomeFailure
-        }
-        super::next_turn::PendingTurnExecutionDisposition::VerificationPending => {
-            WorkerDisposition::VerificationPending
         }
         super::next_turn::PendingTurnExecutionDisposition::ProjectionRefused => {
             WorkerDisposition::Fatal

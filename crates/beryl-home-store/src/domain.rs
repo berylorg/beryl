@@ -11,9 +11,9 @@ use fjall::Keyspace;
 use thiserror::Error;
 
 use crate::{
-    DomainReader, DomainSchemaVersion, KeyspaceSchemaVersion, RecordFamily, SidecarVerifier,
     codec::ErasedEnvelopeValidator,
     metadata::{DomainMetadata, PersistedFamily},
+    DomainReader, DomainSchemaVersion, KeyspaceSchemaVersion, RecordFamily, SidecarVerifier,
 };
 
 pub(crate) mod callback;

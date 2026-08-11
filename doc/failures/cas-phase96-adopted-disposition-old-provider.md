@@ -40,3 +40,17 @@ after it. Do not replace this with a weaker assertion or a Drop-based cleanup.
 - `crates/beryl-app/src/cas_projection/service/adoption/disposition.rs`.
 - `crates/beryl-app/src/cas_projection/persistent_failure/retention/inventory`.
 - `crates/beryl-app/tests/unit/service_epoch_adoption/command_frontier.rs`.
+
+# Later Course Correction
+
+The required course correction above belonged to the retained-service adoption design and is no
+longer the target. The missing provider shutdown demonstrated that whole-attempt disposition still
+did not own every old-generation lifecycle obligation after successful unpublished adoption. It is
+therefore evidence against the adoption topology, not a reason to add another exactly-once
+retirement layer to it.
+
+Current recovery closes the failed service and all derived runtime authority, then creates fresh
+services, connections, and projections from durable authority. Phase 96 and the later adoption
+phases must be deleted or replaced accordingly. The zero-before/one-after shutdown assertion
+remains evidence for the abandoned path; it is not an acceptance gate for a repaired adoption
+disposition.

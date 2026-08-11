@@ -12,7 +12,6 @@ const EXECUTION_READY: u16 = 1 << 10;
 const WORKER_COMPLETED: u16 = 1 << 11;
 pub(super) const NEXT_WORKER_CAPACITY_RELEASED: u16 = 1 << 12;
 const RECOVERED_PENDING_CONTINUE: u16 = 1 << 13;
-const SAME_GENERATION_VERIFIED: u16 = 1 << 14;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection) enum AcceptedInputWakeReason {
@@ -30,7 +29,6 @@ pub(in crate::cas_projection) enum AcceptedInputWakeReason {
     WorkerCompleted,
     NextWorkerCapacityReleased,
     RecoveredPendingContinue,
-    SameGenerationVerified,
 }
 
 impl AcceptedInputWakeReason {
@@ -50,7 +48,6 @@ impl AcceptedInputWakeReason {
             Self::WorkerCompleted => WORKER_COMPLETED,
             Self::NextWorkerCapacityReleased => NEXT_WORKER_CAPACITY_RELEASED,
             Self::RecoveredPendingContinue => RECOVERED_PENDING_CONTINUE,
-            Self::SameGenerationVerified => SAME_GENERATION_VERIFIED,
         }
     }
 }
@@ -70,8 +67,7 @@ impl WakeBatch {
                 | ATTEMPT_RELEASED
                 | CANCELLATION_LIFECYCLE
                 | RECOVERY
-                | CANCELLATION_REQUESTED
-                | SAME_GENERATION_VERIFIED)
+                | CANCELLATION_REQUESTED)
             != 0
     }
 
@@ -89,13 +85,12 @@ impl WakeBatch {
                 | EXECUTION_READY
                 | CANCELLATION_LIFECYCLE
                 | RECOVERY
-                | CANCELLATION_REQUESTED
-                | SAME_GENERATION_VERIFIED)
+                | CANCELLATION_REQUESTED)
             != 0
     }
 
     pub(in super::super) const fn restarts_recovered_pending_pass(self) -> bool {
-        self.bits & (RECOVERY | EXECUTION_READY | SAME_GENERATION_VERIFIED) != 0
+        self.bits & (RECOVERY | EXECUTION_READY) != 0
     }
 
     pub(in super::super) const fn continues_recovered_pending_pass(self) -> bool {
@@ -116,9 +111,5 @@ impl WakeBatch {
 
     pub(in super::super) const fn worker_completed(self) -> bool {
         self.bits & WORKER_COMPLETED != 0
-    }
-
-    pub(in super::super) const fn same_generation_verified(self) -> bool {
-        self.bits & SAME_GENERATION_VERIFIED != 0
     }
 }

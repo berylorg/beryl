@@ -3,10 +3,10 @@ mod support;
 use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
-    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
+    CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
     HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit,
-    RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::{RootId, RuntimeId};
 use beryl_state::{
@@ -158,6 +158,25 @@ impl DomainMutation<RawSessionDomain> for RawMutation {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, RawSessionDomain>,
+    ) -> Result<(), Self::Error> {
+        if self.header.is_some() {
+            reservation.reserve_records::<RawHeaderCodec>(1)?;
+        }
+        if !self.windows.is_empty() {
+            reservation.reserve_records::<RawWindowCodec>(self.windows.len())?;
+        }
+        if !self.by_window.is_empty() {
+            reservation.reserve_records::<RawClaimByWindowCodec>(self.by_window.len())?;
+        }
+        if !self.by_thread.is_empty() {
+            reservation.reserve_records::<RawClaimByThreadCodec>(self.by_thread.len())?;
+        }
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, RawSessionDomain>,
@@ -187,7 +206,13 @@ fn write_raw(path: &std::path::Path, mutation: RawMutation) {
     command
         .add(raw.contribution(store.domain_revision(raw).unwrap(), mutation))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session fixture command, got {outcome:?}"),
+    }
     store.close().unwrap();
 }
 
@@ -355,14 +380,19 @@ fn paired_stale_claims_are_readable_and_begin_restore_deletes_both_copies() {
     let state = BerylStateBootstrap::register(&mut store).unwrap();
     let snapshot = state.session().minimal_bootstrap(&store).unwrap().unwrap();
     assert!(snapshot.windows().is_empty());
-    support::execute(
+    match support::execute(
         &store,
         state.session().begin_restore(
             state.session().revision(&store).unwrap(),
             BeginSessionRestore::new(snapshot.header().revision()),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed session restore command, got {outcome:?}"),
+    }
     store.close().unwrap();
 
     let mut raw_store = HomeStore::open(HomeOpenOptions::new(
@@ -371,26 +401,22 @@ fn paired_stale_claims_are_readable_and_begin_restore_deletes_both_copies() {
     ))
     .unwrap();
     let raw = raw_store.register_domain::<RawSessionDomain>().unwrap();
-    assert!(
-        raw_store
-            .read_point::<RawSessionDomain, RawClaimByWindowCodec>(
-                raw,
-                &window_id,
-                PointReadLimit::new(53).unwrap(),
-            )
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        raw_store
-            .read_point::<RawSessionDomain, RawClaimByThreadCodec>(
-                raw,
-                &thread_id,
-                PointReadLimit::new(53).unwrap(),
-            )
-            .unwrap()
-            .is_none()
-    );
+    assert!(raw_store
+        .read_point::<RawSessionDomain, RawClaimByWindowCodec>(
+            raw,
+            &window_id,
+            PointReadLimit::new(53).unwrap(),
+        )
+        .unwrap()
+        .is_none());
+    assert!(raw_store
+        .read_point::<RawSessionDomain, RawClaimByThreadCodec>(
+            raw,
+            &thread_id,
+            PointReadLimit::new(53).unwrap(),
+        )
+        .unwrap()
+        .is_none());
 }
 
 #[test]

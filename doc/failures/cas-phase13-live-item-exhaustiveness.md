@@ -66,3 +66,14 @@ replaced by a completion snapshot.
 
 Pinned source and probe evidence is retained under
 `doc/memory/github.com/openai/codex/commit/44918ea10c0f99151c6710411b4322c2f5c96bea/`.
+
+# Later Course Correction
+
+The rejection of reconnect, notification replay, and ordinary CAS-history recovery above remains
+in force. Current authority permits one narrower semantic repair: a separately pinned adapter may
+read one bounded terminal snapshot for the exact correlated terminal CAS turn whose live capture
+has a proven or conservatively suspected gap and an exact terminal outcome.
+
+That snapshot is final-item semantic authority with explicit repair provenance. It is never replay,
+never spliced into an ordinary notification sequence, never an ordinary transcript or catalog read,
+and never permission to repair unrelated turns or browse CAS history.

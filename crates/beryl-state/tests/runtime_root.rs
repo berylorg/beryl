@@ -2,7 +2,7 @@ mod support;
 
 use std::{sync::Arc, thread};
 
-use beryl_home_store::{CommandError, CursorReadLimits, ReadError};
+use beryl_home_store::{CommandError, CommandOutcome, CursorReadLimits, ReadError};
 use beryl_model::{
     AdmittedHostPath, Availability, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
     UnavailableReason,
@@ -22,14 +22,19 @@ fn runtime_and_non_removable_home_root_publish_atomically_and_reopen() {
     let (store, state) = open(directory.path());
     let runtime_id = RuntimeId::from_bytes([1; 16]);
     let root_id = RootId::from_bytes([2; 16]);
-    execute(
+    match execute(
         &store,
         state.runtime_roots().create_runtime_with_home_root(
             state.runtime_roots().revision(&store).unwrap(),
             host_runtime(1, 2, r"C:\Codex\codex.exe", r"C:\Users\operator"),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed runtime creation, got {outcome:?}"),
+    }
 
     let runtime = state
         .runtime_roots()
@@ -66,21 +71,17 @@ fn runtime_and_non_removable_home_root_publish_atomically_and_reopen() {
     store.close().unwrap();
 
     let (reopened, state) = open(directory.path());
-    assert!(
-        state
-            .runtime_roots()
-            .runtime(&reopened, runtime_id)
-            .unwrap()
-            .is_some()
-    );
-    assert!(
-        state
-            .runtime_roots()
-            .root(&reopened, root_id)
-            .unwrap()
-            .unwrap()
-            .non_removable()
-    );
+    assert!(state
+        .runtime_roots()
+        .runtime(&reopened, runtime_id)
+        .unwrap()
+        .is_some());
+    assert!(state
+        .runtime_roots()
+        .root(&reopened, root_id)
+        .unwrap()
+        .unwrap()
+        .non_removable());
 }
 
 #[test]
@@ -115,14 +116,22 @@ fn concurrent_duplicate_executable_commands_publish_only_one_runtime() {
         })
         .map(|worker| worker.join().unwrap())
         .collect();
-    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
-    assert_eq!(
-        results
-            .iter()
-            .filter(|result| matches!(result, Err(CommandError::Conflict { .. })))
-            .count(),
-        1
-    );
+    let mut committed = 0;
+    let mut conflicts = 0;
+    for outcome in results {
+        match outcome {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => committed += 1,
+            CommandOutcome::NotCommitted {
+                evidence: CommandError::Conflict { .. },
+            } => conflicts += 1,
+            outcome => panic!("unexpected concurrent runtime command outcome: {outcome:?}"),
+        }
+    }
+    assert_eq!(committed, 1);
+    assert_eq!(conflicts, 1);
     let page = state
         .runtime_roots()
         .list_runtimes(&store, None, CursorReadLimits::new(8, 1_000_000).unwrap())
@@ -146,14 +155,16 @@ fn executable_and_root_uniqueness_have_their_exact_scopes() {
         2
     );
 
-    let duplicate_executable = execute(
+    let duplicate_executable = match execute(
         &store,
         state.runtime_roots().create_runtime_with_home_root(
             state.runtime_roots().revision(&store).unwrap(),
             host_runtime(6, 7, r"C:\One\codex.exe", r"C:\Elsewhere"),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected duplicate executable command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<RuntimeRootMutationError>(&duplicate_executable),
         Some(RuntimeRootMutationError::ExecutableExists { .. })
@@ -167,14 +178,16 @@ fn executable_and_root_uniqueness_have_their_exact_scopes() {
         UnixMillis::new(30),
         AvailabilitySnapshot::unknown(),
     );
-    let error = execute(
+    let error = match execute(
         &store,
         state.runtime_roots().add_root(
             state.runtime_roots().revision(&store).unwrap(),
             AddConfiguredRoot::new(RuntimeId::from_bytes([1; 16]), duplicate),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected duplicate root command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<RuntimeRootMutationError>(&error),
         Some(RuntimeRootMutationError::RootPathExists { .. })
@@ -199,14 +212,19 @@ fn root_activity_strictly_advances_under_record_revision_control() {
         .root(&store, root_id)
         .unwrap()
         .unwrap();
-    execute(
+    match execute(
         &store,
         state.runtime_roots().update_root_activity(
             state.runtime_roots().revision(&store).unwrap(),
             RootActivityUpdate::new(root_id, initial.revision(), UnixMillis::new(50)),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed root activity update, got {outcome:?}"),
+    }
     let current = state
         .runtime_roots()
         .root(&store, root_id)
@@ -214,27 +232,31 @@ fn root_activity_strictly_advances_under_record_revision_control() {
         .unwrap();
     assert_eq!(current.last_activity_at(), Some(UnixMillis::new(50)));
 
-    let stale_revision = execute(
+    let stale_revision = match execute(
         &store,
         state.runtime_roots().update_root_activity(
             state.runtime_roots().revision(&store).unwrap(),
             RootActivityUpdate::new(root_id, initial.revision(), UnixMillis::new(51)),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected stale root activity command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<RuntimeRootMutationError>(&stale_revision),
         Some(RuntimeRootMutationError::RecordRevisionConflict { .. })
     ));
 
-    let regressed = execute(
+    let regressed = match execute(
         &store,
         state.runtime_roots().update_root_activity(
             state.runtime_roots().revision(&store).unwrap(),
             RootActivityUpdate::new(root_id, current.revision(), UnixMillis::new(50)),
         ),
-    )
-    .unwrap_err();
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected rejected regressed root activity command, got {outcome:?}"),
+    };
     assert!(matches!(
         contributor_source::<RuntimeRootMutationError>(&regressed),
         Some(RuntimeRootMutationError::RootActivityNotLater)
@@ -273,7 +295,7 @@ fn host_and_wsl_paths_cannot_cross_runtime_boundaries() {
 
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
-    execute(
+    match execute(
         &store,
         state.runtime_roots().create_runtime_with_home_root(
             state.runtime_roots().revision(&store).unwrap(),
@@ -287,8 +309,13 @@ fn host_and_wsl_paths_cannot_cross_runtime_boundaries() {
                 "/home/operator",
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed WSL runtime creation, got {outcome:?}"),
+    }
     let runtime = state
         .runtime_roots()
         .runtime(&store, RuntimeId::from_bytes([3; 16]))
@@ -316,7 +343,7 @@ fn availability_updates_retain_registry_records_and_bindings() {
         .runtime(&store, runtime_id)
         .unwrap()
         .unwrap();
-    execute(
+    match execute(
         &store,
         state.runtime_roots().set_runtime_availability(
             state.runtime_roots().revision(&store).unwrap(),
@@ -330,14 +357,19 @@ fn availability_updates_retain_registry_records_and_bindings() {
                 .unwrap(),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed runtime availability update, got {outcome:?}"),
+    }
     let root = state
         .runtime_roots()
         .root(&store, root_id)
         .unwrap()
         .unwrap();
-    execute(
+    match execute(
         &store,
         state.runtime_roots().set_root_availability(
             state.runtime_roots().revision(&store).unwrap(),
@@ -351,23 +383,24 @@ fn availability_updates_retain_registry_records_and_bindings() {
                 .unwrap(),
             ),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed root availability update, got {outcome:?}"),
+    }
 
-    assert!(
-        state
-            .runtime_roots()
-            .runtime(&store, runtime_id)
-            .unwrap()
-            .is_some()
-    );
-    assert!(
-        state
-            .runtime_roots()
-            .root(&store, root_id)
-            .unwrap()
-            .is_some()
-    );
+    assert!(state
+        .runtime_roots()
+        .runtime(&store, runtime_id)
+        .unwrap()
+        .is_some());
+    assert!(state
+        .runtime_roots()
+        .root(&store, root_id)
+        .unwrap()
+        .is_some());
     assert_eq!(
         state
             .runtime_roots()

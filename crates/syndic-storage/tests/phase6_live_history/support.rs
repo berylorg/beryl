@@ -65,7 +65,13 @@ pub fn stage_prepared_content(
             ContentBuild::from_prepared(content),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean content-build fixture command, got {outcome:?}"),
+    }
 
     let mut manifest = content.building_manifest();
     while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
@@ -74,7 +80,13 @@ pub fn stage_prepared_content(
         command
             .add(storage.append_content(storage.revision(store).unwrap(), append))
             .unwrap();
-        store.execute(command).unwrap();
+        match store.execute(command) {
+            beryl_home_store::CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean content-append fixture command, got {outcome:?}"),
+        }
         manifest = next;
     }
 }

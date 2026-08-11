@@ -72,18 +72,16 @@ pub(in crate::cas_projection) use permit::{
 #[cfg(test)]
 pub(in crate::cas_projection) use persistent_failure::PersistentFailureTargetCandidate;
 pub(in crate::cas_projection) use persistent_failure::{
-    PersistentFailureTargetBatch, PersistentFailureTargetGuardDisposition,
-    PersistentFailureTargetGuardObservation, PersistentFailureTargetGuardSettlementError,
-    PersistentFailureTargetIneligibility, PersistentFailureTargetProof,
-    PersistentFailureTargetWitness,
+    PersistentFailureTargetBatch, PersistentFailureTargetIneligibility,
+    PersistentFailureTargetProof, PersistentFailureTargetWitness,
+};
+pub(in crate::cas_projection::connection) use process::{
+    ConnectionProcessFact, ProcessEventObservation,
 };
 pub use process::{LiveEventConnectionFact, LiveEventProcessSnapshot};
-pub(in crate::cas_projection::connection) use process::{
-    ProcessEventObservation, StableConnectionProcessFact,
-};
 pub(in crate::cas_projection::connection) use state::TargetProjectionDropSettlement;
 pub(in crate::cas_projection) use stop::{
-    StopElectionAcquireError, StopElectionPermit, StopTargetProof,
+    StopElectionAcquireError, StopElectionAdmission, StopElectionPermit, StopTargetProof,
 };
 
 /// Maximum number of feature-owned approval and dynamic-tool operations retained per target.
@@ -272,11 +270,9 @@ pub enum LiveEventPoll {
 pub struct ProvenTerminalOutcome {
     status: TurnEndStatus,
     observed_at: SyndicTimestamp,
-    same_native_reacquisition_required: bool,
 }
 
 impl ProvenTerminalOutcome {
-    #[cfg(test)]
     pub(in crate::cas_projection) const fn new(
         status: TurnEndStatus,
         observed_at: SyndicTimestamp,
@@ -284,19 +280,6 @@ impl ProvenTerminalOutcome {
         Self {
             status,
             observed_at,
-            same_native_reacquisition_required: false,
-        }
-    }
-
-    pub(in crate::cas_projection) const fn new_with_reacquisition(
-        status: TurnEndStatus,
-        observed_at: SyndicTimestamp,
-        same_native_reacquisition_required: bool,
-    ) -> Self {
-        Self {
-            status,
-            observed_at,
-            same_native_reacquisition_required,
         }
     }
 
@@ -310,12 +293,6 @@ impl ProvenTerminalOutcome {
     #[must_use]
     pub const fn observed_at(self) -> SyndicTimestamp {
         self.observed_at
-    }
-
-    /// Returns whether an exact durable narrative mismatch requires same-native reacquisition.
-    #[must_use]
-    pub const fn same_native_reacquisition_required(self) -> bool {
-        self.same_native_reacquisition_required
     }
 }
 
@@ -554,6 +531,7 @@ struct RouterState {
     active_steering_attempt_waiter: bool,
     next_stop_election: u64,
     active_stop_election: Option<ActiveStopElectionKey>,
+    volatile_stop_admission: Option<stop::VolatileStopAdmissionProof>,
     persistent_failure: Option<persistent_failure::PersistentFailureRouterCut>,
     retired: Option<LiveEventTargetCloseReason>,
     targets: HashMap<CasThreadId, TargetEntry>,
@@ -595,8 +573,8 @@ pub(in crate::cas_projection) struct EventRouter {
     connection_generation: u64,
     process: process::ProcessEventObservation,
     commands: LiveCommandAuthorizer,
-    projection_retainer:
-        Option<crate::cas_projection::persistent_failure::PersistentFailureProjectionRetainer>,
+    terminal_disposer:
+        Option<crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer>,
     state: Mutex<RouterState>,
     publication_changed: Condvar,
     scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
@@ -611,13 +589,13 @@ impl EventRouter {
         self.commands.failure_observed()
     }
 
-    pub(in crate::cas_projection) fn projection_retainer(
+    pub(in crate::cas_projection) fn terminal_disposer(
         &self,
     ) -> Result<
-        crate::cas_projection::persistent_failure::PersistentFailureProjectionRetainer,
+        crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
         ProjectionCoordinatorError,
     > {
-        self.projection_retainer.clone().ok_or(
+        self.terminal_disposer.clone().ok_or(
             ProjectionCoordinatorError::ProjectionConnectionUnavailable {
                 runtime_id: self.runtime_id,
                 process_generation: self.process_generation,
@@ -796,11 +774,6 @@ pub(in crate::cas_projection) enum TargetHandoffRequirement {
 
 #[derive(Debug, Error)]
 pub(in crate::cas_projection) enum LiveEventTargetHandoffError {
-    #[error("pre-activation surrender authority is unavailable")]
-    PreactivationSurrenderUnavailable {
-        #[source]
-        source: ProjectionCoordinatorError,
-    },
     #[error("the turn-start outcome does not authorize a not-started handoff")]
     TurnStartOutcomeNotReusable,
     #[error("the turn-start outcome belongs to another live-event target")]

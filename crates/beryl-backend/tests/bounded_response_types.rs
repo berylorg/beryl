@@ -1,10 +1,9 @@
 use beryl_backend::{
     BackendConfigDefaults, BoundedResponseResult, BoundedResponseTextError, CompatibilityError,
-    CompatibilityProbe, CompatibilityProbeResult, CompatibilityProbeSet, ConfigReadResponse,
-    DefaultReasoningEffort, InitializePlatform, InitializeResponse, MODEL_CURSOR_MAX_BYTES,
-    MODEL_DISPLAY_NAME_MAX_BYTES, MODEL_PAGE_MAX_RECORDS, ModelDisplayName, ModelPage,
-    ModelPageCursor, ModelRecord, PROTOCOL_IDENTITY_MAX_BYTES, ProtocolIdentity, ReasoningEffort,
-    SupportedReasoningEfforts, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus,
+    ConfigReadResponse, DefaultReasoningEffort, InitializePlatform, InitializeResponse,
+    MODEL_CURSOR_MAX_BYTES, MODEL_DISPLAY_NAME_MAX_BYTES, MODEL_PAGE_MAX_RECORDS, ModelDisplayName,
+    ModelPage, ModelPageCursor, ModelRecord, PROTOCOL_IDENTITY_MAX_BYTES, ProtocolIdentity,
+    ReasoningEffort, SupportedReasoningEfforts, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus,
 };
 
 use std::mem::size_of;
@@ -94,7 +93,7 @@ fn config_defaults_retain_only_optional_bounded_identities() {
     assert_eq!(response.defaults().model_reasoning_effort(), Some("medium"));
     let defaults = response.into_defaults();
     assert_eq!(defaults.model(), Some("gpt-model"));
-    assert!(defaults.proves_spawn_agent_model_overrides());
+    assert!(defaults.proves_release_admission());
 }
 
 #[test]
@@ -145,31 +144,7 @@ fn model_page_result_indirection_keeps_enclosing_result_abis_compact() {
 
     assert!(size_of::<ModelPage>() > MAX_COMPACT_RESULT_BYTES);
     assert_eq!(size_of::<Box<ModelPage>>(), size_of::<usize>());
-    assert!(size_of::<CompatibilityProbeResult>() <= MAX_COMPACT_RESULT_BYTES);
     assert!(size_of::<BoundedResponseResult>() <= MAX_COMPACT_RESULT_BYTES);
-}
-
-#[test]
-fn compatibility_probe_facts_use_one_exact_u16_set() {
-    let mut facts = CompatibilityProbeSet::empty();
-    for probe in CompatibilityProbe::ALL {
-        assert!(!facts.contains(probe));
-        facts.insert(probe);
-        assert!(facts.contains(probe));
-    }
-    assert!(facts.is_complete());
-    assert_eq!(facts.bits().count_ones(), 11);
-
-    assert!(matches!(
-        CompatibilityProbeResult::unexpected_mutating_success(CompatibilityProbe::ThreadRollback),
-        Some(CompatibilityProbeResult::UnexpectedMutatingSuccess(
-            CompatibilityProbe::ThreadRollback
-        ))
-    ));
-    assert!(
-        CompatibilityProbeResult::unexpected_mutating_success(CompatibilityProbe::ConfigRead)
-            .is_none()
-    );
 }
 
 #[test]

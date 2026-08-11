@@ -28,15 +28,15 @@ pub use mutation::{
     StartParentHandoff, SucceedBranchHandoff,
 };
 pub use record::{
-    BranchHandoffCheckpoint, BranchHandoffJobAdmission, BranchHandoffJobLifecycle,
-    BranchHandoffJobRecord, BranchHandoffJobState, LatestBranchHandoffAttempt,
-    ResolutionRequestAdmission, branch_handoff_job_id,
+    branch_handoff_job_id, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
+    BranchHandoffJobLifecycle, BranchHandoffJobRecord, BranchHandoffJobState,
+    LatestBranchHandoffAttempt, ResolutionRequestAdmission,
 };
 pub use value::{
     DiscussionContextDigest, DiscussionContextOwnerId, DurableJobValueError,
-    HANDOFF_FAILURE_DETAIL_MAX_BYTES, HandoffFailureEvidence, HandoffFailureKind,
-    ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal, RESOLUTION_TEXT_MAX_BYTES,
-    ResolutionAttemptOrdinal, ResolutionRequestIdentity, ResolutionText,
+    HandoffFailureEvidence, HandoffFailureKind, ParentCasIdentity, ParentHandoffIdentity,
+    ParentQueueOrdinal, ResolutionAttemptOrdinal, ResolutionRequestIdentity, ResolutionText,
+    HANDOFF_FAILURE_DETAIL_MAX_BYTES, RESOLUTION_TEXT_MAX_BYTES,
 };
 
 pub(crate) const BRANCH_HANDOFF_JOB_RECORD_LIMIT: usize = 128 * 1024;

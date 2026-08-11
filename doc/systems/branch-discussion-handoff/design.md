@@ -24,15 +24,39 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 - Branch creation accepts only a current assistant projection owned by a proven-terminal source turn.
   It validates the exact source thread, turn, item, finalized projection identity and revision,
   selected range, and selected bytes before creating the Syndic thread, inherited immutable
-  execution, attributes and usage seeds, first draft, parent binding, and context-owner link, plus
-  any exact Beryl window claim and session selection required by the admitting workflow, in one
+  execution, attributes and usage seeds, first draft, parent binding, and context-owner link in one
   `SyncAll` home-store command.
+- That command creates only the durable, discoverable discussion and performs no window claim,
+  session selection, or model request. After committed or reconciled `ExactNew` creation, the
+  feature-owned workflow selects it through ordinary thread activation. Activation failure or retry
+  never repeats discussion creation.
 - A projection admitted as branch context is finalized durable history. Its identity, revision, text, resource references, and ordering cannot later be invalidated, rebuilt, or rewritten in place.
 - The source turn must lie on the source thread's selected path at branch admission. That is a creation precondition, not a permanent claim about the mutable parent thread: later replacement may move the parent thread tail without invalidating the discussion, its immutable historical source, or its handoff destination.
 - Context reconstruction reads the exact envelope by context-owner identity. It never searches for similar transcript text.
 - The first idle submission transitions that draft identity into the first submitted discussion turn,
   derives the turn's immutable parent from the exact envelope source, and retains the envelope
   unchanged. The draft record itself has no generic parent field.
+
+## Exact Durable Mutation Outcomes
+
+- The generic command outcome, custody handoff, and per-home registry lifecycle are owned by
+  `doc/systems/beryl-home-storage/design.md`. Each branch creation, resolution admission,
+  parent-input/job transition, and success/archive command contributes its own exact operation-
+  specific old and intended-new natural-record scope. A discussion-wide, thread-wide, or home-wide
+  reread is never a substitute.
+- Any generic `Indeterminate` result transfers its unique opaque descriptor and reserved capacity
+  synchronously into the per-home reconciliation registry before a tool reply, acknowledgement,
+  scheduler release, cancellation observation, broker disposal, or service disposal can erase the
+  immediate outcome. No branch-owned caller or worker retains a second descriptor.
+- While that exact scope is unresolved, the affected operation publishes no success, dispatches no
+  dependent CAS work, and performs no mutation or delivery retry. Structurally healthy unrelated
+  scopes and threads remain available.
+- `ExactOld` proves that the intended mutation did not become authoritative and permits only the
+  owning operation's ordinary post-reconciliation noncommit behavior. `ExactNew` proves the
+  complete intended state, reconstructs the exact normal committed receipt, and alone permits
+  ordinary publication or dependent work. `Collision` authorizes neither publication nor retry and
+  leaves only that exact operation scope closed without guessing, merging, replaying, or widening
+  recovery.
 
 ## Scoped Resolution Tool
 
@@ -119,9 +143,29 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 
 ## Restart Recovery
 
-- Startup scans only live-job indexes after the home store is validated. Historical `terminal_failed` and `succeeded` attempts remain queryable for status and idempotency but are never scheduled as live work.
+- Startup validates exact positive `handoff_recovery_page_items`,
+  `handoff_recovery_page_encoded_bytes`, `handoff_job_record_encoded_bytes`,
+  `handoff_reconcile_slots`, and `handoff_ready_job_items` configuration before scanning. It
+  enumerates only the live-job index in key order through cursor pages that independently obey
+  both configured page caps. The item count is the number of returned job records; encoded-byte
+  accounting is the checked sum of every returned encoded key and value length, excluding only the
+  cursor container's fixed bookkeeping. Job mutation rejects a record beyond
+  `handoff_job_record_encoded_bytes`, so recovery never returns one oversized record as an
+  exception. Historical `terminal_failed` and `succeeded` attempts remain queryable for status and
+  idempotency but are never scheduled as live work.
+- The scanner retains at most one cursor page, its continuation key and store revision, one current
+  job identity/checkpoint, and aggregate progress counters. It never builds a live-job collection
+  or parent-to-job map. Reconciliation admission pauses when either the ready-job queue reaches
+  `handoff_ready_job_items` or all `handoff_reconcile_slots` are occupied.
+- Each decoded job record is released after reconciliation or bounded scheduler admission, and the
+  page plus its decoded-byte accounting is released before the next cursor request. Cancellation,
+  store invalidation, and startup failure release the current page, queued task ownership, and
+  reconciliation slot; restart resumes from durable job state rather than retained scan memory.
 - Recovery reconciles each live job with discussion revision, composer gate, parent existence, parent accepted-input identity, parent turn identity, CAS binding, and exact active-turn records.
 - Recovery requires the handoff composer gate for every live latest attempt and no handoff composer gate after `terminal_failed`; archived readonly behavior derives separately from the succeeded attempt's archive metadata.
 - Recovery advances an already completed durable step instead of repeating it.
 - Unknown CAS terminal state remains unresolved until exact evidence or the CAS-live recovery contract classifies the turn incomplete; it never causes duplicate delivery.
-- Job workers, retry tasks, and per-parent schedulers are bounded by count, keyed by exact job id, and wake only for relevant durable, explicit-retry, or runtime state changes.
+- Job workers, retry tasks, and per-parent schedulers obey the configured reconciliation-slot and
+  ready-job capacities, are keyed by exact job id, release their slot and queue ownership on every
+  terminal, cancellation, or supersession path, and wake only for relevant durable, explicit-retry,
+  or runtime state changes.

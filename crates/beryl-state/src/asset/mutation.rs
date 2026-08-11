@@ -1,24 +1,24 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, PointReadLimit};
+use beryl_home_store::{
+    DomainMutation, DomainReader, MutationBuilder, PointReadLimit, ReconciliationReservation,
+};
 use beryl_model::{
-    AssetId, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal, SealedContentMarkerSummary,
-    SyndicDraftMarkerId, advance_content_marker_digest, content_marker_digest_seed,
+    advance_content_marker_digest, content_marker_digest_seed, AssetId, AssetReferenceSetId,
+    DomainRevision, ImageLabelOrdinal, SealedContentMarkerSummary, SyndicDraftMarkerId,
 };
 
 use crate::RecordRevision;
 
 use super::{
-    ASSET_ENTRY_LIMIT, ASSET_INDEX_LIMIT, ASSET_MANIFEST_LIMIT, ASSET_METADATA_LIMIT,
-    ASSET_REFERENCE_PAGE_MAX_ENTRIES, AssetDimensions, AssetDomain, AssetEntryKey,
-    AssetLabelDisposition, AssetLabelFirstKey, AssetLabelFirstRecord, AssetMarkerKey,
-    AssetMediaType, AssetMetadataRecord, AssetMutationError, AssetReferenceEntryRecord,
-    AssetReferenceOrdinal, AssetReferencePageError, AssetReferenceSetBuildProof,
-    AssetReferenceSetLifecycle, AssetReferenceSetManifest, AssetReferenceSetStagingAuthority,
-    AssetSidecarState,
     codec::{
         AssetMetadataCodec, AssetReferenceEntryCodec, AssetReferenceLabelFirstCodec,
         AssetReferenceManifestCodec, AssetReferenceMarkerCodec,
     },
-    digest,
+    digest, AssetDimensions, AssetDomain, AssetEntryKey, AssetLabelDisposition, AssetLabelFirstKey,
+    AssetLabelFirstRecord, AssetMarkerKey, AssetMediaType, AssetMetadataRecord, AssetMutationError,
+    AssetReferenceEntryRecord, AssetReferenceOrdinal, AssetReferencePageError,
+    AssetReferenceSetBuildProof, AssetReferenceSetLifecycle, AssetReferenceSetManifest,
+    AssetReferenceSetStagingAuthority, AssetSidecarState, ASSET_ENTRY_LIMIT, ASSET_INDEX_LIMIT,
+    ASSET_MANIFEST_LIMIT, ASSET_METADATA_LIMIT, ASSET_REFERENCE_PAGE_MAX_ENTRIES,
 };
 
 mod owner_heads;
@@ -72,6 +72,14 @@ impl DomainMutation<AssetDomain> for PublishAssetMetadata {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AssetMetadataCodec>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, AssetDomain>,
@@ -121,6 +129,14 @@ impl DomainMutation<AssetDomain> for BeginAssetReferenceSet {
         if read_manifest(reader, self.set_id)?.is_some() {
             return Err(AssetMutationError::ReferenceSetAlreadyExists(self.set_id));
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AssetReferenceManifestCodec>(1)?;
         Ok(())
     }
 
@@ -217,6 +233,18 @@ impl DomainMutation<AssetDomain> for AppendAssetReferencePage {
 
     fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
         self.prepare(reader).map(drop)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        let count = self.entries.len();
+        reservation.reserve_records::<AssetReferenceEntryCodec>(count)?;
+        reservation.reserve_records::<AssetReferenceMarkerCodec>(count)?;
+        reservation.reserve_records::<AssetReferenceLabelFirstCodec>(count)?;
+        reservation.reserve_records::<AssetReferenceManifestCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -388,6 +416,14 @@ impl DomainMutation<AssetDomain> for SealAssetReferenceSet {
         let manifest = require_manifest(reader, self.expected.set_id)?;
         require_build_proof(&manifest, self.expected)?;
         require_complete_marker_summary(&manifest, self.source)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AssetReferenceManifestCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(

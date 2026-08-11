@@ -6,7 +6,10 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, PutBytes, open_home};
+use support::{
+    AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, PutBytes, committed,
+    open_home,
+};
 
 #[test]
 fn typed_point_and_cursor_reads_return_only_decoded_records() {
@@ -139,10 +142,12 @@ fn reversed_cursor_range_and_non_owning_record_codec_are_typed() {
         .unwrap();
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::ContributorAssembly {
-            domain: "alpha",
-            source,
-        }) if matches!(
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ContributorAssembly {
+                domain: "alpha",
+                source,
+            }
+        } if matches!(
             source.downcast_ref::<FixtureMutationError>(),
             Some(FixtureMutationError::Build(
                 MutationBuildError::CodecTypeMismatch {
@@ -167,5 +172,5 @@ fn put(
             PutBytes::<AlphaDomain>::new(key, value),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
 }

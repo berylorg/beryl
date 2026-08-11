@@ -1,13 +1,15 @@
 use std::sync::{Arc, Mutex};
 
-use beryl_home_store::{HomeGeneration, HomeStore};
+use beryl_home_store::{
+    CommandError, CommitReceipt, HomeGeneration, HomeStore, ReconciliationDescriptor,
+};
 use beryl_model::BerylHomeId;
 use syndic_storage::SyndicStorage;
 
-use super::{AcceptedInputSchedulerSignal, RecoveredProjectionLane};
+use super::AcceptedInputSchedulerSignal;
 use crate::cas_projection::{
     ProjectionCancellationToken,
-    persistent_failure::{MasterCommandGate, PersistentFailureProjectionRetainer},
+    persistent_failure::{MasterCommandGate, PersistentFailureTerminalDisposer},
     scheduled_ordinary::ScheduledOrdinaryExecutionProvider,
     service_config::ProjectionWorkerPool,
     service_registry::ProjectionServiceConnectionRegistry,
@@ -71,17 +73,23 @@ impl ActiveSteeringCancellationLifecycle {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub(super) enum WorkerDisposition {
     Settled,
     Parked,
-    VerificationPending,
-    RecoveredProjectionContinue,
-    RecoveredProjectionParked,
     RecoveredPendingContinue,
     NextContinue,
     NextParked,
     PersistentHomeFailure,
+    CommandNotCommitted(CommandError),
+    CommandCommitted {
+        receipt: CommitReceipt,
+        later_failure: CommandError,
+    },
+    CommandIndeterminate {
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
     Fatal,
 }
 
@@ -94,11 +102,10 @@ pub(in crate::cas_projection) struct AcceptedInputSchedulerContext {
     pub(super) connections: ConnectionRegistry,
     pub(super) scheduled_ordinary_provider: ScheduledOrdinaryProvider,
     pub(super) command_gate: MasterCommandGate,
-    pub(super) projection_retainer: PersistentFailureProjectionRetainer,
+    pub(super) terminal_disposer: PersistentFailureTerminalDisposer,
     pub(super) cancellation: ActiveSteeringCancellationLifecycle,
     pub(super) ordinary_cancellation: ProjectionCancellationToken,
     pub(super) signal: AcceptedInputSchedulerSignal,
-    pub(super) recovered_projection_lane: RecoveredProjectionLane,
 }
 
 impl AcceptedInputSchedulerContext {
@@ -112,10 +119,9 @@ impl AcceptedInputSchedulerContext {
         connections: ConnectionRegistry,
         scheduled_ordinary_provider: ScheduledOrdinaryProvider,
         command_gate: MasterCommandGate,
-        projection_retainer: PersistentFailureProjectionRetainer,
+        terminal_disposer: PersistentFailureTerminalDisposer,
         cancellation: ActiveSteeringCancellationLifecycle,
         signal: AcceptedInputSchedulerSignal,
-        recovered_projection_lane: RecoveredProjectionLane,
     ) -> Self {
         Self {
             home,
@@ -126,11 +132,10 @@ impl AcceptedInputSchedulerContext {
             connections,
             scheduled_ordinary_provider,
             command_gate,
-            projection_retainer,
+            terminal_disposer,
             cancellation,
             ordinary_cancellation: ProjectionCancellationToken::new(),
             signal,
-            recovered_projection_lane,
         }
     }
 }

@@ -23,7 +23,7 @@ impl ProviderBrokerBuildError {
             && resources.control
             && resources.ingester
             && resources.start_gate
-            && resources.startup_gate
+            && resources.initial_start
     }
 }
 
@@ -39,7 +39,7 @@ impl ProviderBrokerBuildResources {
                 control: false,
                 ingester: false,
                 start_gate: false,
-                startup_gate: false,
+                initial_start: false,
             },
             Self::PagePool { worker, pages } => {
                 let diagnostics = pages.diagnostics();
@@ -51,7 +51,7 @@ impl ProviderBrokerBuildResources {
                     control: false,
                     ingester: false,
                     start_gate: false,
-                    startup_gate: false,
+                    initial_start: false,
                 }
             }
             Self::Unstarted(unstarted) => ProviderBrokerBuildResourceSnapshot {
@@ -62,7 +62,7 @@ impl ProviderBrokerBuildResources {
                 control: true,
                 ingester: unstarted.launch.retains_ingester(),
                 start_gate: true,
-                startup_gate: true,
+                initial_start: true,
             },
         }
     }
@@ -133,7 +133,7 @@ impl ProviderBroker {
         failure_notification: PersistentFailureNotification,
         worker: ProjectionWorkerPermit,
     ) -> Result<PreparedProviderBroker, ProviderBrokerBuildError> {
-        Self::prepare_with_startup_gate(
+        Self::prepare_with_initial_start(
             home,
             home_id,
             home_generation,
@@ -144,12 +144,12 @@ impl ProviderBroker {
             commands,
             failure_notification,
             worker,
-            ServiceStartupGate::open_gate(),
+            InitialStartGate::ready(),
         )
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::cas_projection::connection) fn prepare_with_startup_gate(
+    pub(in crate::cas_projection::connection) fn prepare_with_initial_start(
         home: Arc<HomeStore>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
@@ -162,9 +162,9 @@ impl ProviderBroker {
         commands: LiveCommandAuthorizer,
         failure_notification: PersistentFailureNotification,
         worker: ProjectionWorkerPermit,
-        startup_gate: Arc<ServiceStartupGate>,
+        initial_start: Arc<InitialStartGate>,
     ) -> Result<PreparedProviderBroker, ProviderBrokerBuildError> {
-        Self::prepare_with_startup_gate_inner(
+        Self::prepare_with_initial_start_inner(
             home,
             home_id,
             home_generation,
@@ -175,16 +175,16 @@ impl ProviderBroker {
             commands,
             failure_notification,
             worker,
-            startup_gate,
+            initial_start,
             ProviderBrokerBuildFault::None,
         )
     }
 
-    /// Test-only replacement preparation that exercises the ordinary broker spawn failure after
+    /// Test-only preparation that exercises the ordinary broker spawn failure after
     /// every fixed broker resource has been constructed and retained by the build error.
     #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::cas_projection::connection) fn prepare_replacement_with_spawn_failure_for_test(
+    pub(in crate::cas_projection::connection) fn prepare_with_spawn_failure_for_test(
         home: Arc<HomeStore>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
@@ -197,9 +197,9 @@ impl ProviderBroker {
         commands: LiveCommandAuthorizer,
         failure_notification: PersistentFailureNotification,
         worker: ProjectionWorkerPermit,
-        startup_gate: Arc<ServiceStartupGate>,
+        initial_start: Arc<InitialStartGate>,
     ) -> Result<PreparedProviderBroker, ProviderBrokerBuildError> {
-        Self::prepare_with_startup_gate_inner(
+        Self::prepare_with_initial_start_inner(
             home,
             home_id,
             home_generation,
@@ -210,13 +210,13 @@ impl ProviderBroker {
             commands,
             failure_notification,
             worker,
-            startup_gate,
+            initial_start,
             ProviderBrokerBuildFault::Spawn,
         )
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn prepare_with_startup_gate_inner(
+    pub(super) fn prepare_with_initial_start_inner(
         home: Arc<HomeStore>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
@@ -229,10 +229,10 @@ impl ProviderBroker {
         commands: LiveCommandAuthorizer,
         failure_notification: PersistentFailureNotification,
         worker: ProjectionWorkerPermit,
-        startup_gate: Arc<ServiceStartupGate>,
+        initial_start: Arc<InitialStartGate>,
         build_fault: ProviderBrokerBuildFault,
     ) -> Result<PreparedProviderBroker, ProviderBrokerBuildError> {
-        let worker = Arc::new(ProviderBrokerWorkerEscrow::new(worker));
+        let worker = Arc::new(ProviderBrokerWorkerOwner::new(worker));
         if let Some(error) = build_fault.page_pool_failure() {
             return Err(ProviderBrokerBuildError::new(
                 ProviderBrokerBuildFailure::PagePool(error),
@@ -334,7 +334,7 @@ impl ProviderBroker {
             control,
             launch,
             start_gate,
-            startup_gate,
+            initial_start,
             worker,
         }
         .spawn(authority.generation.get(), build_fault)

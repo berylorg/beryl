@@ -69,11 +69,10 @@ fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chr
         loaded_generation(8, 12),
         timestamp(8),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.activate_binding(storage.revision(&store).unwrap(), wrong_process),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingStateConflict
@@ -95,11 +94,10 @@ fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chr
         handoff_generation,
         timestamp(5),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.activate_binding(storage.revision(&store).unwrap(), too_early),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::TimestampRegressed
@@ -124,8 +122,7 @@ fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chr
     execute(
         &store,
         storage.activate_binding(storage.revision(&store).unwrap(), same_process_handoff),
-    )
-    .unwrap();
+    );
     let gate = storage
         .input_gate(&store, thread, point_limit())
         .unwrap()
@@ -287,8 +284,7 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
             )
             .unwrap(),
         ),
-    )
-    .unwrap();
+    );
 
     for (mechanism, cas_name) in [
         (NativeCasLineage::Continuation, "continuation"),
@@ -304,11 +300,10 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
             represented,
             CasLineageProof::native(mechanism, represented).unwrap(),
         );
-        let error = execute(
+        let error = execute_outcome(
             &store,
             storage.publish_valid_binding(storage.revision(&store).unwrap(), request),
-        )
-        .unwrap_err();
+        );
         assert!(
             matches!(
                 typed_error(&error),
@@ -358,8 +353,7 @@ fn active_cas_turn_rejects_pre_start_time_and_reconciles_different_second_public
     execute(
         &store,
         storage.activate_binding(storage.revision(&store).unwrap(), activate),
-    )
-    .unwrap();
+    );
 
     let cas_turn = CasTurnId::new("first-active-turn").unwrap();
     let regressed = PublishActiveCasTurn::new(
@@ -371,11 +365,10 @@ fn active_cas_turn_rejects_pre_start_time_and_reconciles_different_second_public
         cas_turn.clone(),
         timestamp(9),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_active_cas_turn(storage.revision(&store).unwrap(), regressed),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::TimestampRegressed
@@ -393,8 +386,7 @@ fn active_cas_turn_rejects_pre_start_time_and_reconciles_different_second_public
     execute(
         &store,
         storage.publish_active_cas_turn(storage.revision(&store).unwrap(), publication.clone()),
-    )
-    .unwrap();
+    );
     assert_eq!(
         storage
             .active_cas_turn_publication_status(&store, &publication, point_limit())

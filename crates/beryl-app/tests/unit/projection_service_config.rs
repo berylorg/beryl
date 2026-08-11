@@ -406,35 +406,6 @@ fn provisional_steering_scan_cannot_satisfy_scheduled_capacity_demand() {
     assert_eq!(pool.diagnostics().available(), MINIMUM_WORKER_CAPACITY);
 }
 
-#[test]
-fn recovery_hold_restores_the_exact_scheduled_permit_without_reacquisition() {
-    let pool = ProjectionWorkerPool::new(NonZeroUsize::new(MINIMUM_WORKER_CAPACITY).unwrap());
-    let worker = pool.try_acquire_scheduled_ordinary_or_arm().unwrap();
-    let admission_identity = worker.admission_identity_for_test();
-    let admitted = pool.diagnostics();
-    let hold = match worker.into_preactivation_recovery_hold() {
-        Ok(hold) => hold,
-        Err(_) => panic!("scheduled permit must convert into a recovery hold"),
-    };
-
-    assert_eq!(pool.diagnostics(), admitted);
-    let restored = hold.restore_worker_for_test();
-    assert_eq!(restored.admission_identity_for_test(), admission_identity);
-    assert_eq!(pool.diagnostics(), admitted);
-
-    let hold = match restored.into_preactivation_recovery_hold() {
-        Ok(hold) => hold,
-        Err(_) => panic!("restored scheduled permit must convert into a recovery hold"),
-    };
-    assert_eq!(pool.diagnostics(), admitted);
-    drop(hold);
-    let released = pool.diagnostics();
-    assert_eq!(released.active(), 0);
-    assert_eq!(released.available(), MINIMUM_WORKER_CAPACITY);
-    assert_eq!(released.high_water(), 1);
-    assert_eq!(released.denied_singles(), 0);
-}
-
 #[cfg(target_pointer_width = "32")]
 #[test]
 fn service_config_rejects_cross_platform_unrepresentable_counts() {

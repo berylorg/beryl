@@ -1,12 +1,13 @@
-use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
+use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 use beryl_model::{SessionRevision, SyndicThreadId, WindowId, WindowPlacement};
 
 use crate::RecordRevision;
 
 use crate::session::{
-    MAX_RESTORABLE_WINDOWS, RememberedTarget, SessionDomain, SessionExitIntent, SessionHeader,
-    SessionMutationError, SessionWindowRecord, ThreadClaimRecord, ThreadClaimState,
-    WindowClaimSelection,
+    codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec},
+    RememberedTarget, SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError,
+    SessionWindowRecord, ThreadClaimRecord, ThreadClaimState, WindowClaimSelection,
+    MAX_RESTORABLE_WINDOWS,
 };
 
 use super::shared::{
@@ -38,6 +39,15 @@ impl DomainMutation<SessionDomain> for InitializeThreadlessWindow {
         if header(reader)?.is_some() {
             return Err(SessionMutationError::AlreadyInitialized);
         }
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
+        reservation.reserve_records::<SessionWindowCodec>(1)?;
         Ok(())
     }
 
@@ -100,6 +110,17 @@ impl DomainMutation<SessionDomain> for CreateClaimedWindow {
 
     fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
         validate_create(self, reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
+        reservation.reserve_records::<SessionWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByThreadCodec>(1)?;
+        Ok(())
     }
 
     fn contribute(
@@ -200,6 +221,17 @@ impl DomainMutation<SessionDomain> for ReplaceWindowClaim {
 
     fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
         prepare_replace(self, reader).map(|_| ())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
+        reservation.reserve_records::<SessionWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByThreadCodec>(2)?;
+        Ok(())
     }
 
     fn contribute(

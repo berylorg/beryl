@@ -72,39 +72,31 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   consumption, restart abandonment and reconciliation, exact context-compaction admission,
   dispatch claim and request reconciliation, CAS-turn publication, provider-terminal settlement,
   lifecycle-continuation settlement, stop handoff and restart consumption, committing live-source
-  events, advancing
-  the exact terminal item-finalization frontier, reading historical summaries, reading
+  events, capture-gap terminal publication, scoped repair-required reconciliation, explicit
+  incomplete convergence, advancing
+  the exact terminal item-finalization frontier, exact terminal-turn historical repair with
+  CAS-source provenance, reading historical summaries, reading
   thread/draft/turn metadata,
   reading thread-lineage pages, point-reading image-label frontier and origin authority, reading
   activity-query pages, reading immutable branch-context envelopes by context-owner identity,
   reading transcript-view pages, reading projection records, reading resource metadata, and reading
   resource byte ranges, plus reading bounded logical UTF-8 pages from one exact sealed content
   reference.
-- Restart delivery recovery uses the existing input-gate family as its only global durable source.
-  One capped forward page returns compact non-idle gate rows plus a continuation after the last
-  physical thread key scanned. This startup cursor is bound to the exact home identity but
-  intentionally not to its domain revision: the exclusive recovery owner may mutate already
-  visited gate rows, while stable thread keys and the admission fence prevent an unseen key from
-  appearing behind the cursor. The API adds no stored index or schema family.
-- A separate domain-revision-bound recovered-pending source page returns only `PendingTurn` gates
-  whose blocking turn is the current incomplete committed tail, with no selected active route,
-  source-free pending turn state, and a non-active binding. It is safe for the concurrent
-  post-handoff scheduler; any domain drift invalidates the observed page revision. The caller may
-  rebind an already-advanced physical cursor only for the current sweep and only when every
-  mutation capable of creating eligible work behind that cursor independently opens a new scan
-  from the beginning. The rebind API is therefore not generic stale-read recovery and carries no
-  source authority. Empty filtered pages still advance by the last physical gate row scanned, so
-  terminal-heavy homes make bounded progress.
-- For one startup source row, a storage-owned fixed-work classifier double-observes the exact gate,
-  blocking turn state, binding head and current binding, referenced execution snapshot and active
-  CAS turn when present, and selected route-generation authority. It publishes only closed typed
-  cases: safe undispatched pending, exact active steering or awaiting-terminal authority requiring
-  generic abandonment, exact stopping authority requiring stop abandonment, exact compacting
-  authority classified by its provider-operation lifecycle, authenticated post-abandonment
-  terminal work, or settled idle. Awaiting-terminal
-  classification returns its retained exact pre-uncertainty target; stopping classification also
-  returns the matching stop record and attempt state. A mismatched or missing authority pair is
-  coherent corruption. Concurrent change is distinct from coherent corruption.
+- Routine open validates the persisted domain and family registration/schema declarations and
+  reacquires one fresh typed handle. It does not walk application records, resume a physical cursor,
+  or publish work merely because a prior service observed it. Exhaustive record walks are reserved
+  for an explicit schema-validation boundary, scrub, background-maintenance pass, or
+  corruption-evidence investigation.
+- Recovery and ambiguous-outcome reconciliation start from an exact durable natural anchor supplied
+  by the fresh service. One fixed-work read follows only that anchor's bounded natural closure: the
+  current gate, blocking turn state, binding head and binding, referenced execution snapshot and
+  active CAS turn when present, selected route generation, and matching stop or compaction record
+  when named. It publishes only closed typed cases and double-observes the mutable anchors. A
+  mismatched or missing authority pair is coherent corruption; anchor drift is concurrent change.
+- Recovered-pending and accepted-work discovery use their explicit compact source families and
+  revision-bound bounded pages. A physical input-gate-family sweep is not routine startup or reopen
+  authority. A deliberately exhaustive work audit is background maintenance or corruption
+  investigation and cannot itself dispatch, replay, or consume work.
 - Public APIs use Syndic identities and revisions as their stable boundary.
 - External execution ids, including CAS thread ids, turn ids, and item ids, are stored as source metadata and never become the only primary key.
 - Public reads are bounded by caller-supplied limits or explicit range requests.
@@ -122,12 +114,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   binding, route, or accepted-input record they read or change. Accepted-input promotion does not
   read or mutate the current draft record; it preserves the exact thread-to-draft reverse binding
   while advancing that index's enclosing thread revision.
-- A caller retaining process-local external execution authority across same-home recovery must
-  reacquire this package's domain handle and repeat the complete bounded pending-turn and current-
-  binding stabilization against the new home generation. Prior-generation read values and handles
-  provide no transfer authority. The reauthentication is read-only: this package neither rewrites
-  the binding nor blesses an external lease, and any changed thread, gate, turn, item, selected path,
-  binding, or lineage fact rejects the caller's transfer.
+- Same-home recovery invalidates every prior-generation handle, read value, cursor, worker, and
+  process-local execution capability. A fresh service reacquires a fresh typed handle from the
+  validated registration and reads the exact durable thread, gate, turn, selected-path, binding,
+  snapshot, and lineage closure needed to establish new external execution authority. No authority
+  survives from the failed service generation; durable records are the only input to the new
+  service's fresh authority acquisition.
 - Recovery preparation is a read-only public boundary with two explicit request scopes. Current-path
   preflight proves a complete recovery-complete selected path before input admission and returns one
   compact replayable cursor-source proof, or the native empty prefix without model metadata when
@@ -225,10 +217,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   selected route-head and leaf revisions plus the exact fresh successor turn, canonical item, and
   promotion timestamp. Its accepted-input record and permanent-order entry remain immutable.
 - One input-gate record per thread stores its independent monotonic revision,
-  idle/pending-turn/steering/awaiting-terminal/finalizing-history/compaction/stopping state,
+  idle/pending-turn/steering/awaiting-terminal/repair-required/finalizing-history/compaction/stopping
+  state,
   accepted-order high-water mark, selected route-generation/head revision, and exact checked `u64`
   live steering, next-turn, and logical-byte counters. An awaiting-terminal gate names the
   unknown-terminal blocking turn while its selected route retains the exact prior steering target.
+  A repair-required gate names the exact proven-terminal ordinary turn, correlated CAS thread and
+  turn, closed capture-gap provenance that makes historical repair necessary, and one target-scoped
+  request disposition: `Available` or the immutable
+  `Consumed(request-attempt nonce, source gate revision, successor gate revision)`.
   Permanent accepted order and durable paged generation/leaf routing are distinct authorities.
 - A compacting gate stores one caller-generated compaction-operation nonce and the exact parentless
   provider-operation turn. It selects one bounded current record keyed by `(Syndic thread,
@@ -265,7 +262,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   terminal gate code rejects provider-operation turns and cannot convert them to `PendingTurn` or
   selected conversation transcript work.
 - A provider-operation stop witness retains both the exact source compaction revision and its
-  immediate `Stopping(stop nonce)` successor revision. Live reads, reopen validation, safe reopen,
+  immediate `Stopping(stop nonce)` successor revision. Live reads, scoped stop validation, safe reopen,
   terminal handoff, and abandonment cross-check those revisions with the compaction record and any
   later settlement receipt; a matching nonce at an impossible revision is corruption. Each
   provider-specific safe-reopen, matching-terminal, and abandonment successor additionally retains
@@ -325,8 +322,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Consuming live stop authority does not delete or reuse its keyed record. The same atomic terminal,
   safe-reopen, or abandonment command changes it to one closed consumed disposition containing the
   exact bounded successor witness already required for reconciliation. Consumed records are inert
-  identity receipts: they cannot become current again, authorize dispatch, or retain a hard-run
-  snapshot.
+  identity receipts: they cannot become current again or authorize dispatch. The consumed record's
+  exact cause-first revisions, optional dispatch-claim witness, and terminal successor witness are
+  the sole authentication for any delayed finalization release.
 - Stop causes form a fixed closed set distinguishing selected-operation control, diagnostic
   control, healthy-home window close, and Beryl-owned interrupting approval. An exact later caller
   monotonically adds its cause while joining the existing record; it does not create another
@@ -440,7 +438,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   descendant of the projection request and current binding. If activation follows, the active
   binding advances only the represented prefix's source-thread revision to the current compatible
   proof; its CAS thread, native count, execution, tool profile, and original establishment lineage
-  remain exact. Mutation validation, publication reconciliation, and reopen validation use the
+  remain exact. Mutation validation, publication reconciliation, and scoped binding reconciliation use the
   same relation.
 - An exact recovered-lineage handoff preserves its original `RecoveredInjectionProof` unchanged
   while admitting a new loaded-thread generation under the same managed-process generation. The
@@ -473,19 +471,26 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   from this issue mutation and must use normal provider-frame publication. Observation sealing
   retains a structurally valid start for a completion-only kind; normal frame preparation rejects
   it, while the issue mutation may admit it only as `CompletionOnlyItemStarted`.
-- A canonical item record stores bounded kind, phase, source, ordering, revision, closed
-  narrative/resource policy, latest sealed provider-frame reference, and item-local source-event
-  frontier for correlated submitted input, assistant messages, operational records, generated media
-  references, and presentation-only activity records. Transcript-visible text selects exactly one
-  closed projection source: sealed composer content for submitted input or one selected provider
-  narrative view for provider-authored narrative. The provider frame remains mandatory when the
-  normalized public variant has fields even when the item contributes no transcript narrative. The
-  API has no generic item shape that silently discards history-relevant fields while permitting
-  successful turn completion.
-- An activity-query head names one exact owner-thread work period, root source turn, checked source
-  count and aggregate admitted source frontier, query revision, logical/running/completed row and
-  stored-byte counts, full-order completed retention cutoff, and current lifecycle. One immutable
-  source-membership row per observed owner or direct-child turn binds that period to an exact
+- A canonical item record stores bounded kind, phase, source, ordering, revision, and closed
+  narrative/resource policy for correlated submitted input, assistant messages, operational
+  records, generated media references, and presentation-only activity records. Its source is
+  exactly one of sealed composer content, normal live-provider authority with its latest sealed
+  provider-frame reference and item-local source-event frontier, or terminal-repair authority with
+  an opaque package-local snapshot reference, item ordinal/digest, provenance, and snapshot-backed canonical
+  manifests/ranges. Transcript-visible text selects the matching closed composer, provider-
+  narrative, or repair-snapshot projection source. A provider frame remains mandatory for a normal
+  live normalized public variant with fields, but a repaired item requires no fabricated provider
+  frame or source event. The API has no generic item shape that silently discards history-relevant
+  fields while permitting successful turn completion.
+- An activity-query head names one exact query owner, runtime activity period, root source turn,
+  checked source count and aggregate admitted source frontier, query revision,
+  logical/running/completed row and stored-byte counts, full-order completed retention cutoff, and
+  current lifecycle. The same period may accumulate later turns; thread switching, turn completion,
+  and a later turn do not rotate it. Process restart, managed-runtime teardown or replacement, and
+  same-home recovery that replaces runtime services retire it. Its records remain durable
+  provenance, but current-period queries cannot select rows from that retired period. One immutable
+  source-membership row per
+  observed owner or direct-child turn binds that period to an exact
   `activity_start..=source_frontier` interval, active/terminal state, and optional exact terminal
   child final-answer item/range. Ordered activity entries contain only bounded row metadata, exact
   Syndic/CAS item and source-event identity, lifecycle state, and compact GUI-derived facts; they
@@ -495,8 +500,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   terminal event, and the retained row's item/range fact must equal the membership exactly. It never
   refreshes or converts a prior child membership. The rejected shapes are recorded in
   `doc/failures/syndic-phase13-activity-handoff-membership-authority.md`.
-- `ProviderItemV1` is the sole item-owned byte authority for provider-created admitted public
-  payload. Its
+- `ProviderItemV1` is the sole item-owned byte authority for normally captured provider-created
+  admitted public payload. Its
   deterministic, length-delimited, digest-covered start, delta, and completion frames use a closed
   enum for every pinned item variant and a closed recursive structured-value algebra. Raw JSON,
   opaque blobs, ignored-field fallbacks, and unknown future-variant containers are forbidden.
@@ -579,7 +584,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   source event authoritative. Missing, mismatched, cancelled, or retired routes leave the
   observation build unreachable and never visible as history.
 - The public issue-reference boundary exposes exact immutable identity and closed reason accessors,
-  but not a constructor from caller-supplied build facts. Reopen validation point-reads and replays
+  but not a constructor from caller-supplied build facts. Scoped issue reconciliation point-reads and replays
   the referenced observation under fixed buffers, verifies its seal, identity, item evidence,
   canonical bytes, digest, and actual lifecycle conflict, and folds the same first-issue fact from
   source order. An absent, unsealed, mismatched, admissible, or ambiguously referenced observation is
@@ -606,9 +611,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   counts, stable and complete digests, the source-typed reusable parser checkpoint, and whether that
   checkpoint has resolved end-of-input.
 - An item-projection-build record retains only bounded resumable state for one uncurrent generation:
-  the exact closed projection source, its next composer-piece or provider-narrative cursor, current
-  block classification, bounded undecided source, preview state, output ordinals, and resource
-  digest/count state. Whole canonical items and whole heavy resources never enter this record.
+  the exact closed projection source, its next composer-piece, provider-narrative, or repair-
+  snapshot canonical-range cursor, current block classification, bounded undecided source, preview
+  state, output ordinals, and resource digest/count state. A repaired source reads the published
+  snapshot-backed canonical ranges directly and never requires `ProviderItemV1` ranges or synthetic
+  live lifecycle records. Whole canonical items and whole heavy resources never enter this record.
 - A transcript-view head selects one explicit generation and tracks that generation's mutation revision, selected path, frontier, and lifecycle. Transcript-view entry keys include thread, generation, and position so changed paths and bounded rebuilds never rewrite a prior generation.
 - A transcript-build record and generation-owned path-turn records retain the bounded two-pass
   selected-path rebuild. The first pass walks parent links tail-to-root and writes exact depth
@@ -623,8 +630,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   and last captured activity for catalog-summary rebuilds without storing title text, parent-thread
   metadata, or selected-thread GUI state. Every semantic successor advances the summary revision;
   semantic no-ops publish no successor.
-- V1 history-summary `complete` is true exactly when the selected transcript frontier is current and every selected-path turn has a known terminal lifecycle other than explicit `incomplete` with its finalized-item frontier equal to its item frontier; pending, active, incomplete, unknown-terminal, unfinished item finalization, or stale projection state makes it false. An empty current transcript is complete.
-- V1 history-summary `last_activity_at` is the maximum of the current draft's update time and every selected-path turn's submission and turn-state update times. Summary publication is atomic with every mutation that changes a contributing fact; reopen recomputes and validates both derived values with bounded traversal.
+- V1 history-summary `complete` is true exactly when the selected transcript frontier is current and every selected-path turn has a known terminal lifecycle other than explicit `incomplete` with its finalized-item frontier equal to its item frontier; pending, active, incomplete, unknown-terminal, a current repair-required gate, unfinished item finalization, or stale projection state makes it false. An empty current transcript is complete.
+- V1 history-summary `last_activity_at` is the maximum of the current draft's update time and every selected-path turn's submission and turn-state update times. Summary publication is atomic with every mutation that changes a contributing fact; explicit schema validation, scrub, background summary maintenance, or corruption investigation may recompute both derived values with bounded traversal.
 - A thread-catalog-summary record is a rebuildable compact Syndic projection keyed by thread id. It
   contains one resolved generated, history-derived, or absent title source; the immutable execution
   binding; automatic archive state; last activity; completeness; bounded lineage facts; exact
@@ -640,7 +647,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   heterogeneous home command. Prepared replacement publication and that command's Beryl catalog
   join may therefore use the same all-or-nothing home commit without transferring title precedence
   or canonical-source validation to Beryl.
-- Reopen recomputes a history-derived title only when every catalog source witness is current.
+- Background catalog maintenance or explicit validation recomputes a history-derived title only when every catalog source witness is current.
   A source-stale catalog summary remains valid rebuildable state when its retained payload and each
   independently current source relationship are otherwise well formed.
 - An immutable projection record stores one typed Markdown block/span or one resource reference,
@@ -664,20 +671,22 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 - The stable logical domain name is `syndic` at domain schema V5. Every family uses keyspace schema
   V1 and one exact package-owned record version selected per family. `source-events`,
-  and `accepted-inputs` use record V3; `accepted-route-leaves` and `input-gates` use record V4;
+  and `accepted-inputs` use record V3; `accepted-route-leaves` uses record V4; `input-gates` uses
+  record V5;
   `accepted-route-generations` and `turns` use record V3; `threads`, `drafts`, `turn-states`,
   `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2;
   every other V5 family uses record V1. V5 is a clean replacement
-  schema: no prior-record decoder, migration path, or compatibility adapter exists inside this
-  rework.
-- The first 38 registered V5 families are `threads`, `thread-executions`, `thread-attributes`,
+  schema: no prior-record decoder, migration path, or compatibility adapter exists.
+- The first 42 registered V5 families are `threads`, `thread-executions`, `thread-attributes`,
   `thread-usage`, `thread-catalog-summaries`, `drafts`, `content-manifests`,
   `content-chunks`, `content-byte-spans`, `content-text-spans`, `provider-narrative-spans`,
   `content-pieces`, `context-envelopes`, `turns`, `turn-states`, `input-gates`, `accepted-inputs`,
   `stop-operations`, `compaction-operations`, `compaction-settlement-receipts`,
   `accepted-route-generation-heads`,
   `accepted-route-leaves`, `source-events`,
-  `provider-observation-builds`, `provider-item-builds`, `canonical-items`,
+  `provider-observation-builds`, `provider-item-builds`, `terminal-repair-snapshots`,
+  `terminal-repair-item-pages`, `terminal-repair-content-pages`,
+  `terminal-repair-media-pages`, `canonical-items`,
   `activity-query-heads`, `item-projection-heads`, `item-projection-sets`,
   `item-projection-builds`, `transcript-view-heads`, `transcript-builds`, `projections`,
   `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`.
@@ -688,10 +697,50 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- A V4 `input-gates` value canonically stores the exact stopping variant—blocked Syndic turn plus
+- `terminal-repair-snapshots` stores one package-local V1 build head keyed by the existing target
+  Syndic thread and turn natural identity. Its opaque storage-owned generation and references do not
+  cross the package boundary and do not create a shared repair identity. The head stores exact CAS
+  thread/turn correlation, terminal outcome, capture-gap reason, adapter version, pinned release,
+  consumed request-attempt nonce and claim transition, request and response digests, declared item/
+  content/page totals, repair time, and open-or-sealed lifecycle.
+- `terminal-repair-item-pages`, `terminal-repair-content-pages`, and
+  `terminal-repair-media-pages` use package-private V1 codecs keyed by the target plus the opaque
+  build generation and one-based page ordinal. Every page repeats its kind and ordinal, retains its
+  exact count, encoded-byte length, page digest, and preceding-page chain digest, and rejects gaps,
+  duplicate ordinals, trailing bytes, unknown variants, invalid UTF-8, or a field beyond its closed
+  bound. Item pages retain complete ordered semantic final-item fields and per-item digests; content
+  pages retain exact field/range bytes; media pages retain only finalized asset identity, byte
+  digest/length, authenticated adapter/release/runtime/`savedPath` provenance, and the exact matching
+  cross-domain media identity and commitment supplied by the system command.
+- Open or failed repair stages are unreachable from canonical items, transcript projections,
+  history reads, catalog reads, and replay. Each bounded page-stage command validates and durably
+  commits that page's complete item fields, identities, digests, provenance, or media witnesses while
+  advancing the build head's checked totals and family chain commitments. For a repair-media page,
+  this package's participant records the matching noncanonical media witness and advances only the
+  Syndic build state; it publishes no canonical history authority.
+- This package's participant in the final repair command validates the exact `RepairRequired` gate
+  and consumed request claim, target correlation, terminal outcome, sealed build head, declared
+  totals, complete family commitments, adapter/release provenance, and finalized-media commitments.
+  It then selects the complete snapshot-backed canonical source, terminal state, projection
+  staleness, sealed repair metadata, and exact `FinalizingHistory(target)` successor gate. Missing
+  or disagreeing package-local facts reject that participant and leave existing Syndic authority
+  unchanged.
+- Cross-domain staging and final publication are the system-owned `HomeCommand`s defined by
+  `doc/systems/cas-live-syndic-transcript/design.md`. This package contributes only its Syndic
+  participant and cannot independently assert whole-command success or make partial repair media
+  canonical.
+- A V5 `input-gates` value canonically stores the exact stopping variant—blocked Syndic turn plus
   16-byte stop-operation nonce—the compacting variant naming its parentless provider-operation
   turn plus 16-byte compaction-operation nonce, and the distinct awaiting-terminal variant naming
-  its unknown-terminal turn. A V3 `accepted-route-generations` value adds the
+  its unknown-terminal turn. Its distinct `RepairRequired` variant stores the exact target Syndic
+  turn, exact correlated CAS thread and CAS turn, and a closed capture-gap provenance containing the
+  reason, exact bounded terminal/capture-gap witness identity and digest, and optional compact
+  provider-observation issue reference that proved it. It also stores the canonical request
+  disposition tag and, when consumed, the exact 16-byte request-attempt nonce plus nonzero source
+  and successor gate revisions. Unknown disposition or capture-gap tags, an incomplete consumed
+  transition, absent correlation, a nonterminal target, or unbounded external identity is an invalid
+  encoding rather than an incomplete default. A V3
+  `accepted-route-generations` value adds the
   `AwaitingTerminal(exact prior steering target)` authority. V4 route leaves add the closed
   `UnknownTerminal` next-turn reason. There are no predecessor record decoders because the V5
   domain is replacement authority.
@@ -701,9 +750,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   revision and attempt nonce, and a closed live-or-consumed state. Live states are `Admitted` and
   `DispatchClaimed`; consumed states are safe reopen, matching terminal, and stop abandonment, each
   carrying its exact bounded successor witness while retaining all earlier fixed provenance.
-  Reopen requires key/value agreement, exactly one live record selected by every stopping gate, no
-  live record for any other gate, and agreement between every consumed record and its named
-  successor.
+  Scoped stop reconciliation requires key/value agreement and follows only the selected gate,
+  operation, target, claim, and successor natural closure. Proving that every stopping gate selects
+  exactly one live record, that no other live record exists, and that every consumed record agrees
+  with its successor belongs only to explicit schema validation, scrub, background maintenance, or
+  corruption investigation.
 - `compaction-operations` is a primary family keyed by the exact 32-byte concatenation of Syndic
   thread identity and compaction-operation nonce. Its bounded V1 value repeats both key fields and
   stores the admission `BerylHomeId`, provider-operation turn, provider-operation execution
@@ -722,20 +773,22 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Every compacting gate selects exactly one live compaction record. A record handed to stop names
   the current stop nonce while the stopping gate and stop record name the same provider-operation
   target. A consumed record is inert but remains exact response and mutation-reconciliation
-  authority. Reopen proves key/value identity, nonce non-reuse, contiguous fixed transition
-  provenance, provider-source ordering, gate/stop pairing, turn and snapshot agreement, and any
-  named binding, CAS-turn reverse index, item frontier, continuation-turn, or queue-release
-  successor.
+  authority. Scoped compaction reconciliation proves key/value identity, nonce non-reuse,
+  contiguous fixed transition provenance, provider-source ordering, gate/stop pairing, turn and
+  snapshot agreement, and any named binding, CAS-turn reverse index, item frontier, continuation-
+  turn, or queue-release successor within that operation's bounded natural closure. Cross-record
+  enumeration is confined to explicit validation, scrub, background maintenance, or corruption
+  investigation.
 - A V3 `turns` value adds the closed `BerylLifecycleContinuation` conversation origin while
   preserving ordinary-user and provider-operation kinds. A V2 `execution-snapshots` value is a
   closed ordinary-conversation or provider-operation shape; the latter contains no accepted route,
   ordinary active-gate correlation, or native-count increment. `cas-turn-index` covers published
   provider-operation CAS turns as well as ordinary turns and permanently rejects reuse.
 - Index values retain the authoritative identity plus the revision or digest needed to prove agreement. Empty marker values are not sufficient index authority.
-- Binding records are immutable revisioned history keyed by thread and binding revision. `binding-heads` selects exactly one current record per thread. `cas-thread-bindings` records immutable ordered membership for every CAS-bearing binding revision, while `cas-thread-index` permanently assigns each CAS thread identity to one Syndic thread, its first and latest binding revisions, and one-way retirement at the first stale or abandoned revision. Reopen requires the membership sequence, binding history, and reservation frontiers to agree exactly. After retirement, that CAS thread cannot authorize execution for either the original owner or another thread. Only agreement with the current valid or active binding head and a non-retired reverse record authorizes execution; a retired index entry is provenance, not live authorization.
+- Binding records are immutable revisioned history keyed by thread and binding revision. `binding-heads` selects exactly one current record per thread. `cas-thread-bindings` records immutable ordered membership for every CAS-bearing binding revision, while `cas-thread-index` permanently assigns each CAS thread identity to one Syndic thread, its first and latest binding revisions, and one-way retirement at the first stale or abandoned revision. A scoped binding read requires its membership sequence, binding history, and reservation frontiers to agree exactly within the named thread/CAS natural closure. After retirement, that CAS thread cannot authorize execution for either the original owner or another thread. Only agreement with the current valid or active binding head and a non-retired reverse record authorizes execution; a retired index entry is provenance, not live authorization.
 - Immutable turn topology and mutable lifecycle/frontier facts occupy separate `turns` and `turn-states` families so later event commits cannot rewrite parentage through a lifecycle update.
 - Every non-root immutable turn stores one deterministic 128-bit ancestor skip. Its target depth is
-  `max(1, depth & (depth - 1))`; roots store no skip. Reopen proves the skip names the exact
+  `max(1, depth & (depth - 1))`; roots store no skip. A scoped lineage read proves the skip names the exact
   ancestor at that depth. Selected-path membership therefore uses constant resident memory and at
   most 2,080 bounded turn point reads for the complete `u64` depth domain instead of an unbounded
   parent walk or a per-turn jump table.
@@ -743,7 +796,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   shape over immutable thread lineage; top-level threads have depth one and no parent or skip.
   A revision-bound lineage query uses the selected leaf's depth and digest to return bounded
   top-to-bottom ancestor pages by exact logical depth without retaining the complete path or a jump
-  table. Reopen validates parent, depth, digest, and skip agreement through bounded point reads.
+  table. A scoped lineage read validates parent, depth, digest, and skip agreement through bounded point reads.
 - A thread image-label origin span is immutable and maps one admission's monotonic frontier advance
   to its exact admitted owner and compact sealed asset-set proof. A child records its parent's
   current frontier as its immutable inherited frontier and copies no spans. Label lookup finds the
@@ -754,13 +807,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `DiscussionContextRange` uses half-open absolute canonical logical UTF-8 byte coordinates within
   the source item, never projection-local coordinates. The range must lie within one finalized
   source projection and is resolved through bounded logical-range reads over the content indexes.
-- That submitted-turn context owner remains stable after first submission. Reopen requires its immutable parent to agree with the context source turn but does not require the owner turn to remain on a later replacement-selected discussion path.
+- That submitted-turn context owner remains stable after first submission. Scoped context resolution requires its immutable parent to agree with the context source turn but does not require the owner turn to remain on a later replacement-selected discussion path.
 - Interrupted and superseded item-projection generations, transcript generations, path records,
   generation-owned indexes, and build records remain coherent derived state but are not selected
   authority. Immutable projections and resources referenced only by that state remain retained
   until future garbage collection.
 - An immutable projection or resource record may also remain unreferenced after an interrupted
-  derived write. Reopen treats that exact primary record as an unreachable garbage-collection
+  derived write. Explicit scrub or background garbage-collection analysis treats that exact primary record as an unreachable garbage-collection
   candidate, not visible membership. Any reachable membership, set, head, transcript entry, or
   context envelope still requires its complete exact reverse agreement.
 
@@ -768,6 +821,18 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 - Persisted integer ordering uses unsigned big-endian encoding. Composite index keys order first by their owning identity and then by one-based ordinal or revision. Cursor-only lower or upper sentinels are rejected as stored keys.
 - Stable Beryl and Syndic identities use their exact 16-byte payloads. Digests use exact 32-byte values. External CAS identities retain validated UTF-8 and remain bounded by `beryl-model`.
+- One terminal-repair build admits at most 262,144 ordered items, 268,435,456 exact encoded item/
+  content/media bytes, and 65,536 staged pages across all three staging families. Each page admits at
+  most 256 entries and 65,536 encoded bytes. These are hard V5 codec and mutation ceilings, not
+  caller-selected budgets: exceeding any count, byte, field, or page limit rejects the repair
+  without truncation or partial publication. Normal live-capture terminal-audit page, resident-item,
+  and already-admitted-source limits do not lower this independent repair ceiling.
+- Repair staging admits one bounded page per short command and advances checked cumulative item,
+  byte, media, and page totals plus domain-separated chain digests in the build head and immutable
+  family commitments. The final atomic seal selects those already staged paged commitments by
+  reading only the compact sealed head, fixed family commitments, gate, and required publication
+  witnesses; it never materializes the snapshot, restages page payloads, or walks the page set while
+  holding the writer.
 - Stop-operation keys are exactly 32 bytes. Stop-operation values use the package's 65,536-byte
   small-record ceiling, but their only variable-width fields are the exact CAS thread and turn
   identities, each limited to 256 UTF-8 bytes by `beryl-model`. Causes use four canonical
@@ -789,7 +854,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   content authority.
 - Accepted-route generations and their leaves may contain any representable durable count and
   logical byte total. The input gate and selected generation heads retain checked `u64` aggregates,
-  while schedulers, reopen validation, and delivery workers traverse fixed revision-bound cursor
+  while schedulers, explicit validation, and delivery workers traverse fixed revision-bound cursor
   pages and admit only bounded active work. CAS-turn publication and projection loss change one
   compact generation head and, for the exact-rejection abandonment variant, at most the one named
   leaf rather than every member. Logical backlog size never authorizes a resident route vector or a
@@ -840,28 +905,43 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 ## V1 Structural Proofs
 
+- Routine open performs no application-record walk. The proofs in this section are enforced by the
+  mutation that publishes each record and rechecked only over a request's bounded natural closure.
+  Any every-record or every-thread recheck is an explicit schema-validation boundary, scrub,
+  background-maintenance pass, or corruption-evidence investigation.
 - Every immutable turn header stores a nonzero depth and a V1 chain digest. A root has depth one and the canonical root digest derived from the domain separator and its exact turn id. A child has its parent's depth plus one and a digest derived from the V1 domain separator, child id, parent id, and parent chain digest.
-- Reopen recomputes each root or child digest and checks exact depth progression. This proves every parent chain reaches a root and cannot contain a cycle while retaining only one bounded page and point-read parent records.
+- Scoped turn-lineage validation recomputes each root or child digest and checks exact depth progression. This proves the named parent chain reaches a root and cannot contain a cycle while retaining only one bounded page and point-read parent records.
 - Every thread has the corresponding nonzero lineage depth and domain-separated chain digest.
   Top-level threads use the root form; a discussion child derives its digest from its exact child and
-  parent thread identities. Reopen validates thread-parent indexes, depth, digest, and skip facts in
+  parent thread identities. Scoped thread-lineage validation checks parent indexes, depth, digest, and skip facts in
   bounded pages without constructing an ancestor set.
-- Reopen validates each thread's inherited/current image-label frontiers and immutable local
+- Explicit schema validation, scrub, background label maintenance, or corruption investigation
+  validates each thread's inherited/current image-label frontiers and immutable local
   origin spans against parent-frontier inheritance, contiguous span advances, and exact admitted
   sealed-set proofs. It scans indexes in bounded pages and never constructs a per-thread used-label
   set.
 - An empty selected path uses the V1 digest of the dedicated empty-path domain separator. A nonempty thread's selected-path digest equals its committed tail's chain digest.
 - A pending, active, or unknown-terminal turn must be the committed tail of its origin thread. Because one thread has one committed tail, this is also the bounded durable proof that one thread cannot retain competing execution-blocking turns.
-- Reopen proves current structural agreement. Parent immutability and one-way draft consumption are additionally enforced by the absence of any production mutation that rewrites a turn header or recreates a consumed draft; they are not inferred as historical events from one snapshot.
-- Reopen replays each canonical item's exact `item-source-events` sequence in bounded memory and
-  requires its kind, assistant phase, external CAS identity, typed provider-frame references,
-  structural and chunk digests, selected provider-narrative generation and digests when applicable,
-  completion state, and source-event frontier to agree exactly with the canonical item, content
-  manifest, and narrative-span index. A completed provider item requires an exact sealed completion
-  frame and, when transcript-visible, a durable exact equality result against its selected append
-  generation. A retained mismatch must agree with the typed history-incomplete disposition and may
-  never select completion text for presentation.
-- Reopen validates activity-query heads, source memberships, and entries against exact owner/period,
+- A `RepairRequired` target is a proven-terminal ordinary turn and must equal the owning thread's
+  committed tail. No same-thread successor turn, tail advance, fork, replacement execution,
+  rollback, accepted-next promotion, compaction admission, or recovery injection may publish while
+  that gate remains current. The repair gate's CAS correlation and capture-gap witness must agree
+  exactly with the target's terminal state, CAS reverse indexes, terminal/capture-gap witness, and
+  any retained provider-observation issue evidence. The exclusion is scoped to the owning thread
+  and operations that target its blocked turn; unrelated threads remain independently mutable.
+- Scoped reconciliation proves the named records' current structural agreement. Parent immutability and one-way draft consumption are additionally enforced by the absence of any production mutation that rewrites a turn header or recreates a consumed draft; they are not inferred as historical events from one snapshot.
+- Scoped item validation checks each named canonical item according to its exclusive source. A normal live-provider
+  item replays its exact `item-source-events` sequence in bounded memory and requires kind,
+  assistant phase, external CAS identity, typed provider-frame references, structural and chunk
+  digests, selected provider-narrative generation and digests when applicable, completion state,
+  and source-event frontier to agree exactly. A terminal-repair item instead validates the exact
+  opaque package-local snapshot reference, ordinal/digest, provenance, complete terminal item set, and snapshot-backed
+  canonical manifests/ranges without requiring source events or provider frames. A completed normal
+  provider item requires an exact sealed completion frame and, when transcript-visible, a durable
+  exact equality result against its selected append generation. A retained mismatch must agree with
+  the typed repair-required or history-incomplete disposition and may never select completion text
+  for presentation.
+- Scoped activity-query validation checks the named head, source memberships, and entries against exact owner/period,
   source turn and event interval, CAS item identity, provider lifecycle, handoff range, full ordering
   key, retained stored bytes, cutoff, and logical counters in bounded pages. It proves the exact
   first activity-visible event, the presence of every logically running row, and the deterministic
@@ -871,7 +951,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   activity cannot make parent authority stale. A
   rebuildable mismatch must carry an explicit stale head and complete a bounded rebuild before the
   query can publish; it cannot expose a mixed generation.
-- A proven-terminal turn with admitted source events must end at the matching turn-ending source event. Its contiguous finalized-item frontier may advance afterward only over already admitted immutable or terminal-finalized canonical content.
+- A normally captured proven-terminal turn with admitted source events must end at the matching turn-
+  ending source event. A repaired turn instead requires its exact published terminal-repair
+  authority and complete sealed item-set digest. Its contiguous finalized-item frontier may advance
+  afterward only over immutable content admitted by that one selected authority.
 - Projection construction may consume one exact current live or immutable canonical snapshot. Any
   source advance atomically marks a selected projection stale and supersedes an incomplete build;
   completed older generations remain coherent historical snapshots. Terminal item closure is a
@@ -879,7 +962,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   its item reference to immutable source without advancing the finalized-item frontier, then a
   visible item advances only after one current completed item-projection set exists. Operational
   items advance after freezing because they own no transcript projection.
-- Unreachable history is valid only when every retained turn and its complete parent closure, indexes, items, projections, resources, and provenance remain internally coherent. A missing parent is corruption, not valid unreachable history.
+- An explicit schema-validation boundary, scrub, background-maintenance pass, or corruption
+  investigation may enumerate unreachable history. It accepts a retained turn only when its complete
+  natural parent closure, indexes, items, projections, resources, and provenance remain internally
+  coherent. A missing parent is corruption, not valid unreachable history.
 
 ## Revisions And Ordering
 
@@ -906,6 +992,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   history to choose an ordinal or enforce capacity. `FinalizingHistory(turn)` is a non-idle,
   queue-only gate state and is itself the durable recovery source for a proven-terminal turn whose
   bounded canonical and selected-transcript convergence has not yet settled.
+  `RepairRequired(turn, correlation, capture gap)` is a distinct non-idle, queue-only gate state and
+  durable recovery source for a proven-terminal current tail whose canonical authority cannot be
+  finalized until full repair publication or explicit incomplete convergence consumes that exact
+  state.
 - One immutable accepted-order entry is the input's unique route-generation membership. Its bounded
   route leaf is live while ready, retryable, delivering, or next-turn and terminal otherwise. Claim,
   proven-pre-dispatch retry, exact success, and structured rejection each identify the exact source
@@ -942,8 +1032,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   late item events advance capture without changing the gate. Exact late activation atomically
   opens a fresh empty steering generation for the same active target while preserving every
   unknown-terminal generation as next-turn work. Exact late terminal publication enters
-  `FinalizingHistory`; active-authority loss uses ordinary abandonment with a distinct
-  awaiting-terminal lost-target witness.
+  `RepairRequired(..., Available)` when the terminal carries an exact required capture gap and correlation, and
+  otherwise enters `FinalizingHistory`; active-authority loss uses ordinary abandonment with a
+  distinct awaiting-terminal lost-target witness.
 - Stop admission is one fixed-work target-kind-specific serialized mutation. An ordinary target
   reads the exact active binding and CAS turn, input gate, selected steering generation, ready-
   source authority, and new stop record; it proves no delivering leaf from aggregates, publishes
@@ -985,16 +1076,21 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   whose successor records the consumed operation and attempt plus projection retirement and
   source-less incomplete convergence; storage does not parse provider codes or diagnostic text.
 - Stop abandonment records one closed caller-classified reason distinguishing provider rejection
-  before core interruption, live connection or target-authority loss, and startup loss of the old
+  before core interruption, live connection or target-authority loss, and recovery loss of the old
   process generation. The reason is diagnostic and lifecycle provenance, never replay, retry, or
   safe-reopen authority.
+- Backend acceptance or acknowledgement of the stop request is not terminal evidence and does not
+  consume the stop record, release the stopping gate, or authorize finalization.
 - Matching terminal publication consumes the record's live authority into its terminal disposition.
-  The ordinary variant changes the gate to `FinalizingHistory`; the provider-operation variant
+  The ordinary variant changes the gate to `RepairRequired(..., Available)` when the same atomic terminal commit
+  carries exact required capture-gap provenance and correlation, and otherwise changes it to
+  `FinalizingHistory`; the provider-operation variant
   records terminal in the compaction record and restores `Compacting` only for its dedicated
   bounded item finalization. Both preserve queued generations. The bounded successor retains the
-  stop operation and complete cause-first and dispatch-claim provenance so an app-owned process-
-  local hard-run hold can authenticate any delayed finalization release; storage persists no hard-
-  run state and recovery waits for no lost process-local hold. Stop abandonment instead marks the
+  stop operation and complete cause-first and dispatch-claim provenance. That consumed durable
+  record and its exact terminal successor are the only authority for any delayed finalization
+  release; no process-local receipt, snapshot, or lifecycle state participates. Stop abandonment
+  instead marks the
   record consumed by abandonment while retiring the target projection, preserving effective next-
   turn work, and publishing the target-kind-specific source-less incomplete convergence. Both
   commands expose complete fixed-work
@@ -1077,6 +1173,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   selected generation's narrative spans and referenced ProviderItemV1 ranges while stabilizing the
   same composite item before and after the page. Mutation of that item is concurrent state;
   unrelated thread and item commits do not invalidate either read.
+- A repaired canonical item instead exposes bounded logical-range reads over its immutable snapshot-
+  backed manifests and ranges. The read stabilizes the exact repair snapshot, item ordinal/digest,
+  canonical revision, and range provenance; it never consults a live CAS-item index, provider-
+  narrative generation, `ProviderItemV1` range, or fabricated source event.
 - A typed delta names the exact item kind it is permitted to advance. Live mutation compares that
   kind with the durable CAS-item/canonical-item kind before staging a provider-frame addition and
   rejects any mismatch without publication. Protocol indices retained by typed frames are bounded
@@ -1104,10 +1204,35 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `stable_eof_resolved = true` means immutable end-of-input has been consumed into the stable
   prefix. No current source revision may shrink behind or disagree with that checkpoint.
 - A transition to a proven-terminal ordinary-turn lifecycle closes ordinary source-event admission
-  and atomically moves its input gate to `FinalizingHistory(turn)`. The same commit leaves every
-  affected derived frontier current only when it already includes the complete accepted event
-  frontier; otherwise it marks that work stale for bounded first-time completion. It never makes
-  the gate idle merely because terminal status is durable.
+  and requires that turn to be the current committed tail with no same-thread successor. When the
+  terminal publication carries an exact required capture-gap reason, exact CAS thread/turn
+  correlation, and its matching terminal/capture-gap witness plus any provider-observation issue
+  reference, the same commit moves the
+  gate to `RepairRequired(..., Available)`; it preserves the captured evidence without treating it
+  as repaired canonical authority, marks affected derived work stale, and cannot make the gate idle.
+  A proven-
+  terminal ordinary turn with complete exact capture instead moves atomically to
+  `FinalizingHistory(turn)` and follows normal bounded item/transcript convergence.
+- Before any historical backend request, one target-scoped claim mutation requires the exact current
+  `RepairRequired(..., Available)` gate, no same-thread successor, matching CAS correlation and
+  terminal/capture-gap witness, the supported pinned adapter release, and a caller-generated
+  16-byte request-attempt nonce. It atomically advances only that gate to
+  `RepairRequired(..., Consumed(nonce, source revision, successor revision))` and returns one opaque
+  non-cloneable dispatch claim only from the proven committed successor. `NotCommitted` returns no
+  claim. `Indeterminate` enters ordinary operation-scoped reconciliation and returns no claim;
+  `ExactNew` may reconstruct the sole claim for the same still-current coordinator, `ExactOld`
+  authorizes the same claim command once, and `Collision` authorizes neither. No mutation resets a
+  consumed disposition to available.
+- Only two atomic mutations may consume a current `RepairRequired` gate. Full repair seal/publication
+  selects the complete staged snapshot and moves the exact target to `FinalizingHistory`; explicit
+  incomplete convergence preserves the submitted input and admissible captured evidence, records
+  the closed incomplete reason and request disposition, selects no staged snapshot or repair-derived
+  asset, and moves the same target to `FinalizingHistory`. Full publication requires the consumed
+  claim stored in the sealed snapshot; incomplete convergence may close an unavailable authorization
+  before claim or a consumed attempt after any possible dispatch. Both retain queued accepted input
+  and same-thread exclusion until terminal-history completion reaches its exact fixed point. No
+  partial repair, missing-correlation fallback, gate-only rewrite, or later CAS status may release or
+  replace the repair gate.
 - Terminal-history completion is a separate exact mutation after the bounded item and selected-
   transcript pipelines. It requires the same finalizing gate and proven-terminal committed tail,
   a current transcript build for the exact selected path, and an item frontier that is fully
@@ -1120,19 +1245,27 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   changes only that current gate to idle while preserving its route authority and accounting. A
   failed, ambiguous, or interrupted completion leaves the durable finalizing source discoverable
   and idempotently resumable.
-- Reopen validation treats a stale binding's abandoned active predecessor as historical authority,
+- Scoped repair/finalization reconciliation point-reads only the named thread, current gate, target
+  turn and terminal state, CAS correlation/reverse records, capture-gap witness, selected route, and
+  repair head when present. It returns `Prior`, `Exact`, or `Collision` from the complete natural
+  closure; it never infers release from an idle-shaped gate or scans unrelated history.
+- Scoped terminal-finalization reconciliation treats a stale binding's abandoned active predecessor as historical authority,
   not as permanent ownership of the current gate. While that terminal remains the committed tail,
-  the gate is either its pending `FinalizingHistory` obligation or idle only when the same item and
-  transcript fixed-point predicate re-proves. Once a later committed tail exists, ordinary current
-  gate ordering governs it and the older terminal cannot pin the gate back to its prior phase.
+  the gate is its pending `RepairRequired` or `FinalizingHistory` obligation, or idle only when the
+  applicable repair/incomplete transition and the same item/transcript fixed-point predicate
+  re-prove. Once a later committed tail exists, ordinary current gate ordering governs it and the
+  older terminal cannot pin the gate back to its prior phase.
 - A current item projection becomes finalized when its source turn has a proven terminal lifecycle. Finalized turn-owned canonical content, projection identity, revision, text, resources, and item-local ordering are immutable.
 - A named thread's transcript-view head and entries remain a rebuildable selected-path index: they may advance when the thread tail changes, when another finalized turn is appended, or while unfinished projection work changes state. Rebuilding that view may reference finalized projections but cannot rewrite them.
 - Starting a transcript rebuild allocates the head's next generation and records an exact head
   revision/path proof. Bounded path and entry batches populate only that generation. Final
   publication revision-checks the unchanged selected path and every referenced current
   item-projection set before changing the head to Current.
-- `Discuss in new branch` may reference only a finalized assistant projection. Branch creation validates the exact source thread, turn, item, projection identity and revision, the absolute canonical logical UTF-8 range within that projection, and the bytes returned by a bounded logical-range read before admitting the immutable context envelope.
-- Reopen validation resolves every context envelope back to that exact finalized projection revision and absolute canonical logical UTF-8 byte range through the same bounded logical-range read. It validates immutable source-record agreement but does not require the historical source turn to remain on the named source thread's later mutable selected path. A missing or changed source is corruption rather than a reason to reinterpret the envelope as detached snapshot authority.
+- Branch-context admission may reference only a finalized assistant projection. The storage
+  operation validates the exact source thread, turn, item, projection identity and revision, the
+  absolute canonical logical UTF-8 range within that projection, and the bytes returned by a
+  bounded logical-range read before admitting the immutable context envelope.
+- Scoped context reconciliation resolves the named envelope back to that exact finalized projection revision and absolute canonical logical UTF-8 byte range through the same bounded logical-range read. It validates immutable source-record agreement but does not require the historical source turn to remain on the named source thread's later mutable selected path. A missing or changed source is corruption rather than a reason to reinterpret the envelope as detached snapshot authority.
 - Transcript-view positions are stable, sortable identifiers assigned by storage.
 - Cursor reads name the exact transcript generation and return enough position and revision metadata for callers to detect stale provider responses.
 - An exact retry at an already occupied per-turn sequence is classified as `SourceEventAlreadyAdmitted` before stale event-local revisions are considered, so ambiguous commit recovery can recognize the durable result without rewriting it. Different data at that sequence is `SourceEventCollision`; a gap or future sequence is `SourceEventSequenceConflict`.
@@ -1148,7 +1281,69 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   only compact owner heads whose identity, marker frontier, count, and digest agree with the
   admitted Syndic payload.
 - Validation rejection, revision conflict, and cancellation observed before writer admission leave the prior Syndic records unchanged. Cancellation after admission does not retract a command.
-- A surfaced post-admission storage or persistence failure has an ambiguous durable outcome. Higher-level services retain exact natural identities and caller-owned editor state and reconcile through same-home verification or recovery plus coherent typed reads; they do not infer rollback from the error or blindly replay the mutation.
+- A surfaced post-admission storage or persistence failure retains its typed durable outcome:
+  `NotCommitted` proves the command did not commit and carries neither receipt nor descriptor;
+  `Committed` carries the exact receipt and any optional later failure without erasing its durable
+  successor; and `Indeterminate` carries the failure plus the sole move-only reconciliation
+  descriptor and already-reserved registry slot, but no receipt or publishable successor. The
+  package exposes no rollback or replay authority from an indeterminate result.
+- `ProviderObservationStager::begin` maps those outcomes exactly. `NotCommitted` creates no stager
+  and leaves the caller-owned observation identity and begin facts eligible for a newly admitted
+  begin attempt. `Committed` returns the exact new building stager with its receipt and optional
+  later failure. `Indeterminate` returns only the sole reconciliation custody value and failure; it
+  exposes no building stager, receipt, or publication authority.
+- `ProviderObservationStager::control` and `fragment` prepare their next state without mutating the
+  caller's current stager before the command outcome is known. `NotCommitted` therefore leaves that
+  exact old stager unchanged and usable. `Committed` advances it to the exact durable successor and
+  returns the receipt plus any optional later failure. `Indeterminate` returns no publishable
+  successor and no caller-usable continuation. Until registry handoff the old stager is inert; the
+  handoff is the cut after which that process-local stager may be discarded and is never required for
+  classification, recovery, or service retirement.
+- `ProviderObservationStager::seal` consumes its input stager on invocation for every outcome.
+  `NotCommitted` carries neither receipt, descriptor, nor sealed handle; it does not authorize an
+  implicit reopen or retry. `Committed` returns the exact sealed handle, receipt, and optional later
+  failure. `Indeterminate` returns the sole reconciliation custody and failure but no receipt,
+  sealed handle, or other publishable successor.
+- The immediate caller of any provider-observation `Indeterminate` outcome must synchronously move
+  its descriptor and complete reserved registry capacity into the per-home `beryl-home-store` reconciliation-scope
+  registry before translating the result, acknowledging the provider operation, releasing local
+  operation state, or observing cancellation or retirement. That handoff preserves custody and
+  closes the exact publication scope only; it starts no reread, retry, rollback, publication, or
+  reconciliation execution.
+- The provider-observation reconciliation hook derives every result from the descriptor-bound
+  natural build, frontier, fragment, and seal records; it never receives the old process-local
+  stager. `ExactNew` reconstructs the exact durable building stager plus receipt for `begin`,
+  `control`, or `fragment`, or the exact sealed handle plus receipt for `seal`. `ExactOld` exposes an
+  old continuation only when that operation's direct `NotCommitted` contract permits it and the
+  exact same-generation live owner still exists to consume it; otherwise it returns an explicit
+  no-successor/abandoned disposition. In particular, `seal` `ExactOld` never authorizes implicit
+  reopen or retry. `Collision` exposes no stager, sealed handle, receipt, retry, or publication
+  authority and releases every process-local stager associated with that operation.
+- Provider-observation cancellation or retirement may abandon an ordinary unpublished stager at any
+  time before a command is admitted. After `Indeterminate`, it may discard all process-local stager
+  and operation state only after the sole custody value is installed in the registry; that disposal
+  does not reinterpret the result as `NotCommitted`. No stager must survive connection or service
+  retirement, and a later classification or fresh-service recovery uses only durable natural
+  records.
+- Terminal-repair begin, page-stage, and seal commands reconcile `Indeterminate` only by their
+  existing natural record identity: exact Syndic thread/turn and CAS thread/turn for the build, plus
+  staging family and one-based page ordinal for a page. The point read returns `Absent`, `Exact`, or
+  `Collision` from the complete metadata, bytes, counts, and digests. `Exact` authorizes progress
+  from the durable successor, `Absent` authorizes the same command once, and `Collision` authorizes
+  neither. No caller-visible or shared repair-snapshot identity is introduced.
+- For a repair-media stage or final seal `HomeCommand`, this package's reconciliation hook classifies
+  only its descriptor-bound Syndic natural records. Stage new-side evidence requires the matching
+  Syndic media witness; final new-side evidence requires the selected snapshot and
+  `FinalizingHistory` successor. It contributes sealed old/new/collision facts to the system-owned
+  cross-domain classifier and never inspects, publishes, or repairs a sibling participant. A stage
+  may resume from its durable successor, and a final command may reconstruct its committed result,
+  only after the whole-command classifier returns the corresponding exact outcome.
+- The repair-request claim command reconciles only the target `RepairRequired` gate, exact
+  correlation and capture-gap witness, request-attempt nonce, and source/successor gate revisions.
+  `ExactNew` reconstructs the sole non-cloneable dispatch claim only for the same still-current
+  coordinator; when that owner no longer exists, the durable consumed disposition remains and fresh
+  recovery converges incomplete without dispatch. `ExactOld` proves that no claim capability could
+  have existed and permits the same claim command once. `Collision` yields no capability or retry.
 - `Absent` admission reconciliation proves the expected current draft still exists and all draft-derived result identities are absent. Its source-identity classifier retries at most once when that natural anchor changes; it never waits for a quiet whole-domain revision. `ExactSubmitted` proves the caller-named replacement draft, advanced input gate, immutable admitted owner, exact content and marker set. Every accepted-input record additionally retains the complete original accepted-admission intent: expected source thread and draft revisions, source and replacement draft identities, expected gate revision, content, asset proof, and admission time. `ExactAccepted` proves that immutable receipt plus permanent accepted-order and route-leaf identity. It remains exact across later valid route, gate, draft, delivery, rejection, activation, terminal, promotion, or projection-loss descendants. `Collision` means the durable receipt or permanent membership disagrees and authorizes neither replay nor success.
 - Live event ingestion stages an arbitrarily large typed provider frame, applicable append-only
   narrative spans, and any completion-equality comparison through bounded resumable commands while
@@ -1167,12 +1362,16 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   narrow current-domain command constructors. The home store captures their physical domain basis
   after writer admission, while each mutation continues to validate its exact logical record
   revisions and never retries semantic conflict.
-- Startup recovery reads only the physical input-gate family. Non-idle
-  `FinalizingHistory(turn)` rows are the sole durable terminal-history work source; no secondary
-  queue, derived idle scan, or process-local obligation may replace that authority.
-- The same bounded gate scan discovers `Stopping` rows, but their matching current stop-operation
-  record is the sole stop authority. Startup may classify and abandon that pair; it may not derive a
-  stop from an active binding, scan a secondary queue, or issue an interruption.
+- Scoped recovery begins from an exact durable thread/work anchor and point-reads its current input
+  gate. A named non-idle `RepairRequired` or `FinalizingHistory(turn)` gate is the sole durable
+  repair or terminal-history work source for that closure; no process-local obligation may replace
+  it. Recovery cross-checks a repair gate's exact current tail, no-successor state, CAS correlation,
+  capture-gap witness, and request disposition. It may claim and dispatch only an exact `Available`
+  authorization. `Consumed` permits completion from an already complete durable staged response or
+  explicit incomplete convergence, never another backend request or runtime-path reread.
+- When the named gate is `Stopping`, its matching current stop-operation record is the sole stop
+  authority. Fresh-service recovery may classify and abandon that pair; it may not derive a stop
+  from an active binding, enumerate gates to infer work, or issue an interruption.
 - Transcript projection building is deferred from live capture. Storage marks the selected transcript head stale and retains enough exact source and canonical data for deterministic bounded projection work.
 - Projection work never calls a whole-message Markdown parser. It advances one persisted bounded
   state machine over indexed canonical ranges. A parser crash or process loss resumes from the
@@ -1275,9 +1474,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   plus a half-open logical UTF-8 range. The appropriate content or narrative span index maps a
   requested resource range to the minimal bounded encoded ProviderItemV1 or composer chunk ranges;
   storage does not duplicate those bytes into projection records or sidecars.
-- Large externally owned byte payloads may live in sidecar files when their owning later feature
-  can admit and range-read them through an explicitly bounded home-store contract. Phase 7 does not
-  broaden the current whole-buffer sidecar boundary for textual Markdown.
+- Large externally owned byte payloads may live in sidecar files only when their owning feature
+  admits and range-reads them through an explicitly bounded home-store contract. Textual Markdown
+  remains in its indexed canonical backing and never uses a whole-buffer sidecar path.
 - Sidecar paths are storage-owned implementation detail and are not exposed as stable public identities.
 - Resource writes record media type, exact backing range, byte length, versioned chain digest,
   preview range when available, resource kind, and applicable language, logical-line, table-row,
@@ -1289,35 +1488,49 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 - Storage-backed transcript providers read transcript-view pages, exact immutable branch-context envelopes, projection record sets, resource metadata, and resource ranges from this package.
 - The provider boundary may reject missing, stale, oversized, unsupported, or policy-denied reads using typed errors derived from storage state.
-- Renderer-facing code must not call `syndic-storage` directly.
-- Storage does not own resident-memory policy; it only supplies bounded durable reads.
+- The package exposes no GPUI, renderer, row-realization, or resident-cache API. Its transcript
+  boundary supplies only bounded durable typed reads; presentation adaptation and resident-memory
+  policy remain outside this package.
 
 ## Failure And Recovery
 
 - Incomplete turns, failed turns, stream loss, and local ingestion failure are represented explicitly in durable state.
 - Storage does not treat CAS reconnect, resume, late subscription, process restart, historical reads,
-  or a later status-only terminal event as replay of missing source events. After live authority is
-  lost, retained admitted source records remain the exact prefix and recovery converges through an
-  explicit incomplete disposition, retaining typed unsupported-history and provider-observation
-  issue facts when applicable, rather than fabricating a complete item set.
+  or a later status-only terminal event as ordinary replay of missing source events. One dedicated
+  repair build may target only an exact repair-required turn and the same correlated terminal CAS
+  thread/turn. Bounded page commands stage the complete semantic final-item view behind an opaque
+  package-local head, validating item identities, complete fields, per-page digests, provenance, and
+  finalized media as each page becomes an immutable commitment. This package's final participant
+  validates the exact correlation, consumed request claim, terminal outcome, compact aggregate and
+  family commitments, finalized-media commitments, and package-local publication witnesses before
+  selecting those already staged paged commitments as whole-turn canonical authority. It runs only
+  inside the system-owned cross-domain publication command and does not validate or publish the
+  sibling asset participant. Live-prefix equality is not an admission requirement: a known mismatch is a repair
+  cause, and neither the prior prefix nor any partial stage is spliced into the replacement. Missing
+  identity, ambiguous correlation, nonterminal or incomplete data, invalid provenance, or a limit
+  violation leaves the prior canonical authority unchanged and the turn repair-required or
+  explicitly incomplete according to the owning convergence command.
+- Normal transcript and history reads remain Syndic-backed. The repair mutation is terminal-turn
+  ingestion authority only; it is not a CAS-backed transcript provider, general backfill API, or
+  permission to rewrite unrelated or already exact operational capture.
 - Proven loss of an active execution session atomically stales its binding and retires the old
   projection. Once no usable projection authority remains, a later source-less terminal transition
   may close local turn capture as incomplete. A possibly dispatched start is never reset to pending,
   and a possibly dispatched steering fragment is never reset to retryable solely because the session
   disappeared.
-- Restart classification treats every active binding as possible dispatch, including an activation
+- Scoped restart classification treats a named active binding as possible dispatch, including an activation
   with no active CAS-turn row or source event. A safe pending result requires a pending,
   source-free turn, no selected active route, and a non-active current binding. A selected
   projection-loss route with the matching stale successor instead proves that abandonment already
   committed and authorizes only source-less incomplete terminal convergence.
 - An active awaiting-terminal classification requires an unknown-terminal committed tail, the
   matching gate, exact active binding and CAS turn, and a selected `AwaitingTerminal` generation
-  with no ready or delivering aggregate. Startup returns its distinct retained lost-target witness
+  with no ready or delivering aggregate. Scoped recovery returns its distinct durable lost-target witness
   and permits only generic active abandonment; it never restores steering, synthesizes activation,
   waits for late evidence from the lost process, or resumes that session.
 - A stopping classifier requires the exact gate-record pair and returns admitted or
   dispatch-claimed state without making either replayable. Restart abandonment preserves the
-  distinction in the transition witness, consumes the record's live authority into its startup-
+  distinction in the transition witness, consumes the record's live authority into its recovery-
   abandonment disposition, retires the old projection, and leaves accepted next-turn work intact
   before source-less incomplete convergence.
 - A compacting classifier requires the exact gate, operation record, provider-operation turn and
@@ -1334,7 +1547,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `ForcedAbortOrderingUnproven`; it preserves the binding only with separate exact idle-status
   evidence. Failed terminal, idle-unproven interruption, or successful terminal without the marker
   authorizes failure consumption and binding retirement. Timeout is not stored as a durable
-  lifecycle transition and therefore does not change startup classification.
+  lifecycle transition and therefore does not change scoped recovery classification.
 - A compacting operation handed to stop must retain an exact two-way link between the compaction
   record, its provider-operation target, the stopping gate, and the stop record. Restart consumes
   the paired authorities through the stop abandonment successor. A missing half or disagreeing
@@ -1349,15 +1562,22 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   successor case or settled idle state. It never manufactures a retry decision from absence,
   rewrites a terminal accepted-input lifecycle, or scans every accepted leaf to authenticate the
   constant-size projection-loss witness.
-- Storage startup validates exactly one current draft per thread, matching thread/draft ownership,
-  one-way draft-to-turn identity consumption with no live raw-payload collision, committed-tail
-  reachability, immutable parentage, monotonic revisions, accepted-input ordering, CAS-binding
-  uniqueness, source-event ordering and per-item replay, sealed provider-observation issue evidence,
-  folded first-issue turn state, terminal closure and finalization frontiers, stale projection
-  markers, and referenced resources.
-- Unfinished or stale projections can be invalidated and recomputed from canonical items and source events. A finalized projection is durable history and is never an in-place rebuild target.
+- An explicit V5 schema-validation boundary, scrub, background-maintenance pass, or
+  corruption-evidence investigation may exhaustively validate current-draft uniqueness,
+  thread/draft ownership, one-way draft-to-turn identity consumption with no live raw-payload
+  collision, committed-tail reachability, immutable parentage, monotonic revisions, accepted-input
+  ordering, CAS-binding uniqueness, source-event ordering and per-item replay, sealed provider-
+  observation issue evidence, folded first-issue turn state, terminal closure and finalization
+  frontiers, stale projection markers, and referenced resources. Routine open and recovery do not
+  perform that every-record walk.
+- Unfinished or stale projections can be invalidated and recomputed from canonical items and each
+  item's selected source authority: admitted source events for normal capture or immutable snapshot-
+  backed ranges for terminal repair. A finalized projection is durable history and is never an in-
+  place rebuild target.
 - Corrupt, missing, or unsupported records produce typed storage errors rather than silent fallback to CAS history or GUI-local caches.
-- Unreachable turns and unreferenced sidecars are not startup errors and are not deleted; they remain for the future explicit garbage-collection design.
+- Unreachable turns and unreferenced sidecars observed by explicit validation or maintenance are not
+  routine-open errors and are not deleted; they remain for the future explicit garbage-collection
+  design.
 
 ## Privacy And Redaction
 

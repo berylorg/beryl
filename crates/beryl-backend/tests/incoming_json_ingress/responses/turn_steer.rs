@@ -1,6 +1,5 @@
 use beryl_backend::{
-    BoundedResponseResult, CompatibilityProbe, ForegroundIngressError, JsonRpcErrorVerdict,
-    JsonRpcTurnKind,
+    BoundedResponseResult, ForegroundIngressError, JsonRpcErrorVerdict, JsonRpcTurnKind,
     lifecycle_test_support::{
         IncomingJsonExpectation, IncomingJsonTestOutcome, IncomingJsonTestResult,
     },
@@ -184,23 +183,6 @@ fn verdict_requires_the_exact_family_code_and_structured_data() {
         true,
         None,
         other_family.len(),
-    );
-
-    let compatibility = rejection_json(-32_600, Some(&data), "denied", 78);
-    assert_rejection(
-        decode(
-            &compatibility,
-            1,
-            IncomingJsonExpectation::Compatibility {
-                id: 78,
-                probe: CompatibilityProbe::TurnSteer,
-            },
-        ),
-        -32_600,
-        "denied",
-        true,
-        None,
-        compatibility.len(),
     );
 }
 

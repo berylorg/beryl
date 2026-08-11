@@ -8,24 +8,23 @@ use std::{
 };
 
 use windows::{
+    core::{Error as WindowsError, HRESULT, PCWSTR},
     Win32::{
         Foundation::{
             ERROR_INVALID_FUNCTION, ERROR_INVALID_PARAMETER, ERROR_LOCK_VIOLATION, ERROR_NOACCESS,
             ERROR_NOT_SUPPORTED, ERROR_SHARING_VIOLATION, HANDLE, WIN32_ERROR,
         },
         Storage::FileSystem::{
-            FILE_FLAG_BACKUP_SEMANTICS, FILE_ID_INFO, FILE_NAME_NORMALIZED,
-            FILE_REMOTE_PROTOCOL_INFO, FILE_SHARE_READ, FILE_SHARE_WRITE, FileIdInfo,
-            FileRemoteProtocolInfo, GetDriveTypeW, GetFileInformationByHandleEx,
-            GetFinalPathNameByHandleW, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
-            LockFileEx, UnlockFileEx,
+            FileIdInfo, FileRemoteProtocolInfo, GetDriveTypeW, GetFileInformationByHandleEx,
+            GetFinalPathNameByHandleW, LockFileEx, UnlockFileEx, FILE_FLAG_BACKUP_SEMANTICS,
+            FILE_ID_INFO, FILE_NAME_NORMALIZED, FILE_REMOTE_PROTOCOL_INFO, FILE_SHARE_READ,
+            FILE_SHARE_WRITE, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
         },
         System::{
-            IO::OVERLAPPED,
             WindowsProgramming::{DRIVE_NO_ROOT_DIR, DRIVE_REMOTE, DRIVE_UNKNOWN},
+            IO::OVERLAPPED,
         },
     },
-    core::{Error as WindowsError, HRESULT, PCWSTR},
 };
 
 use super::CanonicalHomeIdentity;

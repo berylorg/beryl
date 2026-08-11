@@ -225,11 +225,6 @@ impl CasProjectionCoordinator {
                         },
                     );
                 }
-                ExistingLease::Quarantined => {
-                    return Err(ProjectionExecutionError::ReacquisitionInProgress {
-                        thread_id: source.binding().cas_thread_id().clone(),
-                    });
-                }
                 ExistingLease::AnotherOwner { existing_owner } => {
                     return Err(crate::cas_projection::ProjectionCoordinatorError::CasThreadOwnerCollision {
                         runtime_id: session.runtime_id(),

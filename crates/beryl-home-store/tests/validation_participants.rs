@@ -1,8 +1,8 @@
 mod support;
 
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 use beryl_home_store::{
@@ -13,7 +13,10 @@ use beryl_home_store::{
 use beryl_model::DomainRevision;
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, open_home};
+use support::{
+    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord,
+    FixtureMutationError, PutBytes,
+};
 
 struct RequireBytes<D> {
     key: u64,
@@ -76,6 +79,14 @@ impl DomainMutation<AlphaDomain> for EmptyMutation {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, AlphaDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<BytesRecord<AlphaDomain>>(1)?;
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, AlphaDomain>,
@@ -103,7 +114,9 @@ impl DomainValidator<BetaDomain> for ReentrantValidator {
             .unwrap();
         if !matches!(
             self.store.execute(nested),
-            Err(CommandError::ReentrantWriter)
+            beryl_home_store::CommandOutcome::NotCommitted {
+                evidence: CommandError::ReentrantWriter
+            }
         ) {
             return Err(FixtureMutationError::Rejected(
                 "validator nested writer did not reject reentry",
@@ -114,7 +127,9 @@ impl DomainValidator<BetaDomain> for ReentrantValidator {
                 self.domain
                     .current_command(PutBytes::<BetaDomain>::new(100, b"nested current".to_vec()))
             ),
-            Err(CommandError::ReentrantWriter)
+            beryl_home_store::CommandOutcome::NotCommitted {
+                evidence: CommandError::ReentrantWriter
+            }
         ) {
             return Err(FixtureMutationError::Rejected(
                 "validator nested current writer did not reject reentry",
@@ -139,7 +154,7 @@ fn commit<D: beryl_home_store::StorageDomain>(
             PutBytes::<D>::new(key, value),
         ))
         .unwrap();
-    store.execute(command).unwrap();
+    committed(store.execute(command));
 }
 
 fn read<D: beryl_home_store::StorageDomain>(
@@ -175,7 +190,7 @@ fn mixed_validation_and_mutation_commit_only_mutating_revisions_and_reopen() {
         )
         .unwrap();
 
-    let receipt = store.execute(command).unwrap();
+    let receipt = committed(store.execute(command));
     assert_eq!(receipt.home_revision().get(), home_before.get() + 1);
     assert_eq!(
         store.domain_revision(alpha).unwrap().get(),
@@ -221,7 +236,9 @@ fn validation_only_command_is_rejected_without_running_its_callback() {
 
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::ValidationOnlyCommand)
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ValidationOnlyCommand
+        }
     ));
     assert!(!called.load(Ordering::SeqCst));
     assert_eq!(store.home_revision().unwrap(), home_before);
@@ -285,7 +302,7 @@ fn stale_validator_revision_conflicts_before_any_mutation_callback() {
         .add_validation(beta.validation(stale_beta, RequireBytes::<BetaDomain>::new(7, b"current")))
         .unwrap();
 
-    let error = store.execute(command).unwrap_err();
+    let error = not_committed(store.execute(command));
     assert_eq!(
         error.conflicts().unwrap(),
         &[RevisionConflict::Domain {
@@ -321,7 +338,9 @@ fn validator_rejection_and_empty_mutation_each_abort_the_complete_command() {
         .unwrap();
     assert!(matches!(
         store.execute(rejected),
-        Err(CommandError::ContributorValidation { domain: "beta", .. })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::ContributorValidation { domain: "beta", .. }
+        }
     ));
 
     let mut empty = HomeCommand::new(home_before);
@@ -334,7 +353,9 @@ fn validator_rejection_and_empty_mutation_each_abort_the_complete_command() {
         .unwrap();
     assert!(matches!(
         store.execute(empty),
-        Err(CommandError::EmptyContribution { domain: "alpha" })
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::EmptyContribution { domain: "alpha" }
+        }
     ));
 
     assert_eq!(store.home_revision().unwrap(), home_before);
@@ -369,7 +390,9 @@ fn validator_obeys_command_cancellation_and_reentry_boundaries() {
         .unwrap();
     assert!(matches!(
         store.execute(command),
-        Err(CommandError::CancelledBeforeAdmission)
+        beryl_home_store::CommandOutcome::NotCommitted {
+            evidence: CommandError::CancelledBeforeAdmission
+        }
     ));
     assert!(!called.load(Ordering::SeqCst));
 
@@ -390,7 +413,7 @@ fn validator_obeys_command_cancellation_and_reentry_boundaries() {
             ),
         )
         .unwrap();
-    store.execute(admitted).unwrap();
+    committed(store.execute(admitted));
     assert!(admitted_cancellation.is_cancelled());
     assert_eq!(read(&store, alpha, 2), Some(b"admitted".to_vec()));
 
@@ -410,7 +433,7 @@ fn validator_obeys_command_cancellation_and_reentry_boundaries() {
             },
         ))
         .unwrap();
-    store.execute(reentrant).unwrap();
+    committed(store.execute(reentrant));
     assert_eq!(read(&store, alpha, 3), Some(b"outer".to_vec()));
     assert_eq!(read(&store, beta, 99), None);
     assert_eq!(read(&store, beta, 100), None);

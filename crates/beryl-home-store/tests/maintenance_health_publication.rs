@@ -10,7 +10,7 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, PutBytes};
+use support::{committed, AlphaDomain, PutBytes};
 
 fn sidecar_limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1_024).unwrap())
@@ -36,7 +36,7 @@ fn receipt_revision_rejects_an_unobserved_fjall_maintenance_terminal() {
             PutBytes::<AlphaDomain>::new(1, b"durable".to_vec()),
         ))
         .unwrap();
-    let receipt = store.execute(command).unwrap();
+    let receipt = committed(store.execute(command));
 
     store.inject_retained_maintenance_terminal();
 

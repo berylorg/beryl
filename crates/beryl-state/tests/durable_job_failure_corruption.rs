@@ -5,10 +5,10 @@ mod support;
 use std::path::Path;
 
 use beryl_home_store::{
-    CommandError, DomainCallbackSource, DomainRegistrationError, DomainValidationError,
-    HealthVerificationError, HomeHealthState, HomeOpenOptions, HomeRecoveryError,
-    HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
+    CommandError, CommandOutcome, DomainCallbackSource, DomainRegistrationError,
+    DomainValidationError, HealthVerificationError, HomeHealthState, HomeOpenOptions,
+    HomeRecoveryError, HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, ResolutionIntentId, SyndicAcceptedInputId,
@@ -105,7 +105,7 @@ fn verification_and_recovery_reject_every_incompatible_persisted_failure_pair() 
                     corrupt_home_with_faults(&path, case, retryable, kind, stage, faults.clone());
 
                 faults.fail_next(FaultPoint::BeforeCommit);
-                let error = execute(
+                let outcome = execute(
                     &store,
                     state.settings().apply(
                         state.settings().revision(&store).unwrap(),
@@ -116,8 +116,10 @@ fn verification_and_recovery_reject_every_incompatible_persisted_failure_pair() 
                         )])
                         .unwrap(),
                     ),
-                )
-                .unwrap_err();
+                );
+                let CommandOutcome::NotCommitted { evidence: error } = outcome else {
+                    panic!("expected rejected corruption-verification command, got {outcome:?}");
+                };
                 assert!(matches!(error, CommandError::Commit { .. }));
                 assert_eq!(store.health().state(), HomeHealthState::Verifying);
                 let verification = store.verify_health().unwrap_err();
@@ -154,16 +156,21 @@ fn corrupt_job(
 ) {
     let admission = admission(seed);
     let job_id = admission.job_id();
-    execute(
+    match execute(
         store,
         state.durable_jobs().admit_branch_handoff(
             state.durable_jobs().revision(store).unwrap(),
             AdmitBranchHandoffJob::new(admission),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed durable-job admission, got {outcome:?}"),
+    }
     let job = state.durable_jobs().job(store, job_id).unwrap().unwrap();
-    execute(
+    match execute(
         store,
         state.durable_jobs().corrupt_failure_state_for_test(
             state.durable_jobs().revision(store).unwrap(),
@@ -173,8 +180,13 @@ fn corrupt_job(
             HandoffFailureEvidence::new(kind, None).unwrap(),
             retryable,
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed durable-job corruption, got {outcome:?}"),
+    }
 }
 
 fn corrupt_home_with_faults(

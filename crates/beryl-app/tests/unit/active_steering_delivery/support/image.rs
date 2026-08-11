@@ -1,7 +1,7 @@
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    HomeCommand, HomeStore, SidecarByteLimit, SidecarNamespace,
+    CommandOutcome, HomeCommand, HomeStore, SidecarByteLimit, SidecarNamespace,
 };
 use beryl_model::{
     AssetId, AssetReferenceSetId, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
@@ -92,7 +92,12 @@ fn publish_image_asset(home: &HomeStore, state: &BerylState) -> AssetId {
         .unwrap();
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     metadata.add_to(&mut command).unwrap();
-    home.execute(command).unwrap();
+    match home.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("active-steering image metadata command committed with later failure: {outcome:?}"),
+        CommandOutcome::NotCommitted { evidence } => panic!("active-steering image metadata command was not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("active-steering image metadata command was indeterminate: {outcome:?}"),
+    }
     asset
 }
 

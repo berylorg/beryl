@@ -1,12 +1,16 @@
-# New Transcript Renderer
+# Transcript Renderer Architecture
 
 ## Status
 
-This is a supplemental target-state architecture note for Beryl's transcript presentation stack above Syndic.
+This file is the normative supplemental renderer architecture governed by
+`doc/systems/transcript-presentation/design.md`.
 
-It is not the authoritative durable conversation model. Syndic owns canonical history, transcript views over the turn DAG, Markdown and block projections, resource references, and range-readable heavy resources.
+It defines only the renderer-side architecture within that system boundary. User-visible transcript
+behavior remains owned by `doc/features/transcript/design.md`. Durable canonical history,
+transcript views over the turn DAG, Markdown and block projections, resource references, and
+range-readable heavy resources remain owned by `doc/systems/syndic-conversation-history/design.md`.
 
-The authoritative contracts remain `doc/features/transcript/design.md`, `doc/systems/syndic-conversation-history/design.md`, and `doc/systems/transcript-presentation/design.md`. This note records the renderer-side shape those contracts imply.
+This supplement must satisfy those owning documents and does not redefine their contracts.
 
 ## Goals
 
@@ -16,7 +20,7 @@ Keep storage access, projection ownership, Markdown parsing, and resource byte l
 
 ## Non-Goals
 
-- Defining adapters for legacy transcript systems. This note describes the clean target architecture for new code, not iterative adaptation of the old renderer.
+- Compatibility adapters to alternate transcript presentation systems are prohibited.
 
 ## Terms
 
@@ -31,6 +35,14 @@ Keep storage access, projection ownership, Markdown parsing, and resource byte l
 `Transcript chunk` means a bounded render unit derived from resident Syndic projection data. Chunks are atomic to the outer transcript renderer, though they may contain nested widgets with their own bounded rendering.
 
 `Transient live suffix` means the bounded exact text frontier received from the routed normalized live-turn stream but not yet covered by the resident Syndic projection. It is local presentation state attached to one authored record, not durable transcript content.
+
+`Repair publication generation` means one immutable host generation prepared from a single selected
+Syndic transcript-view generation after repair-pending, complete snapshot-backed repair, or explicit
+incomplete publication. It is the atomic unit of renderer-visible repair-state change.
+
+`Focus pin` means the transcript view's single bounded host demand fact for preserving one exact
+focused presentation target across ordinary frame realization changes. It is not a second focus
+model and does not authorize the renderer or a nested widget to retain data independently.
 
 ## Layer Boundary
 
@@ -63,6 +75,11 @@ resident Syndic data + transient live suffix
 -> presentation data + applicable synthetic context at an exact branch boundary
 -> realized frame window
 -> renderer
+
+Syndic repair generation + repair provenance
+-> transcript residency
+-> replacement host generation selecting the turn generation, head, and provenance
+-> atomic renderer snapshot switch
 ```
 
 The renderer is a consumer of resident presentation data and a producer of demand facts. The residency controller is the owner of load, retain, pin, release, and reject decisions.
@@ -77,7 +94,37 @@ Beryl-local records such as synthetic discussion context, live carets, budget fa
 
 A transient live suffix carries exact routed thread, turn, item, kind, and logical-text-frontier identity. It may extend one resident authored record before durable projection catches up, but it cannot supply stable historical command provenance or survive as recovery authority.
 
+Repair provenance carries the selected Syndic transcript-view generation, exact turn and projection
+revisions, snapshot-backed source identity when repaired, and one pending, repaired, or incomplete
+disposition. It is immutable within a host generation and cannot be inferred from visible text.
+
 A synthetic discussion-context group retains exact Syndic envelope provenance and one immutable insertion parent but does not claim authored-turn provenance or become a turn-number source.
+
+## Repair Publication
+
+Transcript residency accepts repair replacement only as a complete bounded Syndic provider result
+for one selected transcript-view generation. It does not consume a CAS repair response, live suffix,
+outage buffer, GUI record, or partial repair page as canonical repair input.
+
+The residency and presentation layers prepare one new host generation that selects the affected
+turn's exact Syndic generation, compact head, snapshot-backed source authority, repair disposition,
+and presentation provenance together. The selected complete turn remains paged and range-backed:
+only the bounded records and resource descriptors needed for the coherent realized window become
+resident, and later pages or ranges load on demand under the selected generation. The renderer
+continues consuming the prior coherent generation until that replacement selector and its initial
+resident window are ready, then consumes only the new immutable snapshot. No frame contains a
+partial splice or records from both repair generations.
+
+The switch invalidates old-generation geometry, selection, focus, menu anchors, nested-widget state,
+and demand facts by generation identity. After the scroll controller rebases the semantic anchor,
+the switch releases the superseded projection pages, presentation records, measurements and layout,
+widget state, resource slices, pins, and every associated capacity charge. It does not transfer
+record provenance or stale geometry.
+
+Any transient live suffix or provisional turn-local evidence attached to the superseded generation
+is disposed in the same switch. It is never compared with, appended to, or copied into the
+snapshot-backed repaired generation. An incomplete publication follows the same generation boundary
+and exposes no partial snapshot content.
 
 ## Transcript Projection Boundary
 
@@ -93,14 +140,65 @@ Operational records that are not transcript narrative remain in Syndic canonical
 
 Renderer-driven residency is indirect.
 
-The scroll controller, renderer, and nested widgets report demand facts such as current anchor, realized range, visible range, scroll direction, measured fill, missing adjacent range, needed resource range, active selection pin, open context-menu pin, and ranges no longer needed.
+The scroll controller, renderer, and nested widgets report demand facts such as current anchor,
+realized range, visible range, scroll direction, measured fill, missing adjacent range, needed
+resource range, the bounded focus pin, active selection pin, open context-menu pin, and ranges no
+longer needed.
 
 Transcript residency evaluates those facts under its practical page, byte, record, resource, and
 pin limits, then performs the actual load or release work. It may reject a demand because of a
 working-set limit, stale revision, cancellation, or feature policy. Rejections produce explicit
 fallback or clamp state rather than unbounded memory growth.
 
+Every asynchronous load carries the exact host identity, activation generation, selected authority
+generation including any repair-publication generation, requested logical or byte range, and one
+unique request id.
+Residency accepts a result only while that full key remains outstanding and current. Superseded,
+cancelled, mismatched, or post-disposal results are discarded and release all returned pages,
+ranges, reservations, pins, and response buffers immediately. Materialized pages, presentation
+records, measurements and layout, widget state, resource slices, and pins retain their exact demand
+and generation ownership; last-demand removal, eviction, supersession, or host disposal releases
+them and their complete capacity charges.
+
+Retirement of the exact transcript-provider service generation cancels and joins its outstanding
+demand and releases in-flight capacity. A surviving host may retain only its one bounded last
+coherent resident snapshot as inert presentation under the same transferred charges; it gains no
+request authority and admits no replacement data until coherent publication. Host disposal or
+owning-window close releases that snapshot and every other resident value. No late completion may
+recreate disposed demand.
+
 Resident Syndic data can be released only when doing so preserves the current semantic scroll anchor, visible content, active selection contract, and active UI pins.
+
+### Focus-Pin Validation
+
+Each transcript view has one host-owned focus-pin slot, absent or occupied. An occupied fact carries
+the selected transcript-view identity, stable presentation-record identity, presentation revision,
+owning host/repair-publication generation identity, and, if focus is inside a nested widget, the
+stable nested-widget identity and nested-widget revision. A direct record target omits
+the nested fields. Moving focus between targets replaces the fact atomically and cannot increase
+the slot capacity above one per transcript view and owning window.
+
+Residency validates every carried identity and revision against the current coherent snapshot both
+when accepting the fact and before retaining or revealing its target. Invalid or stale facts are
+rejected, release any retention they established, and transfer focus through the fallback chain
+owned by `doc/features/transcript/gui.md`. A whole-turn repair switch therefore cannot preserve
+focus merely because replacement content looks equivalent: host/repair-publication generation, record
+identity, presentation revision, and any nested-widget revision must still match exactly.
+
+The accepted pin retains only the named presentation record, the smallest resource range needed by
+the focused target, and the minimum retained state of the named nested widget. It cannot retain a
+whole turn, page set, complete resource, nested collection, or unrelated geometry. Its capacity
+counts against the shared small focus-pin allowance defined by
+`doc/systems/bounded-resource-dataflow/design.md`.
+
+Focus transfer outside the transcript, nested-widget blur or transfer, focused-content removal or
+replacement without exact identity continuity, selected-thread switch, owning-window close, and
+host disposal release the fact. A transfer to another target in the same transcript releases the
+old nested target and installs the destination fact as one atomic slot transfer.
+
+Focus-pin diagnostics expose only absent, direct-record, or nested-widget state and cumulative
+accept, reject, release, and transfer counts. They contain no transcript content, target labels,
+focus target identities, record or widget payloads, resource bytes, or focused subcontrol content.
 
 ## Scrolling
 
@@ -175,6 +273,21 @@ If virtualization, release, remeasurement, or missing data destroys stable selec
 - Synthetic discussion context is an explicit Beryl presentation group tied to Syndic envelope provenance, not a Syndic or CAS turn.
 - Presentation records preserve Syndic provenance and revision identity.
 - A transient live suffix is bounded non-authoritative presentation state and becomes durable only through exact Syndic-prefix reconciliation.
+- Repair publication consumes only a complete Syndic-selected generation with generation-owned
+  pending, repaired, or incomplete provenance; CAS snapshots, live or outage state, GUI text, and
+  partial repair data never enter renderer presentation directly.
+- A repair publication atomically switches the affected turn's generation, compact head, source
+  authority, and provenance while keeping its content paged and range-backed; it disposes the
+  superseded transient suffix and never renders a mixed-generation or blank intermediate turn.
+- Every asynchronous residency result matches its complete host, activation, authority-generation,
+  range, and request-id key or is discarded with all returned capacity released; host, window, and
+  provider-service disposal cancel all outstanding demand.
+- Last-demand removal, eviction, authority supersession, host disposal, and window close release
+  materialized pages, records, layout, widget state, slices, pins, and their charges. Provider-
+  service retirement may transfer only one bounded inert last coherent snapshot to a surviving host
+  and transfers no loading authority.
+- Record-status provenance is immutable within a host generation and cannot update independently in
+  the renderer.
 - Live text uses arrival-paced frame publication, never simulated character-by-character timing.
 - Transcript rendering never requires total transcript pixel height.
 - Render-path work does not parse raw Markdown, scan full history, compute residency totals, or build widgets for offscreen history.

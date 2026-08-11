@@ -1,47 +1,19 @@
-use std::sync::{Arc, Condvar, Mutex, Weak, mpsc};
-
-#[cfg(all(test, feature = "test-faults"))]
-use std::{collections::HashMap, sync::LazyLock};
+use std::sync::{Arc, Mutex, Weak, mpsc};
 
 use beryl_home_store::{HomeGeneration, HomeHealthState, HomeStore};
 use beryl_model::BerylHomeId;
 
 use super::{
     ProjectionServiceGeneration,
-    gate::{FailureObservationElection, GateInner, LiveCommandAdmissionError},
+    gate::{FailureObservationElection, GateInner},
 };
-
-mod flight;
-pub(in crate::cas_projection) use flight::persistent_failure_notification_channel;
-
-/// Exact completion published by the sole running-session recovery supervisor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::cas_projection) enum RecoverySupervisorFlightCompletion {
-    /// Verification kept this exact home and service generation current.
-    VerifiedCurrent,
-    /// Verification failed or the registered service epoch became stale.
-    FailedOrStale,
-    /// Shutdown or unavailable supervisor authority ended the flight.
-    ShutdownOrUnavailable,
-}
-
-#[derive(Clone, Debug)]
-pub(super) enum VerificationJoinDisposition {
-    Waiting(Arc<VerificationCompletionCell>),
-    NotVerification,
-    AuthorityLost,
-}
 
 /// Closed result of one nonblocking persistent-failure health observation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PersistentFailureNotificationStatus {
-    /// Exact verifying health was offered to the process recovery supervisor.
-    VerificationSignaled,
-    /// The exact verification signal joined an already pending or executing recovery flight.
-    VerificationJoined,
-    /// Exact failed health was offered to the dedicated one-shot worker.
+    /// Exact failed health was offered to the dedicated terminal workers.
     Signaled,
-    /// The exact signal joined an already pending or executing cut.
+    /// The exact signal joined an already pending or executing terminal cut.
     Joined,
     /// Typed health did not establish failure of this exact home generation.
     NotFailed,
@@ -56,53 +28,108 @@ pub struct PersistentFailureNotification {
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     signal: mpsc::SyncSender<()>,
-    recovery_flight: Arc<RecoverySupervisorFlight>,
+    supervisor_signal: Arc<Mutex<Option<mpsc::SyncSender<()>>>>,
     gate: Arc<GateInner>,
 }
 
-#[derive(Debug)]
-struct RecoverySupervisorFlight {
-    state: Mutex<RecoverySupervisorFlightState>,
+impl PersistentFailureNotification {
+    /// Re-reads typed store health and coalesces only exact persistent failure.
+    #[must_use]
+    pub fn notify(&self) -> PersistentFailureNotificationStatus {
+        let Some(home) = self.home.upgrade() else {
+            return PersistentFailureNotificationStatus::Unavailable;
+        };
+        let health = home.health();
+        if home.home_id() != self.home_id
+            || health.generation() != Some(self.home_generation)
+            || health.state() != HomeHealthState::Failed
+        {
+            return PersistentFailureNotificationStatus::NotFailed;
+        }
+        match self.gate.observe_failure_with_completion(|| Ok(())) {
+            Ok(FailureObservationElection::First) => {}
+            Ok(FailureObservationElection::Joined) => {
+                return PersistentFailureNotificationStatus::Joined;
+            }
+            Ok(FailureObservationElection::OrdinaryShutdown) | Err(_) => {
+                return PersistentFailureNotificationStatus::Unavailable;
+            }
+        }
+        if let Ok(supervisor) = self.supervisor_signal.lock()
+            && let Some(supervisor) = supervisor.as_ref()
+        {
+            let _ = supervisor.try_send(());
+        }
+        match self.signal.try_send(()) {
+            Ok(()) => PersistentFailureNotificationStatus::Signaled,
+            Err(mpsc::TrySendError::Full(())) => PersistentFailureNotificationStatus::Joined,
+            Err(mpsc::TrySendError::Disconnected(())) => {
+                PersistentFailureNotificationStatus::Unavailable
+            }
+        }
+    }
+
+    pub(in crate::cas_projection) fn attach_recovery_supervisor(
+        &self,
+        signal: mpsc::SyncSender<()>,
+    ) -> Result<(), ()> {
+        let mut supervisor = self.supervisor_signal.lock().map_err(|_| ())?;
+        if supervisor.is_some() {
+            return Err(());
+        }
+        *supervisor = Some(signal);
+        drop(supervisor);
+        let _ = self.notify();
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn service_generation(&self) -> ProjectionServiceGeneration {
+        self.gate.service_generation()
+    }
+
+    pub(in crate::cas_projection::persistent_failure) fn unavailable_allows_command_drain(
+        &self,
+    ) -> bool {
+        self.gate.ordinary_shutdown_elected()
+    }
+
+    pub(in crate::cas_projection::persistent_failure) fn wake_worker(&self) {
+        let _ = self.signal.try_send(());
+    }
+
+    pub(in crate::cas_projection::persistent_failure) fn mark_cut_elected(&self) {
+        self.gate.mark_cut_elected();
+    }
+
+    pub(in crate::cas_projection::persistent_failure) fn failure_observed(&self) -> bool {
+        self.gate.failure_observed()
+    }
+
+    pub(in crate::cas_projection::persistent_failure) fn gate_inner(&self) -> Arc<GateInner> {
+        Arc::clone(&self.gate)
+    }
 }
 
-#[derive(Debug)]
-struct RecoverySupervisorFlightState {
-    signal: Option<mpsc::SyncSender<()>>,
-    active: Option<Arc<VerificationCompletionCell>>,
-    next: Option<Arc<VerificationCompletionCell>>,
-    last_issued_epoch: u64,
-    followup_requested: bool,
-    terminal_completion: Option<RecoverySupervisorFlightCompletion>,
+pub(in crate::cas_projection) fn persistent_failure_notification_channel(
+    home: &Arc<HomeStore>,
+    home_id: BerylHomeId,
+    home_generation: HomeGeneration,
+    service_generation: ProjectionServiceGeneration,
+) -> (PersistentFailureNotification, mpsc::Receiver<()>) {
+    let (signal, receiver) = mpsc::sync_channel(1);
+    (
+        PersistentFailureNotification {
+            home: Arc::downgrade(home),
+            home_id,
+            home_generation,
+            signal,
+            supervisor_signal: Arc::new(Mutex::new(None)),
+            gate: GateInner::new(service_generation),
+        },
+        receiver,
+    )
 }
 
-#[cfg(all(test, feature = "test-faults"))]
-#[derive(Debug)]
-struct VerificationJoinObservationHook {
-    observed: mpsc::SyncSender<()>,
-    resume: mpsc::Receiver<()>,
-}
-
-#[cfg(all(test, feature = "test-faults"))]
-static VERIFICATION_JOIN_OBSERVATION_HOOKS: LazyLock<
-    Mutex<HashMap<usize, VerificationJoinObservationHook>>,
-> = LazyLock::new(|| Mutex::new(HashMap::new()));
-
-#[derive(Debug)]
-pub(super) struct VerificationCompletionCell {
-    epoch: u64,
-    outcome: Mutex<Option<RecoverySupervisorFlightCompletion>>,
-    completed: Condvar,
-}
-
-/// Exact immutable completion captured by the supervisor before it wakes scheduler lanes.
-#[derive(Debug)]
-pub(in crate::cas_projection) struct CompletedRecoverySupervisorFlight {
-    cell: Arc<VerificationCompletionCell>,
-}
-
-mod lifecycle;
 #[cfg(all(test, feature = "test-faults"))]
 pub(super) mod test_support;
-
-#[cfg(all(test, feature = "test-faults"))]
-mod tests;

@@ -3,10 +3,10 @@ use beryl_model::{CasProcessGeneration, RuntimeId};
 use super::*;
 
 #[test]
-fn phase82_stable_fact_drop_retires_while_router_observations_remain_read_only() {
+fn connection_fact_drop_retires_while_router_observations_remain_read_only() {
     let runtime_id = RuntimeId::from_bytes([186; 16]);
     let process_generation = CasProcessGeneration::new(82_186).unwrap();
-    let fact = StableConnectionProcessFact::register(runtime_id, process_generation, 186).unwrap();
+    let fact = ConnectionProcessFact::register(runtime_id, process_generation, 186).unwrap();
     let first_observation = fact.observe();
     let retained_observation = first_observation.clone();
 

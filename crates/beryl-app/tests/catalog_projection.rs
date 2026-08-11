@@ -8,7 +8,7 @@ use beryl_app::draft_persistence::{
     DraftAutosavePublication, DraftFlushAction, DraftPersistenceService, DraftPersistenceTime,
     execute_draft_save, read_draft_persistence_seed,
 };
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     AdmittedHostPath, Availability, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
     RuntimeNativePath, SyndicDraftId, SyndicThreadId, WindowBounds, WindowDisplayState, WindowId,
@@ -92,7 +92,22 @@ impl Fixture {
                 create_thread,
             ))
             .expect("add thread creation");
-        store.execute(command).expect("create sources");
+        match store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("create sources unexpectedly not committed: {evidence:?}")
+            }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("create sources committed with later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("create sources indeterminate: {outcome:?}")
+        }
+        }
         Self {
             _directory: directory,
             store,
@@ -154,7 +169,22 @@ fn native_path(mode: RuntimeMode, value: &str) -> RuntimeNativePath {
 fn execute_contribution(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().expect("home revision"));
     command.add(contribution).expect("add contribution");
-    store.execute(command).expect("execute contribution");
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("execute contribution unexpectedly not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("execute contribution committed with later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("execute contribution indeterminate: {outcome:?}")
+        }
+    }
 }
 
 fn persist_draft(fixture: &Fixture, text: &str, updated_at: u64) {
@@ -213,7 +243,22 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
             panic!("catalog unexpectedly current before its first publication")
         }
     };
-    fixture.store.execute(command).expect("publish catalog row");
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("publish catalog row unexpectedly not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("publish catalog row committed with later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("publish catalog row indeterminate: {outcome:?}")
+        }
+    }
 
     let row = fixture
         .state
@@ -263,10 +308,22 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
             panic!("draft activity must stale the compact summary")
         }
     };
-    fixture
-        .store
-        .execute(command)
-        .expect("atomically rebuild summary and catalog row");
+    match fixture.store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("catalog rebuild unexpectedly not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("catalog rebuild committed with later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("catalog rebuild indeterminate: {outcome:?}")
+        }
+    }
     let rebuilt = fixture
         .state
         .catalog()

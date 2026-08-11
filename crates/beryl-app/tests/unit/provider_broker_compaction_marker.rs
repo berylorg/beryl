@@ -6,7 +6,7 @@ use beryl_backend::{
     ProviderObservationRoute, ProviderScalar, ProviderValueContext,
     lifecycle_test_support::provider_observation_fragment,
 };
-use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding, PathFlavor,
     RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId, SyndicThreadId,
@@ -144,13 +144,21 @@ impl Fixture {
             SyndicTimestamp::from_unix_millis(2),
         );
         let operation_id = admission.operation_id();
-        home.execute_current(storage.current_admit_compaction_operation(admission))
-            .unwrap();
+        match home.execute_current(storage.current_admit_compaction_operation(admission)) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("compaction admission command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("compaction admission command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("compaction admission command was indeterminate: {outcome:?}"),
+        }
         let admitted = operation(&home, storage, operation_id);
-        home.execute_current(storage.current_claim_compaction_dispatch(
+        match home.execute_current(storage.current_claim_compaction_dispatch(
             ClaimCompactionDispatch::new(operation_id, admitted.revision(), attempt),
-        ))
-        .unwrap();
+        )) {
+            CommandOutcome::Committed { later_failure: None, .. } => {}
+            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("compaction dispatch-claim command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => panic!("compaction dispatch-claim command was not committed: {evidence:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => panic!("compaction dispatch-claim command was indeterminate: {outcome:?}"),
+        }
 
         let home_generation = home.health().generation().unwrap();
         let home_id = home.home_id();
@@ -438,7 +446,12 @@ mod failure_cases {
 fn execute(home: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     command.add(contribution).unwrap();
-    home.execute(command).unwrap();
+    match home.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("compaction fixture contribution command committed with later failure: {outcome:?}"),
+        CommandOutcome::NotCommitted { evidence } => panic!("compaction fixture contribution command was not committed: {evidence:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("compaction fixture contribution command was indeterminate: {outcome:?}"),
+    }
 }
 
 fn execution_binding(runtime_id: RuntimeId, seed: u8) -> ExecutionBinding {

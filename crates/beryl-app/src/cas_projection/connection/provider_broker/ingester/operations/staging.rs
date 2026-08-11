@@ -4,48 +4,52 @@ use beryl_backend::{
 };
 use syndic_storage::{
     ProviderCompactionMarkerStager, ProviderObservationStageBatchError, ProviderObservationStager,
-    ProviderObservationStagingBytes, ProviderObservationStagingError,
+    ProviderObservationStageOutcome, ProviderObservationStagingBytes,
+    ProviderObservationStagingError,
 };
 
-use super::super::super::staging::StageCommitError;
 use super::super::Ingester;
 
-pub(super) fn staging_rejection<E>(
-    error: &ProviderObservationStagingError<E>,
-) -> OrderedTurnStreamRejection
-where
-    E: std::error::Error + Send + Sync + 'static,
-{
+pub(super) fn staging_rejection(
+    error: &ProviderObservationStagingError,
+) -> OrderedTurnStreamRejection {
     match error {
         ProviderObservationStagingError::Validation(_)
         | ProviderObservationStagingError::Batch(
-            ProviderObservationStageBatchError::EmptyFragment
-            | ProviderObservationStageBatchError::FragmentTooLarge { .. },
+            ProviderObservationStageBatchError::EmptyFragment,
         ) => OrderedTurnStreamRejection::SchemaMismatch,
         ProviderObservationStagingError::Batch(
-            ProviderObservationStageBatchError::InvalidTransition
-            | ProviderObservationStageBatchError::FrontierOverflow
+            ProviderObservationStageBatchError::FrontierOverflow
             | ProviderObservationStageBatchError::ReplayMismatch,
         )
-        | ProviderObservationStagingError::Record(_)
-        | ProviderObservationStagingError::Callback(_) => {
+        | ProviderObservationStagingError::Record(_) => {
             OrderedTurnStreamRejection::StagingConflict
         }
     }
 }
 
-pub(super) fn staging_authority(
-    error: &ProviderObservationStagingError<StageCommitError>,
-) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
-    match error {
-        ProviderObservationStagingError::Callback(source) => source.authority(),
-        _ => None,
-    }
-}
-
 enum ProviderStagingOutcome {
     Rejection(OrderedTurnStreamRejection),
-    AuthorityLost,
+}
+
+fn classify_stage_outcome<T>(
+    outcome: ProviderObservationStageOutcome<T>,
+) -> Result<T, ProviderStagingOutcome> {
+    match outcome {
+        ProviderObservationStageOutcome::Committed {
+            value,
+            later_failure: None,
+            ..
+        } => Ok(value),
+        ProviderObservationStageOutcome::NotCommitted { .. }
+        | ProviderObservationStageOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        }
+        | ProviderObservationStageOutcome::Indeterminate { .. } => Err(
+            ProviderStagingOutcome::Rejection(OrderedTurnStreamRejection::StagingConflict),
+        ),
+    }
 }
 
 impl Ingester {
@@ -111,7 +115,7 @@ impl Ingester {
             let verification = if verified_continuation {
                 None
             } else {
-                match self.live_command().await_current_or_verification(
+                match self.live_command().enter_current_home(
                     &self.home,
                     self.home_id,
                     self.home_generation,
@@ -120,8 +124,6 @@ impl Ingester {
                     Err(_) => return self.authority_lost_terminal(),
                 }
             };
-            #[cfg(all(test, feature = "test-faults"))]
-            super::tests::pause_begin_preparation(self.home_id, identity);
             let authority = self.current_observation_authority_typed();
             let Some(verification) = verification else {
                 match authority {
@@ -139,7 +141,7 @@ impl Ingester {
                 }
             };
             match verification.settle_after_operation() {
-                Ok(settlement) if settlement.verified_current() => match &authority {
+                Ok(settlement) if settlement.requires_retry() => match &authority {
                     Ok(_) => {
                         verified_continuation = true;
                         continue;
@@ -164,7 +166,9 @@ impl Ingester {
             }
         };
         let mut commit = self.committer(identity, home_generation, storage);
-        let staged = ProviderObservationStager::begin(identity, translated, &mut commit);
+        let staged = ProviderObservationStager::begin(identity, translated, &mut commit)
+            .map_err(|error| ProviderStagingOutcome::Rejection(staging_rejection(&error)))
+            .and_then(classify_stage_outcome);
         match staged {
             Ok(observation) => {
                 self.put_provider(super::super::ActiveObservation::Durable(
@@ -180,10 +184,9 @@ impl Ingester {
                     false,
                 )
             }
-            Err(ref error) if staging_authority(error).is_some() => self.authority_lost_terminal(),
-            Err(error) => self.reject(
+            Err(ProviderStagingOutcome::Rejection(rejection)) => self.reject(
                 OrderedTurnStreamOperation::ProviderBegin(begin),
-                staging_rejection(&error),
+                rejection,
             ),
         }
     }
@@ -210,12 +213,9 @@ impl Ingester {
                     .stager
                     .control(translated, &mut commit)
                     .map_err(|error| {
-                        if staging_authority(&error).is_some() {
-                            ProviderStagingOutcome::AuthorityLost
-                        } else {
-                            ProviderStagingOutcome::Rejection(staging_rejection(&error))
-                        }
+                        ProviderStagingOutcome::Rejection(staging_rejection(&error))
                     })
+                    .and_then(classify_stage_outcome)
             }
             super::super::ActiveObservation::Compaction(marker) => {
                 marker.control(translated).map_err(|_| {
@@ -231,7 +231,6 @@ impl Ingester {
                     false,
                 )
             }
-            Err(ProviderStagingOutcome::AuthorityLost) => self.authority_lost_terminal(),
             Err(ProviderStagingOutcome::Rejection(rejection)) => {
                 observation.abandon();
                 self.reject(
@@ -298,12 +297,9 @@ impl Ingester {
                     .stager
                     .fragment(staged, &mut commit)
                     .map_err(|error| {
-                        if staging_authority(&error).is_some() {
-                            ProviderStagingOutcome::AuthorityLost
-                        } else {
-                            ProviderStagingOutcome::Rejection(staging_rejection(&error))
-                        }
+                        ProviderStagingOutcome::Rejection(staging_rejection(&error))
                     })
+                    .and_then(classify_stage_outcome)
             }
             super::super::ActiveObservation::Compaction(marker) => {
                 marker.fragment(staged).map_err(|_| {
@@ -323,7 +319,6 @@ impl Ingester {
                     false,
                 )
             }
-            Err(ProviderStagingOutcome::AuthorityLost) => self.authority_lost_terminal(),
             Err(ProviderStagingOutcome::Rejection(rejection)) => {
                 observation.abandon();
                 self.reject(

@@ -6,8 +6,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    CommandError, CommitReceipt, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    SidecarByteLimit, test_faults::FaultController,
+    test_faults::FaultController, CommandError, CommandOutcome, HomeCommand, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, SidecarByteLimit,
 };
 use beryl_model::{
     AdmittedHostPath, Availability, CasThreadId, CasTurnId, ClaimRevision, DynamicToolCallId,
@@ -48,7 +48,7 @@ pub fn race_commands(
     store: &HomeStore,
     first: HomeCommand,
     second: HomeCommand,
-) -> [Result<CommitReceipt, CommandError>; 2] {
+) -> [CommandOutcome; 2] {
     let barrier = Arc::new(Barrier::new(3));
     thread::scope(|scope| {
         let first_barrier = Arc::clone(&barrier);
@@ -66,12 +66,43 @@ pub fn race_commands(
     })
 }
 
-pub fn assert_one_success_one_conflict(results: &[Result<CommitReceipt, CommandError>; 2]) {
-    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+pub fn assert_one_success_one_conflict(results: &[CommandOutcome; 2]) {
+    for outcome in results {
+        match outcome {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+            | CommandOutcome::NotCommitted {
+                evidence: CommandError::Conflict { .. },
+            } => {}
+            outcome => panic!("expected clean commit or exact conflict, got {outcome:?}"),
+        }
+    }
     assert_eq!(
         results
             .iter()
-            .filter(|result| matches!(result, Err(CommandError::Conflict { .. })))
+            .filter(|outcome| {
+                matches!(
+                    outcome,
+                    CommandOutcome::Committed {
+                        later_failure: None,
+                        ..
+                    }
+                )
+            })
+            .count(),
+        1
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|outcome| matches!(
+                outcome,
+                CommandOutcome::NotCommitted {
+                    evidence: CommandError::Conflict { .. }
+                }
+            ))
             .count(),
         1
     );

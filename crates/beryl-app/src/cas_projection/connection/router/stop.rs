@@ -1,6 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
-use beryl_model::{CasLoadedSessionGeneration, CasThreadId, CasTurnId, RuntimeId, SyndicThreadId};
+use beryl_model::{
+    CasLoadedSessionGeneration, CasThreadId, CasTurnId, RuntimeId, SyndicThreadId, SyndicTurnId,
+};
 use syndic_storage::StopOperationTarget;
 use thiserror::Error;
 
@@ -11,14 +13,14 @@ use super::{
 /// Immutable router proof for the exact live target selected by a stop operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection) struct StopTargetProof {
-    connection_generation: u64,
-    registration: u64,
-    runtime_id: RuntimeId,
-    loaded_generation: CasLoadedSessionGeneration,
-    syndic_thread_id: SyndicThreadId,
-    cas_thread_id: CasThreadId,
-    cas_turn_id: CasTurnId,
-    request_timeout: Duration,
+    pub(super) connection_generation: u64,
+    pub(super) registration: u64,
+    pub(super) runtime_id: RuntimeId,
+    pub(super) loaded_generation: CasLoadedSessionGeneration,
+    pub(super) syndic_thread_id: SyndicThreadId,
+    pub(super) cas_thread_id: CasThreadId,
+    pub(super) cas_turn_id: CasTurnId,
+    pub(super) request_timeout: Duration,
 }
 
 impl StopTargetProof {
@@ -42,15 +44,105 @@ impl StopTargetProof {
 /// Non-cloneable ownership of the router's exact target-operation stop election.
 pub(in crate::cas_projection) struct StopElectionPermit {
     router: Arc<EventRouter>,
-    proof: StopTargetProof,
+    proof: Option<StopTargetProof>,
     token: u64,
+    command: Option<crate::cas_projection::LiveCommandPermit>,
     finished: bool,
 }
 
+/// Result of revalidating the live-command gate after the exact stop election is held.
+pub(in crate::cas_projection) enum StopElectionAdmission {
+    Current {
+        permit: StopElectionPermit,
+        command: crate::cas_projection::LiveCommandPermit,
+    },
+    PersistentFailure(PersistentFailureStopAdmission),
+    Closed,
+}
+
+/// Command-bound transfer that may preserve one exact pre-writer volatile admission proof.
+pub(in crate::cas_projection) struct PersistentFailureStopAdmission {
+    permit: StopElectionPermit,
+    command: crate::cas_projection::LiveCommandPermit,
+    failure_generation: crate::cas_projection::persistent_failure::PersistentFailureGeneration,
+    syndic_turn_id: SyndicTurnId,
+}
+
+/// One non-cloneable exact failed-admission proof retained by the original target router.
+#[derive(Debug)]
+pub(super) struct VolatileStopAdmissionProof {
+    pub(super) proof: StopTargetProof,
+    pub(super) syndic_turn_id: SyndicTurnId,
+    pub(super) token: u64,
+    pub(super) service_generation:
+        crate::cas_projection::persistent_failure::ProjectionServiceGeneration,
+    pub(super) failure_generation:
+        crate::cas_projection::persistent_failure::PersistentFailureGeneration,
+}
+
 impl StopElectionPermit {
+    pub(in crate::cas_projection) fn admission(
+        self,
+        syndic_turn_id: SyndicTurnId,
+    ) -> Result<StopElectionAdmission, crate::cas_projection::LiveCommandAdmissionError> {
+        enum Disposition {
+            Current,
+            PersistentFailure(
+                crate::cas_projection::persistent_failure::PersistentFailureGeneration,
+            ),
+            Closed,
+        }
+
+        let mut permit = self;
+        let command = permit
+            .command
+            .take()
+            .expect("an unsettled stop election retains its admitting live command");
+        let disposition = command.commit_or_transfer_persistent_only(
+            || Disposition::Current,
+            Disposition::PersistentFailure,
+            || Disposition::Closed,
+        )?;
+        Ok(match disposition {
+            Disposition::Current => StopElectionAdmission::Current { permit, command },
+            Disposition::PersistentFailure(failure_generation) => {
+                StopElectionAdmission::PersistentFailure(PersistentFailureStopAdmission {
+                    permit,
+                    command,
+                    failure_generation,
+                    syndic_turn_id,
+                })
+            }
+            Disposition::Closed => StopElectionAdmission::Closed,
+        })
+    }
+
     pub(in crate::cas_projection) fn finish(mut self) {
         self.router.finish_stop_election(&self);
         self.finished = true;
+    }
+}
+
+impl PersistentFailureStopAdmission {
+    pub(in crate::cas_projection) const fn syndic_turn_id(&self) -> SyndicTurnId {
+        self.syndic_turn_id
+    }
+
+    pub(in crate::cas_projection) fn preserve(self) -> Result<(), StopElectionAcquireError> {
+        let Self {
+            permit,
+            command,
+            failure_generation,
+            syndic_turn_id,
+        } = self;
+        let service_generation = command.service_generation();
+        let result = permit.preserve_volatile_admission(
+            service_generation,
+            failure_generation,
+            syndic_turn_id,
+        );
+        command.release_after_authority_loss();
+        result
     }
 }
 
@@ -224,8 +316,9 @@ impl EventRouter {
             .unwrap_or(Err(StopElectionAcquireError::Router))?;
         Ok(StopElectionPermit {
             router: Arc::clone(self),
-            proof: proof.clone(),
+            proof: Some(proof.clone()),
             token,
+            command: Some(final_command),
             finished: false,
         })
     }
@@ -239,6 +332,24 @@ impl EventRouter {
             .stop_election_wait_observer
             .lock()
             .expect("stop-election test observer mutex remains healthy") = Some(observer);
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn activate_stop_target_for_test(
+        &self,
+        cas_thread_id: &CasThreadId,
+        cas_turn_id: CasTurnId,
+    ) {
+        let mut state = self.state.lock().expect("test router remains healthy");
+        let target = state
+            .targets
+            .get_mut(cas_thread_id)
+            .expect("test stop target remains registered");
+        target.turn_state = TargetTurn::Exact;
+        target.turn_id = Some(cas_turn_id);
+        target.start_dispatched = true;
+        target.activation_durable = true;
+        advance_revision(&mut state);
     }
 
     #[cfg(test)]
@@ -265,6 +376,65 @@ impl EventRouter {
             }
         }
     }
+
+    fn preserve_volatile_stop_admission(
+        &self,
+        permit: &mut StopElectionPermit,
+        service_generation: crate::cas_projection::persistent_failure::ProjectionServiceGeneration,
+        failure_generation: crate::cas_projection::persistent_failure::PersistentFailureGeneration,
+        syndic_turn_id: SyndicTurnId,
+    ) -> Result<(), StopElectionAcquireError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| StopElectionAcquireError::Router)?;
+        let proof = permit
+            .proof
+            .as_ref()
+            .ok_or(StopElectionAcquireError::TargetMismatch)?;
+        validate_proof(self, &state, proof)?;
+        let election_matches = state.active_stop_election.as_ref().is_some_and(|active| {
+            active.token == permit.token
+                && active.thread_id == proof.cas_thread_id
+                && active.registration == proof.registration
+        });
+        if !election_matches || state.volatile_stop_admission.is_some() {
+            return Err(StopElectionAcquireError::TargetMismatch);
+        }
+        state.volatile_stop_admission = Some(VolatileStopAdmissionProof {
+            proof: permit
+                .proof
+                .take()
+                .expect("validated volatile admission retains its exact target"),
+            syndic_turn_id,
+            token: permit.token,
+            service_generation,
+            failure_generation,
+        });
+        state.active_stop_election = None;
+        advance_revision(&mut state);
+        permit.finished = true;
+        drop(state);
+        self.publication_changed.notify_all();
+        Ok(())
+    }
+}
+
+impl StopElectionPermit {
+    fn preserve_volatile_admission(
+        mut self,
+        service_generation: crate::cas_projection::persistent_failure::ProjectionServiceGeneration,
+        failure_generation: crate::cas_projection::persistent_failure::PersistentFailureGeneration,
+        syndic_turn_id: SyndicTurnId,
+    ) -> Result<(), StopElectionAcquireError> {
+        let router = Arc::clone(&self.router);
+        router.preserve_volatile_stop_admission(
+            &mut self,
+            service_generation,
+            failure_generation,
+            syndic_turn_id,
+        )
+    }
 }
 
 fn finish_stop_election_locked(
@@ -272,9 +442,12 @@ fn finish_stop_election_locked(
     permit: &StopElectionPermit,
 ) -> bool {
     let matches = state.active_stop_election.as_ref().is_some_and(|active| {
+        let Some(proof) = permit.proof.as_ref() else {
+            return false;
+        };
         active.token == permit.token
-            && active.thread_id == permit.proof.cas_thread_id
-            && active.registration == permit.proof.registration
+            && active.thread_id == proof.cas_thread_id
+            && active.registration == proof.registration
     });
     if !matches {
         return false;
@@ -282,14 +455,28 @@ fn finish_stop_election_locked(
     state.active_stop_election = None;
     let deferred_close = state
         .targets
-        .get(&permit.proof.cas_thread_id)
+        .get(
+            &permit
+                .proof
+                .as_ref()
+                .expect("an unfinished stop election retains its target")
+                .cas_thread_id,
+        )
         .and_then(|target| {
             (target.turn_state != TargetTurn::Terminal && target.publication_in_flight.is_none())
                 .then_some(target.publication_closing.or(state.retired))
                 .flatten()
         });
     if let Some(reason) = deferred_close {
-        close_target(state, &permit.proof.cas_thread_id, reason);
+        close_target(
+            state,
+            &permit
+                .proof
+                .as_ref()
+                .expect("an unfinished stop election retains its target")
+                .cas_thread_id,
+            reason,
+        );
     } else {
         advance_revision(state);
     }

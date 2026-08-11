@@ -42,16 +42,16 @@ pub(in crate::cas_projection) struct ProjectionConnection {
     pub(super) authority: Arc<ConnectionRegistryAuthority>,
     runtime_id: RuntimeId,
     process_generation: CasProcessGeneration,
-    process_fact: StableConnectionProcessFact,
+    process_fact: ConnectionProcessFact,
     forwarding_hub: Arc<ForwardingHub>,
-    ordinary_shutdown: Mutex<OrdinaryShutdownSettlement>,
+    shutdown_settlement: Mutex<ConnectionShutdownSettlement>,
     runtime: Mutex<Option<ConnectionRuntime>>,
     provider_pages: Mutex<beryl_stream::PagePoolDiagnostics>,
     recovery_diagnostics: Arc<recovery_source_broker::RecoveryReplayDiagnosticsSlot>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OrdinaryShutdownSettlement {
+enum ConnectionShutdownSettlement {
     Unsettled,
     Clean,
     Failed,
@@ -79,98 +79,15 @@ impl ProjectionConnection {
         self.process_fact.observe()
     }
 
-    pub(in crate::cas_projection::connection) fn park_stable_driver_for_adoption(
+    pub(super) fn current_attachment(
         &self,
-        cut: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-    ) -> Result<super::driver::ParkedDriver, super::driver::DriverParkError> {
-        let runtime = self.runtime.lock().map_err(|_| {
-            super::driver::DriverParkError::new(
-                super::driver::DriverParkErrorReason::CoordinationPoisoned,
-            )
-        })?;
-        let runtime = runtime.as_ref().ok_or_else(|| {
-            super::driver::DriverParkError::new(super::driver::DriverParkErrorReason::DriverStopped)
-        })?;
-        runtime.driver.park_for_adoption(cut)
-    }
-
-    pub(in crate::cas_projection::connection) fn disable_stable_driver_for_adoption(
-        &self,
-        cut: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-    ) {
-        let runtime = self
-            .runtime
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        if let Some(runtime) = runtime.as_ref() {
-            runtime.driver.disable_for_adoption_failure(cut);
-        }
-    }
-
-    pub(in crate::cas_projection) fn dispose_inert_driver_after_adoption_failure(
-        &self,
-    ) -> Result<(), ProjectionCoordinatorError> {
-        let runtime = self
-            .runtime
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .take();
-        if let Some(runtime) = runtime {
-            runtime.driver.dispose_inert_after_adoption_failure()?;
-        }
-        Ok(())
-    }
-
-    pub(in crate::cas_projection::connection) fn lock_forwarding_epoch_for_adoption(
-        &self,
-    ) -> Result<super::forwarding_hub::ForwardingHubEpochGuard<'_>, ProjectionCoordinatorError>
-    {
-        self.forwarding_hub.lock_epoch()
-    }
-
-    pub(in crate::cas_projection::connection) fn detach_forwarding_epoch_for_inert_adoption(
-        &self,
-    ) -> Option<ForwardingEpochEndpoint> {
-        self.forwarding_hub.detach_inert_recovering_poison()
-    }
-
-    pub(in crate::cas_projection::connection) fn mark_forwarding_epoch_inert_in_place_for_adoption_failure(
-        &self,
-    ) {
-        if let Some(epoch) = self.forwarding_hub.mark_inert_in_place_recovering_poison() {
-            epoch.request_ingester_cancel();
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection::connection) fn forwarding_epoch_is_inert_and_attached_after_adoption_failure_for_test(
-        &self,
-    ) -> bool {
-        self.forwarding_hub
-            .is_inert_and_attached_recovering_poison_for_test()
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn poison_forwarding_epoch_barrier_for_test(&self) {
-        self.forwarding_hub.poison_epoch_barrier_for_test();
-    }
-
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn forwarding_epoch_is_inert_and_detached_for_test(
-        &self,
-    ) -> bool {
-        self.forwarding_hub
-            .is_inert_and_detached_recovering_poison_for_test()
-    }
-
-    pub(super) fn current_epoch(
-        &self,
-    ) -> Result<Arc<ConnectionServiceEpoch>, ProjectionCoordinatorError> {
-        self.forwarding_hub.current_epoch()
+    ) -> Result<Arc<ConnectionAttachment>, ProjectionCoordinatorError> {
+        self.forwarding_hub.current_attachment()
     }
 
     pub(super) fn current_router(&self) -> Result<Arc<EventRouter>, ProjectionCoordinatorError> {
-        self.current_epoch().map(|epoch| Arc::clone(&epoch.router))
+        self.current_attachment()
+            .map(|attachment| Arc::clone(&attachment.router))
     }
 
     pub(in crate::cas_projection) fn identity_observation(
@@ -188,32 +105,6 @@ impl ProjectionConnection {
         thread_id: &CasThreadId,
     ) -> Result<super::ConnectionThreadClosedOutcome, ProjectionCoordinatorError> {
         self.forwarding_hub.record_thread_closed(thread_id)
-    }
-
-    pub(in crate::cas_projection) fn validate_failure_retained_barrier_topology(
-        self: &Arc<Self>,
-        identity: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-        expected_promotion_count: usize,
-        expected_cleanup_count: usize,
-    ) -> Result<(), super::authority::FailureRetainedBarrierTopologyError> {
-        self.authority.validate_failure_retained_barrier_topology(
-            identity,
-            expected_promotion_count,
-            expected_cleanup_count,
-        )
-    }
-
-    pub(in crate::cas_projection) fn install_pending_projection_quarantine_owner(
-        self: &Arc<Self>,
-        identity: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-        promotions: Vec<super::authority::FailureRetainedPromotionReservation>,
-        cleanup: Vec<super::authority::FailureRetainedCleanupOwner>,
-    ) -> Result<
-        super::authority::PendingProjectionConnectionOwner,
-        super::authority::PendingProjectionConnectionOwnerInstallError,
-    > {
-        self.authority
-            .install_pending_projection_quarantine_owner(self, identity, promotions, cleanup)
     }
 
     #[cfg(test)]
@@ -260,14 +151,14 @@ impl ProjectionConnection {
         >,
         commands: crate::cas_projection::persistent_failure::LiveCommandAuthorizer,
         failure_notification: crate::cas_projection::PersistentFailureNotification,
-        projection_retainer:
-            crate::cas_projection::persistent_failure::PersistentFailureProjectionRetainer,
+        terminal_disposer:
+            crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
     ) -> Result<Arc<Self>, ProjectionCoordinatorError> {
         let authority = Arc::new(ConnectionRegistryAuthority::new(
             runtime_id,
             process_generation,
         )?);
-        let process_fact = StableConnectionProcessFact::register(
+        let process_fact = ConnectionProcessFact::register(
             runtime_id,
             process_generation,
             authority.generation.get(),
@@ -278,7 +169,7 @@ impl ProjectionConnection {
             authority.generation.get(),
             scheduler_signal.clone(),
             commands.clone(),
-            Some(projection_retainer.clone()),
+            Some(terminal_disposer.clone()),
             process_fact.observe(),
         )?);
         let forwarding_hub = ForwardingHub::new(Arc::clone(&authority));
@@ -307,8 +198,8 @@ impl ProjectionConnection {
             }
         };
         let provider_pages = broker.page_diagnostics();
-        let epoch = Arc::new(ConnectionServiceEpoch {
-            identity: ConnectionEpochIdentity::new(
+        let attachment = Arc::new(ConnectionAttachment {
+            identity: ConnectionAttachmentIdentity::new(
                 home_id,
                 home_generation,
                 commands.service_generation(),
@@ -324,12 +215,15 @@ impl ProjectionConnection {
             context_compaction,
             scheduler_signal,
             failure_notification,
-            projection_retainer,
+            terminal_disposer,
         });
-        forwarding_hub.install_initial(ForwardingEpochEndpoint::new(Arc::clone(&epoch), sink))?;
+        forwarding_hub.install_initial(ForwardingAttachmentEndpoint::new(
+            Arc::clone(&attachment),
+            sink,
+        ))?;
         if let Err(source) = backend.bind_ordered_turn_stream_sink(forwarding_hub.bind_sink()) {
-            epoch.request_ingester_cancel();
-            drop(epoch.stop_and_join_ingester());
+            attachment.request_ingester_cancel();
+            drop(attachment.stop_and_join_ingester());
             let _ = backend.shutdown();
             let _ = authority.retire();
             router.retire(LiveEventTargetCloseReason::StreamFailure);
@@ -344,8 +238,8 @@ impl ProjectionConnection {
         ) {
             Ok(driver) => driver,
             Err(error) => {
-                epoch.request_ingester_cancel();
-                drop(epoch.stop_and_join_ingester());
+                attachment.request_ingester_cancel();
+                drop(attachment.stop_and_join_ingester());
                 let _ = authority.retire();
                 router.retire(LiveEventTargetCloseReason::StreamFailure);
                 return Err(error);
@@ -357,7 +251,7 @@ impl ProjectionConnection {
             process_generation,
             process_fact,
             forwarding_hub,
-            ordinary_shutdown: Mutex::new(OrdinaryShutdownSettlement::Unsettled),
+            shutdown_settlement: Mutex::new(ConnectionShutdownSettlement::Unsettled),
             runtime: Mutex::new(Some(ConnectionRuntime { driver })),
             provider_pages: Mutex::new(provider_pages),
             recovery_diagnostics: Arc::new(
@@ -419,28 +313,7 @@ impl ProjectionConnection {
             StopDispatchSettlement::Abandoned(operation_id) => {
                 StopCoordinationOutcome::Abandoned { operation_id }
             }
-            StopDispatchSettlement::HardStop(_) => {
-                return Err(StopCoordinationError::LocalAuthorityMismatch);
-            }
         })
-    }
-
-    pub(in crate::cas_projection) fn dispatch_exact_hard_stop(
-        &self,
-        owner: HardStopRunOwner,
-        proof: StopTargetProof,
-    ) -> Result<(), StopCoordinationError> {
-        let settlement = self
-            .with_runtime(|runtime| runtime.driver.dispatch_exact_hard_stop(owner, proof))
-            .map_err(|_| StopCoordinationError::ConnectionUnavailable)??;
-        match settlement {
-            StopDispatchSettlement::Stopping(_)
-            | StopDispatchSettlement::SafelyReopened(_)
-            | StopDispatchSettlement::Abandoned(_) => Ok(()),
-            StopDispatchSettlement::HardStop(_) => {
-                Err(StopCoordinationError::LocalAuthorityMismatch)
-            }
-        }
     }
 
     pub(in crate::cas_projection) fn active_steering_target_registration(
@@ -524,55 +397,14 @@ impl ProjectionConnection {
         self.process_generation
     }
 
-    pub(in crate::cas_projection) fn settle_persistent_failure_target_guards(
-        self: &Arc<Self>,
-        identity: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-        observations: &[router::PersistentFailureTargetGuardObservation],
-    ) -> Result<(), router::PersistentFailureTargetGuardSettlementError> {
-        self.current_router()
-            .map_err(|_| router::PersistentFailureTargetGuardSettlementError::RouterPoisoned)?
-            .settle_persistent_failure_target_guards(
-                self.identity_observation(),
-                identity,
-                observations,
-            )
-    }
-
-    pub(in crate::cas_projection) fn validate_persistent_failure_target_guard_topology(
-        self: &Arc<Self>,
-        identity: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-        observations: &[router::PersistentFailureTargetGuardObservation],
-    ) -> Result<(), router::PersistentFailureTargetGuardSettlementError> {
-        self.current_router()
-            .map_err(|_| router::PersistentFailureTargetGuardSettlementError::RouterPoisoned)?
-            .validate_persistent_failure_target_guard_topology(
-                self.identity_observation(),
-                identity,
-                observations,
-            )
-    }
-
-    pub(in crate::cas_projection) fn persistent_failure_target_threads(
-        &self,
-        identity: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-    ) -> Result<Vec<SyndicThreadId>, router::PersistentFailureTargetIneligibility> {
-        self.current_router()
-            .map_err(|_| router::PersistentFailureTargetIneligibility::RouterUnavailable)?
-            .persistent_failure_target_threads(identity)
-    }
-
     pub(in crate::cas_projection) fn freeze_persistent_failure_targets(
         &self,
         identity: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-        stop_evidence: &std::collections::HashMap<
-            SyndicThreadId,
-            crate::cas_projection::stop::PersistentFailureStopEvidence,
-        >,
     ) -> Result<router::PersistentFailureTargetBatch, router::PersistentFailureTargetIneligibility>
     {
         self.current_router()
             .map_err(|_| router::PersistentFailureTargetIneligibility::RouterUnavailable)?
-            .freeze_persistent_failure_targets(identity, stop_evidence)
+            .freeze_persistent_failure_targets(identity)
     }
 
     pub(in crate::cas_projection) fn install_persistent_failure_obligations(
@@ -580,7 +412,7 @@ impl ProjectionConnection {
         identity: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
         proofs: Vec<router::PersistentFailureTargetProof>,
     ) -> Result<Vec<persistent_failure::PersistentFailureCompletion>, ()> {
-        self.current_epoch()
+        self.current_attachment()
             .map_err(|_| ())?
             .persistent_failure
             .install(identity, proofs)
@@ -589,41 +421,31 @@ impl ProjectionConnection {
     pub(in crate::cas_projection) fn reserve_scheduled_promotion(
         self: &Arc<Self>,
     ) -> Result<Option<ConnectionPromotionReservation>, ProjectionCoordinatorError> {
-        let epoch = self.current_epoch()?;
-        let command = match epoch.commands.authorize() {
+        let attachment = self.current_attachment()?;
+        let command = match attachment.commands.authorize() {
             Ok(command) => command,
             Err(_) => return Ok(None),
         };
-        let failure_transfer = epoch
-            .router
-            .projection_retainer()?
-            .promotion_failure_transfer();
-        self.authority
-            .reserve_scheduled_promotion(self, command, failure_transfer)
+        self.authority.reserve_scheduled_promotion(self, command)
     }
 
     pub(in crate::cas_projection) fn acquire_cleanup_owner(
         self: &Arc<Self>,
     ) -> Result<Option<ConnectionCleanupOwner>, ProjectionCoordinatorError> {
-        let epoch = self.current_epoch()?;
-        let command = match epoch.commands.authorize() {
+        let attachment = self.current_attachment()?;
+        let command = match attachment.commands.authorize() {
             Ok(command) => command,
             Err(_) => return Ok(None),
         };
-        let failure_transfer = epoch
-            .router
-            .projection_retainer()?
-            .cleanup_failure_transfer();
-        self.authority
-            .acquire_cleanup_owner(self, command, failure_transfer)
+        self.authority.acquire_cleanup_owner(self, command)
     }
 
     pub(in crate::cas_projection) fn release_session_owner(self: &Arc<Self>) {
-        let Ok(epoch) = self.current_epoch() else {
+        let Ok(attachment) = self.current_attachment() else {
             self.authority.mark_session_owner_released();
             return;
         };
-        let command = match epoch.commands.authorize() {
+        let command = match attachment.commands.authorize() {
             Ok(command) => command,
             Err(_) => {
                 self.authority.mark_session_owner_released();
@@ -744,10 +566,10 @@ impl ProjectionConnection {
     }
 
     pub(super) fn request_ordinary_retirement(&self) {
-        let Ok(epoch) = self.current_epoch() else {
+        let Ok(attachment) = self.current_attachment() else {
             return;
         };
-        let command = match epoch.commands.authorize() {
+        let command = match attachment.commands.authorize() {
             Ok(command) => command,
             Err(_) => return,
         };
@@ -760,7 +582,7 @@ impl ProjectionConnection {
         };
         let elected = command
             .commit_if_current(|| {
-                let elected = epoch.begin_ordinary_retirement();
+                let elected = attachment.begin_ordinary_retirement();
                 if elected {
                     self.authority.retire_locked(&mut authority);
                 }
@@ -775,19 +597,19 @@ impl ProjectionConnection {
     }
 
     pub(in crate::cas_projection) fn request_ordinary_retirement_after_service_shutdown(&self) {
-        let Ok(epoch) = self.current_epoch() else {
+        let Ok(attachment) = self.current_attachment() else {
             return;
         };
         let mut authority = match self.authority.lock() {
             Ok(authority) => authority,
             Err(_) => {
-                if epoch.begin_ordinary_retirement() {
+                if attachment.begin_ordinary_retirement() {
                     self.signal_ordinary_retirement();
                 }
                 return;
             }
         };
-        let elected = epoch.begin_ordinary_retirement();
+        let elected = attachment.begin_ordinary_retirement();
         if elected {
             self.authority.retire_locked(&mut authority);
         }
@@ -800,11 +622,11 @@ impl ProjectionConnection {
     pub(super) fn signal_ordinary_retirement(&self) {
         self.process_fact
             .retire(LiveEventTargetCloseReason::ConnectionRetired);
-        if let Ok(epoch) = self.current_epoch() {
-            epoch
+        if let Ok(attachment) = self.current_attachment() {
+            attachment
                 .router
                 .retire(LiveEventTargetCloseReason::ConnectionRetired);
-            epoch.request_ingester_cancel();
+            attachment.request_ingester_cancel();
         }
         if let Some(runtime) = self
             .runtime
@@ -820,17 +642,17 @@ impl ProjectionConnection {
         if !self.authority.is_retired() || !self.authority.retirement_complete() {
             return false;
         }
-        let Ok(mut settlement) = self.ordinary_shutdown.lock() else {
+        let Ok(mut settlement) = self.shutdown_settlement.lock() else {
             return false;
         };
         match *settlement {
-            OrdinaryShutdownSettlement::Clean => return self.is_detached(),
-            OrdinaryShutdownSettlement::Failed => return false,
-            OrdinaryShutdownSettlement::Unsettled => {}
+            ConnectionShutdownSettlement::Clean => return self.is_detached(),
+            ConnectionShutdownSettlement::Failed => return false,
+            ConnectionShutdownSettlement::Unsettled => {}
         }
         let broker_finished = self
-            .current_epoch()
-            .map_or(true, |epoch| epoch.ingester_is_finished());
+            .current_attachment()
+            .map_or(true, |attachment| attachment.ingester_is_finished());
         let driver_finished = self
             .runtime
             .lock()
@@ -841,33 +663,35 @@ impl ProjectionConnection {
             return false;
         }
         let _ = self.settle_ordinary_shutdown_locked(&mut settlement);
-        *settlement == OrdinaryShutdownSettlement::Clean && self.is_detached()
+        *settlement == ConnectionShutdownSettlement::Clean && self.is_detached()
     }
 
     pub(in crate::cas_projection) fn shutdown(&self) -> Result<(), ProjectionCoordinatorError> {
-        let mut settlement = self.ordinary_shutdown.lock().map_err(|_| {
+        let mut settlement = self.shutdown_settlement.lock().map_err(|_| {
             ProjectionCoordinatorError::RegistryPoisoned {
                 registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
             }
         })?;
         match *settlement {
-            OrdinaryShutdownSettlement::Clean => return Ok(()),
-            OrdinaryShutdownSettlement::Failed => {
+            ConnectionShutdownSettlement::Clean => return Ok(()),
+            ConnectionShutdownSettlement::Failed => {
                 return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
             }
-            OrdinaryShutdownSettlement::Unsettled => {}
+            ConnectionShutdownSettlement::Unsettled => {}
         }
-        let epoch = self.current_epoch()?;
-        let command = match epoch.commands.authorize() {
+        let attachment = self.current_attachment()?;
+        let command = match attachment.commands.authorize() {
             Ok(command) => Some(command),
-            Err(_) if epoch.commands.is_persistent_failure_cut() => return Ok(()),
+            Err(_) if attachment.commands.is_persistent_failure_cut() => {
+                return self.settle_terminal_shutdown_locked(&mut settlement);
+            }
             Err(_) => None,
         };
         let elected = command.as_ref().map_or_else(
-            || epoch.begin_ordinary_retirement(),
+            || attachment.begin_ordinary_retirement(),
             |command| {
                 command
-                    .commit_if_current(|| epoch.begin_ordinary_retirement())
+                    .commit_if_current(|| attachment.begin_ordinary_retirement())
                     .unwrap_or(false)
             },
         );
@@ -881,25 +705,25 @@ impl ProjectionConnection {
         &self,
         command: &crate::cas_projection::persistent_failure::LiveCommandPermit,
     ) -> bool {
-        let Ok(epoch) = self.current_epoch() else {
+        let Ok(attachment) = self.current_attachment() else {
             return false;
         };
-        command.service_generation() == epoch.identity.service_generation()
+        command.service_generation() == attachment.identity.service_generation()
             && command
-                .commit_if_current(|| epoch.begin_ordinary_retirement())
+                .commit_if_current(|| attachment.begin_ordinary_retirement())
                 .unwrap_or(false)
     }
 
     /// Elects connection-local ordinary retirement while the caller already owns the master gate.
     pub(super) fn begin_ordinary_retirement_under_gate(&self) -> bool {
-        self.current_epoch()
-            .is_ok_and(|epoch| epoch.begin_ordinary_retirement())
+        self.current_attachment()
+            .is_ok_and(|attachment| attachment.begin_ordinary_retirement())
     }
 
     pub(super) fn shutdown_after_ordinary_retirement(
         &self,
     ) -> Result<(), ProjectionCoordinatorError> {
-        let mut settlement = self.ordinary_shutdown.lock().map_err(|_| {
+        let mut settlement = self.shutdown_settlement.lock().map_err(|_| {
             ProjectionCoordinatorError::RegistryPoisoned {
                 registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
             }
@@ -909,20 +733,40 @@ impl ProjectionConnection {
 
     fn settle_ordinary_shutdown_locked(
         &self,
-        settlement: &mut OrdinaryShutdownSettlement,
+        settlement: &mut ConnectionShutdownSettlement,
     ) -> Result<(), ProjectionCoordinatorError> {
         match *settlement {
-            OrdinaryShutdownSettlement::Clean => return Ok(()),
-            OrdinaryShutdownSettlement::Failed => {
+            ConnectionShutdownSettlement::Clean => return Ok(()),
+            ConnectionShutdownSettlement::Failed => {
                 return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
             }
-            OrdinaryShutdownSettlement::Unsettled => {}
+            ConnectionShutdownSettlement::Unsettled => {}
         }
         let result = self.execute_ordinary_shutdown();
         *settlement = if result.is_ok() {
-            OrdinaryShutdownSettlement::Clean
+            ConnectionShutdownSettlement::Clean
         } else {
-            OrdinaryShutdownSettlement::Failed
+            ConnectionShutdownSettlement::Failed
+        };
+        result
+    }
+
+    fn settle_terminal_shutdown_locked(
+        &self,
+        settlement: &mut ConnectionShutdownSettlement,
+    ) -> Result<(), ProjectionCoordinatorError> {
+        match *settlement {
+            ConnectionShutdownSettlement::Clean => return Ok(()),
+            ConnectionShutdownSettlement::Failed => {
+                return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
+            }
+            ConnectionShutdownSettlement::Unsettled => {}
+        }
+        let result = self.execute_terminal_shutdown();
+        *settlement = if result.is_ok() {
+            ConnectionShutdownSettlement::Clean
+        } else {
+            ConnectionShutdownSettlement::Failed
         };
         result
     }
@@ -930,15 +774,14 @@ impl ProjectionConnection {
     fn execute_ordinary_shutdown(&self) -> Result<(), ProjectionCoordinatorError> {
         match self.authority.retire()? {
             ConnectionRetirementOutcome::Complete => {}
-            ConnectionRetirementOutcome::FailureRetained(_) => return Ok(()),
         }
-        let epoch = self.current_epoch()?;
-        epoch
+        let attachment = self.current_attachment()?;
+        attachment
             .router
             .retire(LiveEventTargetCloseReason::ConnectionRetired);
         // A foreground call holds `runtime` while its driver can be blocked on this broker's
         // acknowledgement, so cancellation must remain independently reachable.
-        epoch.request_ingester_cancel();
+        attachment.request_ingester_cancel();
         let (runtime, poisoned) = match self.runtime.lock() {
             Ok(mut runtime) => (runtime.take(), false),
             Err(poison) => (poison.into_inner().take(), true),
@@ -954,24 +797,64 @@ impl ProjectionConnection {
                 first_error = Some(error);
             }
         }
-        match epoch.stop_and_join_ingester_after_ordinary_retirement() {
-            Ok(receipt)
-                if !receipt.is_exact(
-                    epoch.identity.service_generation(),
-                    epoch.identity.home_generation(),
-                ) && first_error.is_none() =>
-            {
-                first_error = Some(ProjectionCoordinatorError::ProjectionWorkerStopped);
-            }
+        match attachment.stop_and_join_ingester_terminal() {
             Err(error) if first_error.is_none() => first_error = Some(error),
-            Ok(_) | Err(_) => {}
+            Ok(()) | Err(_) => {}
         }
-        let diagnostics = epoch.broker.page_diagnostics();
+        let diagnostics = attachment.broker.page_diagnostics();
         *self
             .provider_pages
             .lock()
             .unwrap_or_else(|poison| poison.into_inner()) = diagnostics;
-        match self.forwarding_hub.lock_epoch() {
+        match self.forwarding_hub.lock_attachment() {
+            Ok(mut hub) => {
+                drop(hub.mark_inert());
+            }
+            Err(error) if first_error.is_none() => first_error = Some(error),
+            Err(_) => {}
+        }
+        first_error.map_or(Ok(()), Err)
+    }
+
+    fn execute_terminal_shutdown(&self) -> Result<(), ProjectionCoordinatorError> {
+        let attachment = self.current_attachment()?;
+        self.process_fact
+            .retire(LiveEventTargetCloseReason::ConnectionRetired);
+        attachment
+            .router
+            .retire(LiveEventTargetCloseReason::ConnectionRetired);
+        attachment.request_ingester_cancel();
+
+        let (runtime, poisoned) = match self.runtime.lock() {
+            Ok(mut runtime) => (runtime.take(), false),
+            Err(poison) => (poison.into_inner().take(), true),
+        };
+        let mut first_error = poisoned.then_some(ProjectionCoordinatorError::RegistryPoisoned {
+            registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
+        });
+        if let Some(runtime) = runtime {
+            runtime.driver.request_stop();
+            if let Err(error) = runtime.driver.join()
+                && first_error.is_none()
+            {
+                first_error = Some(error);
+            }
+        }
+        if let Err(error) = self.authority.retire()
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+        if let Err(error) = attachment.stop_and_join_ingester_terminal()
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+        *self
+            .provider_pages
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = attachment.broker.page_diagnostics();
+        match self.forwarding_hub.lock_attachment() {
             Ok(mut hub) => {
                 drop(hub.mark_inert());
             }
@@ -992,6 +875,25 @@ impl ProjectionConnection {
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner())
                 .is_none()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn poison_ingester_handle_for_test(&self) {
+        self.current_attachment()
+            .expect("the test connection retains its immutable attachment")
+            .poison_ingester_handle_for_test();
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn fail_next_ingester_join_for_test(&self) {
+        let attachment = self
+            .current_attachment()
+            .expect("the test connection retains its immutable attachment");
+        super::provider_broker::fail_next_provider_broker_join_for_test(
+            attachment.identity.home_id(),
+            attachment.identity.home_generation(),
+            attachment.identity.service_generation(),
+        );
     }
 
     pub(in crate::cas_projection) fn provider_page_diagnostics(
@@ -1088,14 +990,15 @@ impl ProjectionConnection {
     }
 
     fn attached_broker(&self) -> Result<Arc<ProviderBrokerControl>, ProjectionCoordinatorError> {
-        self.current_epoch().map(|epoch| Arc::clone(&epoch.broker))
+        self.current_attachment()
+            .map(|attachment| Arc::clone(&attachment.broker))
     }
 
     pub(in crate::cas_projection) fn stop_coordinator(
         &self,
     ) -> Result<Arc<StopCoordinator>, ProjectionCoordinatorError> {
-        self.current_epoch()
-            .map(|epoch| Arc::clone(&epoch.stop_coordinator))
+        self.current_attachment()
+            .map(|attachment| Arc::clone(&attachment.stop_coordinator))
     }
 
     pub(in crate::cas_projection) fn context_compaction_coordinator(
@@ -1104,8 +1007,8 @@ impl ProjectionConnection {
         Arc<crate::cas_projection::context_compaction::ContextCompactionCoordinator>,
         ProjectionCoordinatorError,
     > {
-        self.current_epoch()
-            .map(|epoch| Arc::clone(&epoch.context_compaction))
+        self.current_attachment()
+            .map(|attachment| Arc::clone(&attachment.context_compaction))
     }
 
     #[cfg(test)]
@@ -1130,7 +1033,7 @@ impl ProjectionConnection {
         crate::cas_projection::persistent_failure::LiveCommandPermit,
         crate::cas_projection::persistent_failure::LiveCommandAdmissionError,
     > {
-        self.current_epoch()
+        self.current_attachment()
             .map_err(|_| {
                 crate::cas_projection::persistent_failure::LiveCommandAdmissionError::Closed
             })?
@@ -1144,7 +1047,7 @@ impl ProjectionConnection {
         persistent_failure: impl FnOnce(crate::cas_projection::PersistentFailureGeneration) -> T,
         closed: impl FnOnce() -> T,
     ) -> Result<T, crate::cas_projection::persistent_failure::LiveCommandAdmissionError> {
-        self.current_epoch()
+        self.current_attachment()
             .map_err(|_| {
                 crate::cas_projection::persistent_failure::LiveCommandAdmissionError::Closed
             })?
@@ -1165,22 +1068,11 @@ impl ProjectionConnection {
         cas_thread_id: CasThreadId,
         owner: SyndicThreadId,
         unsubscribe_timeout: Duration,
-        preactivation_issuer: Option<
-            &crate::cas_projection::service_config::ProjectionPreactivationSurrenderIssuer,
-        >,
     ) -> Result<LoadedProjectionLease, ProjectionCoordinatorError> {
         let command = self.authorize_command().map_err(|_| self.unavailable())?;
         let key = self.key(cas_thread_id);
-        let preactivation_surrender = preactivation_issuer
-            .map(crate::cas_projection::service_config::ProjectionPreactivationSurrenderIssuer::try_mint)
-            .transpose()?;
-        let mut seed = RawLoadedLeaseSeed::pending(
-            Arc::clone(self),
-            key.clone(),
-            owner,
-            unsubscribe_timeout,
-            preactivation_surrender,
-        );
+        let mut seed =
+            RawLoadedLeaseSeed::pending(Arc::clone(self), key.clone(), owner, unsubscribe_timeout);
         let Some(()) = self
             .authority
             .register_new(key, owner, &command, &mut seed)?
@@ -1195,22 +1087,11 @@ impl ProjectionConnection {
         cas_thread_id: &CasThreadId,
         owner: SyndicThreadId,
         unsubscribe_timeout: Duration,
-        preactivation_issuer: Option<
-            &crate::cas_projection::service_config::ProjectionPreactivationSurrenderIssuer,
-        >,
     ) -> Result<ExistingLease, ProjectionCoordinatorError> {
         let command = self.authorize_command().map_err(|_| self.unavailable())?;
         let key = self.key(cas_thread_id.clone());
-        let preactivation_surrender = preactivation_issuer
-            .map(crate::cas_projection::service_config::ProjectionPreactivationSurrenderIssuer::try_mint)
-            .transpose()?;
-        let mut seed = RawLoadedLeaseSeed::pending(
-            Arc::clone(self),
-            key.clone(),
-            owner,
-            unsubscribe_timeout,
-            preactivation_surrender,
-        );
+        let mut seed =
+            RawLoadedLeaseSeed::pending(Arc::clone(self), key.clone(), owner, unsubscribe_timeout);
         let Some(subscription) = self
             .authority
             .acquire_existing(&key, owner, &command, &mut seed)?
@@ -1220,7 +1101,6 @@ impl ProjectionConnection {
         Ok(match subscription {
             ExistingSubscription::Absent => ExistingLease::Absent,
             ExistingSubscription::AnotherConnection => ExistingLease::AnotherConnection,
-            ExistingSubscription::Quarantined => ExistingLease::Quarantined,
             ExistingSubscription::AnotherOwner { existing_owner } => {
                 ExistingLease::AnotherOwner { existing_owner }
             }
@@ -1440,8 +1320,8 @@ impl ProjectionConnection {
 impl Drop for ProjectionConnection {
     fn drop(&mut self) {
         self.request_ordinary_retirement();
-        if let Ok(epoch) = self.forwarding_hub.current_epoch() {
-            epoch.request_ingester_cancel();
+        if let Ok(attachment) = self.forwarding_hub.current_attachment() {
+            attachment.request_ingester_cancel();
         }
         if let Some(runtime) = self
             .runtime
@@ -1452,12 +1332,4 @@ impl Drop for ProjectionConnection {
             runtime.driver.request_stop();
         }
     }
-}
-
-#[cfg(test)]
-mod phase82_adoption_tests {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/unit/connection_epoch_adoption_barrier.rs"
-    ));
 }

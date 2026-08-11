@@ -145,8 +145,7 @@ fn first_stale_fork_retains_its_exact_nonzero_native_position() {
                 stale,
             ),
         ),
-    )
-    .unwrap();
+    );
     store.validate_registered_domains().unwrap();
     store.close().unwrap();
 
@@ -176,8 +175,7 @@ fn stale_cas_thread_cannot_be_reused_by_the_same_syndic_thread() {
                 stale_binding(cas_thread.clone(), timestamp(2)),
             ),
         ),
-    )
-    .unwrap();
+    );
     store.validate_registered_domains().unwrap();
 
     let represented = CasRepresentedPrefixProof::new(
@@ -194,11 +192,10 @@ fn stale_cas_thread_cannot_be_reused_by_the_same_syndic_thread() {
         represented,
         CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap(),
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), reuse),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::CasThreadRetired
@@ -262,11 +259,10 @@ fn retirement_cannot_rewrite_an_existing_cas_execution() {
         selected,
         stale,
     );
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_stale_binding(storage.revision(&store).unwrap(), request),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::ExecutionBindingConflict
@@ -299,8 +295,7 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
                 stale_binding(cas_thread.clone(), timestamp(2)),
             ),
         ),
-    )
-    .unwrap();
+    );
 
     let represented = CasRepresentedPrefixProof::new(
         None,
@@ -318,11 +313,10 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
             CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap(),
         )
     };
-    let error = execute(
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), contender_request()),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::CasThreadOwnershipConflict
@@ -340,13 +334,11 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
             )
             .unwrap(),
         ),
-    )
-    .unwrap();
-    let error = execute(
+    );
+    let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), contender_request()),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::CasThreadOwnershipConflict
@@ -365,11 +357,10 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
         represented,
         CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap(),
     );
-    let error = execute(
+    let error = execute_outcome(
         &reopened,
         storage.publish_valid_binding(storage.revision(&reopened).unwrap(), request),
-    )
-    .unwrap_err();
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::CasThreadOwnershipConflict

@@ -18,7 +18,7 @@ fn stop_cancels_only_the_exact_automatic_phase_continuation() {
             .record_lifecycle_yield(
                 fixture.thread,
                 other_turn,
-                LifecycleYieldOutcome::PhaseNeedsReview,
+                LifecycleYieldOutcome::PhaseContinue,
             )
             .unwrap()
     );
@@ -44,7 +44,7 @@ fn stop_cancels_only_the_exact_automatic_phase_continuation() {
             .coordinator
             .take_terminal_lifecycle_yield(fixture.thread, other_turn)
             .unwrap(),
-        Some(LifecycleYieldOutcome::PhaseNeedsReview)
+        Some(LifecycleYieldOutcome::PhaseContinue)
     );
     assert!(matches!(
         owner.settle_before_dispatch().unwrap(),
@@ -54,6 +54,7 @@ fn stop_cancels_only_the_exact_automatic_phase_continuation() {
 #[test]
 fn window_close_barrier_retains_exact_convergence_classification() {
     let fixture = StopFixture::new(71);
+    let distinct_turn = SyndicTurnId::from_bytes([0xed; 16]);
     let owner = match fixture.coordinator.coordinate(
         &fixture.router,
         fixture.proof.clone(),
@@ -112,7 +113,7 @@ fn window_close_barrier_retains_exact_convergence_classification() {
     assert_eq!(
         window_close_ineligible_status(
             StopAdmissionIneligibility::Compacting {
-                turn_id: other_turn(fixture.turn),
+                turn_id: distinct_turn,
                 current_gate_revision: gate,
             },
             fixture.turn,

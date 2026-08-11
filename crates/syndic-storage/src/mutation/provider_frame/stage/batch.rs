@@ -1,8 +1,7 @@
 use crate::{
-    CONTENT_APPEND_MAX_CHUNKS, ContentByteSpanRecord, ContentChunkRecord,
-    ProviderItemBuildLifecycle, ProviderItemBuildRecord, ProviderNarrativeReference,
-    ProviderNarrativeSpanRecord, ProviderStorageRecordError, SyndicRecordError,
-    advance_content_chain,
+    advance_content_chain, ContentByteSpanRecord, ContentChunkRecord, ProviderItemBuildLifecycle,
+    ProviderItemBuildRecord, ProviderNarrativeReference, ProviderNarrativeSpanRecord,
+    ProviderStorageRecordError, SyndicRecordError, CONTENT_APPEND_MAX_CHUNKS,
 };
 
 use super::PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS;

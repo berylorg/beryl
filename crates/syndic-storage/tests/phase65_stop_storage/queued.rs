@@ -1,4 +1,4 @@
-use beryl_home_store::CursorReadLimits;
+use beryl_home_store::{CommandOutcome, CursorReadLimits};
 use syndic_storage::{
     AcceptedRouteEffectiveState, AcceptedRouteRevision, AdmitStopOperation, NextTurnReason,
     SafelyReopenStopOperation, StopCause, StopCauseSet,
@@ -22,10 +22,16 @@ fn input_before_and_after_stop_remains_ordered_next_turn_work() {
         pre_stop_gate.selected_route().unwrap(),
         StopCauseSet::from(StopCause::SelectedOperationControl),
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_admit_stop_operation(admission))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean queued-work stop admission, got {outcome:?}"),
+    }
     let stopped = fixture.stop();
     let stopped_route = stopped.admission().successor_stopped_route();
 
@@ -82,10 +88,16 @@ fn input_before_and_after_stop_remains_ordered_next_turn_work() {
         stopped_descendant.revision(),
         fixture.stop().revision(),
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_safely_reopen_stop_operation(reopen))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean queued-work stop reopen, got {outcome:?}"),
+    }
     let reopened = fixture.gate();
     assert_eq!(reopened.live_steering_count(), 0);
     assert_eq!(reopened.live_next_turn_count(), 2);

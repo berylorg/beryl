@@ -7,7 +7,7 @@ use beryl_model::{
 
 use crate::RecordRevision;
 
-use super::{CatalogValueError, error::bounded_text, normalization::normalize};
+use super::{error::bounded_text, normalization::normalize, CatalogValueError};
 
 pub const CATALOG_TITLE_MAX_BYTES: usize = 512;
 pub const CATALOG_HISTORY_TITLE_MAX_SCALARS: usize = 80;

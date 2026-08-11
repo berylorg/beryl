@@ -1,4 +1,4 @@
-use beryl_home_store::CursorReadLimits;
+use beryl_home_store::{CommandOutcome, CursorReadLimits};
 use beryl_model::CasTurnId;
 use syndic_storage::{
     AbandonStopOperation, CompactionOperationId, CompactionOperationRecord,
@@ -55,10 +55,16 @@ fn admit_provider_stop(
         StopCauseSet::from(StopCause::SelectedOperationControl),
     );
     let stop_id = request.operation_id();
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_admit_stop_operation(request))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean provider-stop admission, got {outcome:?}"),
+    }
     fixture.admit_current_draft_as_accepted(
         "queued during provider stop",
         seed.wrapping_add(60),
@@ -132,10 +138,16 @@ fn abandon_provider_stop(fixture: &CompactionFixture) {
         recovered.startup_abandonment_reason(),
         stale,
     );
-    fixture
+    match fixture
         .store
         .execute_current(fixture.storage.current_abandon_stop_operation(request))
-        .unwrap();
+    {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean provider-stop abandonment, got {outcome:?}"),
+    }
 }
 
 #[test]

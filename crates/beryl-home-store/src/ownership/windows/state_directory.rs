@@ -9,10 +9,10 @@ use std::{
 use windows::Win32::{
     Foundation::HANDLE,
     Storage::FileSystem::{
-        FILE_ATTRIBUTE_DEVICE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+        FileAttributeTagInfo, FileIdInfo, FlushFileBuffers, GetFileInformationByHandleEx,
+        GetFileType, FILE_ATTRIBUTE_DEVICE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
         FILE_ATTRIBUTE_TAG_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_ID_INFO, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TYPE_DISK, FileAttributeTagInfo,
-        FileIdInfo, FlushFileBuffers, GetFileInformationByHandleEx, GetFileType,
+        FILE_ID_INFO, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TYPE_DISK,
     },
 };
 

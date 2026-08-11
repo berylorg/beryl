@@ -9,10 +9,6 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn reconcile_failure(
     context: &AcceptedInputSchedulerContext,
     failure: SchedulerFailure,
 ) -> Option<SchedulerFailure> {
-    debug_assert_ne!(failure, SchedulerFailure::VerificationPending);
-    if failure == SchedulerFailure::VerificationPending {
-        return Some(SchedulerFailure::Fatal);
-    }
     if failure == SchedulerFailure::Fatal {
         return Some(SchedulerFailure::Fatal);
     }
@@ -33,9 +29,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn reconcile_failure(
             match authorizer.observe_persistent_failure() {
                 PersistentFailureNotificationStatus::Signaled
                 | PersistentFailureNotificationStatus::Joined => {}
-                PersistentFailureNotificationStatus::VerificationSignaled
-                | PersistentFailureNotificationStatus::VerificationJoined
-                | PersistentFailureNotificationStatus::NotFailed
+                PersistentFailureNotificationStatus::NotFailed
                 | PersistentFailureNotificationStatus::Unavailable => {
                     return Some(SchedulerFailure::Fatal);
                 }

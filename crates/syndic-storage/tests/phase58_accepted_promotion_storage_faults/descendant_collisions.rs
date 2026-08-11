@@ -264,7 +264,14 @@ fn similar_but_incoherent_promotion_descendants_are_collisions() {
             SyndicTurnId::from_bytes([200_u8.checked_add(offset as u8).unwrap(); 16]),
             SyndicItemId::from_bytes([220_u8.checked_add(offset as u8).unwrap(); 16]),
         );
-        execute_promotion(&store, storage, request.clone()).unwrap();
+        match execute_promotion(&store, storage, request.clone()) {
+            CommandOutcome::Committed {
+                later_failure: None, ..
+            } => {}
+            outcome => {
+                panic!("expected descendant promotion to commit without later failure, got {outcome:?}")
+            }
+        }
         assert_eq!(
             storage
                 .accepted_input_promotion_status(&store, &request, limit())

@@ -19,8 +19,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) struct LeaseValidationAu
     storage: syndic_storage::SyndicStorage,
     connections: Arc<ProjectionServiceConnectionRegistry>,
     command: crate::cas_projection::LiveCommandPermit,
-    projection_retainer:
-        crate::cas_projection::persistent_failure::PersistentFailureProjectionRetainer,
+    terminal_disposer: crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
 }
 
 pub(in crate::cas_projection::accepted_input_scheduler) fn expected_admission_drift(
@@ -93,7 +92,7 @@ impl AcceptedInputSchedulerContext {
             thread_id,
             execution_binding,
             worker,
-            self.projection_retainer.clone(),
+            self.terminal_disposer.clone(),
             flight,
         );
         let mut result = self
@@ -127,7 +126,7 @@ impl AcceptedInputSchedulerContext {
             storage: self.storage,
             connections: Arc::clone(&self.connections),
             command,
-            projection_retainer: self.projection_retainer.clone(),
+            terminal_disposer: self.terminal_disposer.clone(),
         }
     }
 }
@@ -166,21 +165,14 @@ impl LeaseValidationAuthority {
         &self,
     ) -> bool {
         let _ = self.command.observe_persistent_failure();
-        self.projection_retainer.failure_observed() && !self.command.is_current()
+        self.terminal_disposer.failure_observed() && !self.command.is_current()
     }
 
     pub(in crate::cas_projection::accepted_input_scheduler) fn retain_failed_projection(
         &self,
         projection: crate::cas_projection::LoadedCasProjection,
     ) {
-        self.projection_retainer.retain(projection)
-    }
-
-    pub(super) fn retain_failed_reacquisition_anchor(
-        &self,
-        anchor: crate::cas_projection::SameNativeReacquisitionAnchor,
-    ) {
-        self.projection_retainer.retain_reacquisition_anchor(anchor)
+        self.terminal_disposer.dispose_loaded(projection)
     }
 
     fn ensure_generation_current(&self) -> Result<(), ProjectionCoordinatorError> {

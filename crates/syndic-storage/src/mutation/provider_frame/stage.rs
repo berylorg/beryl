@@ -1,14 +1,14 @@
 mod batch;
 
-use std::error::Error;
+use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, ReconciliationDescriptor};
 
 use crate::{
-    CONTENT_APPEND_MAX_CHUNKS, ContentByteSpanRecord, ContentChunkOrdinal, ContentChunkRecord,
-    ProviderFrameEncodeError, ProviderFrameReferenceV1, ProviderFrameSinkV1,
-    ProviderFrameTextSpanV1, ProviderItemBuildLifecycle, ProviderItemBuildRecord,
-    ProviderItemValidationError, ProviderLogicalTextRoleV1, ProviderNarrativeReference,
-    ProviderNarrativeSpanRecord, ProviderStorageRecordError, SyndicRecordError, SyndicValueError,
-    advance_content_chain, encode_provider_item_frame_v1,
+    advance_content_chain, encode_provider_item_frame_v1, ContentByteSpanRecord,
+    ContentChunkOrdinal, ContentChunkRecord, ProviderFrameEncodeError, ProviderFrameReferenceV1,
+    ProviderFrameSinkV1, ProviderFrameTextSpanV1, ProviderItemBuildLifecycle,
+    ProviderItemBuildRecord, ProviderItemValidationError, ProviderLogicalTextRoleV1,
+    ProviderNarrativeReference, ProviderNarrativeSpanRecord, ProviderStorageRecordError,
+    SyndicRecordError, SyndicValueError, CONTENT_APPEND_MAX_CHUNKS,
 };
 
 use super::PreparedProviderFrame;
@@ -25,26 +25,41 @@ pub const PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS: usize = 256;
 
 /// Synchronous durability/reconciliation boundary invoked before encoding may continue.
 pub trait ProviderFrameStageCallback {
-    type Error: Error + Send + Sync + 'static;
-
-    fn stage_batch(&mut self, batch: &ProviderFrameStageBatch) -> Result<(), Self::Error>;
+    fn stage_batch(&mut self, batch: &ProviderFrameStageBatch) -> CommandOutcome;
 }
 
-impl<F, E> ProviderFrameStageCallback for F
+impl<F> ProviderFrameStageCallback for F
 where
-    F: FnMut(&ProviderFrameStageBatch) -> Result<(), E>,
-    E: Error + Send + Sync + 'static,
+    F: FnMut(&ProviderFrameStageBatch) -> CommandOutcome,
 {
-    type Error = E;
-
-    fn stage_batch(&mut self, batch: &ProviderFrameStageBatch) -> Result<(), Self::Error> {
+    fn stage_batch(&mut self, batch: &ProviderFrameStageBatch) -> CommandOutcome {
         self(batch)
     }
 }
 
+/// Exact result of one provider-frame staging traversal.
+#[derive(Debug)]
+pub enum ProviderFrameStageOutcome {
+    /// The supplied build was already sealed, so no command was issued.
+    Unchanged { value: ProviderItemBuildRecord },
+    /// The offered batch definitely did not commit.
+    NotCommitted { evidence: CommandError },
+    /// The returned build is the exact durable successor of the last committed batch.
+    Committed {
+        value: ProviderItemBuildRecord,
+        receipt: CommitReceipt,
+        later_failure: Option<CommandError>,
+    },
+    /// The offered batch may have committed; no local successor is inferred.
+    Indeterminate {
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
+}
+
 /// Why the single staging encode could not reach the exact sealed target.
 #[derive(Debug, thiserror::Error)]
-pub enum ProviderFrameStageError<E: Error + Send + Sync + 'static> {
+pub enum ProviderFrameStageError {
     #[error("the current provider build belongs to another prepared frame")]
     BuildPlanMismatch,
     #[error("the resumed provider chunk frontier does not match deterministic encoding")]
@@ -69,8 +84,19 @@ pub enum ProviderFrameStageError<E: Error + Send + Sync + 'static> {
     StorageRecord(#[from] ProviderStorageRecordError),
     #[error(transparent)]
     Batch(#[from] ProviderFrameStageBatchError),
-    #[error("provider-frame stage callback rejected a batch: {0}")]
-    Callback(#[source] E),
+    #[error("provider-frame staging reached a committed batch with a later failure")]
+    CommittedLaterFailure {
+        value: ProviderItemBuildRecord,
+        receipt: CommitReceipt,
+        later_failure: CommandError,
+    },
+    #[error("provider-frame staging batch definitely did not commit")]
+    NotCommitted { evidence: CommandError },
+    #[error("provider-frame staging batch has an indeterminate durable outcome")]
+    Indeterminate {
+        failure: CommandError,
+        reconciliation: ReconciliationDescriptor,
+    },
 }
 
 /// Performs the third overall encoding traversal and offers each bounded batch for durability.
@@ -78,18 +104,18 @@ pub enum ProviderFrameStageError<E: Error + Send + Sync + 'static> {
 /// Preparation already completed two constant-resident read-only traversals. `current` may be the
 /// initial build or an exact partially staged build after restart. This durable traversal still runs
 /// once for the whole frame and discards the already staged prefix; it is never rerun per batch. A
-/// callback handles any ambiguous command outcome by comparing the durable build with the batch's
-/// exact expected and next values before returning.
+/// callback returns every exact command outcome. The staging result advances only after a
+/// `Committed` callback outcome and retains an indeterminate descriptor without retrying.
 pub fn stage_provider_frame<C: ProviderFrameStageCallback>(
     prepared: &PreparedProviderFrame,
     current: ProviderItemBuildRecord,
     callback: &mut C,
-) -> Result<ProviderItemBuildRecord, ProviderFrameStageError<C::Error>> {
+) -> Result<ProviderFrameStageOutcome, ProviderFrameStageError> {
     if !same_prepared_plan(prepared.initial_build(), &current) {
         return Err(ProviderFrameStageError::BuildPlanMismatch);
     }
     if current.lifecycle() == ProviderItemBuildLifecycle::Sealed {
-        return Ok(current);
+        return Ok(ProviderFrameStageOutcome::Unchanged { value: current });
     }
 
     let prior_chunk_count = prepared.initial_build().staged_chunk_count();
@@ -108,12 +134,42 @@ pub fn stage_provider_frame<C: ProviderFrameStageCallback>(
         match encode_provider_item_frame_v1(prepared.frame(), prior_encoded_bytes, &mut sink) {
             Ok(reference) => reference,
             Err(ProviderFrameEncodeError::Validation(source)) => return Err(source.into()),
-            Err(ProviderFrameEncodeError::Sink(source)) => return Err(source),
+            Err(ProviderFrameEncodeError::Sink(source)) => return map_stage_error(source),
         };
     if &encoded != prepared.target().frame() {
         return Err(ProviderFrameStageError::StagingTraversalMismatch);
     }
-    sink.finish(&encoded)
+    match sink.finish(&encoded) {
+        Ok(outcome) => Ok(outcome),
+        Err(error) => map_stage_error(error),
+    }
+}
+
+fn map_stage_error(
+    error: ProviderFrameStageError,
+) -> Result<ProviderFrameStageOutcome, ProviderFrameStageError> {
+    match error {
+        ProviderFrameStageError::NotCommitted { evidence } => {
+            Ok(ProviderFrameStageOutcome::NotCommitted { evidence })
+        }
+        ProviderFrameStageError::CommittedLaterFailure {
+            value,
+            receipt,
+            later_failure,
+        } => Ok(ProviderFrameStageOutcome::Committed {
+            value,
+            receipt,
+            later_failure: Some(later_failure),
+        }),
+        ProviderFrameStageError::Indeterminate {
+            failure,
+            reconciliation,
+        } => Ok(ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        }),
+        error => Err(error),
+    }
 }
 
 fn same_prepared_plan(
@@ -146,6 +202,7 @@ struct StagingSink<'a, C: ProviderFrameStageCallback> {
     chunks: Vec<ContentChunkRecord>,
     byte_spans: Vec<ContentByteSpanRecord>,
     narrative_spans: Vec<ProviderNarrativeSpanRecord>,
+    last_receipt: Option<CommitReceipt>,
     callback: &'a mut C,
 }
 
@@ -159,7 +216,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
         prior_chain: beryl_model::SyndicContentDigest,
         narrative_seed: Option<ProviderNarrativeReference>,
         callback: &'a mut C,
-    ) -> Result<Self, ProviderFrameStageError<C::Error>> {
+    ) -> Result<Self, ProviderFrameStageError> {
         if current.staged_chunk_count() == prior_chunk_count
             && (current.staged_encoded_bytes() != prior_encoded_bytes
                 || current.staged_chain_digest() != prior_chain)
@@ -188,6 +245,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
             chunks: Vec::with_capacity(CONTENT_APPEND_MAX_CHUNKS),
             byte_spans: Vec::with_capacity(CONTENT_APPEND_MAX_CHUNKS),
             narrative_spans: Vec::with_capacity(PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS),
+            last_receipt: None,
             callback,
         })
     }
@@ -195,7 +253,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
     fn finish(
         mut self,
         encoded: &ProviderFrameReferenceV1,
-    ) -> Result<ProviderItemBuildRecord, ProviderFrameStageError<C::Error>> {
+    ) -> Result<ProviderFrameStageOutcome, ProviderFrameStageError> {
         let summary = self.target.content().summary();
         if encoded != self.target.frame()
             || self.seen_chunk_count != summary.chunk_count()
@@ -223,10 +281,19 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
         if self.current.lifecycle() != expected_lifecycle || self.current.target() != &self.target {
             return Err(ProviderFrameStageError::IncompleteStagingTraversal);
         }
-        Ok(self.current)
+        match self.last_receipt {
+            Some(receipt) => Ok(ProviderFrameStageOutcome::Committed {
+                value: self.current,
+                receipt,
+                later_failure: None,
+            }),
+            None => Ok(ProviderFrameStageOutcome::Unchanged {
+                value: self.current,
+            }),
+        }
     }
 
-    fn verify_resumed_chunk_frontier(&self) -> Result<(), ProviderFrameStageError<C::Error>> {
+    fn verify_resumed_chunk_frontier(&self) -> Result<(), ProviderFrameStageError> {
         if self.seen_chunk_count < self.resume_chunk_count
             || (self.seen_chunk_count == self.resume_chunk_count
                 && (self.seen_encoded_bytes != self.resume_encoded_bytes
@@ -237,7 +304,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
         Ok(())
     }
 
-    fn verify_resumed_narrative_frontier(&self) -> Result<(), ProviderFrameStageError<C::Error>> {
+    fn verify_resumed_narrative_frontier(&self) -> Result<(), ProviderFrameStageError> {
         match (self.seen_narrative, self.resume_narrative) {
             (None, None) => Ok(()),
             (Some(seen), Some(resume))
@@ -287,7 +354,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
             && narrative == self.target.narrative()
     }
 
-    fn flush(&mut self, seal: bool) -> Result<(), ProviderFrameStageError<C::Error>> {
+    fn flush(&mut self, seal: bool) -> Result<(), ProviderFrameStageError> {
         if self.chunks.is_empty() && self.narrative_spans.is_empty() {
             return if seal && !self.prospective_complete() {
                 Err(ProviderFrameStageError::IncompleteStagingTraversal)
@@ -322,14 +389,36 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
             std::mem::take(&mut self.byte_spans),
             std::mem::take(&mut self.narrative_spans),
         )?;
-        self.callback
-            .stage_batch(&batch)
-            .map_err(ProviderFrameStageError::Callback)?;
-        self.current = next;
-        Ok(())
+        match self.callback.stage_batch(&batch) {
+            CommandOutcome::NotCommitted { evidence } => {
+                Err(ProviderFrameStageError::NotCommitted { evidence })
+            }
+            CommandOutcome::Committed {
+                receipt,
+                later_failure,
+            } => {
+                self.current = next;
+                self.last_receipt = Some(receipt.clone());
+                match later_failure {
+                    Some(later_failure) => Err(ProviderFrameStageError::CommittedLaterFailure {
+                        value: self.current.clone(),
+                        receipt,
+                        later_failure,
+                    }),
+                    None => Ok(()),
+                }
+            }
+            CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => Err(ProviderFrameStageError::Indeterminate {
+                failure,
+                reconciliation,
+            }),
+        }
     }
 
-    fn maybe_flush(&mut self) -> Result<(), ProviderFrameStageError<C::Error>> {
+    fn maybe_flush(&mut self) -> Result<(), ProviderFrameStageError> {
         if (self.chunks.len() >= CONTENT_APPEND_MAX_CHUNKS
             || self.narrative_spans.len() >= PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS)
             && !self.prospective_complete()
@@ -341,7 +430,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
 }
 
 impl<C: ProviderFrameStageCallback> ProviderFrameSinkV1 for StagingSink<'_, C> {
-    type Error = ProviderFrameStageError<C::Error>;
+    type Error = ProviderFrameStageError;
 
     fn write_chunk(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
         let next_count = self

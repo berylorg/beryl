@@ -12,7 +12,7 @@ use beryl_app::{
     input_admission::prepare_accepted_input_admission,
 };
 use beryl_backend::{ManagedBackendClientConnector, ThreadStartOptions, TurnStartOptions};
-use beryl_home_store::{HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{CasProcessGeneration, SyndicAcceptedInputId, SyndicDraftId, SyndicTurnId};
 use syndic_storage::{
     AcceptedInputAdmission, AcceptedRouteEffectiveState, BindingState, ComposerAtom,
@@ -37,7 +37,7 @@ pub fn run() {
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let mut session = fixture
         .store
-        .admit(
+        .admit_lifecycle_test_candidate(
             &connector,
             execution_binding().runtime_id(),
             CasProcessGeneration::new(52_152).unwrap(),
@@ -320,5 +320,10 @@ fn stage_prepared_content(
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed { later_failure: None, .. } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed command, got {outcome:?}"),
+        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed command, got {outcome:?}"),
+    }
 }

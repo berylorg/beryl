@@ -4,8 +4,8 @@ use super::{ProjectionServiceGeneration, connection::ProjectionConnection};
 
 /// Exact connection membership owned by one projection-service generation.
 ///
-/// The generation is carried by the synchronization boundary itself so recovery adoption cannot
-/// accidentally exchange membership through an untyped shared vector.
+/// The generation is carried by the synchronization boundary itself so membership cannot cross
+/// service ownership through an untyped shared vector.
 pub(super) struct ProjectionServiceConnectionRegistry {
     service_generation: ProjectionServiceGeneration,
     connections: Mutex<Vec<Arc<ProjectionConnection>>>,
@@ -57,7 +57,7 @@ impl ProjectionServiceConnectionRegistry {
                 .connections
                 .lock()
                 .expect("service connection registry starts unpoisoned");
-            panic!("poison service connection registry for adoption test");
+            panic!("poison service connection registry for lifecycle test");
         }));
         assert!(panicked.is_err());
     }

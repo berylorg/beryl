@@ -1,28 +1,23 @@
 //! Protocol and transport-facing types for Beryl's Codex App Server boundary.
 //!
-//! A foreground candidate receives its immutable full-profile ingress configuration before its
-//! authenticated WebSocket handshake. Request-only WebSocket and detached stdio sessions are
-//! different construction-time policies and cannot be promoted into that profile.
+//! A production managed launch is admitted only after its initialized session proves the exact
+//! `codex-cli 0.146.0` identity and one same-session `config/read` proves both required nested
+//! `features.multi_agent_v2` settings are true with `sessionFlags` origins. Admission holds opaque
+//! managed-launch provenance and sends no capability, model, or conversation-target request.
+//! Request-only WebSocket and detached stdio sessions are different construction-time policies and
+//! cannot manufacture production admission authority.
 //!
-//! Initialization, fixed config read, one-page model discovery, the pinned compatibility sequence,
-//! foreground thread start, resume, fork, and unsubscribe, request-only metadata-only thread reads,
-//! full-profile streamed `turn/start`, and correlation-bearing streamed `turn/steer` use
-//! method-owned writers and the final incremental response lane. Exact foreground
-//! `turn/interrupt` exposes non-interchangeable durable-stop and volatile persistent-failure
-//! authorization/outcome families over the same writer and ordered driver. Optional coarse thread
-//! cleanup accepts only durable-stop authority. Exact foreground `thread/compact/start` uses a
-//! distinct idle-thread authorization and returns only its attempt-correlated enqueue disposition
-//! while lifecycle remains on the ordered sink;
-//! [`ManagedBackendSession::admits_exact_thread_background_terminals_cleanup`] exposes only the
-//! locally established pinned-release capability without sending a destructive probe. No generic
-//! whole-value request path or aggregate hard-stop facade is present.
+//! Foreground thread start, resume, fork, unsubscribe, request-only metadata reads, full-profile
+//! streamed `turn/start`, correlation-bearing streamed `turn/steer`, exact foreground
+//! `turn/interrupt`, and exact foreground `thread/compact/start` use method-owned writers and the
+//! final incremental response lane. No generic whole-value request path is present.
 //!
 //! The response decoder produces bounded facts. Protocol identities, display labels, cursors, and
-//! diagnostics use fixed inline storage; a matching `model/list` response creates exactly one
-//! fixed-size boxed [`ModelPage`], and callers request at most 64 records at a time. The
-//! compatibility sequence validates and releases its page immediately. Thread-lineage responses
-//! retain only bounded thread identity, closed status, and bounded model/provider/reasoning facts
-//! while structurally discarding history and unrecognized members.
+//! diagnostics use fixed inline storage. One-page `model/list` paging is an ordinary
+//! post-admission product operation; it creates exactly one fixed-size boxed [`ModelPage`], and
+//! callers request at most 64 records at a time. Thread-lineage responses retain only bounded
+//! thread identity, closed status, and bounded model/provider/reasoning facts while structurally
+//! discarding history and unrecognized members.
 //!
 //! ```
 //! use beryl_backend::{
@@ -125,38 +120,36 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! Persistent-store-failure interruption uses a separately typed volatile capability. Its
-//! correlation is process-local and never appears on the provider wire. The returned outcome is
-//! diagnostics only: it supplies no durable stop receipt, retry authority, or lifecycle
-//! completion.
+//! A durable-admission failure that is proven before the writer or exactly `NotCommitted` may mint
+//! a separately typed volatile capability. Its correlation is process-local and never appears on
+//! the provider wire. The returned outcome supplies no durable stop receipt, retry authority, or
+//! lifecycle completion.
 //!
 //! ```
 //! use std::time::Duration;
 //! use beryl_backend::{
 //!     CallerNoSuccessorFence, ExactForegroundTurn, ManagedBackendError, ManagedBackendSession,
-//!     PersistentFailureInterruptCorrelation, PersistentFailureInterruptOutcome,
-//!     TurnInterruptDisposition,
+//!     TurnInterruptDisposition, VolatileInterruptAdmissionFailure,
+//!     VolatileInterruptCorrelation, VolatileInterruptOutcome,
 //! };
 //! use beryl_model::{
 //!     CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasThreadId,
 //!     CasTurnId, RuntimeId,
 //! };
 //!
-//! fn interrupt_for_persistent_store_failure(
+//! fn interrupt_after_not_committed(
 //!     session: &mut ManagedBackendSession,
 //!     target: ExactForegroundTurn,
-//!     correlation: PersistentFailureInterruptCorrelation,
-//! ) -> Result<PersistentFailureInterruptOutcome, ManagedBackendError> {
+//!     correlation: VolatileInterruptCorrelation,
+//! ) -> Result<VolatileInterruptOutcome, ManagedBackendError> {
 //!     session.bind_exact_foreground_turn(target.clone())?;
-//!     let authorization = session.authorize_persistent_failure_interrupt(
+//!     let authorization = session.authorize_volatile_interrupt(
 //!         target,
+//!         VolatileInterruptAdmissionFailure::WriterReturnedNotCommitted,
 //!         correlation,
 //!         CallerNoSuccessorFence::issue(),
 //!     )?;
-//!     let outcome = session.interrupt_for_persistent_failure(
-//!         authorization,
-//!         Duration::from_secs(30),
-//!     );
+//!     let outcome = session.interrupt_volatile(authorization, Duration::from_secs(30));
 //!     debug_assert_eq!(outcome.request().correlation(), correlation);
 //!     match outcome.disposition() {
 //!         TurnInterruptDisposition::RequestAccepted
@@ -176,9 +169,9 @@
 //!     CasThreadId::new("thread-failed-store")?,
 //!     CasTurnId::new("turn-in-flight")?,
 //! );
-//! let correlation = PersistentFailureInterruptCorrelation::from_bytes([7; 16]);
+//! let correlation = VolatileInterruptCorrelation::from_bytes([7; 16]);
 //! assert_eq!(correlation.as_bytes(), &[7; 16]);
-//! # let _ = (target, interrupt_for_persistent_store_failure);
+//! # let _ = (target, interrupt_after_not_committed);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
@@ -402,16 +395,13 @@ mod command;
 mod dynamic_tool;
 mod exact_interruption;
 mod foreground;
-mod hard_stop;
 mod incoming_json;
 mod managed_process;
 mod ordered_turn_stream;
-mod persistent_failure_interrupt;
 mod protocol;
 mod provider_observation;
 mod server;
 mod session;
-mod thread_branch;
 mod thread_injection;
 mod thread_lineage;
 mod thread_metadata;
@@ -438,14 +428,14 @@ pub use dynamic_tool::{
     DynamicToolCallResponse, DynamicToolCallResponseDisposition, DynamicToolCallSchemaError,
     DynamicToolFunctionSpec, DynamicToolNamespaceSpec, DynamicToolSpec,
 };
-pub use foreground::{ForegroundSessionConfig, PreBindControlDiagnostics};
-pub use hard_stop::{
-    CallerNoSuccessorFence, CoarseThreadCleanupDisposition, CoarseThreadCleanupOutcome,
-    ExactForegroundTurn, ExactForegroundTurnAuthorization, ExactForegroundTurnRequest,
-    ExactHardStopLimitation, SameSessionCleanupOrdering, StopAttemptCorrelation,
-    StopAttemptDisposition, StopOperationCorrelation, TurnInterruptDisposition,
-    TurnInterruptOutcome,
+pub use exact_interruption::{
+    CallerNoSuccessorFence, ExactForegroundTurn, ExactForegroundTurnAuthorization,
+    ExactForegroundTurnRequest, StopAttemptCorrelation, StopAttemptDisposition,
+    StopOperationCorrelation, TurnInterruptDisposition, TurnInterruptOutcome,
+    VolatileInterruptAdmissionFailure, VolatileInterruptAuthorization,
+    VolatileInterruptCorrelation, VolatileInterruptOutcome, VolatileInterruptRequest,
 };
+pub use foreground::{ForegroundSessionConfig, PreBindControlDiagnostics};
 pub use incoming_json::ForegroundIngressError;
 pub use ordered_turn_stream::{
     ApprovalInterruption, ApprovalOperationCompletion, OrderedTurnStreamBindingError,
@@ -453,19 +443,15 @@ pub use ordered_turn_stream::{
     OrderedTurnStreamRejection, OrderedTurnStreamSink, OrderedTurnStreamSubmitCause,
     OrderedTurnStreamSubmitError,
 };
-pub use persistent_failure_interrupt::{
-    PersistentFailureInterruptAuthorization, PersistentFailureInterruptCorrelation,
-    PersistentFailureInterruptOutcome, PersistentFailureInterruptRequest,
-};
 pub use protocol::{
     BackendConfigDefaults, BoundedResponseResult, BoundedResponseTextError, CompatibilityError,
-    CompatibilityProbe, CompatibilityProbeResult, CompatibilityProbeSet, ConfigReadResponse,
-    DefaultReasoningEffort, EmptyAcknowledgement, InitializePlatform, InitializeResponse,
-    JSON_RPC_DIAGNOSTIC_MAX_BYTES, JsonRpcError, JsonRpcErrorVerdict, JsonRpcTurnKind,
-    MODEL_CURSOR_MAX_BYTES, MODEL_DISPLAY_NAME_MAX_BYTES, MODEL_PAGE_MAX_RECORDS, ModelDisplayName,
-    ModelListOptions, ModelPage, ModelPageCapacityError, ModelPageCursor, ModelPageLimit,
-    ModelPageLimitError, ModelRecord, PROTOCOL_IDENTITY_MAX_BYTES, ProtocolIdentity,
-    REQUIRED_CODEX_APP_SERVER_VERSION, ReasoningEffort, SupportedReasoningEfforts,
+    ConfigReadResponse, DefaultReasoningEffort, EmptyAcknowledgement, InitializePlatform,
+    InitializeResponse, JSON_RPC_DIAGNOSTIC_MAX_BYTES, JsonRpcError, JsonRpcErrorVerdict,
+    JsonRpcTurnKind, MODEL_CURSOR_MAX_BYTES, MODEL_DISPLAY_NAME_MAX_BYTES, MODEL_PAGE_MAX_RECORDS,
+    ModelDisplayName, ModelListOptions, ModelPage, ModelPageCapacityError, ModelPageCursor,
+    ModelPageLimit, ModelPageLimitError, ModelRecord, PROTOCOL_IDENTITY_MAX_BYTES,
+    ProtocolIdentity, REQUIRED_CODEX_APP_SERVER_VERSION, ReasoningEffort,
+    SupportedReasoningEfforts,
 };
 pub use provider_observation::{
     ProviderContainer, ProviderDeltaKind, ProviderEnumValue, ProviderField, ProviderFiniteF64,
@@ -480,10 +466,9 @@ pub use server::{
 pub use session::{
     CompactThreadDisposition, CompactThreadOutcome, CompactThreadRequest,
     CompactionAttemptCorrelation, ExactForegroundThread, ExactForegroundThreadAuthorization,
-    ManagedBackendError, ManagedBackendProbeReport, ManagedBackendSession, ManagedWebSocketError,
-    NonIdempotentRequestOutcome, TurnStartOutcome, TurnSteerOutcome,
+    ManagedBackendError, ManagedBackendReleaseAdmission, ManagedBackendSession,
+    ManagedWebSocketError, NonIdempotentRequestOutcome, TurnStartOutcome, TurnSteerOutcome,
 };
-pub use thread_branch::ThreadBranchCapabilities;
 pub use thread_injection::{
     THREAD_INJECTION_MAX_ITEMS, THREAD_INJECTION_MAX_PAGE_BYTES, THREAD_INJECTION_MAX_TEXT_BYTES,
     ThreadInjectionOutcome, ThreadInjectionPreflight, ThreadInjectionPreflightError,

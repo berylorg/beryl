@@ -3,10 +3,10 @@ mod support;
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
-    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily, RecordVersion,
-    StorageDomain,
+    CommandOutcome, CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError,
+    DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec,
+    RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, JobId, ResolutionIntentId, SyndicDraftId,
@@ -172,14 +172,19 @@ fn durable_job_records_reject_an_unsupported_record_version_on_reopen() {
         ParentQueueOrdinal::new(0),
         ResolutionText::new("Persist this exact resolution.").unwrap(),
     );
-    execute(
+    match execute(
         &store,
         state.durable_jobs().admit_branch_handoff(
             state.durable_jobs().revision(&store).unwrap(),
             AdmitBranchHandoffJob::new(admission),
         ),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed durable-job admission, got {outcome:?}"),
+    }
     store.close().unwrap();
 
     let mut probe = HomeStore::open(HomeOpenOptions::new(

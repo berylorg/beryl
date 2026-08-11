@@ -9,7 +9,9 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BetaDomain, BytesRecord, PutBytes, open_home};
+use support::{
+    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord, PutBytes,
+};
 
 #[derive(Clone, Copy)]
 enum Failure {
@@ -91,7 +93,7 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
             .add_validation(beta.validation(beta_before, RejectingValidator { failure }))
             .unwrap();
 
-        let error = store.execute(rejected).unwrap_err();
+        let error = not_committed(store.execute(rejected));
         match failure {
             Failure::Semantic => {
                 assert!(matches!(
@@ -139,13 +141,11 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
                 PutBytes::<AlphaDomain>::new(1, address.digest().as_bytes().to_vec()),
             ))
             .unwrap();
-        let receipt = store.execute(accepted).unwrap();
-        assert!(
-            store
-                .receipt_domain_revision(&receipt, alpha)
-                .unwrap()
-                .is_some()
-        );
+        let receipt = committed(store.execute(accepted));
+        assert!(store
+            .receipt_domain_revision(&receipt, alpha)
+            .unwrap()
+            .is_some());
         assert_eq!(store.receipt_domain_revision(&receipt, beta).unwrap(), None);
         assert_eq!(
             store

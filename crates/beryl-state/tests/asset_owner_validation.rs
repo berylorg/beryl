@@ -3,14 +3,15 @@ mod support;
 use std::{convert::Infallible, num::NonZeroU64};
 
 use beryl_home_store::{
-    CommandError, DomainMutation, DomainReader, DomainSchemaVersion, HomeCommand, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, RecordCodec,
-    RecordFamily, RecordVersion, SidecarByteLimit, SidecarNamespace, StorageDomain,
+    CommandError, CommandOutcome, DomainMutation, DomainReader, DomainSchemaVersion, HomeCommand,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder,
+    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, SidecarByteLimit,
+    SidecarNamespace, StorageDomain,
 };
 use beryl_model::{
-    AssetId, AssetReferenceSetId, ImageLabelOrdinal, SealedAssetReferenceSetProof,
-    SealedContentMarkerSummary, SyndicContentDigest, SyndicContentId, SyndicDraftId,
-    SyndicDraftMarkerId, SyndicItemId, advance_content_marker_digest, content_marker_digest_seed,
+    advance_content_marker_digest, content_marker_digest_seed, AssetId, AssetReferenceSetId,
+    ImageLabelOrdinal, SealedAssetReferenceSetProof, SealedContentMarkerSummary,
+    SyndicContentDigest, SyndicContentId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
 };
 use beryl_state::{
     AppendAssetReferencePage, AssetMediaType, AssetOwner, AssetOwnerHeadAssertion,
@@ -77,6 +78,14 @@ impl DomainMutation<ProbeDomain> for PutProbe {
         Ok(())
     }
 
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, ProbeDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<ProbeRecord>(1).unwrap();
+        Ok(())
+    }
+
     fn contribute(
         &self,
         _reader: &DomainReader<'_, ProbeDomain>,
@@ -92,7 +101,13 @@ impl DomainMutation<ProbeDomain> for PutProbe {
 fn execute_asset(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed asset-owner validation command, got {outcome:?}"),
+    }
 }
 
 fn marker() -> SyndicDraftMarkerId {
@@ -140,7 +155,13 @@ fn publish_asset(store: &HomeStore, state: BerylState) -> AssetId {
         .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     contribution.add_to(&mut command).unwrap();
-    store.execute(command).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed asset metadata command, got {outcome:?}"),
+    }
     asset_id
 }
 

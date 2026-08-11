@@ -9,18 +9,21 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - Defining Syndic canonical history, transcript-view flattening, Markdown projection, storage schema, resource references, or backend provider policy.
 - Defining transcript residency, renderer demand, working-set limits, shell host internals, or GPUI render pipeline mechanics.
 - Rendering operational activity, tool logs, raw reasoning, diagnostics, hidden developer instructions, or backend protocol records as parent transcript narrative.
-- Providing adapters from the transcript feature to obsolete transcript data structures.
 
 # Decisions
 
 ## Implementation References
 
-- `gui.md` is a normative supplemental GUI composition file for the transcript region, transcript-owned embedded widgets, menus, and previews.
-- `doc/systems/transcript-presentation/design.md` owns the internal transcript host, residency, presentation, renderer, scroll, diagnostics, and shell-boundary architecture.
-- `doc/systems/bounded-resource-dataflow/design.md` owns risk-based limits for resident pages,
-  layout, snapshots, nested widgets, clipboard/export, decoded media, and GPU working sets.
-- `doc/systems/syndic-conversation-history/design.md` owns durable conversation history, transcript views, Markdown projections, resources, and replay.
-- `doc/systems/cas-live-syndic-transcript/design.md` owns CAS-live capture into Syndic and selected-history read authority for captured CAS-backed turns.
+- [`gui.md`](gui.md) is a normative supplemental GUI composition file for the transcript region, transcript-owned embedded widgets, menus, and previews.
+- `doc/systems/transcript-presentation/design.md` owns the internal presentation, residency,
+  rendering, scrolling, live-text takeover, and repair-publication architecture.
+- `doc/systems/bounded-resource-dataflow/design.md` owns internal resource limits.
+- `doc/systems/syndic-conversation-history/design.md` owns durable conversation history,
+  provenance, transcript projections, resources, replay, and repaired records.
+- `doc/systems/cas-live-syndic-transcript/design.md` owns live capture and terminal-repair mechanics
+  for CAS-backed turns.
+- `doc/features/image-assets/design.md` owns transcript-image Copy and `Save…` eligibility,
+  disabled and failure behavior, focus outcomes, and durable asset semantics.
 
 ## Transcript Narrative
 
@@ -32,19 +35,44 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 
 ## Live Turn Presentation
 
-- Transcript-visible assistant text follows the arrival cadence of normalized CAS text deltas. Beryl
-  appends each arrived bounded fragment on the next available GUI frame while preserving its parent
-  delta identity and order, and does not replay it through a fixed-rate character or token animation.
-- One CAS delta may contain multiple characters or bounded transport fragments, and fragments from
-  multiple deltas received between two GUI frames may naturally become visible together. Beryl
-  introduces no additional pacing, so pauses and apparent throughput reflect when text reaches Beryl
-  within ordinary frame scheduling rather than a simulated typewriter rate. Fragment boundaries do
-  not become user-visible or durable event boundaries.
-- Durable Syndic coalescing is independent from visible live cadence. The transcript may temporarily present one bounded non-authoritative live suffix beyond its durable Syndic prefix, then replace that suffix only after the corresponding Syndic projection proves exact prefix agreement.
-- Durable takeover must not duplicate, omit, reorder, blank, or visibly restyle an already matching live prefix merely because its storage or projection revision changed. Until takeover, the transient suffix has no stable historical provenance and cannot authorize selection-derived history commands.
-- If completed-item narrative disagrees with the text received live, the transcript retains the
-  exact captured live prefix and presents that record as incomplete. It never swaps in the
-  completion payload, hides the record, or presents either representation as repaired history.
+- Transcript-visible assistant text follows its arrival cadence. Each newly arrived bounded portion
+  becomes visible on the next available GUI frame; Beryl does not replay it through a fixed-rate
+  character or token animation.
+- Several portions that arrive before one GUI frame may naturally become visible together. Beryl
+  introduces no additional pacing, so pauses and apparent throughput reflect when text reaches
+  Beryl within ordinary frame scheduling rather than a simulated typewriter rate. Technical batch
+  or fragment boundaries have no user-visible meaning.
+- As active assistant text becomes exact history, text already shown remains visually continuous
+  and in order. The transition must not duplicate, omit, reorder, blank, or visibly restyle matching
+  content.
+- Until exact historical provenance is available, live text remains readable but cannot authorize
+  selection-derived history commands.
+- If text shown live cannot be established as the complete historical record, the transcript does
+  not silently replace it with conflicting content or a speculative merge. Any later repaired
+  content appears only through the atomic whole-turn presentation described below.
+
+## Repair Presentation
+
+- Assistant words enter history through live capture. When live capture cannot establish a complete
+  historical turn, Beryl makes exactly one terminal repair request for the affected turn. That
+  request either produces the atomic whole-turn repaired presentation below or the turn becomes
+  terminally incomplete; Beryl never retries the request, issues a second repair request, or
+  splices competing representations together.
+- Every transcript-visible assistant record belonging to a turn awaiting repair is labeled
+  `Repair pending`. Visible durable content remains readable, but commands requiring complete turn
+  provenance remain unavailable.
+- Successful repair replaces the affected turn all at once. All repaired records appear together
+  and are persistently labeled `Repaired from CAS history`; the user never sees a partial item
+  splice, a mixture of pre-repair and repaired records, or a blank intermediate turn.
+- The repair label and each affected record's accessible description expose the same provenance.
+  Repair-state changes become visible only with the corresponding whole-turn replacement.
+- Whole-turn replacement preserves the user's semantic transcript anchor. Any selection, quote
+  affordance, or context menu whose source or geometry changed closes instead of targeting the new
+  records through stale provenance.
+- If whole-turn repair cannot establish complete history, affected records use the explicit
+  terminal `Incomplete` label. Any content that remains present is readable, selectable, and
+  copyable, but the transcript never presents it as repaired or complete and keeps commands that
+  require complete turn provenance unavailable.
 
 ## Scrolling And Activation
 
@@ -82,6 +110,10 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - Entering replacement-edit mode closes the context menu and dims the targeted user-input turn plus its later turns on the selected path without changing their selection, copy, quote, or scrolling behavior.
 - Replacement-edit workflow and path semantics are defined in `doc/features/conversation-threads/design.md`; draft interaction is defined in `doc/features/composer/design.md`.
 - A non-empty stable selection wholly inside rendered assistant reply text exposes `Discuss in new branch` alongside Quote.
-- `Discuss in new branch` requires an exact proven-terminal Syndic turn, a current finalized assistant item/projection revision, selected-range provenance, healthy Beryl-home storage, and selection size within the branch-discussion limit.
-- The action is unavailable for user input, operational records, synthetic discussion-context items, loading or fallback text, cross-record selections without one exact source owner, live or unknown-terminal assistant output, stale or incomplete projection work, or stale geometry.
+- `Discuss in new branch` requires an exact proven-terminal historical turn, a selection that still
+  matches its current finalized assistant record, exact selected-range provenance, healthy
+  Beryl-home storage, and selection size within the branch-discussion limit.
+- The action is unavailable for user input, operational records, synthetic discussion-context
+  items, loading or fallback text, cross-record selections without one exact source owner, live,
+  unknown-terminal, incomplete, or no-longer-current assistant output, or stale geometry.
 - Branch-discussion product behavior is defined in `doc/features/branch-discussions/design.md`.
