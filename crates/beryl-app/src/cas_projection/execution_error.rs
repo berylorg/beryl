@@ -1,7 +1,5 @@
 use beryl_backend::{ManagedBackendError, ThreadInjectionPreflightError, ThreadStatus};
-use beryl_home_store::{
-    CommandBuildError, CommandError, CommitReceipt, ReadError, ReconciliationDescriptor,
-};
+use beryl_home_store::{CommandBuildError, CommandError, CommitReceipt, ReadError};
 use beryl_model::{CasThreadId, RuntimeId};
 use syndic_storage::{
     NativeProjectionError, RecoveryProjectionError, SyndicReadError, SyndicRecordError,
@@ -32,7 +30,6 @@ pub enum ProjectionPublicationFailure {
     CommandIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("projection publication command could not be built")]
     CommandBuild(#[source] CommandBuildError),

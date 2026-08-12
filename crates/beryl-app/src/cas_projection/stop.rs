@@ -11,17 +11,14 @@ use beryl_backend::{
     ApprovalInterruption, ExactForegroundTurn, StopAttemptCorrelation, StopAttemptDisposition,
     StopOperationCorrelation, TurnInterruptDisposition, TurnInterruptOutcome,
 };
-use beryl_home_store::{
-    CommandError, CommandOutcome, CommitReceipt, HomeGeneration, HomeStore,
-    ReconciliationDescriptor,
-};
+use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     AbandonStopOperation, ClaimStopDispatch, JoinStopCause, SafelyReopenStopOperation,
     StopAbandonmentReason, StopAdmissionIneligibility, StopAdmissionRead, StopAttemptNonce,
     StopCause, StopCauseSet, StopOperationId, StopOperationNonce, StopOperationState,
-    StopOperationTarget, SyndicLiveStopOperation,
-    SyndicPointReadLimit, SyndicReadError, SyndicStorage, SyndicTimestamp,
+    StopOperationTarget, SyndicLiveStopOperation, SyndicPointReadLimit, SyndicReadError,
+    SyndicStorage, SyndicTimestamp,
 };
 use thiserror::Error;
 
@@ -273,7 +270,6 @@ pub enum StopCoordinationError {
     CommandIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("the exact durable stop transition collided with another authority")]
     TransitionCollision,
@@ -302,10 +298,10 @@ fn require_stop_committed(outcome: CommandOutcome) -> Result<(), StopCoordinatio
         CommandOutcome::Indeterminate {
             failure,
             reconciliation,
-        } => Err(StopCoordinationError::CommandIndeterminate {
-            failure,
-            reconciliation,
-        }),
+        } => {
+            reconciliation.install();
+            Err(StopCoordinationError::CommandIndeterminate { failure })
+        }
     }
 }
 
@@ -1368,10 +1364,12 @@ impl StopCoordinator {
             live.stop_revision(),
         );
         let home = self.current_home()?;
-        require_stop_committed(home.execute_current(
-            self.storage
-                .current_safely_reopen_stop_operation(request.clone()),
-        ))?;
+        require_stop_committed(
+            home.execute_current(
+                self.storage
+                    .current_safely_reopen_stop_operation(request.clone()),
+            ),
+        )?;
         self.remove_local(operation_id);
         Ok(StopDispatchSettlement::SafelyReopened(operation_id))
     }

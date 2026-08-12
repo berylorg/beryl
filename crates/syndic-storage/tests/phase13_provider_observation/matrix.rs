@@ -37,15 +37,17 @@ fn begin_item(
     kind: ProviderObservationItemKind,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
-    ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([byte; 16]),
-        ProviderObservationBegin::Item {
-            lifecycle: ProviderObservationItemLifecycle::Completed,
-            kind,
-        },
-        callback,
+    clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([byte; 16]),
+            ProviderObservationBegin::Item {
+                lifecycle: ProviderObservationItemLifecycle::Completed,
+                kind,
+            },
+            callback,
+        )
+        .unwrap(),
     )
-    .unwrap()
 }
 
 fn begin_delta(
@@ -53,12 +55,14 @@ fn begin_delta(
     kind: ProviderDeltaKind,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
-    ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([byte; 16]),
-        ProviderObservationBegin::Delta { kind },
-        callback,
+    clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([byte; 16]),
+            ProviderObservationBegin::Delta { kind },
+            callback,
+        )
+        .unwrap(),
     )
-    .unwrap()
 }
 
 fn validation_error(
@@ -84,13 +88,17 @@ fn wrong_enum(
     field: ProviderField,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationValidatorError {
-    validation_error(stager.control(
-        ProviderObservationControl::Enum {
-            context: ProviderValueContext::Field(field),
-            value: ProviderEnumValue::Commentary,
-        },
-        callback,
-    ))
+    validation_error(
+        stager
+            .control(
+                ProviderObservationControl::Enum {
+                    context: ProviderValueContext::Field(field),
+                    value: ProviderEnumValue::Commentary,
+                },
+                callback,
+            )
+            .map(clean_stage),
+    )
 }
 
 fn wrong_item_value(
@@ -226,7 +234,9 @@ fn every_item_schema_rejects_a_schema_specific_type_or_shape_substitution() {
         stager.abandon();
     }
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -270,7 +280,9 @@ fn every_delta_schema_rejects_a_schema_specific_type_or_shape_substitution() {
         stager.abandon();
     }
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -291,12 +303,16 @@ fn every_item_and_delta_schema_rejects_duplicate_identity_without_advancing_stat
             .unwrap()
             .clone();
         assert_eq!(
-            validation_error(stager.control(
-                ProviderObservationControl::BeginField(ProviderValueContext::Field(
-                    ProviderField::ItemId,
-                )),
-                &mut callback,
-            )),
+            validation_error(
+                stager
+                    .control(
+                        ProviderObservationControl::BeginField(ProviderValueContext::Field(
+                            ProviderField::ItemId,
+                        )),
+                        &mut callback,
+                    )
+                    .map(clean_stage)
+            ),
             ProviderObservationValidatorError::DuplicateField
         );
         assert_eq!(
@@ -325,12 +341,16 @@ fn every_item_and_delta_schema_rejects_duplicate_identity_without_advancing_stat
             .unwrap()
             .clone();
         assert_eq!(
-            validation_error(stager.control(
-                ProviderObservationControl::BeginField(ProviderValueContext::Field(
-                    ProviderField::ItemId,
-                )),
-                &mut callback,
-            )),
+            validation_error(
+                stager
+                    .control(
+                        ProviderObservationControl::BeginField(ProviderValueContext::Field(
+                            ProviderField::ItemId,
+                        )),
+                        &mut callback,
+                    )
+                    .map(clean_stage)
+            ),
             ProviderObservationValidatorError::DuplicateField
         );
         assert_eq!(
@@ -343,7 +363,9 @@ fn every_item_and_delta_schema_rejects_duplicate_identity_without_advancing_stat
         stager.abandon();
     }
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -415,6 +437,8 @@ fn every_item_and_delta_schema_rejects_missing_required_state_without_sealing() 
             ProviderObservationBuildLifecycle::Building
         );
     }
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

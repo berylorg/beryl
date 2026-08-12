@@ -1,6 +1,8 @@
 use beryl_home_store::{
-    CommitReceipt, CommitReceiptError, DomainHandle, DomainHandleError, DomainRegistrationError,
-    DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion, ReadError, RecordFamily, StorageDomain,
+    CommitReceipt, CommitReceiptError, DomainHandle, DomainHandleError, DomainReconciliation,
+    DomainRegistrationError, DomainSchemaVersion, HomeRecoveryCandidate, HomeStore,
+    KeyspaceSchemaVersion, ReadError, ReconciliationReader, RecordCodec, RecordFamily,
+    StorageDomain,
 };
 use beryl_model::DomainRevision;
 
@@ -89,6 +91,121 @@ impl StorageDomain for SyndicDomain {
     ) -> Result<(), Self::ValidationError> {
         crate::validation::validate(reader)
     }
+
+    fn reconcile(
+        reader: &ReconciliationReader<'_, Self>,
+    ) -> Result<DomainReconciliation, Self::ValidationError> {
+        let mut sides = ReconciliationSides::default();
+        macro_rules! classify {
+            ($codec:ty) => {
+                classify_records::<$codec>(reader, &mut sides)?;
+            };
+        }
+        classify!(ThreadsCodec);
+        classify!(ThreadExecutionsCodec);
+        classify!(ThreadAttributesCodec);
+        classify!(ThreadUsageCodec);
+        classify!(ThreadCatalogSummariesCodec);
+        classify!(DraftsCodec);
+        classify!(ContentManifestsCodec);
+        classify!(ContentChunksCodec);
+        classify!(ContentByteSpansCodec);
+        classify!(ContentTextSpansCodec);
+        classify!(ProviderNarrativeSpansCodec);
+        classify!(ContentPiecesCodec);
+        classify!(ContextEnvelopesCodec);
+        classify!(TurnsCodec);
+        classify!(TurnStatesCodec);
+        classify!(InputGatesCodec);
+        classify!(AcceptedInputsCodec);
+        classify!(StopOperationsCodec);
+        classify!(CompactionOperationsCodec);
+        classify!(CompactionSettlementReceiptsCodec);
+        classify!(AcceptedRouteGenerationHeadsCodec);
+        classify!(AcceptedRouteLeavesCodec);
+        classify!(SourceEventsCodec);
+        classify!(ProviderObservationBuildsCodec);
+        classify!(ProviderItemBuildsCodec);
+        classify!(CanonicalItemsCodec);
+        classify!(ActivityQueryHeadsCodec);
+        classify!(ItemProjectionHeadsCodec);
+        classify!(ItemProjectionSetsCodec);
+        classify!(ItemProjectionBuildsCodec);
+        classify!(TranscriptHeadsCodec);
+        classify!(TranscriptBuildsCodec);
+        classify!(ProjectionsCodec);
+        classify!(ResourcesCodec);
+        classify!(HistorySummariesCodec);
+        classify!(BindingsCodec);
+        classify!(ExecutionSnapshotsCodec);
+        classify!(ActiveCasTurnsCodec);
+        classify!(DraftByThreadCodec);
+        classify!(ThreadParentCodec);
+        classify!(ImageLabelOriginSpansCodec);
+        classify!(TurnChildrenCodec);
+        classify!(AcceptedOrderCodec);
+        classify!(AcceptedRouteGenerationsCodec);
+        classify!(AcceptedReadySourcesCodec);
+        classify!(AcceptedNextSourcesCodec);
+        classify!(TurnItemsCodec);
+        classify!(ActivityQueryEntriesCodec);
+        classify!(ActivityQuerySourcesCodec);
+        classify!(ItemSourceEventsCodec);
+        classify!(CasItemIndexCodec);
+        classify!(TranscriptPathTurnsCodec);
+        classify!(TranscriptEntriesCodec);
+        classify!(StableItemProjectionsCodec);
+        classify!(ItemProjectionsCodec);
+        classify!(ProjectionResourcesCodec);
+        classify!(BindingHeadsCodec);
+        classify!(CasThreadIndexCodec);
+        classify!(CasThreadBindingIndexCodec);
+        classify!(CasTurnIndexCodec);
+        classify!(ProviderObservationChunksCodec);
+        Ok(sides.finish())
+    }
+}
+
+struct ReconciliationSides {
+    saw_record: bool,
+    exact_old: bool,
+    exact_new: bool,
+}
+
+impl Default for ReconciliationSides {
+    fn default() -> Self {
+        Self {
+            saw_record: false,
+            exact_old: true,
+            exact_new: true,
+        }
+    }
+}
+
+impl ReconciliationSides {
+    fn finish(&self) -> DomainReconciliation {
+        match (self.saw_record, self.exact_old, self.exact_new) {
+            (true, true, false) => DomainReconciliation::ExactOld,
+            (true, false, true) => DomainReconciliation::ExactNew,
+            _ => DomainReconciliation::Collision,
+        }
+    }
+}
+
+fn classify_records<R>(
+    reader: &ReconciliationReader<'_, SyndicDomain>,
+    sides: &mut ReconciliationSides,
+) -> Result<(), SyndicValidationError>
+where
+    R: RecordCodec<SyndicDomain>,
+    R::Value: PartialEq,
+{
+    for record in reader.records::<R>()? {
+        sides.saw_record = true;
+        sides.exact_old &= record.current() == record.old();
+        sides.exact_new &= record.current() == record.new();
+    }
+    Ok(())
 }
 
 /// Opaque typed access to the permanent Syndic V5 domain in one Beryl home.
@@ -98,16 +215,45 @@ pub struct SyndicStorage {
 }
 
 impl SyndicStorage {
-    /// Registers the exact V5 domain and validates every persisted family before publication.
+    /// Registers or routinely reacquires the exact V5 domain without scanning application records.
+    ///
+    /// This validates the persisted declaration, required families, exact owner and codec types,
+    /// and current home generation. Use [`Self::register_with_schema_validation`] only at an
+    /// explicit schema-validation boundary.
     pub fn register(store: &mut HomeStore) -> Result<Self, DomainRegistrationError> {
         store
             .register_domain::<SyndicDomain>()
             .map(|handle| Self { handle })
     }
 
-    /// Reacquires this exact typed domain after successful same-home recovery.
+    /// Registers or reacquires the exact V5 domain at an explicit schema-validation boundary.
+    ///
+    /// Unlike [`Self::register`], this exhaustively streams every persisted Syndic family through
+    /// its exact codec and then runs the V5 cross-record and sidecar validator before publishing
+    /// the handle.
+    pub fn register_with_schema_validation(
+        store: &mut HomeStore,
+    ) -> Result<Self, DomainRegistrationError> {
+        store
+            .register_domain_with_schema_validation::<SyndicDomain>()
+            .map(|handle| Self { handle })
+    }
+
+    /// Reacquires this exact typed domain after successful same-home recovery without a record scan.
     pub fn reacquire(store: &HomeStore) -> Result<Self, DomainHandleError> {
         store
+            .domain_handle::<SyndicDomain>()
+            .map(|handle| Self { handle })
+    }
+
+    /// Reacquires this exact typed domain from an unpublished same-home recovery candidate.
+    ///
+    /// This is declaration-, family-, exact-type-, and generation-bound only; it does not scan
+    /// persisted application records or open ordinary store admission.
+    pub fn reacquire_candidate(
+        candidate: &HomeRecoveryCandidate,
+    ) -> Result<Self, DomainHandleError> {
+        candidate
             .domain_handle::<SyndicDomain>()
             .map(|handle| Self { handle })
     }

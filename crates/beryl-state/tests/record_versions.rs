@@ -4,14 +4,12 @@ use std::{error::Error, fmt};
 
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
-    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily, RecordVersion,
-    StorageDomain,
+    DomainReader, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, PointReadLimit, ReadError, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain, WholeHomeScrubTrigger,
 };
 use beryl_model::RuntimeId;
 use tempfile::tempdir;
-
-use support::{create_host_runtime, open};
 
 struct RuntimeV2Probe;
 struct RuntimeRecordV2;
@@ -167,39 +165,46 @@ fn decode_id(encoded: &[u8]) -> Result<[u8; 16], ProbeCodecError> {
 }
 
 #[test]
-fn runtime_domain_rejects_an_unsupported_record_version_on_reopen() {
+fn routine_reopen_defers_an_unsupported_runtime_record_version_to_explicit_scrub() {
     let directory = tempdir().unwrap();
-    let (store, state) = open(directory.path());
-    create_host_runtime(
-        &store,
-        state,
-        1,
-        2,
-        r"C:\Codex\codex.exe",
-        r"C:\Users\operator",
-    );
-    store.close().unwrap();
-
-    let mut runtime_probe = HomeStore::open(HomeOpenOptions::new(
+    let mut store = HomeStore::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
+    let probe = store.register_domain::<RuntimeV2Probe>().unwrap();
+    store
+        .inject_persisted_corrupt_record::<RuntimeV2Probe, RuntimeRecordV2>(
+            probe,
+            &[1; 16],
+            &1_u32.to_be_bytes(),
+        )
+        .unwrap();
+    store.close().unwrap();
+
+    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let probe = reopened.register_domain::<RuntimeV2Probe>().unwrap();
     assert_version_error(
-        runtime_probe
-            .register_domain::<RuntimeV2Probe>()
+        reopened
+            .read_point::<RuntimeV2Probe, RuntimeRecordV2>(
+                probe,
+                &RuntimeId::from_bytes([1; 16]),
+                PointReadLimit::new(128 * 1024 + 4).unwrap(),
+            )
             .unwrap_err(),
+    );
+    assert!(
+        reopened
+            .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+            .is_err()
     );
 }
 
-fn assert_version_error(error: DomainRegistrationError) {
-    let DomainRegistrationError::ValidationAccess {
-        source: DomainCallbackSource::Read(source),
-        ..
-    } = error
-    else {
-        panic!("expected typed validation-access error, got {error}");
-    };
+fn assert_version_error(source: ReadError) {
     assert!(matches!(
         source,
         ReadError::UnsupportedRecordVersion {

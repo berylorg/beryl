@@ -1,15 +1,11 @@
-use beryl_home_store::{
-    CommandError, CommandOutcome, CommitReceipt, HomeGeneration, HomeStore,
-    ReconciliationDescriptor,
-};
+use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, CasItemId, SyndicItemId};
 use syndic_storage::{
     CasItemSource, PreparedProviderFrame, ProviderFramePreparationPlan, ProviderFrameStageBatch,
     ProviderFrameStageError, ProviderFrameStageOutcome, ProviderItemBuildLifecycle,
-    ProviderItemBuildRecord,
-    ProviderItemFrameV1, ProviderNarrativeCompletionDisposition, SourceEventPayload,
-    SyndicPointReadLimit, SyndicReadError, SyndicStorage, prepare_provider_frame,
-    stage_provider_frame,
+    ProviderItemBuildRecord, ProviderItemFrameV1, ProviderNarrativeCompletionDisposition,
+    SourceEventPayload, SyndicPointReadLimit, SyndicReadError, SyndicStorage,
+    prepare_provider_frame, stage_provider_frame,
 };
 use thiserror::Error;
 
@@ -34,7 +30,6 @@ pub(super) enum ProviderFramePublicationError {
     BeginIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("provider-frame build command reported success without durable admission")]
     BeginPrior,
@@ -42,6 +37,11 @@ pub(super) enum ProviderFramePublicationError {
     BeginCollision,
     #[error(transparent)]
     Stage(#[from] ProviderFrameStageError),
+    #[error("provider-frame staging has an indeterminate durable outcome: {failure}")]
+    StageIndeterminate {
+        #[source]
+        failure: CommandError,
+    },
     #[error("provider completion comparison command failed before durable admission: {0}")]
     CompletionCommand(#[source] CommandError),
     #[error("provider completion comparison committed before a later failure: {later_failure}")]
@@ -54,7 +54,6 @@ pub(super) enum ProviderFramePublicationError {
     CompletionIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("provider completion comparison reported success without advancing")]
     CompletionPrior,
@@ -92,7 +91,6 @@ pub(super) enum ProviderBatchDispatchError {
     Indeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("provider-frame batch command reported success without advancing")]
     Prior,
@@ -257,6 +255,19 @@ fn begin_build(
         .enter_current_home(store, home_id, home_generation)
         .map_err(ProviderFramePublicationError::Authority)?;
     let dispatch = store.execute_current(storage.current_begin_provider_frame_build(prepared));
+    let dispatch = match dispatch {
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            verification
+                .settle_after_operation()
+                .map_err(ProviderFramePublicationError::Authority)?;
+            return Err(ProviderFramePublicationError::BeginIndeterminate { failure });
+        }
+        dispatch => dispatch,
+    };
     verification
         .settle_after_operation()
         .map_err(ProviderFramePublicationError::Authority)?;
@@ -277,15 +288,7 @@ fn begin_build(
                 later_failure,
             });
         }
-        CommandOutcome::Indeterminate {
-            failure,
-            reconciliation,
-        } => {
-            return Err(ProviderFramePublicationError::BeginIndeterminate {
-                failure,
-                reconciliation,
-            });
-        }
+        CommandOutcome::Indeterminate { .. } => unreachable!(),
     }
     match read_build(
         store,
@@ -314,9 +317,10 @@ fn stage_build(
     limit: SyndicPointReadLimit,
     command: &crate::cas_projection::LiveCommandPermit,
 ) -> Result<ProviderItemBuildRecord, ProviderFramePublicationError> {
-    let outcome = stage_provider_frame(prepared, current, &mut |batch: &ProviderFrameStageBatch| {
-        store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))
-    })?;
+    let outcome =
+        stage_provider_frame(prepared, current, &mut |batch: &ProviderFrameStageBatch| {
+            store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))
+        })?;
     match outcome {
         ProviderFrameStageOutcome::Unchanged { value }
         | ProviderFrameStageOutcome::Committed {
@@ -324,9 +328,9 @@ fn stage_build(
             later_failure: None,
             ..
         } => Ok(value),
-        ProviderFrameStageOutcome::NotCommitted { evidence } => Err(
-            ProviderFrameStageError::NotCommitted { evidence }.into(),
-        ),
+        ProviderFrameStageOutcome::NotCommitted { evidence } => {
+            Err(ProviderFrameStageError::NotCommitted { evidence }.into())
+        }
         ProviderFrameStageOutcome::Committed {
             value,
             receipt,
@@ -340,11 +344,10 @@ fn stage_build(
         ProviderFrameStageOutcome::Indeterminate {
             failure,
             reconciliation,
-        } => Err(ProviderFrameStageError::Indeterminate {
-            failure,
-            reconciliation,
+        } => {
+            reconciliation.install();
+            Err(ProviderFramePublicationError::StageIndeterminate { failure })
         }
-        .into()),
     }
 }
 
@@ -361,6 +364,19 @@ fn dispatch_batch(
         .enter_current_home(store, home_id, home_generation)
         .map_err(ProviderBatchDispatchError::Authority)?;
     let dispatch = store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()));
+    let dispatch = match dispatch {
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            verification
+                .settle_after_operation()
+                .map_err(ProviderBatchDispatchError::Authority)?;
+            return Err(ProviderBatchDispatchError::Indeterminate { failure });
+        }
+        dispatch => dispatch,
+    };
     verification
         .settle_after_operation()
         .map_err(ProviderBatchDispatchError::Authority)?;
@@ -381,15 +397,7 @@ fn dispatch_batch(
                 later_failure,
             });
         }
-        CommandOutcome::Indeterminate {
-            failure,
-            reconciliation,
-        } => {
-            return Err(ProviderBatchDispatchError::Indeterminate {
-                failure,
-                reconciliation,
-            });
-        }
+        CommandOutcome::Indeterminate { .. } => unreachable!(),
     }
     match read_build(
         store,
@@ -403,7 +411,9 @@ fn dispatch_batch(
     .map_err(map_batch_read_error)?
     {
         Some(current) if &current == batch.next_build() => Ok(()),
-        Some(current) if &current == batch.expected_build() => Err(ProviderBatchDispatchError::Prior),
+        Some(current) if &current == batch.expected_build() => {
+            Err(ProviderBatchDispatchError::Prior)
+        }
         Some(_) | None => Err(ProviderBatchDispatchError::Collision),
     }
 }
@@ -423,6 +433,19 @@ fn complete_comparison(
             .map_err(ProviderFramePublicationError::Authority)?;
         let dispatch =
             store.execute_current(storage.current_compare_provider_completion(current.clone()));
+        let dispatch = match dispatch {
+            CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => {
+                reconciliation.install();
+                verification
+                    .settle_after_operation()
+                    .map_err(ProviderFramePublicationError::Authority)?;
+                return Err(ProviderFramePublicationError::CompletionIndeterminate { failure });
+            }
+            dispatch => dispatch,
+        };
         verification
             .settle_after_operation()
             .map_err(ProviderFramePublicationError::Authority)?;
@@ -443,15 +466,7 @@ fn complete_comparison(
                     later_failure,
                 });
             }
-            CommandOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            } => {
-                return Err(ProviderFramePublicationError::CompletionIndeterminate {
-                    failure,
-                    reconciliation,
-                });
-            }
+            CommandOutcome::Indeterminate { .. } => unreachable!(),
         }
         let durable = read_build(
             store,

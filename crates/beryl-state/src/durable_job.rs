@@ -2,9 +2,9 @@ use std::{error::Error, fmt};
 
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
-    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    MutationBuildError, MutationContribution, PointReadLimit, ReadError, RecordFamily,
-    StorageDomain,
+    DomainHandle, DomainReconciliation, DomainRegistrationError, DomainSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationBuildError, MutationContribution, PointReadLimit, ReadError,
+    ReconciliationReader, RecordFamily, StorageDomain,
 };
 use beryl_model::{DomainRevision, JobId, JobRevision, RevisionError, SyndicThreadId};
 
@@ -28,15 +28,15 @@ pub use mutation::{
     StartParentHandoff, SucceedBranchHandoff,
 };
 pub use record::{
-    branch_handoff_job_id, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
-    BranchHandoffJobLifecycle, BranchHandoffJobRecord, BranchHandoffJobState,
-    LatestBranchHandoffAttempt, ResolutionRequestAdmission,
+    BranchHandoffCheckpoint, BranchHandoffJobAdmission, BranchHandoffJobLifecycle,
+    BranchHandoffJobRecord, BranchHandoffJobState, LatestBranchHandoffAttempt,
+    ResolutionRequestAdmission, branch_handoff_job_id,
 };
 pub use value::{
     DiscussionContextDigest, DiscussionContextOwnerId, DurableJobValueError,
-    HandoffFailureEvidence, HandoffFailureKind, ParentCasIdentity, ParentHandoffIdentity,
-    ParentQueueOrdinal, ResolutionAttemptOrdinal, ResolutionRequestIdentity, ResolutionText,
-    HANDOFF_FAILURE_DETAIL_MAX_BYTES, RESOLUTION_TEXT_MAX_BYTES,
+    HANDOFF_FAILURE_DETAIL_MAX_BYTES, HandoffFailureEvidence, HandoffFailureKind,
+    ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal, RESOLUTION_TEXT_MAX_BYTES,
+    ResolutionAttemptOrdinal, ResolutionRequestIdentity, ResolutionText,
 };
 
 pub(crate) const BRANCH_HANDOFF_JOB_RECORD_LIMIT: usize = 128 * 1024;
@@ -63,6 +63,33 @@ impl StorageDomain for DurableJobDomain {
     ) -> Result<(), Self::ValidationError> {
         validate::validate(reader)
     }
+
+    fn reconcile(
+        reader: &ReconciliationReader<'_, Self>,
+    ) -> Result<DomainReconciliation, Self::ValidationError> {
+        let mut classification = crate::reconciliation::ReconciliationClassification::new();
+        crate::reconciliation::classify_records::<Self, JobRecordCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, LiveJobIndexCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, RequestIdempotencyIndexCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, DiscussionAttemptIndexCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, LatestAttemptIndexCodec>(
+            reader,
+            &mut classification,
+        )?;
+        Ok(classification.finish())
+    }
 }
 
 /// Opaque typed access to the durable orchestration-job domain.
@@ -78,10 +105,26 @@ impl DurableJobState {
             .map(|handle| Self { handle })
     }
 
+    pub(crate) fn register_with_schema_validation(
+        store: &mut HomeStore,
+    ) -> Result<Self, DomainRegistrationError> {
+        store
+            .register_domain_with_schema_validation::<DurableJobDomain>()
+            .map(|handle| Self { handle })
+    }
+
     pub(crate) fn reacquire(
         store: &HomeStore,
     ) -> Result<Self, beryl_home_store::DomainHandleError> {
         store
+            .domain_handle::<DurableJobDomain>()
+            .map(|handle| Self { handle })
+    }
+
+    pub(crate) fn reacquire_candidate(
+        candidate: &beryl_home_store::HomeRecoveryCandidate,
+    ) -> Result<Self, beryl_home_store::DomainHandleError> {
+        candidate
             .domain_handle::<DurableJobDomain>()
             .map(|handle| Self { handle })
     }

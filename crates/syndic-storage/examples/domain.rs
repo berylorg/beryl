@@ -1,6 +1,5 @@
 use beryl_home_store::{
     CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    ReconciliationDescriptor,
 };
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
@@ -46,10 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             failure,
             reconciliation,
         } => {
-            return Err(Box::new(ExampleOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            }))
+            reconciliation.install();
+            return Err(Box::new(ExampleOutcome::Indeterminate(failure)));
         }
     }
     let current = syndic
@@ -73,10 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 enum ExampleOutcome {
     NotCommitted(CommandError),
     CommittedLaterFailure(CommandError),
-    Indeterminate {
-        failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
-    },
+    Indeterminate(CommandError),
 }
 
 impl std::fmt::Display for ExampleOutcome {
@@ -84,14 +78,14 @@ impl std::fmt::Display for ExampleOutcome {
         match self {
             Self::NotCommitted(evidence) => write!(formatter, "command did not commit: {evidence}"),
             Self::CommittedLaterFailure(failure) => {
-                write!(formatter, "command committed before later failure: {failure}")
+                write!(
+                    formatter,
+                    "command committed before later failure: {failure}"
+                )
             }
-            Self::Indeterminate {
-                failure,
-                reconciliation,
-            } => write!(
+            Self::Indeterminate(failure) => write!(
                 formatter,
-                "command outcome is indeterminate ({failure}); retain {reconciliation:?} for reconciliation"
+                "command outcome is indeterminate after reconciliation custody installation: {failure}"
             ),
         }
     }

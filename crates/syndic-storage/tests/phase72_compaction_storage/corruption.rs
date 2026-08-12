@@ -39,7 +39,10 @@ fn successful_fixture(name: &str, id_byte: u8) -> (CompactionFixture, Compaction
         } => {}
         outcome => panic!("expected clean corrupt-fixture compaction settlement, got {outcome:?}"),
     }
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     (fixture, id)
 }
 
@@ -133,7 +136,10 @@ fn with_consumed_witness(
 }
 
 fn assert_validation_rejects(fixture: &CompactionFixture, expected: &str) {
-    let error = fixture.store.validate_registered_domains().unwrap_err();
+    let error = fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error.to_string().contains(expected),
         "expected `{expected}`, got `{error}`"

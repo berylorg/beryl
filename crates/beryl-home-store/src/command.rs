@@ -3,8 +3,8 @@ use std::{
     collections::HashSet,
     marker::PhantomData,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -12,26 +12,28 @@ use beryl_model::{DomainRevision, HomeRevision};
 use thiserror::Error;
 
 use crate::{
-    domain::{RegisteredDomain, StoreInstanceId},
-    read::{encode_stored_key, encode_value},
     AdmittedSidecar, DomainCallbackError, DomainHandle, DomainReader, ReadError, RecordCodec,
     StorageDomain,
+    domain::{RegisteredDomain, StoreInstanceId},
+    read::{encode_stored_key, encode_value},
 };
 
 mod participant;
 mod result;
 
-use participant::{mutation_plan, validation_plan};
 pub(crate) use participant::{DomainMutationPlan, DomainParticipant};
+use participant::{mutation_plan, validation_plan};
+pub(crate) use result::RetainedReconciliationDescriptor;
 pub use result::{
     CommandError, CommandOutcome, CommitReceipt, CommitReceiptError, ContributorCallbackStage,
-    ReconciliationDescriptor, RevisionConflict, StorageCommitState, StorageErrorClass,
+    ReconciliationCustody, RevisionConflict, StorageCommitState, StorageErrorClass,
     StorageResource,
 };
 
 const RECONCILIATION_DESCRIPTOR_FIXED_BYTES: usize = 128;
 const RECONCILIATION_DOMAIN_FIXED_BYTES: usize = 128;
-const RECONCILIATION_RECORD_FIXED_BYTES: usize = 128;
+// Covers either the live old/new descriptor overhead or the larger fixed collision-fact schema.
+const RECONCILIATION_RECORD_FIXED_BYTES: usize = 256;
 
 /// One codec-family record quota reserved before writer admission.
 pub(crate) struct ReservedRecordQuota {

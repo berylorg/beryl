@@ -31,7 +31,7 @@ pub fn assert_released(session: &AdmittedProjectionSession) {
 pub fn assert_durable_pending(fixture: &Fixture, thread: SyndicThreadId, turn: SyndicTurnId) {
     let state = fixture
         .storage
-        .turn_state(&fixture.store, turn, point_limit())
+        .turn_state(&*fixture.home(), turn, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::Pending);
@@ -40,7 +40,7 @@ pub fn assert_durable_pending(fixture: &Fixture, thread: SyndicThreadId, turn: S
 
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, thread, point_limit())
+        .input_gate(&*fixture.home(), thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(gate.state(), &InputGateState::PendingTurn(turn));
@@ -48,7 +48,7 @@ pub fn assert_durable_pending(fixture: &Fixture, thread: SyndicThreadId, turn: S
 
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, thread, point_limit())
+        .current_binding(&*fixture.home(), thread, point_limit())
         .unwrap()
         .unwrap();
     assert!(matches!(binding.binding().state(), BindingState::Valid(_)));
@@ -63,7 +63,7 @@ pub fn assert_durable_stream_loss(
     let status = TurnEndStatus::incomplete(TurnIncompleteReason::StreamLost);
     let state = fixture
         .storage
-        .turn_state(&fixture.store, turn, point_limit())
+        .turn_state(&*fixture.home(), turn, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::Incomplete);
@@ -77,7 +77,7 @@ pub fn assert_durable_stream_loss(
     let terminal = fixture
         .storage
         .source_event(
-            &fixture.store,
+            &*fixture.home(),
             turn,
             SourceEventSequence::new(expected_events).unwrap(),
             point_limit(),
@@ -93,7 +93,7 @@ pub fn assert_durable_stream_loss(
         fixture
             .storage
             .source_event(
-                &fixture.store,
+                &*fixture.home(),
                 turn,
                 SourceEventSequence::new(expected_events.checked_add(1).unwrap()).unwrap(),
                 point_limit(),
@@ -104,14 +104,14 @@ pub fn assert_durable_stream_loss(
 
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, thread, point_limit())
+        .input_gate(&*fixture.home(), thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(gate.state(), &InputGateState::Idle);
     assert_eq!(gate.live_count(), 0);
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, thread, point_limit())
+        .current_binding(&*fixture.home(), thread, point_limit())
         .unwrap()
         .unwrap();
     assert!(matches!(binding.binding().state(), BindingState::Stale(_)));

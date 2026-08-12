@@ -124,14 +124,17 @@ fn promoting_generation_one_preserves_a_newer_same_thread_route_head() {
         .unwrap();
     match store.execute(command) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
     }
 
     assert_exact_with_preserved_head(&store, storage, &promotion);
     assert_newer_authority(&store, storage, thread, newer_head, newer_accepted_input);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -144,5 +147,7 @@ fn promoting_generation_one_preserves_a_newer_same_thread_route_head() {
         newer_accepted_input,
     );
     assert_exact_with_preserved_head(&reopened, reopened_storage, &promotion);
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

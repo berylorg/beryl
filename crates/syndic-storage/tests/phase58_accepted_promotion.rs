@@ -47,7 +47,9 @@ fn seeded_fixture(
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     commit(&store, storage, batch(fixture.records.clone()));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     (home, store, storage, fixture)
 }
 
@@ -86,7 +88,8 @@ fn execute(
     command.add(contribution).unwrap();
     match store.execute(command) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => panic!("expected command to commit without later failure, got {outcome:?}"),
     }
@@ -227,7 +230,8 @@ fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
         .unwrap();
     match store.execute(command) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
     }
@@ -280,12 +284,16 @@ fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
             .records()
             .is_empty()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     drop(store);
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -355,7 +363,9 @@ fn queued_admission_preserves_and_finishes_an_active_transcript_build() {
             .unwrap(),
         AcceptedInputPromotionStatus::Exact
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     drop(store);
     let mut reopened = open(home.path());
@@ -385,7 +395,9 @@ fn queued_admission_preserves_and_finishes_an_active_transcript_build() {
             .unwrap(),
         AcceptedInputPromotionStatus::Exact
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -430,7 +442,9 @@ fn transcript_start_uses_the_observed_thread_revision_as_a_floor() {
         build.selected_path_digest(),
         current_thread.selected_path_digest()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -500,7 +514,9 @@ fn active_transcript_compatibility_rejects_future_revision_tail_and_digest() {
         storage,
         batch([FixtureRecord::TranscriptBuild(active)]),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -567,7 +583,9 @@ fn queued_admission_preserves_a_completed_current_transcript() {
             .unwrap(),
         AcceptedInputPromotionStatus::Exact
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     drop(store);
     let mut reopened = open(home.path());
@@ -585,7 +603,9 @@ fn queued_admission_preserves_a_completed_current_transcript() {
             .unwrap(),
         AcceptedInputPromotionStatus::Exact
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -625,9 +645,12 @@ fn stale_candidate_and_fresh_identity_collision_do_not_partially_promote() {
         .unwrap();
     match store.execute(exact_command) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected exact promotion to commit without later failure, got {outcome:?}"),
+        outcome => {
+            panic!("expected exact promotion to commit without later failure, got {outcome:?}")
+        }
     }
     assert_eq!(
         storage

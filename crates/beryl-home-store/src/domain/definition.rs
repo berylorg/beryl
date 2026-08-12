@@ -48,8 +48,8 @@ impl DomainBlueprint {
             schema: D::SCHEMA_VERSION,
             owner: DomainOwnerId::of::<D>(),
             families,
-            validator: validate_typed::<D>,
             reopen_validator: validate_reopen_typed::<D>,
+            reconciler: reconcile_typed::<D>,
         })
     }
 
@@ -78,11 +78,12 @@ fn physical_name(domain: &str, family: &str) -> String {
     format!("d.{domain}.{family}")
 }
 
-fn validate_typed<D: StorageDomain>(
+fn reconcile_typed<D: StorageDomain>(
     snapshot: &fjall::Snapshot,
     domain: &RegisteredDomain,
-) -> Result<(), callback::ErasedCallbackError> {
-    D::validate(&DomainReader::new(snapshot, domain))
+    descriptor: &crate::command::MaterializedDomainDescriptor,
+) -> Result<DomainReconciliation, callback::ErasedCallbackError> {
+    D::reconcile(&ReconciliationReader::new(snapshot, domain, descriptor))
         .map_err(callback::ErasedCallbackError::from_typed)
 }
 

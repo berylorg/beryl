@@ -1,7 +1,8 @@
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainHandle, DomainRegistrationError,
-    DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationContribution, PointReadLimit,
-    ReadError, RecordFamily, StorageDomain,
+    CursorDirection, CursorRange, CursorReadLimits, DomainHandle, DomainReconciliation,
+    DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    MutationContribution, PointReadLimit, ReadError, ReconciliationReader, RecordFamily,
+    StorageDomain,
 };
 use beryl_model::{AdmittedHostPath, RootId, RuntimeId, RuntimeMode, RuntimeNativePath};
 
@@ -49,6 +50,37 @@ impl StorageDomain for RuntimeRootDomain {
         reader: &beryl_home_store::DomainReader<'_, Self>,
     ) -> Result<(), Self::ValidationError> {
         validate::validate(reader)
+    }
+
+    fn reconcile(
+        reader: &ReconciliationReader<'_, Self>,
+    ) -> Result<DomainReconciliation, Self::ValidationError> {
+        let mut classification = crate::reconciliation::ReconciliationClassification::new();
+        crate::reconciliation::classify_records::<Self, RuntimeRecordCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, ExecutableIndexCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, RootRecordCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, RootIdIndexCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, RootPathIndexCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, RuntimeHomeRootIndexCodec>(
+            reader,
+            &mut classification,
+        )?;
+        Ok(classification.finish())
     }
 }
 
@@ -292,10 +324,26 @@ impl RuntimeRootState {
             .map(|handle| Self { handle })
     }
 
+    pub(crate) fn register_with_schema_validation(
+        store: &mut HomeStore,
+    ) -> Result<Self, DomainRegistrationError> {
+        store
+            .register_domain_with_schema_validation::<RuntimeRootDomain>()
+            .map(|handle| Self { handle })
+    }
+
     pub(crate) fn reacquire(
         store: &HomeStore,
     ) -> Result<Self, beryl_home_store::DomainHandleError> {
         store
+            .domain_handle::<RuntimeRootDomain>()
+            .map(|handle| Self { handle })
+    }
+
+    pub(crate) fn reacquire_candidate(
+        candidate: &beryl_home_store::HomeRecoveryCandidate,
+    ) -> Result<Self, beryl_home_store::DomainHandleError> {
+        candidate
             .domain_handle::<RuntimeRootDomain>()
             .map(|handle| Self { handle })
     }

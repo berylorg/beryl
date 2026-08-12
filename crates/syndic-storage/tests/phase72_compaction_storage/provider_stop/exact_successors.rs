@@ -13,13 +13,11 @@ fn safely_reopen(
         fixture.gate().revision(),
         current.revision(),
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_safely_reopen_stop_operation(request.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_safely_reopen_stop_operation(request.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -48,11 +46,14 @@ fn safe_reopen_authenticates_a_later_provider_observation_descendant() {
             .unwrap(),
         StopOperationTransitionStatus::Exact
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture
         .reopen()
         .store
-        .validate_registered_domains()
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
 }
 
@@ -74,11 +75,14 @@ fn matching_terminal_authenticates_a_late_request_descendant() {
     ));
     fixture.publish_request(compaction_id, CompactionRequestDisposition::Accepted);
     assert!(fixture.operation(compaction_id).revision() > immediate);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture
         .reopen()
         .store
-        .validate_registered_domains()
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
 }
 
@@ -113,7 +117,12 @@ fn coherently_shifted_safe_reopen_compaction_pair_is_corruption() {
             .safe_stop_reopen_status(&fixture.store, &request, point_limit()),
         Ok(StopOperationTransitionStatus::Exact)
     ));
-    assert!(fixture.store.validate_registered_domains().is_err());
+    assert!(
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
 }
 
 #[test]
@@ -149,7 +158,12 @@ fn coherently_shifted_matching_terminal_compaction_pair_is_corruption() {
             successor_compaction_revision.checked_next().unwrap(),
         )),
     );
-    assert!(fixture.store.validate_registered_domains().is_err());
+    assert!(
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
 }
 
 #[test]
@@ -183,5 +197,10 @@ fn coherently_shifted_abandonment_compaction_pair_is_corruption() {
             successor_compaction_revision.checked_next().unwrap(),
         )),
     );
-    assert!(fixture.store.validate_registered_domains().is_err());
+    assert!(
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
 }

@@ -16,14 +16,13 @@ fn duplicate_start_issue_with_the_wrong_reason_is_rejected_atomically() {
         SourceEventPayload::ProviderObservationIssue(Box::new(issue)),
         timestamp(6),
     );
-    let error = execute(
+    let error = not_committed_command(execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::ProviderObservationIssueConflict
@@ -43,7 +42,10 @@ fn duplicate_start_issue_with_the_wrong_reason_is_rejected_atomically() {
             .unwrap()
             .is_none()
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
 }
 
@@ -61,14 +63,13 @@ fn legally_admissible_completion_only_observation_cannot_be_published_as_an_issu
         SourceEventPayload::ProviderObservationIssue(Box::new(issue)),
         timestamp(5),
     );
-    let error = execute(
+    let error = not_committed_command(execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    )
-    .unwrap_err();
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::ProviderObservationIssueConflict
@@ -88,6 +89,9 @@ fn legally_admissible_completion_only_observation_cannot_be_published_as_an_issu
             .unwrap()
             .is_none()
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
 }

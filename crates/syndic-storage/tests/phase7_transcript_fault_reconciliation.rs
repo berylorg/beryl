@@ -6,8 +6,7 @@ mod support;
 
 use beryl_home_store::{
     CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore,
-    MutationContribution,
+    HomeSchemaVersion, HomeStore, MutationContribution,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{SyndicItemId, SyndicThreadId, SyndicTurnId};

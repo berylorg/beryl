@@ -7,11 +7,11 @@ use beryl_model::{SyndicThreadId, WindowId};
 
 use super::error::SessionValidationError;
 use super::{
+    MAX_RESTORABLE_WINDOWS, MAX_SESSION_CLAIMS, SESSION_HEADER_V1_BYTES, SessionDomain,
+    SessionWindowRecord, ThreadClaimRecord,
     codec::{
-        ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec, HEADER_KEY,
+        ClaimByThreadCodec, ClaimByWindowCodec, HEADER_KEY, SessionHeaderCodec, SessionWindowCodec,
     },
-    SessionDomain, SessionWindowRecord, ThreadClaimRecord, MAX_RESTORABLE_WINDOWS,
-    MAX_SESSION_CLAIMS, SESSION_HEADER_V1_BYTES,
 };
 
 const VALIDATION_BYTES: usize = 1024 * 1024;

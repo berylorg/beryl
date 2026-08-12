@@ -5,7 +5,7 @@ mod support;
 use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use syndic_storage::{
@@ -82,15 +82,20 @@ fn creation_faults_reconcile_to_whole_old_or_whole_new_state() {
             ) => {}
             (_, outcome) => panic!("unexpected creation fault outcome: {outcome:?}"),
         }
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-        store.verify_health().unwrap();
+        assert_eq!(store.health().state(), HomeHealthState::Failed);
+        let recovery = store.recover_same_home().unwrap();
+        let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
+        let store = recovery.publish();
+        assert_eq!(store.health().state(), HomeHealthState::Healthy);
         assert_eq!(
             storage
                 .thread_creation_status(&store, &creation, limit())
                 .unwrap(),
             expected
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         store.close().unwrap();
     }
 }
@@ -157,7 +162,9 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
         .unwrap()
         .unwrap();
     assert!(update.matches_committed(&committed));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let store = match Arc::try_unwrap(store) {
         Ok(store) => store,
         Err(_) => panic!("reader retained the Beryl home"),

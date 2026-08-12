@@ -9,7 +9,9 @@ mod lifecycle;
 #[path = "phase9_binding_mutations/local_terminal.rs"]
 mod local_terminal;
 
-use beryl_home_store::{CommandError, CommandOutcome, DomainRegistrationError, HomeCommand, HomeStore};
+use beryl_home_store::{
+    CommandError, CommandOutcome, DomainRegistrationError, HomeCommand, HomeStore,
+};
 use beryl_model::{
     BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration,
     CasThreadId, CasTurnId, ExecutionBinding, InputGateRevision, PathFlavor, RootId, RuntimeId,
@@ -249,8 +251,7 @@ fn activate_root_turn(
     let error = not_committed_error(execute_outcome(
         store,
         storage.admit_live_source_event(storage.revision(store).unwrap(), premature_activation),
-    )
-    );
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceIdentityConflict

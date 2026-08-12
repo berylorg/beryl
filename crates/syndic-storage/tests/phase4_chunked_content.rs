@@ -2,7 +2,10 @@
 
 mod support;
 
-use beryl_home_store::{CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandError, CommandOutcome, CommitReceipt, CursorReadLimits, HomeCommand, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     AcceptedInputRevision, ContentRevision, DraftRevision, ImageLabelOrdinal, InputGateRevision,
     ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
@@ -34,16 +37,31 @@ fn execute(
     store: &HomeStore,
     storage: SyndicStorage,
     contribution: beryl_home_store::MutationContribution,
-) {
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
-    match store.execute(command) {
-        beryl_home_store::CommandOutcome::Committed {
+) -> CommitReceipt {
+    match execute_outcome(store, contribution) {
+        CommandOutcome::Committed {
             receipt,
             later_failure: None,
-        } => assert!(storage.committed_revision(store, &receipt).unwrap().is_some()),
+        } => {
+            assert!(
+                storage
+                    .committed_revision(store, &receipt)
+                    .unwrap()
+                    .is_some()
+            );
+            receipt
+        }
         outcome => panic!("expected clean chunked-content command, got {outcome:?}"),
     }
+}
+
+fn execute_outcome(
+    store: &HomeStore,
+    contribution: beryl_home_store::MutationContribution,
+) -> CommandOutcome {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    store.execute(command)
 }
 
 fn create_thread(

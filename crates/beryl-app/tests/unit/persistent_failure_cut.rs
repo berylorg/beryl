@@ -20,6 +20,7 @@ use syndic_storage::SyndicStorage;
 use beryl_model::{CasProcessGeneration, RuntimeId};
 
 use super::*;
+use crate::cas_projection::MinimumTurnCaptureReserve;
 
 mod terminal_server {
     include!(concat!(
@@ -64,7 +65,8 @@ fn service() -> (
     let service = ProjectionConnectionService::new(
         home,
         storage,
-        ProjectionServiceConfig::try_new(8, 4).unwrap(),
+        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
         Box::new(ShutdownProbe(Arc::clone(&shutdowns))),
     )
     .unwrap();

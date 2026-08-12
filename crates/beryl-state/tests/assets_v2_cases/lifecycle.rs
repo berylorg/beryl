@@ -4,7 +4,7 @@ use super::*;
 fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
-    let (asset_id, sidecar_path) = publish_metadata(&store, state);
+    let (asset_id, sidecar_path) = publish_metadata(&store, &state);
     let set_id = AssetReferenceSetId::from_bytes([9; 16]);
     let source = marker_summary((1..=65).map(|index| {
         let label = if index == 65 {
@@ -15,7 +15,7 @@ fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
         (marker(index), label)
     }));
 
-    let staging = begin_reference_set(&store, state, set_id, source);
+    let staging = begin_reference_set(&store, &state, set_id, source);
     let mut manifest = state
         .assets()
         .staged_reference_set_manifest(&store, staging)
@@ -241,15 +241,19 @@ fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
             .unwrap(),
         ),
     );
-    assert!(reopened_state
-        .assets()
-        .owner_head(&reopened, owner)
-        .unwrap()
-        .is_none());
-    assert!(reopened_state
-        .assets()
-        .sealed_reference_set_manifest(&reopened, proof)
-        .is_ok());
+    assert!(
+        reopened_state
+            .assets()
+            .owner_head(&reopened, owner)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        reopened_state
+            .assets()
+            .sealed_reference_set_manifest(&reopened, proof)
+            .is_ok()
+    );
     assert!(sidecar_path.is_file());
 }
 
@@ -259,7 +263,7 @@ fn command_pages_are_physically_bounded_without_an_asset_length_ceiling() {
     let (store, state) = support::open(directory.path());
     let set_id = AssetReferenceSetId::from_bytes([21; 16]);
     let source = marker_summary(std::iter::empty());
-    let staging = begin_reference_set(&store, state, set_id, source);
+    let staging = begin_reference_set(&store, &state, set_id, source);
     let proof = state
         .assets()
         .staged_reference_set_manifest(&store, staging)
@@ -294,10 +298,12 @@ fn command_pages_are_physically_bounded_without_an_asset_length_ceiling() {
             SealAssetReferenceSet::new(manifest.build_proof(), source),
         ),
     );
-    assert!(state
-        .assets()
-        .sealed_reference_set_manifest(&store, sealed)
-        .is_ok());
+    assert!(
+        state
+            .assets()
+            .sealed_reference_set_manifest(&store, sealed)
+            .is_ok()
+    );
 
     let representable = AssetId::sha256_v1([23; 32], NonZeroU64::new(u64::MAX).unwrap());
     assert!(matches!(

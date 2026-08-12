@@ -2,222 +2,143 @@
 
 mod support;
 
-use beryl_model::{DraftRevision, ProjectionRevision, SyndicItemId, SyndicTurnId, ThreadRevision};
-use syndic_storage::test_faults::{
-    FixtureBatch, FixtureRecord, fixture_advance_item_projection_digest,
-    fixture_advance_transcript_digest, fixture_empty_projection,
-    fixture_item_projection_digest_seed, fixture_transcript_digest_seed,
-};
+use beryl_model::{SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId};
+use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 use syndic_storage::*;
 
-use support::populated::{
-    correlate_source_user_item, populated_records, source_item, source_projection, source_turn,
-};
-use support::semantic::exercise_case;
+use support::exact_cas::{admit_event, correlate_user_item, establish_turn, submit_current_draft};
+use support::populated::source_turn;
+use support::semantic::exercise_seeded_populated_case;
 use support::*;
 
-fn root() -> SyndicTurnId {
-    SyndicTurnId::from_bytes([29; 16])
-}
-
-fn selected_source() -> SelectedPathProof {
-    let source = source_turn();
-    let digest = child_turn_chain_digest(source, root(), root_turn_chain_digest(root()));
-    SelectedPathProof::new(Some(source), ThreadRevision::new(1).unwrap(), digest)
-}
-
-fn target_entry() -> CurrentTranscriptEntryProof {
-    CurrentTranscriptEntryProof::new(
-        TranscriptGeneration::FIRST,
-        TranscriptPosition::new(2).unwrap(),
-    )
-}
-
-fn replacement_draft(target: SyndicTurnId, selected: SelectedPathProof) -> FixtureRecord {
-    FixtureRecord::Draft(DraftRecord::new(
-        draft_id(31),
-        id(30),
-        DraftRevision::new(2).unwrap(),
-        DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
-            target,
-            selected,
-            target_entry(),
-        )),
-        empty_composer_content(),
-        timestamp(1),
-        timestamp(4),
-    ))
-}
-
-fn valid_replacement_mutation() -> FixtureBatch {
-    replacement_mutation(replacement_draft(source_turn(), selected_source()))
-}
-
-fn replacement_mutation(draft: FixtureRecord) -> FixtureBatch {
+fn replacement_mutation(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    target: SyndicTurnId,
+    selected: SelectedPathProof,
+    entry: CurrentTranscriptEntryProof,
+) -> FixtureBatch {
+    let current = storage
+        .current_draft(store, thread, SyndicPointReadLimit::new(1_000_000).unwrap())
+        .unwrap()
+        .unwrap();
+    let summary = storage
+        .history_summary(store, thread, SyndicPointReadLimit::new(1_000_000).unwrap())
+        .unwrap()
+        .unwrap();
+    let revision = current.draft().revision().checked_next().unwrap();
     batch([
-        draft,
+        FixtureRecord::Draft(DraftRecord::new(
+            current.draft().id(),
+            current.thread().id(),
+            revision,
+            DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(target, selected, entry)),
+            current.draft().content(),
+            current.draft().created_at(),
+            summary.last_activity_at(),
+        )),
         FixtureRecord::DraftByThread(DraftByThreadRecord::new(
-            id(30),
-            draft_id(31),
-            DraftRevision::new(2).unwrap(),
-            ThreadRevision::new(1).unwrap(),
+            current.thread().id(),
+            current.draft().id(),
+            revision,
+            current.thread().revision(),
         )),
     ])
 }
 
-fn replacement_seed_records() -> Vec<FixtureRecord> {
-    let turn = source_turn();
-    let item = SyndicItemId::from_bytes([27; 16]);
-    let revision = ProjectionRevision::new(1).unwrap();
-    let item_revision = ProjectionRevision::new(4).unwrap();
-    let content = empty_composer_content();
-    let projection_record = fixture_empty_projection(item, turn);
-    let projection = projection_record.id();
-    let projection_digest = fixture_advance_item_projection_digest(
-        fixture_item_projection_digest_seed(),
-        projection,
-        projection_record.revision(),
-    );
-    let source_entry = TranscriptViewEntryRecord::new(
-        id(30),
-        TranscriptGeneration::FIRST,
-        TranscriptPosition::FIRST,
-        source_item(),
-        item_revision,
-        ItemProjectionGeneration::FIRST,
-        source_projection(),
-        revision,
-    );
-    let target_entry = TranscriptViewEntryRecord::new(
-        id(30),
-        TranscriptGeneration::FIRST,
-        TranscriptPosition::new(2).unwrap(),
-        item,
-        item_revision,
-        ItemProjectionGeneration::FIRST,
-        projection,
-        projection_record.revision(),
-    );
-    let transcript_digest = fixture_advance_transcript_digest(
-        fixture_advance_transcript_digest(fixture_transcript_digest_seed(), &source_entry),
-        &target_entry,
-    );
-    let mut records = populated_records();
-    records.retain(|record| {
-        !matches!(record, FixtureRecord::TurnState(state) if state.turn_id() == turn)
-            && !matches!(record, FixtureRecord::TranscriptViewHead(head) if head.thread_id() == id(30))
-            && !matches!(record, FixtureRecord::TranscriptBuild(build)
-                if build.thread_id() == id(30)
-                    && build.generation() == TranscriptGeneration::FIRST)
-            && !matches!(record, FixtureRecord::TranscriptPathTurn(path)
-                if path.thread_id() == id(30)
-                    && path.generation() == TranscriptGeneration::FIRST
-                    && path.depth() == TurnDepth::new(2).unwrap())
-    });
-    records.extend([
-        FixtureRecord::TurnState(fixture_turn_state(
-            turn,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            1,
-            2,
-            timestamp(4),
-        )),
-        FixtureRecord::CanonicalItem(CanonicalItemRecord::local_user_input(
-            item,
-            turn,
-            TurnItemOrdinal::new(2).unwrap(),
-            revision,
-            content,
-            None,
-        )),
-        FixtureRecord::TurnItem(TurnItemIndexRecord::new(
-            turn,
-            TurnItemOrdinal::new(2).unwrap(),
-            item,
-            revision,
-        )),
-        FixtureRecord::Projection(projection_record.clone()),
-        FixtureRecord::StableItemProjection(StableItemProjectionIndexRecord::new(
-            item,
-            ProjectionOrdinal::FIRST,
-            projection,
-            projection_record.revision(),
-        )),
-        FixtureRecord::ItemProjectionSet(ItemProjectionSetRecord::new(
-            item,
-            ItemProjectionGeneration::FIRST,
-            ProjectionFormatVersion::V1,
-            item_revision,
-            ProjectionTextSource::composer(content),
-            0,
-            1,
-            0,
-            projection_digest,
-            1,
-            0,
-            projection_digest,
-            MarkdownParserCheckpoint::new(
-                0,
-                0,
-                ProjectionTextSourceCursor::Composer(ContentPieceOrdinal::FIRST),
-                0,
-                Box::<str>::default(),
-                false,
-                None,
+fn seed_empty_replacement_thread(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    draft: SyndicDraftId,
+) {
+    let mut command = beryl_home_store::HomeCommand::new(store.home_revision().unwrap());
+    command
+        .add(storage.create_thread(
+            storage.revision(store).unwrap(),
+            CreateThread::ordinary(
+                thread,
+                draft,
+                support::exact_cas::execution_binding(),
+                timestamp(1),
             ),
-            true,
-        )),
-        FixtureRecord::ItemProjectionHead(ItemProjectionHeadRecord::new(
-            item,
-            revision,
-            item_revision,
-            ItemProjectionGeneration::FIRST,
-            ProjectionLifecycle::Current,
-        )),
-        FixtureRecord::TranscriptViewHead(TranscriptViewHeadRecord::new(
-            id(30),
-            TranscriptGeneration::FIRST,
-            revision,
-            2,
-            Some(turn),
-            selected_source().digest(),
-            ProjectionLifecycle::Current,
-        )),
-        FixtureRecord::TranscriptBuild(TranscriptBuildRecord::new(
-            id(30),
-            TranscriptGeneration::FIRST,
-            revision,
-            ThreadRevision::new(1).unwrap(),
-            Some(turn),
-            selected_source().digest(),
-            2,
-            2,
-            transcript_digest,
-            true,
-            TranscriptBuildPhase::Complete,
-        )),
-        FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
-            id(30),
-            TranscriptGeneration::FIRST,
-            TurnDepth::new(2).unwrap(),
-            turn,
-            selected_source().digest(),
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            1,
-            2,
-            2,
-            timestamp(4),
-        )),
-        FixtureRecord::TranscriptViewEntry(target_entry),
-    ]);
-    correlate_source_user_item(&mut records, item, revision, content, None, timestamp(4));
-    records
+        ))
+        .unwrap();
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean empty replacement seed, got {outcome:?}"),
+    }
 }
 
-fn replacement_seed() -> FixtureBatch {
-    batch(replacement_seed_records())
+fn seed_real_replacement_target(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+) -> (SyndicTurnId, SelectedPathProof, CurrentTranscriptEntryProof) {
+    converge_and_release_terminal_history(store, storage, id(30), source_turn());
+    let item = SyndicItemId::from_bytes([27; 16]);
+    let turn = submit_current_draft(
+        store,
+        storage,
+        id(30),
+        draft_id(70),
+        item,
+        "replacement target",
+        timestamp(10),
+    );
+    let source = establish_turn(store, storage, id(30), turn, timestamp(11));
+    admit_event(
+        store,
+        storage,
+        id(30),
+        turn,
+        &source,
+        SourceEventPayload::TurnActivated,
+        timestamp(11),
+    );
+    correlate_user_item(store, storage, id(30), turn, item, &source, timestamp(12));
+    admit_event(
+        store,
+        storage,
+        id(30),
+        turn,
+        &source,
+        SourceEventPayload::TurnEnded(
+            TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
+        ),
+        timestamp(13),
+    );
+    converge_and_release_terminal_history(store, storage, id(30), turn);
+    let current = storage
+        .current_draft(store, id(30), SyndicPointReadLimit::new(1_000_000).unwrap())
+        .unwrap()
+        .unwrap();
+    let head = storage
+        .transcript_view_head(store, id(30), SyndicPointReadLimit::new(1_000_000).unwrap())
+        .unwrap()
+        .unwrap();
+    let entries = storage
+        .transcript_entries(
+            store,
+            id(30),
+            head.generation(),
+            None,
+            beryl_home_store::CursorReadLimits::new(64, 1_000_000).unwrap(),
+        )
+        .unwrap();
+    let entry = entries
+        .records()
+        .iter()
+        .find(|entry| entry.item_id() == item)
+        .unwrap();
+    (
+        turn,
+        current.thread().selected_path(),
+        CurrentTranscriptEntryProof::new(head.generation(), entry.position()),
+    )
 }
 
 #[test]
@@ -225,13 +146,29 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
     let home = TestHome::new("replacement-roundtrip");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, replacement_seed());
-    commit(&store, storage, valid_replacement_mutation());
-    store.validate_registered_domains().unwrap();
+    seed_populated(&store, storage);
+    let (turn, selected, entry) = seed_real_replacement_target(&store, storage);
+    let current = storage
+        .current_draft(
+            &store,
+            id(30),
+            SyndicPointReadLimit::new(1_000_000).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    let current_draft = current.draft().id();
+    commit(
+        &store,
+        storage,
+        replacement_mutation(&store, storage, id(30), turn, selected, entry),
+    );
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let draft = storage
         .draft(
             &store,
-            draft_id(31),
+            current_draft,
             SyndicPointReadLimit::new(65_536).unwrap(),
         )
         .unwrap()
@@ -239,229 +176,158 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
     let DraftSubmissionIntent::Replacement(intent) = draft.submission_intent() else {
         panic!("replacement intent did not roundtrip");
     };
-    assert_eq!(intent.target_turn_id(), source_turn());
-    assert_eq!(intent.selected_path(), selected_source());
-    assert_eq!(intent.transcript_entry(), target_entry());
+    assert_eq!(intent.target_turn_id(), turn);
+    assert_eq!(intent.selected_path(), selected);
+    assert_eq!(intent.transcript_entry(), entry);
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
 #[test]
 fn replacement_intent_rejects_stale_proof_and_wrong_entry_target() {
-    exercise_case(
+    exercise_seeded_populated_case(
         "replacement-selected-proof",
         "replacement edit selected-path proof disagrees with current thread",
-        replacement_seed,
-        || {
+        |store, storage| {
+            let (turn, _selected, entry) = seed_real_replacement_target(store, storage);
+            let current = storage
+                .current_draft(store, id(30), SyndicPointReadLimit::new(1_000_000).unwrap())
+                .unwrap()
+                .unwrap();
             let selected = SelectedPathProof::new(
-                Some(root()),
-                ThreadRevision::new(1).unwrap(),
-                root_turn_chain_digest(root()),
+                None,
+                current.thread().revision(),
+                empty_selected_path_digest(),
             );
-            replacement_mutation(replacement_draft(source_turn(), selected))
+            replacement_mutation(store, storage, id(30), turn, selected, entry)
         },
     );
-    exercise_case(
+    exercise_seeded_populated_case(
         "replacement-off-path",
         "replacement edit transcript entry or user item disagrees",
-        outside_target_seed,
-        || {
-            replacement_mutation(replacement_draft(
-                SyndicTurnId::from_bytes([28; 16]),
-                selected_source(),
-            ))
+        |store, storage| {
+            let (turn, selected, entry) = seed_real_replacement_target(store, storage);
+            replacement_mutation(
+                store,
+                storage,
+                id(30),
+                turn,
+                selected,
+                CurrentTranscriptEntryProof::new(entry.generation(), TranscriptPosition::FIRST),
+            )
         },
     );
-    exercise_case(
+    exercise_seeded_populated_case(
         "replacement-empty-path",
         "replacement edit target requires a selected path",
-        empty_target_seed,
-        || {
-            batch([FixtureRecord::Draft(DraftRecord::new(
-                draft_id(2),
-                id(1),
-                DraftRevision::new(1).unwrap(),
-                DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
-                    SyndicTurnId::from_bytes([3; 16]),
-                    SelectedPathProof::new(
-                        None,
-                        ThreadRevision::new(1).unwrap(),
-                        empty_selected_path_digest(),
-                    ),
-                    CurrentTranscriptEntryProof::new(
-                        TranscriptGeneration::FIRST,
-                        TranscriptPosition::FIRST,
-                    ),
-                )),
-                empty_composer_content(),
-                timestamp(1),
-                timestamp(1),
-            ))])
+        |store, storage| {
+            let thread = id(80);
+            let target = SyndicTurnId::from_bytes([82; 16]);
+            seed_empty_replacement_thread(store, storage, thread, draft_id(81));
+            let current = storage
+                .current_draft(store, thread, SyndicPointReadLimit::new(1_000_000).unwrap())
+                .unwrap()
+                .unwrap();
+            let mut corrupt = replacement_mutation(
+                store,
+                storage,
+                thread,
+                target,
+                SelectedPathProof::new(
+                    None,
+                    current.thread().revision(),
+                    empty_selected_path_digest(),
+                ),
+                CurrentTranscriptEntryProof::new(
+                    TranscriptGeneration::FIRST,
+                    TranscriptPosition::FIRST,
+                ),
+            );
+            corrupt
+                .put(FixtureRecord::Turn(TurnRecord::new(
+                    target,
+                    thread,
+                    TurnKind::OrdinaryUser,
+                    ConversationParent::Root,
+                    None,
+                    TurnDepth::FIRST,
+                    root_turn_chain_digest(target),
+                    timestamp(2),
+                )))
+                .unwrap();
+            corrupt
+                .put(FixtureRecord::TurnState(fixture_turn_state(
+                    target,
+                    TurnStateRevision::FIRST,
+                    TurnLifecycle::Interrupted,
+                    0,
+                    0,
+                    timestamp(2),
+                )))
+                .unwrap();
+            corrupt
         },
     );
 }
 
 #[test]
 fn replacement_intent_rejects_provider_operation_target() {
-    let thread = id(50);
-    let draft = draft_id(51);
     let target = SyndicTurnId::from_bytes([52; 16]);
     let digest = root_turn_chain_digest(target);
-    exercise_case(
+    exercise_seeded_populated_case(
         "replacement-provider-operation",
         "replacement edit target is not an ordinary user turn",
-        || {
-            let mut records =
-                thread_records_with_activity(thread, draft, Some(target), digest, timestamp(2));
-            records.extend([
-                FixtureRecord::Turn(TurnRecord::new(
+        |store, storage| {
+            let (_turn, selected, entry) = seed_real_replacement_target(store, storage);
+            let mut corrupt = replacement_mutation(store, storage, id(30), target, selected, entry);
+            corrupt
+                .put(FixtureRecord::Turn(TurnRecord::new(
                     target,
-                    thread,
+                    id(30),
                     TurnKind::ProviderOperation(ProviderOperationKind::ContextCompaction),
                     ConversationParent::Root,
                     None,
                     TurnDepth::FIRST,
                     digest,
-                    timestamp(2),
-                )),
-                FixtureRecord::TurnState(fixture_turn_state(
+                    timestamp(14),
+                )))
+                .unwrap();
+            corrupt
+                .put(FixtureRecord::TurnState(fixture_turn_state(
                     target,
                     TurnStateRevision::FIRST,
                     TurnLifecycle::Interrupted,
-                    1,
                     0,
-                    timestamp(2),
-                )),
-                FixtureRecord::SourceEvent(
-                    SourceEventRecord::new(
-                        target,
-                        SourceEventSequence::FIRST,
-                        None,
-                        SourceEventPayload::TurnEnded(
-                            TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
-                        ),
-                    )
-                    .unwrap(),
-                ),
-            ]);
-            records.extend(item_free_transcript_build_records(
-                thread,
-                ThreadRevision::new(1).unwrap(),
-                &[(target, digest, TurnLifecycle::Interrupted, 1, timestamp(2))],
-            ));
-            batch(records)
-        },
-        || {
-            let selected =
-                SelectedPathProof::new(Some(target), ThreadRevision::new(1).unwrap(), digest);
-            batch([
-                FixtureRecord::Draft(DraftRecord::new(
-                    draft,
-                    thread,
-                    DraftRevision::new(2).unwrap(),
-                    DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
-                        target,
-                        selected,
-                        CurrentTranscriptEntryProof::new(
-                            TranscriptGeneration::FIRST,
-                            TranscriptPosition::FIRST,
-                        ),
-                    )),
-                    empty_composer_content(),
-                    timestamp(1),
-                    timestamp(2),
-                )),
-                FixtureRecord::DraftByThread(DraftByThreadRecord::new(
-                    thread,
-                    draft,
-                    DraftRevision::new(2).unwrap(),
-                    ThreadRevision::new(1).unwrap(),
-                )),
-            ])
+                    0,
+                    timestamp(14),
+                )))
+                .unwrap();
+            corrupt
         },
     );
 }
 
 #[test]
 fn replacement_validation_uses_one_exact_current_entry_instead_of_ancestry_walk() {
-    exercise_case(
+    exercise_seeded_populated_case(
         "replacement-wrong-current-entry",
         "replacement edit transcript entry or user item disagrees",
-        replacement_seed,
-        || {
-            let draft = FixtureRecord::Draft(DraftRecord::new(
-                draft_id(31),
+        |store, storage| {
+            let (turn, selected, entry) = seed_real_replacement_target(store, storage);
+            replacement_mutation(
+                store,
+                storage,
                 id(30),
-                DraftRevision::new(2).unwrap(),
-                DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
-                    source_turn(),
-                    selected_source(),
-                    CurrentTranscriptEntryProof::new(
-                        TranscriptGeneration::FIRST,
-                        TranscriptPosition::FIRST,
-                    ),
-                )),
-                empty_composer_content(),
-                timestamp(1),
-                timestamp(4),
-            ));
-            replacement_mutation(draft)
+                turn,
+                selected,
+                CurrentTranscriptEntryProof::new(entry.generation(), TranscriptPosition::FIRST),
+            )
         },
     );
-}
-
-fn outside_target_seed() -> FixtureBatch {
-    let outside = SyndicTurnId::from_bytes([28; 16]);
-    let mut records = replacement_seed_records();
-    records.extend([
-        FixtureRecord::Turn(TurnRecord::new(
-            outside,
-            id(30),
-            TurnKind::OrdinaryUser,
-            ConversationParent::Root,
-            None,
-            TurnDepth::FIRST,
-            root_turn_chain_digest(outside),
-            timestamp(5),
-        )),
-        FixtureRecord::TurnState(fixture_turn_state(
-            outside,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            0,
-            0,
-            timestamp(5),
-        )),
-    ]);
-    batch(records)
-}
-
-fn empty_target_seed() -> FixtureBatch {
-    let target = SyndicTurnId::from_bytes([3; 16]);
-    let mut records = empty_thread_records(id(1), draft_id(2));
-    records.extend([
-        FixtureRecord::Turn(TurnRecord::new(
-            target,
-            id(1),
-            TurnKind::OrdinaryUser,
-            ConversationParent::Root,
-            None,
-            TurnDepth::FIRST,
-            root_turn_chain_digest(target),
-            timestamp(2),
-        )),
-        FixtureRecord::TurnState(fixture_turn_state(
-            target,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            0,
-            0,
-            timestamp(2),
-        )),
-    ]);
-    batch(records)
 }

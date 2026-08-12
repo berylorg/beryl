@@ -88,7 +88,6 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
                 wrong_stale,
             ),
         ),
-    )
     ));
     assert!(matches!(
         typed_error(&error),
@@ -229,12 +228,16 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
         .unwrap();
     assert!(matches!(gate.state(), InputGateState::AwaitingSteering(_)));
     assert_eq!(gate.live_next_turn_count(), 1);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     store.close().unwrap();
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -271,7 +274,6 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             )
             .unwrap(),
         ),
-    )
     );
     let binding = storage
         .current_binding(&store, fixture.thread, point_limit())
@@ -322,7 +324,6 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
                 stale,
             ),
         ),
-    )
     );
     let state = storage
         .turn_state(&store, fixture.turn, point_limit())
@@ -352,7 +353,6 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             storage.revision(&store).unwrap(),
             stale_projection_activation,
         ),
-    )
     ));
     assert!(matches!(
         typed_error(&error),
@@ -369,7 +369,6 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
     let error = not_committed_error(execute_outcome(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), source_less_complete),
-    )
     ));
     assert!(matches!(
         typed_error(&error),
@@ -388,7 +387,6 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
                 timestamp(8),
             ),
         ),
-    )
     );
     let binding = storage
         .current_binding(&store, fixture.thread, point_limit())
@@ -406,7 +404,6 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             )
             .unwrap(),
         ),
-    )
     );
     let binding = storage
         .current_binding(&store, fixture.thread, point_limit())
@@ -433,7 +430,6 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
                 CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap(),
             ),
         ),
-    )
     ));
     assert!(matches!(
         typed_error(&error),

@@ -113,11 +113,13 @@ fn different_domains_serialize_without_lost_state() {
             .as_active_theme_id(),
         Some("different-domain")
     );
-    assert!(state
-        .runtime_roots()
-        .runtime(&reopened, RuntimeId::from_bytes([1; 16]))
-        .unwrap()
-        .is_some());
+    assert!(
+        state
+            .runtime_roots()
+            .runtime(&reopened, RuntimeId::from_bytes([1; 16]))
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
@@ -250,11 +252,13 @@ fn runtime_executable_and_per_runtime_root_uniqueness_survive_concurrent_admissi
 
     store.close().unwrap();
     let (reopened, state) = support::open(directory.path());
-    assert!(state
-        .runtime_roots()
-        .runtime(&reopened, runtime_id)
-        .unwrap()
-        .is_some());
+    assert!(
+        state
+            .runtime_roots()
+            .runtime(&reopened, runtime_id)
+            .unwrap()
+            .is_some()
+    );
     assert_eq!(
         state
             .runtime_roots()
@@ -400,14 +404,18 @@ fn session_claim_conflicts_and_close_vs_exit_publish_one_coherent_generation() {
 
     let final_session = session.minimal_bootstrap(&store).unwrap().unwrap();
     match final_session.header().exit_intent() {
-        SessionExitIntent::Running => assert!(final_session
-            .windows()
-            .iter()
-            .all(|record| record.window_id() != initial_window)),
-        SessionExitIntent::OrderlyExit => assert!(final_session
-            .windows()
-            .iter()
-            .any(|record| record.window_id() == initial_window)),
+        SessionExitIntent::Running => assert!(
+            final_session
+                .windows()
+                .iter()
+                .all(|record| record.window_id() != initial_window)
+        ),
+        SessionExitIntent::OrderlyExit => assert!(
+            final_session
+                .windows()
+                .iter()
+                .any(|record| record.window_id() == initial_window)
+        ),
     }
     let expected_header = final_session.header().clone();
     let expected_windows = final_session.windows().to_vec();

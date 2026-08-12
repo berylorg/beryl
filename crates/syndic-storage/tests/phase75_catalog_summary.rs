@@ -33,7 +33,22 @@ fn execute(
             later_failure: None,
             ..
         } => {}
-        outcome => panic!("expected clean catalog-summary command, got {outcome:?}"),
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+        } => panic!(
+            "expected clean catalog-summary command, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected clean catalog-summary command, got definitive non-commit {evidence:?}")
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean catalog-summary command, got indeterminate outcome {failure:?}")
+        }
     }
 }
 
@@ -143,8 +158,7 @@ fn title_for_payload(name: &str, payload: ComposerPayload) -> Option<String> {
                 timestamp(1),
             ),
         ),
-    )
-    .unwrap();
+    );
     submit_payload(
         &store,
         storage,
@@ -186,7 +200,9 @@ fn title_for_payload(name: &str, payload: ComposerPayload) -> Option<String> {
         exact.summary().title().map(|title| title.text()),
         expected.as_deref()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     expected
 }
 
@@ -226,6 +242,7 @@ fn scalar_utf8_and_scan_limits_stop_without_an_ellipsis() {
         "phase75-title-scalar-limit",
         ComposerPayload::new(vec![ComposerAtom::text(source).unwrap()]).unwrap(),
     );
+    let title = title.expect("scalar-limited title must be present");
     assert_eq!(title.chars().count(), 80);
     assert_eq!(title, format!("{}界", "a".repeat(79)));
 
@@ -246,7 +263,7 @@ fn truncated_history_title_may_lack_an_alphanumeric_character() {
         "phase75-title-truncated-prefix",
         ComposerPayload::new(vec![ComposerAtom::text(source).unwrap()]).unwrap(),
     )
-    .unwrap();
+    .expect("truncated-prefix title must be present");
     assert_eq!(title, ".".repeat(80));
     assert!(!title.chars().any(char::is_alphanumeric));
 }
@@ -268,8 +285,7 @@ fn generated_title_precedes_history_and_invalidates_an_older_preparation() {
                 timestamp(1),
             ),
         ),
-    )
-    .unwrap();
+    );
     let item = SyndicItemId::from_bytes([32; 16]);
     let turn = support::exact_cas::submit_current_draft(
         &store,
@@ -317,7 +333,21 @@ fn generated_title_precedes_history_and_invalidates_an_older_preparation() {
         .unwrap();
     match store.execute(stale_command) {
         CommandOutcome::NotCommitted { .. } => {}
-        outcome => panic!("expected stale catalog-summary rebuild rejection, got {outcome:?}"),
+        CommandOutcome::Committed {
+            receipt,
+            later_failure,
+        } => panic!(
+            "expected stale catalog-summary rebuild rejection, got committed receipt {receipt:?} with later failure {later_failure:?}"
+        ),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!(
+                "expected stale catalog-summary rebuild rejection, got indeterminate outcome {failure:?}"
+            )
+        }
     }
     let prepared = match storage
         .prepare_thread_catalog_summary(&store, thread)
@@ -334,7 +364,9 @@ fn generated_title_precedes_history_and_invalidates_an_older_preparation() {
         syndic_storage::ThreadCatalogTitleSource::Generated
     );
     execute(&store, storage.rebuild_thread_catalog_summary(prepared));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -376,7 +408,9 @@ fn reopen_accepts_a_valid_stale_summary_then_prepares_its_exact_rebuild() {
             .unwrap(),
         ThreadCatalogSummaryPreparation::PreparedReplacement(_)
     ));
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -470,7 +504,9 @@ fn from_tail_creation_publishes_the_entire_selected_path_fallback_immediately() 
         exact.summary().sources().history_summary_revision(),
         ProjectionRevision::new(1).unwrap()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -478,11 +514,7 @@ fn branch_discussion_uses_branch_local_input_instead_of_inherited_history() {
     let home = TestHome::new("phase75-branch-local-title");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(
-        &store,
-        storage,
-        batch(support::populated::populated_records()),
-    );
+    support::populated::seed_populated(&store, storage);
 
     // Extend the inherited fixture root with a real canonical user input. The source-tail read
     // proves that the entire-path builder sees it, while the branch builder must exclude it by

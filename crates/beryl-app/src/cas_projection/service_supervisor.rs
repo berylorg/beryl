@@ -1,6 +1,5 @@
-//! Process-owned current-service publication and same-home recovery supervision.
+//! Process-owned current-service access and terminal failed-service disposal.
 
-mod provider;
 mod slot;
 mod worker;
 
@@ -11,135 +10,106 @@ use beryl_state::{BerylState, BerylStateReacquireError};
 use syndic_storage::SyndicStorage;
 use thiserror::Error;
 
-use self::{
-    provider::ProviderFactoryOwner,
-    worker::{RecoveryWorkerExit, RecoveryWorkerStart},
-};
+use self::worker::{TerminalWorkerExit, TerminalWorkerStart};
 use crate::cas_projection::{
     ProjectionConnectionService, ProjectionConnectionServiceCloseError, ProjectionServiceConfig,
-    ProjectionServiceGeneration, ScheduledOrdinaryExecutionProviderFactory,
-    ScheduledOrdinaryProviderEpochContext,
+    ProjectionServiceGeneration, ScheduledOrdinaryExecutionProvider,
 };
-pub use slot::RunningProjectionServiceLease;
+use slot::RunningServiceLease;
 pub(in crate::cas_projection) use slot::RunningServiceSlot;
 
-/// Why the current process publication slot cannot issue a scoped service lease.
+/// Why the current process service slot cannot issue a scoped lease.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
-pub enum RunningServiceAvailability {
-    #[error("same-home service recovery is in progress")]
-    Recovering,
-    #[error("the running-session supervisor is shutting down")]
+enum ServiceAvailability {
+    #[error("terminal failed-service disposal is in progress")]
+    Disposing,
+    #[error("the service supervisor is shutting down")]
     ShuttingDown,
-    #[error("the running-session service publication slot is unavailable")]
+    #[error("the running service is unavailable")]
     Unavailable,
 }
 
-/// Bounded content-free state for one process-owned recovery supervisor.
+/// Bounded content-free state for one process-owned terminal service supervisor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RunningSessionRecoveryDiagnostics {
+struct TerminalServiceDiagnostics {
     pub(super) current_home_generation: Option<HomeGeneration>,
     pub(super) current_service_generation: Option<ProjectionServiceGeneration>,
     pub(super) active_service_leases: usize,
-    pub(super) recovering: bool,
+    pub(super) disposing: bool,
     pub(super) shutting_down: bool,
     pub(super) terminal_failures: u64,
     pub(super) terminal_settled: bool,
 }
 
-/// Failure before the process recovery worker became the sole service owner.
+/// Failure before the terminal-disposal worker became the sole service owner.
 #[derive(Debug, Error)]
-pub enum RunningSessionRecoveryStartError {
+enum TerminalServiceStartError {
     #[error("the exact home's Beryl state handles could not be reacquired: {0}")]
     BerylState(#[source] BerylStateReacquireError),
     #[error("the exact home's Syndic storage handle could not be reacquired: {0}")]
     SyndicStorage(#[source] DomainHandleError),
-    #[error("the initial scheduled-ordinary provider epoch could not be created: {0}")]
-    Provider(String),
     #[error("the initial projection service could not be constructed: {0}")]
     Service(#[source] crate::cas_projection::ProjectionCoordinatorError),
-    #[error("the service recovery notification could not be attached")]
+    #[error("the terminal service notification could not be attached")]
     NotificationAttachment,
-    #[error("the same-home recovery worker could not be started: {0}")]
+    #[error("the terminal service worker could not be started: {0}")]
     WorkerSpawn(String),
 }
 
 /// Explicit shutdown failure after every reachable process-owned resource was asked to settle.
 #[derive(Debug, Error)]
-pub enum RunningSessionRecoveryShutdownError {
-    #[error("the same-home recovery worker panicked")]
+enum TerminalServiceShutdownError {
+    #[error("the terminal service worker panicked")]
     WorkerPanicked,
     #[error("the current projection service failed to close: {0}")]
     Service(#[source] ProjectionConnectionServiceCloseError),
-    #[error("same-home recovery stopped in a terminal unpublished state")]
-    TerminalRecovery,
+    #[error("failed-service disposal made the service terminally unavailable")]
+    TerminalUnavailable,
 }
 
-/// Sole process owner of current projection-service publication and same-home recovery.
-pub struct RunningSessionRecoverySupervisor {
+/// Sole process owner of current projection-service access and terminal disposal.
+struct TerminalServiceSupervisor {
     slot: Arc<RunningServiceSlot>,
     signal: mpsc::SyncSender<()>,
-    worker: Mutex<Option<std::thread::JoinHandle<RecoveryWorkerExit>>>,
+    worker: Mutex<Option<std::thread::JoinHandle<TerminalWorkerExit>>>,
 }
 
-impl RunningSessionRecoverySupervisor {
-    /// Mounts the initial healthy service and starts one capacity-one same-home recovery worker.
-    pub fn start(
+impl TerminalServiceSupervisor {
+    /// Mounts the initial healthy service and starts one capacity-one terminal-disposal worker.
+    fn start(
         home: HomeStore,
         config: ProjectionServiceConfig,
-        provider_factory: Box<dyn ScheduledOrdinaryExecutionProviderFactory>,
-    ) -> Result<Self, RunningSessionRecoveryStartError> {
-        let mut provider_factory = ProviderFactoryOwner::new(provider_factory);
+        mut provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Result<Self, TerminalServiceStartError> {
         let state = match BerylState::reacquire(&home) {
             Ok(state) => state,
             Err(error) => {
-                provider_factory.shutdown();
-                return Err(RunningSessionRecoveryStartError::BerylState(error));
+                provider.shutdown();
+                return Err(TerminalServiceStartError::BerylState(error));
             }
         };
         let storage = match SyndicStorage::reacquire(&home) {
             Ok(storage) => storage,
             Err(error) => {
-                provider_factory.shutdown();
-                return Err(RunningSessionRecoveryStartError::SyndicStorage(error));
-            }
-        };
-        let health = home.health();
-        let context = ScheduledOrdinaryProviderEpochContext::new(
-            home.home_id(),
-            health.generation().ok_or_else(|| {
-                RunningSessionRecoveryStartError::Provider(
-                    "the initial healthy home has no generation".to_owned(),
-                )
-            })?,
-            state,
-        );
-        let provider = match provider_factory.create_epoch(context) {
-            Ok(provider) => provider,
-            Err(error) => {
-                provider_factory.shutdown();
-                return Err(RunningSessionRecoveryStartError::Provider(
-                    error.to_string(),
-                ));
+                provider.shutdown();
+                return Err(TerminalServiceStartError::SyndicStorage(error));
             }
         };
         let service = match ProjectionConnectionService::new(home, storage, config, provider) {
             Ok(service) => service,
             Err(error) => {
-                provider_factory.shutdown();
-                return Err(RunningSessionRecoveryStartError::Service(error));
+                return Err(TerminalServiceStartError::Service(error));
             }
         };
         let (signal, receiver) = mpsc::sync_channel(1);
-        if service.attach_recovery_supervisor(signal.clone()).is_err() {
+        if service.attach_terminal_disposer(signal.clone()).is_err() {
             let _ = service.close();
-            provider_factory.shutdown();
-            return Err(RunningSessionRecoveryStartError::NotificationAttachment);
+            return Err(TerminalServiceStartError::NotificationAttachment);
         }
         let slot = RunningServiceSlot::new(service, state);
-        let worker = RecoveryWorkerStart {
+        let worker = TerminalWorkerStart {
             slot: Arc::clone(&slot),
             receiver,
-            provider_factory,
         }
         .spawn()?;
         Ok(Self {
@@ -150,19 +120,18 @@ impl RunningSessionRecoverySupervisor {
     }
 
     /// Borrows the pointer-exact current service through a non-cloneable scoped lease.
-    pub fn acquire(&self) -> Result<RunningProjectionServiceLease, RunningServiceAvailability> {
+    fn acquire(&self) -> Result<RunningServiceLease, ServiceAvailability> {
         self.slot.acquire()
     }
 
     /// Returns bounded content-free current publication and recovery state.
     #[must_use]
-    pub fn diagnostics(&self) -> RunningSessionRecoveryDiagnostics {
+    fn diagnostics(&self) -> TerminalServiceDiagnostics {
         self.slot.diagnostics()
     }
 
-    /// Explicitly stops recovery, settles the current service, and finally closes the provider
-    /// factory's stable admitted-session pool.
-    pub fn shutdown(self) -> Result<(), RunningSessionRecoveryShutdownError> {
+    /// Explicitly stops supervision and settles the current service.
+    fn shutdown(self) -> Result<(), TerminalServiceShutdownError> {
         self.slot.begin_shutdown();
         let _ = self.signal.try_send(());
         let worker = self
@@ -170,15 +139,15 @@ impl RunningSessionRecoverySupervisor {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .take()
-            .ok_or(RunningSessionRecoveryShutdownError::WorkerPanicked)?;
+            .ok_or(TerminalServiceShutdownError::WorkerPanicked)?;
         worker
             .join()
-            .map_err(|_| RunningSessionRecoveryShutdownError::WorkerPanicked)?
+            .map_err(|_| TerminalServiceShutdownError::WorkerPanicked)?
             .into_result()
     }
 }
 
-impl RunningSessionRecoveryDiagnostics {
+impl TerminalServiceDiagnostics {
     #[must_use]
     pub const fn current_home_generation(self) -> Option<HomeGeneration> {
         self.current_home_generation
@@ -195,8 +164,8 @@ impl RunningSessionRecoveryDiagnostics {
     }
 
     #[must_use]
-    pub const fn recovering(self) -> bool {
-        self.recovering
+    pub const fn disposing(self) -> bool {
+        self.disposing
     }
 
     #[must_use]
@@ -209,14 +178,14 @@ impl RunningSessionRecoveryDiagnostics {
         self.terminal_failures
     }
 
-    /// Reports that terminal disposal and provider-factory shutdown have finished.
+    /// Reports that terminal failed-service disposal has finished.
     #[must_use]
     pub const fn terminal_settled(self) -> bool {
         self.terminal_settled
     }
 }
 
-impl Drop for RunningSessionRecoverySupervisor {
+impl Drop for TerminalServiceSupervisor {
     fn drop(&mut self) {
         self.slot.begin_shutdown();
         let _ = self.signal.try_send(());

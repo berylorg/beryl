@@ -199,17 +199,28 @@ impl<'a> DurableRecordSink<'a> {
             return;
         }
         let batch = mem::take(&mut self.batch);
-        let contribution = self.fixture.storage.fixture_contribution(
-            self.fixture.storage.revision(&self.fixture.store).unwrap(),
-            batch,
-        );
-        let mut command = HomeCommand::new(self.fixture.store.home_revision().unwrap());
+        let home = self.fixture.home();
+        let contribution = self
+            .fixture
+            .storage
+            .fixture_contribution(self.fixture.storage.revision(&home).unwrap(), batch);
+        let mut command = HomeCommand::new(home.home_revision().unwrap());
         command.add(contribution).unwrap();
-        match self.fixture.store.execute(command) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed content mutation, got {outcome:?}"),
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed content mutation, got {outcome:?}"),
+        match home.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ CommandOutcome::NotCommitted { .. } => {
+                panic!("expected committed content mutation, got {outcome:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("expected no later failure, got {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("expected committed content mutation, got {outcome:?}")
+            }
         }
         self.records = 0;
     }
@@ -258,7 +269,7 @@ pub fn seed_submitted_input(
 ) -> SeededInput {
     let draft = fixture
         .storage
-        .current_draft(&fixture.store, thread, point_limit())
+        .current_draft(&*fixture.home(), thread, point_limit())
         .unwrap()
         .unwrap()
         .draft()

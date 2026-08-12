@@ -134,7 +134,7 @@ fn before_commit_terminal_failure_enters_verification_and_closes_without_termina
 
     assert_eq!(
         fixture.home.health().state(),
-        beryl_home_store::HomeHealthState::Verifying
+        beryl_home_store::HomeHealthState::Healthy
     );
     assert!(!fixture.commands.failure_observed());
     assert!(fixture.commands.is_open());
@@ -221,7 +221,7 @@ fn after_persist_terminal_enters_verification_and_closes_without_terminal_proof(
 
     assert_eq!(
         fixture.home.health().state(),
-        beryl_home_store::HomeHealthState::Verifying
+        beryl_home_store::HomeHealthState::Healthy
     );
     assert!(!fixture.commands.failure_observed());
     assert!(fixture.commands.is_open());

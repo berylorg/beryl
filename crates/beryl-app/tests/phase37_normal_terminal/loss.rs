@@ -47,7 +47,7 @@ pub fn run() {
             TIMEOUT,
         )
         .unwrap();
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
     let projection_request = CasProjectionRequest::new(
         fixture.thread,
         fixture.selected_path(fixture.thread),
@@ -59,7 +59,7 @@ pub fn run() {
     );
     let projection = coordinator
         .obtain_projection(
-            &fixture.store,
+            &*fixture.home(),
             fixture.storage,
             &mut session,
             &projection_request,
@@ -74,7 +74,7 @@ pub fn run() {
     let mut branch = NoopBranch::default();
     let outcome = coordinator
         .execute_ordinary_turn(
-            &fixture.store,
+            &*fixture.home(),
             fixture.storage,
             fixture.state.assets(),
             projection,
@@ -119,7 +119,7 @@ impl LossProjectionExpectation {
         assert_eq!(projection.cas_thread_id().as_str(), CAS_THREAD_ID);
         let binding = fixture
             .storage
-            .current_binding(&fixture.store, fixture.thread, point_limit())
+            .current_binding(&*fixture.home(), fixture.thread, point_limit())
             .unwrap()
             .unwrap();
         assert_eq!(binding.binding().revision(), projection.binding_revision());
@@ -150,7 +150,7 @@ fn assert_durable_loss(
     let status = TurnEndStatus::incomplete(TurnIncompleteReason::StreamLost);
     let state = fixture
         .storage
-        .turn_state(&fixture.store, turn, point_limit())
+        .turn_state(&*fixture.home(), turn, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::Incomplete);
@@ -180,7 +180,7 @@ fn assert_durable_loss(
     let items = fixture
         .storage
         .turn_items(
-            &fixture.store,
+            &*fixture.home(),
             turn,
             None,
             CursorReadLimits::new(2, 64 * 1024).unwrap(),
@@ -241,7 +241,7 @@ fn assert_durable_loss(
         fixture
             .storage
             .source_event(
-                &fixture.store,
+                &*fixture.home(),
                 turn,
                 SourceEventSequence::new(5).unwrap(),
                 point_limit(),
@@ -252,7 +252,7 @@ fn assert_durable_loss(
 
     let item = fixture
         .storage
-        .canonical_item(&fixture.store, item_id, point_limit())
+        .canonical_item(&*fixture.home(), item_id, point_limit())
         .unwrap()
         .unwrap();
     let item_source = CasItemSource::new(source, cas_item_id);
@@ -271,14 +271,14 @@ fn assert_durable_loss(
     assert!(provider.stream_state().is_complete());
     let captured = fixture
         .storage
-        .capture_item(&fixture.store, &item_source, point_limit())
+        .capture_item(&*fixture.home(), &item_source, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(captured.item(), &item);
 
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(gate.state(), &InputGateState::Idle);
@@ -286,7 +286,7 @@ fn assert_durable_loss(
 
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, fixture.thread, point_limit())
+        .current_binding(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -325,7 +325,7 @@ fn source_event(
     fixture
         .storage
         .source_event(
-            &fixture.store,
+            &*fixture.home(),
             turn,
             SourceEventSequence::new(sequence).unwrap(),
             point_limit(),

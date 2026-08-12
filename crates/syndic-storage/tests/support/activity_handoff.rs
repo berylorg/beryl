@@ -3,7 +3,7 @@ use beryl_model::{CasItemId, SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::*;
 
 use crate::support::{
-    TestHome, batch, commit, converge_and_release_terminal_history, draft_id,
+    TestHome, converge_and_release_terminal_history, draft_id,
     exact_cas::{
         admit_event, admit_started_then_completed_item, correlate_user_item, establish_turn,
         submit_current_draft,
@@ -55,9 +55,10 @@ pub fn child_handoff_candidate(name: &str, later_activity: bool) -> ChildHandoff
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated::populated_records()));
+    populated::seed_populated(&store, storage);
     let owner = id(30);
     let child = id(36);
+    converge_and_release_terminal_history(&store, storage, owner, populated::source_turn());
     submit_current_draft(
         &store,
         storage,

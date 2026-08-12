@@ -5,16 +5,15 @@ mod support;
 use std::{convert::Infallible, error::Error, fmt, sync::Arc};
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint, PersistedCorruptionError},
-    CodecOperation, CommandError, DomainCallbackSource, DomainHandle, DomainMutation, DomainReader,
-    DomainSchemaVersion, DomainValidationError, HealthVerificationError, HomeCommand,
-    HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
-    KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily,
-    RecordVersion, StorageDomain,
+    CodecOperation, DomainCallbackSource, DomainHandle, DomainMutation, DomainReader,
+    DomainSchemaVersion, DomainValidationError, HomeCommand, HomeHealthState, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit,
+    ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain, WholeHomeScrubTrigger,
+    test_faults::{FaultController, PersistedCorruptionError},
 };
 use tempfile::tempdir;
 
-use support::{committed, AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, PutBytes};
+use support::{AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, committed};
 
 const MAX_STORED_VALUE_BYTES: usize = 1_028;
 const MAX_CORRUPTION_FIXTURE_BYTES: usize = 1_048_576;
@@ -212,14 +211,17 @@ fn malformed_in_bound_key_is_persisted_only_for_structural_validation() {
         )
         .unwrap();
     assert!(matches!(
-        store.validate_registered_domains(),
-        Err(DomainValidationError::Access {
+        store
+            .scrub_whole_home(WholeHomeScrubTrigger::CorruptionEvidence)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
             domain: "alpha",
             source: DomainCallbackSource::Read(ReadError::Codec {
                 operation: CodecOperation::DecodeKey,
                 ..
             }),
-        })
+        }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 }
@@ -238,14 +240,17 @@ fn malformed_in_bound_payload_is_persisted_only_when_the_exact_codec_rejects_it(
         )
         .unwrap();
     assert!(matches!(
-        store.validate_registered_domains(),
-        Err(DomainValidationError::Access {
+        store
+            .scrub_whole_home(WholeHomeScrubTrigger::CorruptionEvidence)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
             domain: "strict-corruption-fixture",
             source: DomainCallbackSource::Read(ReadError::Codec {
                 operation: CodecOperation::DecodeValue,
                 ..
             }),
-        })
+        }
     ));
 }
 
@@ -262,11 +267,14 @@ fn truncated_and_unsupported_version_values_are_admitted_as_corruption() {
         )
         .unwrap();
     assert!(matches!(
-        truncated_store.validate_registered_domains(),
-        Err(DomainValidationError::Access {
+        truncated_store
+            .scrub_whole_home(WholeHomeScrubTrigger::CorruptionEvidence)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
             source: DomainCallbackSource::Read(ReadError::MalformedRecord { .. }),
             ..
-        })
+        }
     ));
     drop(truncated_store);
 
@@ -281,15 +289,18 @@ fn truncated_and_unsupported_version_values_are_admitted_as_corruption() {
         )
         .unwrap();
     assert!(matches!(
-        version_store.validate_registered_domains(),
-        Err(DomainValidationError::Access {
+        version_store
+            .scrub_whole_home(WholeHomeScrubTrigger::CorruptionEvidence)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
             source: DomainCallbackSource::Read(ReadError::UnsupportedRecordVersion {
                 supported,
                 found: 2,
                 ..
             }),
             ..
-        }) if supported == RecordVersion::new(1)
+        } if *supported == RecordVersion::new(1)
     ));
 }
 
@@ -307,15 +318,18 @@ fn oversized_envelope_remains_an_accepted_corruption_fixture() {
         )
         .unwrap();
     assert!(matches!(
-        store.validate_registered_domains(),
-        Err(DomainValidationError::Access {
+        store
+            .scrub_whole_home(WholeHomeScrubTrigger::CorruptionEvidence)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
             source: DomainCallbackSource::Read(ReadError::InvalidStoredKeySize {
                 maximum: 8,
                 actual: 9,
                 ..
             }),
             ..
-        })
+        }
     ));
 }
 
@@ -405,7 +419,7 @@ fn empty_engine_oversized_and_fixture_oversized_requests_are_hard_rejected() {
 }
 
 #[test]
-fn verification_and_same_home_recovery_both_reject_the_persisted_envelope() {
+fn scrub_rejects_but_routine_recovery_ignores_a_dormant_malformed_envelope() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
@@ -418,49 +432,32 @@ fn verification_and_same_home_recovery_both_reject_the_persisted_envelope() {
         )
         .unwrap();
 
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
-            PutBytes::<AlphaDomain>::new(2, b"verification trigger".to_vec()),
-        ))
-        .unwrap();
-    faults.fail_next(FaultPoint::BeforeCommit);
     assert!(matches!(
-        store.execute(command),
-        beryl_home_store::CommandOutcome::NotCommitted {
-            evidence: CommandError::Commit { .. }
-        }
-    ));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-    assert!(matches!(
-        store.verify_health(),
-        Err(HealthVerificationError::DomainValidation(
-            DomainValidationError::Access {
+        store
+            .scrub_whole_home(WholeHomeScrubTrigger::CorruptionEvidence)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
                 domain: "alpha",
                 source: DomainCallbackSource::Read(ReadError::UnsupportedRecordVersion {
                     supported,
                     found: 2,
                     ..
                 }),
-            }
-        )) if supported == RecordVersion::new(1)
+        } if *supported == RecordVersion::new(1)
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 
+    let candidate = store.recover_same_home().unwrap();
+    let alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
+    let recovered = candidate.publish();
     assert!(matches!(
-        store.recover_same_home(),
-        Err(HomeRecoveryError::DomainValidation(
-            DomainValidationError::Access {
-                domain: "alpha",
-                source: DomainCallbackSource::Read(ReadError::UnsupportedRecordVersion {
-                    supported,
-                    found: 2,
-                    ..
-                }),
-            }
-        )) if supported == RecordVersion::new(1)
+        recovered.read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
+            alpha,
+            &1,
+            PointReadLimit::new(MAX_STORED_VALUE_BYTES).unwrap(),
+        ),
+        Err(ReadError::UnsupportedRecordVersion { found: 2, .. })
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert_eq!(recovered.health().state(), HomeHealthState::Failed);
 }

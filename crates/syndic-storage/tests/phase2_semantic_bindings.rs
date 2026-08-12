@@ -8,8 +8,8 @@ use syndic_storage::test_faults::{
 };
 use syndic_storage::*;
 
-use support::populated::{active_snapshot, populated_records};
-use support::semantic::exercise_case;
+use support::populated::active_snapshot;
+use support::semantic::{exercise_case, exercise_seeded_populated_case};
 use support::*;
 
 #[test]
@@ -103,11 +103,10 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
         two_threads,
         duplicate_cas_binding,
     );
-    exercise_case(
+    exercise_seeded_populated_case(
         "active-missing-snapshot",
         "active binding snapshot is missing",
-        || batch(populated_records()),
-        || {
+        |_store, _storage| {
             let mut batch = FixtureBatch::new();
             batch
                 .delete(FixtureDelete::ExecutionSnapshot(active_snapshot()))

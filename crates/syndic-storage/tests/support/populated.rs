@@ -2,35 +2,42 @@ mod active;
 mod bindings;
 mod context;
 mod provider;
+mod seed;
 mod source;
-
+use super::{
+    batch, commit, composer_content_records, draft_id, fixture_turn_state, id, test_tool_profile,
+    timestamp, utf8_content_records,
+};
 use beryl_model::{
     BindingRevision, CasItemId, CasLoadedSessionGeneration, CasLoadedThreadGeneration,
-    CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, DraftRevision,
-    InputGateRevision, ProjectionRevision, SyndicAcceptedInputId, SyndicContentId,
+    CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, DiscussionContextOwnerId,
+    DraftRevision, InputGateRevision, ProjectionRevision, SyndicAcceptedInputId, SyndicContentId,
     SyndicExecutionSnapshotId, SyndicItemId, SyndicProjectionId, SyndicResourceId, SyndicTurnId,
     ThreadRevision,
 };
-use syndic_storage::test_faults::{
-    FixtureRecord, fixture_advance_item_projection_digest, fixture_advance_transcript_digest,
-    fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
-    fixture_provider_content_manifest, fixture_transcript_digest_seed,
-};
-use syndic_storage::*;
-
-use super::{
-    composer_content_records, draft_id, fixture_turn_state, id, test_tool_profile, timestamp,
-    utf8_content_records,
-};
-
 use provider::{
-    AgentItemFixtureState, agent_item_fixture, command_item_fixture, correlated_user_item_fixture,
+    AgentItemFixtureState, ProviderItemFixture, ProviderSeedTurn, accept_clean, agent_item_fixture,
+    command_item_fixture, correlated_user_item_fixture,
 };
+use seed::provider_command_owned;
+pub use seed::seed_populated;
 pub use source::*;
 use source::{
     execution_binding, source_cas_item, source_cas_thread, source_cas_turn, source_snapshot,
 };
+use syndic_storage::test_faults::{
+    FixtureRecord, fixture_advance_item_projection_digest, fixture_advance_transcript_digest,
+    fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
+    fixture_transcript_digest_seed,
+};
+use syndic_storage::*;
 
+pub fn static_active_route_records() -> Vec<FixtureRecord> {
+    active::records()
+        .into_iter()
+        .filter(seed::active_route_fact)
+        .collect()
+}
 pub fn populated_records() -> Vec<FixtureRecord> {
     let source_thread = id(30);
     let source_draft = draft_id(31);
@@ -106,7 +113,7 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         execution_binding(),
         ThreadArchiveState::Ordinary,
         timestamp(4),
-        true,
+        false,
         None,
         ThreadLineageDepth::FIRST,
         root_thread_lineage_digest(source_thread),
@@ -279,8 +286,6 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         )),
     ];
     records.extend(empty_content_records);
-    records.extend(provider.records);
-
     let projection = source_projection();
     let projection_record = fixture_inline_paragraph_projection(item, source, "assistant");
     let resource = source_resource();
@@ -507,9 +512,9 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         lineage,
         source_cas_turn,
     ));
-
     records.extend(context::records());
     records.extend(active::records());
     records.extend(retained_text_records);
+    records.retain(|record| !provider_command_owned(record));
     records
 }

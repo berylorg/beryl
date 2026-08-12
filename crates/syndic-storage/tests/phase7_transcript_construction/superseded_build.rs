@@ -64,11 +64,15 @@ fn selected_tail_advance_preserves_the_completed_release_build() {
     assert_eq!(head.lifecycle(), ProjectionLifecycle::Stale);
     assert!(!transcript_entries(&store, storage, thread, old_generation).is_empty());
 
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .transcript_build(&reopened, thread, old_generation, point_limit())

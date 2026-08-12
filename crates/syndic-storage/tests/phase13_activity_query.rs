@@ -8,7 +8,7 @@ use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::*;
 
 use support::{
-    TestHome, batch, commit, draft_id,
+    TestHome, batch, commit, converge_and_release_terminal_history, draft_id,
     exact_cas::{
         admit_event, admit_started_then_completed_item, correlate_user_item, establish_turn,
         submit_current_draft,
@@ -34,9 +34,10 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     let home = TestHome::new("phase13-activity-child-handoff");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated::populated_records()));
+    populated::seed_populated(&store, storage);
     let owner = id(30);
     let child = id(36);
+    converge_and_release_terminal_history(&store, storage, owner, populated::source_turn());
     submit_current_draft(
         &store,
         storage,
@@ -110,7 +111,6 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     let error = match execute(
         &store,
         storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), nonterminal),
-    )
     ) {
         CommandOutcome::NotCommitted { evidence } => evidence,
         outcome => panic!("expected not-committed nonterminal handoff, got {outcome:?}"),
@@ -184,7 +184,6 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     let error = match execute(
         &store,
         storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), existing),
-    )
     ) {
         CommandOutcome::NotCommitted { evidence } => evidence,
         outcome => panic!("expected not-committed preexisting handoff, got {outcome:?}"),
@@ -215,9 +214,11 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     match execute(
         &store,
         storage.fixture_contribution(storage.revision(&store).unwrap(), restore),
-    )
     ) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
         outcome => panic!("expected committed activity fixture restoration, got {outcome:?}"),
     }
     let invalid = PublishActivityChildHandoff::new(
@@ -231,7 +232,6 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     let error = match execute(
         &store,
         storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), invalid),
-    )
     ) {
         CommandOutcome::NotCommitted { evidence } => evidence,
         outcome => panic!("expected not-committed invalid handoff, got {outcome:?}"),
@@ -260,9 +260,11 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     match execute(
         &store,
         storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), request),
-    )
     ) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
         outcome => panic!("expected committed activity handoff, got {outcome:?}"),
     }
     let published = storage
@@ -333,11 +335,15 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         range
     );
 
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let clean_sources = storage
         .activity_query_source_page(
             &store,
@@ -395,11 +401,20 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
             source_turn: child_turn,
         })
         .unwrap();
-    execute(
+    match execute(
         &store,
         storage.fixture_contribution(storage.revision(&store).unwrap(), corruption),
-    )
-    .unwrap();
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::Indeterminate { reconciliation, .. } => {
+            reconciliation.install();
+            panic!("expected clean activity-source corruption");
+        }
+        outcome => panic!("expected clean activity-source corruption, got {outcome:?}"),
+    }
     store.close().unwrap();
     let mut reopened = open(home.path());
     let error = match SyndicStorage::register(&mut reopened) {

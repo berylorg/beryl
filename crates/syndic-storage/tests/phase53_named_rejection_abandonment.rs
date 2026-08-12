@@ -5,7 +5,7 @@ mod generic_witness_corruption;
 mod support;
 
 use beryl_home_store::{
-    CommandError, CommandOutcome, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{AcceptedInputRevision, CasTurnId, InputGateRevision};
@@ -13,64 +13,14 @@ use syndic_storage::test_faults::{FixtureRecord, fixture_route_leaf_with_transit
 use syndic_storage::*;
 
 use support::phase11::{
-    DELIVERY_UNKNOWN_LOGICAL_BYTES, abandonment_request, delivering_input,
-    mixed_abandonment_records, retryable_input,
+    DELIVERY_UNKNOWN_LOGICAL_BYTES, abandonment_request, delivering_input, retryable_input,
+    seed_mixed_abandonment,
 };
 use support::populated::steering_input;
 use support::*;
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
-}
-
-fn named_rejection_records() -> Vec<FixtureRecord> {
-    let mut records = mixed_abandonment_records();
-    for record in &mut records {
-        match record {
-            FixtureRecord::AcceptedRouteGeneration(route) if route.thread_id() == id(40) => {
-                *route = AcceptedRouteGenerationRecord::new(
-                    route.thread_id(),
-                    route.generation(),
-                    route.revision(),
-                    route.target().clone(),
-                    route.first_ordinal(),
-                    route.last_ordinal(),
-                    route.input_count(),
-                    1,
-                    2,
-                    route.next_turn_count(),
-                    route.terminal_count(),
-                    route.live_logical_utf8_bytes(),
-                    route.delivering_logical_utf8_bytes(),
-                )
-                .unwrap();
-            }
-            FixtureRecord::AcceptedRouteLeaf(leaf) if leaf.input_id() == retryable_input() => {
-                *leaf = fixture_route_leaf_with_transition(
-                    AcceptedRouteLeafRecord::new(
-                        leaf.input_id(),
-                        leaf.thread_id(),
-                        leaf.generation(),
-                        leaf.ordinal(),
-                        leaf.revision().checked_next().unwrap(),
-                        leaf.state(),
-                        AcceptedInputLifecycle::Delivering,
-                    ),
-                    AcceptedRouteLeafTransitionProof::new(
-                        InputGateRevision::new(5).unwrap(),
-                        AcceptedRouteHeadProof::new(
-                            leaf.generation(),
-                            AcceptedRouteRevision::new(2).unwrap(),
-                        ),
-                        leaf.revision(),
-                        AcceptedRouteLeafTransitionKind::Begin,
-                    ),
-                );
-            }
-            _ => {}
-        }
-    }
-    records
 }
 
 fn named_request(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBinding {
@@ -87,7 +37,68 @@ fn named_request(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBind
 }
 
 fn seed(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBinding {
-    commit(store, storage, batch(named_rejection_records()));
+    seed_mixed_abandonment(store, storage);
+    let route = syndic_storage::test_faults::accepted_route_generation(
+        store,
+        storage,
+        id(40),
+        AcceptedRouteGeneration::FIRST,
+    )
+    .unwrap();
+    let page = storage
+        .accepted_route_page(store, id(40), route.generation(), route.revision(), None)
+        .unwrap();
+    let leaf = page
+        .records()
+        .iter()
+        .find(|entry| entry.input().id() == retryable_input())
+        .unwrap()
+        .leaf()
+        .clone();
+    commit(
+        store,
+        storage,
+        batch([
+            FixtureRecord::AcceptedRouteGeneration(
+                AcceptedRouteGenerationRecord::new(
+                    route.thread_id(),
+                    route.generation(),
+                    route.revision(),
+                    route.target().clone(),
+                    route.first_ordinal(),
+                    route.last_ordinal(),
+                    route.input_count(),
+                    1,
+                    2,
+                    route.next_turn_count(),
+                    route.terminal_count(),
+                    route.live_logical_utf8_bytes(),
+                    route.delivering_logical_utf8_bytes(),
+                )
+                .unwrap(),
+            ),
+            FixtureRecord::AcceptedRouteLeaf(fixture_route_leaf_with_transition(
+                AcceptedRouteLeafRecord::new(
+                    leaf.input_id(),
+                    leaf.thread_id(),
+                    leaf.generation(),
+                    leaf.ordinal(),
+                    leaf.revision().checked_next().unwrap(),
+                    leaf.state(),
+                    AcceptedInputLifecycle::Delivering,
+                ),
+                AcceptedRouteLeafTransitionProof::new(
+                    InputGateRevision::new(5).unwrap(),
+                    AcceptedRouteHeadProof::new(
+                        leaf.generation(),
+                        AcceptedRouteRevision::new(2).unwrap(),
+                    ),
+                    leaf.revision(),
+                    AcceptedRouteLeafTransitionKind::Begin,
+                ),
+            )),
+        ]),
+    );
     named_request(store, storage)
 }
 
@@ -135,9 +146,13 @@ fn exact_unverdictable_rejection_is_preserved_while_sibling_delivery_becomes_unk
             .unwrap(),
         BindingPublicationStatus::Prior
     );
-    store
-        .execute_current(storage.current_abandon_active_binding(request.clone()))
-        .unwrap();
+    assert!(matches!(
+        store.execute_current(storage.current_abandon_active_binding(request.clone())),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
     assert_eq!(
         storage
             .abandoned_active_binding_publication_status(&store, &request, limit())
@@ -203,7 +218,9 @@ fn exact_unverdictable_rejection_is_preserved_while_sibling_delivery_becomes_unk
     );
     let proof = gate.selected_route().unwrap();
     assert_eq!(proof.revision(), AcceptedRouteRevision::new(4).unwrap());
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -220,7 +237,9 @@ fn exact_unverdictable_rejection_is_preserved_while_sibling_delivery_becomes_unk
             .unwrap(),
         BindingPublicationStatus::Collision
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -270,8 +289,7 @@ fn generic_abandonment_witness_rejects_named_reconciliation_and_authority_drift(
     let home = TestHome::new("phase53-generic-abandonment-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(named_rejection_records()));
-    let named = named_request(&store, storage);
+    let named = seed(&store, storage);
     let generic = generic_request(&named);
 
     let AcceptedRouteLostTarget::Steering(target) = generic.target() else {
@@ -303,16 +321,19 @@ fn generic_abandonment_witness_rejects_named_reconciliation_and_authority_drift(
                 .unwrap(),
             BindingPublicationStatus::Collision
         );
-        assert!(
-            store
-                .execute_current(storage.current_abandon_active_binding(drifted.clone()))
-                .is_err()
-        );
+        assert!(matches!(
+            store.execute_current(storage.current_abandon_active_binding(drifted.clone())),
+            CommandOutcome::NotCommitted { .. }
+        ));
     }
 
-    store
-        .execute_current(storage.current_abandon_active_binding(generic.clone()))
-        .unwrap();
+    assert!(matches!(
+        store.execute_current(storage.current_abandon_active_binding(generic.clone())),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
     assert_eq!(
         storage
             .abandoned_active_binding_publication_status(&store, &generic, limit())
@@ -326,7 +347,9 @@ fn generic_abandonment_witness_rejects_named_reconciliation_and_authority_drift(
         BindingPublicationStatus::Collision,
         "a generic abandonment must not authenticate the named command",
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -343,7 +366,9 @@ fn generic_abandonment_witness_rejects_named_reconciliation_and_authority_drift(
             .unwrap(),
         BindingPublicationStatus::Collision
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -379,6 +404,7 @@ fn named_rejection_abandonment_fault_cuts_reconcile_old_or_exact() {
         faults.fail_next(point);
         let outcome =
             store.execute_current(storage.current_abandon_active_binding(request.clone()));
+        let retained_custody = matches!(&outcome, CommandOutcome::Indeterminate { .. });
         match (point, outcome) {
             (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
                 assert!(matches!(evidence, CommandError::Commit { .. }));
@@ -415,7 +441,22 @@ fn named_rejection_abandonment_fault_cuts_reconcile_old_or_exact() {
                 .unwrap(),
             expected
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        if retained_custody {
+            let close_error = store.close().unwrap_err();
+            assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+            drop(close_error);
+            assert!(
+                HomeStore::open(HomeOpenOptions::new(
+                    home.path(),
+                    HomeSchemaVersion::CURRENT
+                ))
+                .is_err()
+            );
+            continue;
+        }
         store.close().unwrap();
 
         let mut reopened = open(home.path());
@@ -426,7 +467,9 @@ fn named_rejection_abandonment_fault_cuts_reconcile_old_or_exact() {
                 .unwrap(),
             expected
         );
-        reopened.validate_registered_domains().unwrap();
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         reopened.close().unwrap();
     }
 }
@@ -458,24 +501,49 @@ fn generic_abandonment_fault_cuts_reconcile_old_or_exact() {
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
-        commit(&store, storage, batch(mixed_abandonment_records()));
+        seed_mixed_abandonment(&store, storage);
         let request = abandonment_request(&store, storage);
 
         faults.fail_next(point);
-        assert!(
-            store
-                .execute_current(storage.current_abandon_active_binding(request.clone()))
-                .is_err()
-        );
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-        store.verify_health().unwrap();
+        let outcome =
+            store.execute_current(storage.current_abandon_active_binding(request.clone()));
+        let retained_custody = matches!(&outcome, CommandOutcome::Indeterminate { .. });
+        match (point, outcome) {
+            (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
+                assert!(matches!(evidence, CommandError::Commit { .. }));
+            }
+            (FaultPoint::AfterCommitBeforePersist, CommandOutcome::Indeterminate { .. }) => {}
+            (
+                FaultPoint::AfterPersist,
+                CommandOutcome::Committed {
+                    later_failure: Some(CommandError::Persistence { .. }),
+                    ..
+                },
+            ) => {}
+            (_, outcome) => panic!("unexpected generic abandonment outcome: {outcome:?}"),
+        }
         assert_eq!(
             storage
                 .abandoned_active_binding_publication_status(&store, &request, limit())
                 .unwrap(),
             expected
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        if retained_custody {
+            let close_error = store.close().unwrap_err();
+            assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+            drop(close_error);
+            assert!(
+                HomeStore::open(HomeOpenOptions::new(
+                    home.path(),
+                    HomeSchemaVersion::CURRENT
+                ))
+                .is_err()
+            );
+            continue;
+        }
         store.close().unwrap();
 
         let mut reopened = open(home.path());
@@ -486,7 +554,9 @@ fn generic_abandonment_fault_cuts_reconcile_old_or_exact() {
                 .unwrap(),
             expected
         );
-        reopened.validate_registered_domains().unwrap();
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         reopened.close().unwrap();
     }
 }

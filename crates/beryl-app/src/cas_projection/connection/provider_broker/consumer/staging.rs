@@ -1,9 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use beryl_home_store::{
-    CommandError, CommandOutcome, CommitReceipt, HomeGeneration, HomeStore,
-    ReconciliationDescriptor,
-};
+use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, SyndicItemId};
 use syndic_storage::{
     PreparedProviderObservationFrame, ProviderFrameStageBatch, ProviderItemBuildLifecycle,
@@ -49,11 +46,11 @@ impl<'a> FrameCommitter<'a> {
         prepared: &PreparedProviderObservationFrame,
     ) -> Result<ProviderItemBuildRecord, PersistenceCutError> {
         self.execute_current(|| {
-                self.home.execute_current(
-                    self.storage
-                        .current_begin_provider_observation_frame_build(prepared),
-                )
-            })?;
+            self.home.execute_current(
+                self.storage
+                    .current_begin_provider_observation_frame_build(prepared),
+            )
+        })?;
         match self.read_build(prepared.initial_build().item_id())? {
             Some(current) if &current == prepared.initial_build() => Ok(current),
             None => Err(PersistenceCutError::ReportedSuccessWithoutAdvance),
@@ -63,11 +60,11 @@ impl<'a> FrameCommitter<'a> {
 
     fn dispatch_batch(&self, batch: &ProviderFrameStageBatch) -> Result<(), PersistenceCutError> {
         self.execute_current(|| {
-                self.home.execute_current(
-                    self.storage
-                        .current_stage_provider_frame_batch(batch.clone()),
-                )
-            })?;
+            self.home.execute_current(
+                self.storage
+                    .current_stage_provider_frame_batch(batch.clone()),
+            )
+        })?;
         match self.read_build(batch.expected_build().item_id())? {
             Some(current) if &current == batch.next_build() => Ok(()),
             Some(current) if &current == batch.expected_build() => {
@@ -122,13 +119,7 @@ impl<'a> FrameCommitter<'a> {
         if self.cancelled.load(Ordering::Acquire) {
             return Err(PersistenceCutError::Cancelled);
         }
-        let dispatch = execute();
-        match verification.settle_after_operation() {
-            Ok(settlement) if settlement.requires_retry() => {}
-            Ok(_) => {}
-            Err(source) => return Err(PersistenceCutError::Authority(source)),
-        }
-        match dispatch {
+        let dispatch = match execute() {
             CommandOutcome::NotCommitted { evidence } => {
                 Err(PersistenceCutError::Command(Box::new(evidence)))
             }
@@ -146,11 +137,23 @@ impl<'a> FrameCommitter<'a> {
             CommandOutcome::Indeterminate {
                 failure,
                 reconciliation,
-            } => Err(PersistenceCutError::Indeterminate {
-                failure: Box::new(failure),
-                reconciliation,
-            }),
+            } => {
+                reconciliation.install();
+                Err(PersistenceCutError::Indeterminate {
+                    failure: Box::new(failure),
+                })
+            }
+        };
+        let settlement = verification.settle_after_operation();
+        if matches!(&dispatch, Err(PersistenceCutError::Indeterminate { .. })) {
+            return dispatch;
         }
+        match settlement {
+            Ok(settlement) if settlement.requires_retry() => {}
+            Ok(_) => {}
+            Err(source) => return Err(PersistenceCutError::Authority(source)),
+        }
+        dispatch
     }
 
     fn read_build(
@@ -224,19 +227,17 @@ impl<'a> FrameCommitter<'a> {
                     failure,
                     reconciliation,
                 } => {
-                    return Err(FrameCommitError::Stage(
-                        ProviderObservationFrameStageError::Indeterminate {
-                            failure,
-                            reconciliation,
-                        },
-                    ));
+                    reconciliation.install();
+                    return Err(FrameCommitError::Indeterminate {
+                        failure: Box::new(failure),
+                    });
                 }
             };
             self.complete(staged).map_err(FrameCommitError::Completion)
         })();
         if result
             .as_ref()
-            .is_err_and(|error| error.authority().is_none())
+            .is_err_and(|error| error.authority().is_none() && !error.custody_installed())
         {
             let _ = self.command.observe_persistent_failure();
         }
@@ -250,6 +251,11 @@ pub(in crate::cas_projection::connection::provider_broker) enum FrameCommitError
     Begin(#[source] PersistenceCutError),
     #[error(transparent)]
     Stage(#[from] ProviderObservationFrameStageError),
+    #[error("provider-observation frame staging has an indeterminate durable outcome: {failure}")]
+    Indeterminate {
+        #[source]
+        failure: Box<CommandError>,
+    },
     #[error("provider-observation frame completion failed: {0}")]
     Completion(#[source] PersistenceCutError),
 }
@@ -258,8 +264,17 @@ impl FrameCommitError {
     pub(super) fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
         match self {
             Self::Begin(source) | Self::Completion(source) => source.authority(),
-            Self::Stage(_) => None,
+            Self::Stage(_) | Self::Indeterminate { .. } => None,
         }
+    }
+
+    pub(super) const fn custody_installed(&self) -> bool {
+        matches!(
+            self,
+            Self::Indeterminate { .. }
+                | Self::Begin(PersistenceCutError::Indeterminate { .. })
+                | Self::Completion(PersistenceCutError::Indeterminate { .. })
+        )
     }
 }
 
@@ -281,7 +296,6 @@ pub(in crate::cas_projection::connection::provider_broker) enum PersistenceCutEr
     Indeterminate {
         #[source]
         failure: Box<CommandError>,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("provider-observation frame lost exact verification authority: {0}")]
     Authority(#[source] crate::cas_projection::LiveCommandAdmissionError),

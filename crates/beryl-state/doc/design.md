@@ -33,6 +33,14 @@ absorbing Syndic thread ownership.
 - It receives an opaque registered-domain handle. It never receives or exposes a raw database, keyspace, Fjall batch, transaction, writer guard, lock, or byte encoding.
 - Callers use stable Beryl and Syndic identity values plus expected revisions. Stored key layout and codec versions remain private.
 - Commands that affect only Beryl domains execute through this package's typed command contributors. Commands that must be atomic with Syndic changes contribute both domain mutations to one `beryl-home-store` command coordinated by the owning system.
+- The package exposes a checked maximum mutation-footprint descriptor for its asset-owner-transfer
+  participant, selected by the typed draft-to-submitted-item or accepted-input-to-submitted-item
+  transfer operation. The descriptor derives its maximum record count and encoded key-plus-value
+  bytes from the package-owned Asset V2 head shapes, including the marker-free validation-only
+  case, with checked arithmetic and without opening a home.
+- The descriptor covers only this package's Asset-domain participant. It accepts no caller byte
+  estimate and excludes Syndic mutations, home-store participant metadata and home revision, Fjall
+  journal framing, capture reserve, filesystem allocation, and admission policy.
 - State commands preserve `NotCommitted { evidence }`,
   `Committed { receipt, later_failure }`, and `Indeterminate { failure, reconciliation }` without
   erasing, wrapping, or reclassifying their proof. `NotCommitted` proves no commit and carries no
@@ -123,14 +131,50 @@ absorbing Syndic thread ownership.
 - The service owns stable installed theme ids, repository generations, manifest cursor pages,
   document revisions and digests, the finite role/property schema, bounded compact-TOML parsing,
   and complete resolved appearance values.
+- Manifest generations own only installed membership, bounded names, and order. An observed
+  manifest identity additionally binds the exact physical byte length and digest, so an external
+  same-generation rewrite cannot reuse a cursor or command identity. Each stable
+  `installed/<stable-theme-id>.toml` document receives a process-local observation revision plus
+  exact length and digest whenever the physical repository reports a change or a command publishes
+  replacement bytes; returning to an earlier digest still creates a newer observation revision.
 - Install, rename, delete, reorder, update, Save, and Save As use revision-checked typed commands
   with exact `NotCommitted`, `Committed`, or `Indeterminate` results and targeted
   `ExactOld`, `ExactNew`, or `Collision` reconciliation.
+- Before physical admission, the service reserves one slot in a fixed-capacity retained-operation
+  registry shared by all clones of that exact service. An indeterminate outcome moves its evidence
+  and expected publication into that registry; the public result exposes only an operation id, so
+  dropping the caller handle cannot lose custody or reopen the affected scope. The registry permits
+  only one reconciliation flight for an operation. `ExactOld` and `ExactNew` remove the retained
+  scope, while `Collision` retains it as permanently closed for the service lifetime.
+- Repository-scoped custody gates all repository mutation and repository refresh. Document-scoped
+  custody gates overlapping mutation and reread of that exact stable id without blocking unrelated
+  manifest paging. A separately acquired service lifecycle owns a distinct bounded registry; the
+  composition-owned `BerylState` retains its service and returns shared clones rather than silently
+  reacquiring it. The registry has no process-global map or self-retaining owner and is released
+  when the last service clone and activity guard retire.
+- Save As validates the exact original draft binding while canonicalizing the published copy with
+  its newly allocated stable id, leaving the original draft unchanged.
+- Delete execution reacquires an authoritative bounded Settings and open-draft reference snapshot;
+  a caller-carried reference claim is only an expected fact and cannot authorize deletion by
+  itself.
 - Public reads and queries are point, range, or revision-bound page operations with explicit item
   and decoded-byte limits. No API returns the complete installed collection or requires a whole
   document to be resident.
+- A document load reobserves the exact manifest membership row and the exact document identity
+  after streaming and immediately before returning a publishable typed document. A manifest or
+  document race therefore returns a typed retry/freshness failure instead of publishing a value
+  assembled across physical observations.
+- The service consumes bounded coalesced physical-repository change hints, maps only manifest-
+  admitted stable filenames, rereads through the physical range API, and applies the same parser,
+  validator, and resolver used by commands. Invalid live edits retain the last coherent typed
+  appearance input; invalid startup content yields the built-in fallback input. It never watches
+  paths directly or treats a notification as bytes, revision, or commit proof.
 - This package owns no GPUI entities, window subscriptions, preview arbitration, feature editor
   draft, Settings draft, tool worker, or visible failure presentation.
+- `ThemeService::diagnostics` returns content-free bounded facts only: generation presence, active
+  manifest sessions, subscriptions and document loads, watcher coalescing/overflow counts, mutation
+  and reconciliation outcome counts, retained open/collision scope counts, and load retry
+  rejections. Activity guards decrement their counts on ordinary drop or explicit shutdown.
 
 ## Settings Domain
 
@@ -298,6 +342,10 @@ absorbing Syndic thread ownership.
   stored-byte, and decoded-byte totals. A configured read-limit failure remains direct typed
   home-store read provenance and is not semantic corruption.
 - Stored labels, paths, normalized search fields, failure evidence, setting values, and job payloads have schema-specific byte limits enforced before batch contribution.
+- Asset-owner-transfer footprint tests enumerate the maximum encoded Asset V2 owner-head keys and
+  values for both transfer operations, cover the marker-free validation-only shape, and checked-sum
+  their record and byte totals. An unrepresentable result is a package contract failure; the
+  package never saturates, wraps, or accepts a caller-provided replacement estimate.
 - Ordinary mutation validation and contribution perform only operation-bounded typed reads. They never invoke a complete domain scan while holding the home writer.
 - Routine open, same-home reopen, and typed-handle reacquisition validate the exact owner and codec
   types, durable domain and family declarations, required physical families, and generation. They

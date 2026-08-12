@@ -13,11 +13,9 @@ use syndic_storage::test_faults::{
 use syndic_storage::*;
 
 use support::phase11::{
-    DELIVERY_UNKNOWN_LOGICAL_BYTES, delivering_input, mixed_abandonment_records, retryable_input,
+    DELIVERY_UNKNOWN_LOGICAL_BYTES, delivering_input, retryable_input, seed_mixed_abandonment,
 };
-use support::populated::{
-    active_snapshot, active_turn, cas_thread, cas_turn, populated_records, steering_input,
-};
+use support::populated::{active_snapshot, active_turn, cas_thread, cas_turn, steering_input};
 use support::*;
 
 fn limit() -> SyndicPointReadLimit {
@@ -30,23 +28,136 @@ fn accepted_id(ordinal: u64) -> SyndicAcceptedInputId {
     SyndicAcceptedInputId::from_bytes(bytes)
 }
 
-fn large_delivering_generation(last_ordinal: u64) -> Vec<FixtureRecord> {
+fn seed_large_delivering_generation(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    last_ordinal: u64,
+) {
     assert!(last_ordinal > 256);
-    let mut records = mixed_abandonment_records();
+    seed_mixed_abandonment(store, storage);
+    let point_limit = limit();
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
+    let current_thread = storage.thread(store, thread, point_limit).unwrap().unwrap();
+    let current_draft = storage
+        .current_draft(store, thread, point_limit)
+        .unwrap()
+        .unwrap();
+    let current_summary = storage
+        .history_summary(store, thread, point_limit)
+        .unwrap()
+        .unwrap();
+    let retryable = storage
+        .accepted_input(store, retryable_input(), point_limit)
+        .unwrap()
+        .unwrap();
+    let current_gate = storage
+        .input_gate(store, thread, point_limit)
+        .unwrap()
+        .unwrap();
+    let current_route =
+        syndic_storage::test_faults::accepted_route_generation(store, storage, thread, generation)
+            .unwrap();
     let revision = AcceptedRouteRevision::new(3).unwrap();
     let final_thread_revision = ThreadRevision::new(last_ordinal + 1).unwrap();
     let final_gate_revision = InputGateRevision::new(last_ordinal + 1).unwrap();
-    let empty_content = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::AcceptedInput(input) if input.id() == retryable_input() => {
-                Some(input.content())
-            }
-            _ => None,
-        })
-        .unwrap();
+    let empty_content = retryable.content();
+    let mut records = vec![
+        FixtureRecord::Thread(ThreadRecord::new(
+            thread,
+            SelectedPathProof::new(
+                current_thread.committed_tail(),
+                final_thread_revision,
+                current_thread.selected_path_digest(),
+            ),
+            current_thread.current_draft_id(),
+            current_thread.lineage(),
+            current_thread.image_label_frontiers(),
+            current_thread.context_owner_id(),
+        )),
+        FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+            thread,
+            current_draft.draft().id(),
+            current_draft.draft().revision(),
+            final_thread_revision,
+        )),
+        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
+            thread,
+            current_summary.revision().checked_next().unwrap(),
+            final_thread_revision,
+            current_summary.committed_tail(),
+            current_summary.selected_path_digest(),
+            current_summary.complete(),
+            current_summary.last_activity_at(),
+        )),
+        FixtureRecord::AcceptedInput(
+            AcceptedInputRecord::new(
+                retryable.id(),
+                thread,
+                retryable.ordinal(),
+                AcceptedInputAdmissionProof::new(
+                    retryable.admission().expected_thread_revision(),
+                    retryable.admission().source_draft_id(),
+                    retryable.admission().expected_draft_revision(),
+                    retryable.admission().expected_gate_revision(),
+                    SyndicDraftId::from_bytes(*accepted_id(5).as_bytes()),
+                )
+                .unwrap(),
+                generation,
+                retryable.content(),
+                retryable.asset_reference_set(),
+                retryable.admitted_at(),
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::InputGate(
+            InputGateRecord::new(
+                thread,
+                final_gate_revision,
+                current_gate.state().clone(),
+                last_ordinal,
+                Some(generation),
+                Some(AcceptedRouteHeadProof::new(generation, revision)),
+                last_ordinal - 1,
+                1,
+                DELIVERY_UNKNOWN_LOGICAL_BYTES,
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedRouteGeneration(
+            AcceptedRouteGenerationRecord::new(
+                thread,
+                generation,
+                revision,
+                current_route.target().clone(),
+                Some(AcceptedInputOrdinal::FIRST),
+                Some(AcceptedInputOrdinal::new(last_ordinal).unwrap()),
+                last_ordinal,
+                last_ordinal - 2,
+                1,
+                1,
+                0,
+                DELIVERY_UNKNOWN_LOGICAL_BYTES,
+                DELIVERY_UNKNOWN_LOGICAL_BYTES,
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedReadySource(AcceptedReadySourceRecord::new(
+            thread,
+            final_gate_revision,
+            generation,
+            revision,
+            AcceptedInputOrdinal::FIRST,
+            AcceptedInputOrdinal::new(last_ordinal).unwrap(),
+        )),
+        FixtureRecord::AcceptedNextSource(AcceptedNextSourceRecord::new(
+            thread,
+            generation,
+            revision,
+            AcceptedInputOrdinal::FIRST,
+            AcceptedInputOrdinal::new(last_ordinal).unwrap(),
+        )),
+    ];
 
     for record in &mut records {
         match record {
@@ -201,7 +312,11 @@ fn large_delivering_generation(last_ordinal: u64) -> Vec<FixtureRecord> {
             )),
         ]);
     }
-    records
+    let additions = records.split_off(8);
+    for chunk in additions.chunks(96) {
+        commit(store, storage, batch(chunk.iter().cloned()));
+    }
+    commit(store, storage, batch(records));
 }
 
 #[test]
@@ -209,7 +324,7 @@ fn exact_delivering_input_resolves_with_fixed_point_work_on_a_large_generation()
     let home = TestHome::new("phase52-exact-delivering-steering");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(large_delivering_generation(384)));
+    seed_large_delivering_generation(&store, storage, 384);
 
     reset_delivering_steering_read_metrics();
     let resolved = storage
@@ -267,7 +382,7 @@ fn missing_and_non_delivering_inputs_are_not_eligible() {
     let home = TestHome::new("phase52-ineligible-delivering-steering");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
+    seed_populated(&store, storage);
 
     assert!(
         storage
@@ -295,28 +410,20 @@ fn inconsistent_active_cas_turn_relationship_is_an_invariant_failure() {
     let home = TestHome::new("phase52-corrupt-delivering-steering");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut records = mixed_abandonment_records();
-    let publication = records
-        .iter_mut()
-        .find_map(|record| match record {
-            FixtureRecord::ActiveCasTurn(publication)
-                if publication.snapshot_id() == active_snapshot() =>
-            {
-                Some(publication)
-            }
-            _ => None,
-        })
-        .unwrap();
-    *publication = ActiveCasTurnRecord::new(
-        publication.snapshot_id(),
-        publication.thread_id(),
-        publication.turn_id(),
-        publication.binding_revision(),
-        publication.cas_thread_id().clone(),
-        CasTurnId::new("wrong-delayed-steering-turn").unwrap(),
-        publication.published_at(),
+    seed_mixed_abandonment(&store, storage);
+    commit(
+        &store,
+        storage,
+        batch([FixtureRecord::ActiveCasTurn(ActiveCasTurnRecord::new(
+            active_snapshot(),
+            id(40),
+            active_turn(),
+            beryl_model::BindingRevision::new(3).unwrap(),
+            cas_thread(),
+            CasTurnId::new("wrong-delayed-steering-turn").unwrap(),
+            timestamp(8),
+        ))]),
     );
-    commit(&store, storage, batch(records));
 
     assert!(matches!(
         storage.delivering_steering_input(&store, delivering_input(), limit()),

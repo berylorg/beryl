@@ -56,7 +56,10 @@ fn input_before_and_after_stop_remains_ordered_next_turn_work() {
     assert_eq!(stopped_descendant.live_steering_count(), 0);
     assert_eq!(stopped_descendant.live_next_turn_count(), 2);
     assert_eq!(stopped_descendant.selected_route(), Some(stopped_route));
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let sources = fixture
         .storage
@@ -112,5 +115,8 @@ fn input_before_and_after_stop_remains_ordered_next_turn_work() {
         )
         .unwrap();
     assert_eq!(retained_sources.records().len(), 2);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

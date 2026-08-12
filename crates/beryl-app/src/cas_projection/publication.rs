@@ -1,6 +1,4 @@
-use beryl_home_store::{
-    CommandOutcome, CurrentDomainCommand, HomeGeneration, HomeStore,
-};
+use beryl_home_store::{CommandOutcome, CurrentDomainCommand, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, BindingRevision, InputGateRevision};
 use syndic_storage::{
     AbandonActiveBinding, AbandonStopOperation, ActivateBinding, CancelBindingActivation,
@@ -197,9 +195,9 @@ fn dispatch(
         CommandOutcome::Indeterminate {
             failure,
             reconciliation,
-        } => Err(ProjectionPublicationFailure::CommandIndeterminate {
-            failure,
-            reconciliation,
-        }),
+        } => {
+            reconciliation.install();
+            Err(ProjectionPublicationFailure::CommandIndeterminate { failure })
+        }
     }
 }

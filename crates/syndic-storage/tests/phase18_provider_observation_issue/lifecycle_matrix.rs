@@ -30,15 +30,17 @@ fn inspect_agent_item(
 ) -> InspectedProviderObservation {
     let sealed = {
         let mut callback = observation_callback(&fixture.store, fixture.storage);
-        let mut stager = ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([observation_byte; 16]),
-            ProviderObservationBegin::Item {
-                lifecycle,
-                kind: ProviderObservationItemKind::AgentMessage,
-            },
-            &mut callback,
-        )
-        .unwrap();
+        let mut stager = committed_stage_value(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([observation_byte; 16]),
+                ProviderObservationBegin::Item {
+                    lifecycle,
+                    kind: ProviderObservationItemKind::AgentMessage,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         scalar(
             &mut stager,
             ProviderField::LifecycleObservedAt,
@@ -57,7 +59,7 @@ fn inspect_agent_item(
             value,
             &mut callback,
         );
-        stager.seal(&mut callback).unwrap()
+        committed_seal_value(stager.seal(&mut callback).unwrap())
     };
     inspect_sealed(fixture, sealed)
 }
@@ -70,15 +72,17 @@ fn inspect_subagent_start(
 ) -> InspectedProviderObservation {
     let sealed = {
         let mut callback = observation_callback(&fixture.store, fixture.storage);
-        let mut stager = ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([observation_byte; 16]),
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Started,
-                kind: ProviderObservationItemKind::SubAgentActivity,
-            },
-            &mut callback,
-        )
-        .unwrap();
+        let mut stager = committed_stage_value(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([observation_byte; 16]),
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Started,
+                    kind: ProviderObservationItemKind::SubAgentActivity,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         scalar(
             &mut stager,
             ProviderField::LifecycleObservedAt,
@@ -109,7 +113,7 @@ fn inspect_subagent_start(
             "root/phase18-worker",
             &mut callback,
         );
-        stager.seal(&mut callback).unwrap()
+        committed_seal_value(stager.seal(&mut callback).unwrap())
     };
     inspect_sealed(fixture, sealed)
 }
@@ -137,14 +141,13 @@ fn publish_issue(
         SourceEventPayload::ProviderObservationIssue(Box::new(issue.clone())),
         observed_at,
     );
-    execute(
+    committed_command(execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    )
-    .unwrap();
+    ));
 
     assert_eq!(canonical_snapshot(fixture), canonical_before);
     let state_after = fixture
@@ -225,7 +228,7 @@ fn abandon_active_projection(fixture: &Fixture) {
         ),
         fixture.source.turn_id().clone(),
     ));
-    execute(
+    committed_command(execute(
         &fixture.store,
         fixture.storage.abandon_active_binding(
             fixture.storage.revision(&fixture.store).unwrap(),
@@ -238,8 +241,7 @@ fn abandon_active_projection(fixture: &Fixture) {
                 stale,
             ),
         ),
-    )
-    .unwrap();
+    ));
 }
 
 #[test]
@@ -280,7 +282,10 @@ fn completion_only_started_issue_is_exact_and_does_not_create_a_canonical_item()
         state.provider_observation_issue(),
         Some(ProviderObservationIssueReason::CompletionOnlyItemStarted)
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
 }
 
@@ -310,7 +315,10 @@ fn completion_without_start_issue_is_exact_and_does_not_create_a_canonical_item(
         state.provider_observation_issue(),
         Some(ProviderObservationIssueReason::MissingItemStart)
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
 }
 
@@ -341,7 +349,10 @@ fn event_after_completion_issue_is_exact_and_preserves_the_completed_item() {
         state.provider_observation_issue(),
         Some(ProviderObservationIssueReason::EventAfterCompletion)
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
 }
 
@@ -365,7 +376,10 @@ fn event_after_completion_precedes_item_kind_mismatch() {
         state.provider_observation_issue(),
         Some(ProviderObservationIssueReason::EventAfterCompletion)
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
 }
 
@@ -402,7 +416,10 @@ fn later_issue_preserves_the_first_reason_and_both_events_leave_the_item_unchang
         state.provider_observation_issue(),
         Some(ProviderObservationIssueReason::CompletionBeforeStart)
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
 }
 
@@ -445,13 +462,12 @@ fn source_less_loss_keeps_its_primary_reason_and_the_first_observation_issue() {
         timestamp(8),
     )
     .unwrap();
-    execute(
+    committed_command(execute(
         &fixture.store,
         fixture
             .storage
             .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), terminal),
-    )
-    .unwrap();
+    ));
 
     let terminal_state = fixture
         .storage
@@ -470,6 +486,9 @@ fn source_less_loss_keeps_its_primary_reason_and_the_first_observation_issue() {
         terminal_state.provider_observation_issue(),
         Some(ProviderObservationIssueReason::DuplicateItemStart)
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
 }

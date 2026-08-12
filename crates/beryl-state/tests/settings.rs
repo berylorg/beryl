@@ -4,9 +4,9 @@ use std::{error::Error, fmt};
 
 use beryl_home_store::{
     CommandOutcome, CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError,
-    DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec,
-    RecordFamily, RecordVersion, StorageDomain,
+    DomainCallbackSource, DomainReader, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, PointReadLimit, ReadError, RecordCodec, RecordFamily,
+    RecordVersion, StorageDomain, WholeHomeScrubTrigger,
 };
 use beryl_model::{AdmittedHostPath, PathFlavor};
 use beryl_state::{
@@ -25,7 +25,7 @@ fn replace(key: SettingKey, revision: RecordRevision, value: SettingValue) -> Se
     SettingUpdate::new(key, ExpectedSettingRevision::Exact(revision), value)
 }
 
-fn apply(store: &HomeStore, state: BerylState, updates: Vec<SettingUpdate>) -> CommandOutcome {
+fn apply(store: &HomeStore, state: &BerylState, updates: Vec<SettingUpdate>) -> CommandOutcome {
     let contribution = state.settings().apply(
         state.settings().revision(store).unwrap(),
         ApplySettings::new(updates).unwrap(),
@@ -42,7 +42,7 @@ fn every_closed_scalar_shape_persists_and_reopens() {
 
     match apply(
         &store,
-        state,
+        &state,
         vec![
             create(
                 SettingKey::ActiveThemeId,
@@ -138,7 +138,7 @@ fn one_invalid_update_rejects_the_whole_apply() {
     let (store, state) = open(directory.path());
     match apply(
         &store,
-        state,
+        &state,
         vec![create(
             SettingKey::ActiveThemeId,
             SettingValue::active_theme_id("old").unwrap(),
@@ -154,7 +154,7 @@ fn one_invalid_update_rejects_the_whole_apply() {
 
     let outcome = apply(
         &store,
-        state,
+        &state,
         vec![
             replace(
                 SettingKey::ActiveThemeId,
@@ -185,11 +185,13 @@ fn one_invalid_update_rejects_the_whole_apply() {
         .unwrap();
     assert_eq!(active.value().as_active_theme_id(), Some("old"));
     assert_eq!(active.revision(), RecordRevision::INITIAL);
-    assert!(state
-        .settings()
-        .setting(&store, SettingKey::DraftAutosaveInterval)
-        .unwrap()
-        .is_none());
+    assert!(
+        state
+            .settings()
+            .setting(&store, SettingKey::DraftAutosaveInterval)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
@@ -198,7 +200,7 @@ fn record_revisions_advance_and_stale_updates_reject() {
     let (store, state) = open(directory.path());
     match apply(
         &store,
-        state,
+        &state,
         vec![create(
             SettingKey::DraftAutosaveInterval,
             SettingValue::draft_autosave_interval_seconds(30),
@@ -212,7 +214,7 @@ fn record_revisions_advance_and_stale_updates_reject() {
     }
     match apply(
         &store,
-        state,
+        &state,
         vec![replace(
             SettingKey::DraftAutosaveInterval,
             RecordRevision::INITIAL,
@@ -238,7 +240,7 @@ fn record_revisions_advance_and_stale_updates_reject() {
 
     let outcome = apply(
         &store,
-        state,
+        &state,
         vec![replace(
             SettingKey::DraftAutosaveInterval,
             RecordRevision::INITIAL,
@@ -313,7 +315,7 @@ fn settings_cursor_obeys_item_and_byte_bounds() {
     let (store, state) = open(directory.path());
     match apply(
         &store,
-        state,
+        &state,
         vec![
             create(
                 SettingKey::ActiveThemeId,
@@ -452,44 +454,44 @@ impl fmt::Display for ProbeCodecError {
 impl Error for ProbeCodecError {}
 
 #[test]
-fn settings_reopen_rejects_an_unsupported_record_version() {
+fn routine_reopen_defers_an_unsupported_setting_record_version_to_explicit_scrub() {
     let directory = tempdir().unwrap();
-    let (store, state) = open(directory.path());
-    match apply(
-        &store,
-        state,
-        vec![create(
-            SettingKey::ActiveThemeId,
-            SettingValue::active_theme_id("theme").unwrap(),
-        )],
-    ) {
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected committed settings command, got {outcome:?}"),
-    }
-    store.close().unwrap();
-
-    let mut probe = HomeStore::open(HomeOpenOptions::new(
+    let mut store = HomeStore::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let error = probe.register_domain::<SettingsV2Probe>().unwrap_err();
-    let DomainRegistrationError::ValidationAccess {
-        source: DomainCallbackSource::Read(source),
-        ..
-    } = error
-    else {
-        panic!("expected typed validation-access error, got {error}");
-    };
+    let probe = store.register_domain::<SettingsV2Probe>().unwrap();
+    store
+        .inject_persisted_corrupt_record::<SettingsV2Probe, SettingRecordV2>(
+            probe,
+            &[0],
+            &1_u32.to_be_bytes(),
+        )
+        .unwrap();
+    store.close().unwrap();
+
+    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let probe = reopened.register_domain::<SettingsV2Probe>().unwrap();
     assert!(matches!(
-        source,
-        ReadError::UnsupportedRecordVersion {
+        reopened.read_point::<SettingsV2Probe, SettingRecordV2>(
+            probe,
+            &0,
+            PointReadLimit::new(64 * 1024 + 4).unwrap(),
+        ),
+        Err(ReadError::UnsupportedRecordVersion {
             supported,
             found: 1,
             ..
-        } if supported == RecordVersion::new(2)
+        }) if supported == RecordVersion::new(2)
     ));
+    assert!(
+        reopened
+            .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
 }

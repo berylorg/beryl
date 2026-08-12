@@ -4,8 +4,8 @@ use beryl_model::{DomainRevision, HomeRevision, RevisionError};
 use thiserror::Error;
 
 use crate::{
-    domain::StoreInstanceId, health::FailureSeverity, DomainCallbackSource, DomainHandle,
-    HealthGateError, HomeGeneration, HomeStore, ReadError, StorageDomain,
+    DomainCallbackSource, DomainHandle, HealthGateError, HomeGeneration, HomeStore, ReadError,
+    StorageDomain, domain::StoreInstanceId, health::FailureSeverity,
 };
 
 /// Beryl-owned name for one configured Fjall storage resource.
@@ -62,46 +62,88 @@ pub enum StorageCommitState {
     Indeterminate,
 }
 
-/// Opaque retained operation facts for a command whose durable outcome is indeterminate.
+/// Move-only custody for a command whose durable outcome is indeterminate.
 ///
-/// Phase 100 deliberately exposes no token, read, disposal, or reconciliation operation. The
-/// descriptor retains its reserved operation slot, exact materialized record facts, and intended
-/// receipt only for the package's later reconciliation phase.
-pub struct ReconciliationDescriptor {
-    _slot: crate::reconciliation::ReconciliationSlot,
+/// [`Self::install`] synchronously and infallibly transfers the sole descriptor into its exact
+/// already-reserved per-home registry scope. Installation performs no reconciliation work.
+#[must_use = "indeterminate reconciliation custody must be installed synchronously"]
+pub struct ReconciliationCustody {
+    pending: Option<PendingReconciliationCustody>,
+}
+
+struct PendingReconciliationCustody {
+    slot: crate::reconciliation::ReconciliationSlot,
     domains: Vec<crate::command::MaterializedDomainDescriptor>,
     receipt: CommitReceipt,
 }
 
-impl fmt::Debug for ReconciliationDescriptor {
+impl fmt::Debug for ReconciliationCustody {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("ReconciliationDescriptor")
-            .field("domain_count", &self.domains.len())
+            .debug_struct("ReconciliationCustody")
+            .field(
+                "domain_count",
+                &self
+                    .pending
+                    .as_ref()
+                    .map_or(0, |pending| pending.domains.len()),
+            )
             .finish_non_exhaustive()
     }
 }
 
-impl ReconciliationDescriptor {
+impl ReconciliationCustody {
     pub(crate) fn new(
         slot: crate::reconciliation::ReconciliationSlot,
         domains: Vec<crate::command::MaterializedDomainDescriptor>,
         receipt: CommitReceipt,
     ) -> Self {
         Self {
-            _slot: slot,
-            domains,
-            receipt,
+            pending: Some(PendingReconciliationCustody {
+                slot,
+                domains,
+                receipt,
+            }),
         }
     }
 
-    pub(crate) fn domains(&self) -> &[crate::command::MaterializedDomainDescriptor] {
-        &self.domains
+    /// Installs custody into its originating home registry.
+    ///
+    /// This synchronous call returns no failure and only transfers ownership. It starts no reread,
+    /// retry, rollback, publication, hook, worker, task, or reconciliation execution.
+    pub fn install(mut self) {
+        let _ = self.install_pending();
     }
 
-    pub(crate) fn receipt(&self) -> &CommitReceipt {
-        &self.receipt
+    /// Installs custody and returns the exact operation handle used to trigger or join it.
+    ///
+    /// Like [`Self::install`], installation itself performs no reconciliation work.
+    #[must_use]
+    pub fn install_and_handle(mut self) -> crate::ReconciliationHandle {
+        self.install_pending()
+            .expect("live reconciliation custody contains its move-only pending state")
     }
+
+    fn install_pending(&mut self) -> Option<crate::ReconciliationHandle> {
+        let Some(pending) = self.pending.take() else {
+            return None;
+        };
+        Some(pending.slot.install(RetainedReconciliationDescriptor {
+            domains: pending.domains,
+            receipt: pending.receipt,
+        }))
+    }
+}
+
+impl Drop for ReconciliationCustody {
+    fn drop(&mut self) {
+        let _ = self.install_pending();
+    }
+}
+
+pub(crate) struct RetainedReconciliationDescriptor {
+    pub(crate) domains: Vec<crate::command::MaterializedDomainDescriptor>,
+    pub(crate) receipt: CommitReceipt,
 }
 
 /// Exact durable-state classification for one executed command.
@@ -125,7 +167,7 @@ pub enum CommandOutcome {
         /// Exact failure that made the outcome indeterminate.
         failure: CommandError,
         /// Opaque retained operation facts.
-        reconciliation: ReconciliationDescriptor,
+        reconciliation: ReconciliationCustody,
     },
 }
 

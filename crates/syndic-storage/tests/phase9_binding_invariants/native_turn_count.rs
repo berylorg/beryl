@@ -142,6 +142,8 @@ fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
         panic!("resumed provider projection is not valid");
     };
     assert_eq!(resumed.native_turn_count(), CasNativeTurnCount::ZERO);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

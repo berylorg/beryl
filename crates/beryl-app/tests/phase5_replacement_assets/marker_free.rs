@@ -33,7 +33,7 @@ impl MarkerFreeFixture {
             };
             create_historical_asset(
                 &mut store,
-                state,
+                state.clone(),
                 Some(owner),
                 SyndicDraftMarkerId::from_bytes([seed.wrapping_add(4); 16]),
                 seed.wrapping_add(5),
@@ -45,7 +45,22 @@ impl MarkerFreeFixture {
         command
             .add(syndic.fixture_contribution(syndic.revision(&store).unwrap(), fixture))
             .unwrap();
-        match store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("expected committed fixture setup: {evidence:?}"), outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate fixture setup: {outcome:?}"), }
+        match store.execute(command) {
+            beryl_home_store::CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+                panic!("expected committed fixture setup: {evidence:?}")
+            }
+            outcome @ beryl_home_store::CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("unexpected later failure: {outcome:?}"),
+            outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
+                panic!("indeterminate fixture setup: {outcome:?}")
+            }
+        }
         Self {
             _directory: directory,
             store,
@@ -92,7 +107,22 @@ fn replacement_start_validates_both_marker_free_owner_heads_are_absent() {
         fixture.edit(),
     )
     .unwrap();
-    match fixture.store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("expected committed replacement: {evidence:?}"), outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate replacement: {outcome:?}"), }
+    match fixture.store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed replacement: {evidence:?}")
+        }
+        outcome @ beryl_home_store::CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("unexpected later failure: {outcome:?}"),
+        outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
+            panic!("indeterminate replacement: {outcome:?}")
+        }
+    }
     assert!(
         fixture
             .state
@@ -123,10 +153,21 @@ fn replacement_start_rejects_either_marker_free_stray_head_atomically() {
         )
         .unwrap();
         match fixture.store.execute(command) {
-            beryl_home_store::CommandOutcome::NotCommitted { evidence } => assert!(matches!(evidence, beryl_home_store::CommandError::ContributorValidation { .. })),
-            beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => panic!("expected rejected marker-free replacement, got committed"),
-            outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected rejected marker-free replacement, later failure: {outcome:?}"),
-            outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("expected rejected marker-free replacement, indeterminate: {outcome:?}"),
+            beryl_home_store::CommandOutcome::NotCommitted { evidence } => assert!(matches!(
+                evidence,
+                beryl_home_store::CommandError::ContributorValidation { .. }
+            )),
+            beryl_home_store::CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => panic!("expected rejected marker-free replacement, got committed"),
+            outcome @ beryl_home_store::CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("expected rejected marker-free replacement, later failure: {outcome:?}"),
+            outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
+                panic!("expected rejected marker-free replacement, indeterminate: {outcome:?}")
+            }
         }
         let current = fixture
             .syndic

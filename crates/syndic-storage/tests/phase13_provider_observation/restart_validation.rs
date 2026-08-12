@@ -8,15 +8,17 @@ fn restart_preserves_discriminant_and_duplicate_rejection_state() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     {
         let mut callback = commit_callback(&store, storage);
-        let mut stager = ProviderObservationStager::begin(
-            identity,
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Completed,
-                kind: ProviderObservationItemKind::WebSearch,
-            },
-            &mut callback,
-        )
-        .unwrap();
+        let mut stager = clean_stage(
+            ProviderObservationStager::begin(
+                identity,
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Completed,
+                    kind: ProviderObservationItemKind::WebSearch,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         common_item(&mut stager, &mut callback).unwrap();
         text(
             &mut stager,
@@ -26,24 +28,28 @@ fn restart_preserves_discriminant_and_duplicate_rejection_state() {
         )
         .unwrap();
         let action = ProviderValueContext::Field(ProviderField::WebSearchAction);
-        stager
-            .control(
-                ProviderObservationControl::BeginContainer {
-                    context: action,
-                    container: ProviderContainer::Object,
-                },
-                &mut callback,
-            )
-            .unwrap();
-        stager
-            .control(
-                ProviderObservationControl::Enum {
-                    context: ProviderValueContext::Field(ProviderField::WebSearchActionKind),
-                    value: ProviderEnumValue::Search,
-                },
-                &mut callback,
-            )
-            .unwrap();
+        clean_stage(
+            stager
+                .control(
+                    ProviderObservationControl::BeginContainer {
+                        context: action,
+                        container: ProviderContainer::Object,
+                    },
+                    &mut callback,
+                )
+                .unwrap(),
+        );
+        clean_stage(
+            stager
+                .control(
+                    ProviderObservationControl::Enum {
+                        context: ProviderValueContext::Field(ProviderField::WebSearchActionKind),
+                        value: ProviderEnumValue::Search,
+                    },
+                    &mut callback,
+                )
+                .unwrap(),
+        );
         stager.abandon();
     }
     store.close().unwrap();
@@ -75,22 +81,26 @@ fn restart_preserves_discriminant_and_duplicate_rejection_state() {
     )
     .unwrap();
     let action = ProviderValueContext::Field(ProviderField::WebSearchAction);
-    stager
-        .control(
-            ProviderObservationControl::EndContainer {
-                context: action,
-                container: ProviderContainer::Object,
-            },
-            &mut callback,
-        )
-        .unwrap();
-    let sealed = stager.seal(&mut callback).unwrap();
+    clean_stage(
+        stager
+            .control(
+                ProviderObservationControl::EndContainer {
+                    context: action,
+                    container: ProviderContainer::Object,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+    );
+    let sealed = clean_seal(stager.seal(&mut callback).unwrap());
     assert_eq!(
         sealed.history_support(),
         ProviderFrameHistorySupportV1::Supported
     );
     sealed.abandon();
     drop(callback);
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

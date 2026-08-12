@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-use std::convert::Infallible;
-
 use beryl_app::conversation_tools::ConversationToolRegistry;
 use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{
@@ -13,8 +11,8 @@ use beryl_model::{
 use syndic_storage::{
     ActivateBinding, BindingState, CasItemSource, CasLineageProof, CasRepresentedPrefixProof,
     CasTurnSource, LiveSourceEvent, NativeCasLineage, ProviderFrameOrdinalV1,
-    ProviderFramePreparationPlan, ProviderItemBuildLifecycle, ProviderItemFrameV1,
-    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
+    ProviderFramePreparationPlan, ProviderFrameStageOutcome, ProviderItemBuildLifecycle,
+    ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
     ProviderSubmittedContentV1, ProviderUserMessageV1, PublishActiveCasTurn, PublishValidBinding,
     SealedProviderFrameReference, SourceEventPayload, SourceEventSequence, SyndicPointReadLimit,
     SyndicStorage, SyndicTimestamp, empty_selected_path_digest, prepare_provider_frame,
@@ -275,18 +273,30 @@ pub fn admit_item_frame(
         store,
         storage.begin_provider_frame_build(storage.revision(store).unwrap(), &prepared),
     );
-    let mut build = stage_provider_frame(
-        &prepared,
-        prepared.initial_build().clone(),
-        &mut |batch: &syndic_storage::ProviderFrameStageBatch| {
-            execute(
-                store,
-                storage.stage_provider_frame_batch(storage.revision(store).unwrap(), batch.clone()),
-            );
-            Ok::<(), Infallible>(())
-        },
-    )
-    .unwrap();
+    let mut build =
+        match stage_provider_frame(
+            &prepared,
+            prepared.initial_build().clone(),
+            &mut |batch: &syndic_storage::ProviderFrameStageBatch| {
+                let mut command = HomeCommand::new(store.home_revision().unwrap());
+                command
+                    .add(storage.stage_provider_frame_batch(
+                        storage.revision(store).unwrap(),
+                        batch.clone(),
+                    ))
+                    .unwrap();
+                store.execute(command)
+            },
+        )
+        .unwrap()
+        {
+            ProviderFrameStageOutcome::Committed {
+                value,
+                later_failure: None,
+                ..
+            } => value,
+            outcome => panic!("expected clean sealed provider-frame staging, got {outcome:?}"),
+        };
     for _ in 0..4_096 {
         if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
             let sealed = prepared.target().clone();

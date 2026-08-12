@@ -19,7 +19,7 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
         let faults = FaultController::new();
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        commit(&store, storage, batch(populated_records()));
+        seed_populated(&store, storage);
         let item = SyndicItemId::from_bytes([71; 16]);
         let cas_item = CasItemId::new("phase6-fault-item").unwrap();
         start_item(&store, storage, item, &cas_item);
@@ -57,28 +57,37 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
         match (point, store.execute(command)) {
             (
                 FaultPoint::BeforeCommit,
-                beryl_home_store::CommandOutcome::NotCommitted {
+                CommandOutcome::NotCommitted {
                     evidence: CommandError::Commit { .. },
                 },
-            )
-            | (
+            ) => {}
+            (
                 FaultPoint::AfterPersist,
-                beryl_home_store::CommandOutcome::Committed {
+                CommandOutcome::Committed {
+                    receipt: _,
                     later_failure: Some(CommandError::Persistence { .. }),
-                    ..
                 },
             ) => {}
             (
                 FaultPoint::AfterCommitBeforePersist,
-                outcome @ beryl_home_store::CommandOutcome::Indeterminate {
+                CommandOutcome::Indeterminate {
                     failure: CommandError::Persistence { .. },
-                    ..
+                    reconciliation,
                 },
-            ) => assert!(format!("{outcome:?}").contains("Indeterminate")),
+            ) => reconciliation.install(),
             (_, outcome) => panic!("unexpected live-event fault outcome: {outcome:?}"),
         }
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-        store.verify_health().unwrap();
+        let (store, storage) = if point == FaultPoint::AfterCommitBeforePersist {
+            assert_eq!(store.health().state(), HomeHealthState::Healthy);
+            (store, storage)
+        } else {
+            assert_eq!(store.health().state(), HomeHealthState::Failed);
+            let recovery = store.recover_same_home().unwrap();
+            let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
+            let store = recovery.publish();
+            assert_eq!(store.health().state(), HomeHealthState::Healthy);
+            (store, storage)
+        };
         assert_eq!(
             storage
                 .turn_state(&store, active_turn(), limit())
@@ -99,12 +108,24 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
             item_text(&store, storage, item),
             if delta_persisted { "atomic delta" } else { "" }
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        if point == FaultPoint::AfterCommitBeforePersist {
+            let close_error = store
+                .close()
+                .expect_err("installed indeterminate custody must block orderly close");
+            assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+            drop(close_error);
+            continue;
+        }
         store.close().unwrap();
 
         let mut reopened = open(home.path());
         let storage = SyndicStorage::register(&mut reopened).unwrap();
-        reopened.validate_registered_domains().unwrap();
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         assert_eq!(
             item_text(&reopened, storage, item),
             if delta_persisted { "atomic delta" } else { "" }
@@ -114,14 +135,16 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
             storage.admit_live_source_event(storage.revision(&reopened).unwrap(), delta),
         );
         if !delta_persisted {
-            retry.unwrap();
+            assert_clean_committed(retry, "post-reconciliation delta retry");
         } else {
             assert!(matches!(
-                typed_error(&retry.unwrap_err()),
+                typed_error(&rejected_syndic_error(retry, "duplicate delta retry")),
                 SyndicMutationError::SourceEventAlreadyAdmitted
             ));
         }
-        reopened.validate_registered_domains().unwrap();
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         assert_eq!(item_text(&reopened, storage, item), "atomic delta");
         assert_eq!(
             storage

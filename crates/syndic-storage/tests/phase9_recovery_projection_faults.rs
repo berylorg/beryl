@@ -89,7 +89,9 @@ fn revision_change_during_recovery_assembly_rejects_the_whole_result() {
         reader.join().unwrap(),
         Err(RecoveryProjectionError::ConcurrentChange)
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let store = Arc::try_unwrap(store).unwrap_or_else(|_| panic!("reader retained the home"));
     store.close().unwrap();
 }

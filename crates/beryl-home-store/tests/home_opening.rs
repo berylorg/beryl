@@ -4,8 +4,8 @@ mod fjall_support;
 use std::{fs, path::PathBuf};
 
 use beryl_home_store::{
-    HomeLockCapability, HomeOpenError, HomeOpenOptions, HomeOpenStage, HomeSchemaVersion,
-    HomeStore, HomeUnreadableStage,
+    HomeDurabilityTier, HomeOpenError, HomeOpenOptions, HomeOpenStage, HomeOwnershipTestSeam,
+    HomeSchemaVersion, HomeStore, HomeUnreadableStage,
 };
 use fjall::{Database, PersistMode};
 
@@ -14,13 +14,12 @@ fn open(path: impl Into<PathBuf>) -> Result<HomeStore, HomeOpenError> {
 }
 
 #[test]
-fn fresh_home_persists_identity_and_canonical_facts() {
+fn fresh_home_persists_durable_and_canonical_facts() {
     let directory = tempfile::tempdir().expect("temp directory");
     let configured = directory.path().join("home");
 
     let first = open(&configured).expect("fresh home opens");
     let home_id = first.home_id();
-    let object_id = first.canonical_identity();
     let canonical_path = first.canonical_path().to_path_buf();
     let database_path = first.database_path().to_path_buf();
     assert!(canonical_path.is_absolute());
@@ -29,10 +28,59 @@ fn fresh_home_persists_identity_and_canonical_facts() {
 
     let reopened = open(&configured).expect("existing home reopens");
     assert_eq!(home_id, reopened.home_id());
-    assert_eq!(object_id, reopened.canonical_identity());
     assert_eq!(canonical_path, reopened.canonical_path());
     assert_eq!(database_path, reopened.database_path());
     reopened.close().expect("orderly close");
+}
+
+#[test]
+fn native_local_ntfs_is_full_durability() {
+    let directory = tempfile::tempdir().expect("temp directory");
+    let store = open(directory.path()).expect("native local home opens");
+    assert_eq!(store.durability_tier(), HomeDurabilityTier::Full);
+    store.close().expect("close native local home");
+}
+
+#[test]
+fn best_effort_tier_propagates_through_opened_store() {
+    let directory = tempfile::tempdir().expect("temp directory");
+    for seam in [
+        HomeOwnershipTestSeam::UncPath,
+        HomeOwnershipTestSeam::MappedRemotePath,
+    ] {
+        let best_effort = HomeStore::open(
+            HomeOpenOptions::new(
+                directory.path().join(format!("best-effort-{seam:?}")),
+                HomeSchemaVersion::CURRENT,
+            )
+            .with_ownership_test_seam(seam),
+        )
+        .expect("accessible reliably locked remote home opens");
+        assert_eq!(
+            best_effort.durability_tier(),
+            HomeDurabilityTier::BestEffort
+        );
+        best_effort.close().expect("close best-effort tier");
+    }
+}
+
+#[test]
+fn unsupported_reliable_lock_is_typed_and_prevents_database_creation() {
+    let directory = tempfile::tempdir().expect("temp directory");
+    let home = directory.path().join("unsupported-lock");
+    let error = HomeStore::open(
+        HomeOpenOptions::new(&home, HomeSchemaVersion::CURRENT)
+            .with_ownership_test_seam(HomeOwnershipTestSeam::UnsupportedExclusiveLock),
+    )
+    .expect_err("unreliable lock must reject home opening");
+    assert!(matches!(
+        error,
+        HomeOpenError::LockUnsupported {
+            capability: beryl_home_store::HomeLockCapability::ExclusiveFileLock,
+            ..
+        }
+    ));
+    assert!(!home.join("state").exists());
 }
 
 #[test]
@@ -108,19 +156,6 @@ fn relative_paths_are_rejected_before_filesystem_mutation() {
         error,
         HomeOpenError::Open {
             stage: HomeOpenStage::ValidateConfiguredPath,
-            ..
-        }
-    ));
-}
-
-#[test]
-fn generic_unc_paths_fail_closed_as_unsupported() {
-    let unc = PathBuf::from(r"\\server.invalid\share\beryl-home");
-    let error = open(&unc).expect_err("generic UNC must fail closed");
-    assert!(matches!(
-        error,
-        HomeOpenError::LockUnsupported {
-            capability: HomeLockCapability::LocalStorage,
             ..
         }
     ));

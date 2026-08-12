@@ -1,3 +1,25 @@
+#[cfg(feature = "test-faults")]
+use std::{cell::RefCell, io};
+
+#[cfg(feature = "test-faults")]
+thread_local! {
+    static NEXT_DIRECTORY_SYNC_ERROR: RefCell<Option<io::ErrorKind>> = const { RefCell::new(None) };
+}
+
+#[cfg(feature = "test-faults")]
+pub(crate) fn fail_next_directory_sync_for_tests(kind: io::ErrorKind) {
+    NEXT_DIRECTORY_SYNC_ERROR.with(|next| *next.borrow_mut() = Some(kind));
+}
+
+#[cfg(feature = "test-faults")]
+fn next_directory_sync_error_for_tests() -> Option<io::Error> {
+    NEXT_DIRECTORY_SYNC_ERROR.with(|next| {
+        next.borrow_mut()
+            .take()
+            .map(|kind| io::Error::new(kind, "synthetic sidecar directory synchronization result"))
+    })
+}
+
 #[cfg(target_os = "windows")]
 mod windows_impl {
     use std::{
@@ -10,24 +32,21 @@ mod windows_impl {
     };
 
     use windows::{
-        core::{Error as WindowsError, HRESULT, PCWSTR},
         Win32::{
-            Foundation::{ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS, HANDLE, WIN32_ERROR},
+            Foundation::{
+                ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS, ERROR_INVALID_FUNCTION,
+                ERROR_NOT_SUPPORTED, HANDLE, WIN32_ERROR,
+            },
             Storage::FileSystem::{
-                FileAttributeTagInfo, FileIdInfo, FlushFileBuffers, GetFileInformationByHandleEx,
-                GetFileType, MoveFileExW, FILE_ATTRIBUTE_DEVICE, FILE_ATTRIBUTE_DIRECTORY,
-                FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-                FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_INFO, FILE_SHARE_READ, FILE_SHARE_WRITE,
-                FILE_TYPE_DISK, MOVEFILE_WRITE_THROUGH,
+                FILE_ATTRIBUTE_DEVICE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+                FILE_ATTRIBUTE_TAG_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+                FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TYPE_DISK, FileAttributeTagInfo,
+                FlushFileBuffers, GetFileInformationByHandleEx, GetFileType,
+                MOVEFILE_WRITE_THROUGH, MoveFileExW,
             },
         },
+        core::{Error as WindowsError, HRESULT, PCWSTR},
     };
-
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub(crate) struct FileIdentity {
-        volume_serial_number: u64,
-        file_id: [u8; 16],
-    }
 
     #[derive(Debug)]
     pub(crate) enum OpenObjectError {
@@ -36,11 +55,6 @@ mod windows_impl {
     }
 
     pub(crate) struct RetainedDirectory(File);
-
-    pub(crate) struct RetainedFile {
-        pub(crate) file: File,
-        pub(crate) identity: FileIdentity,
-    }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub(crate) enum RenameOutcome {
@@ -69,7 +83,7 @@ mod windows_impl {
         Ok(RetainedDirectory(directory))
     }
 
-    pub(crate) fn open_retained_file(path: &Path) -> Result<RetainedFile, OpenObjectError> {
+    pub(crate) fn open_final_file(path: &Path) -> Result<File, OpenObjectError> {
         let file = OpenOptions::new()
             .read(true)
             .share_mode(FILE_SHARE_READ.0)
@@ -77,8 +91,7 @@ mod windows_impl {
             .open(path)
             .map_err(OpenObjectError::Io)?;
         validate_object(&file, false)?;
-        let identity = file_identity(&file).map_err(OpenObjectError::Io)?;
-        Ok(RetainedFile { file, identity })
+        Ok(file)
     }
 
     pub(crate) fn rename_durable(source: &Path, target: &Path) -> io::Result<RenameOutcome> {
@@ -106,6 +119,10 @@ mod windows_impl {
     }
 
     pub(crate) fn flush_directory(directory: &RetainedDirectory) -> io::Result<()> {
+        #[cfg(feature = "test-faults")]
+        if let Some(source) = super::next_directory_sync_error_for_tests() {
+            return Err(source);
+        }
         unsafe {
             // SAFETY: `directory` owns a live directory handle opened for the
             // explicit Windows metadata-flush operation.
@@ -114,23 +131,14 @@ mod windows_impl {
         .map_err(io::Error::other)
     }
 
-    pub(crate) fn file_identity(file: &File) -> io::Result<FileIdentity> {
-        let mut info = FILE_ID_INFO::default();
-        unsafe {
-            // SAFETY: `file` is live, and `info` is correctly sized and
-            // writable for the duration of the `FileIdInfo` query.
-            GetFileInformationByHandleEx(
-                HANDLE(file.as_raw_handle()),
-                FileIdInfo,
-                (&mut info as *mut FILE_ID_INFO).cast(),
-                size_of::<FILE_ID_INFO>() as u32,
+    pub(crate) fn directory_sync_unsupported(source: &io::Error) -> bool {
+        source.kind() == io::ErrorKind::Unsupported
+            || matches!(
+                source.raw_os_error(),
+                Some(code)
+                    if code == ERROR_INVALID_FUNCTION.0 as i32
+                        || code == ERROR_NOT_SUPPORTED.0 as i32
             )
-        }
-        .map_err(io::Error::other)?;
-        Ok(FileIdentity {
-            volume_serial_number: info.VolumeSerialNumber,
-            file_id: info.FileId.Identifier,
-        })
     }
 
     fn validate_object(file: &File, directory: bool) -> Result<(), OpenObjectError> {
@@ -184,9 +192,6 @@ mod windows_impl {
 mod windows_impl {
     use std::{fs, fs::File, io, path::Path};
 
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub(crate) struct FileIdentity;
-
     #[derive(Debug)]
     pub(crate) enum OpenObjectError {
         Io(io::Error),
@@ -194,11 +199,6 @@ mod windows_impl {
     }
 
     pub(crate) struct RetainedDirectory(File);
-
-    pub(crate) struct RetainedFile {
-        pub(crate) file: File,
-        pub(crate) identity: FileIdentity,
-    }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub(crate) enum RenameOutcome {
@@ -224,17 +224,12 @@ mod windows_impl {
             .map_err(OpenObjectError::Io)
     }
 
-    pub(crate) fn open_retained_file(path: &Path) -> Result<RetainedFile, OpenObjectError> {
+    pub(crate) fn open_final_file(path: &Path) -> Result<File, OpenObjectError> {
         let metadata = fs::symlink_metadata(path).map_err(OpenObjectError::Io)?;
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             return Err(OpenObjectError::InvalidLayout);
         }
-        File::open(path)
-            .map(|file| RetainedFile {
-                file,
-                identity: FileIdentity,
-            })
-            .map_err(OpenObjectError::Io)
+        File::open(path).map_err(OpenObjectError::Io)
     }
 
     pub(crate) fn rename_durable(source: &Path, target: &Path) -> io::Result<RenameOutcome> {
@@ -243,11 +238,16 @@ mod windows_impl {
     }
 
     pub(crate) fn flush_directory(directory: &RetainedDirectory) -> io::Result<()> {
+        #[cfg(feature = "test-faults")]
+        if let Some(source) = super::next_directory_sync_error_for_tests() {
+            return Err(source);
+        }
         directory.0.sync_all()
     }
 
-    pub(crate) fn file_identity(_file: &File) -> io::Result<FileIdentity> {
-        Ok(FileIdentity)
+    pub(crate) fn directory_sync_unsupported(source: &io::Error) -> bool {
+        source.kind() == io::ErrorKind::Unsupported
+            || matches!(source.raw_os_error(), Some(22 | 95))
     }
 }
 

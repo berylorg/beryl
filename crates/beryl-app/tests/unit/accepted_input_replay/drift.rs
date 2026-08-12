@@ -1,13 +1,11 @@
-use beryl_home_store::{
-    CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore, StorageCommitState,
-};
+use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{RuntimeMode, SyndicDraftId};
 use beryl_state::AssetOwner;
 use syndic_storage::{AcceptedInputAdmissionProof, AcceptedInputRecord};
 
 use super::{
-    AcceptedInputReplayContext, AcceptedInputReplayError,
-    AcceptedInputReplayFactory, ProjectionCancellationToken,
+    AcceptedInputReplayContext, AcceptedInputReplayError, AcceptedInputReplayFactory,
+    ProjectionCancellationToken,
     fixture::{self, Fixture, time},
 };
 
@@ -125,28 +123,23 @@ fn prepared_source_rechecks_the_exact_accepted_record_before_replay() {
     batch.put(FixtureRecord::AcceptedInput(changed)).unwrap();
     execute_one(
         &fixture.store,
-        fixture.storage.fixture_contribution(
-            fixture.storage.revision(&fixture.store).unwrap(),
-            batch,
-        ),
+        fixture
+            .storage
+            .fixture_contribution(fixture.storage.revision(&fixture.store).unwrap(), batch),
     );
 
     let mut source = factory.fresh_source();
     assert!(matches!(
-        source.begin_pass(
-            &fixture.store,
-            &ProjectionCancellationToken::new()
-        ),
+        source.begin_pass(&fixture.store, &ProjectionCancellationToken::new()),
         Err(StreamedInputSourceError::InvalidSource)
     ));
 }
 
 #[cfg(feature = "test-faults")]
 #[test]
-fn recovered_home_generation_invalidates_factory_and_preparation_context() {
-    use beryl_backend::StreamedInputSourceError;
+fn failed_home_generation_requires_a_fresh_replay_factory() {
     use beryl_home_store::{
-        HomeCommand,
+        HomeCommand, HomeHealthState,
         test_faults::{FaultController, FaultPoint},
     };
     use beryl_model::{SyndicDraftId, SyndicThreadId};
@@ -156,17 +149,14 @@ fn recovered_home_generation_invalidates_factory_and_preparation_context() {
     let fixture = Fixture::with_faults(100, faults.clone());
     let record = fixture.accept_text("generation-bound accepted input");
     let generation = fixture.store.health().generation().unwrap();
-    let context = AcceptedInputReplayContext::new(
-        fixture.store.home_id(),
-        generation,
-        RuntimeMode::host(),
-    );
+    let context =
+        AcceptedInputReplayContext::new(fixture.store.home_id(), generation, RuntimeMode::host());
     let owner_head = fixture
         .state
         .assets()
         .owner_head(&fixture.store, AssetOwner::AcceptedInput(record.id()))
         .unwrap();
-    let factory = AcceptedInputReplayFactory::prepare(
+    let old_factory = AcceptedInputReplayFactory::prepare(
         &fixture.store,
         fixture.storage,
         fixture.state.assets(),
@@ -176,6 +166,7 @@ fn recovered_home_generation_invalidates_factory_and_preparation_context() {
         &ProjectionCancellationToken::new(),
     )
     .unwrap();
+    drop(old_factory);
 
     let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
     command
@@ -191,46 +182,63 @@ fn recovered_home_generation_invalidates_factory_and_preparation_context() {
         .unwrap();
     faults.fail_next(FaultPoint::BeforeCommit);
     match fixture.store.execute(command) {
+        CommandOutcome::NotCommitted {
+            evidence: beryl_home_store::CommandError::Commit { .. },
+        } => {}
         CommandOutcome::NotCommitted { evidence } => {
-            assert_eq!(
-                evidence.storage_commit_state(),
-                Some(StorageCommitState::NotCommitted)
-            );
+            panic!("before-commit fault must surface a commit failure: {evidence:?}")
         }
-        outcome @ CommandOutcome::Committed { .. } => panic!(
-            "before-commit fault must not commit the command: {outcome:?}"
-        ),
+        outcome @ CommandOutcome::Committed { .. } => {
+            panic!("before-commit fault must not commit the command: {outcome:?}")
+        }
         outcome @ CommandOutcome::Indeterminate { .. } => {
             panic!("before-commit fault must not be indeterminate: {outcome:?}")
         }
     }
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(fixture.store.verify_health().is_err());
-    let recovery = fixture.store.recover_same_home().unwrap();
-    assert!(recovery.generation() > generation);
+    assert_eq!(fixture.store.health().state(), HomeHealthState::Failed);
 
+    let fixture = fixture.recover_same_home();
+    let recovered_generation = fixture.store.health().generation().unwrap();
+    assert!(recovered_generation > generation);
+    let recovered_owner_head = fixture
+        .state
+        .assets()
+        .owner_head(&fixture.store, AssetOwner::AcceptedInput(record.id()))
+        .unwrap();
     assert!(matches!(
         AcceptedInputReplayFactory::prepare(
             &fixture.store,
             fixture.storage,
             fixture.state.assets(),
             context,
-            record,
-            owner_head,
+            record.clone(),
+            recovered_owner_head.clone(),
             &ProjectionCancellationToken::new(),
         ),
         Err(AcceptedInputReplayError::HomeGenerationMismatch {
             expected,
             actual: Some(actual),
             ..
-        }) if expected == generation && actual == recovery.generation()
+        }) if expected == generation && actual == recovered_generation
     ));
+    let fresh_context = AcceptedInputReplayContext::new(
+        fixture.store.home_id(),
+        recovered_generation,
+        RuntimeMode::host(),
+    );
+    let factory = AcceptedInputReplayFactory::prepare(
+        &fixture.store,
+        fixture.storage,
+        fixture.state.assets(),
+        fresh_context,
+        record,
+        recovered_owner_head,
+        &ProjectionCancellationToken::new(),
+    )
+    .unwrap();
     let mut source = factory.fresh_source();
     assert!(matches!(
-        source.begin_pass(
-            &fixture.store,
-            &ProjectionCancellationToken::new()
-        ),
-        Err(StreamedInputSourceError::SourceIdentityMismatch { .. })
+        source.begin_pass(&fixture.store, &ProjectionCancellationToken::new()),
+        Ok(_)
     ));
 }

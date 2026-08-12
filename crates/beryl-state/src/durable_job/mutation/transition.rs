@@ -3,9 +3,9 @@ use beryl_model::{JobId, JobRevision};
 
 use super::super::codec::{JobRecordCodec, LiveJobIndexCodec};
 use super::super::{
-    record::failure_state_is_compatible, BranchHandoffJobLifecycle, BranchHandoffJobState,
-    DurableJobDomain, DurableJobMutationError, HandoffFailureEvidence, ParentCasIdentity,
-    ParentHandoffIdentity,
+    BranchHandoffJobLifecycle, BranchHandoffJobState, DurableJobDomain, DurableJobMutationError,
+    HandoffFailureEvidence, ParentCasIdentity, ParentHandoffIdentity,
+    record::failure_state_is_compatible,
 };
 use super::{advance, ensure_revision, put_live_transition, put_terminal_transition, required_job};
 

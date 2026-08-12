@@ -73,6 +73,19 @@ Keep independent main-window presentation responsive while process-wide services
 ## Beryl-Home Integration
 
 - This crate never opens Fjall or reads raw keyspaces. It receives typed domain handles and repository services from the Beryl-home boundary.
+- This crate configures the home-store-owned typed nonzero minimum turn-capture reserve. Service
+  construction obtains the direct and queued owner-derived durable-start footprints, asks
+  `beryl-home-store` to validate them against its immutable
+  `DURABLE_START_ADMISSION_BUDGET_BYTES = 268_435_456` policy and checked-add the reserve, then
+  retains the resulting opaque requirement. Zero capture reserve, envelope drift, or overflow
+  invalidates configuration before service publication and before any free-space query.
+- Both direct submission and accepted-input promotion pass that same home-store-owned requirement
+  intact to the home free-space query. This crate does not recreate package record arithmetic, define
+  the fixed policy, or accept a caller's pre-aggregated total.
+- Package tests prove the constant is exactly 256 MiB, both durable-start paths use the same opaque
+  requirement, the current 1,328,763-byte shared owner-derived envelope fits beneath the constant,
+  and zero capture reserve or checked-add overflow prevents service publication and performs no
+  reserve query.
 - Draft flush, input admission, thread/draft creation, runtime/root creation, claims, Syndic
   generated-title, usage, and automatic branch-discussion archive mutation, session update, settings
   update, asset reference, CAS-binding transition, and handoff-job transition use typed revision-
@@ -178,8 +191,9 @@ Keep independent main-window presentation responsive while process-wide services
   reacquire projections from durable Syndic binding authority. No live execution authority derived
   from the failed service becomes authority in the replacement service.
 - Before starting a turn, app/home-store coordination performs the authoritative free-space
-  admission check. A failed low-space check leaves the user's input and durable draft intact and
-  starts no backend turn.
+  admission check with the service's one composed requirement. A failed low-space check leaves the
+  user's input and durable draft intact and starts no backend turn. `Sufficient` is an early guard
+  only: it reserves no capacity and makes no promise against a later `ENOSPC`.
 - The live-capture coordinator owns a fixed-capacity, priority-ordered outage buffer for normalized
   observations that arrive while durable capture is temporarily unavailable. It reserves capacity
   for terminal and lifecycle evidence ahead of ordinary text deltas, applies backpressure within
@@ -419,6 +433,14 @@ Keep independent main-window presentation responsive while process-wide services
   scope registry. The
   pre-writer reservation makes this transfer non-rejecting; no broker, acknowledgement, operation
   holder, connection, or service retains another copy.
+- A consuming seal `Indeterminate` reaches the `Ingester` as one move-only seal custody guard. The
+  guard privately retains the inert consumed stager with the sole home-store custody and exposes
+  only terminal installation. The `Ingester` consumes it synchronously; installation moves home
+  custody into the registry first and releases the stager second, before any permit settlement,
+  reply construction, acknowledgement-slot closure, cancellation observation, or retirement. The
+  guard exposes no stager, receipt, sealed handle, successor, retry, or publication authority.
+  Unwind or ordinary guard destruction still performs the home custody field's fail-closed fallback
+  installation before dropping the inert stager; it publishes no acknowledgement or successor.
 - After that transfer, the terminal acknowledgement reports only the closed
   `not-applied/reconciling` disposition. It carries neither a receipt nor the descriptor. Registry
   handoff preserves custody and closes only the exact operation's publication scope; it starts no
@@ -1149,6 +1171,37 @@ Keep independent main-window presentation responsive while process-wide services
   adapters, exact window-set publication, cache invalidation, and bounded UI/tool bridges. It holds
   only bounded manifest pages and finite resolved appearances supplied by `beryl-state`; it exposes
   no GPUI or Settings handles to theme repository workers.
+- The pre-GUI `ThemeRuntime` is the one process-wide composition point for the generation-bound
+  `beryl-state::ThemeService`, exact repository observation, bounded state-owned change
+  subscription, and appearance coordinator. Its bounded drain coalesces watcher hints, treats
+  overflow as a full repository refresh, routes feature and dynamic-tool commands through the same
+  typed state command path, and accepts only committed or reconciled-exact-new Settings appearance
+  outcomes for durable publication.
+- A confirmed Settings result replaces the runtime's durable Settings, active-theme, observed-
+  document, and resolved-base identity before attempting the all-window barrier. Adapter rejection
+  leaves current appearance unchanged, reports one content-free pending-durable-application fact,
+  and permits an explicit retry of that exact retained base without replaying or reinterpreting the
+  Settings operation. Only a successful atomic window commit advances current appearance and ends
+  preview.
+- Valid externally edited active documents arrive only as fully resolved, identity-bound
+  `beryl-state` results and use the same whole-window publication barrier as Beryl-authored saves.
+  This package owns no filesystem watcher implementation, physical repository handle, parser, or
+  serializer: `ThemeRuntime` consumes only the bounded subscription and exact reread APIs supplied
+  by `beryl-state`. Invalid startup input selects the supplied built-in fallback, while an invalid
+  live-edit result retains the prior coherent appearance and localized failure state.
+- A full refresh installs a candidate repository observation and active-document identity only
+  after the candidate active document is present, current for that observation, valid, completely
+  resolved, and atomically applied. Full and document-only external refresh candidates are
+  transactional: adapter rejection retains the complete prior repository, active-document,
+  durable-base, pending-durable, and current-appearance state, records that a reread is needed, and
+  cannot be applied through the Settings durable retry path. Missing, invalid, unreadable, stale, or
+  otherwise inapplicable active content likewise retains the complete prior coherent snapshot until
+  a later fresh reread and publication succeeds.
+- Retirement shuts down the subscription and releases repository observations, adapters, previews,
+  and appearance generations. Diagnostics remain fixed-size and content-free while combining app
+  publication/watch counters with state-owned session, mutation, reconciliation, gate, and reread
+  counters. A fresh same-home service receives no prior observation, cursor, subscription, preview,
+  or reconciliation handle.
 - Theme and settings operations cannot reach Syndic thread properties or history, Beryl runtime/root
   state outside their declared setting, backend-owned Codex configuration, or unrelated Beryl-home
   domains.

@@ -6,9 +6,9 @@ use beryl_model::{
 };
 
 use super::super::{
+    ASSET_ENTRY_LIMIT, ASSET_INDEX_LIMIT, ASSET_MANIFEST_LIMIT, ASSET_METADATA_LIMIT,
     AssetEntryKey, AssetLabelFirstKey, AssetMarkerKey, AssetOwner, AssetReferenceOrdinal,
-    AssetReferenceSetId, ASSET_ENTRY_LIMIT, ASSET_INDEX_LIMIT, ASSET_MANIFEST_LIMIT,
-    ASSET_METADATA_LIMIT,
+    AssetReferenceSetId,
 };
 
 const PAGE_ITEMS: usize = 128;

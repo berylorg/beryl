@@ -2,9 +2,9 @@ use std::{error::Error, fmt};
 
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
-    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    MutationBuildError, MutationContribution, PointReadLimit, ReadError, ReadLimitError,
-    RecordFamily, StorageDomain,
+    DomainHandle, DomainReconciliation, DomainRegistrationError, DomainSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationBuildError, MutationContribution, PointReadLimit, ReadError,
+    ReadLimitError, ReconciliationReader, RecordFamily, StorageDomain,
 };
 use beryl_model::{DomainRevision, SyndicThreadId};
 
@@ -31,8 +31,8 @@ use codec::{CatalogRecencyCodec, CatalogRowCodec};
 pub use error::CatalogValueError;
 pub use mutation::{MarkCatalogRowStale, PublishCatalogRow};
 pub use normalization::{
-    CatalogNormalizationProfile, CatalogNormalizedQuery, CATALOG_NORMALIZATION_PROFILE,
-    CATALOG_QUERY_MAX_BYTES,
+    CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES, CatalogNormalizationProfile,
+    CatalogNormalizedQuery,
 };
 pub use row::{CatalogFacts, CatalogRecencyCursor, CatalogRow};
 pub use value::{
@@ -65,6 +65,21 @@ impl StorageDomain for CatalogDomain {
         reader: &beryl_home_store::DomainReader<'_, Self>,
     ) -> Result<(), Self::ValidationError> {
         validate::validate(reader)
+    }
+
+    fn reconcile(
+        reader: &ReconciliationReader<'_, Self>,
+    ) -> Result<DomainReconciliation, Self::ValidationError> {
+        let mut classification = crate::reconciliation::ReconciliationClassification::new();
+        crate::reconciliation::classify_records::<Self, CatalogRowCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, CatalogRecencyCodec>(
+            reader,
+            &mut classification,
+        )?;
+        Ok(classification.finish())
     }
 }
 
@@ -152,10 +167,26 @@ impl CatalogState {
             .map(|handle| Self { handle })
     }
 
+    pub(crate) fn register_with_schema_validation(
+        store: &mut HomeStore,
+    ) -> Result<Self, DomainRegistrationError> {
+        store
+            .register_domain_with_schema_validation::<CatalogDomain>()
+            .map(|handle| Self { handle })
+    }
+
     pub(crate) fn reacquire(
         store: &HomeStore,
     ) -> Result<Self, beryl_home_store::DomainHandleError> {
         store
+            .domain_handle::<CatalogDomain>()
+            .map(|handle| Self { handle })
+    }
+
+    pub(crate) fn reacquire_candidate(
+        candidate: &beryl_home_store::HomeRecoveryCandidate,
+    ) -> Result<Self, beryl_home_store::DomainHandleError> {
+        candidate
             .domain_handle::<CatalogDomain>()
             .map(|handle| Self { handle })
     }

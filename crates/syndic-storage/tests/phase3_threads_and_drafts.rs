@@ -4,8 +4,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    CommandCancellation, CommandError, CursorReadLimits, HomeCommand, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore,
+    CommandCancellation, CommandError, CommandOutcome, CursorReadLimits, HomeCommand,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
@@ -78,7 +78,7 @@ fn payload(text: &str) -> ComposerPayload {
 
 fn execute(
     store: &HomeStore,
-    storage: SyndicStorage,
+    _storage: SyndicStorage,
     contribution: beryl_home_store::MutationContribution,
 ) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -92,7 +92,7 @@ fn assert_committed(
     outcome: beryl_home_store::CommandOutcome,
 ) -> beryl_home_store::CommitReceipt {
     match outcome {
-        beryl_home_store::CommandOutcome::Committed {
+        CommandOutcome::Committed {
             receipt,
             later_failure: None,
         } => {
@@ -104,29 +104,71 @@ fn assert_committed(
             );
             receipt
         }
-        outcome => panic!("unexpected thread-and-draft command outcome: {outcome:?}"),
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+        } => panic!(
+            "expected clean thread-and-draft command outcome, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        CommandOutcome::NotCommitted { evidence } => panic!(
+            "expected clean thread-and-draft command outcome, got definitive non-commit {evidence:?}"
+        ),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!(
+                "expected clean thread-and-draft command outcome, got indeterminate outcome {failure:?}"
+            )
+        }
+    }
+}
+
+fn assert_not_committed(outcome: CommandOutcome, operation: &str) -> CommandError {
+    match outcome {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        CommandOutcome::Committed {
+            receipt,
+            later_failure,
+        } => panic!(
+            "expected {operation} to be rejected, got committed receipt {receipt:?} with later failure {later_failure:?}"
+        ),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected {operation} to be rejected, got indeterminate outcome {failure:?}")
+        }
     }
 }
 
 fn stage_content(store: &HomeStore, storage: SyndicStorage, content: &PreparedContent) {
-    execute(
+    assert_committed(
         store,
         storage,
-        storage.begin_content(
-            storage.revision(store).unwrap(),
-            ContentBuild::from_prepared(content),
-        ),
-    )
-    .unwrap();
-    let mut manifest = content.building_manifest();
-    while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
-        let next = append.next_manifest().clone();
         execute(
             store,
             storage,
-            storage.append_content(storage.revision(store).unwrap(), append),
-        )
-        .unwrap();
+            storage.begin_content(
+                storage.revision(store).unwrap(),
+                ContentBuild::from_prepared(content),
+            ),
+        ),
+    );
+    let mut manifest = content.building_manifest();
+    while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
+        let next = append.next_manifest().clone();
+        assert_committed(
+            store,
+            storage,
+            execute(
+                store,
+                storage,
+                storage.append_content(storage.revision(store).unwrap(), append),
+            ),
+        );
         manifest = next;
     }
 }
@@ -185,12 +227,15 @@ fn ordinary_creation_is_atomic_reopenable_and_naturally_reconcilable() {
             .unwrap(),
         ThreadCreationStatus::Absent
     );
-    execute(
+    assert_committed(
         &store,
         storage,
-        storage.create_thread(storage.revision(&store).unwrap(), creation.clone()),
-    )
-    .unwrap();
+        execute(
+            &store,
+            storage,
+            storage.create_thread(storage.revision(&store).unwrap(), creation.clone()),
+        ),
+    );
     assert_eq!(
         storage
             .thread_creation_status(&store, &creation, limit())
@@ -209,7 +254,9 @@ fn ordinary_creation_is_atomic_reopenable_and_naturally_reconcilable() {
             .unwrap()
             .is_some()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(&home);
@@ -238,12 +285,29 @@ fn cancellation_before_admission_and_identity_collision_change_nothing() {
     command
         .add(storage.create_thread(before, creation.clone()))
         .unwrap();
-    assert!(matches!(
-        store.execute(command),
-        beryl_home_store::CommandOutcome::NotCommitted {
-            evidence: CommandError::CancelledBeforeAdmission
+    match store.execute(command) {
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::CancelledBeforeAdmission,
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected cancelled-before-admission rejection, got {evidence:?}")
         }
-    ));
+        CommandOutcome::Committed {
+            receipt,
+            later_failure,
+        } => panic!(
+            "expected cancelled-before-admission rejection, got committed receipt {receipt:?} with later failure {later_failure:?}"
+        ),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!(
+                "expected cancelled-before-admission rejection, got indeterminate outcome {failure:?}"
+            )
+        }
+    }
     assert_eq!(storage.revision(&store).unwrap(), before);
     assert_eq!(
         storage
@@ -252,22 +316,29 @@ fn cancellation_before_admission_and_identity_collision_change_nothing() {
         ThreadCreationStatus::Absent
     );
 
-    execute(
+    assert_committed(
         &store,
         storage,
-        storage.create_thread(storage.revision(&store).unwrap(), creation.clone()),
-    )
-    .unwrap();
-    let error = execute(
-        &store,
-        storage,
-        storage.create_thread(storage.revision(&store).unwrap(), creation),
-    )
-    .unwrap_err();
+        execute(
+            &store,
+            storage,
+            storage.create_thread(storage.revision(&store).unwrap(), creation.clone()),
+        ),
+    );
+    let error = assert_not_committed(
+        execute(
+            &store,
+            storage,
+            storage.create_thread(storage.revision(&store).unwrap(), creation),
+        ),
+        "duplicate thread creation",
+    );
     assert_mutation_error(&error, |error| {
         matches!(error, SyndicMutationError::IdentityCollision)
     });
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -278,12 +349,15 @@ fn dirty_only_update_preserves_immutable_draft_facts_and_reconciles_exactly() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (thread_id, draft_id) = ids(20);
     let creation = CreateThread::ordinary(thread_id, draft_id, execution(), timestamp(5));
-    execute(
+    assert_committed(
         &store,
         storage,
-        storage.create_thread(storage.revision(&store).unwrap(), creation),
-    )
-    .unwrap();
+        execute(
+            &store,
+            storage,
+            storage.create_thread(storage.revision(&store).unwrap(), creation),
+        ),
+    );
     let before = storage
         .current_draft(&store, thread_id, limit())
         .unwrap()
@@ -302,12 +376,15 @@ fn dirty_only_update_preserves_immutable_draft_facts_and_reconciles_exactly() {
         DraftPayloadUpdateDecision::Update(update) => update,
         DraftPayloadUpdateDecision::NoChange => panic!("changed payload must be dirty"),
     };
-    execute(
+    assert_committed(
         &store,
         storage,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()),
-    )
-    .unwrap();
+        execute(
+            &store,
+            storage,
+            storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()),
+        ),
+    );
     let after = storage
         .current_draft(&store, thread_id, limit())
         .unwrap()
@@ -342,27 +419,34 @@ fn dirty_only_update_preserves_immutable_draft_facts_and_reconciles_exactly() {
         DraftPayloadUpdateDecision::Update(update) => update,
         DraftPayloadUpdateDecision::NoChange => unreachable!(),
     };
-    execute(
+    assert_committed(
         &store,
         storage,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), maximum_update.clone()),
-    )
-    .unwrap();
+        execute(
+            &store,
+            storage,
+            storage.update_draft_payload(storage.revision(&store).unwrap(), maximum_update.clone()),
+        ),
+    );
     let maximum_current = storage
         .current_draft(&store, thread_id, limit())
         .unwrap()
         .unwrap();
     assert!(maximum_update.matches_committed(&maximum_current));
 
-    let error = execute(
-        &store,
-        storage,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), stale),
-    )
-    .unwrap_err();
+    let error = assert_not_committed(
+        execute(
+            &store,
+            storage,
+            storage.update_draft_payload(storage.revision(&store).unwrap(), stale),
+        ),
+        "stale draft payload update",
+    );
     assert_mutation_error(&error, |error| {
         matches!(error, SyndicMutationError::DraftRevisionConflict { .. })
     });
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

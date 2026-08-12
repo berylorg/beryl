@@ -3,7 +3,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use beryl_home_store::{CommandError, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 
 use super::*;
 
@@ -33,34 +35,53 @@ impl Drop for TestHome {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-enum RestartStageError {
-    #[error(transparent)]
-    Command(#[from] CommandError),
-    #[error("restart after an exact committed staging batch")]
-    Restart,
-}
-
 fn commit_first_batch(
     store: &HomeStore,
     storage: SyndicStorage,
     prepared: &PreparedProviderFrame,
 ) -> ProviderFrameStageBatch {
     let mut committed_batch = None;
+    let stale_home_revision = store.home_revision().unwrap();
     let interrupted = stage_provider_frame(
         prepared,
         prepared.initial_build().clone(),
-        &mut |batch: &ProviderFrameStageBatch| -> Result<(), RestartStageError> {
-            store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))?;
-            committed_batch = Some(batch.clone());
-            Err(RestartStageError::Restart)
+        &mut |batch: &ProviderFrameStageBatch| {
+            if committed_batch.is_none() {
+                committed_batch = Some(batch.clone());
+                store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))
+            } else {
+                let mut command = HomeCommand::new(stale_home_revision);
+                command
+                    .add(storage.stage_provider_frame_batch(
+                        storage.revision(store).unwrap(),
+                        batch.clone(),
+                    ))
+                    .unwrap();
+                store.execute(command)
+            }
         },
     )
-    .unwrap_err();
-    assert!(matches!(
-        interrupted,
-        ProviderFrameStageError::Callback(RestartStageError::Restart)
-    ));
+    .unwrap();
+    match interrupted {
+        ProviderFrameStageOutcome::NotCommitted { .. } => {}
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected restart interruption to be definitive, got indeterminate {failure:?}")
+        }
+        ProviderFrameStageOutcome::Committed {
+            receipt,
+            later_failure,
+            ..
+        } => panic!(
+            "expected restart interruption, got committed outcome with receipt {receipt:?} and later failure {later_failure:?}"
+        ),
+        ProviderFrameStageOutcome::Unchanged { value } => {
+            panic!("expected restart interruption, got unchanged build {value:?}")
+        }
+    }
     committed_batch.unwrap()
 }
 
@@ -105,9 +126,30 @@ fn content_ahead_partial_build_reopens_and_resumes() {
     let text = "r".repeat(CONTENT_CHUNK_MAX_BYTES * (CONTENT_APPEND_MAX_CHUNKS + 3));
     let prepared = prepare_first(agent_start("content-ahead", text), 9);
     let narrative_seed = prepared.initial_build().staged_narrative().unwrap();
-    store
-        .execute_current(storage.current_begin_provider_frame_build(&prepared))
-        .unwrap();
+    match store.execute_current(storage.current_begin_provider_frame_build(&prepared)) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+        } => panic!(
+            "expected clean provider-frame build begin, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        CommandOutcome::NotCommitted { evidence } => panic!(
+            "expected clean provider-frame build begin, got definitive non-commit {evidence:?}"
+        ),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!(
+                "expected clean provider-frame build begin, got indeterminate outcome {failure:?}"
+            )
+        }
+    }
 
     let committed_batch = commit_first_batch(&store, storage, &prepared);
     let committed = committed_batch.next_build();
@@ -135,16 +177,45 @@ fn content_ahead_partial_build_reopens_and_resumes() {
         .clone();
     assert_eq!(&durable, committed);
 
-    let final_build = stage_provider_frame(
+    let final_build = match stage_provider_frame(
         &prepared,
         durable,
         &mut |batch: &ProviderFrameStageBatch| {
             reopened
                 .execute_current(reopened_storage.current_stage_provider_frame_batch(batch.clone()))
-                .map(|_| ())
         },
     )
-    .unwrap();
+    .unwrap()
+    {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            receipt,
+            later_failure: None,
+        } => {
+            let _receipt = receipt;
+            value
+        }
+        ProviderFrameStageOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+            ..
+        } => panic!(
+            "expected clean resumed staging, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        ProviderFrameStageOutcome::NotCommitted { evidence } => {
+            panic!("expected clean resumed staging, got definitive non-commit {evidence:?}")
+        }
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean resumed staging, got indeterminate outcome {failure:?}")
+        }
+        ProviderFrameStageOutcome::Unchanged { value } => {
+            panic!("expected resumed staging work, got unchanged build {value:?}")
+        }
+    };
     assert_eq!(final_build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
     reopened.close().unwrap();
 
@@ -176,9 +247,30 @@ fn narrative_ahead_content_incomplete_partial_build_reopens_and_resumes() {
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
     let prepared = narrative_ahead_prepared();
-    store
-        .execute_current(storage.current_begin_provider_frame_build(&prepared))
-        .unwrap();
+    match store.execute_current(storage.current_begin_provider_frame_build(&prepared)) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+        } => panic!(
+            "expected clean provider-frame build begin, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        CommandOutcome::NotCommitted { evidence } => panic!(
+            "expected clean provider-frame build begin, got definitive non-commit {evidence:?}"
+        ),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!(
+                "expected clean provider-frame build begin, got indeterminate outcome {failure:?}"
+            )
+        }
+    }
 
     let committed_batch = commit_first_batch(&store, storage, &prepared);
     let committed = committed_batch.next_build();
@@ -210,16 +302,45 @@ fn narrative_ahead_content_incomplete_partial_build_reopens_and_resumes() {
         .clone();
     assert_eq!(&durable, committed);
 
-    let sealed = stage_provider_frame(
+    let sealed = match stage_provider_frame(
         &prepared,
         durable,
         &mut |batch: &ProviderFrameStageBatch| {
             reopened
                 .execute_current(reopened_storage.current_stage_provider_frame_batch(batch.clone()))
-                .map(|_| ())
         },
     )
-    .unwrap();
+    .unwrap()
+    {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            receipt,
+            later_failure: None,
+        } => {
+            let _receipt = receipt;
+            value
+        }
+        ProviderFrameStageOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+            ..
+        } => panic!(
+            "expected clean resumed staging, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        ProviderFrameStageOutcome::NotCommitted { evidence } => {
+            panic!("expected clean resumed staging, got definitive non-commit {evidence:?}")
+        }
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean resumed staging, got indeterminate outcome {failure:?}")
+        }
+        ProviderFrameStageOutcome::Unchanged { value } => {
+            panic!("expected resumed staging work, got unchanged build {value:?}")
+        }
+    };
     assert_eq!(sealed.lifecycle(), ProviderItemBuildLifecycle::Sealed);
     reopened.close().unwrap();
 }

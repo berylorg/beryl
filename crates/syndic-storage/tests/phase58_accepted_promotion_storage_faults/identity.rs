@@ -22,9 +22,12 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
         .unwrap();
     match store.execute(create) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected collision fixture creation to commit without later failure, got {outcome:?}"),
+        outcome => panic!(
+            "expected collision fixture creation to commit without later failure, got {outcome:?}"
+        ),
     }
     let existing_item = SyndicItemId::from_bytes([203; 16]);
     support::exact_cas::submit_current_draft(
@@ -36,7 +39,9 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
         "canonical collision owner",
         timestamp(10),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let parent = storage
         .thread(&store, fixture.thread, limit())
         .unwrap()
@@ -112,6 +117,8 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
             .unwrap(),
         AcceptedInputPromotionStatus::Prior,
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

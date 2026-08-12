@@ -3,8 +3,8 @@ use beryl_backend::{
     OrderedTurnStreamSubmitCause, ProviderObservationFragment,
 };
 use syndic_storage::{
-    ProviderCompactionMarkerStager, ProviderObservationStageBatchError, ProviderObservationStager,
-    ProviderObservationStageOutcome, ProviderObservationStagingBytes,
+    ProviderCompactionMarkerStager, ProviderObservationStageBatchError,
+    ProviderObservationStageOutcome, ProviderObservationStager, ProviderObservationStagingBytes,
     ProviderObservationStagingError,
 };
 
@@ -16,15 +16,15 @@ pub(super) fn staging_rejection(
     match error {
         ProviderObservationStagingError::Validation(_)
         | ProviderObservationStagingError::Batch(
-            ProviderObservationStageBatchError::EmptyFragment,
+            ProviderObservationStageBatchError::EmptyFragment
+            | ProviderObservationStageBatchError::FragmentTooLarge { .. },
         ) => OrderedTurnStreamRejection::SchemaMismatch,
         ProviderObservationStagingError::Batch(
-            ProviderObservationStageBatchError::FrontierOverflow
+            ProviderObservationStageBatchError::InvalidTransition
+            | ProviderObservationStageBatchError::FrontierOverflow
             | ProviderObservationStageBatchError::ReplayMismatch,
         )
-        | ProviderObservationStagingError::Record(_) => {
-            OrderedTurnStreamRejection::StagingConflict
-        }
+        | ProviderObservationStagingError::Record(_) => OrderedTurnStreamRejection::StagingConflict,
     }
 }
 
@@ -45,10 +45,15 @@ fn classify_stage_outcome<T>(
         | ProviderObservationStageOutcome::Committed {
             later_failure: Some(_),
             ..
+        } => Err(ProviderStagingOutcome::Rejection(
+            OrderedTurnStreamRejection::StagingConflict,
+        )),
+        ProviderObservationStageOutcome::Indeterminate { reconciliation, .. } => {
+            reconciliation.install();
+            Err(ProviderStagingOutcome::Rejection(
+                OrderedTurnStreamRejection::StagingConflict,
+            ))
         }
-        | ProviderObservationStageOutcome::Indeterminate { .. } => Err(
-            ProviderStagingOutcome::Rejection(OrderedTurnStreamRejection::StagingConflict),
-        ),
     }
 }
 
@@ -110,59 +115,25 @@ impl Ingester {
             );
         }
         let identity = beryl_model::ProviderObservationId::from_bytes(bytes);
-        let mut verified_continuation = false;
-        let (home_generation, storage) = loop {
-            let verification = if verified_continuation {
-                None
-            } else {
-                match self.live_command().enter_current_home(
-                    &self.home,
-                    self.home_id,
-                    self.home_generation,
-                ) {
-                    Ok(verification) => Some(verification),
-                    Err(_) => return self.authority_lost_terminal(),
-                }
-            };
-            let authority = self.current_observation_authority_typed();
-            let Some(verification) = verification else {
-                match authority {
-                    Ok(authority) => break authority,
-                    Err(error) if error.verification_ambiguous(self.home_generation) => {
-                        verified_continuation = false;
-                        continue;
-                    }
-                    Err(_) => {
-                        return self.reject(
-                            OrderedTurnStreamOperation::ProviderBegin(begin),
-                            OrderedTurnStreamRejection::StagingConflict,
-                        );
-                    }
-                }
-            };
-            match verification.settle_after_operation() {
-                Ok(settlement) if settlement.requires_retry() => match &authority {
-                    Ok(_) => {
-                        verified_continuation = true;
-                        continue;
-                    }
-                    Err(error) if error.verification_ambiguous(self.home_generation) => {
-                        verified_continuation = true;
-                        continue;
-                    }
-                    Err(_) => {}
-                },
-                Ok(_) => {}
-                Err(_) => return self.authority_lost_terminal(),
-            }
-            match authority {
-                Ok(authority) => break authority,
-                Err(_) => {
-                    return self.reject(
-                        OrderedTurnStreamOperation::ProviderBegin(begin),
-                        OrderedTurnStreamRejection::StagingConflict,
-                    );
-                }
+        let verification = match self.live_command().enter_current_home(
+            &self.home,
+            self.home_id,
+            self.home_generation,
+        ) {
+            Ok(verification) => verification,
+            Err(_) => return self.authority_lost_terminal(),
+        };
+        let authority = self.current_observation_authority_typed();
+        if verification.settle_after_operation().is_err() {
+            return self.authority_lost_terminal();
+        }
+        let (home_generation, storage) = match authority {
+            Ok(authority) => authority,
+            Err(_) => {
+                return self.reject(
+                    OrderedTurnStreamOperation::ProviderBegin(begin),
+                    OrderedTurnStreamRejection::StagingConflict,
+                );
             }
         };
         let mut commit = self.committer(identity, home_generation, storage);
@@ -184,10 +155,9 @@ impl Ingester {
                     false,
                 )
             }
-            Err(ProviderStagingOutcome::Rejection(rejection)) => self.reject(
-                OrderedTurnStreamOperation::ProviderBegin(begin),
-                rejection,
-            ),
+            Err(ProviderStagingOutcome::Rejection(rejection)) => {
+                self.reject(OrderedTurnStreamOperation::ProviderBegin(begin), rejection)
+            }
         }
     }
 
@@ -212,9 +182,7 @@ impl Ingester {
                 observation
                     .stager
                     .control(translated, &mut commit)
-                    .map_err(|error| {
-                        ProviderStagingOutcome::Rejection(staging_rejection(&error))
-                    })
+                    .map_err(|error| ProviderStagingOutcome::Rejection(staging_rejection(&error)))
                     .and_then(classify_stage_outcome)
             }
             super::super::ActiveObservation::Compaction(marker) => {
@@ -296,9 +264,7 @@ impl Ingester {
                 observation
                     .stager
                     .fragment(staged, &mut commit)
-                    .map_err(|error| {
-                        ProviderStagingOutcome::Rejection(staging_rejection(&error))
-                    })
+                    .map_err(|error| ProviderStagingOutcome::Rejection(staging_rejection(&error)))
                     .and_then(classify_stage_outcome)
             }
             super::super::ActiveObservation::Compaction(marker) => {

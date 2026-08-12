@@ -1,5 +1,5 @@
 use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
@@ -17,7 +17,7 @@ use syndic_storage::{
     ThreadAttributesRevision,
 };
 
-use crate::support::{TestHome, batch, commit, id, populated::populated_records, timestamp};
+use crate::support::{TestHome, id, seed_populated, timestamp};
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
@@ -67,7 +67,7 @@ fn admission() -> BranchHandoffJobAdmission {
 }
 
 fn prepare_parent_active_job(store: &HomeStore, state: BerylState, syndic: SyndicStorage) -> JobId {
-    commit(store, syndic, batch(populated_records()));
+    seed_populated(store, syndic);
     let admission = admission();
     let job_id = admission.job_id();
     execute(
@@ -185,7 +185,9 @@ fn durable_job_success_and_intrinsic_archive_publish_atomically() {
             archived_at: timestamp(20),
         }
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -199,10 +201,15 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
 
     faults.fail_next(FaultPoint::BeforeCommit);
     match store.execute(terminal_command(&store, state, syndic, job_id)) {
-        CommandOutcome::NotCommitted { .. } => {}
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::Commit { .. },
+        } => {}
+        CommandOutcome::Indeterminate { reconciliation, .. } => {
+            reconciliation.install();
+            panic!("expected definitive pre-commit archive fault, got indeterminate outcome");
+        }
         outcome => panic!("expected pre-commit archive fault, got {outcome:?}"),
     }
-    store.verify_health().unwrap();
     assert_eq!(
         job(&store, state, job_id).lifecycle(),
         BranchHandoffJobLifecycle::ParentActive
@@ -216,5 +223,7 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
         attributes.archive(),
         ThreadArchiveState::BranchDiscussionOpen
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

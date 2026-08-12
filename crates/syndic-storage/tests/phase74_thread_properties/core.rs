@@ -13,9 +13,7 @@ use syndic_storage::{
     ThreadCatalogTitleSource, ThreadCreationStatus, ThreadUsageRecord, ThreadUsageRevision,
 };
 
-use crate::support::{
-    TestHome, commit, draft_id, id, open, populated::populated_records, timestamp,
-};
+use crate::support::{TestHome, commit, draft_id, id, open, timestamp};
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
@@ -108,7 +106,9 @@ fn ordinary_creation_publishes_all_properties_and_reconciles_execution_exactly()
             .unwrap()
             .is_some()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn from_tail_inherits_the_source_canonical_execution() {
     let home = TestHome::new("phase74-inherited-execution");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, crate::support::batch(populated_records()));
+    crate::support::seed_populated(&store, storage);
     let source = storage
         .thread_tail(&store, id(30), limit())
         .unwrap()
@@ -142,7 +142,9 @@ fn from_tail_inherits_the_source_canonical_execution() {
             .execution(),
         &expected
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -165,7 +167,7 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
     commit(&store, storage, deletion);
     assert!(
         store
-            .validate_registered_domains()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err()
             .to_string()
             .contains("usage record is missing")
@@ -181,7 +183,7 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
     );
     assert!(
         orphan_store
-            .validate_registered_domains()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err()
             .to_string()
             .contains("orphan thread property")
@@ -190,11 +192,7 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
     let child_home = TestHome::new("phase74-child-execution-conflict");
     let mut child_store = open(child_home.path());
     let child_storage = SyndicStorage::register(&mut child_store).unwrap();
-    commit(
-        &child_store,
-        child_storage,
-        crate::support::batch(populated_records()),
-    );
+    crate::support::seed_populated(&child_store, child_storage);
     commit(
         &child_store,
         child_storage,
@@ -204,7 +202,7 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
     );
     assert!(
         child_store
-            .validate_registered_domains()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err()
             .to_string()
             .contains("does not inherit")
@@ -245,7 +243,11 @@ fn impossible_property_revisions_and_future_catalog_witnesses_are_rejected() {
             ),
         );
         commit(&store, storage, crate::support::batch([replacement]));
-        assert!(store.validate_registered_domains().is_err());
+        assert!(
+            store
+                .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+                .is_err()
+        );
     }
 
     let home = TestHome::new("phase74-future-catalog-witness");
@@ -293,7 +295,7 @@ fn impossible_property_revisions_and_future_catalog_witnesses_are_rejected() {
     );
     assert!(
         store
-            .validate_registered_domains()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err()
             .to_string()
             .contains("future")
@@ -349,7 +351,7 @@ fn exact_catalog_history_revision_requires_matching_semantic_provenance() {
     );
     assert!(
         store
-            .validate_registered_domains()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err()
             .to_string()
             .contains("history provenance")
@@ -403,7 +405,7 @@ fn generated_catalog_title_requires_a_current_canonical_attributes_source() {
     );
     assert!(
         store
-            .validate_registered_domains()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err()
             .to_string()
             .contains("no canonical attributes source")

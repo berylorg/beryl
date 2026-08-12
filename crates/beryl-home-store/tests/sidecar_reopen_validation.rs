@@ -3,13 +3,12 @@
 use std::{error::Error, fmt, io, num::NonZeroU64};
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HealthVerificationError,
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
-    KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit, RecordCodec,
-    RecordFamily, RecordVersion, SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError,
-    SidecarNamespace, SidecarVerifier, StorageDomain,
+    DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HomeCommand,
+    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    MutationBuildError, MutationBuilder, PointReadLimit, RecordCodec, RecordFamily, RecordVersion,
+    SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError, SidecarNamespace,
+    SidecarVerifier, StorageDomain, WholeHomeScrubTrigger, test_faults::FaultController,
 };
 use tempfile::tempdir;
 
@@ -224,21 +223,13 @@ fn reopen_validator_accepts_a_durable_referenced_sidecar() {
         }
     ));
 
-    faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(matches!(
-        store.execute(put_reference(
-            &store,
-            domain,
-            SidecarAddress::new(
-                SidecarNamespace::new("images").unwrap(),
-                SidecarDigest::from_bytes([1; 32]),
-                1,
-            ),
-        )),
-        beryl_home_store::CommandOutcome::NotCommitted { .. }
-    ));
-    store.verify_health().unwrap();
-    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    store.close().unwrap();
+
+    let mut reopened = open(directory.path(), FaultController::new());
+    reopened
+        .register_domain_with_schema_validation::<ReferenceDomain>()
+        .unwrap();
+    assert_eq!(reopened.health().state(), HomeHealthState::Healthy);
 }
 
 #[test]
@@ -260,31 +251,29 @@ fn missing_referenced_sidecar_fails_verification_and_same_home_reopen() {
         }
     ));
 
-    faults.fail_next(FaultPoint::BeforeCommit);
     assert!(matches!(
-        store.execute(put_reference(&store, domain, missing)),
-        beryl_home_store::CommandOutcome::NotCommitted { .. }
-    ));
-    assert!(matches!(
-        store.verify_health(),
-        Err(HealthVerificationError::DomainValidation(
-            DomainValidationError::Access {
-                domain: "sidecar-references",
-                source: DomainCallbackSource::Sidecar(SidecarError::Missing),
-            }
-        ))
+        store
+            .scrub_whole_home(WholeHomeScrubTrigger::CorruptionEvidence)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
+            domain: "sidecar-references",
+            source: DomainCallbackSource::Sidecar(SidecarError::Missing),
+        }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
+    let recovered = store.recover_same_home().unwrap().publish();
     assert!(matches!(
-        store.recover_same_home(),
-        Err(HomeRecoveryError::DomainValidation(
-            DomainValidationError::Access {
-                domain: "sidecar-references",
-                source: DomainCallbackSource::Sidecar(SidecarError::Missing),
-            }
-        ))
+        recovered
+            .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
+            domain: "sidecar-references",
+            source: DomainCallbackSource::Sidecar(SidecarError::Missing),
+        }
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert_eq!(recovered.health().state(), HomeHealthState::Failed);
 }
 
 #[test]
@@ -309,7 +298,7 @@ fn existing_domain_registration_runs_its_sidecar_reopen_validator() {
 
     let mut reopened = open(directory.path(), faults);
     assert!(matches!(
-        reopened.register_domain::<ReferenceDomain>(),
+        reopened.register_domain_with_schema_validation::<ReferenceDomain>(),
         Err(DomainRegistrationError::ValidationAccess {
             domain: "sidecar-references",
             source: DomainCallbackSource::Sidecar(SidecarError::Missing),

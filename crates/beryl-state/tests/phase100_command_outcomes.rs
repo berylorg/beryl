@@ -1,8 +1,8 @@
 mod support;
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CommandCancellation, CommandError, CommandOutcome, HomeCommand,
+    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 

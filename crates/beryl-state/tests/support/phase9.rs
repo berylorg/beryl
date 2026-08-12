@@ -6,8 +6,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    test_faults::FaultController, CommandError, CommandOutcome, HomeCommand, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, SidecarByteLimit,
+    CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    SidecarByteLimit, test_faults::FaultController,
 };
 use beryl_model::{
     AdmittedHostPath, Availability, CasThreadId, CasTurnId, ClaimRevision, DynamicToolCallId,

@@ -4,12 +4,11 @@ mod staging;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use beryl_home_store::{HomeGeneration, HomeStore};
-use beryl_model::{BerylHomeId, ProviderObservationId, SyndicItemId, SyndicThreadId};
+use beryl_model::{BerylHomeId, SyndicItemId, SyndicThreadId};
 use syndic_storage::{
     BoundProviderObservation, PreparedProviderObservationFrame, ProviderItemKind,
-    ProviderObservationCursorError, ProviderObservationIssue, ProviderObservationRoute,
-    SourceEventPayload, SyndicPointReadLimit, SyndicStorage, inspect_provider_observation,
-    prepare_provider_observation_frame,
+    ProviderObservationIssue, SourceEventPayload, SyndicPointReadLimit, SyndicStorage,
+    inspect_provider_observation, prepare_provider_observation_frame,
 };
 use thiserror::Error;
 
@@ -86,23 +85,6 @@ pub(super) fn prepare(
         frontier,
         publication,
     })
-}
-
-pub(super) fn reopen_exact(
-    home: &HomeStore,
-    storage: SyndicStorage,
-    identity: ProviderObservationId,
-    route: &ProviderObservationRoute,
-    limit: SyndicPointReadLimit,
-) -> Result<BoundProviderObservation, ProviderObservationPublicationError> {
-    let sealed = storage
-        .reopen_provider_observation(home, identity, limit)
-        .map_err(syndic_storage::ProviderObservationFramePreparationError::from)?
-        .ok_or(ProviderObservationCursorError::BuildMissing)
-        .map_err(syndic_storage::ProviderObservationFramePreparationError::from)?;
-    Ok(sealed
-        .bind(route.clone(), route.clone())
-        .expect("the exact admitted provider route binds to itself"))
 }
 
 pub(super) struct PreparedProviderObservationPublication {
@@ -199,46 +181,7 @@ impl ProviderObservationPublicationError {
         }
     }
 
-    pub(super) fn verification_ambiguous(
-        &self,
-        expected_generation: beryl_home_store::HomeGeneration,
-    ) -> bool {
-        match self {
-            Self::LiveSource(LiveSourcePublicationError::Read(source))
-            | Self::Lifecycle(ProviderObservationLifecycleError::Read(source)) => {
-                syndic_read_is_health_gated(source, expected_generation)
-            }
-            Self::Preparation(
-                syndic_storage::ProviderObservationFramePreparationError::Cursor(
-                    ProviderObservationCursorError::Read(source),
-                ),
-            ) => syndic_read_is_health_gated(source, expected_generation),
-            _ => false,
-        }
+    pub(super) fn custody_installed(&self) -> bool {
+        matches!(self, Self::FrameCommit(source) if source.custody_installed())
     }
-}
-
-fn syndic_read_is_health_gated(
-    source: &syndic_storage::SyndicReadError,
-    expected_generation: beryl_home_store::HomeGeneration,
-) -> bool {
-    match source {
-        syndic_storage::SyndicReadError::Read(beryl_home_store::ReadError::HealthGate(source)) => {
-            health_gate_values_match(
-                source.state(),
-                source.generation().get(),
-                expected_generation.get(),
-            )
-        }
-        _ => false,
-    }
-}
-
-pub(super) const fn health_gate_values_match(
-    state: beryl_home_store::HomeHealthState,
-    actual_generation: u64,
-    expected_generation: u64,
-) -> bool {
-    matches!(state, beryl_home_store::HomeHealthState::Verifying)
-        && actual_generation == expected_generation
 }

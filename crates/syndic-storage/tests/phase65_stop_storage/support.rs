@@ -53,11 +53,10 @@ impl ActiveStopFixture {
     }
 
     pub fn admit_stop(&self) {
-        match self.store
-            .execute_current(
-                self.storage
-                    .current_admit_stop_operation(self.admission.clone()),
-            ) {
+        match self.store.execute_current(
+            self.storage
+                .current_admit_stop_operation(self.admission.clone()),
+        ) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..

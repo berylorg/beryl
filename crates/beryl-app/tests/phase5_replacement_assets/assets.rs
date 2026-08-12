@@ -57,11 +57,17 @@ pub(super) fn create_historical_asset(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     metadata.add_to(&mut command).unwrap();
     match store.execute(command) {
-        beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
         beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
             panic!("expected committed asset setup, got not committed: {evidence:?}")
         }
-        outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => {
+        outcome @ beryl_home_store::CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => {
             panic!("expected committed asset setup with no later failure: {outcome:?}")
         }
         outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
@@ -130,5 +136,11 @@ pub(super) fn create_historical_asset(
 fn execute_asset(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    match store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, outcome => panic!("expected committed asset mutation, got {outcome:?}"), }
+    match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed asset mutation, got {outcome:?}"),
+    }
 }

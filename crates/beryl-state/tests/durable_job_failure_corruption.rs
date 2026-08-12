@@ -5,25 +5,22 @@ mod support;
 use std::path::Path;
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
-    CommandError, CommandOutcome, DomainCallbackSource, DomainRegistrationError,
-    DomainValidationError, HealthVerificationError, HomeHealthState, HomeOpenOptions,
-    HomeRecoveryError, HomeSchemaVersion, HomeStore,
+    CommandOutcome, DomainCallbackSource, DomainRegistrationError, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, ResolutionIntentId, SyndicAcceptedInputId,
     SyndicDraftId, SyndicThreadId, SyndicTurnId,
 };
 use beryl_state::{
-    AdmitBranchHandoffJob, ApplySettings, BerylState, BerylStateRegistrationError,
-    BranchHandoffCheckpoint, BranchHandoffJobAdmission, DiscussionContextDigest,
-    DiscussionContextOwnerId, ExpectedSettingRevision, HandoffFailureEvidence, HandoffFailureKind,
-    ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal, ResolutionAttemptOrdinal,
-    ResolutionRequestIdentity, ResolutionText, SettingKey, SettingUpdate, SettingValue,
+    AdmitBranchHandoffJob, BerylState, BerylStateRegistrationError, BranchHandoffCheckpoint,
+    BranchHandoffJobAdmission, DiscussionContextDigest, DiscussionContextOwnerId,
+    HandoffFailureEvidence, HandoffFailureKind, ParentCasIdentity, ParentHandoffIdentity,
+    ParentQueueOrdinal, ResolutionAttemptOrdinal, ResolutionRequestIdentity, ResolutionText,
 };
 use tempfile::tempdir;
 
-use support::{execute, open, phase9::open_with_faults};
+use support::{execute, open};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Stage {
@@ -55,7 +52,7 @@ const FAILURE_KINDS: [HandoffFailureKind; 11] = [
 ];
 
 #[test]
-fn ordinary_reopen_rejects_every_incompatible_persisted_failure_pair() {
+fn routine_reopen_defers_every_dormant_incompatible_persisted_failure_pair_to_schema_validation() {
     let directory = tempdir().unwrap();
     let mut case = 0_u8;
 
@@ -74,59 +71,22 @@ fn ordinary_reopen_rejects_every_incompatible_persisted_failure_pair() {
                 let mut reopened =
                     HomeStore::open(HomeOpenOptions::new(&path, HomeSchemaVersion::CURRENT))
                         .unwrap();
-                let error = match BerylState::register(&mut reopened) {
+                let routine = BerylState::register(&mut reopened)
+                    .expect("routine reopen must not exhaustively scan durable jobs");
+                routine.durable_jobs().revision(&reopened).expect(
+                    "routine durable-job handle must be usable before the dormant record is read",
+                );
+                reopened.close().unwrap();
+
+                let mut schema_boundary =
+                    HomeStore::open(HomeOpenOptions::new(&path, HomeSchemaVersion::CURRENT))
+                        .unwrap();
+                let error = match BerylState::register_with_schema_validation(&mut schema_boundary)
+                {
                     Ok(_) => panic!("incompatible persisted failure unexpectedly reopened"),
                     Err(error) => error,
                 };
                 assert_registration_failure(error);
-            }
-        }
-    }
-
-    assert_eq!(case, 58);
-}
-
-#[test]
-fn verification_and_recovery_reject_every_incompatible_persisted_failure_pair() {
-    let directory = tempdir().unwrap();
-    let mut case = 0_u8;
-
-    for retryable in [true, false] {
-        for kind in FAILURE_KINDS {
-            for stage in STAGES {
-                if compatible(retryable, kind, stage) {
-                    continue;
-                }
-                case = case.checked_add(1).unwrap();
-                let path = directory.path().join(format!("recovery-{case}"));
-                std::fs::create_dir(&path).unwrap();
-                let faults = FaultController::new();
-                let (store, state) =
-                    corrupt_home_with_faults(&path, case, retryable, kind, stage, faults.clone());
-
-                faults.fail_next(FaultPoint::BeforeCommit);
-                let outcome = execute(
-                    &store,
-                    state.settings().apply(
-                        state.settings().revision(&store).unwrap(),
-                        ApplySettings::new(vec![SettingUpdate::new(
-                            SettingKey::ActiveThemeId,
-                            ExpectedSettingRevision::Absent,
-                            SettingValue::active_theme_id("verify-corrupt-job").unwrap(),
-                        )])
-                        .unwrap(),
-                    ),
-                );
-                let CommandOutcome::NotCommitted { evidence: error } = outcome else {
-                    panic!("expected rejected corruption-verification command, got {outcome:?}");
-                };
-                assert!(matches!(error, CommandError::Commit { .. }));
-                assert_eq!(store.health().state(), HomeHealthState::Verifying);
-                let verification = store.verify_health().unwrap_err();
-                assert_verification_failure(verification);
-                assert_eq!(store.health().state(), HomeHealthState::Failed);
-                let error = store.recover_same_home().unwrap_err();
-                assert_recovery_failure(error);
             }
         }
     }
@@ -142,13 +102,13 @@ fn corrupt_home(
     stage: Stage,
 ) -> HomeStore {
     let (store, state) = open(path);
-    corrupt_job(&store, state, seed, retryable, kind, stage);
+    corrupt_job(&store, &state, seed, retryable, kind, stage);
     store
 }
 
 fn corrupt_job(
     store: &HomeStore,
-    state: BerylState,
+    state: &BerylState,
     seed: u8,
     retryable: bool,
     kind: HandoffFailureKind,
@@ -189,26 +149,6 @@ fn corrupt_job(
     }
 }
 
-fn corrupt_home_with_faults(
-    path: &Path,
-    seed: u8,
-    retryable: bool,
-    kind: HandoffFailureKind,
-    stage: Stage,
-    faults: FaultController,
-) -> (HomeStore, BerylState) {
-    let (store, state) = open_with_faults(path, faults);
-    corrupt_job(&store, state, seed, retryable, kind, stage);
-    (store, state)
-}
-
-fn assert_verification_failure(error: HealthVerificationError) {
-    let HealthVerificationError::DomainValidation(validation) = error else {
-        panic!("expected durable-job verification failure, got {error}");
-    };
-    assert_validation_access(&validation);
-}
-
 fn assert_registration_failure(error: BerylStateRegistrationError) {
     let BerylStateRegistrationError::Domain { domain, source } = error else {
         panic!("expected durable-job registration failure, got {error}");
@@ -222,25 +162,6 @@ fn assert_registration_failure(error: BerylStateRegistrationError) {
         panic!("expected durable-job validation-access failure, got {source}");
     };
     assert_eq!(domain, "beryl-durable-job");
-    assert!(source.to_string().contains("incompatible"));
-}
-
-fn assert_recovery_failure(error: HomeRecoveryError) {
-    let HomeRecoveryError::DomainValidation(validation) = error else {
-        panic!("expected durable-job recovery validation failure, got {error}");
-    };
-    assert_validation_access(&validation);
-}
-
-fn assert_validation_access(validation: &DomainValidationError) {
-    let DomainValidationError::Access {
-        domain,
-        source: DomainCallbackSource::Read(source),
-    } = validation
-    else {
-        panic!("expected typed domain validation access, got {validation}");
-    };
-    assert_eq!(*domain, "beryl-durable-job");
     assert!(source.to_string().contains("incompatible"));
 }
 

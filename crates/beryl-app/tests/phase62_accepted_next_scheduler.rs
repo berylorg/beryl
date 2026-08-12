@@ -17,32 +17,37 @@ use std::{
 };
 
 use beryl_app::cas_projection::{
-    ProjectionConnectionService, ProjectionServiceConfig, RunningSessionRecoverySupervisor,
+    DURABLE_START_ADMISSION_BUDGET_BYTES, MinimumTurnCaptureReserve, ProjectionConnectionService,
+    ProjectionServiceConfig,
     test_faults::{
         install_scheduled_promotion_barrier, install_scheduled_promotion_reservation_barrier,
     },
 };
 use beryl_backend::ManagedBackendClientConnector;
 use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, test_faults::FaultController,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    test_faults::{FaultController, FreeSpaceTestObservation},
 };
 use beryl_model::{CasProcessGeneration, RuntimeId};
 use syndic_storage::{AcceptedRouteEffectiveState, SyndicReadError, SyndicStorage, TurnLifecycle};
 
 use support::{
-    NormalTerminalServer, ReadyProviderFactory, SessionSlot, TIMEOUT, UnavailableProvider,
-    accepted_route_state, admit_runtime_next_input, current_cas_thread_id, execution_binding,
-    fail_home_generation_before_promotion, install_next_records, open_registered_home,
-    ready_provider, seed_runtime_next_input_without_wake, try_accepted_route_state, wait_until,
+    NormalTerminalServer, SessionSlot, TIMEOUT, UnavailableProvider, accepted_route_state,
+    admit_runtime_next_input, current_cas_thread_id, execution_binding, install_next_records,
+    open_registered_home, ready_provider, seed_runtime_next_input_without_wake,
+    try_accepted_route_state, wait_until,
 };
 
 #[test]
 fn same_process_next_turn_promotes_projects_and_dispatches_once() {
+    let faults = FaultController::new();
     let slot = SessionSlot::default();
     let provider_slot = slot.clone();
-    let mut fixture = syndic::Fixture::new_with_scheduled_provider(162, move |assets| {
-        Box::new(ready_provider(provider_slot, assets))
-    });
+    let mut fixture = syndic::Fixture::new_with_scheduled_provider_and_faults(
+        162,
+        faults.clone(),
+        move |assets| Box::new(ready_provider(provider_slot, assets)),
+    );
     let parent = fixture.submit_text("phase62 completed parent");
     fixture.complete_with_assistant(parent, "phase62 completed answer");
     let storage = fixture.storage;
@@ -77,6 +82,12 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
         .unwrap();
     slot.replace(session);
 
+    let required = DURABLE_START_ADMISSION_BUDGET_BYTES + 1;
+    faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
+        available_bytes: required,
+        total_free_bytes: required,
+        total_bytes: required,
+    });
     let ids = admit_runtime_next_input(&mut fixture, 162);
     let service = &fixture.store;
 
@@ -135,6 +146,7 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     assert!(!diagnostics.next_retained_source_cursor());
     assert!(!diagnostics.next_retained_candidate_cursor());
     assert!(!diagnostics.fatal());
+    assert_eq!(faults.free_space_observation_count(), 1);
 
     let (directory, service) = fixture.into_service();
     service.close().unwrap();
@@ -155,7 +167,8 @@ fn unavailable_execution_authority_leaves_the_durable_candidate_unpromoted() {
     let service = ProjectionConnectionService::new(
         home,
         storage,
-        ProjectionServiceConfig::try_new(128, 8).unwrap(),
+        ProjectionServiceConfig::try_new(128, 8, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
         Box::new(UnavailableProvider),
     )
     .unwrap();
@@ -183,6 +196,180 @@ fn unavailable_execution_authority_leaves_the_durable_candidate_unpromoted() {
     }
 
     service.close().unwrap();
+    drop(directory);
+}
+
+#[test]
+fn turn_start_reserve_denials_park_queued_candidate_without_dispatch() {
+    for (seed, observation) in [
+        (
+            172,
+            FreeSpaceTestObservation::Observed {
+                available_bytes: 0,
+                total_free_bytes: 0,
+                total_bytes: 1,
+            },
+        ),
+        (173, FreeSpaceTestObservation::Unavailable),
+        (
+            174,
+            FreeSpaceTestObservation::Observed {
+                available_bytes: 2,
+                total_free_bytes: 1,
+                total_bytes: 2,
+            },
+        ),
+    ] {
+        let faults = FaultController::new();
+        let slot = SessionSlot::default();
+        let provider_slot = slot.clone();
+        let mut fixture = syndic::Fixture::new_with_scheduled_provider_and_faults(
+            seed,
+            faults.clone(),
+            move |assets| Box::new(ready_provider(provider_slot, assets)),
+        );
+        let parent = fixture.submit_text("phase105 queued reserve parent");
+        fixture.complete_with_assistant(parent, "phase105 queued reserve answer");
+        let storage = fixture.storage;
+        let thread_id = fixture.thread;
+        let execution = syndic::execution_binding();
+        let server = NormalTerminalServer::spawn_admission_only_controlled_close();
+        let connector = ManagedBackendClientConnector::for_lifecycle_test(
+            server.endpoint(),
+            support::AUTHORIZATION,
+        );
+        let session = fixture
+            .store
+            .admit_lifecycle_test_candidate(
+                &connector,
+                execution.runtime_id(),
+                CasProcessGeneration::new(62_100 + u64::from(seed)).unwrap(),
+                Path::new(EXECUTION_ROOT),
+                TIMEOUT,
+            )
+            .unwrap();
+        slot.replace(session);
+        server.wait_for_admission();
+
+        let barrier = install_scheduled_promotion_barrier(thread_id);
+        faults.push_free_space_observation(observation);
+        let ids = admit_runtime_next_input(&mut fixture, seed);
+        let (before, route_before) = {
+            let home = fixture.store.live_home_command().unwrap();
+            (
+                storage
+                    .accepted_input(home.home(), ids.accepted_input, support::point_limit())
+                    .unwrap()
+                    .unwrap(),
+                accepted_route_state(home.home(), storage, &ids),
+            )
+        };
+        assert!(barrier.wait_until_paused(TIMEOUT));
+        barrier.release();
+
+        wait_until("reserve-denied promotion release", || {
+            let diagnostics = fixture.store.accepted_input_scheduler_diagnostics();
+            (diagnostics.workers_active() == 0 && diagnostics.workers_joined() == 1)
+                .then_some(diagnostics)
+        });
+        assert_eq!(faults.free_space_observation_count(), 1);
+        let home = fixture.store.live_home_command().unwrap();
+        assert_eq!(
+            storage
+                .accepted_input(home.home(), ids.accepted_input, support::point_limit())
+                .unwrap()
+                .unwrap(),
+            before,
+        );
+        assert_eq!(
+            accepted_route_state(home.home(), storage, &ids),
+            route_before
+        );
+        assert_eq!(
+            storage
+                .thread(home.home(), ids.thread, support::point_limit())
+                .unwrap()
+                .unwrap()
+                .committed_tail(),
+            Some(ids.parent),
+        );
+        drop(home);
+        assert!(
+            slot.is_ready(),
+            "denied promotion must release its reservation"
+        );
+        server.assert_quiet_and_close();
+        server.join();
+
+        let (directory, service) = fixture.into_service();
+        service.close().unwrap();
+        assert!(!slot.is_ready());
+        drop(directory);
+    }
+}
+
+#[test]
+fn queued_turn_start_threshold_requires_the_same_composed_total() {
+    let required = DURABLE_START_ADMISSION_BUDGET_BYTES + 1;
+    let faults = FaultController::new();
+    let slot = SessionSlot::default();
+    let provider_slot = slot.clone();
+    let mut fixture = syndic::Fixture::new_with_scheduled_provider_and_faults(
+        175,
+        faults.clone(),
+        move |assets| Box::new(ready_provider(provider_slot, assets)),
+    );
+    let parent = fixture.submit_text("phase105 queued threshold parent");
+    fixture.complete_with_assistant(parent, "phase105 queued threshold answer");
+    let storage = fixture.storage;
+    let thread_id = fixture.thread;
+    let execution = syndic::execution_binding();
+    let server = NormalTerminalServer::spawn_admission_only_controlled_close();
+    let connector = ManagedBackendClientConnector::for_lifecycle_test(
+        server.endpoint(),
+        support::AUTHORIZATION,
+    );
+    let session = fixture
+        .store
+        .admit_lifecycle_test_candidate(
+            &connector,
+            execution.runtime_id(),
+            CasProcessGeneration::new(62_275).unwrap(),
+            Path::new(EXECUTION_ROOT),
+            TIMEOUT,
+        )
+        .unwrap();
+    slot.replace(session);
+    server.wait_for_admission();
+
+    let barrier = install_scheduled_promotion_barrier(thread_id);
+    faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
+        available_bytes: required - 1,
+        total_free_bytes: required - 1,
+        total_bytes: required,
+    });
+    let ids = admit_runtime_next_input(&mut fixture, 175);
+    assert!(barrier.wait_until_paused(TIMEOUT));
+    barrier.release();
+    wait_until("queued threshold denial", || {
+        let diagnostics = fixture.store.accepted_input_scheduler_diagnostics();
+        (diagnostics.workers_active() == 0 && diagnostics.workers_joined() == 1)
+            .then_some(diagnostics)
+    });
+    assert_eq!(faults.free_space_observation_count(), 1);
+    {
+        let home = fixture.store.live_home_command().unwrap();
+        assert!(matches!(
+            accepted_route_state(home.home(), storage, &ids),
+            AcceptedRouteEffectiveState::NextTurn(_)
+        ));
+    }
+    assert!(slot.is_ready());
+    server.assert_quiet_and_close();
+    server.join();
+    let (directory, service) = fixture.into_service();
+    service.close().unwrap();
+    assert!(!slot.is_ready());
     drop(directory);
 }
 
@@ -333,71 +520,6 @@ fn connection_retirement_before_reservation_leaves_the_candidate_queued() {
     drop(retirement);
     let (directory, service) = fixture.into_service();
     service.close().unwrap();
-    server.join();
-    assert!(!slot.is_ready());
-    drop(directory);
-}
-
-#[test]
-fn home_generation_failure_before_reservation_makes_supervisor_terminally_unavailable() {
-    let faults = FaultController::new();
-    let slot = SessionSlot::default();
-    let directory = tempfile::tempdir().unwrap();
-    let mut home = HomeStore::open_with_faults(
-        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
-        faults.clone(),
-    )
-    .unwrap();
-    let storage = SyndicStorage::register(&mut home).unwrap();
-    beryl_state::BerylState::register(&mut home).unwrap();
-    let execution = execution_binding(RuntimeId::from_bytes([171; 16]));
-    let ids = install_next_records(&home, storage, 171, execution.clone());
-    let supervisor = RunningSessionRecoverySupervisor::start(
-        home,
-        ProjectionServiceConfig::try_new(128, 8).unwrap(),
-        Box::new(ReadyProviderFactory::first_epoch_only(slot.clone())),
-    )
-    .unwrap();
-    let service = supervisor.acquire().unwrap();
-    let thread_id = ids.thread;
-    let server = NormalTerminalServer::spawn_admission_only();
-    let connector = ManagedBackendClientConnector::for_lifecycle_test(
-        server.endpoint(),
-        support::AUTHORIZATION,
-    );
-    let session = service
-        .admit_lifecycle_test_candidate(
-            &connector,
-            execution.runtime_id(),
-            CasProcessGeneration::new(62_008).unwrap(),
-            Path::new(EXECUTION_ROOT),
-            TIMEOUT,
-        )
-        .unwrap();
-    slot.replace(session);
-    server.wait_for_admission();
-
-    let barrier = install_scheduled_promotion_reservation_barrier(thread_id);
-    service.notify_scheduled_ordinary_execution_ready();
-    assert!(
-        barrier.wait_until_paused(TIMEOUT),
-        "promotion did not reach its pre-reservation cut"
-    );
-    fail_home_generation_before_promotion(&supervisor, storage, &faults, &ids);
-    barrier.release();
-    drop(service);
-
-    wait_until("terminal service disposal", || {
-        supervisor.diagnostics().terminal_settled().then_some(())
-    });
-    assert!(matches!(
-        supervisor.acquire(),
-        Err(beryl_app::cas_projection::RunningServiceAvailability::Unavailable)
-    ));
-    assert!(matches!(
-        supervisor.shutdown(),
-        Err(beryl_app::cas_projection::RunningSessionRecoveryShutdownError::TerminalRecovery)
-    ));
     server.join();
     assert!(!slot.is_ready());
     drop(directory);

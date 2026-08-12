@@ -10,8 +10,8 @@ use beryl_home_store::{
 };
 use beryl_model::{RootId, RuntimeId};
 use beryl_state::{
-    BeginSessionRestore, BerylStateBootstrap, BerylStateRegistrationError, RememberedTarget,
-    SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
+    BeginSessionRestore, BerylState, BerylStateBootstrap, BerylStateRegistrationError,
+    RememberedTarget, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
 };
 use tempfile::tempdir;
 
@@ -298,7 +298,7 @@ fn claim_bytes(
 fn registration_error(path: &std::path::Path) -> BerylStateRegistrationError {
     let mut store =
         HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
-    match BerylStateBootstrap::register(&mut store) {
+    match BerylState::register_with_schema_validation(&mut store) {
         Ok(_) => panic!("malformed session unexpectedly registered"),
         Err(error) => error,
     }
@@ -401,22 +401,26 @@ fn paired_stale_claims_are_readable_and_begin_restore_deletes_both_copies() {
     ))
     .unwrap();
     let raw = raw_store.register_domain::<RawSessionDomain>().unwrap();
-    assert!(raw_store
-        .read_point::<RawSessionDomain, RawClaimByWindowCodec>(
-            raw,
-            &window_id,
-            PointReadLimit::new(53).unwrap(),
-        )
-        .unwrap()
-        .is_none());
-    assert!(raw_store
-        .read_point::<RawSessionDomain, RawClaimByThreadCodec>(
-            raw,
-            &thread_id,
-            PointReadLimit::new(53).unwrap(),
-        )
-        .unwrap()
-        .is_none());
+    assert!(
+        raw_store
+            .read_point::<RawSessionDomain, RawClaimByWindowCodec>(
+                raw,
+                &window_id,
+                PointReadLimit::new(53).unwrap(),
+            )
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        raw_store
+            .read_point::<RawSessionDomain, RawClaimByThreadCodec>(
+                raw,
+                &thread_id,
+                PointReadLimit::new(53).unwrap(),
+            )
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]

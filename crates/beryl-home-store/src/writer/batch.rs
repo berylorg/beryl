@@ -1,14 +1,14 @@
 use crate::{
+    CommandError, CommitReceipt,
     command::{PendingAction, PendingMutation},
     domain::RegisteredDomain,
-    metadata::{encode_home_revision, HOME_REVISION_KEY},
+    metadata::{HOME_REVISION_KEY, encode_home_revision},
     store::StoreGeneration,
-    CommandError, CommitReceipt,
 };
 
 use super::{
-    command_error::{batch_accounting_overflow, commit_fjall_error},
     PreparedMutation,
+    command_error::{batch_accounting_overflow, commit_fjall_error},
 };
 
 pub(super) struct AssembledBatch {

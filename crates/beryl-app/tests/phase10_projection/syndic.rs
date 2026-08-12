@@ -11,16 +11,14 @@ mod support;
 
 use beryl_app::{
     cas_projection::{
-        ProjectionCancellationToken, ProjectionConnectionService, ProjectionServiceConfig,
-        ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError,
+        MinimumTurnCaptureReserve, ProjectionCancellationToken, ProjectionConnectionService,
+        ProjectionServiceConfig, ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError,
         ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryExecutionProvider,
         ScheduledOrdinaryExecutionUnavailable,
     },
-    input_admission::{idle_submission_command, prepare_accepted_input_admission},
+    input_admission::prepare_accepted_input_admission,
 };
-use beryl_home_store::{
-    CommandOutcome, CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-};
+use beryl_home_store::{CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     CasItemId, SealedAssetReferenceSetProof, SyndicAcceptedInputId, SyndicDraftId,
     SyndicDraftMarkerId, SyndicItemId, SyndicThreadId, SyndicTurnId,
@@ -75,7 +73,20 @@ pub struct Fixture {
     clock: u64,
 }
 
+pub struct FixtureHome<'a>(beryl_app::cas_projection::LiveHomeCommand<'a>);
+
+impl std::ops::Deref for FixtureHome<'_> {
+    type Target = HomeStore;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.home()
+    }
+}
+
 impl Fixture {
+    pub fn home(&self) -> FixtureHome<'_> {
+        FixtureHome(self.store.live_home_command().unwrap())
+    }
     pub fn draft_marker_id(draft: SyndicDraftId, ordinal: u64) -> SyndicDraftMarkerId {
         assets::marker_id(draft, ordinal)
     }
@@ -176,7 +187,12 @@ impl Fixture {
                 ),
             ),
         );
-        let config = ProjectionServiceConfig::try_new(128, worker_capacity).unwrap();
+        let config = ProjectionServiceConfig::try_new(
+            128,
+            worker_capacity,
+            MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap();
         let scheduled_provider = create_provider(state.assets());
         let store =
             ProjectionConnectionService::new(store, storage, config, scheduled_provider).unwrap();
@@ -314,26 +330,9 @@ impl Fixture {
     fn execute_submission(&self, submission: IdleSubmission) -> SubmittedTurn {
         let turn = submission.submitted_turn_id();
         let user_item = submission.user_item_id();
-        let command_home = self.store.live_home_command().unwrap();
-        let home = command_home.home();
-        let command =
-            idle_submission_command(home, self.storage, self.state.assets(), submission).unwrap();
-        match home.execute(command) {
-            CommandOutcome::Committed {
-                later_failure: None,
-                ..
-            } => {}
-            CommandOutcome::NotCommitted { evidence } => {
-                panic!("idle submission unexpectedly not committed: {evidence:?}")
-            }
-            outcome @ CommandOutcome::Committed {
-                later_failure: Some(_),
-                ..
-            } => panic!("idle submission committed with later failure: {outcome:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => {
-                panic!("idle submission indeterminate: {outcome:?}")
-            }
-        }
+        self.store
+            .execute_idle_submission(self.state.assets(), submission)
+            .unwrap();
         SubmittedTurn { turn, user_item }
     }
 

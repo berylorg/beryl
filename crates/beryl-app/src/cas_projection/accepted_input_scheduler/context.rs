@@ -1,14 +1,12 @@
 use std::sync::{Arc, Mutex};
 
-use beryl_home_store::{
-    CommandError, CommitReceipt, HomeGeneration, HomeStore, ReconciliationDescriptor,
-};
+use beryl_home_store::{CommandError, CommitReceipt, HomeGeneration, HomeStore};
 use beryl_model::BerylHomeId;
 use syndic_storage::SyndicStorage;
 
 use super::AcceptedInputSchedulerSignal;
 use crate::cas_projection::{
-    ProjectionCancellationToken,
+    ProjectionCancellationToken, TurnStartAdmissionRequirement,
     persistent_failure::{MasterCommandGate, PersistentFailureTerminalDisposer},
     scheduled_ordinary::ScheduledOrdinaryExecutionProvider,
     service_config::ProjectionWorkerPool,
@@ -88,7 +86,6 @@ pub(super) enum WorkerDisposition {
     },
     CommandIndeterminate {
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     Fatal,
 }
@@ -97,6 +94,7 @@ pub(in crate::cas_projection) struct AcceptedInputSchedulerContext {
     pub(super) home: Arc<HomeStore>,
     pub(super) home_id: BerylHomeId,
     pub(super) home_generation: HomeGeneration,
+    pub(super) turn_start_admission_requirement: TurnStartAdmissionRequirement,
     pub(super) storage: SyndicStorage,
     pub(super) workers: ProjectionWorkerPool,
     pub(super) connections: ConnectionRegistry,
@@ -114,6 +112,7 @@ impl AcceptedInputSchedulerContext {
         home: Arc<HomeStore>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
+        turn_start_admission_requirement: TurnStartAdmissionRequirement,
         storage: SyndicStorage,
         workers: ProjectionWorkerPool,
         connections: ConnectionRegistry,
@@ -127,6 +126,7 @@ impl AcceptedInputSchedulerContext {
             home,
             home_id,
             home_generation,
+            turn_start_admission_requirement,
             storage,
             workers,
             connections,

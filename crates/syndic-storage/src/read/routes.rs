@@ -160,7 +160,7 @@ impl SyndicStorage {
         self.read_route_page(store, &before, range)
     }
 
-    fn route_generation(
+    pub(crate) fn route_generation(
         &self,
         store: &HomeStore,
         key: ThreadRouteKey,
@@ -172,6 +172,19 @@ impl SyndicStorage {
                 .expect("route point bound is nonzero"),
         )?
         .ok_or(SyndicReadError::StaleAcceptedRoute)
+    }
+
+    pub(crate) fn route_generation_head(
+        &self,
+        store: &HomeStore,
+        thread_id: SyndicThreadId,
+    ) -> Result<Option<crate::AcceptedRouteGenerationHeadRecord>, SyndicReadError> {
+        self.point::<AcceptedRouteGenerationHeadsFamily>(
+            store,
+            thread_id,
+            super::SyndicPointReadLimit::new(ROUTE_POINT_MAX_BYTES)
+                .expect("route point bound is nonzero"),
+        )
     }
 
     fn read_route_page(

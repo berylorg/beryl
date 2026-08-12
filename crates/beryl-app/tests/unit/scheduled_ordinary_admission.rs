@@ -22,7 +22,8 @@ use crate::{
     cas_projection::{
         OrdinaryDynamicToolContext, ProjectionConnectionService,
         ProjectionConnectionServiceCloseOutcome, ProjectionCoordinatorError,
-        ProjectionServiceConfig, service_config::ProjectionWorkerPermitError,
+        MinimumTurnCaptureReserve, ProjectionServiceConfig,
+        service_config::ProjectionWorkerPermitError,
     },
 };
 
@@ -217,7 +218,8 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
     let service = ProjectionConnectionService::new(
         home,
         storage,
-        ProjectionServiceConfig::try_new(8, 4).unwrap(),
+        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
         Box::new(provider),
     )
     .unwrap();
@@ -256,7 +258,8 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
     let foreign_service = ProjectionConnectionService::new(
         foreign_home,
         foreign_storage,
-        ProjectionServiceConfig::try_new(8, 4).unwrap(),
+        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
         Box::new(foreign_provider),
     )
     .unwrap();

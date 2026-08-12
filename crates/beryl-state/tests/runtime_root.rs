@@ -71,17 +71,21 @@ fn runtime_and_non_removable_home_root_publish_atomically_and_reopen() {
     store.close().unwrap();
 
     let (reopened, state) = open(directory.path());
-    assert!(state
-        .runtime_roots()
-        .runtime(&reopened, runtime_id)
-        .unwrap()
-        .is_some());
-    assert!(state
-        .runtime_roots()
-        .root(&reopened, root_id)
-        .unwrap()
-        .unwrap()
-        .non_removable());
+    assert!(
+        state
+            .runtime_roots()
+            .runtime(&reopened, runtime_id)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        state
+            .runtime_roots()
+            .root(&reopened, root_id)
+            .unwrap()
+            .unwrap()
+            .non_removable()
+    );
 }
 
 #[test]
@@ -143,8 +147,8 @@ fn concurrent_duplicate_executable_commands_publish_only_one_runtime() {
 fn executable_and_root_uniqueness_have_their_exact_scopes() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
-    create_host_runtime(&store, state, 1, 2, r"C:\One\codex.exe", r"C:\Shared");
-    create_host_runtime(&store, state, 3, 4, r"C:\Two\codex.exe", r"C:\Shared");
+    create_host_runtime(&store, &state, 1, 2, r"C:\One\codex.exe", r"C:\Shared");
+    create_host_runtime(&store, &state, 3, 4, r"C:\Two\codex.exe", r"C:\Shared");
     assert_eq!(
         state
             .runtime_roots()
@@ -200,7 +204,7 @@ fn root_activity_strictly_advances_under_record_revision_control() {
     let (store, state) = open(directory.path());
     create_host_runtime(
         &store,
-        state,
+        &state,
         1,
         2,
         r"C:\Codex\codex.exe",
@@ -330,7 +334,7 @@ fn availability_updates_retain_registry_records_and_bindings() {
     let (store, state) = open(directory.path());
     create_host_runtime(
         &store,
-        state,
+        &state,
         1,
         2,
         r"C:\Codex\codex.exe",
@@ -391,16 +395,20 @@ fn availability_updates_retain_registry_records_and_bindings() {
         outcome => panic!("expected committed root availability update, got {outcome:?}"),
     }
 
-    assert!(state
-        .runtime_roots()
-        .runtime(&store, runtime_id)
-        .unwrap()
-        .is_some());
-    assert!(state
-        .runtime_roots()
-        .root(&store, root_id)
-        .unwrap()
-        .is_some());
+    assert!(
+        state
+            .runtime_roots()
+            .runtime(&store, runtime_id)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        state
+            .runtime_roots()
+            .root(&store, root_id)
+            .unwrap()
+            .is_some()
+    );
     assert_eq!(
         state
             .runtime_roots()
@@ -420,7 +428,7 @@ fn registry_lists_obey_explicit_item_and_byte_bounds() {
     for byte in 1..=3 {
         create_host_runtime(
             &store,
-            state,
+            &state,
             byte,
             byte + 10,
             &format!(r"C:\Codex{byte}\codex.exe"),

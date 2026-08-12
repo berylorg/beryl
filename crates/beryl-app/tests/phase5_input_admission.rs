@@ -1,16 +1,16 @@
+#![cfg(feature = "test-faults")]
+
 use beryl_app::cas_projection::{
-    ProjectionConnectionService, ProjectionServiceConfig, ScheduledOrdinaryAdmission,
+    DURABLE_START_ADMISSION_BUDGET_BYTES, MinimumTurnCaptureReserve, ProjectionConnectionService,
+    ProjectionServiceConfig, ProjectionServiceConfigError, ScheduledOrdinaryAdmission,
     ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
 };
-use beryl_app::input_admission::{
-    InputAdmissionBuildError, idle_submission_command, prepare_accepted_input_admission,
-};
-use beryl_home_store::{CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
-#[cfg(feature = "test-faults")]
+use beryl_app::input_admission::{InputAdmissionBuildError, prepare_accepted_input_admission};
+use beryl_home_store::test_faults::{FaultController, FreeSpaceTestObservation};
 use beryl_home_store::{
-    HomeHealthState,
-    test_faults::{FaultController, FaultPoint},
+    CommandError, CommandOutcome, FreeSpaceOutcome, HomeCommand, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{
     DraftRevision, ExecutionBinding, InputGateRevision, PathFlavor, RootId, RuntimeId, RuntimeMode,
@@ -91,15 +91,26 @@ impl Fixture {
             ))
             .unwrap();
         match store.execute(command) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed thread setup, got {outcome:?}"),
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed thread setup, got {outcome:?}"),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ CommandOutcome::NotCommitted { .. } => {
+                panic!("expected committed thread setup, got {outcome:?}")
+            }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("expected no later failure, got {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("expected committed thread setup, got {outcome:?}")
+            }
         }
         let store = ProjectionConnectionService::new(
             store,
             syndic,
-            ProjectionServiceConfig::try_new(8, 4).unwrap(),
+            ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+                .unwrap(),
             Box::new(UnavailableScheduledOrdinaryProvider),
         )
         .unwrap();
@@ -139,37 +150,44 @@ impl Fixture {
 
     fn publish_payload(&self, payload: &ComposerPayload, updated_at: u64) {
         let content = PreparedContent::composer(payload).unwrap();
-        execute_one(
-            &self.store,
-            self.syndic.begin_content(
-                self.syndic.revision(&self.store).unwrap(),
-                ContentBuild::from_prepared(&content),
-            ),
+        self.execute_one(
+            self.syndic
+                .begin_content(self.revision(), ContentBuild::from_prepared(&content)),
         );
         let mut manifest = content.building_manifest();
         while let Some(append) = ContentAppend::prepare(&manifest, &content).unwrap() {
             manifest = append.next_manifest().clone();
-            execute_one(
-                &self.store,
-                self.syndic
-                    .append_content(self.syndic.revision(&self.store).unwrap(), append),
-            );
+            self.execute_one(self.syndic.append_content(self.revision(), append));
         }
-        let current = self
-            .syndic
-            .current_draft(&self.store, self.thread, point_limit())
-            .unwrap()
-            .unwrap();
+        let current = self.current_draft();
         let update =
             match DraftPayloadUpdate::prepare(&current, &content, time(updated_at)).unwrap() {
                 DraftPayloadUpdateDecision::Update(update) => update,
                 DraftPayloadUpdateDecision::NoChange => panic!("marker payload must be new"),
             };
-        execute_one(
-            &self.store,
-            self.syndic
-                .update_draft_payload(self.syndic.revision(&self.store).unwrap(), update),
-        );
+        self.execute_one(self.syndic.update_draft_payload(self.revision(), update));
+    }
+
+    fn home(&self) -> beryl_app::cas_projection::LiveHomeCommand<'_> {
+        self.store.live_home_command().unwrap()
+    }
+
+    fn revision(&self) -> beryl_model::DomainRevision {
+        let home = self.home();
+        self.syndic.revision(home.home()).unwrap()
+    }
+
+    fn current_draft(&self) -> syndic_storage::SyndicCurrentDraft {
+        let home = self.home();
+        self.syndic
+            .current_draft(home.home(), self.thread, point_limit())
+            .unwrap()
+            .unwrap()
+    }
+
+    fn execute_one(&self, contribution: beryl_home_store::MutationContribution) {
+        let home = self.home();
+        execute_one(home.home(), contribution);
     }
 }
 
@@ -198,28 +216,33 @@ fn execute_one(store: &HomeStore, contribution: beryl_home_store::MutationContri
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
     match store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed contribution, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed contribution, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed contribution, got {outcome:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed contribution, got {outcome:?}")
+        }
     }
 }
 
 #[test]
 fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
-    let mut fixture = Fixture::new(1);
+    let faults = FaultController::new();
+    let mut fixture = Fixture::with_faults(1, faults.clone());
     let first_marker = SyndicDraftMarkerId::from_bytes([10; 16]);
     fixture.publish_marker(first_marker, 2);
     let first_draft = fixture.draft;
     let (_first_asset, first_set) =
         admit_asset(&mut fixture, first_marker, b"first image", first_draft, 20);
-    let first_content = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap()
-        .draft()
-        .content();
+    let first_content = fixture.current_draft().draft().content();
     let first_item = SyndicItemId::from_bytes([11; 16]);
     let second_draft = SyndicDraftId::from_bytes([12; 16]);
     let submission = IdleSubmission::new(
@@ -234,27 +257,25 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         Some(first_set),
         time(3),
     );
-    let command = idle_submission_command(
-        &fixture.store,
-        fixture.syndic,
-        fixture.state.assets(),
-        submission,
-    )
-    .unwrap();
-    match fixture.store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed submission, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed submission, got {outcome:?}"),
-    }
+    faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
+        available_bytes: DURABLE_START_ADMISSION_BUDGET_BYTES + 1,
+        total_free_bytes: DURABLE_START_ADMISSION_BUDGET_BYTES + 1,
+        total_bytes: DURABLE_START_ADMISSION_BUDGET_BYTES + 1,
+    });
+    fixture
+        .store
+        .execute_idle_submission(fixture.state.assets(), submission)
+        .unwrap();
+    assert_eq!(faults.free_space_observation_count(), 1);
 
     let old_owner = AssetOwner::CurrentDraft(fixture.draft);
     let submitted_owner = AssetOwner::SubmittedTurnItem(first_item);
+    let home = fixture.home();
     assert!(
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, old_owner)
+            .owner_head(home.home(), old_owner)
             .unwrap()
             .is_none()
     );
@@ -262,7 +283,7 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, submitted_owner)
+            .owner_head(home.home(), submitted_owner)
             .unwrap()
             .unwrap()
             .set(),
@@ -280,13 +301,7 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         second_draft,
         21,
     );
-    let second_content = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap()
-        .draft()
-        .content();
+    let second_content = fixture.current_draft().draft().content();
     let admission = AcceptedInputAdmission::new(
         fixture.thread,
         ThreadRevision::new(2).unwrap(),
@@ -299,8 +314,9 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         time(5),
     );
     let input_id = admission.accepted_input_id();
+    let home = fixture.home();
     let prepared = prepare_accepted_input_admission(
-        &fixture.store,
+        home.home(),
         fixture.syndic,
         fixture.state.assets(),
         admission,
@@ -312,17 +328,352 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         .unwrap();
 
     let accepted_owner = AssetOwner::AcceptedInput(input_id);
+    let home = fixture.home();
     assert_eq!(
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, accepted_owner)
+            .owner_head(home.home(), accepted_owner)
             .unwrap()
             .unwrap()
             .set(),
         second_set
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .live_home_command()
+        .unwrap()
+        .home()
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
+}
+
+#[test]
+fn turn_start_reserve_denials_leave_direct_draft_and_turn_history_unchanged() {
+    for (seed, observation, expected) in [
+        (
+            101,
+            FreeSpaceTestObservation::Observed {
+                available_bytes: 0,
+                total_free_bytes: 0,
+                total_bytes: 1,
+            },
+            FreeSpaceOutcome::BelowReserve {
+                available_bytes: 0,
+                reserve_bytes: DURABLE_START_ADMISSION_BUDGET_BYTES + 1,
+            },
+        ),
+        (
+            102,
+            FreeSpaceTestObservation::Unavailable,
+            FreeSpaceOutcome::Unavailable,
+        ),
+        (
+            103,
+            FreeSpaceTestObservation::Observed {
+                available_bytes: 2,
+                total_free_bytes: 1,
+                total_bytes: 2,
+            },
+            FreeSpaceOutcome::Indeterminate,
+        ),
+    ] {
+        let faults = FaultController::new();
+        let fixture = Fixture::with_faults(seed, faults.clone());
+        fixture.publish_text("direct admission reserve denial", 2);
+        let before = fixture.current_draft();
+        let submission = IdleSubmission::new(
+            fixture.thread,
+            before.thread().revision(),
+            before.draft().id(),
+            before.draft().revision(),
+            before.draft().content(),
+            InputGateRevision::new(1).unwrap(),
+            SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
+            SyndicItemId::from_bytes([seed.wrapping_add(2); 16]),
+            None,
+            time(3),
+        );
+        let submitted_turn = submission.submitted_turn_id();
+        faults.push_free_space_observation(observation);
+
+        assert!(matches!(
+            fixture
+                .store
+                .execute_idle_submission(fixture.state.assets(), submission),
+            Err(beryl_app::cas_projection::IdleSubmissionExecutionError::FreeSpace(outcome))
+                if outcome == expected
+        ));
+        assert_eq!(faults.free_space_observation_count(), 1);
+        assert_eq!(fixture.current_draft(), before);
+        assert!(
+            fixture
+                .syndic
+                .turn(fixture.home().home(), submitted_turn, point_limit())
+                .unwrap()
+                .is_none(),
+            "free-space denial must precede the direct durable/CAS turn transition"
+        );
+        assert_eq!(
+            fixture
+                .store
+                .accepted_input_scheduler_diagnostics()
+                .workers_started(),
+            0
+        );
+    }
+}
+
+#[test]
+fn marker_bearing_turn_start_denials_preserve_the_durable_draft_and_cas_boundary() {
+    for (seed, observation, expected) in [
+        (
+            111,
+            FreeSpaceTestObservation::Observed {
+                available_bytes: 0,
+                total_free_bytes: 0,
+                total_bytes: 1,
+            },
+            FreeSpaceOutcome::BelowReserve {
+                available_bytes: 0,
+                reserve_bytes: DURABLE_START_ADMISSION_BUDGET_BYTES + 1,
+            },
+        ),
+        (
+            112,
+            FreeSpaceTestObservation::Unavailable,
+            FreeSpaceOutcome::Unavailable,
+        ),
+        (
+            113,
+            FreeSpaceTestObservation::Observed {
+                available_bytes: 2,
+                total_free_bytes: 1,
+                total_bytes: 2,
+            },
+            FreeSpaceOutcome::Indeterminate,
+        ),
+    ] {
+        let faults = FaultController::new();
+        let mut fixture = Fixture::with_faults(seed, faults.clone());
+        let marker = SyndicDraftMarkerId::from_bytes([seed.wrapping_add(10); 16]);
+        fixture.publish_marker(marker, 2);
+        let draft = fixture.draft;
+        let (asset, proof) = admit_asset(
+            &mut fixture,
+            marker,
+            b"phase105 retained marker-bearing image",
+            draft,
+            seed.wrapping_add(20),
+        );
+        let before_draft = fixture.current_draft();
+        let home = fixture.home();
+        let before_thread = fixture
+            .syndic
+            .thread(home.home(), fixture.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let before_history = fixture
+            .syndic
+            .history_summary(home.home(), fixture.thread, point_limit())
+            .unwrap();
+        let before_binding = fixture
+            .syndic
+            .current_binding(home.home(), fixture.thread, point_limit())
+            .unwrap();
+        let before_owner = fixture
+            .state
+            .assets()
+            .owner_head(home.home(), AssetOwner::CurrentDraft(fixture.draft))
+            .unwrap();
+        let before_asset = fixture.state.assets().metadata(home.home(), asset).unwrap();
+        drop(home);
+
+        let submission = IdleSubmission::new(
+            fixture.thread,
+            before_draft.thread().revision(),
+            before_draft.draft().id(),
+            before_draft.draft().revision(),
+            before_draft.draft().content(),
+            InputGateRevision::new(1).unwrap(),
+            SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
+            SyndicItemId::from_bytes([seed.wrapping_add(2); 16]),
+            Some(proof),
+            time(3),
+        );
+        let submitted_turn = submission.submitted_turn_id();
+        faults.push_free_space_observation(observation);
+
+        assert!(matches!(
+            fixture
+                .store
+                .execute_idle_submission(fixture.state.assets(), submission),
+            Err(beryl_app::cas_projection::IdleSubmissionExecutionError::FreeSpace(outcome))
+                if outcome == expected
+        ));
+        assert_eq!(faults.free_space_observation_count(), 1);
+
+        let after_draft = fixture.current_draft();
+        assert_eq!(after_draft, before_draft);
+        assert_eq!(
+            after_draft.draft().content().sealed_marker_summary(),
+            before_draft.draft().content().sealed_marker_summary(),
+            "the durable marker-bearing draft reference must remain unchanged"
+        );
+        let home = fixture.home();
+        let after_thread = fixture
+            .syndic
+            .thread(home.home(), fixture.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_thread, before_thread);
+        assert_eq!(
+            after_thread.committed_tail(),
+            before_thread.committed_tail()
+        );
+        assert_eq!(
+            after_thread.image_label_frontiers(),
+            before_thread.image_label_frontiers(),
+            "the durable image-label frontier must remain unchanged"
+        );
+        assert_eq!(
+            fixture
+                .syndic
+                .history_summary(home.home(), fixture.thread, point_limit())
+                .unwrap(),
+            before_history
+        );
+        assert_eq!(
+            fixture
+                .syndic
+                .current_binding(home.home(), fixture.thread, point_limit())
+                .unwrap(),
+            before_binding,
+            "the CAS-visible durable binding must remain unchanged"
+        );
+        assert_eq!(
+            fixture
+                .state
+                .assets()
+                .owner_head(home.home(), AssetOwner::CurrentDraft(fixture.draft))
+                .unwrap(),
+            before_owner,
+            "the draft asset owner head must remain unchanged"
+        );
+        assert_eq!(
+            fixture.state.assets().metadata(home.home(), asset).unwrap(),
+            before_asset
+        );
+        assert!(
+            fixture
+                .syndic
+                .turn(home.home(), submitted_turn, point_limit())
+                .unwrap()
+                .is_none(),
+            "free-space denial must not publish the new turn"
+        );
+        drop(home);
+        assert_eq!(
+            fixture
+                .store
+                .accepted_input_scheduler_diagnostics()
+                .workers_started(),
+            0,
+            "direct denial must not make scheduler-visible progress"
+        );
+    }
+}
+
+#[test]
+fn direct_turn_start_threshold_requires_the_composed_total() {
+    let required = DURABLE_START_ADMISSION_BUDGET_BYTES + 1;
+    let denied_faults = FaultController::new();
+    let denied = Fixture::with_faults(121, denied_faults.clone());
+    denied.publish_text("threshold denial", 2);
+    let before = denied.current_draft();
+    let denied_submission = IdleSubmission::new(
+        denied.thread,
+        before.thread().revision(),
+        before.draft().id(),
+        before.draft().revision(),
+        before.draft().content(),
+        InputGateRevision::new(1).unwrap(),
+        SyndicDraftId::from_bytes([122; 16]),
+        SyndicItemId::from_bytes([123; 16]),
+        None,
+        time(3),
+    );
+    denied_faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
+        available_bytes: required - 1,
+        total_free_bytes: required - 1,
+        total_bytes: required,
+    });
+    assert!(matches!(
+        denied
+            .store
+            .execute_idle_submission(denied.state.assets(), denied_submission),
+        Err(beryl_app::cas_projection::IdleSubmissionExecutionError::FreeSpace(
+            FreeSpaceOutcome::BelowReserve { reserve_bytes, .. }
+        )) if reserve_bytes == required
+    ));
+    assert_eq!(denied_faults.free_space_observation_count(), 1);
+
+    let sufficient_faults = FaultController::new();
+    let sufficient = Fixture::with_faults(124, sufficient_faults.clone());
+    sufficient.publish_text("threshold sufficient", 2);
+    let current = sufficient.current_draft();
+    let sufficient_submission = IdleSubmission::new(
+        sufficient.thread,
+        current.thread().revision(),
+        current.draft().id(),
+        current.draft().revision(),
+        current.draft().content(),
+        InputGateRevision::new(1).unwrap(),
+        SyndicDraftId::from_bytes([127; 16]),
+        SyndicItemId::from_bytes([128; 16]),
+        None,
+        time(3),
+    );
+    sufficient_faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
+        available_bytes: required,
+        total_free_bytes: required,
+        total_bytes: required,
+    });
+    sufficient
+        .store
+        .execute_idle_submission(sufficient.state.assets(), sufficient_submission)
+        .unwrap();
+    assert_eq!(sufficient_faults.free_space_observation_count(), 1);
+}
+
+#[test]
+fn invalid_turn_start_configuration_performs_no_free_space_query() {
+    let faults = FaultController::new();
+    let directory = tempfile::tempdir().unwrap();
+    let _home = HomeStore::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        MinimumTurnCaptureReserve::try_new(0),
+        Err(beryl_home_store::TurnStartAdmissionRequirementError::ZeroMinimumTurnCaptureReserve)
+    );
+    assert_eq!(
+        ProjectionServiceConfig::try_new(
+            8,
+            4,
+            MinimumTurnCaptureReserve::try_new(u64::MAX).unwrap(),
+        ),
+        Err(ProjectionServiceConfigError::TurnStartAdmissionRequirement(
+            beryl_home_store::TurnStartAdmissionRequirementError::ArithmeticOverflow {
+                budget_bytes: DURABLE_START_ADMISSION_BUDGET_BYTES,
+                capture_reserve_bytes: u64::MAX,
+            }
+        ))
+    );
+    assert_eq!(faults.free_space_observation_count(), 0);
 }
 
 #[test]
@@ -339,13 +690,7 @@ fn missing_draft_asset_owner_rejects_both_domains_without_consuming_the_draft() 
         40,
     );
     let item_id = SyndicItemId::from_bytes([33; 16]);
-    let expected_content = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap()
-        .draft()
-        .content();
+    let expected_content = fixture.current_draft().draft().content();
     let submission = IdleSubmission::new(
         fixture.thread,
         ThreadRevision::new(1).unwrap(),
@@ -359,28 +704,23 @@ fn missing_draft_asset_owner_rejects_both_domains_without_consuming_the_draft() 
         time(3),
     );
     assert!(matches!(
-        idle_submission_command(
-            &fixture.store,
-            fixture.syndic,
-            fixture.state.assets(),
-            submission,
-        ),
-        Err(InputAdmissionBuildError::MissingOwnerHead(owner))
+        fixture
+            .store
+            .execute_idle_submission(fixture.state.assets(), submission),
+        Err(beryl_app::cas_projection::IdleSubmissionExecutionError::Build(
+            InputAdmissionBuildError::MissingOwnerHead(owner)
+        ))
             if owner == AssetOwner::CurrentDraft(fixture.draft)
     ));
 
-    let current = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
+    let current = fixture.current_draft();
     assert_eq!(current.draft().id(), fixture.draft);
     assert_eq!(current.draft().revision().get(), 2);
     assert!(
         fixture
             .syndic
             .turn(
-                &fixture.store,
+                fixture.home().home(),
                 fixture.draft.submitted_turn_id(),
                 point_limit(),
             )
@@ -391,7 +731,10 @@ fn missing_draft_asset_owner_rejects_both_domains_without_consuming_the_draft() 
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, AssetOwner::SubmittedTurnItem(item_id))
+            .owner_head(
+                fixture.home().home(),
+                AssetOwner::SubmittedTurnItem(item_id)
+            )
             .unwrap()
             .is_none()
     );
@@ -399,105 +742,11 @@ fn missing_draft_asset_owner_rejects_both_domains_without_consuming_the_draft() 
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, AssetOwner::CurrentDraft(wrong_owner_draft))
+            .owner_head(
+                fixture.home().home(),
+                AssetOwner::CurrentDraft(wrong_owner_draft),
+            )
             .unwrap()
             .is_some()
     );
-}
-
-#[cfg(feature = "test-faults")]
-#[test]
-fn persistence_cuts_keep_syndic_and_asset_ownership_on_the_same_side() {
-    for (name, point, status, moved) in [
-        (
-            50,
-            FaultPoint::BeforeCommit,
-            InputAdmissionStatus::Absent,
-            false,
-        ),
-        (
-            60,
-            FaultPoint::AfterPersist,
-            InputAdmissionStatus::ExactSubmitted,
-            true,
-        ),
-        (
-            70,
-            FaultPoint::AfterCommitBeforePersist,
-            InputAdmissionStatus::ExactSubmitted,
-            true,
-        ),
-    ] {
-        let faults = FaultController::new();
-        let mut fixture = Fixture::with_faults(name, faults.clone());
-        let marker_id = SyndicDraftMarkerId::from_bytes([name.wrapping_add(2); 16]);
-        fixture.publish_marker(marker_id, 2);
-        let draft_id = fixture.draft;
-        let (_asset_id, proof) =
-            admit_asset(&mut fixture, marker_id, b"fault image", draft_id, name);
-        let content = fixture
-            .syndic
-            .current_draft(&fixture.store, fixture.thread, point_limit())
-            .unwrap()
-            .unwrap()
-            .draft()
-            .content();
-        let item_id = SyndicItemId::from_bytes([name.wrapping_add(3); 16]);
-        let submission = IdleSubmission::new(
-            fixture.thread,
-            ThreadRevision::new(1).unwrap(),
-            draft_id,
-            DraftRevision::new(2).unwrap(),
-            content,
-            InputGateRevision::new(1).unwrap(),
-            SyndicDraftId::from_bytes([name.wrapping_add(4); 16]),
-            item_id,
-            Some(proof),
-            time(3),
-        );
-        let command = idle_submission_command(
-            &fixture.store,
-            fixture.syndic,
-            fixture.state.assets(),
-            submission.clone(),
-        )
-        .unwrap();
-        faults.fail_next(point);
-        match fixture.store.execute(command) {
-            CommandOutcome::NotCommitted {
-                evidence: CommandError::Commit { .. },
-            } if point == FaultPoint::BeforeCommit => {}
-            CommandOutcome::Committed {
-                later_failure: Some(CommandError::Persistence { .. }),
-                ..
-            } if point == FaultPoint::AfterPersist => {}
-            CommandOutcome::Indeterminate {
-                failure: CommandError::Persistence { .. },
-                reconciliation: _,
-            } if point == FaultPoint::AfterCommitBeforePersist => {}
-            outcome => panic!("unexpected input-admission fault outcome at {point:?}: {outcome:?}"),
-        }
-        assert_eq!(fixture.store.health().state(), HomeHealthState::Verifying);
-        fixture.store.verify_health().unwrap();
-        assert_eq!(
-            fixture
-                .syndic
-                .idle_submission_status(&fixture.store, &submission, point_limit())
-                .unwrap(),
-            status
-        );
-        let source = fixture
-            .state
-            .assets()
-            .owner_head(&fixture.store, AssetOwner::CurrentDraft(draft_id))
-            .unwrap();
-        let target = fixture
-            .state
-            .assets()
-            .owner_head(&fixture.store, AssetOwner::SubmittedTurnItem(item_id))
-            .unwrap();
-        assert_eq!(source.is_none(), moved);
-        assert_eq!(target.is_some(), moved);
-        fixture.store.validate_registered_domains().unwrap();
-    }
 }

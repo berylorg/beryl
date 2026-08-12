@@ -1,6 +1,6 @@
 mod support;
 
-use beryl_home_store::CommandOutcome;
+use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, JobId, ResolutionIntentId, SyndicAcceptedInputId,
     SyndicDraftId, SyndicThreadId, SyndicTurnId,
@@ -57,7 +57,7 @@ fn mutation_admission_enforces_the_complete_failure_checkpoint_matrix() {
     for retryable in [true, false] {
         for kind in FAILURE_KINDS {
             for stage in STAGES {
-                let job_id = place_job(&store, state, seed, stage);
+                let job_id = place_job(&store, &state, seed, stage);
                 let job = state.durable_jobs().job(&store, job_id).unwrap().unwrap();
                 let evidence = HandoffFailureEvidence::new(kind, None).unwrap();
                 let contribution = if retryable {
@@ -104,12 +104,18 @@ fn mutation_admission_enforces_the_complete_failure_checkpoint_matrix() {
     assert_eq!(rejected, 58);
     store.close().unwrap();
     let (reopened, _) = open(directory.path());
-    reopened.validate_registered_domains().unwrap();
+    reopened.close().unwrap();
+    let mut schema_boundary = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    beryl_state::BerylState::register_with_schema_validation(&mut schema_boundary).unwrap();
 }
 
 fn place_job(
     store: &beryl_home_store::HomeStore,
-    state: beryl_state::BerylState,
+    state: &beryl_state::BerylState,
     seed: u8,
     stage: Stage,
 ) -> JobId {
@@ -189,7 +195,7 @@ fn place_job(
 
 fn job_revision(
     store: &beryl_home_store::HomeStore,
-    state: beryl_state::BerylState,
+    state: &beryl_state::BerylState,
     job_id: JobId,
 ) -> beryl_model::JobRevision {
     state

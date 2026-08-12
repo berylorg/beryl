@@ -4,6 +4,11 @@ Operator asked why the Syndic storage benchmark reported `fjall` disk usage as 6
 
 # Outcome
 
+This note records the original crates.io 3.1.5 benchmark observation. The live workspace now uses
+Beryl's owned `fjall` fork at package version 3.1.6 with package-owned storage policy and journal
+footprint APIs. The preallocation explanation remains historical background, not current admission
+or configured-limit authority.
+
 The 67,108,864-byte value is explained by fjall 3.1.5's active journal preallocation.
 
 Local resolved source for `fjall 3.1.5` defines `PRE_ALLOCATED_BYTES` as `64 * 1_024 * 1_024` in `src/journal/writer.rs`, then calls `file.set_len(PRE_ALLOCATED_BYTES)` when creating and rotating journal files. `Database::disk_space()` includes the active journal length plus sealed journal bytes and keyspace disk space, so a fresh or small database can report at least one 64 MiB journal even before table data dominates.

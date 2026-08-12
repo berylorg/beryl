@@ -1,4 +1,5 @@
 use super::*;
+use beryl_home_store::HomeHealthState;
 
 impl Ingester {
     pub(super) fn run(mut self) -> ProviderBrokerTerminalReceipt {

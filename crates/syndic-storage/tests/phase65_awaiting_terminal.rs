@@ -263,14 +263,23 @@ fn next_sources(fixture: &ActiveFixture) -> Vec<AcceptedNextSource> {
         .to_vec()
 }
 
-fn typed_error(outcome: &CommandOutcome) -> &SyndicMutationError {
-    let CommandOutcome::NotCommitted { evidence: error } = outcome else {
-        panic!("expected not-committed Syndic validation outcome, got {outcome:?}");
-    };
-    let CommandError::ContributorValidation { source, .. } = error else {
-        panic!("expected Syndic validation rejection, got {error}");
-    };
-    source.downcast_ref().expect("Syndic mutation error")
+fn with_typed_error(outcome: CommandOutcome, assertion: impl FnOnce(&SyndicMutationError)) {
+    match outcome {
+        CommandOutcome::NotCommitted { evidence } => {
+            let CommandError::ContributorValidation { source, .. } = evidence else {
+                panic!("expected Syndic validation rejection, got {evidence}");
+            };
+            assertion(source.downcast_ref().expect("Syndic mutation error"));
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected definitive Syndic validation rejection, got indeterminate {failure}");
+        }
+        outcome => panic!("expected not-committed Syndic validation outcome, got {outcome:?}"),
+    }
 }
 
 fn started_agent_frame(cas_item: CasItemId, at: u64) -> ProviderItemFrameV1 {
@@ -343,16 +352,17 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
             ),
         ),
     );
-    assert!(
-        matches!(
-            typed_error(&outcome),
-            SyndicMutationError::InputGateStateConflict
-                | SyndicMutationError::ActiveSteeringRouteConflict
-                | SyndicMutationError::AcceptedInputDeliveryConflict
-        ),
-        "unexpected refusal: {:?}",
-        typed_error(&outcome)
-    );
+    with_typed_error(outcome, |error| {
+        assert!(
+            matches!(
+                error,
+                SyndicMutationError::InputGateStateConflict
+                    | SyndicMutationError::ActiveSteeringRouteConflict
+                    | SyndicMutationError::AcceptedInputDeliveryConflict
+            ),
+            "unexpected refusal: {error:?}",
+        );
+    });
 
     exact_cas::admit_item_frame(
         &fixture.store,
@@ -446,5 +456,8 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
         fresh_page.records()[0].effective_state(),
         AcceptedRouteEffectiveState::Ready
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

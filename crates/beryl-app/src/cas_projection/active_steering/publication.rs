@@ -1,6 +1,4 @@
-use beryl_home_store::{
-    CommandOutcome, CurrentDomainCommand, HomeGeneration, HomeStore,
-};
+use beryl_home_store::{CommandOutcome, CurrentDomainCommand, HomeGeneration, HomeStore};
 use beryl_model::BerylHomeId;
 use syndic_storage::{
     BeginAcceptedInputDelivery, CompleteAcceptedInputDelivery, RetryAcceptedInputDelivery,
@@ -97,9 +95,9 @@ fn publish_reconciled(
         CommandOutcome::Indeterminate {
             failure,
             reconciliation,
-        } => Err(ProjectionPublicationFailure::CommandIndeterminate {
-            failure,
-            reconciliation,
-        }),
+        } => {
+            reconciliation.install();
+            Err(ProjectionPublicationFailure::CommandIndeterminate { failure })
+        }
     }
 }

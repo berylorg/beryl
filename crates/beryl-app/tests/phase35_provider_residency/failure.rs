@@ -76,7 +76,7 @@ fn prove_fragment_store_failure() {
     let build = harness
         .storage()
         .provider_observation_build(
-            harness.store(),
+            &*harness.store(),
             barrier.observation_id(),
             super::syndic::point_limit(),
         )
@@ -90,10 +90,20 @@ fn prove_fragment_store_failure() {
         )
         .unwrap();
     match harness.store().execute_current(corruption) {
-        beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. } => panic!("expected committed corruption injection, got {outcome:?}"),
-        outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"),
-        outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate corruption injection: {outcome:?}"),
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed corruption injection, got {outcome:?}")
+        }
+        outcome @ beryl_home_store::CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("unexpected later failure: {outcome:?}"),
+        outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
+            panic!("indeterminate corruption injection: {outcome:?}")
+        }
     }
     barrier.release();
 

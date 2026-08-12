@@ -4,18 +4,17 @@ mod fjall_support;
 use std::{error::Error, fmt};
 
 #[cfg(feature = "test-faults")]
-use std::{sync::Arc, thread, time::Duration};
+use std::{thread, time::Duration};
 
 #[cfg(feature = "test-faults")]
 use beryl_home_store::{
+    DomainCallbackError, DomainMutation, DomainValidationError, HomeCommand, MutationBuilder,
     test_faults::{FaultController, FaultPoint},
-    DomainCallbackError, DomainMutation, DomainValidationError, HomeCommand, HomeRecoveryError,
-    MutationBuilder,
 };
 use beryl_home_store::{
     DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
     HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain, WholeHomeScrubTrigger,
 };
 use fjall::{Database, PersistMode};
 use tempfile::tempdir;
@@ -186,7 +185,7 @@ fn shared_physical_key_guard_rejects_empty_codec_output() {
 }
 
 #[test]
-fn registration_scans_every_raw_key_and_value_envelope() {
+fn explicit_schema_registration_scans_every_raw_key_and_value_envelope() {
     let cases: &[(&[u8], &[u8])] = &[
         (&[0, 1], &[0, 0, 0, 1, 7]),
         (&[42], &[0, 0, 0, 1, 7]),
@@ -205,7 +204,9 @@ fn registration_scans_every_raw_key_and_value_envelope() {
         raw_insert(directory.path(), key, value);
 
         let mut reopened = open(directory.path());
-        let error = reopened.register_domain::<StrictDomain>().unwrap_err();
+        let error = reopened
+            .register_domain_with_schema_validation::<StrictDomain>()
+            .unwrap_err();
         assert!(matches!(
             error,
             DomainRegistrationError::ValidationAccess {
@@ -273,7 +274,7 @@ impl DomainMutation<StrictDomain> for FailStructurally {
 
 #[test]
 #[cfg(feature = "test-faults")]
-fn recovery_rejects_raw_corruption_inserted_after_old_handles_drop() {
+fn routine_recovery_ignores_raw_corruption_but_explicit_scrub_rejects_it() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
     let mut store = HomeStore::open_with_faults(
@@ -293,21 +294,21 @@ fn recovery_rejects_raw_corruption_inserted_after_old_handles_drop() {
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 
     let block = faults.block_next(FaultPoint::BeforeReopen);
-    let store = Arc::new(store);
-    let recovering = Arc::clone(&store);
-    let worker = thread::spawn(move || recovering.recover_same_home());
+    let worker = thread::spawn(move || store.recover_same_home());
     assert!(block.wait_until_reached(Duration::from_secs(10)));
     raw_insert(directory.path(), &[42], &valid_value(7));
     block.release();
 
+    let recovered = worker.join().unwrap().unwrap().publish();
     assert!(matches!(
-        worker.join().unwrap(),
-        Err(HomeRecoveryError::DomainValidation(
-            DomainValidationError::Access {
-                source: DomainCallbackSource::Read(_),
-                ..
-            }
-        ))
+        recovered
+            .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Access {
+            source: DomainCallbackSource::Read(_),
+            ..
+        }
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert_eq!(recovered.health().state(), HomeHealthState::Failed);
 }

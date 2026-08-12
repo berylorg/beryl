@@ -8,9 +8,7 @@ use syndic_storage::*;
 
 use super::{
     composer_content_records, draft_id, id,
-    populated::{
-        active_snapshot, active_turn, cas_thread, cas_turn, next_input, populated_records,
-    },
+    populated::{active_snapshot, active_turn, cas_thread, cas_turn, next_input, seed_populated},
     timestamp,
 };
 
@@ -24,19 +22,36 @@ pub fn retryable_input() -> SyndicAcceptedInputId {
     SyndicAcceptedInputId::from_bytes([71; 16])
 }
 
-pub fn mixed_abandonment_records() -> Vec<FixtureRecord> {
-    let mut records = populated_records();
+pub fn seed_mixed_abandonment(store: &HomeStore, storage: SyndicStorage) {
+    seed_populated(store, storage);
+    let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
+    let thread = storage.thread(store, id(40), limit).unwrap().unwrap();
+    let draft = storage
+        .current_draft(store, id(40), limit)
+        .unwrap()
+        .unwrap();
+    let summary = storage
+        .history_summary(store, id(40), limit)
+        .unwrap()
+        .unwrap();
+    let next = storage
+        .accepted_input(store, next_input(), limit)
+        .unwrap()
+        .unwrap();
+    let gate = storage.input_gate(store, id(40), limit).unwrap().unwrap();
+    let head = syndic_storage::test_faults::accepted_route_generation_head(store, storage, id(40))
+        .unwrap()
+        .unwrap();
+    let route = syndic_storage::test_faults::accepted_route_generation(
+        store,
+        storage,
+        id(40),
+        AcceptedRouteGeneration::FIRST,
+    )
+    .unwrap();
     let final_thread_revision = ThreadRevision::new(5).unwrap();
     let final_gate_revision = InputGateRevision::new(6).unwrap();
-    let empty_content = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::AcceptedInput(input) if input.id() == next_input() => {
-                Some(input.content())
-            }
-            _ => None,
-        })
-        .unwrap();
+    let empty_content = next.content();
     let payload =
         ComposerPayload::new(vec![ComposerAtom::text("possibly dispatched").unwrap()]).unwrap();
     let (delivering_content, delivering_content_records) = composer_content_records(&payload);
@@ -44,69 +59,56 @@ pub fn mixed_abandonment_records() -> Vec<FixtureRecord> {
         delivering_content.summary().logical_utf8_bytes(),
         DELIVERY_UNKNOWN_LOGICAL_BYTES
     );
-    for record in &mut records {
-        if let FixtureRecord::Thread(thread) = record
-            && thread.id() == id(40)
-        {
-            *thread = ThreadRecord::new(
-                thread.id(),
-                SelectedPathProof::new(
-                    thread.committed_tail(),
-                    final_thread_revision,
-                    thread.selected_path_digest(),
-                ),
-                thread.current_draft_id(),
-                thread.lineage(),
-                thread.image_label_frontiers(),
-                thread.context_owner_id(),
-            );
-        } else if let FixtureRecord::DraftByThread(index) = record
-            && index.thread_id() == id(40)
-        {
-            *index = DraftByThreadRecord::new(
-                index.thread_id(),
-                index.draft_id(),
-                index.draft_revision(),
+    let mut records = vec![
+        FixtureRecord::Thread(ThreadRecord::new(
+            thread.id(),
+            SelectedPathProof::new(
+                thread.committed_tail(),
                 final_thread_revision,
-            );
-        } else if let FixtureRecord::HistorySummary(summary) = record
-            && summary.thread_id() == id(40)
-        {
-            *summary = HistorySummaryRecord::new(
-                summary.thread_id(),
-                summary.revision().checked_next().unwrap(),
-                final_thread_revision,
-                summary.committed_tail(),
-                summary.selected_path_digest(),
-                summary.complete(),
-                summary.last_activity_at(),
-            );
-        } else if let FixtureRecord::AcceptedInput(input) = record
-            && input.id() == next_input()
-        {
-            let proof = input.admission();
-            *input = AcceptedInputRecord::new(
-                input.id(),
-                input.thread_id(),
-                input.ordinal(),
+                thread.selected_path_digest(),
+            ),
+            thread.current_draft_id(),
+            thread.lineage(),
+            thread.image_label_frontiers(),
+            thread.context_owner_id(),
+        )),
+        FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+            id(40),
+            draft.draft().id(),
+            draft.draft().revision(),
+            final_thread_revision,
+        )),
+        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
+            id(40),
+            summary.revision().checked_next().unwrap(),
+            final_thread_revision,
+            summary.committed_tail(),
+            summary.selected_path_digest(),
+            summary.complete(),
+            summary.last_activity_at(),
+        )),
+        FixtureRecord::AcceptedInput(
+            AcceptedInputRecord::new(
+                next.id(),
+                next.thread_id(),
+                next.ordinal(),
                 AcceptedInputAdmissionProof::new(
-                    proof.expected_thread_revision(),
-                    proof.source_draft_id(),
-                    proof.expected_draft_revision(),
-                    proof.expected_gate_revision(),
+                    next.admission().expected_thread_revision(),
+                    next.admission().source_draft_id(),
+                    next.admission().expected_draft_revision(),
+                    next.admission().expected_gate_revision(),
                     SyndicDraftId::from_bytes(*delivering_input().as_bytes()),
                 )
                 .unwrap(),
-                input.route_generation(),
-                input.content(),
-                input.asset_reference_set(),
-                input.admitted_at(),
+                next.route_generation(),
+                next.content(),
+                next.asset_reference_set(),
+                next.admitted_at(),
             )
-            .unwrap();
-        } else if let FixtureRecord::InputGate(gate) = record
-            && gate.thread_id() == id(40)
-        {
-            *gate = InputGateRecord::new(
+            .unwrap(),
+        ),
+        FixtureRecord::InputGate(
+            InputGateRecord::new(
                 gate.thread_id(),
                 final_gate_revision,
                 gate.state().clone(),
@@ -120,11 +122,10 @@ pub fn mixed_abandonment_records() -> Vec<FixtureRecord> {
                 1,
                 DELIVERY_UNKNOWN_LOGICAL_BYTES,
             )
-            .unwrap();
-        } else if let FixtureRecord::AcceptedRouteGeneration(route) = record
-            && route.thread_id() == id(40)
-        {
-            *route = AcceptedRouteGenerationRecord::new(
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedRouteGeneration(
+            AcceptedRouteGenerationRecord::new(
                 id(40),
                 AcceptedRouteGeneration::FIRST,
                 AcceptedRouteRevision::new(3).unwrap(),
@@ -139,40 +140,31 @@ pub fn mixed_abandonment_records() -> Vec<FixtureRecord> {
                 DELIVERY_UNKNOWN_LOGICAL_BYTES,
                 DELIVERY_UNKNOWN_LOGICAL_BYTES,
             )
-            .unwrap();
-        } else if let FixtureRecord::AcceptedRouteGenerationHead(head) = record
-            && head.thread_id() == id(40)
-        {
-            *head = AcceptedRouteGenerationHeadRecord::new(
-                id(40),
-                AcceptedRouteHeadProof::new(
-                    AcceptedRouteGeneration::FIRST,
-                    AcceptedRouteRevision::new(3).unwrap(),
-                ),
-            );
-        } else if let FixtureRecord::AcceptedReadySource(source) = record
-            && source.thread_id() == id(40)
-        {
-            *source = AcceptedReadySourceRecord::new(
-                id(40),
-                final_gate_revision,
-                AcceptedRouteGeneration::FIRST,
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedRouteGenerationHead(AcceptedRouteGenerationHeadRecord::new(
+            id(40),
+            AcceptedRouteHeadProof::new(
+                head.proof().generation(),
                 AcceptedRouteRevision::new(3).unwrap(),
-                AcceptedInputOrdinal::FIRST,
-                AcceptedInputOrdinal::new(4).unwrap(),
-            );
-        } else if let FixtureRecord::AcceptedNextSource(source) = record
-            && source.thread_id() == id(40)
-        {
-            *source = AcceptedNextSourceRecord::new(
-                id(40),
-                AcceptedRouteGeneration::FIRST,
-                AcceptedRouteRevision::new(3).unwrap(),
-                AcceptedInputOrdinal::FIRST,
-                AcceptedInputOrdinal::new(4).unwrap(),
-            );
-        }
-    }
+            ),
+        )),
+        FixtureRecord::AcceptedReadySource(AcceptedReadySourceRecord::new(
+            id(40),
+            final_gate_revision,
+            AcceptedRouteGeneration::FIRST,
+            AcceptedRouteRevision::new(3).unwrap(),
+            AcceptedInputOrdinal::FIRST,
+            AcceptedInputOrdinal::new(4).unwrap(),
+        )),
+        FixtureRecord::AcceptedNextSource(AcceptedNextSourceRecord::new(
+            id(40),
+            AcceptedRouteGeneration::FIRST,
+            AcceptedRouteRevision::new(3).unwrap(),
+            AcceptedInputOrdinal::FIRST,
+            AcceptedInputOrdinal::new(4).unwrap(),
+        )),
+    ];
     for (input_id, ordinal, lifecycle, content, replacement) in [
         (
             delivering_input(),
@@ -251,7 +243,7 @@ pub fn mixed_abandonment_records() -> Vec<FixtureRecord> {
         ]);
     }
     records.extend(delivering_content_records);
-    records
+    super::commit(store, storage, super::batch(records));
 }
 
 pub fn abandonment_request(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBinding {

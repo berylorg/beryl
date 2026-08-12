@@ -8,8 +8,8 @@ use beryl_model::{
 use beryl_state::{
     ActivateRestoringClaim, BeginSessionRestore, BerylStateBootstrap, BerylStateRegistrationError,
     CreateClaimedWindow, InitializeThreadlessWindow, MarkOrderlyExit, RememberedTarget,
-    RemoveSessionWindow, ReplaceWindowClaim, SessionExitIntent, SessionMutationError, SessionState,
-    UpdateWindowPlacement, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
+    RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
+    SessionExitIntent, SessionMutationError, SessionState, UpdateWindowPlacement,
 };
 use tempfile::tempdir;
 

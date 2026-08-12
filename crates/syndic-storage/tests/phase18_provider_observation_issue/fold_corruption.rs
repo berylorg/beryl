@@ -17,13 +17,12 @@ fn publish_duplicate_start_issue(fixture: &Fixture, observation_byte: u8) {
         SourceEventPayload::ProviderObservationIssue(Box::new(issue)),
         timestamp(6),
     );
-    execute(
+    committed_command(execute(
         &fixture.store,
         fixture
             .storage
             .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), event),
-    )
-    .unwrap();
+    ));
 }
 
 fn publish_completion_mismatch_terminal(fixture: &Fixture) {
@@ -42,13 +41,12 @@ fn publish_completion_mismatch_terminal(fixture: &Fixture) {
         ),
         timestamp(7),
     );
-    execute(
+    committed_command(execute(
         &fixture.store,
         fixture
             .storage
             .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), event),
-    )
-    .unwrap();
+    ));
 }
 
 fn replace_folded_issue(fixture: &Fixture, issue: Option<ProviderObservationIssueReason>) {
@@ -74,18 +72,19 @@ fn replace_folded_issue(fixture: &Fixture, issue: Option<ProviderObservationIssu
     .unwrap();
     let mut batch = FixtureBatch::new();
     batch.put(FixtureRecord::TurnState(corrupted)).unwrap();
-    execute(
+    committed_command(execute(
         &fixture.store,
         fixture
             .storage
             .fixture_contribution(fixture.storage.revision(&fixture.store).unwrap(), batch),
-    )
-    .unwrap();
+    ));
 }
 
 fn assert_current_and_reopen_reject(fixture: Fixture) {
     let Fixture { store, home, .. } = fixture;
-    let current_error = store.validate_registered_domains().unwrap_err();
+    let current_error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         current_error.to_string().contains(FOLD_MISMATCH),
         "unexpected current-domain validation error: {current_error}"

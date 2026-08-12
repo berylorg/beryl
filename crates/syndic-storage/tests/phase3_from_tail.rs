@@ -49,10 +49,50 @@ fn execute(
 fn assert_committed(outcome: beryl_home_store::CommandOutcome) {
     match outcome {
         beryl_home_store::CommandOutcome::Committed {
+            receipt,
             later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("unexpected child-thread command outcome: {outcome:?}"),
+        } => drop(receipt),
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+        } => {
+            drop(receipt);
+            panic!("expected clean child-thread command, got later failure: {failure:?}")
+        }
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected clean child-thread command, got definitive non-commit: {evidence:?}")
+        }
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean child-thread command, got indeterminate outcome: {failure:?}")
+        }
+    }
+}
+
+fn assert_not_committed(outcome: beryl_home_store::CommandOutcome) -> CommandError {
+    match outcome {
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => evidence,
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure,
+        } => {
+            drop(receipt);
+            panic!(
+                "expected definitive child-thread rejection, got committed outcome with later failure: {later_failure:?}"
+            )
+        }
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!(
+                "expected definitive child-thread rejection, got indeterminate outcome: {failure:?}"
+            )
+        }
     }
 }
 
@@ -129,13 +169,12 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
         Err(CreateThreadError::TimestampPrecedesSourceActivity)
     );
     let creation = CreateThread::from_tail(id(4), draft_id(5), timestamp(5), tail).unwrap();
-    execute(
+    assert_committed(execute(
         &store,
         storage,
         storage.revision(&store).unwrap(),
         creation.clone(),
-    )
-    .unwrap();
+    ));
 
     let current = storage
         .current_draft(&store, id(4), limit())
@@ -175,7 +214,9 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
             .unwrap(),
         ThreadCreationStatus::Exact
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -204,10 +245,15 @@ fn shared_tail_creation_conflicts_then_retries_without_copying_history() {
     let first = CreateThread::from_tail(id(13), draft_id(14), timestamp(2), tail.clone()).unwrap();
     let second = CreateThread::from_tail(id(15), draft_id(16), timestamp(2), tail).unwrap();
     let shared_revision = storage.revision(&store).unwrap();
-    execute(&store, storage, shared_revision, first).unwrap();
-    let conflict = execute(&store, storage, shared_revision, second.clone()).unwrap_err();
+    assert_committed(execute(&store, storage, shared_revision, first));
+    let conflict = assert_not_committed(execute(&store, storage, shared_revision, second.clone()));
     assert!(matches!(conflict, CommandError::Conflict { .. }));
-    execute(&store, storage, storage.revision(&store).unwrap(), second).unwrap();
+    assert_committed(execute(
+        &store,
+        storage,
+        storage.revision(&store).unwrap(),
+        second,
+    ));
     for thread in [id(13), id(15)] {
         let current = storage
             .current_draft(&store, thread, limit())
@@ -219,7 +265,9 @@ fn shared_tail_creation_conflicts_then_retries_without_copying_history() {
             DraftSubmissionIntent::Ordinary
         );
     }
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -238,13 +286,12 @@ fn from_tail_ordinary_submission_parents_to_the_current_tail() {
         .unwrap();
     let child_thread = id(20);
     let child_draft = draft_id(21);
-    execute(
+    assert_committed(execute(
         &store,
         storage,
         storage.revision(&store).unwrap(),
         CreateThread::from_tail(child_thread, child_draft, timestamp(5), tail).unwrap(),
-    )
-    .unwrap();
+    ));
 
     let content = PreparedContent::composer(&payload("submitted from shared tail")).unwrap();
     stage_prepared_content(&store, storage, &content);
@@ -259,13 +306,7 @@ fn from_tail_ordinary_submission_parents_to_the_current_tail() {
     let mut save = HomeCommand::new(store.home_revision().unwrap());
     save.add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
         .unwrap();
-    match store.execute(save) {
-        beryl_home_store::CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected clean child draft save, got {outcome:?}"),
-    }
+    assert_committed(store.execute(save));
 
     let current = storage
         .current_draft(&store, child_thread, limit())
@@ -292,20 +333,16 @@ fn from_tail_ordinary_submission_parents_to_the_current_tail() {
     submit
         .add(storage.submit_idle_draft(storage.revision(&store).unwrap(), submission))
         .unwrap();
-    match store.execute(submit) {
-        beryl_home_store::CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected clean child draft submission, got {outcome:?}"),
-    }
+    assert_committed(store.execute(submit));
 
     let submitted = storage
         .turn(&store, submitted_turn, limit())
         .unwrap()
         .unwrap();
     assert_eq!(submitted.parent(), ConversationParent::Turn(source_turn));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -335,15 +372,14 @@ fn source_activity_change_invalidates_a_captured_creation_proof() {
     let mut save = HomeCommand::new(store.home_revision().unwrap());
     save.add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
         .unwrap();
-    match store.execute(save) {
-        beryl_home_store::CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected clean conflicting draft save, got {outcome:?}"),
-    }
+    assert_committed(store.execute(save));
 
-    let error = execute(&store, storage, storage.revision(&store).unwrap(), creation).unwrap_err();
+    let error = assert_not_committed(execute(
+        &store,
+        storage,
+        storage.revision(&store).unwrap(),
+        creation,
+    ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceTailConflict
@@ -365,7 +401,12 @@ fn draft_update_survives_a_same_draft_thread_revision_advance() {
         exact_cas::execution_binding(),
         timestamp(1),
     );
-    execute(&store, storage, storage.revision(&store).unwrap(), creation).unwrap();
+    assert_committed(execute(
+        &store,
+        storage,
+        storage.revision(&store).unwrap(),
+        creation,
+    ));
     let current = storage
         .current_draft(&store, thread_id, limit())
         .unwrap()
@@ -381,13 +422,7 @@ fn draft_update_survives_a_same_draft_thread_revision_advance() {
     command
         .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()))
         .unwrap();
-    match store.execute(command) {
-        beryl_home_store::CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected clean later draft save, got {outcome:?}"),
-    }
+    assert_committed(store.execute(command));
 
     let committed = storage
         .current_draft(&store, thread_id, limit())
@@ -398,7 +433,9 @@ fn draft_update_survives_a_same_draft_thread_revision_advance() {
         ThreadRevision::new(2).unwrap()
     );
     assert!(update.matches_committed(&committed));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -468,7 +505,7 @@ fn advance_empty_thread_revision(
 }
 
 #[test]
-fn surfaced_post_persist_failure_reconciles_the_whole_new_draft() {
+fn surfaced_post_persist_failure_recovers_the_durable_new_draft() {
     let home = TestHome::new("phase3-post-persist");
     let faults = FaultController::new();
     let mut store = beryl_home_store::HomeStore::open_with_faults(
@@ -484,7 +521,12 @@ fn surfaced_post_persist_failure_reconciles_the_whole_new_draft() {
         exact_cas::execution_binding(),
         timestamp(1),
     );
-    execute(&store, storage, storage.revision(&store).unwrap(), creation).unwrap();
+    assert_committed(execute(
+        &store,
+        storage,
+        storage.revision(&store).unwrap(),
+        creation,
+    ));
     let current = storage
         .current_draft(&store, thread_id, limit())
         .unwrap()
@@ -501,18 +543,24 @@ fn surfaced_post_persist_failure_reconciles_the_whole_new_draft() {
         .unwrap();
     faults.fail_next(FaultPoint::AfterPersist);
     assert!(matches!(
+        store.execute(command),
         beryl_home_store::CommandOutcome::Committed {
             receipt: _,
             later_failure: Some(CommandError::Persistence { .. })
         }
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-    store.verify_health().unwrap();
-    let reconciled = storage
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    let recovery = store.recover_same_home().unwrap();
+    let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
+    let store = recovery.publish();
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    let recovered = storage
         .current_draft(&store, thread_id, limit())
         .unwrap()
         .unwrap();
-    assert!(update.matches_committed(&reconciled));
-    store.validate_registered_domains().unwrap();
+    assert!(update.matches_committed(&recovered));
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

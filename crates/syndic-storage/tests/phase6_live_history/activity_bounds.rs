@@ -305,11 +305,10 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
     else {
         panic!("next-period draft must become nonempty")
     };
-    execute(
+    assert_committed(execute(
         &store,
         storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    )
-    .unwrap();
+    ));
     let current = storage
         .current_draft(&store, thread, limit())
         .unwrap()
@@ -330,11 +329,10 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         None,
         timestamp(52),
     );
-    execute(
+    assert_committed(execute(
         &store,
         storage.submit_idle_draft(storage.revision(&store).unwrap(), submission),
-    )
-    .unwrap();
+    ));
     let next = storage
         .activity_query_head(&store, thread, limit())
         .unwrap()

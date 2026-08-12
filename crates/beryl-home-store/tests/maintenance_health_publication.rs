@@ -10,17 +10,17 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{committed, AlphaDomain, PutBytes};
+use support::{AlphaDomain, PutBytes, committed};
 
 fn sidecar_limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1_024).unwrap())
 }
 
-fn assert_verifying(store: &HomeStore) {
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
+fn assert_failed(store: &HomeStore) {
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
     assert!(matches!(
         store.home_revision(),
-        Err(ReadError::HealthGate(error)) if error.state() == HomeHealthState::Verifying
+        Err(ReadError::HealthGate(error)) if error.state() == HomeHealthState::Failed
     ));
 }
 
@@ -44,7 +44,7 @@ fn receipt_revision_rejects_an_unobserved_fjall_maintenance_terminal() {
         store.receipt_domain_revision(&receipt, alpha),
         Err(CommitReceiptError::StorageHealth { .. })
     ));
-    assert_verifying(&store);
+    assert_failed(&store);
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn sidecar_admission_rejects_an_unobserved_fjall_maintenance_terminal() {
             ..
         })
     ));
-    assert_verifying(&store);
+    assert_failed(&store);
 }
 
 #[test]
@@ -90,5 +90,5 @@ fn sidecar_verification_rejects_an_unobserved_fjall_maintenance_terminal() {
             ..
         })
     ));
-    assert_verifying(&store);
+    assert_failed(&store);
 }

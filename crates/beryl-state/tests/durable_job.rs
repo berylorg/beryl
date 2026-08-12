@@ -44,7 +44,7 @@ fn admission(
 
 fn admit(
     store: &beryl_home_store::HomeStore,
-    state: beryl_state::BerylState,
+    state: &beryl_state::BerylState,
     admission: BranchHandoffJobAdmission,
 ) {
     match execute(
@@ -64,7 +64,7 @@ fn admit(
 
 fn job(
     store: &beryl_home_store::HomeStore,
-    state: beryl_state::BerylState,
+    state: &beryl_state::BerylState,
     job_id: JobId,
 ) -> beryl_state::BranchHandoffJobRecord {
     state.durable_jobs().job(store, job_id).unwrap().unwrap()
@@ -77,9 +77,9 @@ fn admission_is_idempotent_queryable_and_live_after_reopen() {
     let first = admission(1, 1, 10, "one");
     let request = first.request().clone();
     let job_id = first.job_id();
-    admit(&store, state, first);
+    admit(&store, &state, first);
 
-    let persisted = job(&store, state, job_id);
+    let persisted = job(&store, &state, job_id);
     assert_eq!(
         persisted.lifecycle(),
         BranchHandoffJobLifecycle::WaitingResolvingTurn
@@ -133,7 +133,7 @@ fn admission_is_idempotent_queryable_and_live_after_reopen() {
 
     store.close().unwrap();
     let (reopened, state) = open(directory.path());
-    assert_eq!(job(&reopened, state, job_id), persisted);
+    assert_eq!(job(&reopened, &state, job_id), persisted);
     assert_eq!(
         state
             .durable_jobs()
@@ -151,7 +151,7 @@ fn failure_kinds_cannot_claim_an_impossible_job_checkpoint() {
     let (store, state) = open(directory.path());
     let first = admission(9, 1, 19, "failure-stage");
     let job_id = first.job_id();
-    admit(&store, state, first);
+    admit(&store, &state, first);
 
     for evidence in [
         HandoffFailureEvidence::new(HandoffFailureKind::CasRejectedBeforeAcceptance, None).unwrap(),
@@ -162,7 +162,7 @@ fn failure_kinds_cannot_claim_an_impossible_job_checkpoint() {
                 state.durable_jobs().revision(&store).unwrap(),
                 RecordRetryableHandoffFailure::new(
                     job_id,
-                    job(&store, state, job_id).revision(),
+                    job(&store, &state, job_id).revision(),
                     evidence,
                 ),
             )
@@ -171,7 +171,7 @@ fn failure_kinds_cannot_claim_an_impossible_job_checkpoint() {
                 state.durable_jobs().revision(&store).unwrap(),
                 RecordTerminalHandoffFailure::new(
                     job_id,
-                    job(&store, state, job_id).revision(),
+                    job(&store, &state, job_id).revision(),
                     evidence,
                 ),
             )
@@ -185,7 +185,7 @@ fn failure_kinds_cannot_claim_an_impossible_job_checkpoint() {
             Some(DurableJobMutationError::FailureKindMismatch { .. })
         ));
         assert_eq!(
-            job(&store, state, job_id).lifecycle(),
+            job(&store, &state, job_id).lifecycle(),
             BranchHandoffJobLifecycle::WaitingResolvingTurn
         );
     }
@@ -197,13 +197,13 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
     let (store, state) = open(directory.path());
     let first = admission(3, 1, 11, "retry");
     let job_id = first.job_id();
-    admit(&store, state, first);
+    admit(&store, &state, first);
 
     match execute(
         &store,
         state.durable_jobs().complete_resolving_turn(
             state.durable_jobs().revision(&store).unwrap(),
-            CompleteResolvingTurn::new(job_id, job(&store, state, job_id).revision()),
+            CompleteResolvingTurn::new(job_id, job(&store, &state, job_id).revision()),
         ),
     ) {
         CommandOutcome::Committed {
@@ -220,7 +220,7 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
         &store,
         state.durable_jobs().start_parent_handoff(
             state.durable_jobs().revision(&store).unwrap(),
-            StartParentHandoff::new(job_id, job(&store, state, job_id).revision(), parent),
+            StartParentHandoff::new(job_id, job(&store, &state, job_id).revision(), parent),
         ),
     ) {
         CommandOutcome::Committed {
@@ -240,7 +240,7 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
             state.durable_jobs().revision(&store).unwrap(),
             RecordRetryableHandoffFailure::new(
                 job_id,
-                job(&store, state, job_id).revision(),
+                job(&store, &state, job_id).revision(),
                 retryable.clone(),
             ),
         ),
@@ -251,7 +251,7 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
         } => {}
         outcome => panic!("expected committed retryable failure recording, got {outcome:?}"),
     }
-    let failed = job(&store, state, job_id);
+    let failed = job(&store, &state, job_id);
     assert!(matches!(
         failed.state(),
         BranchHandoffJobState::RetryableFailed {
@@ -274,7 +274,7 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
         outcome => panic!("expected committed branch-handoff retry, got {outcome:?}"),
     }
     assert!(matches!(
-        job(&store, state, job_id).state(),
+        job(&store, &state, job_id).state(),
         BranchHandoffJobState::StartingParent { parent: retained } if *retained == parent
     ));
 
@@ -288,7 +288,7 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
             state.durable_jobs().revision(&store).unwrap(),
             RecordParentCasAcceptance::new(
                 job_id,
-                job(&store, state, job_id).revision(),
+                job(&store, &state, job_id).revision(),
                 cas.clone(),
             ),
         ),
@@ -310,7 +310,7 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
             state.durable_jobs().revision(&store).unwrap(),
             RecordTerminalHandoffFailure::new(
                 job_id,
-                job(&store, state, job_id).revision(),
+                job(&store, &state, job_id).revision(),
                 terminal.clone(),
             ),
         ),
@@ -321,7 +321,7 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
         } => {}
         outcome => panic!("expected committed terminal failure recording, got {outcome:?}"),
     }
-    let failed = job(&store, state, job_id);
+    let failed = job(&store, &state, job_id);
     assert!(matches!(
         failed.state(),
         BranchHandoffJobState::TerminalFailed {
@@ -332,16 +332,18 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
             evidence,
         } if *retained == parent && retained_cas == &cas && evidence == &terminal
     ));
-    assert!(state
-        .durable_jobs()
-        .list_live(&store, None, CursorReadLimits::new(8, 1024 * 1024).unwrap(),)
-        .unwrap()
-        .records()
-        .is_empty());
+    assert!(
+        state
+            .durable_jobs()
+            .list_live(&store, None, CursorReadLimits::new(8, 1024 * 1024).unwrap(),)
+            .unwrap()
+            .records()
+            .is_empty()
+    );
 
     let second = admission(4, 2, 11, "fresh-after-terminal");
     let second_job = second.job_id();
-    admit(&store, state, second);
+    admit(&store, &state, second);
     assert_eq!(
         state
             .durable_jobs()
@@ -361,12 +363,12 @@ fn success_retains_relationships_and_cannot_regress() {
     let discussion_id = first.discussion_thread_id();
     let parent_thread_id = first.parent_thread_id();
     let job_id = first.job_id();
-    admit(&store, state, first);
+    admit(&store, &state, first);
     match execute(
         &store,
         state.durable_jobs().complete_resolving_turn(
             state.durable_jobs().revision(&store).unwrap(),
-            CompleteResolvingTurn::new(job_id, job(&store, state, job_id).revision()),
+            CompleteResolvingTurn::new(job_id, job(&store, &state, job_id).revision()),
         ),
     ) {
         CommandOutcome::Committed {
@@ -381,7 +383,7 @@ fn success_retains_relationships_and_cannot_regress() {
             state.durable_jobs().revision(&store).unwrap(),
             StartParentHandoff::new(
                 job_id,
-                job(&store, state, job_id).revision(),
+                job(&store, &state, job_id).revision(),
                 ParentHandoffIdentity::new(
                     SyndicAcceptedInputId::from_bytes([72; 16]),
                     SyndicTurnId::from_bytes([73; 16]),
@@ -401,7 +403,7 @@ fn success_retains_relationships_and_cannot_regress() {
             state.durable_jobs().revision(&store).unwrap(),
             RecordParentCasAcceptance::new(
                 job_id,
-                job(&store, state, job_id).revision(),
+                job(&store, &state, job_id).revision(),
                 ParentCasIdentity::new(
                     CasThreadId::new("successful-parent-thread").unwrap(),
                     CasTurnId::new("successful-parent-turn").unwrap(),
@@ -420,7 +422,7 @@ fn success_retains_relationships_and_cannot_regress() {
         &store,
         state.durable_jobs().succeed_branch_handoff(
             state.durable_jobs().revision(&store).unwrap(),
-            SucceedBranchHandoff::new(job_id, job(&store, state, job_id).revision()),
+            SucceedBranchHandoff::new(job_id, job(&store, &state, job_id).revision()),
         ),
     ) {
         CommandOutcome::Committed {
@@ -430,16 +432,18 @@ fn success_retains_relationships_and_cannot_regress() {
         outcome => panic!("expected committed branch-handoff success, got {outcome:?}"),
     }
 
-    let succeeded = job(&store, state, job_id);
+    let succeeded = job(&store, &state, job_id);
     assert_eq!(succeeded.lifecycle(), BranchHandoffJobLifecycle::Succeeded);
     assert_eq!(succeeded.discussion_thread_id(), discussion_id);
     assert_eq!(succeeded.parent_thread_id(), parent_thread_id);
-    assert!(state
-        .durable_jobs()
-        .list_live(&store, None, CursorReadLimits::new(8, 1024 * 1024).unwrap(),)
-        .unwrap()
-        .records()
-        .is_empty());
+    assert!(
+        state
+            .durable_jobs()
+            .list_live(&store, None, CursorReadLimits::new(8, 1024 * 1024).unwrap(),)
+            .unwrap()
+            .records()
+            .is_empty()
+    );
 
     let outcome = execute(
         &store,
@@ -484,10 +488,12 @@ fn success_retains_relationships_and_cannot_regress() {
 fn resolution_and_failure_evidence_are_strictly_bounded() {
     assert!(ResolutionText::new("").is_err());
     assert!(ResolutionText::new("x".repeat(64 * 1024 + 1)).is_err());
-    assert!(HandoffFailureEvidence::new(
-        HandoffFailureKind::InvariantViolation,
-        Some(&"x".repeat(2 * 1024 + 1)),
-    )
-    .is_err());
+    assert!(
+        HandoffFailureEvidence::new(
+            HandoffFailureKind::InvariantViolation,
+            Some(&"x".repeat(2 * 1024 + 1)),
+        )
+        .is_err()
+    );
     assert!(ResolutionAttemptOrdinal::new(0).is_err());
 }

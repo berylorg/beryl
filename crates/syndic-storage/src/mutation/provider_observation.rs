@@ -1,7 +1,7 @@
 use beryl_home_store::{
     CurrentDomainCommand, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    MutationBuildError, MutationBuilder, MutationContribution, ReconciliationReservation,
-    ReadError,
+    MutationBuildError, MutationBuilder, MutationContribution, ReadError,
+    ReconciliationReservation,
 };
 use beryl_model::DomainRevision;
 

@@ -88,12 +88,16 @@ fn proven_not_dispatched_activation_returns_to_the_same_valid_projection() {
             .unwrap()
             .is_none()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .cancelled_binding_activation_status(&reopened, &cancellation, point_limit())

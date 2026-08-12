@@ -8,8 +8,8 @@ use beryl_home_store::{
 use crate::{RecordRevision, ValueError};
 
 use super::{
-    codec::SettingRecordCodec, SettingKey, SettingRecord, SettingValue, SettingsDomain,
-    SETTINGS_RECORD_LIMIT,
+    SETTINGS_RECORD_LIMIT, SettingKey, SettingRecord, SettingValue, SettingsDomain,
+    codec::SettingRecordCodec,
 };
 
 /// Exact record state expected by one staged setting update.

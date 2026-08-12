@@ -82,6 +82,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   reading transcript-view pages, reading projection records, reading resource metadata, and reading
   resource byte ranges, plus reading bounded logical UTF-8 pages from one exact sealed content
   reference.
+- The package exposes checked maximum mutation-footprint descriptors for exactly two public durable-
+  start operations: idle draft submission and accepted-input promotion. Each descriptor derives
+  its maximum record count and encoded key-plus-value bytes from the operation's package-owned V5
+  record shapes and declared field bounds with checked arithmetic. It is stable for a given schema
+  contract and is testable without opening a home or constructing caller payloads.
+- A Syndic footprint describes only the records contributed by that Syndic operation. It does not
+  accept a caller-provided byte estimate and does not include Beryl-state asset-owner transfer,
+  home-store participant metadata or home revision, Fjall journal framing, a capture reserve,
+  filesystem allocation, or admission policy.
 - Routine open validates the persisted domain and family registration/schema declarations and
   reacquires one fresh typed handle. It does not walk application records, resume a physical cursor,
   or publish work merely because a prior service observed it. Exhaustive record walks are reserved
@@ -899,6 +908,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `doc/systems/syndic-conversation-history/concepts.md`. Malformed or undecidable syntax is emitted
   as source-preserving spans of at most 8,192 UTF-8 bytes.
 - Every bounded collection encodes its exact count before its elements, rejects multiplication or allocation overflow before materialization, and rejects trailing bytes, unknown tags, invalid UTF-8, invalid enum combinations, and noncanonical option encodings.
+- Footprint tests independently enumerate every record shape in idle submission and accepted-input
+  promotion, prove each declared maximum encoded key-plus-value length, and checked-sum the exact
+  per-operation record and byte totals. An unrepresentable total is a package contract failure; it
+  is never saturated, wrapped, or replaced by a caller estimate.
 - Home-store page, item, stored-byte, and decoded-byte limit failures remain typed read failures and
   do not imply durable corruption. Mutation and validation callbacks perform only operation-bounded
   reads and never wait for resource capacity while holding the serialized writer.
@@ -1302,8 +1315,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `ProviderObservationStager::seal` consumes its input stager on invocation for every outcome.
   `NotCommitted` carries neither receipt, descriptor, nor sealed handle; it does not authorize an
   implicit reopen or retry. `Committed` returns the exact sealed handle, receipt, and optional later
-  failure. `Indeterminate` returns the sole reconciliation custody and failure but no receipt,
-  sealed handle, or other publishable successor.
+  failure. `Indeterminate` returns the failure plus one move-only seal custody guard that privately
+  owns the sole home-store reconciliation custody and the inert consumed stager, but no receipt,
+  sealed handle, or other publishable successor. The guard exposes only one terminal `install`
+  operation: it first installs home custody into the originating registry and only then drops the
+  inert stager. It exposes no stager accessor, continuation, retry, publication, or reconciliation
+  execution. If ordinary destruction reaches an unconsumed guard, its non-discardable home custody
+  field performs fail-closed fallback installation before the inert stager field is dropped; this
+  authorizes no acknowledgement or successor and adds no custom guard recovery path.
 - The immediate caller of any provider-observation `Indeterminate` outcome must synchronously move
   its descriptor and complete reserved registry capacity into the per-home `beryl-home-store` reconciliation-scope
   registry before translating the result, acknowledging the provider operation, releasing local
@@ -1324,7 +1343,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   and operation state only after the sole custody value is installed in the registry; that disposal
   does not reinterpret the result as `NotCommitted`. No stager must survive connection or service
   retirement, and a later classification or fresh-service recovery uses only durable natural
-  records.
+  records. On seal, the move-only guard enforces the installation-before-drop ordering while it is
+  transferred synchronously to the immediate app recipient; it is never retained as service state.
 - Terminal-repair begin, page-stage, and seal commands reconcile `Indeterminate` only by their
   existing natural record identity: exact Syndic thread/turn and CAS thread/turn for the build, plus
   staging family and one-based page ordinal for a page. The point read returns `Absent`, `Exact`, or

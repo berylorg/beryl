@@ -21,12 +21,13 @@
 //!
 //! [`input_admission`] composes Syndic admission with the exact compact Beryl
 //! asset-owner transfer, or validates both marker-free heads are absent, in one
-//! durability-barrier command. The caller executes that command
-//! before clearing or otherwise publishing acceptance of the editor projection.
+//! durability-barrier command. [`cas_projection::ProjectionConnectionService`]
+//! owns the final direct new-turn execution boundary: it queries the configured
+//! reserve immediately before writer admission, before the caller clears or
+//! otherwise publishes acceptance of the editor projection.
 //!
 //! ```no_run
-//! use beryl_app::input_admission::idle_submission_command;
-//! use beryl_home_store::{CommitReceipt, HomeStore};
+//! use beryl_app::cas_projection::ProjectionConnectionService;
 //! use beryl_model::{InputGateRevision, SyndicDraftId, SyndicItemId};
 //! use beryl_state::AssetState;
 //! use syndic_storage::{
@@ -34,11 +35,11 @@
 //! };
 //!
 //! # fn admit(
-//! #     home: &HomeStore,
+//! #     service: &ProjectionConnectionService,
 //! #     syndic: SyndicStorage,
 //! #     assets: AssetState,
 //! #     current: &SyndicCurrentDraft,
-//! # ) -> Result<CommitReceipt, Box<dyn std::error::Error>> {
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! let request = IdleSubmission::new(
 //!     current.thread().id(),
 //!     current.thread().revision(),
@@ -51,8 +52,8 @@
 //!     None,
 //!     SyndicTimestamp::from_unix_millis(2),
 //! );
-//! let command = idle_submission_command(home, syndic, assets, request)?;
-//! Ok(home.execute(command)?)
+//! service.execute_idle_submission(assets, request)?;
+//! # Ok(())
 //! # }
 //! ```
 //!
@@ -98,9 +99,14 @@
 //! remains typed without exposing either the candidate or an admitted session.
 //!
 //! ```
-//! use beryl_app::cas_projection::ProjectionServiceConfig;
+//! use beryl_app::cas_projection::{MinimumTurnCaptureReserve, ProjectionServiceConfig};
 //!
-//! let config = ProjectionServiceConfig::try_new(128, 8).unwrap();
+//! let config = ProjectionServiceConfig::try_new(
+//!     128,
+//!     8,
+//!     MinimumTurnCaptureReserve::try_new(64 * 1024 * 1024).unwrap(),
+//! )
+//! .unwrap();
 //! assert_eq!(
 //!     config.foreground().pre_bind_control_capacity().get(),
 //!     128,
@@ -167,16 +173,18 @@
 //! same command permit specifically to persistent failure immediately before any HomeStore writer
 //! call, and remains single-use and bound to that exact target and sole driver. Broad persistent
 //! failure, local absence or failure, and durable stop state cannot mint it. A writer-returned
-//! `NotCommitted` outcome remains unavailable as app proof until Phase 100 preserves that typed
-//! mutation result. Each pre-activation projection remains owned by its actual admitted worker,
+//! `NotCommitted` outcome preserves its typed no-commit evidence and may mint
+//! the narrow volatile soft-interruption authorization only for the same exact foreground target
+//! and sole driver; `Committed`, `Indeterminate`, broad failure, and local absence remain
+//! ineligible. Each pre-activation projection remains owned by its actual admitted worker,
 //! while each router independently admits at most 64 targets. Router
 //! mutations commit through their exact scoped gate permit. Consuming service close owns all
 //! terminal I/O and joins: it settles retained queued work and local registry authority, shuts
 //! down the old scheduler, context-compaction worker, connections, and execution provider, and
 //! returns only bounded [`cas_projection::PersistentFailureTerminalEvidence`]. Possible-dispatch
 //! outcomes remain explicitly unknown in that evidence. No service, connection, worker, home, or
-//! publication authority crosses the failed-generation boundary, so the process supervisor
-//! reports running-session recovery unavailable.
+//! publication authority crosses the failed-generation boundary. The failed service is disposed
+//! and running-session recovery remains unavailable.
 //!
 //! Context compaction is likewise process-owned by
 //! [`cas_projection::ProjectionConnectionService`]. Manual callers supply one exact thread and a
@@ -209,6 +217,19 @@
 //!     matches!(poll, LiveEventPoll::Approval(_))
 //! }
 //! ```
+//!
+//! [`theme_runtime`] is the pre-GUI process-wide appearance publisher. It
+//! consumes only fully prepared `beryl-state` appearances and applies one
+//! immutable generation after every eligible window adapter accepts it. A
+//! rejected application retains its confirmed durable generation for an exact
+//! later retry while diagnostics continue to distinguish it from current.
+//!
+//! ```
+//! use beryl_app::theme_runtime::{AppearanceGenerationNumber, WindowSetEpoch};
+//!
+//! assert_eq!(AppearanceGenerationNumber::initial().get().get(), 1);
+//! assert_eq!(WindowSetEpoch::initial().checked_next().unwrap().get().get(), 2);
+//! ```
 
 mod branch_discussion_dynamic_tools;
 pub mod cas_projection;
@@ -218,6 +239,7 @@ pub mod draft_persistence;
 mod dynamic_tool_namespace;
 pub mod input_admission;
 mod lifecycle_dynamic_tools;
+pub mod theme_runtime;
 
 pub use branch_discussion_dynamic_tools::{
     BranchDiscussionResolutionRequest, BranchDiscussionResolutionRequestHandler,

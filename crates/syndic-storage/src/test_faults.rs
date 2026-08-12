@@ -43,7 +43,8 @@ pub use physical::{
 pub use provider::{
     PersistedProviderNarrativeCorruption, PersistedProviderNarrativeCorruptionError,
     ProviderFixtureCodecError, ProviderFixtureCorruption, ProviderFixtureFamily,
-    ProviderFixtureRecord, decode_corrupted_provider_fixture, roundtrip_provider_fixture,
+    ProviderFixtureRecord, decode_corrupted_provider_fixture, encoded_provider_fixture_value_bytes,
+    roundtrip_provider_fixture,
 };
 pub use provider_observation::{ProviderObservationCorruption, ProviderObservationCorruptionError};
 pub use schema_history::{
@@ -139,10 +140,58 @@ pub fn active_cas_turn_fault_scope() -> beryl_home_store::test_faults::FaultScop
     crate::mutation::active_cas_turn_fault_scope()
 }
 
+/// Reads one exact accepted-route generation for fixture-delta construction.
+pub fn accepted_route_generation(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    thread_id: beryl_model::SyndicThreadId,
+    generation: AcceptedRouteGeneration,
+) -> Result<AcceptedRouteGenerationRecord, SyndicReadError> {
+    storage.route_generation(
+        store,
+        crate::codec::ThreadRouteKey {
+            thread: thread_id,
+            generation,
+        },
+    )
+}
+
+/// Reads the exact current accepted-route generation head for fixture-delta construction.
+pub fn accepted_route_generation_head(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    thread_id: beryl_model::SyndicThreadId,
+) -> Result<Option<AcceptedRouteGenerationHeadRecord>, SyndicReadError> {
+    storage.route_generation_head(store, thread_id)
+}
+
 /// Identifies one unpublished provider-observation staging command for scoped physical fault tests.
 #[must_use]
 pub fn provider_observation_stage_fault_scope() -> beryl_home_store::test_faults::FaultScope {
     crate::mutation::provider_observation_stage_fault_scope()
+}
+
+/// Opaque observation of one stager's process-local lifetime.
+pub struct ProviderObservationStagerLifetimeProbe {
+    lifetime: std::sync::Weak<()>,
+}
+
+impl ProviderObservationStagerLifetimeProbe {
+    /// Reports whether the exact observed stager remains retained.
+    #[must_use]
+    pub fn is_retained(&self) -> bool {
+        self.lifetime.strong_count() != 0
+    }
+}
+
+/// Observes only the lifetime of one provider-observation stager.
+#[must_use]
+pub fn provider_observation_stager_lifetime_probe(
+    stager: &ProviderObservationStager,
+) -> ProviderObservationStagerLifetimeProbe {
+    ProviderObservationStagerLifetimeProbe {
+        lifetime: stager.lifetime_probe(),
+    }
 }
 
 /// Returns the exact V1 seed used to fold one item-projection fixture manifest.

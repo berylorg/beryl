@@ -67,13 +67,11 @@ fn classified_abandonment_converges_without_losing_queued_input() {
         StopOperationTransitionStatus::Prior
     );
 
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_abandon_stop_operation(request.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_abandon_stop_operation(request.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -109,7 +107,10 @@ fn classified_abandonment_converges_without_losing_queued_input() {
             .state(),
         BindingState::Stale(stale) if stale == request.stale()
     ));
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     assert!(matches!(
         fixture
@@ -169,13 +170,11 @@ fn cause_join_racing_abandonment_requires_the_exact_new_revision() {
         current_abandonment.expected_gate_revision(),
         current_abandonment.expected_stop_revision(),
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_abandon_stop_operation(current_abandonment),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_abandon_stop_operation(current_abandonment),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -196,5 +195,8 @@ fn cause_join_racing_abandonment_requires_the_exact_new_revision() {
             .unwrap(),
         StopOperationTransitionStatus::Collision
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

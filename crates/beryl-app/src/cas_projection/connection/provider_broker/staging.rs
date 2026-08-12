@@ -1,19 +1,12 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
-use beryl_home_store::{
-    CommandError, CommandOutcome, CommitReceipt, HomeGeneration, HomeStore,
-    ReconciliationDescriptor,
-};
+use beryl_home_store::{CommandOutcome, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, ProviderObservationId};
 #[cfg(feature = "test-faults")]
 use syndic_storage::ProviderObservationChunkPayload;
 use syndic_storage::{
-    ProviderObservationBuildRecord, ProviderObservationStageBatch,
-    ProviderObservationStageCallback, SyndicPointReadLimit, SyndicStorage,
+    ProviderObservationStageBatch, ProviderObservationStageCallback, SyndicStorage,
 };
-use thiserror::Error;
-
-use super::PROVIDER_POINT_READ_BYTES;
 
 pub(super) struct StageCommitter<'a> {
     pub(super) home: &'a HomeStore,
@@ -54,85 +47,5 @@ impl ProviderObservationStageCallback for StageCommitter<'_> {
             self.storage
                 .current_stage_provider_observation_batch(batch.clone()),
         )
-    }
-}
-
-impl StageCommitter<'_> {
-    fn read_current_build(
-        &self,
-    ) -> Result<Option<ProviderObservationBuildRecord>, StageCommitError> {
-        loop {
-            if self.home.home_id() != self.home_id {
-                return Err(self.failure(StageCommitError::HomeIdentity));
-            }
-            let verification = self
-                .command
-                .enter_current_home(self.home, self.home_id, self.home_generation)
-                .map_err(StageCommitError::Authority)?;
-            let current = self.storage.provider_observation_build(
-                self.home,
-                self.identity,
-                provider_point_limit(),
-            );
-            match verification.settle_after_operation() {
-                Ok(settlement) if settlement.requires_retry() => continue,
-                Ok(_) => {
-                    return current
-                        .map_err(|source| self.failure(StageCommitError::Read(Box::new(source))));
-                }
-                Err(source) => return Err(StageCommitError::Authority(source)),
-            }
-        }
-    }
-
-    fn failure(&self, error: StageCommitError) -> StageCommitError {
-        if !matches!(&error, StageCommitError::Authority(_)) {
-            let _ = self.command.observe_persistent_failure();
-        }
-        error
-    }
-}
-
-fn provider_point_limit() -> SyndicPointReadLimit {
-    SyndicPointReadLimit::new(PROVIDER_POINT_READ_BYTES)
-        .expect("provider point-read bound is nonzero")
-}
-
-#[derive(Debug, Error)]
-pub(super) enum StageCommitError {
-    #[error("provider staging was cancelled")]
-    Cancelled,
-    #[error("provider staging home identity changed")]
-    HomeIdentity,
-    #[error("provider staging command failed before an ambiguous commit: {0}")]
-    Command(#[source] Box<CommandError>),
-    #[error("provider staging committed before a later failure: {later_failure}")]
-    Committed {
-        receipt: CommitReceipt,
-        #[source]
-        later_failure: Box<CommandError>,
-    },
-    #[error("provider staging has an indeterminate durable outcome: {failure}")]
-    Indeterminate {
-        #[source]
-        failure: Box<CommandError>,
-        reconciliation: ReconciliationDescriptor,
-    },
-    #[error("provider staging command reported success without a durable advance")]
-    ReportedSuccessWithoutAdvance,
-    #[error("provider staging lost exact verification authority: {0}")]
-    Authority(#[source] crate::cas_projection::LiveCommandAdmissionError),
-    #[error("provider staging reconciliation read failed: {0}")]
-    Read(#[source] Box<syndic_storage::SyndicReadError>),
-    #[error("provider staging reconciliation found a conflicting frontier")]
-    Conflict,
-}
-
-impl StageCommitError {
-    pub(super) fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
-        match self {
-            Self::Authority(source) => Some(*source),
-            _ => None,
-        }
     }
 }

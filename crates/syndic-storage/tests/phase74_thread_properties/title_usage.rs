@@ -1,4 +1,4 @@
-use beryl_home_store::{CommandError, HomeCommand};
+use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_model::{
     BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasNativeTurnCount,
     CasProcessGeneration, CasThreadId, SyndicItemId,
@@ -28,10 +28,32 @@ fn limit() -> SyndicPointReadLimit {
 fn execute(
     store: &beryl_home_store::HomeStore,
     contribution: beryl_home_store::MutationContribution,
-) -> Result<(), CommandError> {
+) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    store.execute(command).map(|_| ())
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean thread-property command, got {outcome:?}"),
+    }
+}
+
+fn execute_rejected(
+    store: &beryl_home_store::HomeStore,
+    contribution: beryl_home_store::MutationContribution,
+) {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    match store.execute(command) {
+        CommandOutcome::NotCommitted { .. } => {}
+        CommandOutcome::Indeterminate { reconciliation, .. } => {
+            reconciliation.install();
+            panic!("expected rejected thread-property command, got Indeterminate");
+        }
+        outcome => panic!("expected rejected thread-property command, got {outcome:?}"),
+    }
 }
 
 #[test]
@@ -46,8 +68,7 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
             storage.revision(&store).unwrap(),
             CreateThread::ordinary(thread, draft_id(41), execution_binding(), timestamp(1)),
         ),
-    )
-    .unwrap();
+    );
     let item = SyndicItemId::from_bytes([42; 16]);
     let first_turn = submit_current_draft(
         &store,
@@ -79,21 +100,17 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
             storage.revision(&store).unwrap(),
             AcceptGeneratedThreadTitle::new(thread, ThreadAttributesRevision::FIRST, title.clone()),
         ),
-    )
-    .unwrap();
-    assert!(
-        execute(
-            &store,
-            storage.accept_generated_thread_title(
-                storage.revision(&store).unwrap(),
-                AcceptGeneratedThreadTitle::new(
-                    thread,
-                    ThreadAttributesRevision::new(2).unwrap(),
-                    title,
-                ),
+    );
+    execute_rejected(
+        &store,
+        storage.accept_generated_thread_title(
+            storage.revision(&store).unwrap(),
+            AcceptGeneratedThreadTitle::new(
+                thread,
+                ThreadAttributesRevision::new(2).unwrap(),
+                title,
             ),
-        )
-        .is_err()
+        ),
     );
 
     let source = establish_turn(&store, storage, thread, first_turn, timestamp(4));
@@ -151,7 +168,9 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
             .revision()
             > accepted_source_revision
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -166,7 +185,9 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
             .text(),
         "Accepted generated title"
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 fn loaded_generation() -> CasLoadedSessionGeneration {
@@ -208,8 +229,7 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
             storage.revision(&store).unwrap(),
             CreateThread::ordinary(thread, draft_id(51), execution_binding(), timestamp(1)),
         ),
-    )
-    .unwrap();
+    );
     let other_thread = id(52);
     execute(
         &store,
@@ -222,8 +242,7 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
                 timestamp(1),
             ),
         ),
-    )
-    .unwrap();
+    );
     let current = storage
         .current_binding(&store, thread, limit())
         .unwrap()
@@ -251,8 +270,7 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
                 CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap(),
             ),
         ),
-    )
-    .unwrap();
+    );
     let valid = storage
         .current_binding(&store, thread, limit())
         .unwrap()
@@ -264,15 +282,12 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
         CasThreadId::new("phase74-wrong-route").unwrap(),
         1,
     );
-    assert!(
-        execute(
-            &store,
-            storage.publish_thread_usage(
-                storage.revision(&store).unwrap(),
-                PublishThreadUsage::new(thread, ThreadUsageRevision::FIRST, wrong),
-            ),
-        )
-        .is_err()
+    execute_rejected(
+        &store,
+        storage.publish_thread_usage(
+            storage.revision(&store).unwrap(),
+            PublishThreadUsage::new(thread, ThreadUsageRevision::FIRST, wrong),
+        ),
     );
     let observation = usage_observation(valid_revision, cas_thread, 1);
     execute(
@@ -281,62 +296,52 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
             storage.revision(&store).unwrap(),
             PublishThreadUsage::new(thread, ThreadUsageRevision::FIRST, observation.clone()),
         ),
-    )
-    .unwrap();
+    );
     let accepted_usage_revision = ThreadUsageRevision::new(2).unwrap();
-    assert!(
-        execute(
-            &store,
-            storage.publish_thread_usage(
-                storage.revision(&store).unwrap(),
-                PublishThreadUsage::new(
-                    thread,
-                    accepted_usage_revision,
-                    usage_observation(
-                        valid_revision,
-                        CasThreadId::new("phase74-usage-route").unwrap(),
-                        1
-                    ),
+    execute_rejected(
+        &store,
+        storage.publish_thread_usage(
+            storage.revision(&store).unwrap(),
+            PublishThreadUsage::new(
+                thread,
+                accepted_usage_revision,
+                usage_observation(
+                    valid_revision,
+                    CasThreadId::new("phase74-usage-route").unwrap(),
+                    1,
                 ),
             ),
-        )
-        .is_err()
+        ),
     );
-    assert!(
-        execute(
-            &store,
-            storage.publish_thread_usage(
-                storage.revision(&store).unwrap(),
-                PublishThreadUsage::new(
-                    thread,
-                    accepted_usage_revision,
-                    usage_observation(
-                        BindingRevision::new(1).unwrap(),
-                        CasThreadId::new("phase74-usage-route").unwrap(),
-                        2,
-                    ),
+    execute_rejected(
+        &store,
+        storage.publish_thread_usage(
+            storage.revision(&store).unwrap(),
+            PublishThreadUsage::new(
+                thread,
+                accepted_usage_revision,
+                usage_observation(
+                    BindingRevision::new(1).unwrap(),
+                    CasThreadId::new("phase74-usage-route").unwrap(),
+                    2,
                 ),
             ),
-        )
-        .is_err()
+        ),
     );
-    assert!(
-        execute(
-            &store,
-            storage.publish_thread_usage(
-                storage.revision(&store).unwrap(),
-                PublishThreadUsage::new(
-                    other_thread,
-                    ThreadUsageRevision::FIRST,
-                    usage_observation(
-                        valid_revision,
-                        CasThreadId::new("phase74-usage-route").unwrap(),
-                        2,
-                    ),
+    execute_rejected(
+        &store,
+        storage.publish_thread_usage(
+            storage.revision(&store).unwrap(),
+            PublishThreadUsage::new(
+                other_thread,
+                ThreadUsageRevision::FIRST,
+                usage_observation(
+                    valid_revision,
+                    CasThreadId::new("phase74-usage-route").unwrap(),
+                    2,
                 ),
             ),
-        )
-        .is_err()
+        ),
     );
     execute(
         &store,
@@ -344,8 +349,7 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
             storage.revision(&store).unwrap(),
             PublishUnboundBinding::new(thread, valid_revision, selected, "route advanced").unwrap(),
         ),
-    )
-    .unwrap();
+    );
     assert!(
         storage
             .current_binding(&store, thread, limit())
@@ -355,7 +359,9 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
             .revision()
             > valid_revision
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -368,5 +374,7 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
             .observation(),
         Some(&observation)
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

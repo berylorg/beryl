@@ -137,18 +137,20 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
             .unwrap();
 
         faults.fail_next(point);
-        match (point, store.execute(command)) {
+        let reconciliation = match (point, store.execute(command)) {
             (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
                 assert!(matches!(evidence, CommandError::Commit { .. }));
+                None
             }
-            (FaultPoint::AfterCommitBeforePersist, outcome @ CommandOutcome::Indeterminate { .. }) => {
-                assert!(matches!(
-                    &outcome,
-                    CommandOutcome::Indeterminate {
-                        failure: CommandError::Persistence { .. },
-                        ..
-                    }
-                ));
+            (
+                FaultPoint::AfterCommitBeforePersist,
+                CommandOutcome::Indeterminate {
+                    failure,
+                    reconciliation,
+                },
+            ) => {
+                assert!(matches!(failure, CommandError::Persistence { .. }));
+                Some(reconciliation)
             }
             (
                 FaultPoint::AfterPersist,
@@ -156,11 +158,21 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
                     later_failure: Some(CommandError::Persistence { .. }),
                     ..
                 },
-            ) => {}
+            ) => None,
             (_, outcome) => panic!("unexpected promotion fault outcome: {outcome:?}"),
-        }
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-        store.verify_health().unwrap();
+        };
+        let (store, storage) = if let Some(reconciliation) = reconciliation {
+            reconciliation.install();
+            assert_eq!(store.health().state(), HomeHealthState::Healthy);
+            (store, storage)
+        } else {
+            assert_eq!(store.health().state(), HomeHealthState::Failed);
+            let recovery = store.recover_same_home().unwrap();
+            let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
+            let store = recovery.publish();
+            assert_eq!(store.health().state(), HomeHealthState::Healthy);
+            (store, storage)
+        };
         let recovered = storage
             .accepted_input_promotion_status(&store, &request, limit())
             .unwrap();
@@ -174,7 +186,17 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
         if let Some(required) = required {
             assert_eq!(recovered, required);
         }
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        if point == FaultPoint::AfterCommitBeforePersist {
+            let close_error = store
+                .close()
+                .expect_err("installed indeterminate custody must block orderly close");
+            assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+            drop(close_error);
+            continue;
+        }
         store.close().unwrap();
 
         let mut reopened = open(home.path());
@@ -185,7 +207,9 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
                 .unwrap(),
             recovered,
         );
-        reopened.validate_registered_domains().unwrap();
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         reopened.close().unwrap();
     }
 }
@@ -417,7 +441,9 @@ fn same_domain_revision_still_fences_every_exact_promotion_authority() {
         "phase58-promotion-authority-source",
         fixture.records.clone(),
     );
-    source_store.validate_registered_domains().unwrap();
+    source_store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let request = PromoteAcceptedInput::new(
         candidate(&source_store, source_storage),
         SyndicTurnId::from_bytes([140; 16]),
@@ -430,7 +456,9 @@ fn same_domain_revision_still_fences_every_exact_promotion_authority() {
         substitute_exact_authority(&mut records, fixture.thread, drift);
         let name = format!("phase58-promotion-authority-{}", drift.name());
         let (_home, store, storage) = seed(&name, records);
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         assert_eq!(
             storage.revision(&store).unwrap(),
             request.source_revision(),

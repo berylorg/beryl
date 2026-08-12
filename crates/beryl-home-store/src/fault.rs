@@ -1,6 +1,6 @@
 #[cfg(feature = "test-faults")]
 use std::{
-    any::{type_name, TypeId},
+    any::{TypeId, type_name},
     collections::{HashMap, VecDeque},
     io,
     sync::{Arc, Condvar, Mutex},
@@ -34,6 +34,19 @@ pub enum FaultPoint {
     BeforeSidecarRename,
     AfterSidecarRename,
     BeforeSidecarVerification,
+    BeforeThemeVerification,
+    BeforeThemeRead,
+    BeforeThemeDocumentWrite,
+    BeforeThemeDocumentSync,
+    BeforeThemeDocumentReplace,
+    AfterThemeDocumentReplace,
+    BeforeThemeDocumentRemove,
+    BeforeThemeInstalledDirectorySync,
+    BeforeThemeManifestWrite,
+    BeforeThemeManifestSync,
+    BeforeThemeManifestReplace,
+    AfterThemeManifestReplace,
+    BeforeThemeDirectorySync,
 }
 
 /// Exact transient typed-command scope for deterministic fault tests.
@@ -132,6 +145,31 @@ impl FaultBlock {
 #[derive(Clone, Default)]
 pub struct FaultController {
     actions: Arc<Mutex<HashMap<FaultActionKey, VecDeque<FaultAction>>>>,
+    free_space: Arc<Mutex<FreeSpaceFaultState>>,
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Debug, Default)]
+struct FreeSpaceFaultState {
+    observations: VecDeque<FreeSpaceTestObservation>,
+    observation_count: usize,
+}
+
+/// One deterministic result from the physical free-space observation boundary.
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FreeSpaceTestObservation {
+    /// A platform availability tuple for the canonical home filesystem.
+    Observed {
+        /// Bytes available to the current caller.
+        available_bytes: u64,
+        /// Total free bytes reported by the filesystem.
+        total_free_bytes: u64,
+        /// Total capacity bytes reported by the filesystem.
+        total_bytes: u64,
+    },
+    /// A platform call that supplies no availability observation.
+    Unavailable,
 }
 
 #[cfg(feature = "test-faults")]
@@ -195,6 +233,28 @@ impl FaultController {
         FaultBlock { state }
     }
 
+    /// Supplies one deterministic physical free-space observation.
+    ///
+    /// The result is consumed in FIFO order by [`crate::HomeStore::query_free_space`].
+    /// It replaces only the platform observation at that boundary and does not
+    /// introduce production query state, caching, or retries.
+    pub fn push_free_space_observation(&self, observation: FreeSpaceTestObservation) {
+        self.free_space
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .observations
+            .push_back(observation);
+    }
+
+    /// Returns the exact number of free-space physical-boundary observations.
+    #[must_use]
+    pub fn free_space_observation_count(&self) -> usize {
+        self.free_space
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .observation_count
+    }
+
     fn push(&self, point: FaultPoint, scope: Option<FaultScope>, action: FaultAction) {
         self.actions
             .lock()
@@ -202,6 +262,18 @@ impl FaultController {
             .entry(FaultActionKey { point, scope })
             .or_default()
             .push_back(action);
+    }
+
+    pub(crate) fn free_space_observation(&self) -> Option<FreeSpaceTestObservation> {
+        let mut state = self
+            .free_space
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.observation_count = state
+            .observation_count
+            .checked_add(1)
+            .expect("free-space observation counter exhausted");
+        state.observations.pop_front()
     }
 
     pub(crate) fn check(&self, point: FaultPoint) -> io::Result<()> {

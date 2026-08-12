@@ -66,7 +66,9 @@ fn stale_binding_roundtrips_with_its_required_cas_thread_reservation() {
             )),
         ]),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let current = storage
         .current_binding(&store, thread, SyndicPointReadLimit::new(65_536).unwrap())
@@ -82,7 +84,9 @@ fn stale_binding_roundtrips_with_its_required_cas_thread_reservation() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let current = storage
         .current_binding(
             &reopened,

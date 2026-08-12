@@ -4,10 +4,10 @@ use beryl_model::{SessionRevision, SyndicThreadId, WindowId, WindowPlacement};
 use crate::RecordRevision;
 
 use crate::session::{
+    MAX_RESTORABLE_WINDOWS, RememberedTarget, SessionDomain, SessionExitIntent, SessionHeader,
+    SessionMutationError, SessionWindowRecord, ThreadClaimRecord, ThreadClaimState,
+    WindowClaimSelection,
     codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec},
-    RememberedTarget, SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError,
-    SessionWindowRecord, ThreadClaimRecord, ThreadClaimState, WindowClaimSelection,
-    MAX_RESTORABLE_WINDOWS,
 };
 
 use super::shared::{

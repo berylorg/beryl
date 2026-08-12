@@ -5,21 +5,22 @@ fn generic_abandonment_reopen_rejects_nonprior_gate_witness() {
     let home = TestHome::new("phase53-generic-abandonment-corrupt-gate-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let records = mixed_abandonment_records();
-    let source = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::AcceptedRouteGeneration(route) if route.thread_id() == id(40) => {
-                Some(route.clone())
-            }
-            _ => None,
-        })
-        .unwrap();
-    commit(&store, storage, batch(records));
+    seed_mixed_abandonment(&store, storage);
+    let source = syndic_storage::test_faults::accepted_route_generation(
+        &store,
+        storage,
+        id(40),
+        AcceptedRouteGeneration::FIRST,
+    )
+    .unwrap();
     let request = abandonment_request(&store, storage);
-    store
-        .execute_current(storage.current_abandon_active_binding(request.clone()))
-        .unwrap();
+    assert!(matches!(
+        store.execute_current(storage.current_abandon_active_binding(request.clone())),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
 
     let prior = request.target().clone();
     let snapshot = prior.pending().snapshot_id();
@@ -62,7 +63,11 @@ fn generic_abandonment_reopen_rejects_nonprior_gate_witness() {
         storage,
         batch([FixtureRecord::AcceptedRouteGeneration(corrupt)]),
     );
-    assert!(store.validate_registered_domains().is_err());
+    assert!(
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
     store.close().unwrap();
 
     let mut reopened = open(home.path());

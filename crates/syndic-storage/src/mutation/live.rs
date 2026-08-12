@@ -332,6 +332,7 @@ impl DomainMutation<SyndicDomain> for LiveSourceEventMutation {
         reservation.reserve_records::<HistorySummariesCodec>(1)?;
         reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
         reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
+        reservation.reserve_records::<TranscriptPathTurnsCodec>(1)?;
         reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
         reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
         reservation.reserve_records::<ActivityQueryEntriesCodec>(

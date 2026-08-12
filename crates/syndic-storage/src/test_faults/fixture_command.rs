@@ -27,30 +27,44 @@ impl FixtureOperation {
                 FixtureDelete::ThreadExecution(_) => super::PhysicalFamily::ThreadExecutions,
                 FixtureDelete::ThreadAttributes(_) => super::PhysicalFamily::ThreadAttributes,
                 FixtureDelete::ThreadUsage(_) => super::PhysicalFamily::ThreadUsage,
-                FixtureDelete::ThreadCatalogSummary(_) => super::PhysicalFamily::ThreadCatalogSummaries,
+                FixtureDelete::ThreadCatalogSummary(_) => {
+                    super::PhysicalFamily::ThreadCatalogSummaries
+                }
                 FixtureDelete::Draft(_) => super::PhysicalFamily::Drafts,
                 FixtureDelete::ContentManifest(_) => super::PhysicalFamily::ContentManifests,
                 FixtureDelete::ContentChunk { .. } => super::PhysicalFamily::ContentChunks,
                 FixtureDelete::ContentByteSpan { .. } => super::PhysicalFamily::ContentByteSpans,
                 FixtureDelete::ContentTextSpan { .. } => super::PhysicalFamily::ContentTextSpans,
                 FixtureDelete::ContentPiece { .. } => super::PhysicalFamily::ContentPieces,
-                FixtureDelete::ProviderNarrativeSpan { .. } => super::PhysicalFamily::ProviderNarrativeSpans,
+                FixtureDelete::ProviderNarrativeSpan { .. } => {
+                    super::PhysicalFamily::ProviderNarrativeSpans
+                }
                 FixtureDelete::ContextEnvelope(_) => super::PhysicalFamily::ContextEnvelopes,
                 FixtureDelete::Turn(_) => super::PhysicalFamily::Turns,
                 FixtureDelete::TurnState(_) => super::PhysicalFamily::TurnStates,
                 FixtureDelete::InputGate(_) => super::PhysicalFamily::InputGates,
                 FixtureDelete::AcceptedInput(_) => super::PhysicalFamily::AcceptedInputs,
                 FixtureDelete::StopOperation(_) => super::PhysicalFamily::StopOperations,
-                FixtureDelete::CompactionOperation(_) => super::PhysicalFamily::CompactionOperations,
-                FixtureDelete::CompactionSettlementReceipt(_) => super::PhysicalFamily::CompactionSettlementReceipts,
-                FixtureDelete::AcceptedRouteGenerationHead(_) => super::PhysicalFamily::AcceptedRouteGenerationHeads,
+                FixtureDelete::CompactionOperation(_) => {
+                    super::PhysicalFamily::CompactionOperations
+                }
+                FixtureDelete::CompactionSettlementReceipt(_) => {
+                    super::PhysicalFamily::CompactionSettlementReceipts
+                }
+                FixtureDelete::AcceptedRouteGenerationHead(_) => {
+                    super::PhysicalFamily::AcceptedRouteGenerationHeads
+                }
                 FixtureDelete::AcceptedRouteLeaf(_) => super::PhysicalFamily::AcceptedRouteLeaves,
                 FixtureDelete::SourceEvent { .. } => super::PhysicalFamily::SourceEvents,
                 FixtureDelete::CanonicalItem(_) => super::PhysicalFamily::CanonicalItems,
                 FixtureDelete::ActivityQueryHead(_) => super::PhysicalFamily::ActivityQueryHeads,
                 FixtureDelete::ItemProjectionHead(_) => super::PhysicalFamily::ItemProjectionHeads,
-                FixtureDelete::ItemProjectionSet { .. } => super::PhysicalFamily::ItemProjectionSets,
-                FixtureDelete::ItemProjectionBuild { .. } => super::PhysicalFamily::ItemProjectionBuilds,
+                FixtureDelete::ItemProjectionSet { .. } => {
+                    super::PhysicalFamily::ItemProjectionSets
+                }
+                FixtureDelete::ItemProjectionBuild { .. } => {
+                    super::PhysicalFamily::ItemProjectionBuilds
+                }
                 FixtureDelete::TranscriptViewHead(_) => super::PhysicalFamily::TranscriptViewHeads,
                 FixtureDelete::TranscriptBuild { .. } => super::PhysicalFamily::TranscriptBuilds,
                 FixtureDelete::Projection(_) => super::PhysicalFamily::Projections,
@@ -61,22 +75,42 @@ impl FixtureOperation {
                 FixtureDelete::ActiveCasTurn(_) => super::PhysicalFamily::ActiveCasTurns,
                 FixtureDelete::DraftByThread(_) => super::PhysicalFamily::DraftByThread,
                 FixtureDelete::ThreadParent { .. } => super::PhysicalFamily::ThreadParent,
-                FixtureDelete::ImageLabelOriginSpan { .. } => super::PhysicalFamily::ImageLabelOriginSpans,
+                FixtureDelete::ImageLabelOriginSpan { .. } => {
+                    super::PhysicalFamily::ImageLabelOriginSpans
+                }
                 FixtureDelete::TurnChild { .. } => super::PhysicalFamily::TurnChildren,
                 FixtureDelete::AcceptedOrder { .. } => super::PhysicalFamily::AcceptedOrder,
-                FixtureDelete::AcceptedRouteGeneration { .. } => super::PhysicalFamily::AcceptedRouteGenerations,
-                FixtureDelete::AcceptedReadySource { .. } => super::PhysicalFamily::AcceptedReadySources,
-                FixtureDelete::AcceptedNextSource { .. } => super::PhysicalFamily::AcceptedNextSources,
+                FixtureDelete::AcceptedRouteGeneration { .. } => {
+                    super::PhysicalFamily::AcceptedRouteGenerations
+                }
+                FixtureDelete::AcceptedReadySource { .. } => {
+                    super::PhysicalFamily::AcceptedReadySources
+                }
+                FixtureDelete::AcceptedNextSource { .. } => {
+                    super::PhysicalFamily::AcceptedNextSources
+                }
                 FixtureDelete::TurnItem { .. } => super::PhysicalFamily::TurnItems,
-                FixtureDelete::ActivityQueryEntry { .. } => super::PhysicalFamily::ActivityQueryEntries,
-                FixtureDelete::ActivityQuerySource { .. } => super::PhysicalFamily::ActivityQuerySources,
+                FixtureDelete::ActivityQueryEntry { .. } => {
+                    super::PhysicalFamily::ActivityQueryEntries
+                }
+                FixtureDelete::ActivityQuerySource { .. } => {
+                    super::PhysicalFamily::ActivityQuerySources
+                }
                 FixtureDelete::ItemSourceEvent { .. } => super::PhysicalFamily::ItemSourceEvents,
                 FixtureDelete::CasItem { .. } => super::PhysicalFamily::CasItem,
-                FixtureDelete::TranscriptPathTurn { .. } => super::PhysicalFamily::TranscriptPathTurns,
-                FixtureDelete::TranscriptViewEntry { .. } => super::PhysicalFamily::TranscriptViewEntries,
-                FixtureDelete::StableItemProjection { .. } => super::PhysicalFamily::StableItemProjections,
+                FixtureDelete::TranscriptPathTurn { .. } => {
+                    super::PhysicalFamily::TranscriptPathTurns
+                }
+                FixtureDelete::TranscriptViewEntry { .. } => {
+                    super::PhysicalFamily::TranscriptViewEntries
+                }
+                FixtureDelete::StableItemProjection { .. } => {
+                    super::PhysicalFamily::StableItemProjections
+                }
                 FixtureDelete::ItemProjection { .. } => super::PhysicalFamily::ItemProjections,
-                FixtureDelete::ProjectionResource { .. } => super::PhysicalFamily::ProjectionResources,
+                FixtureDelete::ProjectionResource { .. } => {
+                    super::PhysicalFamily::ProjectionResources
+                }
                 FixtureDelete::BindingHead(_) => super::PhysicalFamily::BindingHeads,
                 FixtureDelete::CasThread(_) => super::PhysicalFamily::CasThread,
                 FixtureDelete::CasThreadBinding { .. } => super::PhysicalFamily::CasThreadBinding,
@@ -172,12 +206,12 @@ impl DomainMutation<SyndicDomain> for FixtureBatch {
         for operation in &self.operations {
             let family = operation.family();
             if let Some((_, count)) = quotas.iter_mut().find(|(known, _)| *known == family) {
-                *count = count
-                    .checked_add(1)
-                    .ok_or(MutationBuildError::ReconciliationReservationOverflow {
+                *count = count.checked_add(1).ok_or(
+                    MutationBuildError::ReconciliationReservationOverflow {
                         domain: "syndic",
                         family: family.name(),
-                    })?;
+                    },
+                )?;
             } else {
                 quotas.push((family, 1));
             }
@@ -228,8 +262,12 @@ fn reserve_fixture_family(
         super::PhysicalFamily::ContentPieces => reserve!(ContentPiecesCodec),
         super::PhysicalFamily::ProviderNarrativeSpans => reserve!(ProviderNarrativeSpansCodec),
         super::PhysicalFamily::ProviderItemBuilds => reserve!(ProviderItemBuildsCodec),
-        super::PhysicalFamily::ProviderObservationBuilds => reserve!(ProviderObservationBuildsCodec),
-        super::PhysicalFamily::ProviderObservationChunks => reserve!(ProviderObservationChunksCodec),
+        super::PhysicalFamily::ProviderObservationBuilds => {
+            reserve!(ProviderObservationBuildsCodec)
+        }
+        super::PhysicalFamily::ProviderObservationChunks => {
+            reserve!(ProviderObservationChunksCodec)
+        }
         super::PhysicalFamily::ContextEnvelopes => reserve!(ContextEnvelopesCodec),
         super::PhysicalFamily::Turns => reserve!(TurnsCodec),
         super::PhysicalFamily::TurnStates => reserve!(TurnStatesCodec),
@@ -237,8 +275,12 @@ fn reserve_fixture_family(
         super::PhysicalFamily::AcceptedInputs => reserve!(AcceptedInputsCodec),
         super::PhysicalFamily::StopOperations => reserve!(StopOperationsCodec),
         super::PhysicalFamily::CompactionOperations => reserve!(CompactionOperationsCodec),
-        super::PhysicalFamily::CompactionSettlementReceipts => reserve!(CompactionSettlementReceiptsCodec),
-        super::PhysicalFamily::AcceptedRouteGenerationHeads => reserve!(AcceptedRouteGenerationHeadsCodec),
+        super::PhysicalFamily::CompactionSettlementReceipts => {
+            reserve!(CompactionSettlementReceiptsCodec)
+        }
+        super::PhysicalFamily::AcceptedRouteGenerationHeads => {
+            reserve!(AcceptedRouteGenerationHeadsCodec)
+        }
         super::PhysicalFamily::AcceptedRouteLeaves => reserve!(AcceptedRouteLeavesCodec),
         super::PhysicalFamily::SourceEvents => reserve!(SourceEventsCodec),
         super::PhysicalFamily::CanonicalItems => reserve!(CanonicalItemsCodec),

@@ -24,7 +24,9 @@ fn empty_and_populated_domains_reopen_authoritatively() {
     let home = TestHome::new("reopen");
     let mut store = open(home.path());
     let _storage = SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -34,13 +36,17 @@ fn empty_and_populated_domains_reopen_authoritatively() {
         storage,
         batch(empty_thread_records(id(1), draft_id(2))),
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 
     let mut final_open = open(home.path());
     let storage = SyndicStorage::register(&mut final_open).unwrap();
-    assert_eq!(storage.revision(&final_open).unwrap().get(), 2);
-    final_open.validate_registered_domains().unwrap();
+    assert_eq!(storage.revision(&final_open).unwrap().get(), 1);
+    final_open
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     final_open.close().unwrap();
 }
 
@@ -50,10 +56,11 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
     let home = TestHome::new("large-history");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    seed_populated(&store, storage);
 
     let thread_a = id(10);
     let thread_b = id(11);
-    let mut records = Vec::new();
+    let mut history_delta = Vec::new();
     let mut parent = None;
     let mut parent_digest = None;
     let mut root = None;
@@ -82,7 +89,7 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
             let skip_depth = (depth.get() & (depth.get() - 1)).max(1);
             Some(ancestry[usize::try_from(skip_depth - 1).unwrap()])
         };
-        records.push(FixtureRecord::Turn(TurnRecord::new(
+        history_delta.push(FixtureRecord::Turn(TurnRecord::new(
             turn_id,
             thread_a,
             TurnKind::OrdinaryUser,
@@ -92,7 +99,7 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
             digest,
             timestamp(u64::from(number)),
         )));
-        records.push(FixtureRecord::TurnState(fixture_turn_state(
+        history_delta.push(FixtureRecord::TurnState(fixture_turn_state(
             turn_id,
             TurnStateRevision::FIRST,
             TurnLifecycle::Interrupted,
@@ -100,7 +107,7 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
             0,
             timestamp(u64::from(number)),
         )));
-        records.push(FixtureRecord::SourceEvent(
+        history_delta.push(FixtureRecord::SourceEvent(
             SourceEventRecord::new(
                 turn_id,
                 SourceEventSequence::FIRST,
@@ -112,7 +119,7 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
             .unwrap(),
         ));
         if let Some(parent) = parent {
-            records.push(FixtureRecord::TurnChild(TurnChildIndexRecord::new(
+            history_delta.push(FixtureRecord::TurnChild(TurnChildIndexRecord::new(
                 parent, turn_id, depth, digest,
             )));
         }
@@ -126,75 +133,78 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
         ));
         parent = Some(turn_id);
         parent_digest = Some(digest);
+        if number % 32 == 0 {
+            commit(&store, storage, batch(std::mem::take(&mut history_delta)));
+        }
+    }
+    if !history_delta.is_empty() {
+        commit(&store, storage, batch(history_delta));
     }
     let tail = parent.unwrap();
     let digest = parent_digest.unwrap();
-    records.extend(thread_records_with_activity(
-        thread_a,
-        draft_id(20),
-        Some(tail),
-        digest,
-        timestamp(320),
-    ));
-    records.extend(thread_records_with_activity(
-        thread_b,
-        draft_id(21),
-        Some(tail),
-        digest,
-        timestamp(320),
-    ));
-    records.extend(item_free_transcript_build_records(
-        thread_a,
-        ThreadRevision::new(1).unwrap(),
-        &transcript_path,
-    ));
-    records.extend(item_free_transcript_build_records(
-        thread_b,
-        ThreadRevision::new(1).unwrap(),
-        &transcript_path,
-    ));
 
     let unreachable = SyndicTurnId::from_bytes([0xEE; 16]);
     let root = root.unwrap();
     let root_record_digest = root_turn_chain_digest(root);
     let unreachable_digest = child_turn_chain_digest(unreachable, root, root_record_digest);
-    records.push(FixtureRecord::Turn(TurnRecord::new(
-        unreachable,
-        thread_a,
-        TurnKind::OrdinaryUser,
-        ConversationParent::Turn(root),
-        Some(root),
-        TurnDepth::new(2).unwrap(),
-        unreachable_digest,
-        timestamp(999),
-    )));
-    records.push(FixtureRecord::TurnState(fixture_turn_state(
-        unreachable,
-        TurnStateRevision::FIRST,
-        TurnLifecycle::Incomplete,
-        0,
-        0,
-        timestamp(999),
-    )));
-    records.push(FixtureRecord::TurnChild(TurnChildIndexRecord::new(
-        root,
-        unreachable,
-        TurnDepth::new(2).unwrap(),
-        unreachable_digest,
-    )));
+    let unreachable_delta = vec![
+        FixtureRecord::Turn(TurnRecord::new(
+            unreachable,
+            thread_a,
+            TurnKind::OrdinaryUser,
+            ConversationParent::Turn(root),
+            Some(root),
+            TurnDepth::new(2).unwrap(),
+            unreachable_digest,
+            timestamp(999),
+        )),
+        FixtureRecord::TurnState(fixture_turn_state(
+            unreachable,
+            TurnStateRevision::FIRST,
+            TurnLifecycle::Incomplete,
+            0,
+            0,
+            timestamp(999),
+        )),
+        FixtureRecord::TurnChild(TurnChildIndexRecord::new(
+            root,
+            unreachable,
+            TurnDepth::new(2).unwrap(),
+            unreachable_digest,
+        )),
+    ];
+    commit(&store, storage, batch(unreachable_delta));
 
-    let fixture = batch(records);
-    commit(&store, storage, fixture);
+    for (thread, draft) in [(thread_a, draft_id(20)), (thread_b, draft_id(21))] {
+        let mut thread_delta =
+            thread_records_with_activity(thread, draft, Some(tail), digest, timestamp(320));
+        thread_delta.extend(item_free_transcript_build_records(
+            thread,
+            ThreadRevision::new(1).unwrap(),
+            &transcript_path,
+        ));
+        commit(&store, storage, batch(thread_delta));
+    }
     reset_validation_page_metrics();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_bounded_turn_pages();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     reset_validation_page_metrics();
     SyndicStorage::register(&mut reopened).unwrap();
-    assert_bounded_turn_pages();
+    assert_eq!(validation_page_metrics().page_count(), 0);
     reopened.close().unwrap();
+
+    let mut scrubbed = open(home.path());
+    SyndicStorage::register(&mut scrubbed).unwrap();
+    scrubbed
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
+    assert_bounded_turn_pages();
+    scrubbed.close().unwrap();
 }
 
 fn assert_bounded_turn_pages() {

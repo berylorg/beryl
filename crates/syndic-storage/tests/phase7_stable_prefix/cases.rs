@@ -25,7 +25,9 @@ fn live_closed_prefix_survives_resume_supersession_and_eof_promotion() {
     store.close().unwrap();
     store = open(home.path());
     storage = SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .item_projection_build(&store, fixture.item, generation_1, point_limit())
@@ -85,7 +87,9 @@ fn live_closed_prefix_survives_resume_supersession_and_eof_promotion() {
     store.close().unwrap();
     store = open(home.path());
     storage = SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .item_projection_build(&store, fixture.item, generation_2, point_limit())
@@ -170,7 +174,9 @@ fn live_closed_prefix_survives_resume_supersession_and_eof_promotion() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     for generation in [generation_1, generation_3, generation_4] {
         read_generation(&reopened, reopened_storage, fixture.item, generation);
     }

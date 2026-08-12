@@ -18,18 +18,13 @@ fn publish_duplicate_start_issue(
         SourceEventPayload::ProviderObservationIssue(Box::new(issue)),
         timestamp(6),
     );
-    match execute(
+    committed_command(execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    ) {
-        beryl_home_store::CommandOutcome::Committed {
-            later_failure: None, ..
-        } => {}
-        outcome => panic!("expected issue publication to commit without later failure, got {outcome:?}"),
-    }
+    ));
     let build = fixture
         .storage
         .provider_observation_build(&fixture.store, identity, limit())
@@ -44,20 +39,23 @@ fn assert_published_issue_corruption_detected(
     build: ProviderObservationBuildRecord,
     corruption: ProviderObservationCorruption,
 ) {
-    fixture.store.validate_registered_domains().unwrap();
-    match fixture.store.execute_current(
-        fixture
-            .storage
-            .current_corrupt_provider_observation(&build, corruption)
-            .unwrap(),
-    ) {
-        beryl_home_store::CommandOutcome::Committed {
-            later_failure: None, ..
-        } => {}
-        outcome => panic!("expected corruption command to commit without later failure, got {outcome:?}"),
-    }
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
+    committed_command(
+        fixture.store.execute_current(
+            fixture
+                .storage
+                .current_corrupt_provider_observation(&build, corruption)
+                .unwrap(),
+        ),
+    );
 
-    let current_error = fixture.store.validate_registered_domains().unwrap_err();
+    let current_error = fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         current_error
             .to_string()
@@ -114,15 +112,17 @@ fn published_issue_rejects_a_mutated_observation_digest_on_current_and_reopen_va
 fn inspect_large_agent_start(fixture: &Fixture) -> InspectedProviderObservation {
     let sealed = {
         let mut callback = observation_callback(&fixture.store, fixture.storage);
-        let mut stager = ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([53; 16]),
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Started,
-                kind: ProviderObservationItemKind::AgentMessage,
-            },
-            &mut callback,
-        )
-        .unwrap();
+        let mut stager = committed_stage_value(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([53; 16]),
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Started,
+                    kind: ProviderObservationItemKind::AgentMessage,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         scalar(
             &mut stager,
             ProviderField::LifecycleObservedAt,
@@ -137,25 +137,31 @@ fn inspect_large_agent_start(fixture: &Fixture) -> InspectedProviderObservation 
         );
 
         let context = ProviderValueContext::Field(ProviderField::AgentMessageText);
-        stager
-            .control(
-                ProviderObservationControl::BeginField(context),
-                &mut callback,
-            )
-            .unwrap();
-        let fragment = vec![b'x'; PROVIDER_OBSERVATION_CHUNK_MAX_BYTES];
-        for _ in 0..18 {
+        committed_stage_value(
             stager
-                .fragment(
-                    ProviderObservationStagingBytes::new(context, &fragment).unwrap(),
+                .control(
+                    ProviderObservationControl::BeginField(context),
                     &mut callback,
                 )
-                .unwrap();
+                .unwrap(),
+        );
+        let fragment = vec![b'x'; PROVIDER_OBSERVATION_CHUNK_MAX_BYTES];
+        for _ in 0..18 {
+            committed_stage_value(
+                stager
+                    .fragment(
+                        ProviderObservationStagingBytes::new(context, &fragment).unwrap(),
+                        &mut callback,
+                    )
+                    .unwrap(),
+            );
         }
-        stager
-            .control(ProviderObservationControl::EndField(context), &mut callback)
-            .unwrap();
-        stager.seal(&mut callback).unwrap()
+        committed_stage_value(
+            stager
+                .control(ProviderObservationControl::EndField(context), &mut callback)
+                .unwrap(),
+        );
+        committed_seal_value(stager.seal(&mut callback).unwrap())
     };
     let route = ProviderObservationRoute::new(
         fixture.source.thread_id().clone(),
@@ -188,12 +194,17 @@ fn arbitrarily_large_referenced_observation_issue_publishes_and_reopens() {
         issue.observation().canonical_bytes(),
         build.canonical_bytes()
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     fixture.store.close().unwrap();
     let mut reopened = open(fixture.home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let reopened_event = storage
         .source_event(&reopened, fixture.turn, event.sequence(), limit())
         .unwrap()

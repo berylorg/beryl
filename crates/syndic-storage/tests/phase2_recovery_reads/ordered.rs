@@ -5,7 +5,7 @@ fn populated_ordered_pages_preserve_cursor_continuation_and_index_getters() {
     let home = TestHome::new("populated-ordered-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
+    super::support::seed_populated(&store, storage);
     let one = CursorReadLimits::new(1, 65_536).unwrap();
 
     let accepted = storage.accepted_order(&store, id(40), None, one).unwrap();
@@ -40,27 +40,36 @@ fn populated_ordered_pages_preserve_cursor_continuation_and_index_getters() {
         .turn_items(&store, source_turn(), None, one)
         .unwrap();
     assert_eq!(items.records()[0].item_id(), source_item());
+    let transcript_generation = storage
+        .transcript_view_head(&store, id(30), SyndicPointReadLimit::new(1_024).unwrap())
+        .unwrap()
+        .unwrap()
+        .generation();
     let transcript = storage
-        .transcript_entries(&store, id(30), TranscriptGeneration::FIRST, None, one)
+        .transcript_entries(&store, id(30), transcript_generation, None, one)
         .unwrap();
     assert_eq!(transcript.records()[0].projection_id(), source_projection());
-    let projections = storage
-        .item_projections(
+    let projection_generation = storage
+        .item_projection_head(
             &store,
             source_item(),
-            ItemProjectionGeneration::FIRST,
-            None,
-            one,
+            SyndicPointReadLimit::new(1_024).unwrap(),
         )
+        .unwrap()
+        .unwrap()
+        .generation();
+    let projections = storage
+        .item_projections(&store, source_item(), projection_generation, None, one)
         .unwrap();
     assert_eq!(
         projections.records()[0].projection_id(),
         source_projection()
     );
     let resources = storage
-        .projection_resources(&store, source_resource_projection(), None, one)
+        .projection_resources(&store, source_projection(), None, one)
         .unwrap();
-    assert_eq!(resources.records()[0].resource_id(), source_resource());
+    assert!(resources.records().is_empty());
+    assert!(!resources.has_more());
 
     let binding_one = BindingRevision::new(1).unwrap();
     let history = storage.binding_history(&store, id(40), None, one).unwrap();
@@ -120,21 +129,16 @@ fn successful_recovery_requires_old_handle_reacquisition() {
             evidence: beryl_home_store::CommandError::Commit { .. }
         }
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(store.verify_health().is_err());
     assert_eq!(store.health().state(), HomeHealthState::Failed);
-    store.recover_same_home().unwrap();
+    let candidate = store.recover_same_home().unwrap();
+    let current = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let store = candidate.publish();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
-    assert!(matches!(
-        old.thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap()),
-        Err(SyndicReadError::Read(ReadError::ForeignDomain {
-            domain: "syndic"
-        }))
-    ));
-    let current = SyndicStorage::reacquire(&store).unwrap();
+    assert!(
+        old.thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
+            .is_err()
+    );
     assert!(
         current
             .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())

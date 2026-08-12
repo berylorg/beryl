@@ -21,13 +21,14 @@ fn activation_cancellation_rejects_any_published_cas_turn() {
     let error = not_committed_error(execute_outcome(
         &store,
         storage.cancel_binding_activation(storage.revision(&store).unwrap(), cancellation),
-    )
     ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::BindingStateConflict
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -49,7 +50,6 @@ fn active_terminal_requires_the_exact_published_cas_turn() {
     let error = not_committed_error(execute_outcome(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), source_less),
-    )
     ));
     assert!(matches!(
         typed_error(&error),
@@ -198,7 +198,6 @@ fn active_terminal_requires_the_exact_published_cas_turn() {
     let error = not_committed_error(execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), changed_profile),
-    )
     ));
     assert!(matches!(
         typed_error(&error),
@@ -226,12 +225,16 @@ fn active_terminal_requires_the_exact_published_cas_turn() {
             .unwrap(),
         BindingPublicationStatus::Exact
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let state = storage
         .turn_state(&reopened, fixture.turn, point_limit())
         .unwrap()

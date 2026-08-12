@@ -7,10 +7,9 @@ use beryl_model::SealedAssetReferenceSetProof;
 use crate::RecordRevision;
 
 use super::super::{
-    codec::AssetOwnerHeadCodec, AssetDomain, AssetMutationError, AssetOwner,
-    AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdateError,
-    AssetOwnerHeadValidationError, AssetReferenceSetLifecycle, ASSET_HEAD_LIMIT,
-    ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES,
+    ASSET_HEAD_LIMIT, ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, AssetDomain, AssetMutationError,
+    AssetOwner, AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdateError,
+    AssetOwnerHeadValidationError, AssetReferenceSetLifecycle, codec::AssetOwnerHeadCodec,
 };
 use super::require_manifest;
 

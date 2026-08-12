@@ -6,13 +6,13 @@ fn more_than_1024_markers_stage_in_fixed_pages_and_public_reads_clamp_exactly() 
 
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
-    let (asset_id, _) = publish_metadata(&store, state);
+    let (asset_id, _) = publish_metadata(&store, &state);
     let set_id = AssetReferenceSetId::from_bytes([41; 16]);
     let markers = (1..=MARKER_COUNT)
         .map(|index| (marker(index), ImageLabelOrdinal::FIRST))
         .collect::<Vec<_>>();
     let source = marker_summary(markers.iter().copied());
-    let staging = begin_reference_set(&store, state, set_id, source);
+    let staging = begin_reference_set(&store, &state, set_id, source);
 
     let mut append_commands = 0;
     for marker_page in markers.chunks(ASSET_REFERENCE_PAGE_MAX_ENTRIES) {
@@ -118,14 +118,14 @@ fn append_rejects_stale_cross_page_duplicate_mismatched_label_and_missing_metada
     let (store, state) = support::open(directory.path());
     let (first_asset, _) = publish_metadata_bytes(
         &store,
-        state,
+        &state,
         b"first-append-asset",
         AssetMediaType::new("image/png").unwrap(),
         None,
     );
     let (second_asset, _) = publish_metadata_bytes(
         &store,
-        state,
+        &state,
         b"second-append-asset",
         AssetMediaType::new("image/webp").unwrap(),
         None,
@@ -138,7 +138,7 @@ fn append_rejects_stale_cross_page_duplicate_mismatched_label_and_missing_metada
         (marker(1), ImageLabelOrdinal::FIRST),
         (second_marker, second_label),
     ]);
-    let staging = begin_reference_set(&store, state, set_id, source);
+    let staging = begin_reference_set(&store, &state, set_id, source);
     let stale_proof = state
         .assets()
         .staged_reference_set_manifest(&store, staging)

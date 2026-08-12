@@ -41,10 +41,12 @@ impl ContextCompactionCoordinator {
             event,
             observed_at,
         );
-        require_committed_command(self.home.execute_current(
-            self.storage
-                .current_publish_compaction_provider_event(request),
-        ))?;
+        require_committed_command(
+            self.home.execute_current(
+                self.storage
+                    .current_publish_compaction_provider_event(request),
+            ),
+        )?;
         let after = self.read_operation(authority.operation_id())?;
         if after.provider_frontier() != Some(sequence) {
             return Err(ContextCompactionError::Storage);
@@ -118,10 +120,7 @@ impl ContextCompactionCoordinator {
                         .lock()
                         .map_err(|_| ContextCompactionError::Unavailable)?;
                     self.cancel_lifecycle_intent(local);
-                    self.execute_manual_settlement(
-                        operation,
-                        CompactionSettlement::ManualSuccess,
-                    )?;
+                    self.execute_manual_settlement(operation, CompactionSettlement::ManualSuccess)?;
                     return self.finish_settlement(local, successful);
                 }
                 Err(LifecycleContentFailure::Home) => {
@@ -161,12 +160,11 @@ impl ContextCompactionCoordinator {
                     .is_some_and(|outcome| outcome == crate::LifecycleYieldOutcome::PhaseContinue)
             };
             if phase_continue {
-                require_committed_command(
-                    self.home
-                        .execute_current(self.storage.current_settle_lifecycle_compaction(
-                            SettleLifecycleCompaction::new(operation, content, settled_at),
-                        )),
-                )?;
+                require_committed_command(self.home.execute_current(
+                    self.storage.current_settle_lifecycle_compaction(
+                        SettleLifecycleCompaction::new(operation, content, settled_at),
+                    ),
+                ))?;
             } else {
                 self.execute_manual_settlement(operation, CompactionSettlement::ManualSuccess)?;
             }
@@ -191,8 +189,12 @@ impl ContextCompactionCoordinator {
         require_committed_command(
             self.home
                 .execute_current(self.storage.current_settle_compaction_operation(
-                SettleCompactionOperation::new(operation.id(), operation.revision(), settlement),
-            )),
+                    SettleCompactionOperation::new(
+                        operation.id(),
+                        operation.revision(),
+                        settlement,
+                    ),
+                )),
         )
     }
 
@@ -342,10 +344,12 @@ impl ContextCompactionCoordinator {
             local.attempt,
             disposition,
         );
-        require_committed_command(self.home.execute_current(
-            self.storage
-                .current_publish_compaction_request_disposition(request),
-        ))?;
+        require_committed_command(
+            self.home.execute_current(
+                self.storage
+                    .current_publish_compaction_request_disposition(request),
+            ),
+        )?;
         let status = self
             .storage
             .compaction_request_disposition_status(&self.home, &request, point_limit())
@@ -372,8 +376,12 @@ impl ContextCompactionCoordinator {
         require_committed_command(
             self.home
                 .execute_current(self.storage.current_settle_compaction_operation(
-                SettleCompactionOperation::new(local.operation_id, before.revision(), settlement),
-            )),
+                    SettleCompactionOperation::new(
+                        local.operation_id,
+                        before.revision(),
+                        settlement,
+                    ),
+                )),
         )?;
         let after = self.read_operation(local.operation_id)?;
         if !matches!(after.state(), CompactionOperationState::Consumed(_)) {
@@ -396,16 +404,15 @@ impl ContextCompactionCoordinator {
         if matches!(before.state(), CompactionOperationState::Consumed(_)) {
             return Ok(());
         }
-        require_committed_command(
-            self.home
-                .execute_current(self.storage.current_abandon_compaction_operation(
+        require_committed_command(self.home.execute_current(
+            self.storage.current_abandon_compaction_operation(
                 syndic_storage::AbandonCompactionOperation::new(
                     local.operation_id,
                     before.revision(),
                     reason,
                 ),
-            )),
-        )?;
+            ),
+        ))?;
         let after = self.read_operation(local.operation_id)?;
         if !matches!(after.state(), CompactionOperationState::Consumed(_)) {
             return Err(ContextCompactionError::Storage);

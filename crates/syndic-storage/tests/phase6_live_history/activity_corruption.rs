@@ -3,11 +3,10 @@ use super::*;
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 
 fn apply_fixture(store: &HomeStore, storage: SyndicStorage, fixture: FixtureBatch) {
-    execute(
+    assert_committed(execute(
         store,
         storage.fixture_contribution(storage.revision(store).unwrap(), fixture),
-    )
-    .unwrap();
+    ));
 }
 
 fn expect_reopen_rejection(home: &TestHome, store: HomeStore, expected: &str) {
@@ -289,11 +288,10 @@ fn reopen_rejects_an_inexact_retired_source_frontier() {
     else {
         panic!("rollover draft must become nonempty")
     };
-    execute(
+    assert_committed(execute(
         &store,
         storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    )
-    .unwrap();
+    ));
     let current = storage
         .current_draft(&store, thread, limit())
         .unwrap()
@@ -302,7 +300,7 @@ fn reopen_rejects_an_inexact_retired_source_frontier() {
         .input_gate(&store, thread, limit())
         .unwrap()
         .unwrap();
-    execute(
+    assert_committed(execute(
         &store,
         storage.submit_idle_draft(
             storage.revision(&store).unwrap(),
@@ -319,8 +317,7 @@ fn reopen_rejects_an_inexact_retired_source_frontier() {
                 timestamp(10),
             ),
         ),
-    )
-    .unwrap();
+    ));
     let mut corruption = FixtureBatch::new();
     corruption
         .put(FixtureRecord::ActivityQuerySource(

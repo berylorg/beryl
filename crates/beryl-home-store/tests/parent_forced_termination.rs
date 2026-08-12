@@ -126,7 +126,10 @@ fn assert_parent_forced_cut(point: &str, expected: ExpectedState) {
     match expected {
         ExpectedState::Old => assert!(old, "before-commit cut must preserve old state"),
         ExpectedState::New => assert!(new, "post-SyncAll cut must preserve new state"),
-        ExpectedState::Either => assert!(old || new, "recovery exposed a partial batch"),
+        ExpectedState::Either => assert!(
+            old || new,
+            "recovery exposed a partial batch: home_revision={home_revision}, domain_revision={domain_revision}, value={value:?}"
+        ),
     }
 }
 

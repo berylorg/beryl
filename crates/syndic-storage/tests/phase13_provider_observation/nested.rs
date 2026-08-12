@@ -5,7 +5,7 @@ fn control(
     value: ProviderObservationControl,
     callback: &mut impl ProviderObservationStageCallback,
 ) {
-    stager.control(value, callback).unwrap();
+    clean_stage(stager.control(value, callback).unwrap());
 }
 
 fn begin_item(
@@ -13,15 +13,17 @@ fn begin_item(
     kind: ProviderObservationItemKind,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
-    let mut stager = ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([byte; 16]),
-        ProviderObservationBegin::Item {
-            lifecycle: ProviderObservationItemLifecycle::Completed,
-            kind,
-        },
-        callback,
-    )
-    .unwrap();
+    let mut stager = clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([byte; 16]),
+            ProviderObservationBegin::Item {
+                lifecycle: ProviderObservationItemLifecycle::Completed,
+                kind,
+            },
+            callback,
+        )
+        .unwrap(),
+    );
     common_item(&mut stager, callback).unwrap();
     stager
 }
@@ -121,16 +123,18 @@ fn typed_lists_objects_discriminants_and_agent_state_entries_seal() {
         &mut callback,
     );
     end_container(&mut hook, fragments, ProviderContainer::List, &mut callback);
-    hook.seal(&mut callback).unwrap().abandon();
+    clean_seal(hook.seal(&mut callback).unwrap()).abandon();
 
-    let mut delta = ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([88; 16]),
-        ProviderObservationBegin::Delta {
-            kind: ProviderDeltaKind::FileChangePatchUpdated,
-        },
-        &mut callback,
-    )
-    .unwrap();
+    let mut delta = clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([88; 16]),
+            ProviderObservationBegin::Delta {
+                kind: ProviderDeltaKind::FileChangePatchUpdated,
+            },
+            &mut callback,
+        )
+        .unwrap(),
+    );
     text(
         &mut delta,
         ProviderField::ItemId,
@@ -192,7 +196,7 @@ fn typed_lists_objects_discriminants_and_agent_state_entries_seal() {
         &mut callback,
     );
     end_container(&mut delta, changes, ProviderContainer::List, &mut callback);
-    delta.seal(&mut callback).unwrap().abandon();
+    clean_seal(delta.seal(&mut callback).unwrap()).abandon();
 
     let mut collab = begin_item(
         89,
@@ -257,12 +261,14 @@ fn typed_lists_objects_discriminants_and_agent_state_entries_seal() {
         ProviderObservationControl::BeginField(key),
         &mut callback,
     );
-    collab
-        .fragment(
-            ProviderObservationStagingBytes::new(key, b"agent-1").unwrap(),
-            &mut callback,
-        )
-        .unwrap();
+    clean_stage(
+        collab
+            .fragment(
+                ProviderObservationStagingBytes::new(key, b"agent-1").unwrap(),
+                &mut callback,
+            )
+            .unwrap(),
+    );
     control(
         &mut collab,
         ProviderObservationControl::EndField(key),
@@ -296,10 +302,12 @@ fn typed_lists_objects_discriminants_and_agent_state_entries_seal() {
         ProviderContainer::Object,
         &mut callback,
     );
-    collab.seal(&mut callback).unwrap().abandon();
+    clean_seal(collab.seal(&mut callback).unwrap()).abandon();
 
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -354,12 +362,14 @@ fn recursive_structured_object_and_list_contexts_seal() {
         ProviderObservationControl::BeginField(key),
         &mut callback,
     );
-    stager
-        .fragment(
-            ProviderObservationStagingBytes::new(key, b"values").unwrap(),
-            &mut callback,
-        )
-        .unwrap();
+    clean_stage(
+        stager
+            .fragment(
+                ProviderObservationStagingBytes::new(key, b"values").unwrap(),
+                &mut callback,
+            )
+            .unwrap(),
+    );
     control(
         &mut stager,
         ProviderObservationControl::EndField(key),
@@ -415,8 +425,10 @@ fn recursive_structured_object_and_list_contexts_seal() {
         ProviderContainer::Object,
         &mut callback,
     );
-    stager.seal(&mut callback).unwrap().abandon();
+    clean_seal(stager.seal(&mut callback).unwrap()).abandon();
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

@@ -1,4 +1,3 @@
-use beryl_home_store::{DomainCallbackSource, DomainRegistrationError};
 use syndic_storage::test_faults::{
     AwaitingTerminalPredecessorFamily, FixtureBatch, FixtureDelete, FixtureRecord,
     inject_awaiting_terminal_predecessor,
@@ -26,13 +25,12 @@ fn immediate_predecessor_record_versions_have_no_compatibility_decoder() {
         store.close().unwrap();
 
         let mut reopened = open(home.path());
-        assert!(matches!(
-            SyndicStorage::register(&mut reopened),
-            Err(DomainRegistrationError::ValidationAccess {
-                domain: "syndic",
-                source: DomainCallbackSource::Read(_),
-            })
-        ));
+        SyndicStorage::register(&mut reopened).unwrap();
+        assert!(
+            reopened
+                .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+                .is_err()
+        );
         reopened.close().unwrap();
     }
 }
@@ -63,7 +61,12 @@ fn awaiting_terminal_gate_rejects_a_steerable_state_mismatch() {
     mutation.put(FixtureRecord::InputGate(corrupt)).unwrap();
     commit(&fixture.store, fixture.storage, mutation);
 
-    assert!(fixture.store.validate_registered_domains().is_err());
+    assert!(
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
 }
 
 #[test]
@@ -91,7 +94,12 @@ fn awaiting_terminal_rejects_a_half_transition_that_kept_the_ready_source() {
         .unwrap();
     commit(&fixture.store, fixture.storage, mutation);
 
-    assert!(fixture.store.validate_registered_domains().is_err());
+    assert!(
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
 }
 
 #[test]
@@ -114,5 +122,10 @@ fn awaiting_terminal_rejects_a_half_transition_missing_the_next_source() {
         .unwrap();
     commit(&fixture.store, fixture.storage, mutation);
 
-    assert!(fixture.store.validate_registered_domains().is_err());
+    assert!(
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
 }

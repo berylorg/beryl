@@ -16,6 +16,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) struct LeaseValidationAu
     pub(in crate::cas_projection::accepted_input_scheduler) home: Arc<beryl_home_store::HomeStore>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
+    turn_start_admission_requirement: crate::cas_projection::TurnStartAdmissionRequirement,
     storage: syndic_storage::SyndicStorage,
     connections: Arc<ProjectionServiceConnectionRegistry>,
     command: crate::cas_projection::LiveCommandPermit,
@@ -123,6 +124,7 @@ impl AcceptedInputSchedulerContext {
             home: Arc::clone(&self.home),
             home_id: self.home_id,
             home_generation: self.home_generation,
+            turn_start_admission_requirement: self.turn_start_admission_requirement,
             storage: self.storage,
             connections: Arc::clone(&self.connections),
             command,
@@ -136,6 +138,12 @@ impl LeaseValidationAuthority {
         &self,
     ) -> HomeGeneration {
         self.home_generation
+    }
+
+    pub(super) const fn turn_start_admission_requirement(
+        &self,
+    ) -> crate::cas_projection::TurnStartAdmissionRequirement {
+        self.turn_start_admission_requirement
     }
 
     pub(super) fn ensure_current(&self) -> Result<(), ProjectionCoordinatorError> {

@@ -1,11 +1,12 @@
-use std::convert::Infallible;
-
 use super::*;
+use beryl_home_store::{CommandOutcome, CommitReceipt, HomeStore};
+use beryl_model::SyndicThreadId;
+use syndic_storage::SyndicStorage;
 
 pub(super) struct ProviderItemFixture {
     pub(super) frames: Vec<SealedProviderFrameReference>,
     pub(super) canonical: SealedProviderFrameReference,
-    pub(super) records: Vec<FixtureRecord>,
+    prepared: Vec<PreparedProviderFrame>,
 }
 
 #[derive(Clone, Copy)]
@@ -67,13 +68,7 @@ pub(super) fn agent_item_fixture(
             ),
         ));
     }
-    provider_item_fixture(
-        item,
-        turn,
-        source,
-        frames,
-        matches!(state, AgentItemFixtureState::Finalized),
-    )
+    provider_item_fixture(item, turn, source, frames)
 }
 
 pub(super) fn command_item_fixture(
@@ -125,7 +120,6 @@ pub(super) fn command_item_fixture(
                 ),
             ),
         ],
-        false,
     )
 }
 
@@ -182,7 +176,6 @@ pub(super) fn correlated_user_item_fixture(
                 ),
             ),
         ],
-        true,
     )
 }
 
@@ -191,10 +184,9 @@ fn provider_item_fixture(
     turn: SyndicTurnId,
     source: CasItemSource,
     frames: Vec<(SourceEventSequence, ProviderItemFrameV1)>,
-    finalized: bool,
 ) -> ProviderItemFixture {
     let mut published = Vec::with_capacity(frames.len());
-    let mut records = Vec::new();
+    let mut prepared_frames = Vec::with_capacity(frames.len());
     let mut prior = None;
     for (source_event, frame) in frames {
         let plan = match prior.clone() {
@@ -216,55 +208,239 @@ fn provider_item_fixture(
             ),
         };
         let prepared = prepare_provider_frame(plan).unwrap();
-        let mut build = stage_provider_frame(
-            &prepared,
-            prepared.initial_build().clone(),
-            &mut |batch: &ProviderFrameStageBatch| {
-                records.extend(
-                    batch
-                        .chunks()
-                        .iter()
-                        .cloned()
-                        .map(FixtureRecord::ContentChunk),
-                );
-                records.extend(
-                    batch
-                        .byte_spans()
-                        .iter()
-                        .copied()
-                        .map(FixtureRecord::ContentByteSpan),
-                );
-                records.extend(
-                    batch
-                        .narrative_spans()
-                        .iter()
-                        .copied()
-                        .map(FixtureRecord::ProviderNarrativeSpan),
-                );
-                Ok::<_, Infallible>(())
-            },
-        )
-        .unwrap();
-        if build
-            .completion_check()
-            .is_some_and(|check| !check.state().is_terminal())
-        {
-            build = build
-                .advance_completion(ProviderNarrativeCompletionState::Equal)
-                .unwrap();
-        }
-        assert_eq!(build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
         let target = prepared.target().clone();
         prior = Some(target.clone());
         published.push(target);
+        prepared_frames.push(prepared);
     }
     let latest = published.last().cloned().unwrap();
-    assert!(!finalized || latest.stream_state().is_complete());
-    let (canonical, manifest) = fixture_provider_content_manifest(item, &latest, finalized);
-    records.push(FixtureRecord::ContentManifest(manifest));
     ProviderItemFixture {
         frames: published,
-        canonical,
-        records,
+        canonical: latest,
+        prepared: prepared_frames,
+    }
+}
+
+pub(super) struct ProviderSeedTurn {
+    pub(super) thread: SyndicThreadId,
+    pub(super) turn: SyndicTurnId,
+    pub(super) source: CasTurnSource,
+    pub(super) state_revision: TurnStateRevision,
+    pub(super) gate_revision: InputGateRevision,
+    pub(super) observed_at: SyndicTimestamp,
+}
+
+impl ProviderItemFixture {
+    pub(super) fn seed(
+        &self,
+        store: &HomeStore,
+        storage: &SyndicStorage,
+        turn: &mut ProviderSeedTurn,
+        receipts: &mut Vec<CommitReceipt>,
+    ) {
+        for prepared in &self.prepared {
+            accept_clean(
+                store.execute_current(storage.current_begin_provider_frame_build(prepared)),
+                "provider-frame build begin",
+                receipts,
+            );
+            let mut build = match stage_provider_frame(
+                prepared,
+                prepared.initial_build().clone(),
+                &mut |batch: &ProviderFrameStageBatch| {
+                    store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))
+                },
+            )
+            .unwrap_or_else(|error| panic!("provider-frame staging failed: {error}"))
+            {
+                ProviderFrameStageOutcome::Committed {
+                    value,
+                    receipt,
+                    later_failure: None,
+                } => {
+                    receipts.push(receipt);
+                    value
+                }
+                outcome => panic!("expected clean provider-frame staging, got {outcome:?}"),
+            };
+            for _ in 0..4_096 {
+                if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
+                    break;
+                }
+                accept_clean(
+                    store.execute_current(storage.current_compare_provider_completion(build)),
+                    "provider completion comparison",
+                    receipts,
+                );
+                build = storage
+                    .provider_item_build(
+                        store,
+                        prepared.initial_build().item_id(),
+                        SyndicPointReadLimit::new(1_000_000).unwrap(),
+                    )
+                    .unwrap()
+                    .unwrap_or_else(|| panic!("provider build disappeared during comparison"));
+            }
+            assert_eq!(build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
+            let frame = prepared.target().clone();
+            let operation = format!(
+                "provider-frame publication for source event {}",
+                prepared.initial_build().source_event().get(),
+            );
+            accept_clean(
+                store.execute_current(
+                    storage.current_admit_live_source_event(
+                        LiveSourceEvent::new(
+                            turn.thread,
+                            turn.turn,
+                            turn.state_revision,
+                            turn.gate_revision,
+                            prepared.initial_build().source_event(),
+                            Some(turn.source.clone()),
+                            SourceEventPayload::ItemFrame {
+                                item_id: prepared.initial_build().item_id(),
+                                frame: Box::new(frame),
+                            },
+                            turn.observed_at,
+                        )
+                        .unwrap(),
+                    ),
+                ),
+                &operation,
+                receipts,
+            );
+            turn.state_revision = turn.state_revision.checked_next().unwrap();
+            converge_transcript(store, storage, turn.thread, receipts);
+        }
+        converge_item_projection(
+            store,
+            storage,
+            self.prepared
+                .first()
+                .expect("provider fixture has no prepared frame")
+                .initial_build()
+                .item_id(),
+            receipts,
+        );
+    }
+}
+
+pub(super) fn converge_item_projection(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    item_id: SyndicItemId,
+    receipts: &mut Vec<CommitReceipt>,
+) {
+    let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
+    let item = storage
+        .canonical_item(store, item_id, limit)
+        .unwrap()
+        .unwrap_or_else(|| panic!("provider fixture canonical item disappeared"));
+    if item.projection_source().is_none() {
+        return;
+    }
+    let head = storage.item_projection_head(store, item_id, limit).unwrap();
+    if head
+        .as_ref()
+        .is_some_and(|head| head.lifecycle() == ProjectionLifecycle::Current)
+    {
+        return;
+    }
+    let generation = head
+        .as_ref()
+        .map_or(ItemProjectionGeneration::FIRST, |head| {
+            head.generation().checked_next().unwrap()
+        });
+    accept_clean(
+        store.execute_current(storage.current_start_item_projection_build(
+            StartItemProjectionBuild::new(item_id, item.revision(), generation),
+        )),
+        "item-projection build start",
+        receipts,
+    );
+    for _ in 0..4_096 {
+        if storage
+            .item_projection_head(store, item_id, limit)
+            .unwrap()
+            .as_ref()
+            .is_some_and(|head| head.lifecycle() == ProjectionLifecycle::Current)
+        {
+            return;
+        }
+        let build = storage
+            .item_projection_build(store, item_id, generation, limit)
+            .unwrap()
+            .unwrap_or_else(|| panic!("provider fixture item-projection build disappeared"));
+        accept_clean(
+            store.execute_current(storage.current_advance_item_projection_build(
+                AdvanceItemProjectionBuild::new(item_id, generation, build.revision()),
+            )),
+            "item-projection build advance",
+            receipts,
+        );
+    }
+    panic!("bounded provider-fixture item projection did not finish");
+}
+
+pub(super) fn converge_transcript(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    thread_id: SyndicThreadId,
+    receipts: &mut Vec<CommitReceipt>,
+) {
+    let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
+    let thread = storage
+        .thread(store, thread_id, limit)
+        .unwrap()
+        .unwrap_or_else(|| panic!("provider fixture thread disappeared"));
+    let head = storage
+        .transcript_view_head(store, thread_id, limit)
+        .unwrap()
+        .unwrap_or_else(|| panic!("provider fixture transcript head disappeared"));
+    if head.lifecycle() == ProjectionLifecycle::Current {
+        return;
+    }
+    let generation = head.generation();
+    accept_clean(
+        store.execute_current(
+            storage.current_start_transcript_build(StartTranscriptBuild::new(
+                thread_id,
+                thread.revision(),
+                head.revision(),
+            )),
+        ),
+        "transcript-build start",
+        receipts,
+    );
+    for _ in 0..4_096 {
+        let build = storage
+            .transcript_build(store, thread_id, generation, limit)
+            .unwrap()
+            .unwrap_or_else(|| panic!("provider fixture transcript build disappeared"));
+        if build.phase() == TranscriptBuildPhase::Complete {
+            return;
+        }
+        accept_clean(
+            store.execute_current(storage.current_advance_transcript_build(
+                AdvanceTranscriptBuild::new(thread_id, generation, build.revision()),
+            )),
+            "transcript-build advance",
+            receipts,
+        );
+    }
+    panic!("bounded provider-fixture transcript build did not finish");
+}
+
+pub(super) fn accept_clean(
+    outcome: CommandOutcome,
+    operation: &str,
+    receipts: &mut Vec<CommitReceipt>,
+) {
+    match outcome {
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => receipts.push(receipt),
+        outcome => panic!("expected clean {operation}, got {outcome:?}"),
     }
 }

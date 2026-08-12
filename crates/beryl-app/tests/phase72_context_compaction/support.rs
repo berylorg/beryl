@@ -53,7 +53,7 @@ impl LifecycleFixture {
 
         let candidate = match source
             .storage
-            .compaction_admission_read(&source.store, thread_id, point_limit())
+            .compaction_admission_read(&source.home(), thread_id, point_limit())
             .unwrap()
         {
             CompactionAdmissionRead::Admissible(candidate) => candidate,
@@ -71,14 +71,47 @@ impl LifecycleFixture {
         );
         let operation_id = admission.operation_id();
         let outcome = source
-            .store
+            .home()
             .execute_current(source.storage.current_admit_compaction_operation(admission));
-        match outcome { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. } | outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("expected committed compaction admission, got {outcome:?}"), }
-        let admitted = operation(&source.store, source.storage, operation_id);
-        let outcome = source.store.execute_current(source.storage.current_claim_compaction_dispatch(
-                ClaimCompactionDispatch::new(operation_id, admitted.revision(), attempt),
-            ));
-        match outcome { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. } | outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("expected committed dispatch claim, got {outcome:?}"), }
+        match outcome {
+            beryl_home_store::CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. }
+            | outcome @ beryl_home_store::CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            }
+            | outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
+                panic!("expected committed compaction admission, got {outcome:?}")
+            }
+        }
+        let admitted = source
+            .storage
+            .compaction_operation(&*source.home(), operation_id, point_limit())
+            .unwrap()
+            .unwrap();
+        let outcome =
+            source
+                .home()
+                .execute_current(source.storage.current_claim_compaction_dispatch(
+                    ClaimCompactionDispatch::new(operation_id, admitted.revision(), attempt),
+                ));
+        match outcome {
+            beryl_home_store::CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ beryl_home_store::CommandOutcome::NotCommitted { .. }
+            | outcome @ beryl_home_store::CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            }
+            | outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
+                panic!("expected committed dispatch claim, got {outcome:?}")
+            }
+        }
         let harness = source
             .store
             .context_compaction_lifecycle_test_harness()
@@ -143,12 +176,17 @@ impl LifecycleFixture {
     }
 
     pub fn operation(&self) -> CompactionOperationRecord {
-        operation(&self.service, self.storage, self.operation_id)
+        let home = self.service.live_home_command().unwrap();
+        operation(home.home(), self.storage, self.operation_id)
     }
 
     pub fn committed_tail(&self) -> Option<SyndicTurnId> {
         self.storage
-            .thread(&self.service, self.thread_id, point_limit())
+            .thread(
+                self.service.live_home_command().unwrap().home(),
+                self.thread_id,
+                point_limit(),
+            )
             .unwrap()
             .unwrap()
             .committed_tail()
@@ -156,7 +194,11 @@ impl LifecycleFixture {
 
     pub fn input_gate(&self) -> syndic_storage::InputGateRecord {
         self.storage
-            .input_gate(&self.service, self.thread_id, point_limit())
+            .input_gate(
+                self.service.live_home_command().unwrap().home(),
+                self.thread_id,
+                point_limit(),
+            )
             .unwrap()
             .unwrap()
     }
@@ -181,7 +223,7 @@ pub fn point_limit() -> SyndicPointReadLimit {
 }
 
 fn operation(
-    home: &ProjectionConnectionService,
+    home: &beryl_home_store::HomeStore,
     storage: SyndicStorage,
     operation_id: CompactionOperationId,
 ) -> CompactionOperationRecord {

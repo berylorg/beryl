@@ -48,9 +48,10 @@ authority.
   revision and digest, feature-owned theme-document draft revision, Settings revision, appearance
   generation, preview request sequence, and window-set epoch are distinct identity domains. Equal
   numeric values never make identities interchangeable.
-- One immutable repository snapshot binds installed order, stable theme ids, manifest cursor pages,
-  and document revisions to one repository generation. A page or document result from another
-  generation cannot be combined with it.
+- One immutable manifest snapshot binds installed order, stable theme ids, names, and cursor pages
+  to one manifest generation. Each document result separately binds that manifest membership, the
+  exact home and service generation, one process-local document-observation revision, byte length,
+  and digest. A manifest page or document result from another identity cannot be combined with it.
 - The built-in fallback has the fixed internal identity `BuiltinFallback` and is an immutable
   non-installed source. It has no installed theme id, repository row, editable document, or
   repository mutation capability.
@@ -89,31 +90,49 @@ authority.
 
 ## Installed Repository And Enumeration
 
-- The repository boundary is one installed-order manifest plus one compact TOML document per
-  installed theme inside its designated Beryl-home directory. A root-level `theme.toml` is outside
-  the boundary and is never read, imported, rewritten, migrated, or deleted by the theme runtime.
+- The repository root is `<beryl-home>/themes`. Its Beryl-owned `manifest.toml` contains the schema
+  version, manifest generation, and ordered installed entries. Each entry contains the stable theme
+  id and bounded display name; the corresponding user-editable document is
+  `installed/<stable-theme-id>.toml`.
+- Stable theme ids contain 1 through 64 ASCII lowercase letters, digits, or interior hyphens, begin
+  and end with an ASCII lowercase letter or digit, and therefore map to document filenames without
+  escaping or caller-supplied path interpretation. A root-level `theme.toml` is outside the
+  boundary and is never read, imported, rewritten, migrated, or deleted by the theme runtime.
+- `manifest.toml` owns membership, names, and installed order but does not pin document content,
+  length, digest, or observation revision. Users may edit an installed TOML document directly;
+  files absent from the manifest remain inert and are never auto-installed.
 - Installed-theme count is logically unbounded. Enumeration uses revision-bound cursor pages with
   stable theme ids and explicit item and decoded-byte limits; the runtime never materializes the
   complete manifest or retains every row to answer a page request.
-- Document reads bind exact theme id, repository generation, document revision, digest, and bounded
-  source ranges. A changed document invalidates only work prepared from its superseded identity.
+- Document reads bind exact theme id, manifest generation, service generation, process-local
+  observation revision, exact byte length, digest, and bounded source ranges. A changed document
+  invalidates only work prepared from its superseded identity, including when the bytes later
+  return to an earlier digest.
 - Startup, refresh, and Settings snapshots retain only bounded manifest pages, compact metadata,
   the resolved durable base, and any exact document or draft currently required by an operation.
 
 ## Repository Mutation And Reconciliation
 
 - Install, rename, delete, reorder, update, Save, and Save As are typed repository commands. Each
-  carries the expected home and repository generations plus every exact theme id, document
+  carries the expected home and manifest generations plus every exact theme id, document
   revision, digest, order position, and feature-draft revision on which it depends.
-- A command streams complete canonical replacements into typed staged files, validates and resolves
-  every affected document, durably publishes all required files, and advances one repository
-  generation. Readers observe the complete old generation or complete new generation, never a
-  mixed manifest/document set.
+- Beryl-authored document writes stream one complete canonical replacement to a sibling staged file,
+  validate its exact length and digest, durably flush it, and atomically replace the stable installed
+  TOML file. Save and update change only that document and its observation identity; they do not
+  rewrite or advance `manifest.toml`.
+- Install and Save As durably publish the new stable document before atomically replacing
+  `manifest.toml` with the generation that admits it. Rename and reorder replace only the manifest.
+  Delete first replaces the manifest with the generation that no longer admits the id; later file
+  removal is non-authoritative and a retained file remains inert. Readers never treat an unlisted
+  file as installed.
+- A command that changes membership, name, or order advances the manifest generation. A command that
+  changes only document bytes advances only that process service's document-observation revision.
+  Both forms return the exact affected identities needed to reject stale publication.
 - Repository command results are exactly `NotCommitted`, `Committed`, or `Indeterminate`.
-  `NotCommitted` proves the current repository stayed old and carries no new generation;
-  `Committed` carries the exact new repository generation and affected document identities;
-  `Indeterminate` carries no publishable generation and only one operation-scoped reconciliation
-  descriptor.
+- `NotCommitted` proves the command's authoritative replacement did not occur and carries no new
+  identity; `Committed` carries the exact new manifest generation when changed plus affected
+  document identities; `Indeterminate` carries no publishable identity and only one operation-
+  scoped reconciliation descriptor.
 - The descriptor contains only the exact old and intended new manifest/document identities needed
   for targeted reread. Reconciliation yields `ExactOld`, `ExactNew` with the reconstructed committed
   generation, or `Collision` when the repository matches neither complete side or mixes them.
@@ -123,6 +142,10 @@ authority.
   without independent structural evidence.
 - Cancellation may retract work only before repository admission. Admitted staging and publication
   drain to an exact result or reconciliation; caller cancellation is never proof of non-commit.
+- External file writers do not participate in Beryl's command protocol. A Beryl command validates
+  its expected observed identity at admission and publishes by atomic file replacement; a later
+  external replacement is a new observed change. A race that leaves neither the exact admitted old
+  nor intended new bytes classifies as `Collision` rather than merging or guessing user intent.
 - Delete admission rechecks one exact reference snapshot and rejects before mutation when the
   target is the durable active identity, the Settings-staged active target, bound to an open
   theme-document draft, or owned by pending or reconciling repository work. Neither GUI nor tool
@@ -170,6 +193,33 @@ authority.
   remain committed while the prior coherent current appearance remains until Retry succeeds.
 - Only a repository `Committed` result or reconciled `ExactNew` may replace that durable baseline.
   `NotCommitted`, `ExactOld`, `Indeterminate`, and `Collision` retain the prior durable base.
+
+## External Document Change Observation
+
+- `beryl-home-store` owns one bounded coalescing filesystem-notification lane for the physical theme
+  repository and exposes package-neutral change hints without paths or file handles. Notifications
+  are wakeups rather than content or commit authority; duplicate, reordered, and overflow signals
+  trigger a bounded coherent refresh instead of reconstructing missed events.
+- `beryl-state` maps a stable installed filename to the exact manifest member, then performs one
+  bounded reread, length and digest calculation, parse, validation, and complete resolution through
+  the canonical theme service. It confirms the manifest membership and document identity again
+  immediately before returning a publishable result. Superseded work is rejected.
+- A valid changed active document advances its process-local observation revision and prepares a
+  replacement durable baseline. With no preview, the coordinator publishes it atomically; with a
+  preview, the preview remains current and Stop Preview restores the externally changed valid base.
+- An invalid, partial, missing, unreadable, or over-limit live document keeps the last coherent
+  repository projection and appearance, records bounded typed failure provenance, and awaits a
+  later coalesced change or explicit Retry. It never publishes the built-in fallback merely because
+  a running process observed a bad edit.
+- On startup there is no prior coherent installed appearance to retain. If the durable active
+  identity's current file is unavailable, invalid, over-limit, or cannot be applied, startup
+  publishes the complete built-in fallback as required by the Theming feature.
+- Beryl-authored atomic replacement produces the same change signals. Matching length and digest
+  make those signals idempotent; the runtime neither publishes a second appearance generation nor
+  mistakes its own committed write for another repository command.
+- External modification of `manifest.toml` is not an install, rename, delete, or reorder workflow.
+  An unexpected manifest identity follows coherent refresh and scoped-unavailable behavior; files
+  that are not admitted by the last coherent Beryl manifest never become installed implicitly.
 
 ## Appearance Generation Publication
 
@@ -247,9 +297,10 @@ authority.
 ## Bounds And Diagnostics
 
 - Repository page caches, source pages, staged-file buffers, parser state, mutation workers,
-  reconciliation workers, preview preparation, publication attempts, window adapters, and tool
-  brokers each have an explicit configured item, byte, or concurrency bound and release capacity
-  after completion, cancellation, supersession, reconciliation, window closure, or service retirement.
+  reconciliation workers, coalesced filesystem notifications, live-edit rereads, preview
+  preparation, publication attempts, window adapters, and tool brokers each have an explicit
+  configured item, byte, or concurrency bound and release capacity after completion, cancellation,
+  supersession, reconciliation, window closure, or service retirement.
 - At most one mutation executes for an overlapping repository scope and at most one reconciliation
   owns its descriptor. Preview arbitration retains only the current preview, the latest pending
   sequence, and bounded preparation state rather than an unbounded request history.
@@ -257,7 +308,7 @@ authority.
   GPUI thread. Window adapters receive only finite resolved appearances and bounded presentation
   facts.
 - Content-free diagnostics expose home and repository generation presence, bounded page and worker
-  counts, mutation and reconciliation outcomes, preview source kind and sequence, appearance
-  generation, window-set epoch, adapter counts, stale-result rejection counts, and publication
-  failure class. They never expose theme names, document text, concrete user values, paths, tool
-  arguments, or editor drafts.
+  counts, filesystem-notification coalescing and overflow counts, mutation and reconciliation
+  outcomes, preview source kind and sequence, appearance generation, window-set epoch, adapter
+  counts, stale-result rejection counts, and publication failure class. They never expose theme
+  names, document text, concrete user values, paths, tool arguments, or editor drafts.

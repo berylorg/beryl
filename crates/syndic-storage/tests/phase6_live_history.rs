@@ -1,7 +1,5 @@
 #![cfg(feature = "test-faults")]
 
-use std::convert::Infallible;
-
 #[path = "phase6_live_history/activity_bounds.rs"]
 mod activity_bounds;
 #[path = "phase6_live_history/activity_corruption.rs"]

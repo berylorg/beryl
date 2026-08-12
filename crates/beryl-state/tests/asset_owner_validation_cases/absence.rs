@@ -67,16 +67,20 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
         reopened_state.assets().revision(&reopened).unwrap(),
         assets_before
     );
-    assert!(reopened_state
-        .assets()
-        .owner_head(&reopened, source)
-        .unwrap()
-        .is_none());
-    assert!(reopened_state
-        .assets()
-        .owner_head(&reopened, destination)
-        .unwrap()
-        .is_none());
+    assert!(
+        reopened_state
+            .assets()
+            .owner_head(&reopened, source)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        reopened_state
+            .assets()
+            .owner_head(&reopened, destination)
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         reopened
             .read_point::<ProbeDomain, ProbeRecord>(

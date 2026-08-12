@@ -1,14 +1,12 @@
 #![cfg(feature = "test-faults")]
 
-use std::convert::Infallible;
-
 mod support;
 
 #[path = "phase6_fault_reconciliation/delta_persistence.rs"]
 mod delta_persistence;
 
 use beryl_home_store::{
-    CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
+    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
@@ -16,8 +14,8 @@ use beryl_model::{CasItemId, CasTurnId, SyndicContentId, SyndicItemId};
 use syndic_storage::*;
 
 use support::exact_cas::admit_item_frame;
-use support::populated::{active_turn, cas_thread, cas_turn, populated_records};
-use support::{TestHome, batch, commit, id, open, timestamp};
+use support::populated::{active_turn, cas_thread, cas_turn, seed_populated};
+use support::{TestHome, id, open, timestamp};
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
@@ -32,13 +30,49 @@ fn execute(
     store.execute(command)
 }
 
-fn assert_committed(outcome: beryl_home_store::CommandOutcome) {
+fn assert_clean_committed(outcome: CommandOutcome, operation: &str) {
     match outcome {
-        beryl_home_store::CommandOutcome::Committed {
+        CommandOutcome::Committed {
             later_failure: None,
             ..
         } => {}
-        outcome => panic!("unexpected live-history reconciliation command outcome: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("expected clean {operation}, got later failure: {failure:?}"),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected clean {operation}, got rejection: {evidence:?}")
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean {operation}, got indeterminate outcome: {failure:?}")
+        }
+    }
+}
+
+fn rejected_syndic_error(outcome: CommandOutcome, operation: &str) -> CommandError {
+    match outcome {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => panic!("expected {operation} to be rejected, but it committed"),
+        CommandOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!(
+            "expected {operation} to be rejected, but it committed with later failure: {failure:?}"
+        ),
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected {operation} to be rejected, got indeterminate outcome: {failure:?}")
+        }
     }
 }
 
@@ -201,12 +235,14 @@ fn stage_item_frame_for_publication(
     frame: ProviderItemFrameV1,
 ) -> SealedProviderFrameReference {
     let prepared = prepare_item_frame(store, storage, item_id, frame);
-    execute(
-        store,
-        storage.begin_provider_frame_build(storage.revision(store).unwrap(), &prepared),
-    )
-    .unwrap();
-    let mut build = stage_provider_frame(
+    assert_clean_committed(
+        execute(
+            store,
+            storage.begin_provider_frame_build(storage.revision(store).unwrap(), &prepared),
+        ),
+        "provider-frame build begin",
+    );
+    let mut build = match stage_provider_frame(
         &prepared,
         prepared.initial_build().clone(),
         &mut |batch: &ProviderFrameStageBatch| {
@@ -214,21 +250,45 @@ fn stage_item_frame_for_publication(
                 store,
                 storage.stage_provider_frame_batch(storage.revision(store).unwrap(), batch.clone()),
             )
-            .unwrap();
-            Ok::<(), Infallible>(())
         },
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("provider-frame staging traversal failed: {error}"))
+    {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            receipt: _receipt,
+            later_failure: None,
+        } => value,
+        ProviderFrameStageOutcome::Unchanged { value } => {
+            panic!("initial provider-frame staging unexpectedly issued no command: {value:?}")
+        }
+        ProviderFrameStageOutcome::NotCommitted { evidence } => {
+            panic!("initial provider-frame staging was rejected: {evidence:?}")
+        }
+        ProviderFrameStageOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("initial provider-frame staging committed with later failure: {failure:?}"),
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("initial provider-frame staging was indeterminate: {failure:?}")
+        }
+    };
     for _ in 0..4_096 {
         if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
             assert_eq!(build.target(), prepared.target());
             return prepared.target().clone();
         }
-        execute(
-            store,
-            storage.compare_provider_completion(storage.revision(store).unwrap(), build),
-        )
-        .unwrap();
+        assert_clean_committed(
+            execute(
+                store,
+                storage.compare_provider_completion(storage.revision(store).unwrap(), build),
+            ),
+            "provider completion comparison",
+        );
         build = storage
             .provider_item_build(store, item_id, limit())
             .unwrap()
@@ -291,7 +351,7 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
     let home = TestHome::new("phase6-external-identity");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
+    seed_populated(&store, storage);
     let item = SyndicItemId::from_bytes([70; 16]);
     let cas_item = CasItemId::new("phase6-exact-item").unwrap();
     let state = storage
@@ -325,11 +385,13 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
         timestamp(9),
     )
     .unwrap();
-    let error = execute(
-        &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), mismatched),
-    )
-    .unwrap_err();
+    let error = rejected_syndic_error(
+        execute(
+            &store,
+            storage.admit_live_source_event(storage.revision(&store).unwrap(), mismatched),
+        ),
+        "mismatched source item frame",
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceIdentityConflict
@@ -352,11 +414,13 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
         },
         timestamp(10),
     );
-    let error = execute(
-        &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), wrong_item),
-    )
-    .unwrap_err();
+    let error = rejected_syndic_error(
+        execute(
+            &store,
+            storage.admit_live_source_event(storage.revision(&store).unwrap(), wrong_item),
+        ),
+        "colliding CAS item frame",
+    );
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceIdentityConflict
@@ -392,6 +456,8 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
     assert_eq!(source.item_id(), &cas_item);
     assert_eq!(record.source_event_count(), 3);
     assert_eq!(item_text(&store, storage, item), "exact");
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

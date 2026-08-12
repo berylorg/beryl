@@ -69,7 +69,8 @@ pub use provider_frame::{
     ProviderCompletionComparisonMutationError, ProviderFrameMutationError,
     ProviderFramePreparationError, ProviderFramePreparationPlan, ProviderFrameStageBatch,
     ProviderFrameStageBatchError, ProviderFrameStageBatchState, ProviderFrameStageCallback,
-    ProviderFrameStageError, ProviderFrameStageOutcome, prepare_provider_frame, stage_provider_frame,
+    ProviderFrameStageError, ProviderFrameStageOutcome, prepare_provider_frame,
+    stage_provider_frame,
 };
 pub use provider_observation::ProviderObservationMutationError;
 #[cfg(feature = "test-faults")]

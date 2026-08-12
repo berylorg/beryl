@@ -1,7 +1,10 @@
-use std::sync::{Arc, mpsc};
+use std::{
+    panic::{AssertUnwindSafe, catch_unwind},
+    sync::{Arc, mpsc},
+};
 
 use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_state::{
@@ -20,7 +23,7 @@ pub(in crate::cas_projection::persistent_failure) struct FailedNotificationFixtu
     _directory: tempfile::TempDir,
 }
 
-fn open_faulted_home() -> (tempfile::TempDir, FaultController, HomeStore) {
+fn open_faulted_home() -> (tempfile::TempDir, HomeStore) {
     let directory = tempfile::tempdir().expect("persistent-failure notification home");
     let faults = FaultController::new();
     let mut home = HomeStore::open_with_faults(
@@ -42,23 +45,22 @@ fn open_faulted_home() -> (tempfile::TempDir, FaultController, HomeStore) {
             ApplySettings::new(vec![update]).expect("one setting update"),
         ))
         .expect("add settings contribution");
-    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
-    assert!(matches!(
-        home.execute(command),
-        CommandOutcome::Indeterminate { .. }
-    ));
-    assert_eq!(home.health().state(), HomeHealthState::Verifying);
-    (directory, faults, home)
+    faults.panic_next(FaultPoint::BeforeCommit);
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            let _ = home.execute(command);
+        }))
+        .is_err()
+    );
+    assert_eq!(home.health().state(), HomeHealthState::Failed);
+    (directory, home)
 }
 
 impl FailedNotificationFixture {
     pub(in crate::cas_projection::persistent_failure) fn new(
         service_generation: ProjectionServiceGeneration,
     ) -> Self {
-        let (directory, faults, home) = open_faulted_home();
-        faults.fail_next(FaultPoint::BeforeVerification);
-        home.verify_health()
-            .expect_err("faulted verification establishes persistent failure");
+        let (directory, home) = open_faulted_home();
         let health = home.health();
         assert_eq!(health.state(), HomeHealthState::Failed);
         let home_id = home.home_id();

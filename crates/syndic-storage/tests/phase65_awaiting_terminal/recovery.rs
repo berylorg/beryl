@@ -14,7 +14,10 @@ fn restart_classifies_awaiting_terminal_as_active_possible_dispatch_and_abandons
     let first = accept_text(&fixture, "before uncertainty", draft_id(43), 6);
     admit_unknown(&fixture, 8);
     let second = accept_text(&fixture, "during uncertainty", draft_id(44), 9);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let ActiveFixture {
         _home: home,
@@ -68,11 +71,10 @@ fn restart_classifies_awaiting_terminal_as_active_possible_dispatch_and_abandons
             .unwrap(),
         BindingPublicationStatus::Collision
     );
-    execute(
+    assert_clean(execute(
         &reopened,
         storage.abandon_active_binding(storage.revision(&reopened).unwrap(), abandonment.clone()),
-    )
-    .unwrap();
+    ));
     assert_eq!(
         storage
             .abandoned_active_binding_publication_status(&reopened, &abandonment, point_limit(),)
@@ -108,7 +110,9 @@ fn restart_classifies_awaiting_terminal_as_active_possible_dispatch_and_abandons
             ..
         }) if thread_id == thread && turn_id == turn
     ));
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -117,7 +121,10 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
     let fixture = active_fixture("phase65-awaiting-terminal-restart-empty-route");
     admit_unknown(&fixture, 8);
     let queued = accept_text(&fixture, "during uncertainty", draft_id(43), 9);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let ActiveFixture {
         _home: home,
@@ -142,11 +149,10 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
             active.minimum_timestamp(),
         )
         .unwrap();
-    execute(
+    assert_clean(execute(
         &reopened,
         storage.abandon_active_binding(storage.revision(&reopened).unwrap(), abandonment),
-    )
-    .unwrap();
+    ));
 
     let gate = storage
         .input_gate(&reopened, thread, point_limit())
@@ -177,18 +183,19 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
         timestamp(100),
     )
     .unwrap();
-    execute(
+    assert_clean(execute(
         &reopened,
         storage.admit_live_source_event(storage.revision(&reopened).unwrap(), terminal),
-    )
-    .unwrap();
+    ));
     converge_and_release_terminal_history(&reopened, storage, thread, turn);
     let gate = storage
         .input_gate(&reopened, thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(gate.state(), &InputGateState::Idle);
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -261,36 +268,61 @@ fn uncertain_terminal_fault_cuts_recover_only_prior_or_exact_whole_states() {
         accept_text(&fixture, "atomic input", draft_id(43), 6);
         let event = unknown_event(&fixture, 8);
         faults.fail_next(point);
-        assert!(
-            fixture
-                .store
-                .execute_current(
-                    fixture
-                        .storage
-                        .current_admit_live_source_event(event.clone()),
-                )
-                .is_err()
-        );
-        assert_eq!(fixture.store.health().state(), HomeHealthState::Verifying);
-        fixture.store.verify_health().unwrap();
-        let exact = assert_uncertain_transition_whole(
-            &fixture.store,
-            fixture.storage,
-            fixture.thread,
-            fixture.turn,
-        );
-        if let Some(expected) = expected_exact {
-            assert_eq!(exact, expected);
-        }
-        fixture.store.validate_registered_domains().unwrap();
-
         let ActiveFixture {
             _home: home,
             store,
+            storage,
             thread,
             turn,
             ..
         } = fixture;
+        match (
+            point,
+            store.execute_current(storage.current_admit_live_source_event(event.clone())),
+        ) {
+            (
+                FaultPoint::AfterCommitBeforePersist,
+                CommandOutcome::Indeterminate {
+                    failure: CommandError::Persistence { .. },
+                    reconciliation,
+                },
+            ) => {
+                reconciliation.install();
+                assert_eq!(store.health().state(), HomeHealthState::Healthy);
+                let close_error = store
+                    .close()
+                    .expect_err("installed indeterminate custody must block orderly close");
+                assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+                drop(close_error);
+                continue;
+            }
+            (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
+                assert!(matches!(evidence, CommandError::Commit { .. }));
+            }
+            (
+                FaultPoint::AfterPersist,
+                CommandOutcome::Committed {
+                    later_failure: Some(CommandError::Persistence { .. }),
+                    ..
+                },
+            ) => {}
+            (point, outcome) => {
+                panic!("unexpected fault outcome at {point:?}: {outcome:?}");
+            }
+        }
+        assert_eq!(store.health().state(), HomeHealthState::Failed);
+        let candidate = store.recover_same_home().unwrap();
+        let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+        let store = candidate.publish();
+        assert_eq!(store.health().state(), HomeHealthState::Healthy);
+        let exact = assert_uncertain_transition_whole(&store, storage, thread, turn);
+        assert_eq!(
+            exact,
+            expected_exact.expect("direct fault must have an exact whole state")
+        );
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         store.close().unwrap();
         let mut reopened = open(home.path());
         let storage = SyndicStorage::register(&mut reopened).unwrap();
@@ -298,7 +330,9 @@ fn uncertain_terminal_fault_cuts_recover_only_prior_or_exact_whole_states() {
             assert_uncertain_transition_whole(&reopened, storage, thread, turn),
             exact
         );
-        reopened.validate_registered_domains().unwrap();
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         reopened.close().unwrap();
     }
 }

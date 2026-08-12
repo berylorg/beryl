@@ -4,9 +4,9 @@ use beryl_home_store::{
 use beryl_model::SyndicThreadId;
 
 use super::{
+    CATALOG_RECORD_LIMIT, CatalogDomain, CatalogFacts, CatalogFreshness, CatalogMutationError,
+    CatalogRevision, CatalogRow, CatalogRowExpectation, CatalogSourceRevisions,
     codec::{CatalogRecencyCodec, CatalogRowCodec},
-    CatalogDomain, CatalogFacts, CatalogFreshness, CatalogMutationError, CatalogRevision,
-    CatalogRow, CatalogRowExpectation, CatalogSourceRevisions, CATALOG_RECORD_LIMIT,
 };
 
 /// Publish one complete current compact projection, creating or replacing its row atomically.

@@ -193,7 +193,9 @@ fn terminal_event(turn: SyndicTurnId) -> FixtureRecord {
 fn promotion_after_a_deep_tail_derives_child_digest_depth_and_deterministic_skip() {
     let deep = deep_fixture();
     let (home, store, storage) = seed("phase58-promotion-deep-tail", deep.fixture.records.clone());
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let current_tail = storage.turn(&store, deep.tail, limit()).unwrap().unwrap();
     assert_eq!(current_tail.depth(), TurnDepth::new(3).unwrap());
     assert_eq!(current_tail.parent(), ConversationParent::Turn(deep.middle));
@@ -207,9 +209,12 @@ fn promotion_after_a_deep_tail_derives_child_digest_depth_and_deterministic_skip
     );
     match execute_promotion(&store, storage, request.clone()) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected deep-tail promotion to commit without later failure, got {outcome:?}"),
+        outcome => {
+            panic!("expected deep-tail promotion to commit without later failure, got {outcome:?}")
+        }
     }
     assert_eq!(
         storage
@@ -239,7 +244,9 @@ fn promotion_after_a_deep_tail_derives_child_digest_depth_and_deterministic_skip
         .unwrap();
     assert_eq!(child.child_depth(), TurnDepth::new(4).unwrap());
     assert_eq!(child.child_digest(), expected_digest);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -250,7 +257,9 @@ fn promotion_after_a_deep_tail_derives_child_digest_depth_and_deterministic_skip
             .unwrap(),
         AcceptedInputPromotionStatus::Exact,
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -261,7 +270,9 @@ fn reconciliation_rejects_a_deep_successor_with_a_malformed_ancestor_skip() {
         "phase58-promotion-malformed-successor-skip",
         deep.fixture.records,
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let request = promotion(
         &store,
         storage,
@@ -270,9 +281,12 @@ fn reconciliation_rejects_a_deep_successor_with_a_malformed_ancestor_skip() {
     );
     match execute_promotion(&store, storage, request.clone()) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected deep-tail promotion to commit without later failure, got {outcome:?}"),
+        outcome => {
+            panic!("expected deep-tail promotion to commit without later failure, got {outcome:?}")
+        }
     }
     assert_eq!(
         storage
@@ -304,7 +318,9 @@ fn reconciliation_rejects_a_deep_successor_with_a_malformed_ancestor_skip() {
             .unwrap(),
         AcceptedInputPromotionStatus::Collision,
     );
-    let error = store.validate_registered_domains().unwrap_err();
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()

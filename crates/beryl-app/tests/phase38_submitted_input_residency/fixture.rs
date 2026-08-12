@@ -44,7 +44,7 @@ impl PreparedExecution {
                 TIMEOUT,
             )
             .unwrap();
-        let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+        let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
         let request = CasProjectionRequest::new(
             thread,
             fixture.selected_path(thread),
@@ -56,7 +56,7 @@ impl PreparedExecution {
         );
         let projection = coordinator
             .obtain_projection(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 &mut session,
                 &request,
@@ -101,7 +101,7 @@ impl PreparedExecution {
                 let mut lifecycle = NoopLifecycle;
                 let mut branch = NoopBranch;
                 coordinator.execute_ordinary_turn(
-                    &fixture.store,
+                    &*fixture.home(),
                     fixture.storage,
                     fixture.state.assets(),
                     projection,

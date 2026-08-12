@@ -55,6 +55,10 @@ pub mod test_faults;
 mod turn_activation;
 
 pub use accepted_input_scheduler::{AcceptedInputSchedulerDiagnostics, ActiveSteeringRetryState};
+pub use beryl_home_store::{
+    DURABLE_START_ADMISSION_BUDGET_BYTES, MinimumTurnCaptureReserve, TurnStartAdmissionRequirement,
+    TurnStartAdmissionRequirementError,
+};
 pub use cancellation::ProjectionCancellationToken;
 pub use connection::{
     LiveEventConnectionFact, LiveEventConnectionState, LiveEventPoll, LiveEventProcessSnapshot,
@@ -104,22 +108,16 @@ pub use runtime::AdmittedProjectionSession;
 pub use scheduled_ordinary::{
     OrdinaryDynamicToolAuthority, ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError,
     ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryExecutionLease,
-    ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionProviderFactory,
-    ScheduledOrdinaryExecutionUnavailable, ScheduledOrdinaryProviderEpochContext,
+    ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
     ScheduledOrdinaryRequestPolicy, ScheduledProjectionSessionAuthority,
 };
 pub use service::{
-    AcceptedInputAdmissionExecutionError, CasProjectionCoordinator, LiveHomeCommand,
-    ProjectionConnectionService, ProjectionConnectionServiceCloseError,
+    AcceptedInputAdmissionExecutionError, CasProjectionCoordinator, IdleSubmissionExecutionError,
+    LiveHomeCommand, ProjectionConnectionService, ProjectionConnectionServiceCloseError,
     ProjectionConnectionServiceCloseOutcome,
 };
 pub use service_config::{
     ProjectionServiceConfig, ProjectionServiceConfigError, ProjectionWorkerPoolDiagnostics,
-};
-pub use service_supervisor::{
-    RunningProjectionServiceLease, RunningServiceAvailability, RunningSessionRecoveryDiagnostics,
-    RunningSessionRecoveryShutdownError, RunningSessionRecoveryStartError,
-    RunningSessionRecoverySupervisor,
 };
 pub use stop::{
     StopCoordinationError, StopCoordinationOutcome, WindowCloseStopBarrier,

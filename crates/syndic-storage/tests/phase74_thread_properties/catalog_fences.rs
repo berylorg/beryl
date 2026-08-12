@@ -8,9 +8,7 @@ use syndic_storage::{
     ThreadCatalogSummaryRecord,
 };
 
-use crate::support::{
-    TestHome, batch, commit, draft_id, id, open, populated::populated_records, timestamp,
-};
+use crate::support::{TestHome, batch, commit, draft_id, id, open, seed_populated, timestamp};
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
@@ -128,7 +126,7 @@ fn current_attributes_witness_validates_archive_despite_stale_history() {
     );
     assert!(
         store
-            .validate_registered_domains()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err()
             .to_string()
             .contains("catalog archive")
@@ -140,7 +138,7 @@ fn current_history_witness_validates_payload_despite_stale_attributes() {
     let home = TestHome::new("phase74-current-history-stale-attributes");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
+    seed_populated(&store, storage);
     let thread_id = id(36);
     let stale_catalog = current_catalog(&store, storage, thread_id);
     execute(
@@ -184,7 +182,7 @@ fn current_history_witness_validates_payload_despite_stale_attributes() {
     );
     assert!(
         store
-            .validate_registered_domains()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err()
             .to_string()
             .contains("catalog history payload")

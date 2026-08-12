@@ -1,25 +1,30 @@
-pub use beryl_state::{RecordRevision, UnixMillis};
+pub use beryl_state::{RecordRevision, StatePage, UnixMillis};
+
+#[path = "../src/reconciliation.rs"]
+mod reconciliation;
 
 #[allow(dead_code)]
 #[path = "../src/catalog.rs"]
 mod catalog;
 
 use beryl_home_store::{
-    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, ReadError,
+    CommandError, CommandOutcome, CursorReadLimits, DomainReconciliation, HomeCommand,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore, MutationContribution, ReadError,
+    ReconciliationResolution, WholeHomeScrubTrigger,
+    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
-    AdmittedHostPath, Availability, ClaimRevision, PathFlavor, ProjectionRevision, RootId,
-    RuntimeId, SyndicPathDigest, SyndicThreadId, WindowId,
+    AdmittedHostPath, Availability, ClaimRevision, HomeRevision, PathFlavor, ProjectionRevision,
+    RootId, RuntimeId, SyndicPathDigest, SyndicThreadId, WindowId,
 };
 use catalog::{
+    CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES,
     CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
     CatalogExecutionSummary, CatalogFacts, CatalogFreshness, CatalogLineageSummary,
     CatalogMutationError, CatalogNormalizationProfile, CatalogNormalizedQuery,
-    CatalogPointReadLimit, CatalogReadError, CatalogResolvedTitle, CatalogRowExpectation,
-    CatalogSourceRevisions, CatalogState, CatalogTitleSource, MarkCatalogRowStale,
-    PublishCatalogRow, CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE,
-    CATALOG_QUERY_MAX_BYTES,
+    CatalogPointReadLimit, CatalogReadError, CatalogResolvedTitle, CatalogRow,
+    CatalogRowExpectation, CatalogSourceRevisions, CatalogState, CatalogTitleSource,
+    MarkCatalogRowStale, PublishCatalogRow,
 };
 
 fn open(path: &std::path::Path) -> (HomeStore, CatalogState) {
@@ -27,6 +32,26 @@ fn open(path: &std::path::Path) -> (HomeStore, CatalogState) {
         HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
     let state = CatalogState::register(&mut store).unwrap();
     (store, state)
+}
+
+fn open_with_faults(path: &std::path::Path, faults: FaultController) -> (HomeStore, CatalogState) {
+    let mut store = HomeStore::open_with_faults(
+        HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
+        faults,
+    )
+    .unwrap();
+    let state = CatalogState::register(&mut store).unwrap();
+    (store, state)
+}
+
+fn execute_at(
+    store: &HomeStore,
+    expected_home_revision: HomeRevision,
+    contribution: MutationContribution,
+) -> CommandOutcome {
+    let mut command = HomeCommand::new(expected_home_revision);
+    command.add(contribution).unwrap();
+    store.execute(command)
 }
 
 macro_rules! assert_committed {
@@ -126,6 +151,215 @@ fn contributor_source<T: std::error::Error + 'static>(error: &CommandError) -> O
     }
 }
 
+fn seed_rows(store: &HomeStore, state: CatalogState, count: u8) -> Vec<CatalogRow> {
+    for thread in 1..=count {
+        assert_committed!(publish(
+            store,
+            state,
+            thread,
+            CatalogRowExpectation::Missing,
+            1,
+            u64::from(thread) * 100,
+            CatalogResolvedTitle::history_derived(format!("History {thread}")).unwrap(),
+        ));
+    }
+    (1..=count)
+        .map(|thread| {
+            state
+                .row(
+                    store,
+                    SyndicThreadId::from_bytes([thread; 16]),
+                    CatalogPointReadLimit::schema_maximum(),
+                )
+                .unwrap()
+                .unwrap()
+        })
+        .collect()
+}
+
+fn indeterminate_handle(outcome: CommandOutcome) -> beryl_home_store::ReconciliationHandle {
+    match outcome {
+        CommandOutcome::Indeterminate { reconciliation, .. } => reconciliation.install_and_handle(),
+        outcome => panic!("expected indeterminate catalog contribution, got {outcome:?}"),
+    }
+}
+
+#[test]
+fn catalog_reconciliation_exact_new_reconstructs_a_receipt_without_domain_validation() {
+    let directory = tempfile::tempdir().unwrap();
+    let faults = FaultController::new();
+    let (store, state) = open_with_faults(directory.path(), faults.clone());
+    let rows = seed_rows(&store, state, 3);
+
+    assert_committed!(execute(&store, state, |revision| {
+        state.corrupt_recency_copy_for_test(revision, rows[0].recency_cursor(), rows[1].clone())
+    }));
+
+    let home_before = store.home_revision().unwrap();
+    let domain_before = state.revision(&store).unwrap();
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let handle = indeterminate_handle(execute_at(
+        &store,
+        home_before,
+        state.corrupt_recency_copy_for_test(
+            domain_before,
+            rows[2].recency_cursor(),
+            rows[0].clone(),
+        ),
+    ));
+
+    match store.reconcile(&handle).unwrap() {
+        ReconciliationResolution::ExactNew { receipt } => {
+            assert_eq!(receipt.home_revision(), home_before.checked_next().unwrap());
+        }
+        outcome => panic!("expected exact-new receipt reconstruction, got {outcome:?}"),
+    }
+    store.close().unwrap();
+}
+
+#[test]
+fn catalog_reconciliation_exact_old_releases_the_scope_without_a_receipt() {
+    let directory = tempfile::tempdir().unwrap();
+    let faults = FaultController::new();
+    let (store, state) = open_with_faults(directory.path(), faults.clone());
+    let rows = seed_rows(&store, state, 2);
+    let home_before = store.home_revision().unwrap();
+    let domain_before = state.revision(&store).unwrap();
+
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let handle = indeterminate_handle(execute_at(
+        &store,
+        home_before,
+        state.corrupt_recency_copy_for_test(
+            domain_before,
+            rows[0].recency_cursor(),
+            rows[1].clone(),
+        ),
+    ));
+    assert_committed!(execute_at(
+        &store,
+        home_before.checked_next().unwrap(),
+        state.corrupt_recency_copy_for_test(
+            domain_before.checked_next().unwrap(),
+            rows[0].recency_cursor(),
+            rows[0].clone(),
+        ),
+    ));
+    assert_eq!(
+        store.reconcile(&handle).unwrap(),
+        ReconciliationResolution::ExactOld
+    );
+    store.close().unwrap();
+}
+
+#[test]
+fn catalog_reconciliation_mixed_natural_records_seal_a_collision() {
+    let directory = tempfile::tempdir().unwrap();
+    let faults = FaultController::new();
+    let (store, state) = open_with_faults(directory.path(), faults.clone());
+    let old = seed_rows(&store, state, 1).pop().unwrap();
+    let home_before = store.home_revision().unwrap();
+    let domain_before = state.revision(&store).unwrap();
+    let update = PublishCatalogRow::new(
+        old.thread_id(),
+        CatalogRowExpectation::Revision(old.revision()),
+        sources(2, false),
+        facts(
+            1,
+            200,
+            CatalogResolvedTitle::generated("Replacement").unwrap(),
+            false,
+        ),
+    )
+    .unwrap();
+
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let handle = indeterminate_handle(execute_at(
+        &store,
+        home_before,
+        state.publish(domain_before, update),
+    ));
+    assert_committed!(execute_at(
+        &store,
+        home_before.checked_next().unwrap(),
+        state.corrupt_recency_copy_for_test(
+            domain_before.checked_next().unwrap(),
+            old.recency_cursor(),
+            old,
+        ),
+    ));
+    assert_eq!(
+        store.reconcile(&handle).unwrap(),
+        ReconciliationResolution::Collision
+    );
+    store.close().unwrap();
+}
+
+#[test]
+fn catalog_reconciliation_neither_natural_record_seals_a_collision() {
+    let directory = tempfile::tempdir().unwrap();
+    let faults = FaultController::new();
+    let (store, state) = open_with_faults(directory.path(), faults.clone());
+    let rows = seed_rows(&store, state, 3);
+    let home_before = store.home_revision().unwrap();
+    let domain_before = state.revision(&store).unwrap();
+
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let handle = indeterminate_handle(execute_at(
+        &store,
+        home_before,
+        state.corrupt_recency_copy_for_test(
+            domain_before,
+            rows[0].recency_cursor(),
+            rows[1].clone(),
+        ),
+    ));
+    assert_committed!(execute_at(
+        &store,
+        home_before.checked_next().unwrap(),
+        state.corrupt_recency_copy_for_test(
+            domain_before.checked_next().unwrap(),
+            rows[0].recency_cursor(),
+            rows[2].clone(),
+        ),
+    ));
+    assert_eq!(
+        store.reconcile(&handle).unwrap(),
+        ReconciliationResolution::Collision
+    );
+    store.close().unwrap();
+}
+
+#[test]
+fn catalog_reconciliation_dual_side_record_seals_a_collision() {
+    let directory = tempfile::tempdir().unwrap();
+    let faults = FaultController::new();
+    let (store, state) = open_with_faults(directory.path(), faults.clone());
+    let row = seed_rows(&store, state, 1).pop().unwrap();
+    let home_before = store.home_revision().unwrap();
+    let domain_before = state.revision(&store).unwrap();
+
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let handle = indeterminate_handle(execute_at(
+        &store,
+        home_before,
+        state.corrupt_recency_copy_for_test(domain_before, row.recency_cursor(), row),
+    ));
+    assert_eq!(
+        store.reconcile(&handle).unwrap(),
+        ReconciliationResolution::Collision
+    );
+    store.close().unwrap();
+}
+
+#[test]
+fn reconciliation_classification_never_revives_a_collision() {
+    let mut classification = reconciliation::ReconciliationClassification::new();
+    classification.observe_matches(true, true);
+    classification.observe_matches(false, true);
+    assert_eq!(classification.finish(), DomainReconciliation::Collision);
+}
+
 #[test]
 fn resolved_title_and_catalog_owned_search_are_exact() {
     let generated = CatalogResolvedTitle::generated("Generated").unwrap();
@@ -167,16 +401,18 @@ fn resolved_title_and_catalog_owned_search_are_exact() {
 
     let absent = facts(2, 2, CatalogResolvedTitle::absent(), false);
     assert_eq!(absent.search().title(), "");
-    assert!(CatalogFacts::new(
-        CatalogResolvedTitle::history_derived("\u{fdfa}".repeat(80)).unwrap(),
-        absent.execution().clone(),
-        CatalogArchiveSummary::Ordinary,
-        UnixMillis::new(2),
-        true,
-        CatalogClaimSummary::Unclaimed,
-        CatalogLineageSummary::TopLevel,
-    )
-    .is_err());
+    assert!(
+        CatalogFacts::new(
+            CatalogResolvedTitle::history_derived("\u{fdfa}".repeat(80)).unwrap(),
+            absent.execution().clone(),
+            CatalogArchiveSummary::Ordinary,
+            UnixMillis::new(2),
+            true,
+            CatalogClaimSummary::Unclaimed,
+            CatalogLineageSummary::TopLevel,
+        )
+        .is_err()
+    );
 
     let lineage = CatalogLineageSummary::descendant(
         SyndicThreadId::from_bytes([9; 16]),
@@ -306,9 +542,11 @@ fn point_limits_and_page_costs_cover_stored_and_decoded_bytes() {
     assert!(page.stored_bytes() > 0);
     assert!(page.decoded_bytes() > 0);
     let exact_page = page.stored_bytes().max(page.decoded_bytes());
-    assert!(state
-        .recency_page(&store, None, CursorReadLimits::new(1, exact_page).unwrap(),)
-        .is_ok());
+    assert!(
+        state
+            .recency_page(&store, None, CursorReadLimits::new(1, exact_page).unwrap(),)
+            .is_ok()
+    );
 }
 
 #[test]
@@ -424,7 +662,7 @@ fn claim_fact_and_source_revision_must_have_the_same_shape() {
 }
 
 #[test]
-fn reopen_rejects_a_recency_copy_that_disagrees_with_its_row() {
+fn routine_reopen_defers_a_dormant_recency_copy_disagreement_to_explicit_scrub() {
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
     for thread in [1, 2] {
@@ -460,9 +698,25 @@ fn reopen_rejects_a_recency_copy_that_disagrees_with_its_row() {
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let error = match CatalogState::register(&mut reopened) {
-        Ok(_) => panic!("mismatched recency copy must fail reopen validation"),
-        Err(error) => error,
-    };
-    assert!(error.to_string().contains("copies disagree"));
+    let routine = CatalogState::register(&mut reopened)
+        .expect("routine catalog registration must not scan dormant recency copies");
+    assert_eq!(
+        routine
+            .row(
+                &reopened,
+                SyndicThreadId::from_bytes([1; 16]),
+                CatalogPointReadLimit::schema_maximum(),
+            )
+            .unwrap(),
+        Some(first)
+    );
+    let error = reopened
+        .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
+    assert!(
+        error
+            .validation_error()
+            .to_string()
+            .contains("copies disagree")
+    );
 }

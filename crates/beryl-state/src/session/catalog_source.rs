@@ -7,8 +7,8 @@ use beryl_home_store::{
 use beryl_model::{DomainRevision, SyndicThreadId};
 
 use super::{
+    CLAIM_V1_BYTES, SessionDomain, SessionState, ThreadClaimRecord,
     codec::{ClaimByThreadCodec, ClaimByWindowCodec},
-    SessionDomain, SessionState, ThreadClaimRecord, CLAIM_V1_BYTES,
 };
 
 /// Coherent current claim facts for one thread, including proven absence.

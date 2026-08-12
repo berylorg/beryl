@@ -5,20 +5,36 @@ use fjall::{Keyspace, PersistMode};
 use super::reopen::validate_registry;
 use super::*;
 use crate::{
+    HomeStore,
     health::{ClassifiedFjallError, FailureSeverity},
     metadata::MAX_DOMAIN_METADATA_BYTES,
     store::StoreGeneration,
-    HomeStore,
 };
 
 impl HomeStore {
-    /// Registers or reacquires one typed logical domain before process services start.
+    /// Registers or routinely reacquires one typed logical domain without an
+    /// exhaustive scan of persisted application records.
     ///
     /// A second registration of the same stable name in one generation is an
     /// error. On reopen, persistent schema and family declarations must match
     /// exactly and every required physical keyspace must already exist.
     pub fn register_domain<D: StorageDomain>(
         &mut self,
+    ) -> Result<DomainHandle<D>, DomainRegistrationError> {
+        self.register_domain_inner::<D>(false)
+    }
+
+    /// Registers or reacquires one typed logical domain at an explicit schema-
+    /// validation boundary, exhaustively validating persisted records and sidecars.
+    pub fn register_domain_with_schema_validation<D: StorageDomain>(
+        &mut self,
+    ) -> Result<DomainHandle<D>, DomainRegistrationError> {
+        self.register_domain_inner::<D>(true)
+    }
+
+    fn register_domain_inner<D: StorageDomain>(
+        &mut self,
+        validate_schema: bool,
     ) -> Result<DomainHandle<D>, DomainRegistrationError> {
         let definition = DomainBlueprint::for_domain::<D>()?;
         let sidecars = crate::SidecarVerifier::new(self);
@@ -45,7 +61,11 @@ impl HomeStore {
             }
         };
 
-        let result = register_definition::<D>(generation, &definition, &sidecars);
+        let result = register_definition::<D>(
+            generation,
+            &definition,
+            validate_schema.then_some(&sidecars),
+        );
         let handle = match result {
             Ok(registered) => {
                 let slot = generation.registry.insert(registered);
@@ -70,8 +90,17 @@ impl HomeStore {
         Ok(handle)
     }
 
-    /// Runs every registered authoritative-domain validator on one snapshot.
-    pub fn validate_registered_domains(&self) -> Result<(), DomainValidationError> {
+    /// Runs or joins the bounded per-home whole-home scrub flight.
+    pub fn scrub_whole_home(
+        &self,
+        trigger: crate::WholeHomeScrubTrigger,
+    ) -> Result<(), WholeHomeScrubError> {
+        self.scrub
+            .run(trigger, || self.scrub_registered_domains_once())
+            .map_err(WholeHomeScrubError::new)
+    }
+
+    fn scrub_registered_domains_once(&self) -> Result<(), DomainValidationError> {
         let admission = self.health.admit()?;
         let generation = match self.generation.read() {
             Ok(generation) => generation,
@@ -87,7 +116,7 @@ impl HomeStore {
                 return Err(DomainValidationError::GenerationPoisoned);
             }
         };
-        let result = validate_registry(generation);
+        let result = validate_registry(generation, &crate::SidecarVerifier::new(self));
         if let Err(error) = &result {
             admission.fail(validation_failure_severity(error));
         } else {
@@ -160,7 +189,7 @@ impl StoreGeneration {
 fn register_definition<D: StorageDomain>(
     generation: &StoreGeneration,
     definition: &DomainBlueprint,
-    sidecars: &crate::SidecarVerifier<'_>,
+    sidecars: Option<&crate::SidecarVerifier<'_>>,
 ) -> Result<RegisteredDomain, DomainRegistrationError> {
     if let Some(slot) = generation.registry.slot_for(definition.name) {
         let registered = generation
@@ -197,25 +226,27 @@ fn register_definition<D: StorageDomain>(
     };
 
     if existing {
-        let snapshot = generation.database.snapshot().map_err(|source| {
-            registration_storage::<D>(DomainRegistrationStage::ReadRegistry, source)
-        })?;
-        registered
-            .validate_reopen(&snapshot, sidecars)
-            .map_err(|source| match source {
-                callback::ErasedCallbackError::Access(source) => {
-                    DomainRegistrationError::ValidationAccess {
-                        domain: D::NAME,
-                        source,
-                    }
-                }
-                callback::ErasedCallbackError::Rejected(source) => {
-                    DomainRegistrationError::Validation {
-                        domain: D::NAME,
-                        source,
-                    }
-                }
+        if let Some(sidecars) = sidecars {
+            let snapshot = generation.database.snapshot().map_err(|source| {
+                registration_storage::<D>(DomainRegistrationStage::ReadRegistry, source)
             })?;
+            registered
+                .validate_schema(&snapshot, sidecars)
+                .map_err(|source| match source {
+                    callback::ErasedCallbackError::Access(source) => {
+                        DomainRegistrationError::ValidationAccess {
+                            domain: D::NAME,
+                            source,
+                        }
+                    }
+                    callback::ErasedCallbackError::Rejected(source) => {
+                        DomainRegistrationError::Validation {
+                            domain: D::NAME,
+                            source,
+                        }
+                    }
+                })?;
+        }
     } else {
         persist_new_registration::<D>(generation, definition)?;
     }
@@ -436,8 +467,8 @@ fn registered_domain(
         owner: definition.owner,
         families,
         family_slots,
-        validator: definition.validator,
         reopen_validator: definition.reopen_validator,
+        reconciler: definition.reconciler,
     }
 }
 
@@ -528,12 +559,12 @@ fn registration_failure_severity(error: &DomainRegistrationError) -> Option<Fail
         | DomainRegistrationError::HealthGate(_) => None,
         DomainRegistrationError::Storage { source, .. } => {
             source.downcast_ref::<ClassifiedFjallError>().map_or(
-                Some(FailureSeverity::Verify),
+                Some(FailureSeverity::Structural),
                 ClassifiedFjallError::severity,
             )
         }
         DomainRegistrationError::ValidationAccess { source, .. } => {
-            Some(callback::callback_failure_severity(source))
+            callback::callback_failure_severity(source)
         }
         DomainRegistrationError::RegistryPoisoned => Some(FailureSeverity::Structural),
         DomainRegistrationError::UnexpectedKeyspace { .. }
@@ -548,15 +579,18 @@ fn registration_failure_severity(error: &DomainRegistrationError) -> Option<Fail
 
 fn validation_failure_severity(error: &DomainValidationError) -> FailureSeverity {
     match error {
-        DomainValidationError::Access { source, .. } => callback::callback_failure_severity(source),
+        DomainValidationError::Access { source, .. } => {
+            callback::callback_failure_severity(source).unwrap_or(FailureSeverity::Structural)
+        }
         DomainValidationError::Snapshot { source } | DomainValidationError::Health { source } => {
             source
                 .downcast_ref::<ClassifiedFjallError>()
                 .and_then(ClassifiedFjallError::severity)
-                .unwrap_or(FailureSeverity::Verify)
+                .unwrap_or(FailureSeverity::Structural)
         }
         DomainValidationError::HealthGate(_)
         | DomainValidationError::GenerationPoisoned
-        | DomainValidationError::Rejected { .. } => FailureSeverity::Structural,
+        | DomainValidationError::Rejected { .. }
+        | DomainValidationError::WorkerPanicked => FailureSeverity::Structural,
     }
 }

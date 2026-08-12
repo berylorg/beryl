@@ -1,9 +1,9 @@
 use beryl_home_store::{DomainHandle, HomeStore, PointReadLimit};
 
 use super::{
-    codec::{SessionHeaderCodec, SessionWindowCodec, HEADER_KEY},
-    MinimalSessionBootstrap, SessionDomain, SessionHeader, SessionReadError,
-    SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
+    MinimalSessionBootstrap, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES, SessionDomain,
+    SessionHeader, SessionReadError,
+    codec::{HEADER_KEY, SessionHeaderCodec, SessionWindowCodec},
 };
 
 pub(super) fn read(

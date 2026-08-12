@@ -2,7 +2,9 @@ use beryl_home_store::CommandOutcome;
 use syndic_storage::*;
 
 use crate::{
-    accepted_support::{AcceptedOperation, assert_operation_committed, limit, route_entry, seeded},
+    accepted_support::{
+        AcceptedOperation, assert_operation_committed, limit, route_entry, seeded_operation,
+    },
     support::{id, open},
 };
 
@@ -21,7 +23,7 @@ struct Aggregates {
 fn every_delivery_transition_executes_current_and_persists_exact_aggregates() {
     for operation in AcceptedOperation::ALL {
         let name = format!("phase53-current-{}", operation.name());
-        let (home, store, storage) = seeded(&name, operation.records());
+        let (home, store, storage) = seeded_operation(&name, operation);
         assert_eq!(
             operation.status(&store, storage),
             AcceptedInputDeliveryTransitionStatus::Prior
@@ -29,10 +31,13 @@ fn every_delivery_transition_executes_current_and_persists_exact_aggregates() {
 
         match store.execute_current(operation.current_command(storage)) {
             CommandOutcome::Committed {
-                later_failure: None, ..
+                later_failure: None,
+                ..
             } => {}
             outcome => {
-                panic!("expected delivery transition to commit without later failure, got {outcome:?}")
+                panic!(
+                    "expected delivery transition to commit without later failure, got {outcome:?}"
+                )
             }
         }
 

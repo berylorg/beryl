@@ -3,11 +3,11 @@ use beryl_model::{JobId, JobRevision};
 
 use super::codec::{JobRecordCodec, LiveJobIndexCodec};
 use super::{
+    BranchHandoffCheckpoint, BranchHandoffJobState, DurableJobDomain, DurableJobMutationError,
+    HandoffFailureEvidence,
     mutation::{
         advance, ensure_revision, put_live_transition, put_terminal_transition, required_job,
     },
-    BranchHandoffCheckpoint, BranchHandoffJobState, DurableJobDomain, DurableJobMutationError,
-    HandoffFailureEvidence,
 };
 
 pub(super) struct CorruptFailureState {

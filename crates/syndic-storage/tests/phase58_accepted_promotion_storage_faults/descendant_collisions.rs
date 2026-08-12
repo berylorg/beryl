@@ -266,10 +266,13 @@ fn similar_but_incoherent_promotion_descendants_are_collisions() {
         );
         match execute_promotion(&store, storage, request.clone()) {
             CommandOutcome::Committed {
-                later_failure: None, ..
+                later_failure: None,
+                ..
             } => {}
             outcome => {
-                panic!("expected descendant promotion to commit without later failure, got {outcome:?}")
+                panic!(
+                    "expected descendant promotion to commit without later failure, got {outcome:?}"
+                )
             }
         }
         assert_eq!(

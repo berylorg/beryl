@@ -77,7 +77,30 @@ impl PreparedAcceptedInputAdmission {
 }
 
 /// Builds one atomic idle-submission command with its compact asset-owner transition.
+///
+/// Production callers must use the projection service's final gated execution boundary.
+#[cfg(feature = "test-faults")]
+#[doc(hidden)]
 pub fn idle_submission_command(
+    store: &HomeStore,
+    syndic: SyndicStorage,
+    assets: AssetState,
+    submission: IdleSubmission,
+) -> Result<HomeCommand, InputAdmissionBuildError> {
+    build_idle_submission_command(store, syndic, assets, submission)
+}
+
+#[cfg(not(feature = "test-faults"))]
+pub(crate) fn idle_submission_command(
+    store: &HomeStore,
+    syndic: SyndicStorage,
+    assets: AssetState,
+    submission: IdleSubmission,
+) -> Result<HomeCommand, InputAdmissionBuildError> {
+    build_idle_submission_command(store, syndic, assets, submission)
+}
+
+fn build_idle_submission_command(
     store: &HomeStore,
     syndic: SyndicStorage,
     assets: AssetState,
@@ -98,7 +121,28 @@ pub fn idle_submission_command(
 }
 
 /// Builds one atomic accepted-input promotion and asset-owner transfer.
+#[cfg(feature = "test-faults")]
+#[doc(hidden)]
 pub fn accepted_input_promotion_command(
+    store: &HomeStore,
+    syndic: SyndicStorage,
+    assets: AssetState,
+    promotion: PromoteAcceptedInput,
+) -> Result<HomeCommand, InputAdmissionBuildError> {
+    build_accepted_input_promotion_command(store, syndic, assets, promotion)
+}
+
+#[cfg(not(feature = "test-faults"))]
+pub(crate) fn accepted_input_promotion_command(
+    store: &HomeStore,
+    syndic: SyndicStorage,
+    assets: AssetState,
+    promotion: PromoteAcceptedInput,
+) -> Result<HomeCommand, InputAdmissionBuildError> {
+    build_accepted_input_promotion_command(store, syndic, assets, promotion)
+}
+
+fn build_accepted_input_promotion_command(
     store: &HomeStore,
     syndic: SyndicStorage,
     assets: AssetState,

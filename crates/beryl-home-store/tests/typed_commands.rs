@@ -10,8 +10,8 @@ use beryl_model::DomainRevision;
 use tempfile::tempdir;
 
 use support::{
-    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord,
-    FixtureMutationError, PutBytes,
+    AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, not_committed,
+    open_home,
 };
 
 #[test]
@@ -318,12 +318,14 @@ fn empty_duplicate_and_foreign_commands_are_rejected_before_mutation() {
             PutBytes::<AlphaDomain>::new(1, b"one".to_vec()),
         ))
         .unwrap();
-    assert!(duplicate
-        .add(alpha.contribution(
-            first.domain_revision(alpha).unwrap(),
-            PutBytes::<AlphaDomain>::new(2, b"two".to_vec()),
-        ))
-        .is_err());
+    assert!(
+        duplicate
+            .add(alpha.contribution(
+                first.domain_revision(alpha).unwrap(),
+                PutBytes::<AlphaDomain>::new(2, b"two".to_vec()),
+            ))
+            .is_err()
+    );
 
     let mut foreign = HomeCommand::new(second.home_revision().unwrap());
     foreign

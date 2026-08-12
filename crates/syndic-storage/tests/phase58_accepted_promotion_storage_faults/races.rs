@@ -8,7 +8,8 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
     command.add(contribution).unwrap();
     match store.execute(command) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => panic!("expected mutation to commit without later failure, got {outcome:?}"),
     }
@@ -63,9 +64,12 @@ fn committed_autosave_invalidates_only_the_stale_promotion_basis() {
     );
     match execute_promotion(&store, storage, fresh.clone()) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected fresh promotion to commit without later failure, got {outcome:?}"),
+        outcome => {
+            panic!("expected fresh promotion to commit without later failure, got {outcome:?}")
+        }
     }
     assert_eq!(
         storage
@@ -130,7 +134,8 @@ fn ordinary_submit_cannot_overtake_live_next_turn_promotion() {
 
     match execute_promotion(&store, storage, request.clone()) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
     }
@@ -157,7 +162,8 @@ fn gate_only_revision_advance_is_not_a_compatible_promotion_descendant() {
     );
     match execute_promotion(&store, storage, request.clone()) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
     }

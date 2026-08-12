@@ -4,13 +4,13 @@ use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
 use crate::{
-    accepted_support::{AcceptedOperation, limit, seeded},
+    accepted_support::{
+        AcceptedOperation, limit, seeded_mixed, seeded_operation, seeded_populated,
+    },
     support::{
         batch, commit, id, open,
-        phase11::{
-            abandonment_request, delivering_input, mixed_abandonment_records, retryable_input,
-        },
-        populated::{populated_records, steering_input},
+        phase11::{abandonment_request, delivering_input, retryable_input},
+        populated::steering_input,
     },
 };
 
@@ -32,7 +32,7 @@ fn wrong_target(operation: AcceptedOperation) -> SteeringTargetProof {
 fn every_transition_specific_status_rejects_target_drift_as_collision() {
     for operation in AcceptedOperation::ALL {
         let name = format!("phase53-{}-collision", operation.name());
-        let (_home, store, storage) = seeded(&name, operation.records());
+        let (_home, store, storage) = seeded_operation(&name, operation);
         let status = match operation {
             AcceptedOperation::Begin => storage.begin_accepted_input_delivery_status(
                 &store,
@@ -93,7 +93,7 @@ enum WitnessCorruption {
 }
 
 #[test]
-fn impossible_future_authority_in_transition_witness_fails_validation_and_reopen() {
+fn impossible_future_authority_in_transition_witness_requires_explicit_validation() {
     for (name, corruption) in [
         ("phase53-future-gate-witness", WitnessCorruption::FutureGate),
         (
@@ -106,37 +106,28 @@ fn impossible_future_authority_in_transition_witness_fails_validation_and_reopen
 }
 
 fn assert_witness_corruption_rejected(name: &str, corruption: WitnessCorruption) {
-    let records = populated_records();
-    let initial_generation = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::AcceptedRouteGeneration(generation)
-                if generation.thread_id() == id(40) =>
-            {
-                Some(generation.clone())
-            }
-            _ => None,
-        })
-        .unwrap();
-    let initial_next_source = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::AcceptedNextSource(source) if source.thread_id() == id(40) => {
-                Some(*source)
-            }
-            _ => None,
-        })
-        .unwrap();
-    let claimed_bytes = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::AcceptedInput(input) if input.id() == steering_input() => {
-                Some(input.content().summary().logical_utf8_bytes())
-            }
-            _ => None,
-        })
-        .unwrap();
-    let (home, store, storage) = seeded(name, records);
+    let (home, store, storage) = seeded_populated(name);
+    let initial_generation = syndic_storage::test_faults::accepted_route_generation(
+        &store,
+        storage,
+        id(40),
+        AcceptedRouteGeneration::FIRST,
+    )
+    .unwrap();
+    let initial_next_source = AcceptedNextSourceRecord::new(
+        id(40),
+        AcceptedRouteGeneration::FIRST,
+        initial_generation.revision(),
+        initial_generation.first_ordinal().unwrap(),
+        initial_generation.last_ordinal().unwrap(),
+    );
+    let claimed_bytes = storage
+        .accepted_input(&store, steering_input(), limit())
+        .unwrap()
+        .unwrap()
+        .content()
+        .summary()
+        .logical_utf8_bytes();
     let request = BeginAcceptedInputDelivery::new(
         id(40),
         steering_input(),
@@ -145,9 +136,12 @@ fn assert_witness_corruption_rejected(name: &str, corruption: WitnessCorruption)
     );
     match store.execute_current(storage.current_begin_accepted_input_delivery(request.clone())) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected delivery begin to commit without later failure, got {outcome:?}"),
+        outcome => {
+            panic!("expected delivery begin to commit without later failure, got {outcome:?}")
+        }
     }
     let gate = storage
         .input_gate(&store, id(40), limit())
@@ -204,31 +198,32 @@ fn assert_witness_corruption_rejected(name: &str, corruption: WitnessCorruption)
     }
     commit(&store, storage, batch(corruptions));
 
-    let error = store.validate_registered_domains().unwrap_err();
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
             .contains("accepted-route leaf transition proof disagrees")
     );
-    store.close().unwrap();
+    let candidate = store.recover_same_home().unwrap();
+    let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let recovered = candidate.publish();
+    assert_eq!(
+        recovered.health().state(),
+        beryl_home_store::HomeHealthState::Healthy
+    );
+    assert!(storage.revision(&recovered).is_ok());
+    recovered.close().unwrap();
 
     let mut reopened = open(home.path());
-    let error = match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("impossible transition witness survived reopen validation"),
-        Err(error) => error,
-    };
-    assert!(
-        error
-            .to_string()
-            .contains("accepted-route leaf transition proof disagrees")
-    );
+    SyndicStorage::register(&mut reopened).unwrap();
     reopened.close().unwrap();
 }
 
 #[test]
 fn target_and_leaf_revision_drift_classify_collision() {
-    let (_home, store, storage) =
-        seeded("phase53-reconciliation-drift", mixed_abandonment_records());
+    let (_home, store, storage) = seeded_mixed("phase53-reconciliation-drift");
     let exact_prior = BeginAcceptedInputDelivery::new(
         id(40),
         steering_input(),
@@ -270,9 +265,12 @@ fn target_and_leaf_revision_drift_classify_collision() {
     let abandonment = abandonment_request(&store, storage);
     match store.execute_current(storage.current_abandon_active_binding(abandonment)) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected binding abandonment to commit without later failure, got {outcome:?}"),
+        outcome => {
+            panic!("expected binding abandonment to commit without later failure, got {outcome:?}")
+        }
     }
     assert_eq!(
         storage
@@ -281,16 +279,15 @@ fn target_and_leaf_revision_drift_classify_collision() {
         AcceptedInputDeliveryTransitionStatus::Collision,
         "projection-loss target drift must not preserve Prior",
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
 #[test]
 fn same_stable_intent_survives_unrelated_aggregate_advancement() {
-    let (_home, store, storage) = seeded(
-        "phase53-reconciliation-false-exact",
-        mixed_abandonment_records(),
-    );
+    let (_home, store, storage) = seeded_mixed("phase53-reconciliation-false-exact");
     let request_a = BeginAcceptedInputDelivery::new(
         id(40),
         retryable_input(),
@@ -305,9 +302,12 @@ fn same_stable_intent_survives_unrelated_aggregate_advancement() {
     );
     match store.execute_current(storage.current_begin_accepted_input_delivery(unrelated)) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected unrelated delivery begin to commit without later failure, got {outcome:?}"),
+        outcome => panic!(
+            "expected unrelated delivery begin to commit without later failure, got {outcome:?}"
+        ),
     }
     assert_eq!(
         storage
@@ -325,9 +325,12 @@ fn same_stable_intent_survives_unrelated_aggregate_advancement() {
     );
     match store.execute_current(storage.current_begin_accepted_input_delivery(request_b.clone())) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected compatible delivery begin to commit without later failure, got {outcome:?}"),
+        outcome => panic!(
+            "expected compatible delivery begin to commit without later failure, got {outcome:?}"
+        ),
     }
     assert_eq!(
         storage
@@ -342,16 +345,15 @@ fn same_stable_intent_survives_unrelated_aggregate_advancement() {
         AcceptedInputDeliveryTransitionStatus::Exact,
         "equivalent stable intents must authenticate the same successor witness",
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
 #[test]
 fn exact_leaf_witness_survives_unrelated_later_route_and_gate_work() {
-    let (_home, store, storage) = seeded(
-        "phase53-reconciliation-later-route-work",
-        mixed_abandonment_records(),
-    );
+    let (_home, store, storage) = seeded_mixed("phase53-reconciliation-later-route-work");
     let claimed = BeginAcceptedInputDelivery::new(
         id(40),
         retryable_input(),
@@ -360,9 +362,12 @@ fn exact_leaf_witness_survives_unrelated_later_route_and_gate_work() {
     );
     match store.execute_current(storage.current_begin_accepted_input_delivery(claimed.clone())) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected claimed delivery begin to commit without later failure, got {outcome:?}"),
+        outcome => panic!(
+            "expected claimed delivery begin to commit without later failure, got {outcome:?}"
+        ),
     }
     let unrelated_retry = RetryAcceptedInputDelivery::new(
         id(40),
@@ -372,9 +377,12 @@ fn exact_leaf_witness_survives_unrelated_later_route_and_gate_work() {
     );
     match store.execute_current(storage.current_retry_accepted_input_delivery(unrelated_retry)) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected unrelated delivery retry to commit without later failure, got {outcome:?}"),
+        outcome => panic!(
+            "expected unrelated delivery retry to commit without later failure, got {outcome:?}"
+        ),
     }
 
     assert_eq!(
@@ -383,6 +391,8 @@ fn exact_leaf_witness_survives_unrelated_later_route_and_gate_work() {
             .unwrap(),
         AcceptedInputDeliveryTransitionStatus::Exact
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

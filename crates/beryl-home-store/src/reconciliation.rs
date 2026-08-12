@@ -1,7 +1,31 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    error::Error,
+    fmt,
+    sync::{Arc, Condvar, Mutex, MutexGuard, Weak},
+};
 
-/// Exact number of operation-scoped reservations retained by one home.
+use beryl_model::DomainRevision;
+use sha2::{Digest, Sha256};
+use thiserror::Error;
+
+use crate::{
+    CommitReceipt, DomainCallbackSource, ReadError,
+    command::RetainedReconciliationDescriptor,
+    domain::callback::ErasedCallbackError,
+    health::{ClassifiedFjallError, FailureSeverity},
+    store::HomeStore,
+};
+
+mod reader;
+mod registry;
+pub use reader::{DomainReconciliation, ReconciliationReader, ReconciliationRecord};
+pub(crate) use registry::{ReconciliationRegistry, ReconciliationSlot};
+use registry::{RegistryInner, RegistryState, ScopeState, release_retained_core_if_idle};
+
 pub(crate) const RECONCILIATION_SCOPE_CAPACITY: usize = 1_024;
+const RECONCILIATION_WORKER_CAPACITY: usize = 4;
+const COLLISION_DOMAIN_BYTES: usize = 32;
+const COLLISION_RECORD_BYTES: usize = 160;
 
 #[derive(Debug)]
 pub(crate) enum ReconciliationReservationError {
@@ -9,109 +33,421 @@ pub(crate) enum ReconciliationReservationError {
     Capacity,
 }
 
-#[derive(Debug)]
-struct LedgerState {
-    occupied: Box<[bool]>,
-    reserved_bytes: usize,
+/// Terminal targeted classification shared by every trigger for one exact scope.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ReconciliationResolution {
+    ExactOld,
+    ExactNew { receipt: CommitReceipt },
+    Collision,
 }
 
-#[derive(Debug)]
-struct LedgerInner {
-    state: Mutex<LedgerState>,
-    descriptor_byte_limit: usize,
-    reserved_byte_limit: usize,
+/// Cloneable retained failure from one targeted reconciliation worker.
+#[derive(Clone)]
+pub struct ReconciliationFailure(Arc<ReconciliationFailureInner>);
+
+#[derive(Debug, Error)]
+enum ReconciliationFailureInner {
+    #[error("reconciliation handle does not belong to this home registry")]
+    ForeignScope,
+    #[error("the reconciliation scope is no longer retained")]
+    StaleScope,
+    #[error("the Beryl-home generation lock is poisoned")]
+    GenerationPoisoned,
+    #[error("reconciliation snapshot failed: {0}")]
+    Snapshot(#[source] Box<dyn Error + Send + Sync>),
+    #[error("reconciliation hook for `{domain}` could not read exact natural records: {source}")]
+    HookAccess {
+        domain: &'static str,
+        #[source]
+        source: DomainCallbackSource,
+    },
+    #[error("reconciliation hook for `{domain}` rejected exact natural records: {source}")]
+    HookRejected {
+        domain: &'static str,
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct ReconciliationLedger {
-    inner: Arc<LedgerInner>,
-}
-
-impl ReconciliationLedger {
-    pub(crate) fn new(descriptor_byte_limit: usize, reserved_byte_limit: usize) -> Self {
-        assert!(
-            descriptor_byte_limit > 0,
-            "reconciliation descriptor byte limit must be nonzero"
-        );
-        assert!(
-            reserved_byte_limit >= descriptor_byte_limit,
-            "aggregate reconciliation byte limit must admit one descriptor"
-        );
-        Self {
-            inner: Arc::new(LedgerInner {
-                state: Mutex::new(LedgerState {
-                    occupied: vec![false; RECONCILIATION_SCOPE_CAPACITY].into_boxed_slice(),
-                    reserved_bytes: 0,
-                }),
-                descriptor_byte_limit,
-                reserved_byte_limit,
-            }),
-        }
+impl fmt::Debug for ReconciliationFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
     }
+}
+impl fmt::Display for ReconciliationFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+impl Error for ReconciliationFailure {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.0.source()
+    }
+}
 
-    pub(crate) fn reserve(
-        &self,
-        descriptor_bytes: usize,
-    ) -> Result<ReconciliationSlot, ReconciliationReservationError> {
-        if descriptor_bytes > self.inner.descriptor_byte_limit {
-            return Err(ReconciliationReservationError::DescriptorTooLarge {
-                requested: descriptor_bytes,
-                limit: self.inner.descriptor_byte_limit,
-            });
-        }
-
-        let mut state = self
-            .inner
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let Some(next_reserved_bytes) = state.reserved_bytes.checked_add(descriptor_bytes) else {
-            return Err(ReconciliationReservationError::Capacity);
-        };
-        if next_reserved_bytes > self.inner.reserved_byte_limit {
-            return Err(ReconciliationReservationError::Capacity);
-        }
-        let Some(index) = state.occupied.iter().position(|occupied| !occupied) else {
-            return Err(ReconciliationReservationError::Capacity);
-        };
-        state.occupied[index] = true;
-        state.reserved_bytes = next_reserved_bytes;
-        Ok(ReconciliationSlot {
-            inner: Arc::clone(&self.inner),
-            index,
-            charged_bytes: descriptor_bytes,
+impl From<crate::HealthGateError> for ReconciliationFailure {
+    fn from(error: crate::HealthGateError) -> Self {
+        failure(ReconciliationFailureInner::HookAccess {
+            domain: "home",
+            source: DomainCallbackSource::Read(ReadError::HealthGate(error)),
         })
     }
 }
 
-/// One RAII reservation transferred only into an indeterminate descriptor.
-pub(crate) struct ReconciliationSlot {
-    inner: Arc<LedgerInner>,
-    index: usize,
-    charged_bytes: usize,
+type SharedResult = Result<ReconciliationResolution, ReconciliationFailure>;
+
+enum FlightState {
+    Idle,
+    Running,
+    Complete(SharedResult),
+}
+struct ReconciliationFlight {
+    state: Mutex<FlightState>,
+    completed: Condvar,
 }
 
-impl std::fmt::Debug for ReconciliationSlot {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl ReconciliationFlight {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(FlightState::Idle),
+            completed: Condvar::new(),
+        }
+    }
+}
+
+/// Opaque cloneable capability naming one exact retained reconciliation scope.
+#[derive(Clone)]
+pub struct ReconciliationHandle {
+    registry: Weak<RegistryInner>,
+    index: usize,
+    token: u64,
+    flight: Arc<ReconciliationFlight>,
+}
+
+impl fmt::Debug for ReconciliationHandle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("ReconciliationSlot")
-            .field("index", &self.index)
+            .debug_struct("ReconciliationHandle")
+            .field("scope", &self.token)
             .finish_non_exhaustive()
     }
 }
 
-impl Drop for ReconciliationSlot {
-    fn drop(&mut self) {
-        let mut state = self
-            .inner
+struct SealedCollision {
+    _domains: Vec<SealedDomain>,
+    _receipt_revision: u64,
+    charged_bytes: usize,
+}
+struct SealedDomain {
+    _domain_slot: usize,
+    _intended_revision: DomainRevision,
+    _side: DomainReconciliation,
+    _records: Vec<SealedRecord>,
+}
+struct SealedRecord {
+    _family_slot: usize,
+    _key: Box<[u8]>,
+    _old_digest: Option<[u8; 32]>,
+    _new_digest: Option<[u8; 32]>,
+}
+
+impl HomeStore {
+    /// Returns a bounded snapshot of installed or collision-closed operation handles.
+    #[must_use]
+    pub fn pending_reconciliations(&self) -> Vec<ReconciliationHandle> {
+        self.reconciliation.handles()
+    }
+
+    /// Triggers or joins targeted reconciliation for one exact installed operation scope.
+    pub fn reconcile(
+        &self,
+        handle: &ReconciliationHandle,
+    ) -> Result<ReconciliationResolution, ReconciliationFailure> {
+        let Some(inner) = handle.registry.upgrade() else {
+            return Err(failure(ReconciliationFailureInner::StaleScope));
+        };
+        if !Arc::ptr_eq(&inner, &self.reconciliation.inner) {
+            return Err(failure(ReconciliationFailureInner::ForeignScope));
+        }
+        let mut flight = handle
+            .flight
             .state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        debug_assert!(state.occupied[self.index]);
-        state.occupied[self.index] = false;
-        state.reserved_bytes = state
-            .reserved_bytes
-            .checked_sub(self.charged_bytes)
-            .expect("reconciliation reserved-byte accounting underflow");
+        loop {
+            match &*flight {
+                FlightState::Complete(result) => return result.clone(),
+                FlightState::Running => {
+                    flight = handle
+                        .flight
+                        .completed
+                        .wait(flight)
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                }
+                FlightState::Idle => {
+                    *flight = FlightState::Running;
+                    break;
+                }
+            }
+        }
+        drop(flight);
+
+        let result = self.run_reconciliation(handle, &inner);
+        let mut flight = handle
+            .flight
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *flight = FlightState::Complete(result.clone());
+        handle.flight.completed.notify_all();
+        result
     }
+
+    fn run_reconciliation(
+        &self,
+        handle: &ReconciliationHandle,
+        inner: &Arc<RegistryInner>,
+    ) -> SharedResult {
+        acquire_worker(inner, handle)?;
+        let execution = self.execute_reconciliation_hook(handle, inner);
+        finish_worker(inner, handle, execution)
+    }
+
+    fn execute_reconciliation_hook(
+        &self,
+        handle: &ReconciliationHandle,
+        inner: &Arc<RegistryInner>,
+    ) -> Result<(Vec<DomainReconciliation>, CommitReceipt), ReconciliationFailure> {
+        let admission = self.health.admit().map_err(|error| {
+            failure(ReconciliationFailureInner::HookAccess {
+                domain: "home",
+                source: DomainCallbackSource::Read(ReadError::HealthGate(error)),
+            })
+        })?;
+        let generation = self.generation.read().map_err(|_| {
+            admission.fail(FailureSeverity::Structural);
+            failure(ReconciliationFailureInner::GenerationPoisoned)
+        })?;
+        let generation = generation.as_ref().ok_or_else(|| {
+            admission.fail(FailureSeverity::Structural);
+            failure(ReconciliationFailureInner::GenerationPoisoned)
+        })?;
+        let snapshot = generation.database.snapshot().map_err(|source| {
+            let source = ClassifiedFjallError::direct(source);
+            signal_structural(&admission, source.severity());
+            failure(ReconciliationFailureInner::Snapshot(Box::new(source)))
+        })?;
+        let descriptor = {
+            let state = inner.lock_state();
+            match &state.scopes[handle.index] {
+                ScopeState::Verifying {
+                    token, descriptor, ..
+                } if *token == handle.token => Arc::clone(descriptor),
+                _ => return Err(failure(ReconciliationFailureInner::StaleScope)),
+            }
+        };
+        let mut sides = Vec::with_capacity(descriptor.domains.len());
+        for domain_descriptor in &descriptor.domains {
+            let domain = generation
+                .registry
+                .get(domain_descriptor.domain_slot)
+                .ok_or_else(|| failure(ReconciliationFailureInner::StaleScope))?;
+            let side = (domain.reconciler)(&snapshot, domain, domain_descriptor)
+                .map_err(|error| map_hook_failure(domain.name, error, &admission))?;
+            sides.push(side);
+        }
+        admission.confirm_database(&generation.database, |source| {
+            failure(ReconciliationFailureInner::Snapshot(Box::new(source)))
+        })?;
+        Ok((sides, descriptor.receipt.clone()))
+    }
+}
+
+fn failure(inner: ReconciliationFailureInner) -> ReconciliationFailure {
+    ReconciliationFailure(Arc::new(inner))
+}
+
+fn acquire_worker(
+    inner: &Arc<RegistryInner>,
+    handle: &ReconciliationHandle,
+) -> Result<(), ReconciliationFailure> {
+    let mut state = inner.lock_state();
+    loop {
+        if !matches!(
+            state.scopes.get(handle.index),
+            Some(ScopeState::Verifying { token, .. }) if *token == handle.token
+        ) {
+            return Err(failure(ReconciliationFailureInner::StaleScope));
+        }
+        if state.active_workers < RECONCILIATION_WORKER_CAPACITY {
+            state.active_workers += 1;
+            return Ok(());
+        }
+        state = inner
+            .worker_released
+            .wait(state)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+    }
+}
+
+fn finish_worker(
+    inner: &Arc<RegistryInner>,
+    handle: &ReconciliationHandle,
+    execution: Result<(Vec<DomainReconciliation>, CommitReceipt), ReconciliationFailure>,
+) -> SharedResult {
+    let mut state = inner.lock_state();
+    let outcome = match execution {
+        Err(error) => Err(error),
+        Ok((sides, receipt)) => {
+            let all_old = sides
+                .iter()
+                .all(|side| *side == DomainReconciliation::ExactOld);
+            let all_new = sides
+                .iter()
+                .all(|side| *side == DomainReconciliation::ExactNew);
+            if all_old || all_new {
+                let charged_bytes = match &state.scopes[handle.index] {
+                    ScopeState::Verifying {
+                        token,
+                        charged_bytes,
+                        ..
+                    } if *token == handle.token => *charged_bytes,
+                    _ => return release_worker_with_stale(inner, state),
+                };
+                state.scopes[handle.index] = ScopeState::Vacant;
+                release_charge(inner, &mut state, charged_bytes);
+                release_retained_core_if_idle(&mut state);
+                if all_old {
+                    Ok(ReconciliationResolution::ExactOld)
+                } else {
+                    Ok(ReconciliationResolution::ExactNew { receipt })
+                }
+            } else {
+                let (descriptor, charged_bytes, flight) = match &state.scopes[handle.index] {
+                    ScopeState::Verifying {
+                        token,
+                        descriptor,
+                        charged_bytes,
+                        flight,
+                    } if *token == handle.token => {
+                        (Arc::clone(descriptor), *charged_bytes, Arc::clone(flight))
+                    }
+                    _ => return release_worker_with_stale(inner, state),
+                };
+                let facts = seal_collision(&descriptor, &sides);
+                debug_assert!(facts.charged_bytes <= charged_bytes);
+                state.reserved_bytes = state
+                    .reserved_bytes
+                    .checked_sub(charged_bytes)
+                    .and_then(|bytes| bytes.checked_add(facts.charged_bytes))
+                    .expect("collision charge replacement remains within its reservation");
+                state.scopes[handle.index] = ScopeState::Closed {
+                    token: handle.token,
+                    _facts: facts,
+                    flight,
+                };
+                release_retained_core_if_idle(&mut state);
+                Ok(ReconciliationResolution::Collision)
+            }
+        }
+    };
+    state.active_workers = state
+        .active_workers
+        .checked_sub(1)
+        .expect("one active reconciliation worker owns this completion");
+    inner.worker_released.notify_one();
+    outcome
+}
+
+fn release_worker_with_stale(
+    inner: &Arc<RegistryInner>,
+    mut state: MutexGuard<'_, RegistryState>,
+) -> SharedResult {
+    state.active_workers = state.active_workers.saturating_sub(1);
+    inner.worker_released.notify_one();
+    Err(failure(ReconciliationFailureInner::StaleScope))
+}
+
+fn release_charge(inner: &RegistryInner, state: &mut RegistryState, charged_bytes: usize) {
+    if let Some(remaining) = state.reserved_bytes.checked_sub(charged_bytes) {
+        state.reserved_bytes = remaining;
+    } else {
+        inner.health.signal_failure(FailureSeverity::Structural);
+    }
+}
+
+fn map_hook_failure(
+    domain: &'static str,
+    error: ErasedCallbackError,
+    admission: &crate::health::HealthAdmission<'_>,
+) -> ReconciliationFailure {
+    match error {
+        ErasedCallbackError::Access(source) => {
+            signal_structural(
+                admission,
+                crate::domain::callback::reconciliation_callback_failure_severity(&source),
+            );
+            failure(ReconciliationFailureInner::HookAccess { domain, source })
+        }
+        ErasedCallbackError::Rejected(source) => {
+            failure(ReconciliationFailureInner::HookRejected { domain, source })
+        }
+    }
+}
+
+fn signal_structural(
+    admission: &crate::health::HealthAdmission<'_>,
+    severity: Option<FailureSeverity>,
+) {
+    if severity == Some(FailureSeverity::Structural) {
+        admission.fail(FailureSeverity::Structural);
+    }
+}
+
+fn seal_collision(
+    descriptor: &RetainedReconciliationDescriptor,
+    sides: &[DomainReconciliation],
+) -> SealedCollision {
+    let mut charged_bytes = 32usize;
+    let domains = descriptor
+        .domains
+        .iter()
+        .zip(sides.iter().copied())
+        .map(|(domain, side)| {
+            charged_bytes = charged_bytes
+                .checked_add(COLLISION_DOMAIN_BYTES)
+                .expect("reserved collision charge arithmetic");
+            let records = domain
+                .records
+                .iter()
+                .map(|record| {
+                    charged_bytes = charged_bytes
+                        .checked_add(COLLISION_RECORD_BYTES)
+                        .and_then(|bytes| bytes.checked_add(record.key.len()))
+                        .expect("reserved collision charge arithmetic");
+                    SealedRecord {
+                        _family_slot: record.family_slot,
+                        _key: record.key.clone(),
+                        _old_digest: record.old.as_deref().map(digest),
+                        _new_digest: record.new.as_deref().map(digest),
+                    }
+                })
+                .collect();
+            SealedDomain {
+                _domain_slot: domain.domain_slot,
+                _intended_revision: domain.intended_revision,
+                _side: side,
+                _records: records,
+            }
+        })
+        .collect();
+    SealedCollision {
+        _domains: domains,
+        _receipt_revision: descriptor.receipt.home_revision().get(),
+        charged_bytes,
+    }
+}
+
+fn digest(bytes: &[u8]) -> [u8; 32] {
+    Sha256::digest(bytes).into()
 }

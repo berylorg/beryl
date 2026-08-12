@@ -61,7 +61,7 @@ fn exact_limit_fragmented_and_deep_histories_stream_with_constant_local_residenc
     let server = RecoveryServer::spawn_success(Arc::clone(&histories));
     let mut session = admit(&fixture, &server, 440_001);
     let observer = session.recovery_replay_diagnostics_observer();
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
 
     let first_expected =
         histories[0].prepare_exact_projection(&fixture, first, MODEL_BOUNDARY_TOKENS);
@@ -71,7 +71,7 @@ fn exact_limit_fragmented_and_deep_histories_stream_with_constant_local_residenc
     let first_projection = thread::scope(|scope| {
         let worker = scope.spawn(|| {
             coordinator.obtain_projection(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 &mut session,
                 &first_request,
@@ -80,7 +80,7 @@ fn exact_limit_fragmented_and_deep_histories_stream_with_constant_local_residenc
         });
         first_barrier.wait();
         assert_eq!(
-            fixture.storage.revision(&fixture.store).unwrap(),
+            fixture.storage.revision(&*fixture.home()).unwrap(),
             first_expected.source_revision(),
             "first cursor replay must remain bound to the exact prepared Syndic revision"
         );
@@ -117,7 +117,7 @@ fn exact_limit_fragmented_and_deep_histories_stream_with_constant_local_residenc
     let second_projection = thread::scope(|scope| {
         let worker = scope.spawn(|| {
             coordinator.obtain_projection(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 &mut session,
                 &second_request,
@@ -126,7 +126,7 @@ fn exact_limit_fragmented_and_deep_histories_stream_with_constant_local_residenc
         });
         second_barrier.wait();
         assert_eq!(
-            fixture.storage.revision(&fixture.store).unwrap(),
+            fixture.storage.revision(&*fixture.home()).unwrap(),
             second_expected.source_revision(),
             "second cursor replay must remain bound to the exact prepared Syndic revision"
         );
@@ -185,11 +185,11 @@ fn exact_model_and_product_budget_overflow_is_rejected_before_remote_dispatch() 
 
     let server = RecoveryServer::spawn_no_dispatch();
     let mut session = admit(&fixture, &server, 440_002);
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
 
     let model_error = coordinator
         .obtain_projection(
-            &fixture.store,
+            &*fixture.home(),
             fixture.storage,
             &mut session,
             &request(model, MODEL_BOUNDARY_TOKENS - 1, 44_010),
@@ -200,7 +200,7 @@ fn exact_model_and_product_budget_overflow_is_rejected_before_remote_dispatch() 
 
     let product_error = coordinator
         .obtain_projection(
-            &fixture.store,
+            &*fixture.home(),
             fixture.storage,
             &mut session,
             &request(product, u64::MAX, 44_011),
@@ -232,14 +232,14 @@ fn cancellation_before_injection_dispatch_is_proven_and_releases_capacity_one_br
     let server = RecoveryServer::spawn_predispatch_cancellation();
     let mut session = admit(&fixture, &server, 440_003);
     let observer = session.recovery_replay_diagnostics_observer();
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
     let request = request(installed, MODEL_BOUNDARY_TOKENS, 44_020);
     let barrier = install_recovery_source_barrier(installed.thread, 0);
 
     let error = thread::scope(|scope| {
         let worker = scope.spawn(|| {
             coordinator.obtain_projection(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 &mut session,
                 &request,
@@ -287,14 +287,14 @@ fn cancellation_after_first_transport_frame_is_completion_unknown_and_releases()
     let server = RecoveryServer::spawn_post_first_page_cancellation(Arc::clone(&history));
     let mut session = admit(&fixture, &server, 440_004);
     let observer = session.recovery_replay_diagnostics_observer();
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
     let request = request(installed, MODEL_BOUNDARY_TOKENS, 44_030);
     let barrier = install_recovery_source_barrier(installed.thread, 1);
 
     let error = thread::scope(|scope| {
         let worker = scope.spawn(|| {
             coordinator.obtain_projection(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 &mut session,
                 &request,

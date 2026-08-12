@@ -5,7 +5,7 @@ fn control(
     value: ProviderObservationControl,
     callback: &mut impl ProviderObservationStageCallback,
 ) {
-    stager.control(value, callback).unwrap();
+    clean_stage(stager.control(value, callback).unwrap());
 }
 
 fn begin_item(
@@ -13,15 +13,17 @@ fn begin_item(
     kind: ProviderObservationItemKind,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
-    let mut stager = ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([byte; 16]),
-        ProviderObservationBegin::Item {
-            lifecycle: ProviderObservationItemLifecycle::Completed,
-            kind,
-        },
-        callback,
-    )
-    .unwrap();
+    let mut stager = clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([byte; 16]),
+            ProviderObservationBegin::Item {
+                lifecycle: ProviderObservationItemLifecycle::Completed,
+                kind,
+            },
+            callback,
+        )
+        .unwrap(),
+    );
     common_item(&mut stager, callback).unwrap();
     stager
 }
@@ -69,12 +71,14 @@ fn context_text(
         ProviderObservationControl::BeginField(context),
         callback,
     );
-    stager
-        .fragment(
-            ProviderObservationStagingBytes::new(context, bytes).unwrap(),
-            callback,
-        )
-        .unwrap();
+    clean_stage(
+        stager
+            .fragment(
+                ProviderObservationStagingBytes::new(context, bytes).unwrap(),
+                callback,
+            )
+            .unwrap(),
+    );
     control(
         stager,
         ProviderObservationControl::EndField(context),
@@ -169,7 +173,7 @@ fn memory_citation_thread_text_and_agent_state_keys_remain_generic() {
         ProviderContainer::Object,
         &mut callback,
     );
-    agent.seal(&mut callback).unwrap().abandon();
+    clean_seal(agent.seal(&mut callback).unwrap()).abandon();
 
     let mut collab = begin_item(
         200,
@@ -255,9 +259,11 @@ fn memory_citation_thread_text_and_agent_state_keys_remain_generic() {
         ProviderContainer::Object,
         &mut callback,
     );
-    collab.seal(&mut callback).unwrap().abandon();
+    clean_seal(collab.seal(&mut callback).unwrap()).abandon();
 
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

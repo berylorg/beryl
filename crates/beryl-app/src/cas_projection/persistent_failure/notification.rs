@@ -28,7 +28,7 @@ pub struct PersistentFailureNotification {
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     signal: mpsc::SyncSender<()>,
-    supervisor_signal: Arc<Mutex<Option<mpsc::SyncSender<()>>>>,
+    disposal_signal: Arc<Mutex<Option<mpsc::SyncSender<()>>>>,
     gate: Arc<GateInner>,
 }
 
@@ -55,10 +55,10 @@ impl PersistentFailureNotification {
                 return PersistentFailureNotificationStatus::Unavailable;
             }
         }
-        if let Ok(supervisor) = self.supervisor_signal.lock()
-            && let Some(supervisor) = supervisor.as_ref()
+        if let Ok(disposal) = self.disposal_signal.lock()
+            && let Some(disposal) = disposal.as_ref()
         {
-            let _ = supervisor.try_send(());
+            let _ = disposal.try_send(());
         }
         match self.signal.try_send(()) {
             Ok(()) => PersistentFailureNotificationStatus::Signaled,
@@ -69,16 +69,16 @@ impl PersistentFailureNotification {
         }
     }
 
-    pub(in crate::cas_projection) fn attach_recovery_supervisor(
+    pub(in crate::cas_projection) fn attach_terminal_disposer(
         &self,
         signal: mpsc::SyncSender<()>,
     ) -> Result<(), ()> {
-        let mut supervisor = self.supervisor_signal.lock().map_err(|_| ())?;
-        if supervisor.is_some() {
+        let mut disposal = self.disposal_signal.lock().map_err(|_| ())?;
+        if disposal.is_some() {
             return Err(());
         }
-        *supervisor = Some(signal);
-        drop(supervisor);
+        *disposal = Some(signal);
+        drop(disposal);
         let _ = self.notify();
         Ok(())
     }
@@ -124,7 +124,7 @@ pub(in crate::cas_projection) fn persistent_failure_notification_channel(
             home_id,
             home_generation,
             signal,
-            supervisor_signal: Arc::new(Mutex::new(None)),
+            disposal_signal: Arc::new(Mutex::new(None)),
             gate: GateInner::new(service_generation),
         },
         receiver,

@@ -84,7 +84,7 @@ pub fn assert_durable_success(
     );
     let state = fixture
         .storage
-        .turn_state(&fixture.store, turn, point_limit())
+        .turn_state(&*fixture.home(), turn, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::Complete);
@@ -100,7 +100,7 @@ pub fn assert_durable_success(
     let items = fixture
         .storage
         .turn_items(
-            &fixture.store,
+            &*fixture.home(),
             turn,
             None,
             beryl_home_store::CursorReadLimits::new(2, 64 * 1024).unwrap(),
@@ -150,7 +150,7 @@ pub fn assert_durable_success(
 
     let item = fixture
         .storage
-        .canonical_item(&fixture.store, item_id, point_limit())
+        .canonical_item(&*fixture.home(), item_id, point_limit())
         .unwrap()
         .unwrap();
     let item_source = CasItemSource::new(source.clone(), cas_item_id);
@@ -164,14 +164,14 @@ pub fn assert_durable_success(
     assert!(item.provider().unwrap().stream_state().is_complete());
     let captured = fixture
         .storage
-        .capture_item(&fixture.store, &item_source, point_limit())
+        .capture_item(&*fixture.home(), &item_source, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(captured.item(), &item);
 
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(gate.state(), &InputGateState::Idle);
@@ -179,7 +179,7 @@ pub fn assert_durable_success(
 
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, fixture.thread, point_limit())
+        .current_binding(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let BindingState::Valid(usable) = binding.binding().state() else {
@@ -210,7 +210,7 @@ fn source_event(
     fixture
         .storage
         .source_event(
-            &fixture.store,
+            &*fixture.home(),
             turn,
             SourceEventSequence::new(sequence).unwrap(),
             point_limit(),

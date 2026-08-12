@@ -126,7 +126,10 @@ impl CompactionFixture {
             &syndic_storage::InputGateState::Idle
         );
         assert!(matches!(fixture.binding_state(), BindingState::Valid(_)));
-        fixture.store.validate_registered_domains().unwrap();
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         fixture
     }
 
@@ -170,7 +173,8 @@ impl CompactionFixture {
         );
         let id = admission.operation_id();
         assert_eq!(admission.home_id(), self.store.home_id());
-        match self.store
+        match self
+            .store
             .execute_current(self.storage.current_admit_compaction_operation(admission))
         {
             CommandOutcome::Committed {
@@ -185,11 +189,11 @@ impl CompactionFixture {
 
     pub fn claim(&self, id: CompactionOperationId) {
         let operation = self.operation(id);
-        match self.store
+        match self
+            .store
             .execute_current(self.storage.current_claim_compaction_dispatch(
                 ClaimCompactionDispatch::new(id, operation.revision(), operation.attempt()),
-            ))
-        {
+            )) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..
@@ -204,16 +208,16 @@ impl CompactionFixture {
         disposition: CompactionRequestDisposition,
     ) {
         let operation = self.operation(id);
-        match self.store
-            .execute_current(self.storage.current_publish_compaction_request_disposition(
+        match self.store.execute_current(
+            self.storage.current_publish_compaction_request_disposition(
                 PublishCompactionRequestDisposition::new(
                     id,
                     operation.revision(),
                     operation.attempt(),
                     disposition,
                 ),
-            ))
-        {
+            ),
+        ) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..
@@ -234,7 +238,8 @@ impl CompactionFixture {
             .map_or(CompactionProviderSequence::FIRST, |frontier| {
                 frontier.checked_next().unwrap()
             });
-        match self.store
+        match self
+            .store
             .execute_current(self.storage.current_publish_compaction_provider_event(
                 PublishCompactionProviderEvent::new(
                     id,
@@ -243,8 +248,7 @@ impl CompactionFixture {
                     event,
                     timestamp(at),
                 ),
-            ))
-        {
+            )) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..
@@ -327,11 +331,11 @@ impl CompactionFixture {
             .content_manifest(&self.store, prepared.id(), point_limit())
             .unwrap()
             .unwrap();
-        match self.store
+        match self
+            .store
             .execute_current(self.storage.current_seal_lifecycle_continuation_content(
                 SealLifecycleContinuationContent::new(manifest),
-            ))
-        {
+            )) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..

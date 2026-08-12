@@ -56,7 +56,6 @@ fn source_less_terminal_requires_a_retired_or_unbound_projection() {
     let error = not_committed_error(execute_outcome(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), local_terminal.clone()),
-    )
     ));
     assert!(matches!(
         typed_error(&error),
@@ -84,7 +83,9 @@ fn source_less_terminal_requires_a_retired_or_unbound_projection() {
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), local_terminal),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .turn_state(&store, turn, point_limit())

@@ -5,7 +5,9 @@ mod issue_cases;
 #[path = "support/mod.rs"]
 mod support;
 
-use beryl_home_store::{CommandError, CommandOutcome, HomeCommand, HomeStore, MutationContribution};
+use beryl_home_store::{
+    CommandError, CommandOutcome, HomeCommand, HomeStore, MutationContribution,
+};
 use beryl_model::{
     CasItemId, ProviderObservationId, SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
@@ -46,7 +48,7 @@ fn setup(name: &str) -> Fixture {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread = SyndicThreadId::from_bytes([1; 16]);
-    match execute(
+    committed_command(execute(
         &store,
         storage.create_thread(
             storage.revision(&store).unwrap(),
@@ -57,12 +59,7 @@ fn setup(name: &str) -> Fixture {
                 timestamp(1),
             ),
         ),
-    ) {
-        CommandOutcome::Committed {
-            later_failure: None, ..
-        } => {}
-        outcome => panic!("expected thread creation to commit without later failure, got {outcome:?}"),
-    }
+    ));
     let turn = exact_cas::submit_current_draft(
         &store,
         storage,
@@ -126,16 +123,21 @@ fn observation_callback(
     store: &HomeStore,
     storage: SyndicStorage,
 ) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + '_ {
-    move |batch| store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+    move |batch| {
+        store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+    }
 }
 
 fn committed_stage_value<T>(outcome: ProviderObservationStageOutcome<T>) -> T {
     match outcome {
         ProviderObservationStageOutcome::Committed {
             value,
-            receipt: _,
+            receipt,
             later_failure: None,
-        } => value,
+        } => {
+            drop(receipt);
+            value
+        }
         ProviderObservationStageOutcome::Committed {
             later_failure: Some(failure),
             ..
@@ -143,8 +145,83 @@ fn committed_stage_value<T>(outcome: ProviderObservationStageOutcome<T>) -> T {
         ProviderObservationStageOutcome::NotCommitted { evidence } => {
             panic!("expected staging to commit, got NotCommitted: {evidence:?}")
         }
-        ProviderObservationStageOutcome::Indeterminate { failure, .. } => {
+        ProviderObservationStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
             panic!("expected staging to commit, got Indeterminate: {failure:?}")
+        }
+    }
+}
+
+fn committed_seal_value(
+    outcome: ProviderObservationSealOutcome,
+) -> SealedProviderObservationHandle {
+    match outcome {
+        ProviderObservationSealOutcome::Committed {
+            value,
+            receipt,
+            later_failure: None,
+        } => {
+            drop(receipt);
+            value
+        }
+        ProviderObservationSealOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("expected sealing to commit without later failure, got {failure:?}"),
+        ProviderObservationSealOutcome::NotCommitted { evidence } => {
+            panic!("expected sealing to commit, got NotCommitted: {evidence:?}")
+        }
+        ProviderObservationSealOutcome::Indeterminate { failure, custody } => {
+            custody.install();
+            panic!("expected sealing to commit, got Indeterminate: {failure:?}")
+        }
+    }
+}
+
+fn committed_command(outcome: CommandOutcome) {
+    match outcome {
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => drop(receipt),
+        CommandOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("expected command to commit without later failure, got {failure:?}"),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected command to commit, got NotCommitted: {evidence:?}")
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected command to commit, got Indeterminate: {failure:?}")
+        }
+    }
+}
+
+fn not_committed_command(outcome: CommandOutcome) -> CommandError {
+    match outcome {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        CommandOutcome::Committed {
+            receipt,
+            later_failure,
+        } => {
+            drop(receipt);
+            panic!(
+                "expected command rejection, got Committed with later failure: {later_failure:?}"
+            )
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected command rejection, got Indeterminate: {failure:?}")
         }
     }
 }
@@ -158,12 +235,12 @@ fn scalar(
     committed_stage_value(
         stager
             .control(
-            ProviderObservationControl::Scalar {
-                context: ProviderValueContext::Field(field),
-                value,
-            },
-            callback,
-        )
+                ProviderObservationControl::Scalar {
+                    context: ProviderValueContext::Field(field),
+                    value,
+                },
+                callback,
+            )
             .unwrap(),
     );
 }
@@ -177,12 +254,12 @@ fn enum_value(
     committed_stage_value(
         stager
             .control(
-            ProviderObservationControl::Enum {
-                context: ProviderValueContext::Field(field),
-                value,
-            },
-            callback,
-        )
+                ProviderObservationControl::Enum {
+                    context: ProviderValueContext::Field(field),
+                    value,
+                },
+                callback,
+            )
             .unwrap(),
     );
 }
@@ -202,9 +279,9 @@ fn text(
     committed_stage_value(
         stager
             .fragment(
-            ProviderObservationStagingBytes::new(context, value.as_bytes()).unwrap(),
-            callback,
-        )
+                ProviderObservationStagingBytes::new(context, value.as_bytes()).unwrap(),
+                callback,
+            )
             .unwrap(),
     );
     committed_stage_value(
@@ -217,15 +294,17 @@ fn text(
 fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProviderObservation {
     let sealed = {
         let mut callback = observation_callback(&fixture.store, fixture.storage);
-        let mut stager = committed_stage_value(ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([observation_byte; 16]),
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Started,
-                kind: ProviderObservationItemKind::AgentMessage,
-            },
-            &mut callback,
-        )
-        .unwrap());
+        let mut stager = committed_stage_value(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([observation_byte; 16]),
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Started,
+                    kind: ProviderObservationItemKind::AgentMessage,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         scalar(
             &mut stager,
             ProviderField::LifecycleObservedAt,
@@ -244,7 +323,7 @@ fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProv
             "conflicting replacement",
             &mut callback,
         );
-        committed_stage_value(stager.seal(&mut callback).unwrap())
+        committed_seal_value(stager.seal(&mut callback).unwrap())
     };
     let route = ProviderObservationRoute::new(
         fixture.source.thread_id().clone(),
@@ -257,15 +336,17 @@ fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProv
 fn inspect_completion_only(fixture: &Fixture) -> InspectedProviderObservation {
     let sealed = {
         let mut callback = observation_callback(&fixture.store, fixture.storage);
-        let mut stager = committed_stage_value(ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([31; 16]),
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Completed,
-                kind: ProviderObservationItemKind::SubAgentActivity,
-            },
-            &mut callback,
-        )
-        .unwrap());
+        let mut stager = committed_stage_value(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([31; 16]),
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Completed,
+                    kind: ProviderObservationItemKind::SubAgentActivity,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         scalar(
             &mut stager,
             ProviderField::LifecycleObservedAt,
@@ -296,7 +377,7 @@ fn inspect_completion_only(fixture: &Fixture) -> InspectedProviderObservation {
             "root/worker",
             &mut callback,
         );
-        committed_stage_value(stager.seal(&mut callback).unwrap())
+        committed_seal_value(stager.seal(&mut callback).unwrap())
     };
     let route = ProviderObservationRoute::new(
         fixture.source.thread_id().clone(),
@@ -355,18 +436,13 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         SourceEventPayload::ProviderObservationIssue(Box::new(issue.clone())),
         timestamp(6),
     );
-    match execute(
+    committed_command(execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    ) {
-        CommandOutcome::Committed {
-            later_failure: None, ..
-        } => {}
-        outcome => panic!("expected issue admission to commit without later failure, got {outcome:?}"),
-    }
+    ));
 
     assert_eq!(canonical_item(&fixture), canonical_before);
     let state = fixture
@@ -402,16 +478,13 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         LiveSourceEventStatus::Exact
     );
 
-    let retry_error = match execute(
+    let retry_error = not_committed_command(execute(
         &fixture.store,
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
-    ) {
-        CommandOutcome::NotCommitted { evidence } => evidence,
-        outcome => panic!("expected definitive retry rejection, got {outcome:?}"),
-    };
+    ));
     assert!(matches!(
         typed_error(&retry_error),
         SyndicMutationError::SourceEventAlreadyAdmitted
@@ -434,25 +507,27 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
             .unwrap(),
         LiveSourceEventStatus::Collision
     );
-    let collision_error = match execute(
+    let collision_error = not_committed_command(execute(
         &fixture.store,
         fixture
             .storage
             .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), collision),
-    ) {
-        CommandOutcome::NotCommitted { evidence } => evidence,
-        outcome => panic!("expected definitive collision rejection, got {outcome:?}"),
-    };
+    ));
     assert!(matches!(
         typed_error(&collision_error),
         SyndicMutationError::SourceEventCollision
     ));
 
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     fixture.store.close().unwrap();
     let mut reopened = open(fixture.home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let reopened_event = storage
         .source_event(&reopened, fixture.turn, event.sequence(), limit())
         .unwrap()
@@ -485,13 +560,10 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         ),
         timestamp(7),
     );
-    let terminal_error = match execute(
+    let terminal_error = not_committed_command(execute(
         &reopened,
         storage.admit_live_source_event(storage.revision(&reopened).unwrap(), rejected_terminal),
-    ) {
-        CommandOutcome::NotCommitted { evidence } => evidence,
-        outcome => panic!("expected definitive terminal rejection, got {outcome:?}"),
-    };
+    ));
     assert!(matches!(
         typed_error(&terminal_error),
         SyndicMutationError::ProviderObservationIssueConflict
@@ -512,15 +584,10 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         ),
         timestamp(8),
     );
-    match execute(
+    committed_command(execute(
         &reopened,
         storage.admit_live_source_event(storage.revision(&reopened).unwrap(), accepted_terminal),
-    ) {
-        CommandOutcome::Committed {
-            later_failure: None, ..
-        } => {}
-        outcome => panic!("expected terminal issue admission to commit without later failure, got {outcome:?}"),
-    }
+    ));
     let terminal_state = storage
         .turn_state(&reopened, fixture.turn, limit())
         .unwrap()
@@ -542,6 +609,8 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         .unwrap()
         .unwrap();
     assert_eq!(terminal_item, canonical_before);
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

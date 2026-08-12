@@ -7,7 +7,7 @@ use beryl_home_store::{
     ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::RuntimeId;
-use beryl_state::{BerylStateBootstrap, BerylStateRegistrationError};
+use beryl_state::{BerylState, BerylStateBootstrap, BerylStateRegistrationError};
 use tempfile::tempdir;
 
 struct IncompleteRuntimeDomain;
@@ -156,7 +156,7 @@ impl DomainMutation<IncompleteRuntimeDomain> for SeedRuntimeWithoutHomeRoot {
 }
 
 #[test]
-fn minimal_session_bootstrap_defers_unrelated_runtime_validation() {
+fn routine_bootstrap_defers_unrelated_runtime_validation_to_explicit_schema_boundary() {
     let directory = tempdir().unwrap();
     let mut store = HomeStore::open(HomeOpenOptions::new(
         directory.path(),
@@ -193,16 +193,41 @@ fn minimal_session_bootstrap_defers_unrelated_runtime_validation() {
     .unwrap();
     let bootstrap = BerylStateBootstrap::register(&mut reopened)
         .expect("minimal bootstrap must register only the session domain");
-    assert!(bootstrap
-        .session()
-        .minimal_bootstrap(&reopened)
-        .unwrap()
-        .is_none());
-    let error = match bootstrap.complete(&mut reopened) {
-        Ok(_) => panic!("incomplete runtime unexpectedly passed validation"),
+    assert!(
+        bootstrap
+            .session()
+            .minimal_bootstrap(&reopened)
+            .unwrap()
+            .is_none()
+    );
+    let state = bootstrap
+        .complete(&mut reopened)
+        .expect("routine completion must not exhaustively validate dormant runtime records");
+    assert_complete_handle_set(state, &reopened);
+    let reacquired = BerylState::reacquire(&reopened)
+        .expect("routine same-home handle reacquisition must not scan dormant runtime records");
+    assert_complete_handle_set(reacquired, &reopened);
+    reopened.close().unwrap();
+
+    let mut schema_boundary = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let error = match BerylState::register_with_schema_validation(&mut schema_boundary) {
+        Ok(_) => panic!("incomplete runtime unexpectedly passed schema validation"),
         Err(error) => error,
     };
     assert_missing_home_root(error);
+}
+
+fn assert_complete_handle_set(state: BerylState, store: &HomeStore) {
+    state.session().revision(store).unwrap();
+    state.runtime_roots().revision(store).unwrap();
+    state.settings().revision(store).unwrap();
+    state.durable_jobs().revision(store).unwrap();
+    state.catalog().revision(store).unwrap();
+    state.assets().revision(store).unwrap();
 }
 
 fn runtime_record(runtime_id: RuntimeId, executable: &str) -> Vec<u8> {

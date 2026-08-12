@@ -5,7 +5,9 @@ use beryl_app::draft_persistence::{
     DraftCompletionAction, DraftFlushAction, DraftPersistenceService, DraftPersistenceTime,
     execute_draft_save, read_draft_persistence_seed,
 };
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
     SyndicThreadId,

@@ -7,8 +7,7 @@ use super::{
     send_lineage_response,
     support::{
         CONFIG_CWD, TIMEOUT, assert_initialize, assert_initialized, connector, expect_close,
-        foreground_config, read_json, send_initialize_response, send_json,
-        send_recognized_rejection, spawn_server,
+        foreground_config, read_json, send_initialize_response, send_json, spawn_server,
     },
 };
 
@@ -21,7 +20,10 @@ fn structured_rejection_is_distinct_and_leaves_the_session_reusable() {
         let rejected = read_json(socket).unwrap();
         assert_eq!(rejected["id"], 2);
         assert_eq!(rejected["method"], "thread/start");
-        send_recognized_rejection(socket, 2);
+        send_json(
+            socket,
+            r#"{"error":{"code":-32600,"message":"request rejected"},"id":2}"#,
+        );
         let retry = read_json(socket).unwrap();
         assert_eq!(retry["id"], 3);
         assert_eq!(retry["method"], "thread/start");

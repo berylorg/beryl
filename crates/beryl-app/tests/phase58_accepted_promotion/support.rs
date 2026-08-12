@@ -145,7 +145,9 @@ impl Fixture {
             &store,
             syndic.fixture_contribution(syndic.revision(&store).unwrap(), batch),
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         Self {
             directory,
             store,
@@ -204,7 +206,7 @@ impl Fixture {
         );
     }
 
-    pub fn reopen(self) -> Self {
+    pub fn recover_same_home(self) -> Self {
         let Self {
             directory,
             store,
@@ -217,14 +219,10 @@ impl Fixture {
             accepted_proof,
             draft_proof,
         } = self;
-        drop(store);
-        let mut store = HomeStore::open(HomeOpenOptions::new(
-            directory.path(),
-            HomeSchemaVersion::CURRENT,
-        ))
-        .unwrap();
-        let state = BerylState::register(&mut store).unwrap();
-        let syndic = SyndicStorage::register(&mut store).unwrap();
+        let candidate = store.recover_same_home().unwrap();
+        let state = BerylState::reacquire_candidate(&candidate).unwrap();
+        let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+        let store = candidate.publish();
         Self {
             directory,
             store,
@@ -287,9 +285,19 @@ fn execute_one(store: &HomeStore, contribution: beryl_home_store::MutationContri
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
     match store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed fixture mutation, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed fixture mutation, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed fixture mutation, got {outcome:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed fixture mutation, got {outcome:?}")
+        }
     }
 }

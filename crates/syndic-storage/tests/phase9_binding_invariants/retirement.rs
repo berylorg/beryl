@@ -146,12 +146,16 @@ fn first_stale_fork_retains_its_exact_nonzero_native_position() {
             ),
         ),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -176,7 +180,9 @@ fn stale_cas_thread_cannot_be_reused_by_the_same_syndic_thread() {
             ),
         ),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let represented = CasRepresentedPrefixProof::new(
         None,
@@ -200,7 +206,9 @@ fn stale_cas_thread_cannot_be_reused_by_the_same_syndic_thread() {
         typed_error(&error),
         SyndicMutationError::CasThreadRetired
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -267,7 +275,9 @@ fn retirement_cannot_rewrite_an_existing_cas_execution() {
         typed_error(&error),
         SyndicMutationError::ExecutionBindingConflict
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -343,7 +353,9 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
         typed_error(&error),
         SyndicMutationError::CasThreadOwnershipConflict
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -365,6 +377,8 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
         typed_error(&error),
         SyndicMutationError::CasThreadOwnershipConflict
     ));
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

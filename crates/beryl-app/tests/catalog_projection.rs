@@ -8,7 +8,9 @@ use beryl_app::draft_persistence::{
     DraftAutosavePublication, DraftFlushAction, DraftPersistenceService, DraftPersistenceTime,
     execute_draft_save, read_draft_persistence_seed,
 };
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     AdmittedHostPath, Availability, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
     RuntimeNativePath, SyndicDraftId, SyndicThreadId, WindowBounds, WindowDisplayState, WindowId,
@@ -100,13 +102,13 @@ impl Fixture {
             CommandOutcome::NotCommitted { evidence } => {
                 panic!("create sources unexpectedly not committed: {evidence:?}")
             }
-        outcome @ CommandOutcome::Committed {
-            later_failure: Some(_),
-            ..
-        } => panic!("create sources committed with later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => {
-            panic!("create sources indeterminate: {outcome:?}")
-        }
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("create sources committed with later failure: {outcome:?}"),
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("create sources indeterminate: {outcome:?}")
+            }
         }
         Self {
             _directory: directory,
@@ -220,7 +222,7 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     let missing = prepare_thread_catalog_projection(
         &fixture.store,
         fixture.syndic,
-        fixture.state,
+        fixture.state.clone(),
         SyndicThreadId::from_bytes([9; 16]),
     )
     .expect("prepare missing thread");
@@ -232,7 +234,7 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     let command = match prepare_thread_catalog_projection(
         &fixture.store,
         fixture.syndic,
-        fixture.state,
+        fixture.state.clone(),
         fixture.thread_id,
     )
     .expect("prepare initial projection")
@@ -284,7 +286,7 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     let exact = prepare_thread_catalog_projection(
         &fixture.store,
         fixture.syndic,
-        fixture.state,
+        fixture.state.clone(),
         fixture.thread_id,
     )
     .expect("prepare current projection");
@@ -297,7 +299,7 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     let command = match prepare_thread_catalog_projection(
         &fixture.store,
         fixture.syndic,
-        fixture.state,
+        fixture.state.clone(),
         fixture.thread_id,
     )
     .expect("prepare source-stale projection")
@@ -340,7 +342,7 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
         prepare_thread_catalog_projection(
             &fixture.store,
             fixture.syndic,
-            fixture.state,
+            fixture.state.clone(),
             fixture.thread_id,
         )
         .expect("prepare rebuilt projection"),
@@ -354,7 +356,7 @@ fn projection_rejects_a_syndic_binding_that_disagrees_with_the_root_authority() 
     let error = prepare_thread_catalog_projection(
         &fixture.store,
         fixture.syndic,
-        fixture.state,
+        fixture.state.clone(),
         fixture.thread_id,
     )
     .err()

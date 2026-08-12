@@ -33,7 +33,10 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
             ..
         }) if thread_id == thread && turn_id == turn
     ));
-    recovery.store.validate_registered_domains().unwrap();
+    recovery
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     recovery.store.close().unwrap();
 
     let mut store = open(&path);
@@ -113,12 +116,16 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
         after.live_logical_utf8_bytes(),
         before.live_logical_utf8_bytes()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut store = open(&path);
     let storage = syndic_storage::SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let limits = CursorReadLimits::new(256, ACCEPTED_NEXT_PAGE_MAX_BYTES).unwrap();
     let sources = storage
         .accepted_next_source_page(&store, storage.revision(&store).unwrap(), None, limits)
@@ -147,12 +154,16 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
             .state(),
         &InputGateState::PendingTurn(successor)
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut store = open(&path);
     syndic_storage::SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -229,7 +240,10 @@ fn release_refuses_a_finalizable_item_until_item_and_transcript_converge() {
             .state(),
         &InputGateState::Idle
     );
-    recovery.store.validate_registered_domains().unwrap();
+    recovery
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -352,12 +366,17 @@ fn stale_completion_proof_consumes_multiple_queued_admission_descendants() {
         descendant.live_logical_utf8_bytes()
     );
     let path = recovery.home.path().to_path_buf();
-    recovery.store.validate_registered_domains().unwrap();
+    recovery
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     recovery.store.close().unwrap();
 
     let mut reopened = open(&path);
     syndic_storage::SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -463,7 +482,10 @@ fn successful_completed_history_stays_complete_across_queued_admission_and_relea
         .unwrap();
     assert!(released.is_compatible_terminal_history_release_of(&observed_gate, recovery.turn,));
     let path = recovery.home.path().to_path_buf();
-    recovery.store.validate_registered_domains().unwrap();
+    recovery
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     recovery.store.close().unwrap();
 
     let mut reopened = open(&path);
@@ -475,7 +497,9 @@ fn successful_completed_history_stays_complete_across_queued_admission_and_relea
             .unwrap()
             .complete()
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -535,7 +559,10 @@ fn completion_rejects_an_impossible_finalizing_gate_descendant() {
             .unwrap(),
         Some(gate)
     );
-    recovery.store.validate_registered_domains().unwrap();
+    recovery
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -567,5 +594,8 @@ fn gate_compatibility_rejects_a_skipped_route_generation() {
     )
     .unwrap();
     assert!(!impossible.is_compatible_finalizing_history_descendant_of(&observed, recovery.turn,));
-    recovery.store.validate_registered_domains().unwrap();
+    recovery
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

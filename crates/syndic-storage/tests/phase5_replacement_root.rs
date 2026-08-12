@@ -361,7 +361,9 @@ fn accepted_replacement_of_a_root_turn_creates_another_root() {
             ),
         ),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let replacement = storage
         .turn(&store, replacement_turn, point_limit())

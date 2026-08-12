@@ -11,9 +11,9 @@ use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
 use support::phase11::{
-    abandonment_request, delivering_input, mixed_abandonment_records, retryable_input,
+    abandonment_request, delivering_input, retryable_input, seed_mixed_abandonment,
 };
-use support::populated::{next_input, populated_records, steering_input};
+use support::populated::{next_input, seed_populated, steering_input};
 use support::*;
 
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
@@ -34,139 +34,128 @@ fn accepted_id(ordinal: u64) -> SyndicAcceptedInputId {
     SyndicAcceptedInputId::from_bytes(bytes)
 }
 
-fn large_route_records(last_ordinal: u64) -> Vec<FixtureRecord> {
+fn seed_large_route(store: &HomeStore, storage: SyndicStorage, last_ordinal: u64) {
     assert!(last_ordinal > 256);
-    let mut records = populated_records();
+    seed_populated(store, storage);
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
-    let revision = AcceptedRouteRevision::new(2).unwrap();
+    let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
+    let thread_record = storage.thread(store, thread, limit).unwrap().unwrap();
+    let draft = storage
+        .current_draft(store, thread, limit)
+        .unwrap()
+        .unwrap();
+    let summary = storage
+        .history_summary(store, thread, limit)
+        .unwrap()
+        .unwrap();
+    let next = storage
+        .accepted_input(store, next_input(), limit)
+        .unwrap()
+        .unwrap();
+    let gate = storage.input_gate(store, thread, limit).unwrap().unwrap();
+    let route =
+        syndic_storage::test_faults::accepted_route_generation(store, storage, thread, generation)
+            .unwrap();
     let final_thread_revision = ThreadRevision::new(last_ordinal + 1).unwrap();
     let final_gate_revision = InputGateRevision::new(last_ordinal + 1).unwrap();
-    let content = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::AcceptedInput(input) if input.id() == next_input() => {
-                Some(input.content())
-            }
-            _ => None,
-        })
-        .unwrap();
-    for record in &mut records {
-        match record {
-            FixtureRecord::Thread(record) if record.id() == thread => {
-                *record = ThreadRecord::new(
-                    record.id(),
-                    SelectedPathProof::new(
-                        record.committed_tail(),
-                        final_thread_revision,
-                        record.selected_path_digest(),
-                    ),
-                    record.current_draft_id(),
-                    record.lineage(),
-                    record.image_label_frontiers(),
-                    record.context_owner_id(),
-                );
-            }
-            FixtureRecord::DraftByThread(index) if index.thread_id() == thread => {
-                *index = DraftByThreadRecord::new(
-                    index.thread_id(),
-                    index.draft_id(),
-                    index.draft_revision(),
-                    final_thread_revision,
-                );
-            }
-            FixtureRecord::HistorySummary(summary) if summary.thread_id() == thread => {
-                *summary = HistorySummaryRecord::new(
-                    summary.thread_id(),
-                    summary.revision().checked_next().unwrap(),
-                    final_thread_revision,
-                    summary.committed_tail(),
-                    summary.selected_path_digest(),
-                    summary.complete(),
-                    summary.last_activity_at(),
-                );
-            }
-            FixtureRecord::AcceptedInput(input) if input.id() == next_input() => {
-                let proof = input.admission();
-                *input = AcceptedInputRecord::new(
-                    input.id(),
-                    input.thread_id(),
-                    input.ordinal(),
-                    AcceptedInputAdmissionProof::new(
-                        proof.expected_thread_revision(),
-                        proof.source_draft_id(),
-                        proof.expected_draft_revision(),
-                        proof.expected_gate_revision(),
-                        SyndicDraftId::from_bytes(*accepted_id(3).as_bytes()),
-                    )
-                    .unwrap(),
-                    input.route_generation(),
-                    input.content(),
-                    input.asset_reference_set(),
-                    input.admitted_at(),
+    let content = next.content();
+    let mut records = vec![
+        FixtureRecord::Thread(ThreadRecord::new(
+            thread,
+            SelectedPathProof::new(
+                thread_record.committed_tail(),
+                final_thread_revision,
+                thread_record.selected_path_digest(),
+            ),
+            thread_record.current_draft_id(),
+            thread_record.lineage(),
+            thread_record.image_label_frontiers(),
+            thread_record.context_owner_id(),
+        )),
+        FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+            thread,
+            draft.draft().id(),
+            draft.draft().revision(),
+            final_thread_revision,
+        )),
+        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
+            thread,
+            summary.revision().checked_next().unwrap(),
+            final_thread_revision,
+            summary.committed_tail(),
+            summary.selected_path_digest(),
+            summary.complete(),
+            summary.last_activity_at(),
+        )),
+        FixtureRecord::AcceptedInput(
+            AcceptedInputRecord::new(
+                next.id(),
+                thread,
+                next.ordinal(),
+                AcceptedInputAdmissionProof::new(
+                    next.admission().expected_thread_revision(),
+                    next.admission().source_draft_id(),
+                    next.admission().expected_draft_revision(),
+                    next.admission().expected_gate_revision(),
+                    SyndicDraftId::from_bytes(*accepted_id(3).as_bytes()),
                 )
-                .unwrap();
-            }
-            FixtureRecord::InputGate(gate) if gate.thread_id() == thread => {
-                *gate = InputGateRecord::new(
-                    thread,
-                    final_gate_revision,
-                    gate.state().clone(),
-                    last_ordinal,
-                    Some(generation),
-                    Some(AcceptedRouteHeadProof::new(generation, revision)),
-                    last_ordinal - 1,
-                    1,
-                    0,
-                )
-                .unwrap();
-            }
-            FixtureRecord::AcceptedRouteGenerationHead(head) if head.thread_id() == thread => {
-                *head = AcceptedRouteGenerationHeadRecord::new(
-                    thread,
-                    AcceptedRouteHeadProof::new(generation, revision),
-                );
-            }
-            FixtureRecord::AcceptedRouteGeneration(route) if route.thread_id() == thread => {
-                *route = AcceptedRouteGenerationRecord::new(
-                    thread,
-                    generation,
-                    revision,
-                    route.target().clone(),
-                    Some(AcceptedInputOrdinal::FIRST),
-                    Some(AcceptedInputOrdinal::new(last_ordinal).unwrap()),
-                    last_ordinal,
-                    last_ordinal - 1,
-                    0,
-                    1,
-                    0,
-                    0,
-                    0,
-                )
-                .unwrap();
-            }
-            FixtureRecord::AcceptedReadySource(source) if source.thread_id() == thread => {
-                *source = AcceptedReadySourceRecord::new(
-                    thread,
-                    final_gate_revision,
-                    generation,
-                    revision,
-                    AcceptedInputOrdinal::FIRST,
-                    AcceptedInputOrdinal::new(last_ordinal).unwrap(),
-                );
-            }
-            FixtureRecord::AcceptedNextSource(source) if source.thread_id() == thread => {
-                *source = AcceptedNextSourceRecord::new(
-                    thread,
-                    generation,
-                    revision,
-                    AcceptedInputOrdinal::FIRST,
-                    AcceptedInputOrdinal::new(last_ordinal).unwrap(),
-                );
-            }
-            _ => {}
-        }
-    }
+                .unwrap(),
+                generation,
+                next.content(),
+                next.asset_reference_set(),
+                next.admitted_at(),
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::InputGate(
+            InputGateRecord::new(
+                thread,
+                final_gate_revision,
+                gate.state().clone(),
+                last_ordinal,
+                Some(generation),
+                Some(AcceptedRouteHeadProof::new(generation, route.revision())),
+                last_ordinal - 1,
+                1,
+                0,
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedRouteGeneration(
+            AcceptedRouteGenerationRecord::new(
+                thread,
+                generation,
+                route.revision(),
+                route.target().clone(),
+                Some(AcceptedInputOrdinal::FIRST),
+                Some(AcceptedInputOrdinal::new(last_ordinal).unwrap()),
+                last_ordinal,
+                last_ordinal - 1,
+                0,
+                1,
+                0,
+                0,
+                0,
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedReadySource(AcceptedReadySourceRecord::new(
+            thread,
+            final_gate_revision,
+            generation,
+            route.revision(),
+            AcceptedInputOrdinal::FIRST,
+            AcceptedInputOrdinal::new(last_ordinal).unwrap(),
+        )),
+        FixtureRecord::AcceptedNextSource(AcceptedNextSourceRecord::new(
+            thread,
+            generation,
+            route.revision(),
+            AcceptedInputOrdinal::FIRST,
+            AcceptedInputOrdinal::new(last_ordinal).unwrap(),
+        )),
+    ];
     for value in 3..=last_ordinal {
         let ordinal = AcceptedInputOrdinal::new(value).unwrap();
         let input_id = accepted_id(value);
@@ -209,7 +198,11 @@ fn large_route_records(last_ordinal: u64) -> Vec<FixtureRecord> {
             )),
         ]);
     }
-    records
+    let additions = records.split_off(8);
+    for chunk in additions.chunks(96) {
+        commit(store, storage, batch(chunk.iter().cloned()));
+    }
+    commit(store, storage, batch(records));
 }
 
 #[test]
@@ -218,7 +211,7 @@ fn route_generation_above_the_old_cap_pages_and_abandons_without_member_rewrites
     let home = TestHome::new("phase13-large-route-generation");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(large_route_records(INPUT_COUNT)));
+    seed_large_route(&store, storage, INPUT_COUNT);
 
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
@@ -268,7 +261,7 @@ fn route_pages_reject_stale_revisions_and_cross_revision_cursors() {
     let home = TestHome::new("phase13-route-page-revision");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(large_route_records(302)));
+    seed_large_route(&store, storage, 302);
 
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
@@ -323,7 +316,7 @@ fn projection_loss_resolves_mixed_leaves_from_one_compact_generation_transition(
     let home = TestHome::new("phase13-mixed-route-abandonment");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(mixed_abandonment_records()));
+    seed_mixed_abandonment(&store, storage);
 
     execute(
         &store,
@@ -404,7 +397,7 @@ fn reopen_rejects_route_generation_high_water_drift() {
     let home = TestHome::new("phase13-route-generation-high-water-drift");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
+    seed_populated(&store, storage);
     let gate = storage
         .input_gate(
             &store,
@@ -446,7 +439,7 @@ fn reopen_rejects_a_gap_in_monotonic_route_generations() {
     let home = TestHome::new("phase13-route-generation-gap");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
+    seed_populated(&store, storage);
     let gate = storage
         .input_gate(
             &store,

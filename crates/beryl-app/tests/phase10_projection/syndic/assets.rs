@@ -96,30 +96,9 @@ impl Fixture {
         );
         let turn = submission.submitted_turn_id();
         let user_item = submission.user_item_id();
-        let command_home = self.store.live_home_command().unwrap();
-        let command = idle_submission_command(
-            command_home.home(),
-            self.storage,
-            self.state.assets(),
-            submission,
-        )
-        .unwrap();
-        match command_home.home().execute(command) {
-            CommandOutcome::Committed {
-                later_failure: None,
-                ..
-            } => {}
-            CommandOutcome::NotCommitted { evidence } => {
-                panic!("image submission unexpectedly not committed: {evidence:?}")
-            }
-            outcome @ CommandOutcome::Committed {
-                later_failure: Some(_),
-                ..
-            } => panic!("image submission committed with later failure: {outcome:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => {
-                panic!("image submission indeterminate: {outcome:?}")
-            }
-        }
+        self.store
+            .execute_idle_submission(self.state.assets(), submission)
+            .unwrap();
         SubmittedTurn { turn, user_item }
     }
 

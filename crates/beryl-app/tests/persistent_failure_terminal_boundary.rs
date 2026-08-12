@@ -12,6 +12,7 @@ fn removed_running_recovery_sources_and_authority_surfaces_stay_absent() {
         "persistent_failure/coordinator/recovery.rs",
         "accepted_input_scheduler/recovered_projection.rs",
         "service_supervisor/recovery.rs",
+        "service_supervisor/provider.rs",
         "connection/authority/candidate_set.rs",
         "reacquisition.rs",
         "service_startup.rs",
@@ -53,6 +54,11 @@ fn removed_running_recovery_sources_and_authority_surfaces_stay_absent() {
         "publish_verified_current_completion",
         "finish_completed_recovery_supervisor_flight",
         "arm_for_publication",
+        "ScheduledOrdinaryExecutionProviderFactory",
+        "ScheduledOrdinaryProviderEpochContext",
+        "RunningSessionRecoverySupervisor",
+        "RunningProjectionServiceLease",
+        "RunningSessionRecoveryDiagnostics",
         "cfg(any())",
     ];
     let mut pending = vec![root];
@@ -96,11 +102,14 @@ fn terminal_connection_attachment_has_no_replacement_or_early_close_surface() {
 }
 
 #[test]
-fn service_supervisor_does_not_own_the_home_and_initial_start_has_no_publication_state() {
+fn terminal_service_supervisor_has_no_public_recovery_or_publication_surface() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cas_projection");
     let supervisor = fs::read_to_string(root.join("service_supervisor.rs")).unwrap();
     assert!(!supervisor.contains("Arc<HomeStore>"));
     assert!(!supervisor.contains("Arc< HomeStore"));
+    assert!(!supervisor.contains("pub struct TerminalServiceSupervisor"));
+    assert!(!supervisor.contains("pub enum TerminalServiceStartError"));
+    assert!(!supervisor.contains("pub enum TerminalServiceShutdownError"));
 
     let initial_start = fs::read_to_string(root.join("initial_start.rs")).unwrap();
     assert!(!initial_start.contains("Mutex"));
@@ -115,6 +124,7 @@ fn obsolete_phase62_running_recovery_tests_stay_absent() {
         "tests/phase62_accepted_next_scheduler.rs",
         "tests/phase62_accepted_next_scheduler/shutdown.rs",
         "tests/phase62_accepted_next_scheduler/support.rs",
+        "tests/phase62_accepted_next_scheduler/support/execution.rs",
     ] {
         let source = fs::read_to_string(manifest.join(relative)).unwrap();
         for obsolete in [
@@ -122,6 +132,10 @@ fn obsolete_phase62_running_recovery_tests_stay_absent() {
             "recovery_cycles",
             "same-generation verification",
             "phase63_restart_handoff",
+            "home_generation_failure_before_reservation_makes_supervisor_terminally_unavailable",
+            "ReadyProviderFactory",
+            "ScheduledOrdinaryExecutionProviderFactory",
+            "ScheduledOrdinaryProviderEpochContext",
         ] {
             assert!(
                 !source.contains(obsolete),

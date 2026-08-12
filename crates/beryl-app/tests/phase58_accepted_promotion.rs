@@ -48,10 +48,20 @@ fn marker_free_promotion_reconciles_prior_exact_and_collisions() {
     )
     .unwrap();
     match fixture.store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        CommandOutcome::NotCommitted { evidence } => panic!("expected committed promotion, got not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed promotion, got indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed promotion, got not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed promotion, got indeterminate: {outcome:?}")
+        }
     }
 
     assert_eq!(
@@ -122,11 +132,23 @@ fn marker_free_promotion_reconciles_prior_exact_and_collisions() {
     )
     .unwrap();
     match collision_fixture.store.execute(command) {
-        CommandOutcome::NotCommitted { evidence: CommandError::ContributorValidation { .. } } => {}
-        CommandOutcome::NotCommitted { evidence } => panic!("expected validation rejection, got {evidence:?}"),
-        CommandOutcome::Committed { later_failure: None, .. } => panic!("expected validation rejection, got committed"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected validation rejection, later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected validation rejection, indeterminate: {outcome:?}"),
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::ContributorValidation { .. },
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected validation rejection, got {evidence:?}")
+        }
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => panic!("expected validation rejection, got committed"),
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected validation rejection, later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected validation rejection, indeterminate: {outcome:?}")
+        }
     }
 
     let valid = collision_fixture.promotion(92);
@@ -164,11 +186,23 @@ fn marker_free_promotion_reconciles_prior_exact_and_collisions() {
     )
     .unwrap();
     match collision_fixture.store.execute(command) {
-        CommandOutcome::NotCommitted { evidence: CommandError::ContributorValidation { .. } } => {}
-        CommandOutcome::NotCommitted { evidence } => panic!("expected validation rejection, got {evidence:?}"),
-        CommandOutcome::Committed { later_failure: None, .. } => panic!("expected validation rejection, got committed"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected validation rejection, later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected validation rejection, indeterminate: {outcome:?}"),
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::ContributorValidation { .. },
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected validation rejection, got {evidence:?}")
+        }
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => panic!("expected validation rejection, got committed"),
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected validation rejection, later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected validation rejection, indeterminate: {outcome:?}")
+        }
     }
     assert_eq!(
         collision_fixture
@@ -179,7 +213,7 @@ fn marker_free_promotion_reconciles_prior_exact_and_collisions() {
     );
     collision_fixture
         .store
-        .validate_registered_domains()
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
 }
 
@@ -195,10 +229,20 @@ fn cross_domain_promotion_status_survives_later_pending_admission() {
     )
     .unwrap();
     match fixture.store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        CommandOutcome::NotCommitted { evidence } => panic!("expected committed promotion, got not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed promotion, got indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed promotion, got not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed promotion, got indeterminate: {outcome:?}")
+        }
     }
 
     let current = fixture
@@ -231,10 +275,20 @@ fn cross_domain_promotion_status_survives_later_pending_admission() {
         )
         .unwrap();
     match fixture.store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        CommandOutcome::NotCommitted { evidence } => panic!("expected committed accepted-input admission, got not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed accepted-input admission, got indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed accepted-input admission, got not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed accepted-input admission, got indeterminate: {outcome:?}")
+        }
     }
 
     assert_eq!(
@@ -248,7 +302,10 @@ fn cross_domain_promotion_status_survives_later_pending_admission() {
         .unwrap(),
         AcceptedInputPromotionStatus::Exact
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -264,10 +321,20 @@ fn cross_domain_promotion_status_survives_an_inflight_unrelated_home_commit() {
     )
     .unwrap();
     match fixture.store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        CommandOutcome::NotCommitted { evidence } => panic!("expected committed promotion, got not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed promotion, got indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed promotion, got not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed promotion, got indeterminate: {outcome:?}")
+        }
     }
 
     let blocked = faults.block_next(FaultPoint::BeforeReadConfirmation);
@@ -294,7 +361,10 @@ fn cross_domain_promotion_status_survives_an_inflight_unrelated_home_commit() {
     });
 
     assert_eq!(status.unwrap(), AcceptedInputPromotionStatus::Exact);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -338,10 +408,20 @@ fn image_promotion_moves_only_the_accepted_owner_in_one_home_command() {
     )
     .unwrap();
     match fixture.store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        CommandOutcome::NotCommitted { evidence } => panic!("expected committed promotion setup, got not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed promotion setup, got indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed promotion setup, got not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed promotion setup, got indeterminate: {outcome:?}")
+        }
     }
 
     assert_eq!(
@@ -414,7 +494,10 @@ fn image_promotion_moves_only_the_accepted_owner_in_one_home_command() {
             .asset_reference_set(),
         Some(accepted_proof)
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -423,17 +506,13 @@ fn promotion_fault_cuts_reopen_to_one_cross_domain_side() {
         (
             40,
             FaultPoint::BeforeCommit,
-            AcceptedInputPromotionStatus::Prior,
+            Some(AcceptedInputPromotionStatus::Prior),
         ),
-        (
-            50,
-            FaultPoint::AfterCommitBeforePersist,
-            AcceptedInputPromotionStatus::Exact,
-        ),
+        (50, FaultPoint::AfterCommitBeforePersist, None),
         (
             60,
             FaultPoint::AfterPersist,
-            AcceptedInputPromotionStatus::Exact,
+            Some(AcceptedInputPromotionStatus::Exact),
         ),
     ] {
         let faults = FaultController::new();
@@ -461,36 +540,50 @@ fn promotion_fault_cuts_reopen_to_one_cross_domain_side() {
         .unwrap();
 
         faults.fail_next(point);
-        match fixture.store.execute(command) {
+        let reconciliation = match fixture.store.execute(command) {
             CommandOutcome::NotCommitted {
                 evidence: CommandError::Commit { .. },
-            } if point == FaultPoint::BeforeCommit => {}
+            } if point == FaultPoint::BeforeCommit => None,
             CommandOutcome::Committed {
                 later_failure: Some(CommandError::Persistence { .. }),
                 ..
-            } if point == FaultPoint::AfterPersist => {}
+            } if point == FaultPoint::AfterPersist => None,
             CommandOutcome::Indeterminate {
                 failure: CommandError::Persistence { .. },
-                reconciliation: _,
-            } if point == FaultPoint::AfterCommitBeforePersist => {}
+                reconciliation,
+            } if point == FaultPoint::AfterCommitBeforePersist => Some(reconciliation),
             outcome => panic!("unexpected promotion fault outcome at {point:?}: {outcome:?}"),
-        }
-        assert_eq!(fixture.store.health().state(), HomeHealthState::Verifying);
-        fixture.store.verify_health().unwrap();
-        let fixture = fixture.reopen();
+        };
+        let fixture = if let Some(reconciliation) = reconciliation {
+            reconciliation.install();
+            assert_eq!(fixture.store.health().state(), HomeHealthState::Healthy);
+            fixture
+        } else {
+            assert_eq!(fixture.store.health().state(), HomeHealthState::Failed);
+            let fixture = fixture.recover_same_home();
+            assert_eq!(fixture.store.health().state(), HomeHealthState::Healthy);
+            fixture
+        };
 
-        assert_eq!(
-            accepted_input_promotion_status(
-                &fixture.store,
-                fixture.syndic,
-                fixture.state.assets(),
-                &promotion,
-                point_limit(),
-            )
-            .unwrap(),
-            expected_status
+        let recovered = accepted_input_promotion_status(
+            &fixture.store,
+            fixture.syndic,
+            fixture.state.assets(),
+            &promotion,
+            point_limit(),
+        )
+        .unwrap();
+        assert!(
+            matches!(
+                recovered,
+                AcceptedInputPromotionStatus::Prior | AcceptedInputPromotionStatus::Exact
+            ),
+            "a persistence cut must recover one recognized whole promotion state",
         );
-        let exact = expected_status == AcceptedInputPromotionStatus::Exact;
+        if let Some(expected_status) = expected_status {
+            assert_eq!(recovered, expected_status);
+        }
+        let exact = recovered == AcceptedInputPromotionStatus::Exact;
         assert_eq!(
             fixture.store.home_revision().unwrap().get(),
             home_before + u64::from(exact)
@@ -534,6 +627,17 @@ fn promotion_fault_cuts_reopen_to_one_cross_domain_side() {
                 .unwrap(),
             draft_before
         );
-        fixture.store.validate_registered_domains().unwrap();
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        if point == FaultPoint::AfterCommitBeforePersist {
+            let close_error = fixture
+                .store
+                .close()
+                .expect_err("installed indeterminate custody must block orderly close");
+            assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+            drop(close_error);
+        }
     }
 }

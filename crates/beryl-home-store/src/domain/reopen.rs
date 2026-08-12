@@ -26,23 +26,7 @@ pub(crate) fn reacquire_registry(
     Ok(())
 }
 
-pub(crate) fn validate_registry(generation: &StoreGeneration) -> Result<(), DomainValidationError> {
-    let snapshot =
-        generation
-            .database
-            .snapshot()
-            .map_err(|source| DomainValidationError::Snapshot {
-                source: Box::new(ClassifiedFjallError::direct(source)),
-            })?;
-    for domain in generation.registry.iter() {
-        domain
-            .validate(&snapshot)
-            .map_err(|source| super::validation::public_validation_error(domain.name, source))?;
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_reopen_registry(
+pub(crate) fn validate_registry(
     generation: &StoreGeneration,
     sidecars: &crate::SidecarVerifier<'_>,
 ) -> Result<(), DomainValidationError> {
@@ -55,7 +39,7 @@ pub(crate) fn validate_reopen_registry(
             })?;
     for domain in generation.registry.iter() {
         domain
-            .validate_reopen(&snapshot, sidecars)
+            .validate_schema(&snapshot, sidecars)
             .map_err(|source| super::validation::public_validation_error(domain.name, source))?;
     }
     Ok(())
@@ -102,7 +86,7 @@ fn reacquire_families(
         owner: blueprint.owner,
         families,
         family_slots,
-        validator: blueprint.validator,
         reopen_validator: blueprint.reopen_validator,
+        reconciler: blueprint.reconciler,
     })
 }

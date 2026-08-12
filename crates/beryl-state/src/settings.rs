@@ -2,8 +2,9 @@ use std::{error::Error, fmt};
 
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
-    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    MutationContribution, PointReadLimit, ReadError, RecordFamily, StorageDomain,
+    DomainHandle, DomainReconciliation, DomainRegistrationError, DomainSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationContribution, PointReadLimit, ReadError, ReconciliationReader,
+    RecordFamily, StorageDomain,
 };
 
 use crate::{RecordRevision, StatePage};
@@ -38,6 +39,17 @@ impl StorageDomain for SettingsDomain {
         reader: &beryl_home_store::DomainReader<'_, Self>,
     ) -> Result<(), Self::ValidationError> {
         validate::validate(reader)
+    }
+
+    fn reconcile(
+        reader: &ReconciliationReader<'_, Self>,
+    ) -> Result<DomainReconciliation, Self::ValidationError> {
+        let mut classification = crate::reconciliation::ReconciliationClassification::new();
+        crate::reconciliation::classify_records::<Self, SettingRecordCodec>(
+            reader,
+            &mut classification,
+        )?;
+        Ok(classification.finish())
     }
 }
 
@@ -95,10 +107,26 @@ impl SettingsState {
             .map(|handle| Self { handle })
     }
 
+    pub(crate) fn register_with_schema_validation(
+        store: &mut HomeStore,
+    ) -> Result<Self, DomainRegistrationError> {
+        store
+            .register_domain_with_schema_validation::<SettingsDomain>()
+            .map(|handle| Self { handle })
+    }
+
     pub(crate) fn reacquire(
         store: &HomeStore,
     ) -> Result<Self, beryl_home_store::DomainHandleError> {
         store
+            .domain_handle::<SettingsDomain>()
+            .map(|handle| Self { handle })
+    }
+
+    pub(crate) fn reacquire_candidate(
+        candidate: &beryl_home_store::HomeRecoveryCandidate,
+    ) -> Result<Self, beryl_home_store::DomainHandleError> {
+        candidate
             .domain_handle::<SettingsDomain>()
             .map(|handle| Self { handle })
     }

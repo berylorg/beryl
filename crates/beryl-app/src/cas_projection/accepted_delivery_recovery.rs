@@ -284,10 +284,8 @@ fn converge_compaction_restart(
             failure,
             reconciliation,
         } => {
-            return Err(ProjectionCoordinatorError::CommandIndeterminate {
-                failure,
-                reconciliation,
-            });
+            reconciliation.install();
+            return Err(ProjectionCoordinatorError::CommandIndeterminate { failure });
         }
     }
     let settled = storage

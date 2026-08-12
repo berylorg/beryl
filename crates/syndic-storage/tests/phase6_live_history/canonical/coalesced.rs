@@ -238,7 +238,9 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
         );
     }
 
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let state = storage.turn_state(&store, turn, limit()).unwrap().unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::Complete);
     assert_eq!(state.source_event_count(), 11);
@@ -346,7 +348,9 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let assistant_record = storage
         .canonical_item(&reopened, assistant, limit())
         .unwrap()

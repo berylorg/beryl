@@ -22,9 +22,7 @@ pub enum HomeHealthState {
     Opening,
     /// State-dependent operations may be admitted.
     Healthy,
-    /// A surfaced failure closed admission while the current generation is checked.
-    Verifying,
-    /// Verification or reopen failed and all state-dependent work remains gated.
+    /// A structural failure closed all state-dependent admission.
     Failed,
     /// The same locked home is being force-recovered and validated.
     Reopening,
@@ -129,7 +127,6 @@ impl RecoveryRetrySchedule {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FailureSeverity {
-    Verify,
     Structural,
 }
 
@@ -168,6 +165,17 @@ impl ClassifiedFjallError {
     pub(crate) const fn commit_state(&self) -> Option<fjall::CommitState> {
         self.source.commit_state()
     }
+
+    pub(crate) const fn is_independently_structural(&self) -> bool {
+        matches!(
+            self.source.class(),
+            fjall::ErrorClass::Corruption
+                | fjall::ErrorClass::Integrity
+                | fjall::ErrorClass::KeyspaceIdentity
+                | fjall::ErrorClass::Poisoned
+                | fjall::ErrorClass::Configuration
+        )
+    }
 }
 
 fn fjall_failure_severity(
@@ -189,28 +197,30 @@ fn fjall_failure_severity(
         source.commit_state(),
         Some(CommitState::Committed | CommitState::Indeterminate)
     ) {
-        return Some(FailureSeverity::Verify);
+        return Some(FailureSeverity::Structural);
+    }
+
+    if health_observation {
+        return Some(FailureSeverity::Structural);
     }
 
     match source.class() {
-        ErrorClass::PolicyDenied { .. } if !health_observation => None,
-        ErrorClass::PolicyDenied { .. }
-        | ErrorClass::Io(_)
+        ErrorClass::PolicyDenied { .. } => None,
+        ErrorClass::Io(_)
         | ErrorClass::Durability
+        | ErrorClass::Other
         | ErrorClass::MaintenanceTerminal
-        | ErrorClass::Other => Some(FailureSeverity::Verify),
-        ErrorClass::Corruption
+        | ErrorClass::Corruption
         | ErrorClass::Integrity
         | ErrorClass::KeyspaceIdentity
         | ErrorClass::Poisoned
         | ErrorClass::Configuration => Some(FailureSeverity::Structural),
-        _ => Some(FailureSeverity::Verify),
+        _ => Some(FailureSeverity::Structural),
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Maintenance {
-    Verification,
     Recovery,
 }
 
@@ -289,13 +299,7 @@ impl HealthGate {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         match (inner.state, severity) {
-            (HomeHealthState::Healthy, FailureSeverity::Verify) => {
-                inner.state = HomeHealthState::Verifying;
-            }
-            (
-                HomeHealthState::Healthy | HomeHealthState::Verifying,
-                FailureSeverity::Structural,
-            ) => {
+            (HomeHealthState::Healthy, FailureSeverity::Structural) => {
                 inner.state = HomeHealthState::Failed;
             }
             _ => {}
@@ -303,20 +307,16 @@ impl HealthGate {
         self.drained.notify_all();
     }
 
-    pub(crate) fn begin_verification(
-        &self,
-    ) -> Result<HealthMaintenance<'_>, HealthMaintenanceError> {
-        self.begin(Maintenance::Verification)
-    }
-
-    pub(crate) fn begin_recovery(&self) -> Result<HealthMaintenance<'_>, HealthMaintenanceError> {
+    pub(crate) fn begin_recovery(
+        self: &std::sync::Arc<Self>,
+    ) -> Result<HealthMaintenance, HealthMaintenanceError> {
         self.begin(Maintenance::Recovery)
     }
 
     fn begin(
-        &self,
+        self: &std::sync::Arc<Self>,
         maintenance: Maintenance,
-    ) -> Result<HealthMaintenance<'_>, HealthMaintenanceError> {
+    ) -> Result<HealthMaintenance, HealthMaintenanceError> {
         let mut inner = self
             .inner
             .lock()
@@ -324,10 +324,7 @@ impl HealthGate {
         if inner.maintenance.is_some() {
             return Err(HealthMaintenanceError::InProgress { state: inner.state });
         }
-        let accepted = match maintenance {
-            Maintenance::Verification => inner.state == HomeHealthState::Verifying,
-            Maintenance::Recovery => inner.state == HomeHealthState::Failed,
-        };
+        let accepted = inner.state == HomeHealthState::Failed;
         if !accepted {
             return Err(HealthMaintenanceError::InvalidState { state: inner.state });
         }
@@ -343,7 +340,7 @@ impl HealthGate {
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
         }
         Ok(HealthMaintenance {
-            gate: self,
+            gate: std::sync::Arc::clone(self),
             maintenance,
             finished: false,
         })
@@ -462,13 +459,13 @@ pub(crate) enum HealthMaintenanceError {
     InvalidState { state: HomeHealthState },
 }
 
-pub(crate) struct HealthMaintenance<'a> {
-    gate: &'a HealthGate,
+pub(crate) struct HealthMaintenance {
+    gate: std::sync::Arc<HealthGate>,
     maintenance: Maintenance,
     finished: bool,
 }
 
-impl HealthMaintenance<'_> {
+impl HealthMaintenance {
     pub(crate) fn finish_healthy(mut self, generation: HomeGeneration) {
         let mut inner = self
             .gate
@@ -497,7 +494,7 @@ impl HealthMaintenance<'_> {
     }
 }
 
-impl Drop for HealthMaintenance<'_> {
+impl Drop for HealthMaintenance {
     fn drop(&mut self) {
         if self.finished {
             return;

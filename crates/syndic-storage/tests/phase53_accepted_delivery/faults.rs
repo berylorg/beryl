@@ -5,8 +5,8 @@ use beryl_home_store::{
 use syndic_storage::*;
 
 use crate::{
-    accepted_support::{AcceptedOperation, assert_operation_committed},
-    support::{TestHome, batch, commit},
+    accepted_support::{AcceptedOperation, assert_operation_committed, seed_operation},
+    support::TestHome,
 };
 
 fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
@@ -42,24 +42,26 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
             let faults = FaultController::new();
             let mut store = open_with_faults(home.path(), faults.clone());
             let storage = SyndicStorage::register(&mut store).unwrap();
-            commit(&store, storage, batch(operation.records()));
+            seed_operation(&store, storage, operation);
 
             faults.fail_next(point);
-            match (point, store.execute_current(operation.current_command(storage))) {
+            let reconciliation = match (
+                point,
+                store.execute_current(operation.current_command(storage)),
+            ) {
                 (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
                     assert!(matches!(evidence, CommandError::Commit { .. }));
+                    None
                 }
                 (
                     FaultPoint::AfterCommitBeforePersist,
-                    outcome @ CommandOutcome::Indeterminate { .. },
+                    CommandOutcome::Indeterminate {
+                        failure,
+                        reconciliation,
+                    },
                 ) => {
-                    assert!(matches!(
-                        &outcome,
-                        CommandOutcome::Indeterminate {
-                            failure: CommandError::Persistence { .. },
-                            ..
-                        }
-                    ));
+                    assert!(matches!(failure, CommandError::Persistence { .. }));
+                    Some(reconciliation)
                 }
                 (
                     FaultPoint::AfterPersist,
@@ -67,11 +69,22 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
                         later_failure: Some(CommandError::Persistence { .. }),
                         ..
                     },
-                ) => {}
+                ) => None,
                 (_, outcome) => panic!("unexpected delivery fault outcome: {outcome:?}"),
-            }
-            assert_eq!(store.health().state(), HomeHealthState::Verifying);
-            store.verify_health().unwrap();
+            };
+            let retains_reconciliation = reconciliation.is_some();
+            let (store, storage) = if let Some(reconciliation) = reconciliation {
+                reconciliation.install();
+                assert_eq!(store.health().state(), HomeHealthState::Healthy);
+                (store, storage)
+            } else {
+                assert_eq!(store.health().state(), HomeHealthState::Failed);
+                let candidate = store.recover_same_home().unwrap();
+                let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+                let store = candidate.publish();
+                assert_eq!(store.health().state(), HomeHealthState::Healthy);
+                (store, storage)
+            };
             let recovered = operation.status(&store, storage);
             assert_ne!(
                 recovered,
@@ -84,7 +97,17 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
             if recovered == AcceptedInputDeliveryTransitionStatus::Exact {
                 assert_operation_committed(&store, storage, operation);
             }
-            store.validate_registered_domains().unwrap();
+            store
+                .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+                .unwrap();
+            if retains_reconciliation {
+                let close_error = store
+                    .close()
+                    .expect_err("installed indeterminate custody must block orderly close");
+                assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+                drop(close_error);
+                continue;
+            }
             store.close().unwrap();
 
             let mut reopened = open_with_faults(home.path(), FaultController::new());
@@ -93,7 +116,9 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
             if recovered == AcceptedInputDeliveryTransitionStatus::Exact {
                 assert_operation_committed(&reopened, reopened_storage, operation);
             }
-            reopened.validate_registered_domains().unwrap();
+            reopened
+                .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+                .unwrap();
             reopened.close().unwrap();
         }
     }

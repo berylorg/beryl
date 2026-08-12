@@ -6,12 +6,12 @@ use beryl_model::{RootId, RuntimeId};
 use crate::{AvailabilitySnapshot, RecordRevision, UnixMillis};
 
 use super::{
+    ROOT_RECORD_LIMIT, RUNTIME_RECORD_LIMIT, RootRecord, RootRegistration, RuntimeRecord,
+    RuntimeRegistration, RuntimeRootDomain, RuntimeRootMutationError,
     codec::{
         ExecutableIndexCodec, ExecutableKey, RootIdIndexCodec, RootPathIndexCodec, RootPathKey,
         RootRecordCodec, RuntimeHomeRootIndexCodec, RuntimeRecordCodec, RuntimeRootKey,
     },
-    RootRecord, RootRegistration, RuntimeRecord, RuntimeRegistration, RuntimeRootDomain,
-    RuntimeRootMutationError, ROOT_RECORD_LIMIT, RUNTIME_RECORD_LIMIT,
 };
 
 /// Atomic creation of one runtime and its sole non-removable home root.

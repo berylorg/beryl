@@ -5,7 +5,7 @@ use beryl_home_store::{
 };
 use beryl_model::{DomainRevision, SyndicItemId};
 
-use crate::{codec::*, domain::SyndicDomain, SyndicStorage};
+use crate::{SyndicStorage, codec::*, domain::SyndicDomain};
 
 use super::{PreparedProviderFrame, ProviderFrameStageBatch, ProviderFrameStageBatchError};
 use crate::PreparedProviderObservationFrame;

@@ -7,8 +7,7 @@ use beryl_home_store::{
 use tempfile::tempdir;
 
 use support::{
-    AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, PutBytes, committed,
-    open_home,
+    AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, PutBytes, committed, open_home,
 };
 
 #[test]

@@ -1,12 +1,11 @@
 use beryl_home_store::{
-    CommandError, CommandOutcome,
-    HomeHealthState,
+    CommandError, CommandOutcome, HomeHealthState,
     test_faults::{FaultController, FaultPoint},
 };
 use syndic_storage::{
     ClaimStopDispatch, JoinStopCause, LiveSourceEvent, SafelyReopenStopOperation,
     SourceEventPayload, SourceEventSequence, StopAttemptNonce, StopCause,
-    StopOperationTransitionStatus, TurnEndStatus, TurnTerminalOutcome,
+    StopOperationTransitionStatus, SyndicStorage, TurnEndStatus, TurnTerminalOutcome,
 };
 
 use super::stop_support::{active_stop_fixture_with_faults, point_limit};
@@ -40,28 +39,27 @@ fn verify_whole_state(
     if let Some(expected) = expected {
         assert_eq!(status, expected);
     }
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
-fn assert_fault_outcome(point: FaultPoint, outcome: CommandOutcome) {
+fn assert_fault_outcome(point: FaultPoint, outcome: CommandOutcome) -> bool {
     match (point, outcome) {
         (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
             assert!(matches!(evidence, CommandError::Commit { .. }));
+            false
         }
         (
             FaultPoint::AfterCommitBeforePersist,
-            outcome @ CommandOutcome::Indeterminate {
+            CommandOutcome::Indeterminate {
                 failure: CommandError::Persistence { .. },
-                reconciliation: _,
+                reconciliation,
             },
         ) => {
-            assert!(matches!(
-                &outcome,
-                CommandOutcome::Indeterminate {
-                    failure: CommandError::Persistence { .. },
-                    reconciliation: _,
-                }
-            ));
+            reconciliation.install();
+            true
         }
         (
             FaultPoint::AfterPersist,
@@ -69,8 +67,59 @@ fn assert_fault_outcome(point: FaultPoint, outcome: CommandOutcome) {
                 later_failure: Some(CommandError::Persistence { .. }),
                 ..
             },
-        ) => {}
+        ) => false,
         (_, outcome) => panic!("expected exact fault-cut command outcome, got {outcome:?}"),
+    }
+}
+
+fn assert_fault_custody(
+    fixture: super::stop_support::ActiveStopFixture,
+    retains_reconciliation: bool,
+) {
+    assert_eq!(fixture.store.health().state(), HomeHealthState::Healthy);
+    if retains_reconciliation {
+        let close_error = fixture.store.close().unwrap_err();
+        assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+    } else {
+        fixture.store.close().unwrap();
+    }
+}
+
+fn recover_direct_fault(
+    fixture: super::stop_support::ActiveStopFixture,
+    retains_reconciliation: bool,
+) -> super::stop_support::ActiveStopFixture {
+    if retains_reconciliation {
+        assert_eq!(fixture.store.health().state(), HomeHealthState::Healthy);
+        return fixture;
+    }
+
+    assert_eq!(fixture.store.health().state(), HomeHealthState::Failed);
+    let super::stop_support::ActiveStopFixture {
+        _home,
+        store,
+        storage: _,
+        thread,
+        turn,
+        target,
+        operation_id,
+        admission,
+        source,
+    } = fixture;
+    let candidate = store.recover_same_home().unwrap();
+    let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let store = candidate.publish();
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    super::stop_support::ActiveStopFixture {
+        _home,
+        store,
+        storage,
+        thread,
+        turn,
+        target,
+        operation_id,
+        admission,
+        source,
     }
 }
 
@@ -81,13 +130,15 @@ fn admission_fault_cuts_reconcile_to_one_whole_state() {
         let fixture =
             active_stop_fixture_with_faults(&format!("phase65-stop-admit-{name}"), faults.clone());
         faults.fail_next(point);
-        assert_fault_outcome(point, fixture.store.execute_current(
-            fixture
-                .storage
-                .current_admit_stop_operation(fixture.admission.clone()),
-        ));
-        assert_eq!(fixture.store.health().state(), HomeHealthState::Verifying);
-        fixture.store.verify_health().unwrap();
+        let retains_reconciliation = assert_fault_outcome(
+            point,
+            fixture.store.execute_current(
+                fixture
+                    .storage
+                    .current_admit_stop_operation(fixture.admission.clone()),
+            ),
+        );
+        let fixture = recover_direct_fault(fixture, retains_reconciliation);
         let status = fixture
             .storage
             .stop_admission_status(&fixture.store, &fixture.admission, point_limit())
@@ -99,6 +150,7 @@ fn admission_fault_cuts_reconcile_to_one_whole_state() {
                 fixture.admission.causes()
             );
         }
+        assert_fault_custody(fixture, retains_reconciliation);
     }
 }
 
@@ -117,10 +169,13 @@ fn cause_join_fault_cuts_reconcile_to_one_whole_state() {
             StopCause::DiagnosticControl,
         );
         faults.fail_next(point);
-        assert_fault_outcome(point, fixture
-            .store
-            .execute_current(fixture.storage.current_join_stop_cause(request.clone())));
-        fixture.store.verify_health().unwrap();
+        let retains_reconciliation = assert_fault_outcome(
+            point,
+            fixture
+                .store
+                .execute_current(fixture.storage.current_join_stop_cause(request.clone())),
+        );
+        let fixture = recover_direct_fault(fixture, retains_reconciliation);
         let status = fixture
             .storage
             .stop_cause_join_status(&fixture.store, &request, point_limit())
@@ -135,6 +190,7 @@ fn cause_join_fault_cuts_reconcile_to_one_whole_state() {
                 request.expected_stop_revision().checked_next().ok()
             );
         }
+        assert_fault_custody(fixture, retains_reconciliation);
     }
 }
 
@@ -153,10 +209,13 @@ fn dispatch_claim_fault_cuts_reconcile_to_one_whole_state() {
             StopAttemptNonce::from_bytes([170; 16]),
         );
         faults.fail_next(point);
-        assert_fault_outcome(point, fixture
-            .store
-            .execute_current(fixture.storage.current_claim_stop_dispatch(request.clone())));
-        fixture.store.verify_health().unwrap();
+        let retains_reconciliation = assert_fault_outcome(
+            point,
+            fixture
+                .store
+                .execute_current(fixture.storage.current_claim_stop_dispatch(request.clone())),
+        );
+        let fixture = recover_direct_fault(fixture, retains_reconciliation);
         let status = fixture
             .storage
             .stop_dispatch_claim_status(&fixture.store, &request, point_limit())
@@ -167,6 +226,7 @@ fn dispatch_claim_fault_cuts_reconcile_to_one_whole_state() {
             assert_eq!(claim.source_revision(), request.expected_stop_revision());
             assert_eq!(claim.attempt(), request.attempt());
         }
+        assert_fault_custody(fixture, retains_reconciliation);
     }
 }
 
@@ -184,17 +244,21 @@ fn safe_reopen_fault_cuts_reconcile_to_one_whole_state() {
             fixture.stop().revision(),
         );
         faults.fail_next(point);
-        assert_fault_outcome(point, fixture.store.execute_current(
-            fixture
-                .storage
-                .current_safely_reopen_stop_operation(request.clone()),
-        ));
-        fixture.store.verify_health().unwrap();
+        let retains_reconciliation = assert_fault_outcome(
+            point,
+            fixture.store.execute_current(
+                fixture
+                    .storage
+                    .current_safely_reopen_stop_operation(request.clone()),
+            ),
+        );
+        let fixture = recover_direct_fault(fixture, retains_reconciliation);
         let status = fixture
             .storage
             .safe_stop_reopen_status(&fixture.store, &request, point_limit())
             .unwrap();
         verify_whole_state(&fixture, status, expected);
+        assert_fault_custody(fixture, retains_reconciliation);
     }
 }
 
@@ -209,17 +273,21 @@ fn abandonment_fault_cuts_reconcile_to_one_whole_state() {
         fixture.admit_stop();
         let request = super::abandonment::startup_abandonment(&fixture).1;
         faults.fail_next(point);
-        assert_fault_outcome(point, fixture.store.execute_current(
-            fixture
-                .storage
-                .current_abandon_stop_operation(request.clone()),
-        ));
-        fixture.store.verify_health().unwrap();
+        let retains_reconciliation = assert_fault_outcome(
+            point,
+            fixture.store.execute_current(
+                fixture
+                    .storage
+                    .current_abandon_stop_operation(request.clone()),
+            ),
+        );
+        let fixture = recover_direct_fault(fixture, retains_reconciliation);
         let status = fixture
             .storage
             .stop_abandonment_status(&fixture.store, &request, point_limit())
             .unwrap();
         verify_whole_state(&fixture, status, expected);
+        assert_fault_custody(fixture, retains_reconciliation);
     }
 }
 
@@ -261,12 +329,15 @@ fn matching_terminal_fault_cuts_reconcile_to_one_whole_state() {
         )
         .unwrap();
         faults.fail_next(point);
-        assert_fault_outcome(point, fixture.store.execute_current(
-            fixture
-                .storage
-                .current_admit_live_source_event(event.clone()),
-        ));
-        fixture.store.verify_health().unwrap();
+        let retains_reconciliation = assert_fault_outcome(
+            point,
+            fixture.store.execute_current(
+                fixture
+                    .storage
+                    .current_admit_live_source_event(event.clone()),
+            ),
+        );
+        let fixture = recover_direct_fault(fixture, retains_reconciliation);
         let status = fixture
             .storage
             .stop_matching_terminal_status(
@@ -279,5 +350,6 @@ fn matching_terminal_fault_cuts_reconcile_to_one_whole_state() {
             )
             .unwrap();
         verify_whole_state(&fixture, status, expected);
+        assert_fault_custody(fixture, retains_reconciliation);
     }
 }

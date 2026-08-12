@@ -3,10 +3,10 @@ mod support;
 use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
-    CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder,
-    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    CodecOperation, CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation,
+    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder,
+    ReadError, ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_state::{BerylState, BerylStateRegistrationError};
 use tempfile::tempdir;
@@ -129,7 +129,7 @@ impl DomainMutation<RawSettingsDomain> for PutRawSetting {
 }
 
 #[test]
-fn settings_reopen_rejects_an_unknown_setting_schema() {
+fn routine_reopen_defers_unknown_setting_schema_but_typed_read_and_explicit_validation_reject_it() {
     let directory = tempdir().unwrap();
     let mut store = HomeStore::open(HomeOpenOptions::new(
         directory.path(),
@@ -161,7 +161,27 @@ fn settings_reopen_rejects_an_unknown_setting_schema() {
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let error = match BerylState::register(&mut store) {
+    let state = BerylState::register(&mut store)
+        .expect("routine registration must not scan the dormant malformed setting");
+    assert!(matches!(
+        state
+            .settings()
+            .setting(&store, beryl_state::SettingKey::ActiveThemeId),
+        Err(ReadError::Codec {
+            domain: "beryl-settings",
+            family: "records",
+            operation: CodecOperation::DecodeValue,
+            ..
+        })
+    ));
+    store.close().unwrap();
+
+    let mut store = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let error = match BerylState::register_with_schema_validation(&mut store) {
         Err(error) => error,
         Ok(_) => panic!("unknown setting schema unexpectedly registered"),
     };

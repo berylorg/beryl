@@ -52,7 +52,7 @@ pub fn assert_recovered_lineage(
 
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, installed.thread, point_limit())
+        .current_binding(&*fixture.home(), installed.thread, point_limit())
         .unwrap()
         .unwrap();
     let BindingState::Valid(usable) = binding.binding().state() else {
@@ -71,7 +71,7 @@ pub fn assert_failed_recovery_is_stale(
 ) {
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, installed.thread, point_limit())
+        .current_binding(&*fixture.home(), installed.thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(binding.binding().selected_path(), installed.selected_path);

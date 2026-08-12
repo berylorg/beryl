@@ -44,7 +44,12 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
         );
         let command = command(&store, contribution);
         faults.fail_next(point);
-        match (point, store.execute(command)) {
+        let outcome = store.execute(command);
+        let retained_custody = matches!(
+            &outcome,
+            beryl_home_store::CommandOutcome::Indeterminate { .. }
+        );
+        let expected_health = match (point, outcome) {
             (
                 FaultPoint::BeforeCommit,
                 beryl_home_store::CommandOutcome::NotCommitted {
@@ -57,22 +62,39 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
                     later_failure: Some(CommandError::Persistence { .. }),
                     ..
                 },
-            ) => {}
+            ) => HomeHealthState::Healthy,
             (
                 FaultPoint::AfterCommitBeforePersist,
-                outcome @ beryl_home_store::CommandOutcome::Indeterminate {
+                beryl_home_store::CommandOutcome::Indeterminate {
                     failure: CommandError::Persistence { .. },
-                    ..
+                    reconciliation,
                 },
-            ) => assert!(format!("{outcome:?}").contains("Indeterminate")),
+            ) => {
+                reconciliation.install();
+                HomeHealthState::Healthy
+            }
             (_, outcome) => panic!("unexpected transcript fault outcome: {outcome:?}"),
-        }
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
+        };
+        assert_eq!(store.health().state(), expected_health);
 
-        store.verify_health().unwrap();
         let recovered = observe(&store, storage, &target);
         assert_state(&recovered, &unpublished, &published, expected);
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        if retained_custody {
+            let close_error = store.close().unwrap_err();
+            assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+            drop(close_error);
+            assert!(
+                HomeStore::open(HomeOpenOptions::new(
+                    home.path(),
+                    HomeSchemaVersion::CURRENT
+                ))
+                .is_err()
+            );
+            continue;
+        }
         store.close().unwrap();
 
         let mut reopened = open(home.path());
@@ -80,7 +102,9 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
         let durable = observe(&reopened, reopened_storage, &target);
         assert_eq!(durable, recovered);
         assert_state(&durable, &unpublished, &published, expected);
-        reopened.validate_registered_domains().unwrap();
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         reopened.close().unwrap();
     }
 }

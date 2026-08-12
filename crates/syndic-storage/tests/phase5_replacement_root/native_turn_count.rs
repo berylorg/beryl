@@ -150,11 +150,15 @@ fn native_resume_preserves_count_and_root_replacement_starts_fresh_at_zero() {
     };
     assert_eq!(fresh.represented_prefix().tail(), None);
     assert_eq!(fresh.native_turn_count(), CasNativeTurnCount::ZERO);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

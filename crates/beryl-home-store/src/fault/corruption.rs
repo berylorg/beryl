@@ -4,9 +4,9 @@ use fjall::PersistMode;
 use thiserror::Error;
 
 use crate::{
+    DomainHandle, HealthGateError, HomeStore, RecordCodec, StorageDomain,
     health::{ClassifiedFjallError, FailureSeverity, HealthAdmission},
     writer::ActiveWriter,
-    DomainHandle, HealthGateError, HomeStore, RecordCodec, StorageDomain,
 };
 
 const MAX_CORRUPTION_FIXTURE_BYTES: usize = 1_048_576;

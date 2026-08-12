@@ -45,7 +45,7 @@ pub fn run() {
             TIMEOUT,
         )
         .unwrap();
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
     let projection_request = CasProjectionRequest::new(
         fixture.thread,
         fixture.selected_path(fixture.thread),
@@ -57,7 +57,7 @@ pub fn run() {
     );
     let projection = coordinator
         .obtain_projection(
-            &fixture.store,
+            &*fixture.home(),
             fixture.storage,
             &mut session,
             &projection_request,
@@ -73,7 +73,7 @@ pub fn run() {
         let delivery = scope.spawn(|| admit_claim_and_trigger(&fixture, submitted.turn, trigger));
         let outcome = coordinator
             .execute_ordinary_turn(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 fixture.state.assets(),
                 projection,
@@ -107,10 +107,10 @@ fn prepare_steering_draft(fixture: &Fixture) {
         &ComposerPayload::new(vec![ComposerAtom::text(STEERING_TEXT).unwrap()]).unwrap(),
     )
     .unwrap();
-    stage_prepared_content(&fixture.store, fixture.storage, &prepared);
+    stage_prepared_content(&*fixture.home(), fixture.storage, &prepared);
     let current = fixture
         .storage
-        .current_draft(&fixture.store, fixture.thread, point_limit())
+        .current_draft(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let DraftPayloadUpdateDecision::Update(update) = DraftPayloadUpdate::prepare(
@@ -122,10 +122,10 @@ fn prepare_steering_draft(fixture: &Fixture) {
         panic!("the steering fixture draft must change")
     };
     execute(
-        &fixture.store,
+        &*fixture.home(),
         fixture
             .storage
-            .update_draft_payload(fixture.storage.revision(&fixture.store).unwrap(), update),
+            .update_draft_payload(fixture.storage.revision(&*fixture.home()).unwrap(), update),
     );
 }
 
@@ -137,17 +137,17 @@ fn admit_claim_and_trigger(
     wait_for_steerable_gate(fixture, turn);
     let current = fixture
         .storage
-        .current_draft(&fixture.store, fixture.thread, point_limit())
+        .current_draft(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let turn_state = fixture
         .storage
-        .turn_state(&fixture.store, turn, point_limit())
+        .turn_state(&*fixture.home(), turn, point_limit())
         .unwrap()
         .unwrap();
     assert!(
@@ -167,7 +167,7 @@ fn admit_claim_and_trigger(
     );
     let accepted_input = admission.accepted_input_id();
     let prepared = prepare_accepted_input_admission(
-        &fixture.store,
+        &*fixture.home(),
         fixture.storage,
         fixture.state.assets(),
         admission,
@@ -188,7 +188,7 @@ fn wait_for_delivering_input(fixture: &Fixture, accepted_input: SyndicAcceptedIn
     loop {
         if fixture
             .storage
-            .delivering_steering_input(&fixture.store, accepted_input, point_limit())
+            .delivering_steering_input(&*fixture.home(), accepted_input, point_limit())
             .unwrap()
             .is_some()
         {
@@ -207,12 +207,12 @@ fn wait_for_steerable_gate(fixture: &Fixture, turn: SyndicTurnId) {
     loop {
         let gate = fixture
             .storage
-            .input_gate(&fixture.store, fixture.thread, point_limit())
+            .input_gate(&*fixture.home(), fixture.thread, point_limit())
             .unwrap()
             .unwrap();
         let state = fixture
             .storage
-            .turn_state(&fixture.store, turn, point_limit())
+            .turn_state(&*fixture.home(), turn, point_limit())
             .unwrap()
             .unwrap();
         if matches!(gate.state(), InputGateState::Steerable(actual) if *actual == turn)
@@ -245,14 +245,14 @@ fn assert_projection_loss(
     assert!(
         fixture
             .storage
-            .delivering_steering_input(&fixture.store, accepted_input, point_limit())
+            .delivering_steering_input(&*fixture.home(), accepted_input, point_limit())
             .unwrap()
             .is_none(),
         "projection loss must remove delivering eligibility"
     );
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let route = gate
@@ -261,7 +261,7 @@ fn assert_projection_loss(
     let page = fixture
         .storage
         .accepted_route_page(
-            &fixture.store,
+            &*fixture.home(),
             fixture.thread,
             route.generation(),
             route.revision(),
@@ -279,13 +279,13 @@ fn assert_projection_loss(
     );
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, fixture.thread, point_limit())
+        .current_binding(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     assert!(matches!(binding.binding().state(), BindingState::Stale(_)));
     let state = fixture
         .storage
-        .turn_state(&fixture.store, turn, point_limit())
+        .turn_state(&*fixture.home(), turn, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::Incomplete);
@@ -321,9 +321,19 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
     match store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed command, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed command, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed command, got {outcome:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed command, got {outcome:?}")
+        }
     }
 }

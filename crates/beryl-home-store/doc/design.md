@@ -58,6 +58,12 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   no cleanup, renamed schema, or compatibility route is allowed.
 - Stored record values carry a store-owned exact record-version prefix. Domain codecs remain private to their package and application-facing APIs exchange only typed keys and values.
 - Cross-domain commands name typed participants and expected revisions, then either commit one batch or return one typed rejection.
+- The package exposes checked durable-start footprint composition that accepts only the typed idle-
+  submission or accepted-input-promotion footprint from `syndic-storage` and its matching typed
+  asset-owner-transfer footprint from `beryl-state`. It adds the package-owned participating-domain
+  metadata, home revision mutation, and Fjall journal framing, then returns the direct or queued
+  logical-and-journal append envelope. It accepts no caller-provided aggregate byte total and owns
+  neither the Beryl product admission budget nor capture-reserve configuration.
 
 ## Physical Open Contract
 
@@ -80,8 +86,11 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - An opened handle exposes only the durable home id, schema, durability tier, configured and
   canonical paths, and diagnostic database path. It never exposes lock files, raw OS handles,
   Fjall database, header keyspace, or encoded header bytes.
-- Explicit close drops Fjall ownership and then unlocks `home.lock`; ordinary value drop provides
-  the process-exit fallback.
+- Explicit clean close drops Fjall ownership and then unlocks `home.lock`. Ordinary value drop does
+  the same only when no reconciliation scope remains. With reserved or installed custody it drops
+  disposable Fjall state while the process-local registry core retains the lifetime lock, so a
+  same-process reopen remains denied until terminal classification and explicit final close or
+  process termination.
 
 ## Inputs And Outputs
 
@@ -201,7 +210,9 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   installing an acknowledgement, releasing operation state, or honoring route cancellation. Once
   accepted, the registry is the unique owner; no result, acknowledgement, caller, or service retains
   a copy. Gate installation preserves custody and closes publication for that exact scope, but by
-  itself authorizes no reread, retry, rollback, publication, or reconciliation execution.
+  itself authorizes no reread, retry, rollback, publication, or reconciliation execution. Dropping
+  an unconsumed custody value performs the same infallible registry installation as a fail-closed
+  fallback; it cannot release the slot, descriptor, or charge.
 - Reconciliation invokes each participating domain hook through the descriptor's bounded typed
   reader and returns exactly `ExactOld`, `ExactNew` with the reconstructed exact receipt, or
   `Collision`. All participants must prove the same exact side. Any participant-level collision,
@@ -223,7 +234,13 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   `FreeSpaceOutcome::Sufficient`, `FreeSpaceOutcome::BelowReserve`,
   `FreeSpaceOutcome::Unavailable`, or `FreeSpaceOutcome::Indeterminate`. Each invocation queries the
   filesystem once and retains no polling task, timer, cache, or hysteresis state.
-- `FreeSpaceOutcome::Sufficient` contains the observed available bytes and configured reserve.
+- The package owns the opaque validated turn-start admission requirement and immutable 256-MiB
+  product policy. Its public constructor accepts separately composed direct and queued
+  owner-derived `DurableStartFootprint` values plus the app-configured typed nonzero capture reserve,
+  rejects drift or checked-add overflow, and accepts no arbitrary byte total. App service
+  configuration obtains those owner inputs and retains the resulting requirement; the query accepts
+  that type intact.
+- `FreeSpaceOutcome::Sufficient` contains the observed available bytes and validated required bytes.
   `FreeSpaceOutcome::BelowReserve` contains those same exact values.
   `FreeSpaceOutcome::Unavailable` means the platform returned no availability observation;
   `FreeSpaceOutcome::Indeterminate` means an observation existed but could not be trusted for this
@@ -233,7 +250,9 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   admission, retry, writer dispatch, or backend dispatch. Those cross-package decisions remain in
   the [Beryl-home storage system](../../../doc/systems/beryl-home-storage/design.md).
 - The check does not reserve filesystem capacity. Later `ENOSPC` remains an ordinary storage error
-  and uses the same commit-outcome classification as any other failed write.
+  and uses the same commit-outcome classification as any other failed write. Journal rotation,
+  flush, compaction, and filesystem allocation are variable dependency and platform behavior, so
+  the composed append envelope is not a bound on physical consumption.
 
 ## Health And Recovery
 
@@ -274,12 +293,16 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   reservation, verifying gate, and collision-closed gate, not only active workers. Each
   verifying gate retains exactly one opaque descriptor; each collision-closed gate retains only its
   bounded sealed facts. Another trigger joins the retained result and adds no descriptor,
-  sealed-fact copy, or queue item.
+  sealed-fact copy, or queue item. Reserved custody directly retains the registry core and shared
+  lifetime-lock custodian. The first installed descriptor-bearing scope self-retains that core until
+  terminal classification removes the last such scope; this creates no thread, worker, or global
+  registry.
 - Orderly final close first rejects new reservations and drains admitted commands. It cannot dispose
   a descriptor-bearing verifying gate: the caller must join its already admitted classification or
   receive a close failure while the home remains open. Once no descriptor-bearing gate remains,
   final close may dispose collision-sealed process-local facts with the registry. Forced process
-  termination publishes no in-memory command result or acknowledgement.
+  termination publishes no in-memory command result or acknowledgement. Dropping the store or its
+  pending-close error with retained scopes cannot unlock the home or permit a same-process reopen.
 - One home runs at most four reconciliation workers and at most one per exact scope. When all four
   permits are held, another registered gate remains closed and awaits a worker without duplicating
   its descriptor.
@@ -334,17 +357,29 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 
 - This package implements the physical installed-theme repository boundary assigned by the
   [Beryl-home storage system](../../../doc/systems/beryl-home-storage/design.md). It supplies bounded
-  range reads, staged immutable generation files, exact length and digest verification, file and
-  directory durability, and atomic owner-manifest replacement to the typed `beryl-state` theme
-  service.
+  range reads, staged atomic document replacements, exact length and digest verification, file and
+  directory durability, atomic manifest replacement, and bounded change notifications to the typed
+  `beryl-state` theme service.
 - The physical API accepts package-neutral file identities, byte ranges, exact expected file and
   manifest identities, bounded staged byte streams, and explicit per-operation limits. It does not
   parse theme documents, assign installed-theme ids or order, interpret settings, resolve appearance,
   or expose raw file handles and paths to callers.
-- Publication flushes every required staged file before replacing the owner manifest and applies the
-  home filesystem tier's directory-durability rules. A document file is inert until selected by the
-  durable owner manifest; readers observe one complete old or new repository generation, never a
-  mixed set.
+- The physical layout is `<beryl-home>/themes/manifest.toml` plus user-editable stable documents at
+  `<beryl-home>/themes/installed/<stable-theme-id>.toml`. The typed caller supplies an already-
+  validated package-neutral file identity; this package derives the relative filename and never
+  accepts an arbitrary relative or absolute path.
+- `manifest.toml` is Beryl-owned membership and ordering authority. Installed document files are
+  supported external-edit inputs, while a document absent from the manifest remains inert. A root-
+  level `theme.toml` is never part of this package's repository boundary.
+- Publication flushes every required staged file before its authoritative atomic replacement and
+  applies the home filesystem tier's directory-durability rules. A newly installed document is inert
+  until selected by the durable manifest; an already installed document's stable file is its direct
+  editable content source. Readers observe one complete old or new manifest generation and only
+  complete atomically replaced document files.
+- Beryl-authored document updates flush a sibling staged file and atomically replace the stable
+  installed TOML path. Membership, name, and order mutations use manifest-last publication; delete
+  removes manifest authority before any non-authoritative file removal, and a retained file remains
+  inert.
 - The terminal physical result proves non-publication, exact durable publication, or indeterminate
   owner-manifest publication and carries only the bounded file evidence needed by the caller's exact
   natural-record reconciliation hook. It cannot fabricate a repository generation or authorize a
@@ -352,6 +387,10 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - Temporary or unreferenced staged files remain inert after cancellation, failure, or process exit.
   Ordinary open and targeted reconciliation do not guess that those files are authoritative or safe
   to delete.
+- One bounded coalescing repository watcher reports package-neutral changed-file hints, manifest
+  change, and overflow to the typed caller. Signals contain no path or bytes and are never commit
+  evidence; overflow requests one bounded coherent refresh. Watcher shutdown, store failure, and
+  same-home recovery release the old generation's subscription and queue rather than adopting it.
 
 ## Sidecar Publication
 
@@ -375,7 +414,11 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 
 ## Fault-Test Boundary
 
-- The `test-faults` Cargo feature exposes deterministic actions only at concrete package call boundaries around reads, batch commit, persistence, verification, forced reopen, and sidecar file and directory operations. Production builds compile those checks to no-ops; there is no alternate storage engine, virtual filesystem, compatibility layer, or retry path.
+- The `test-faults` Cargo feature exposes deterministic actions only at concrete package call
+  boundaries around reads, batch commit, persistence, verification, forced reopen, sidecar file and
+  directory operations, and theme staged-write, flush, replacement, removal, directory-sync,
+  observation, and watcher operations. Production builds compile those checks to no-ops; there is
+  no alternate storage engine, virtual filesystem, compatibility layer, or retry path.
 - Writer actions may additionally be scoped to the exact Rust mutation type carried by a typed
   current-domain command. The scope is process-local test identity, remains at the same physical
   before-commit, after-commit-before-persist, and after-persist boundaries, and only prevents an
@@ -403,9 +446,17 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   `ExactNew`. Collision tests prove opaque-descriptor disposal, one bounded sealed-fact set and its
   closed slot remain, and every transient worker resource is released. Open tests prove that no
   candidate application discovery is available before complete typed-stack publication.
+- Durable-start footprint tests independently compose both allowed typed participant pairs, prove
+  the direct logical total is 26 records and 1,263,194 encoded key-plus-value bytes, prove the queued
+  logical envelope is 25 records and 1,328,212 bytes, and prove owned journal framing raises the
+  queued shared maximum to 1,328,763 bytes. They reject mismatched participant kinds and checked-
+  arithmetic overflow; no test substitutes an arbitrary aggregate input.
+- Reserve-query tests prove only the validated requirement type is accepted, every invocation makes
+  one filesystem observation, and `Sufficient` performs no reservation or later-`ENOSPC` guarantee.
 - Custody tests prove that an `Indeterminate` result is move-only, registry acceptance cannot fail
-  after reservation, route cancellation and service retirement cannot drop the descriptor, and
-  orderly final close refuses to dispose a descriptor-bearing verifying gate.
+  after reservation, explicit and drop-fallback installation retain the exact descriptor and charge,
+  route cancellation and service retirement cannot drop the descriptor, and orderly close or
+  ordinary store/error destruction cannot dispose the registry or unlock a home with retained scope.
 - Package tests also cover four-worker saturation and release, filesystem-tier behavior, and
   sidecar publication ordering at the boundaries Beryl controls.
 - The owned Fjall fork exposes a deterministic non-production journal-write failure seam. Package

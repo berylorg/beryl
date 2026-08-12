@@ -117,6 +117,7 @@ impl ProjectionConnectionService {
                 Arc::clone(&home),
                 home.home_id(),
                 home_generation,
+                config.turn_start_admission_requirement(),
                 storage,
                 workers.clone(),
                 Arc::clone(&connections),

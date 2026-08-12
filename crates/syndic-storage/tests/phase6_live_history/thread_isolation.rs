@@ -8,7 +8,7 @@ fn a_live_event_cannot_mutate_another_threads_turn_or_gate() {
     let (first_thread, first_turn) = seed_pending_turn(&store, storage);
     let source = establish_turn(&store, storage, first_thread, first_turn, timestamp(4));
     let other_thread = id(40);
-    execute(
+    assert_committed(execute(
         &store,
         storage.create_thread(
             storage.revision(&store).unwrap(),
@@ -19,8 +19,7 @@ fn a_live_event_cannot_mutate_another_threads_turn_or_gate() {
                 timestamp(4),
             ),
         ),
-    )
-    .unwrap();
+    ));
     let state = storage
         .turn_state(&store, first_turn, limit())
         .unwrap()
@@ -44,11 +43,12 @@ fn a_live_event_cannot_mutate_another_threads_turn_or_gate() {
         timestamp(5),
     )
     .unwrap();
-    let error = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), mismatched),
-    )
-    .unwrap_err();
+    ) else {
+        panic!("expected definitive cross-thread rejection");
+    };
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::LiveTurnConflict
@@ -82,6 +82,8 @@ fn a_live_event_cannot_mutate_another_threads_turn_or_gate() {
             .parent(),
         ConversationParent::Root
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

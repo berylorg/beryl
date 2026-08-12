@@ -1,8 +1,5 @@
 use beryl_backend::ManagedBackendError;
-use beryl_home_store::{
-    CommandError, CommitReceipt, HomeGeneration, HomeHealthState, ReadError,
-    ReconciliationDescriptor,
-};
+use beryl_home_store::{CommandError, CommitReceipt, HomeGeneration, HomeHealthState, ReadError};
 use beryl_model::{BerylHomeId, CasProcessGeneration, CasThreadId, RuntimeId, SyndicThreadId};
 use thiserror::Error;
 
@@ -199,7 +196,6 @@ pub enum ProjectionCoordinatorError {
     CommandIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     /// Coordinator construction observed a home that was not healthy.
     #[error(

@@ -43,7 +43,7 @@ pub fn assert_durable_success(
 ) {
     let state = fixture
         .storage
-        .turn_state(&fixture.store, turn, point_limit())
+        .turn_state(&*fixture.home(), turn, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::Complete);
@@ -57,7 +57,7 @@ pub fn assert_durable_success(
     let items = fixture
         .storage
         .turn_items(
-            &fixture.store,
+            &*fixture.home(),
             turn,
             None,
             beryl_home_store::CursorReadLimits::new(2, 64 * 1024).unwrap(),
@@ -68,7 +68,7 @@ pub fn assert_durable_success(
 
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, thread, point_limit())
+        .input_gate(&*fixture.home(), thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(gate.state(), &InputGateState::Idle);
@@ -76,7 +76,7 @@ pub fn assert_durable_success(
 
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, thread, point_limit())
+        .current_binding(&*fixture.home(), thread, point_limit())
         .unwrap()
         .unwrap();
     let BindingState::Valid(usable) = binding.binding().state() else {

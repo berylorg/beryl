@@ -27,6 +27,9 @@ fn consumed_successful_compaction_reopens_as_valid_exact_authority() {
     }
 
     let fixture = fixture.reopen();
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(fixture.operation(id).home_id(), fixture.store.home_id());
 }

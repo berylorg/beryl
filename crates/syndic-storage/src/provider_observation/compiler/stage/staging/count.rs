@@ -2,10 +2,10 @@ use beryl_model::{SyndicContentDigest, SyndicContentId};
 
 use crate::provider_observation::compiler::ProviderObservationFramePreparationError;
 use crate::{
-    advance_content_chain, ContentChunkOrdinal, ContentChunkRecord, ContentSummary,
-    ProviderFrameOrdinalV1, ProviderFrameSinkV1, ProviderFrameTextSpanV1,
-    ProviderFrameTextSpanValidatorV1, ProviderLogicalTextRoleV1, ProviderNarrativeReference,
-    ProviderNarrativeSpanRecord,
+    ContentChunkOrdinal, ContentChunkRecord, ContentSummary, ProviderFrameOrdinalV1,
+    ProviderFrameSinkV1, ProviderFrameTextSpanV1, ProviderFrameTextSpanValidatorV1,
+    ProviderLogicalTextRoleV1, ProviderNarrativeReference, ProviderNarrativeSpanRecord,
+    advance_content_chain,
 };
 
 pub(in crate::provider_observation::compiler::stage) struct CountingSink {

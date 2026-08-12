@@ -51,7 +51,9 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
         command_start(cas_item.clone(), timestamp(6)),
         timestamp(6),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let mut corruption = syndic_storage::test_faults::FixtureBatch::new();
     corruption
@@ -63,11 +65,10 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
             },
         )
         .unwrap();
-    execute(
+    assert_committed(execute(
         &store,
         storage.fixture_contribution(storage.revision(&store).unwrap(), corruption),
-    )
-    .unwrap();
+    ));
 
     let frame = stage_item_frame_for_publication(
         &store,
@@ -93,11 +94,12 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
         },
         timestamp(7),
     );
-    let error = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), event),
-    )
-    .unwrap_err();
+    ) else {
+        panic!("expected definitive missing-activity rejection");
+    };
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::ActivityQueryConflict

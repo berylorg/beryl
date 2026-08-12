@@ -18,7 +18,7 @@ use syndic_storage::test_faults::{
 };
 use syndic_storage::*;
 
-use support::semantic::exercise_case;
+use support::semantic::{exercise_case, exercise_seeded_populated_case};
 use support::*;
 
 fn base() -> FixtureBatch {
@@ -116,11 +116,10 @@ fn draft_tail_and_turn_topology_corruption_fail_registration_verification_and_re
         },
     );
 
-    exercise_case(
+    exercise_seeded_populated_case(
         "wrong-child-ancestor-skip",
         "child turn depth, ancestor skip, or chain digest is invalid",
-        || batch(support::populated::populated_records()),
-        || {
+        |_store, _storage| {
             let root = SyndicTurnId::from_bytes([29; 16]);
             let child = support::populated::source_turn();
             let root_digest = root_turn_chain_digest(root);

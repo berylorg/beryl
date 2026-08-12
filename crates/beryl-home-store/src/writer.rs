@@ -3,6 +3,9 @@ use std::{cell::RefCell, sync::MutexGuard};
 use fjall::PersistMode;
 
 use crate::{
+    CommandError, CommandOutcome, CommitReceipt, ContributorCallbackStage, CurrentDomainCommand,
+    HomeCommand, MutationContribution, ReadError, ReadStage, ReconciliationCustody,
+    RevisionConflict,
     command::{
         DomainParticipant, MaterializedDomainDescriptor, MaterializedRecordDescriptor,
         PendingAction, PendingMutation, ReconciliationReservationOutput,
@@ -13,9 +16,6 @@ use crate::{
     read::{read_domain_metadata, read_home_revision},
     reconciliation::{ReconciliationReservationError, ReconciliationSlot},
     store::{HomeStore, StoreGeneration},
-    CommandError, CommandOutcome, CommitReceipt, ContributorCallbackStage, CurrentDomainCommand,
-    HomeCommand, MutationContribution, ReadError, ReadStage, ReconciliationDescriptor,
-    RevisionConflict,
 };
 
 mod batch;
@@ -277,9 +277,17 @@ impl HomeStore {
         };
         let mut outcome = operation(generation, admission.generation(), &mut reservation);
         match &outcome {
-            ExecutionOutcome::NotCommitted(error) | ExecutionOutcome::Indeterminate(error) => {
+            ExecutionOutcome::NotCommitted(error) => {
                 if matches!(
                     command_failure_severity(error),
+                    Some(FailureSeverity::Structural)
+                ) {
+                    admission.fail(FailureSeverity::Structural);
+                }
+            }
+            ExecutionOutcome::Indeterminate(error) => {
+                if matches!(
+                    command_error::indeterminate_failure_severity(error),
                     Some(FailureSeverity::Structural)
                 ) {
                     admission.fail(FailureSeverity::Structural);
@@ -798,7 +806,7 @@ fn finalize_outcome(outcome: ExecutionOutcome, reservation: CommandReservation) 
                 .expect("every indeterminate mutation materialized its descriptor before Fjall");
             CommandOutcome::Indeterminate {
                 failure,
-                reconciliation: ReconciliationDescriptor::new(slot, domains, receipt),
+                reconciliation: ReconciliationCustody::new(slot, domains, receipt),
             }
         }
     }

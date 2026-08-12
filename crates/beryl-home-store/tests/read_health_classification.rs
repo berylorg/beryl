@@ -5,14 +5,14 @@ mod support;
 use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint, PersistedCorruptionError},
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackSource, DomainRegistrationError,
     HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
     ReadError,
+    test_faults::{FaultController, FaultPoint, PersistedCorruptionError},
 };
 use tempfile::tempdir;
 
-use support::{committed, AlphaDomain, BytesRecord, PutBytes};
+use support::{AlphaDomain, BytesRecord, PutBytes, committed};
 
 const MAX_STORED_VALUE_BYTES: usize = 1_028;
 
@@ -197,7 +197,7 @@ fn persisted_corruption_seam_completes_a_durable_record_barrier() {
 
     let mut reopened = support::open_home(directory.path());
     assert!(matches!(
-        reopened.register_domain::<AlphaDomain>(),
+        reopened.register_domain_with_schema_validation::<AlphaDomain>(),
         Err(DomainRegistrationError::ValidationAccess {
             source: DomainCallbackSource::Read(ReadError::InvalidStoredKeySize {
                 maximum: 8,

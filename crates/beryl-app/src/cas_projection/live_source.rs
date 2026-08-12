@@ -278,16 +278,39 @@ pub(super) fn publish_provider_reconciled(
     let dispatch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         store.execute_current(storage.current_admit_live_source_event(event.clone()))
     }));
+    let dispatch = match dispatch {
+        Ok(dispatch) => dispatch,
+        Err(_) => {
+            verification
+                .settle_after_operation()
+                .map_err(LiveSourcePublicationError::Authority)?;
+            return Err(LiveSourcePublicationError::PublicationPanicked);
+        }
+    };
+    let dispatch = match dispatch {
+        beryl_home_store::CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            verification
+                .settle_after_operation()
+                .map_err(LiveSourcePublicationError::Authority)?;
+            return Err(LiveSourcePublicationError::Publication(
+                ProjectionPublicationFailure::CommandIndeterminate { failure },
+            ));
+        }
+        dispatch => dispatch,
+    };
     verification
         .settle_after_operation()
         .map_err(LiveSourcePublicationError::Authority)?;
-    let dispatch = dispatch.map_err(|_| LiveSourcePublicationError::PublicationPanicked)?;
     match dispatch {
-        beryl_home_store::CommandOutcome::NotCommitted { evidence } => Err(
-            LiveSourcePublicationError::Publication(ProjectionPublicationFailure::Command(
-                evidence,
-            )),
-        ),
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+            Err(LiveSourcePublicationError::Publication(
+                ProjectionPublicationFailure::Command(evidence),
+            ))
+        }
         beryl_home_store::CommandOutcome::Committed {
             receipt: _,
             later_failure: None,
@@ -301,15 +324,7 @@ pub(super) fn publish_provider_reconciled(
                 later_failure,
             },
         )),
-        beryl_home_store::CommandOutcome::Indeterminate {
-            failure,
-            reconciliation,
-        } => Err(LiveSourcePublicationError::Publication(
-            ProjectionPublicationFailure::CommandIndeterminate {
-                failure,
-                reconciliation,
-            },
-        )),
+        beryl_home_store::CommandOutcome::Indeterminate { .. } => unreachable!(),
     }
 }
 

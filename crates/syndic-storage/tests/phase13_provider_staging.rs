@@ -1,4 +1,8 @@
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
+#[cfg(feature = "test-faults")]
+use beryl_model::SyndicThreadId;
 use beryl_model::{CasItemId, CasThreadId, CasTurnId, SyndicContentId, SyndicItemId, SyndicTurnId};
 use syndic_storage::*;
 
@@ -7,6 +11,9 @@ use syndic_storage::*;
 mod faults;
 #[path = "phase13_provider_staging/restart.rs"]
 mod restart;
+#[cfg(feature = "test-faults")]
+#[path = "support/mod.rs"]
+mod support;
 
 fn source(item: &str) -> CasItemSource {
     CasItemSource::new(
@@ -51,6 +58,7 @@ fn agent_delta(
     )
 }
 
+#[cfg(feature = "test-faults")]
 fn agent_completion(
     ordinal: ProviderFrameOrdinalV1,
     item: &str,
@@ -67,12 +75,29 @@ fn agent_completion(
 }
 
 fn prepare_first(frame: ProviderItemFrameV1, content_byte: u8) -> PreparedProviderFrame {
-    let cas_item = frame.item_id().as_str().to_owned();
-    prepare_provider_frame(ProviderFramePreparationPlan::first(
+    prepare_first_for(
         SyndicItemId::from_bytes([2; 16]),
         SyndicTurnId::from_bytes([3; 16]),
-        source(&cas_item),
+        source(frame.item_id().as_str()),
         SourceEventSequence::FIRST,
+        frame,
+        content_byte,
+    )
+}
+
+fn prepare_first_for(
+    item: SyndicItemId,
+    turn: SyndicTurnId,
+    source: CasItemSource,
+    source_event: SourceEventSequence,
+    frame: ProviderItemFrameV1,
+    content_byte: u8,
+) -> PreparedProviderFrame {
+    prepare_provider_frame(ProviderFramePreparationPlan::first(
+        item,
+        turn,
+        source,
+        source_event,
         SyndicContentId::from_bytes([content_byte; 16]),
         frame,
     ))
@@ -84,12 +109,29 @@ fn prepare_next(
     source_event: u64,
     frame: ProviderItemFrameV1,
 ) -> PreparedProviderFrame {
-    let cas_item = frame.item_id().as_str().to_owned();
-    prepare_provider_frame(ProviderFramePreparationPlan::subsequent(
+    prepare_next_for(
         SyndicItemId::from_bytes([2; 16]),
         SyndicTurnId::from_bytes([3; 16]),
-        source(&cas_item),
+        prior,
+        source(frame.item_id().as_str()),
         SourceEventSequence::new(source_event).unwrap(),
+        frame,
+    )
+}
+
+fn prepare_next_for(
+    item: SyndicItemId,
+    turn: SyndicTurnId,
+    prior: SealedProviderFrameReference,
+    source: CasItemSource,
+    source_event: SourceEventSequence,
+    frame: ProviderItemFrameV1,
+) -> PreparedProviderFrame {
+    prepare_provider_frame(ProviderFramePreparationPlan::subsequent(
+        item,
+        turn,
+        source,
+        source_event,
         prior,
         frame,
     ))
@@ -121,23 +163,249 @@ fn stage_collect(
             batches.push(batch.clone());
             let mut command = HomeCommand::new(store.home_revision().unwrap());
             command
-                .add(storage.stage_provider_frame_batch(
-                    storage.revision(&store).unwrap(),
-                    batch.clone(),
-                ))
+                .add(
+                    storage.stage_provider_frame_batch(
+                        storage.revision(&store).unwrap(),
+                        batch.clone(),
+                    ),
+                )
                 .unwrap();
             store.execute(command)
         },
     )
-    .unwrap() {
+    .unwrap()
+    {
         ProviderFrameStageOutcome::Committed {
             value,
+            receipt,
             later_failure: None,
+        } => {
+            let _receipt = receipt;
+            value
+        }
+        ProviderFrameStageOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
             ..
-        } => value,
-        outcome => panic!("expected clean provider-frame staging, got {outcome:?}"),
+        } => panic!(
+            "expected clean provider-frame staging, got committed outcome with receipt {receipt:?} and later failure {failure:?}"
+        ),
+        ProviderFrameStageOutcome::NotCommitted { evidence } => {
+            panic!("expected clean provider-frame staging, got definitive non-commit {evidence:?}")
+        }
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean provider-frame staging, got indeterminate outcome {failure:?}")
+        }
+        ProviderFrameStageOutcome::Unchanged { value } => {
+            panic!("expected provider-frame staging work, got unchanged build {value:?}")
+        }
     };
     (final_build, batches)
+}
+
+#[cfg(feature = "test-faults")]
+fn clean_command(outcome: CommandOutcome, operation: &str) {
+    match outcome {
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: None,
+        } => {
+            let _receipt = receipt;
+        }
+        CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+        } => panic!(
+            "expected clean {operation}, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected clean {operation}, got definitive non-commit {evidence:?}")
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean {operation}, got indeterminate outcome {failure:?}")
+        }
+    }
+}
+
+#[cfg(feature = "test-faults")]
+fn next_source_event(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    turn: SyndicTurnId,
+) -> SourceEventSequence {
+    let state = storage
+        .turn_state(store, turn, SyndicPointReadLimit::new(1_000_000).unwrap())
+        .unwrap()
+        .unwrap_or_else(|| panic!("provider staging test turn disappeared"));
+    SourceEventSequence::new(state.source_event_count() + 1).unwrap()
+}
+
+#[cfg(feature = "test-faults")]
+fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread: SyndicThreadId) {
+    let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
+    let thread_record = storage
+        .thread(store, thread, limit)
+        .unwrap()
+        .unwrap_or_else(|| panic!("provider staging test thread disappeared"));
+    let head = storage
+        .transcript_view_head(store, thread, limit)
+        .unwrap()
+        .unwrap_or_else(|| panic!("provider staging test transcript head disappeared"));
+    if head.lifecycle() == ProjectionLifecycle::Current {
+        return;
+    }
+    let generation = head.generation();
+    clean_command(
+        store.execute_current(
+            storage.current_start_transcript_build(StartTranscriptBuild::new(
+                thread,
+                thread_record.revision(),
+                head.revision(),
+            )),
+        ),
+        "transcript-build start",
+    );
+    for _ in 0..4_096 {
+        let build = storage
+            .transcript_build(store, thread, generation, limit)
+            .unwrap()
+            .unwrap_or_else(|| panic!("provider staging test transcript build disappeared"));
+        if build.phase() == TranscriptBuildPhase::Complete {
+            return;
+        }
+        clean_command(
+            store.execute_current(storage.current_advance_transcript_build(
+                AdvanceTranscriptBuild::new(thread, generation, build.revision()),
+            )),
+            "transcript-build advance",
+        );
+    }
+    panic!("bounded provider staging transcript rebuild did not finish");
+}
+
+#[cfg(feature = "test-faults")]
+fn stage_and_publish(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    source: &CasTurnSource,
+    prepared: &PreparedProviderFrame,
+    publish: bool,
+) -> (ProviderItemBuildRecord, Vec<ProviderFrameStageBatch>) {
+    clean_command(
+        store.execute_current(storage.current_begin_provider_frame_build(prepared)),
+        "provider-frame build begin",
+    );
+    let mut batches = Vec::new();
+    let mut build = match stage_provider_frame(
+        prepared,
+        prepared.initial_build().clone(),
+        &mut |batch: &ProviderFrameStageBatch| {
+            batches.push(batch.clone());
+            store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))
+        },
+    )
+    .unwrap()
+    {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            receipt,
+            later_failure: None,
+        } => {
+            let _receipt = receipt;
+            value
+        }
+        ProviderFrameStageOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+            ..
+        } => panic!(
+            "expected clean provider-frame staging, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        ProviderFrameStageOutcome::NotCommitted { evidence } => {
+            panic!("expected clean provider-frame staging, got definitive non-commit {evidence:?}")
+        }
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean provider-frame staging, got indeterminate outcome {failure:?}")
+        }
+        ProviderFrameStageOutcome::Unchanged { value } => {
+            panic!("expected provider-frame staging work, got unchanged build {value:?}")
+        }
+    };
+    if !publish {
+        return (build, batches);
+    }
+    for _ in 0..4_096 {
+        if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
+            break;
+        }
+        clean_command(
+            store.execute_current(storage.current_compare_provider_completion(build)),
+            "provider completion comparison",
+        );
+        build = storage
+            .provider_item_build(
+                store,
+                prepared.initial_build().item_id(),
+                SyndicPointReadLimit::new(1_000_000).unwrap(),
+            )
+            .unwrap()
+            .unwrap_or_else(|| panic!("provider staging test build disappeared"));
+    }
+    assert_eq!(build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
+
+    let state = storage
+        .turn_state(
+            store,
+            prepared.initial_build().turn_id(),
+            SyndicPointReadLimit::new(1_000_000).unwrap(),
+        )
+        .unwrap()
+        .unwrap_or_else(|| panic!("provider staging test turn disappeared"));
+    let gate = storage
+        .input_gate(store, thread, SyndicPointReadLimit::new(1_000_000).unwrap())
+        .unwrap()
+        .unwrap_or_else(|| panic!("provider staging test input gate disappeared"));
+    assert_eq!(
+        prepared.initial_build().source_event().get(),
+        state.source_event_count() + 1,
+        "prepared provider frame must use the exact next source-event sequence"
+    );
+    clean_command(
+        store.execute_current(
+            storage.current_admit_live_source_event(
+                LiveSourceEvent::new(
+                    thread,
+                    prepared.initial_build().turn_id(),
+                    state.revision(),
+                    gate.revision(),
+                    prepared.initial_build().source_event(),
+                    Some(source.clone()),
+                    SourceEventPayload::ItemFrame {
+                        item_id: prepared.initial_build().item_id(),
+                        frame: Box::new(prepared.target().clone()),
+                    },
+                    SyndicTimestamp::from_unix_millis(100),
+                )
+                .unwrap(),
+            ),
+        ),
+        "provider-frame live-source publication",
+    );
+    converge_transcript(store, storage, thread);
+    (build, batches)
 }
 
 #[test]
@@ -226,6 +494,7 @@ fn operational_and_activity_spans_never_enter_selected_narrative() {
     }
 }
 
+#[cfg(feature = "test-faults")]
 fn only_narrative_span(batches: &[ProviderFrameStageBatch]) -> ProviderNarrativeSpanRecord {
     let spans = batches
         .iter()
@@ -257,11 +526,39 @@ fn build_with_staged_narrative(
     )
 }
 
+#[cfg(feature = "test-faults")]
 #[test]
 fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality() {
+    let home = restart::TestHome::new("narrative-lifecycle");
+    let mut store = HomeStore::open(HomeOpenOptions::new(
+        home.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    support::seed_populated(&store, storage);
+
+    let thread = support::id(40);
+    let turn = support::populated::active_turn();
     let item = "narrative-life";
-    let first = prepare_first(agent_start(item, ""), 7);
-    let (first_final, first_batches) = stage_collect(&first);
+    let syndic_item = SyndicItemId::from_bytes([0xf1; 16]);
+    let source = CasItemSource::new(
+        CasTurnSource::new(
+            support::populated::cas_thread(),
+            support::populated::cas_turn(),
+        ),
+        CasItemId::new(item).unwrap(),
+    );
+    let first = prepare_first_for(
+        syndic_item,
+        turn,
+        source.clone(),
+        next_source_event(&store, storage, turn),
+        agent_start(item, ""),
+        0xf1,
+    );
+    let (first_final, first_batches) =
+        stage_and_publish(&store, storage, thread, source.turn(), &first, true);
     let first_narrative = first_final.target().narrative().unwrap();
     assert_eq!(first_narrative.span_count(), 0);
     assert_eq!(first_narrative.logical_utf8_bytes(), 0);
@@ -272,12 +569,16 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
     );
 
     let second_ordinal = ProviderFrameOrdinalV1::FIRST.checked_next().unwrap();
-    let second = prepare_next(
+    let second = prepare_next_for(
+        syndic_item,
+        turn,
         first_final.target().clone(),
-        2,
+        source.clone(),
+        next_source_event(&store, storage, turn),
         agent_delta(second_ordinal, item, "Hello"),
     );
-    let (second_final, second_batches) = stage_collect(&second);
+    let (second_final, second_batches) =
+        stage_and_publish(&store, storage, thread, source.turn(), &second, true);
     let second_narrative = second_final.target().narrative().unwrap();
     let hello = only_narrative_span(&second_batches);
     assert_eq!(
@@ -294,12 +595,16 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
     );
 
     let third_ordinal = second_ordinal.checked_next().unwrap();
-    let third = prepare_next(
+    let third = prepare_next_for(
+        syndic_item,
+        turn,
         second_final.target().clone(),
-        3,
+        source.clone(),
+        next_source_event(&store, storage, turn),
         agent_delta(third_ordinal, item, " world"),
     );
-    let (third_final, third_batches) = stage_collect(&third);
+    let (third_final, third_batches) =
+        stage_and_publish(&store, storage, thread, source.turn(), &third, true);
     let third_narrative = third_final.target().narrative().unwrap();
     let world = only_narrative_span(&third_batches);
     assert_eq!(third_narrative.generation(), second_narrative.generation());
@@ -329,12 +634,16 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
     );
 
     let fourth_ordinal = third_ordinal.checked_next().unwrap();
-    let completed = prepare_next(
+    let completed = prepare_next_for(
+        syndic_item,
+        turn,
         third_final.target().clone(),
-        4,
+        source.clone(),
+        next_source_event(&store, storage, turn),
         agent_completion(fourth_ordinal, item, "Hello world"),
     );
-    let (completed_final, completion_batches) = stage_collect(&completed);
+    let (completed_final, completion_batches) =
+        stage_and_publish(&store, storage, thread, source.turn(), &completed, false);
     assert_eq!(completed_final.target().narrative(), Some(third_narrative));
     assert_eq!(
         completed_final.lifecycle(),
@@ -351,6 +660,7 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
             .iter()
             .all(|batch| batch.narrative_spans().is_empty())
     );
+    store.close().unwrap();
 }
 
 #[test]
@@ -380,7 +690,9 @@ fn malformed_narrative_chain_and_resume_frontier_are_rejected() {
     let resume_error = stage_provider_frame(
         &delta,
         malformed_resume,
-        &mut |_batch: &ProviderFrameStageBatch| unreachable!("malformed resume must reject before staging"),
+        &mut |_batch: &ProviderFrameStageBatch| {
+            unreachable!("malformed resume must reject before staging")
+        },
     )
     .unwrap_err();
     assert!(matches!(
@@ -423,23 +735,43 @@ fn batch_state_classification_and_uncommitted_expected_retry_are_exact() {
         outcome => panic!("expected clean provider-frame build begin, got {outcome:?}"),
     }
     let mut offered = None;
-    let rejected = stage_provider_frame(
-        &prepared,
-        prepared.initial_build().clone(),
-        &mut |batch: &ProviderFrameStageBatch| {
-            offered = Some(batch.clone());
-            let mut command = HomeCommand::new(stale_home_revision);
-            command
-                .add(storage.stage_provider_frame_batch(
-                    storage.revision(&store).unwrap(),
-                    batch.clone(),
-                ))
-                .unwrap();
-            store.execute(command)
-        },
-    )
-    .unwrap();
-    assert!(matches!(rejected, ProviderFrameStageOutcome::NotCommitted { .. }));
+    let rejected =
+        stage_provider_frame(
+            &prepared,
+            prepared.initial_build().clone(),
+            &mut |batch: &ProviderFrameStageBatch| {
+                offered = Some(batch.clone());
+                let mut command = HomeCommand::new(stale_home_revision);
+                command
+                    .add(storage.stage_provider_frame_batch(
+                        storage.revision(&store).unwrap(),
+                        batch.clone(),
+                    ))
+                    .unwrap();
+                store.execute(command)
+            },
+        )
+        .unwrap();
+    match rejected {
+        ProviderFrameStageOutcome::NotCommitted { .. } => {}
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected stale command rejection, got indeterminate outcome {failure:?}")
+        }
+        ProviderFrameStageOutcome::Committed {
+            receipt,
+            later_failure,
+            ..
+        } => panic!(
+            "expected stale command rejection, got committed outcome with receipt {receipt:?} and later failure {later_failure:?}"
+        ),
+        ProviderFrameStageOutcome::Unchanged { value } => {
+            panic!("expected stale command rejection, got unchanged build {value:?}")
+        }
+    }
 
     let offered = offered.unwrap();
     assert_eq!(
@@ -467,28 +799,52 @@ fn batch_state_classification_and_uncommitted_expected_retry_are_exact() {
     );
 
     let mut retried_first = None;
-    let sealed = stage_provider_frame(
-        &prepared,
-        offered.expected_build().clone(),
-        &mut |batch: &ProviderFrameStageBatch| {
-            retried_first.get_or_insert_with(|| batch.clone());
-            let mut command = HomeCommand::new(store.home_revision().unwrap());
-            command
-                .add(storage.stage_provider_frame_batch(
-                    storage.revision(&store).unwrap(),
-                    batch.clone(),
-                ))
-                .unwrap();
-            store.execute(command)
-        },
-    )
-    .unwrap();
-    let ProviderFrameStageOutcome::Committed {
-        value: sealed,
-        later_failure: None,
-        ..
-    } = sealed else {
-        panic!("expected clean retry staging outcome, got {sealed:?}");
+    let sealed =
+        stage_provider_frame(
+            &prepared,
+            offered.expected_build().clone(),
+            &mut |batch: &ProviderFrameStageBatch| {
+                retried_first.get_or_insert_with(|| batch.clone());
+                let mut command = HomeCommand::new(store.home_revision().unwrap());
+                command
+                    .add(storage.stage_provider_frame_batch(
+                        storage.revision(&store).unwrap(),
+                        batch.clone(),
+                    ))
+                    .unwrap();
+                store.execute(command)
+            },
+        )
+        .unwrap();
+    let sealed = match sealed {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            receipt,
+            later_failure: None,
+        } => {
+            let _receipt = receipt;
+            value
+        }
+        ProviderFrameStageOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+            ..
+        } => panic!(
+            "expected clean retry staging outcome, got committed receipt {receipt:?} with later failure {failure:?}"
+        ),
+        ProviderFrameStageOutcome::NotCommitted { evidence } => {
+            panic!("expected clean retry staging outcome, got definitive non-commit {evidence:?}")
+        }
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected clean retry staging outcome, got indeterminate outcome {failure:?}")
+        }
+        ProviderFrameStageOutcome::Unchanged { value } => {
+            panic!("expected clean retry staging outcome, got unchanged build {value:?}")
+        }
     };
     assert_eq!(retried_first.as_ref(), Some(&offered));
     assert_eq!(sealed.lifecycle(), ProviderItemBuildLifecycle::Sealed);

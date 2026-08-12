@@ -5,36 +5,55 @@ mod platform;
 #[path = "ownership/unsupported.rs"]
 mod platform;
 
-pub(crate) use platform::{HomeOwnership, OpenedHomeDirectory};
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
-/// Stable identity of an opened directory object for the lifetime of a process.
+pub(crate) use platform::{CanonicalHomePath, HomeOwnership};
+
+/// Process-local lifetime owner for one successfully opened home.
 ///
-/// This value is deliberately not the durable [`beryl_model::BerylHomeId`]. A
-/// filesystem may reuse an opened-object identifier after deletion, so Beryl
-/// uses it only to collapse live path aliases.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct CanonicalHomeIdentity {
-    volume_serial_number: u64,
-    file_id: [u8; 16],
+/// The mutable ownership lock remains private behind the custodian. Both the
+/// live store and any retained reconciliation registry hold this same value,
+/// so descriptor custody cannot release the home merely by outliving a store.
+pub(crate) struct HomeLifecycleCustodian {
+    configured_path: PathBuf,
+    canonical_path: PathBuf,
+    durability_tier: crate::HomeDurabilityTier,
+    ownership: Mutex<Option<HomeOwnership>>,
 }
 
-impl CanonicalHomeIdentity {
-    pub(crate) const fn new(volume_serial_number: u64, file_id: [u8; 16]) -> Self {
+impl HomeLifecycleCustodian {
+    pub(crate) fn new(ownership: HomeOwnership) -> Self {
         Self {
-            volume_serial_number,
-            file_id,
+            configured_path: ownership.configured_path().to_path_buf(),
+            canonical_path: ownership.canonical_path().to_path_buf(),
+            durability_tier: ownership.durability_tier(),
+            ownership: Mutex::new(Some(ownership)),
         }
     }
 
-    /// Returns the volume serial observed from the retained directory handle.
-    #[must_use]
-    pub const fn volume_serial_number(self) -> u64 {
-        self.volume_serial_number
+    pub(crate) fn configured_path(&self) -> &Path {
+        &self.configured_path
     }
 
-    /// Returns the 128-bit file identifier observed from the directory handle.
-    #[must_use]
-    pub const fn file_id(self) -> [u8; 16] {
-        self.file_id
+    pub(crate) fn canonical_path(&self) -> &Path {
+        &self.canonical_path
+    }
+
+    pub(crate) const fn durability_tier(&self) -> crate::HomeDurabilityTier {
+        self.durability_tier
+    }
+
+    pub(crate) fn release(&self) -> Result<(), crate::HomeCloseError> {
+        let mut ownership = self
+            .ownership
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match ownership.as_mut() {
+            Some(ownership) => ownership.release(),
+            None => Ok(()),
+        }
     }
 }

@@ -1,8 +1,8 @@
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use super::{
-    codec::CatalogRecencyCodec, CatalogDomain, CatalogMutationError, CatalogRecencyCursor,
-    CatalogRow,
+    CatalogDomain, CatalogMutationError, CatalogRecencyCursor, CatalogRow,
+    codec::CatalogRecencyCodec,
 };
 
 pub(super) struct CorruptRecencyCopy {

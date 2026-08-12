@@ -49,25 +49,29 @@ fn all_17_item_and_nine_delta_duplicate_states_survive_restart_unpublished() {
     {
         let mut callback = commit_callback(&store, storage);
         for (index, kind) in ITEMS.into_iter().enumerate() {
-            let mut stager = ProviderObservationStager::begin(
-                ProviderObservationId::from_bytes([90 + index as u8; 16]),
-                ProviderObservationBegin::Item {
-                    lifecycle: ProviderObservationItemLifecycle::Completed,
-                    kind,
-                },
-                &mut callback,
-            )
-            .unwrap();
+            let mut stager = clean_stage(
+                ProviderObservationStager::begin(
+                    ProviderObservationId::from_bytes([90 + index as u8; 16]),
+                    ProviderObservationBegin::Item {
+                        lifecycle: ProviderObservationItemLifecycle::Completed,
+                        kind,
+                    },
+                    &mut callback,
+                )
+                .unwrap(),
+            );
             common_item(&mut stager, &mut callback).unwrap();
             stager.abandon();
         }
         for (index, kind) in DELTAS.into_iter().enumerate() {
-            let mut stager = ProviderObservationStager::begin(
-                ProviderObservationId::from_bytes([110 + index as u8; 16]),
-                ProviderObservationBegin::Delta { kind },
-                &mut callback,
-            )
-            .unwrap();
+            let mut stager = clean_stage(
+                ProviderObservationStager::begin(
+                    ProviderObservationId::from_bytes([110 + index as u8; 16]),
+                    ProviderObservationBegin::Delta { kind },
+                    &mut callback,
+                )
+                .unwrap(),
+            );
             text(
                 &mut stager,
                 ProviderField::ItemId,
@@ -96,6 +100,8 @@ fn all_17_item_and_nine_delta_duplicate_states_survive_restart_unpublished() {
             ProviderObservationId::from_bytes([110 + index as u8; 16]),
         );
     }
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

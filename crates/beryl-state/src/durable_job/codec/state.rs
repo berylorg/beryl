@@ -1,8 +1,8 @@
 use crate::encoding::{CodecError, Decoder, Encoder};
 
 use super::super::{
-    record::failure_state_is_compatible, BranchHandoffCheckpoint, BranchHandoffJobState,
-    HandoffFailureEvidence, HandoffFailureKind, ParentCasIdentity, ParentHandoffIdentity,
+    BranchHandoffCheckpoint, BranchHandoffJobState, HandoffFailureEvidence, HandoffFailureKind,
+    ParentCasIdentity, ParentHandoffIdentity, record::failure_state_is_compatible,
 };
 
 pub(super) fn encode_state(encoder: &mut Encoder, state: &BranchHandoffJobState) {

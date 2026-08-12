@@ -3,8 +3,9 @@ mod support;
 use std::{
     marker::PhantomData,
     sync::{
+        Arc, Condvar, Mutex,
         atomic::{AtomicUsize, Ordering},
-        mpsc, Arc, Condvar, Mutex,
+        mpsc,
     },
     time::Duration,
 };
@@ -16,7 +17,7 @@ use beryl_home_store::{
 use tempfile::tempdir;
 
 use support::{
-    committed, open_home, AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes,
+    AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, open_home,
 };
 
 #[derive(Default)]

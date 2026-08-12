@@ -7,15 +7,17 @@ fn recursive_structured_values_match_materialized_provider_encoding() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let bound = {
         let mut callback = observation_callback(&store, storage);
-        let mut stager = committed_stage_value(ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([4; 16]),
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Started,
-                kind: ProviderObservationItemKind::DynamicToolCall,
-            },
-            &mut callback,
-        )
-        .unwrap());
+        let mut stager = committed_stage_value(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([4; 16]),
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Started,
+                    kind: ProviderObservationItemKind::DynamicToolCall,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         field_text(
             &mut stager,
             ProviderField::ItemId,
@@ -152,7 +154,9 @@ fn recursive_structured_values_match_materialized_provider_encoding() {
     assert_eq!(compiled.bytes, materialized.bytes);
     assert_eq!(compiled.narrative_spans, 0);
     assert_eq!(final_build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -163,15 +167,17 @@ fn variant_fields_may_precede_their_discriminant_without_changing_encoding() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let bound = {
         let mut callback = observation_callback(&store, storage);
-        let mut stager = committed_stage_value(ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([5; 16]),
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Started,
-                kind: ProviderObservationItemKind::FileChange,
-            },
-            &mut callback,
-        )
-        .unwrap());
+        let mut stager = committed_stage_value(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([5; 16]),
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Started,
+                    kind: ProviderObservationItemKind::FileChange,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         field_text(
             &mut stager,
             ProviderField::ItemId,
@@ -282,6 +288,8 @@ fn variant_fields_may_precede_their_discriminant_without_changing_encoding() {
     assert_eq!(compiled.bytes, materialized.bytes);
     assert_eq!(compiled.narrative_spans, 0);
     assert_eq!(final_build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

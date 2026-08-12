@@ -4,67 +4,23 @@ use fjall::PersistMode;
 use thiserror::Error;
 
 use crate::{
-    domain::reopen::{reacquire_registry, validate_reopen_registry},
+    DomainHandle, DomainHandleError, DomainRegistrationError, HomeGeneration, HomeHealthState,
+    HomeOpenError, HomeStore, StorageDomain,
+    domain::{DomainOwnerId, reopen::reacquire_registry},
     fault::FaultPoint,
-    health::{ClassifiedFjallError, HealthMaintenanceError},
-    layout::{inspect_database, DatabaseDisposition, HomeLayout, LayoutAdmissionError},
+    health::{ClassifiedFjallError, HealthMaintenance, HealthMaintenanceError},
+    layout::{DatabaseDisposition, HomeLayout, LayoutAdmissionError, inspect_database},
     metadata::{
-        decode_home_revision, DomainMetadata, HEADER_KEY, HOME_REVISION_BYTES, HOME_REVISION_KEY,
-        MAX_DOMAIN_METADATA_BYTES, MAX_HOME_HEADER_BYTES,
+        DomainMetadata, HEADER_KEY, HOME_REVISION_BYTES, HOME_REVISION_KEY,
+        MAX_DOMAIN_METADATA_BYTES, MAX_HOME_HEADER_BYTES, decode_home_revision,
     },
-    store::{next_store_instance, open_existing_database, StoreGeneration},
-    DomainRegistrationError, DomainValidationError, HomeGeneration, HomeHealthSnapshot,
-    HomeHealthState, HomeOpenError, HomeStore,
+    store::{StoreGeneration, next_store_instance, open_existing_database},
 };
 
-/// Why the bounded in-place verification attempt could not restore admission.
-#[derive(Debug, Error)]
-pub enum HealthVerificationError {
-    /// Another verification or recovery attempt already owns maintenance.
-    #[error("home maintenance is already in progress while the store is {state:?}")]
-    InProgress {
-        /// Current coherent health state.
-        state: HomeHealthState,
-    },
-    /// Verification was requested outside the `verifying` state.
-    #[error("home verification cannot start while the store is {state:?}")]
-    InvalidState {
-        /// Current coherent health state.
-        state: HomeHealthState,
-    },
-    /// A panic poisoned an internal store lock.
-    #[error("an internal Beryl-home lock is poisoned")]
-    LockPoisoned,
-    /// The current engine generation failed its explicit persistence barrier.
-    #[error("home verification persistence barrier failed: {source}")]
-    Persistence {
-        /// Engine or deterministic fault source.
-        #[source]
-        source: Box<dyn Error + Send + Sync>,
-    },
-    /// Fjall reported a retained maintenance terminal before verification publication.
-    #[error("home verification could not confirm storage health: {source}")]
-    StorageHealth {
-        /// Stable classified engine source.
-        #[source]
-        source: Box<dyn Error + Send + Sync>,
-    },
-    /// The current home header or registered domain authority is invalid.
-    #[error("home verification rejected authoritative state: {source}")]
-    Validation {
-        /// Bounded structural or domain source.
-        #[source]
-        source: Box<dyn Error + Send + Sync>,
-    },
-    /// One registered domain rejected exhaustive authoritative validation.
-    #[error(transparent)]
-    DomainValidation(#[from] DomainValidationError),
-}
-
-/// Why exact same-home forced recovery did not publish a new generation.
+/// Why exact same-home forced recovery could not construct a private candidate.
 #[derive(Debug, Error)]
 pub enum HomeRecoveryError {
-    /// Another verification or recovery attempt already owns maintenance.
+    /// Another recovery attempt already owns maintenance.
     #[error("home maintenance is already in progress while the store is {state:?}")]
     InProgress {
         /// Current coherent health state.
@@ -92,7 +48,7 @@ pub enum HomeRecoveryError {
     /// The reopened header does not identify the exact retained home.
     #[error("same-home recovery found a different durable home identity or schema")]
     HomeMismatch,
-    /// A registered typed domain could not be reacquired or validated.
+    /// A registered typed domain could not be structurally reacquired.
     #[error(transparent)]
     Domain(#[from] DomainRegistrationError),
     /// The reopened home header or registered domain metadata is invalid.
@@ -102,9 +58,6 @@ pub enum HomeRecoveryError {
         #[source]
         source: Box<dyn Error + Send + Sync>,
     },
-    /// One reopened domain rejected exhaustive authoritative validation.
-    #[error(transparent)]
-    DomainValidation(#[from] DomainValidationError),
     /// The reopened database failed its final persistence barrier.
     #[error("reopened home persistence barrier failed: {source}")]
     Persistence {
@@ -131,104 +84,204 @@ pub struct RecoveryReceipt {
 }
 
 impl RecoveryReceipt {
-    /// Returns the newly published healthy generation.
+    /// Returns the private candidate generation.
     #[must_use]
     pub const fn generation(self) -> HomeGeneration {
         self.generation
     }
 }
 
-impl HomeStore {
-    /// Runs the one bounded verification attempt for the current generation.
-    ///
-    /// Admission remains closed until the persistence barrier, control records,
-    /// registrations, and every registered domain validator agree.
-    pub fn verify_health(&self) -> Result<HomeHealthSnapshot, HealthVerificationError> {
-        let maintenance = self
-            .health
-            .begin_verification()
-            .map_err(map_verification_maintenance)?;
-        let result = self.verify_current_generation();
-        match result {
-            Ok(generation) => {
-                maintenance.finish_healthy(generation);
-                Ok(self.health.snapshot())
-            }
-            Err(error) => {
-                maintenance.finish_failed();
-                Err(error)
-            }
-        }
+/// A fully reopened store generation that remains unavailable until the owning
+/// recovery supervisor publishes its complete typed stack.
+pub struct HomeRecoveryCandidate {
+    store: Option<HomeStore>,
+    maintenance: Option<HealthMaintenance>,
+    receipt: RecoveryReceipt,
+}
+
+impl std::fmt::Debug for HomeRecoveryCandidate {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HomeRecoveryCandidate")
+            .field("receipt", &self.receipt)
+            .finish_non_exhaustive()
+    }
+}
+
+impl HomeRecoveryCandidate {
+    /// Returns the durable identity of the retained same home.
+    #[must_use]
+    pub fn home_id(&self) -> beryl_model::BerylHomeId {
+        self.store
+            .as_ref()
+            .expect("candidate store is present")
+            .home_id()
     }
 
-    /// Force-recovers, validates, and republishes only the same retained home.
+    /// Returns the candidate's new process-local generation.
+    #[must_use]
+    pub const fn receipt(&self) -> RecoveryReceipt {
+        self.receipt
+    }
+
+    /// Returns the candidate's new process-local generation.
+    #[must_use]
+    pub const fn generation(&self) -> HomeGeneration {
+        self.receipt.generation()
+    }
+
+    /// Returns the tier retained from the same successfully locked home.
+    #[must_use]
+    pub fn durability_tier(&self) -> crate::HomeDurabilityTier {
+        self.store
+            .as_ref()
+            .expect("candidate store is present")
+            .durability_tier()
+    }
+
+    /// Reacquires one exact typed handle without opening ordinary store admission.
+    pub fn domain_handle<D: StorageDomain>(&self) -> Result<DomainHandle<D>, DomainHandleError> {
+        let store = self.store.as_ref().expect("candidate store is present");
+        let generation = store
+            .generation
+            .read()
+            .map_err(|_| DomainHandleError::GenerationPoisoned)?;
+        let generation = generation
+            .as_ref()
+            .ok_or(DomainHandleError::GenerationPoisoned)?;
+        let slot = generation
+            .registry
+            .slot_for(D::NAME)
+            .ok_or(DomainHandleError::NotRegistered { domain: D::NAME })?;
+        let domain = generation
+            .registry
+            .get(slot)
+            .ok_or(DomainHandleError::NotRegistered { domain: D::NAME })?;
+        if domain.owner != DomainOwnerId::of::<D>() {
+            return Err(DomainHandleError::OwnerTypeMismatch { domain: D::NAME });
+        }
+        if domain.schema != D::SCHEMA_VERSION {
+            return Err(DomainHandleError::NotRegistered { domain: D::NAME });
+        }
+        Ok(DomainHandle::new(generation.instance_id, slot))
+    }
+
+    /// Publishes the candidate as the new healthy store generation.
+    #[must_use]
+    pub fn publish(mut self) -> HomeStore {
+        let maintenance = self
+            .maintenance
+            .take()
+            .expect("candidate maintenance authority is present");
+        maintenance.finish_healthy(self.receipt.generation);
+        self.store.take().expect("candidate store is present")
+    }
+
+    /// Aborts unpublished stack construction and returns failed authority for
+    /// a later recovery attempt or orderly close.
+    #[must_use]
+    pub fn abort(mut self) -> HomeStore {
+        let maintenance = self
+            .maintenance
+            .take()
+            .expect("candidate maintenance authority is present");
+        maintenance.finish_failed();
+        self.store.take().expect("candidate store is present")
+    }
+}
+
+impl Drop for HomeRecoveryCandidate {
+    fn drop(&mut self) {
+        let Some(mut store) = self.store.take() else {
+            return;
+        };
+        // Dropping an unpublished candidate is a fail-closed abandonment, not
+        // successful disposal. Retain only the lifetime custodian until process
+        // exit so another service cannot open the home without an explicit abort.
+        drop(self.maintenance.take());
+        let retained_lifecycle = std::sync::Arc::clone(&store.lifecycle);
+        store.recovery_transferred = true;
+        drop(store);
+        std::mem::forget(retained_lifecycle);
+    }
+}
+
+/// A failed recovery attempt together with the still-owned failed authority.
+#[derive(Debug)]
+pub struct HomeRecoveryFailure {
+    store: HomeStore,
+    error: HomeRecoveryError,
+}
+
+impl HomeRecoveryFailure {
+    /// Returns the typed recovery error.
+    #[must_use]
+    pub const fn error(&self) -> &HomeRecoveryError {
+        &self.error
+    }
+
+    /// Recovers the failed store authority for a later retry or orderly close.
+    #[must_use]
+    pub fn into_store(self) -> HomeStore {
+        self.store
+    }
+
+    /// Separates the retained failed authority and its typed error.
+    #[must_use]
+    pub fn into_parts(self) -> (HomeStore, HomeRecoveryError) {
+        (self.store, self.error)
+    }
+}
+
+impl std::fmt::Display for HomeRecoveryFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
+impl Error for HomeRecoveryFailure {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+impl HomeStore {
+    /// Consumes failed authority and constructs an unpublished fresh service.
     ///
     /// The outer OS ownership lock remains held. Every Fjall and keyspace handle
     /// from the failed generation is dropped before `Database::recover`, and no
     /// create-or-recover fallback is used.
-    pub fn recover_same_home(&self) -> Result<RecoveryReceipt, HomeRecoveryError> {
-        let maintenance = self
-            .health
-            .begin_recovery()
-            .map_err(map_recovery_maintenance)?;
+    pub fn recover_same_home(mut self) -> Result<HomeRecoveryCandidate, HomeRecoveryFailure> {
+        let maintenance = match self.health.begin_recovery() {
+            Ok(maintenance) => maintenance,
+            Err(error) => {
+                return Err(HomeRecoveryFailure {
+                    store: self,
+                    error: map_recovery_maintenance(error),
+                });
+            }
+        };
         let result = self.recover_same_home_inner();
         match result {
-            Ok(receipt) => {
-                maintenance.finish_healthy(receipt.generation);
-                Ok(receipt)
+            Ok((store, receipt)) => {
+                self.recovery_transferred = true;
+                drop(self);
+                Ok(HomeRecoveryCandidate {
+                    store: Some(store),
+                    maintenance: Some(maintenance),
+                    receipt,
+                })
             }
             Err(error) => {
                 maintenance.finish_failed();
-                Err(error)
+                Err(HomeRecoveryFailure { store: self, error })
             }
         }
     }
 
-    fn verify_current_generation(&self) -> Result<HomeGeneration, HealthVerificationError> {
-        drop(
-            self.writer
-                .lock()
-                .map_err(|_| HealthVerificationError::LockPoisoned)?,
-        );
-        self.faults
-            .check(FaultPoint::BeforeVerification)
-            .map_err(|source| HealthVerificationError::Persistence {
-                source: Box::new(source),
-            })?;
-        let generation = self
-            .generation
-            .read()
-            .map_err(|_| HealthVerificationError::LockPoisoned)?;
-        let generation = generation
-            .as_ref()
-            .ok_or(HealthVerificationError::LockPoisoned)?;
-        generation
-            .database
-            .persist(PersistMode::SyncAll)
-            .map_err(|source| HealthVerificationError::Persistence {
-                source: Box::new(ClassifiedFjallError::direct(source)),
-            })?;
-        validate_generation_control(generation, self)
-            .map_err(|source| HealthVerificationError::Validation { source })?;
-        validate_reopen_registry(generation, &crate::SidecarVerifier::new(self))?;
-        generation
-            .database
-            .health()
-            .map_err(|source| HealthVerificationError::StorageHealth {
-                source: Box::new(ClassifiedFjallError::direct(source)),
-            })?;
-        self.health
-            .snapshot()
-            .generation()
-            .ok_or(HealthVerificationError::LockPoisoned)
-    }
-
-    fn recover_same_home_inner(&self) -> Result<RecoveryReceipt, HomeRecoveryError> {
-        drop(
-            self.writer
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()),
-        );
+    fn recover_same_home_inner(
+        &mut self,
+    ) -> Result<(HomeStore, RecoveryReceipt), HomeRecoveryError> {
         let current = self
             .health
             .snapshot()
@@ -242,6 +295,8 @@ impl HomeStore {
             .lock()
             .map_err(|_| HomeRecoveryError::LockPoisoned)?
             .clone();
+        let old_writer = std::mem::replace(&mut self.writer, std::sync::Mutex::new(()));
+        drop(old_writer);
         let mut generation_slot = self
             .generation
             .write()
@@ -250,10 +305,6 @@ impl HomeStore {
 
         self.faults
             .check(FaultPoint::BeforeReopen)
-            .map_err(|source| HomeRecoveryError::Layout {
-                source: Box::new(source),
-            })?;
-        self.require_same_state_directory()
             .map_err(|source| HomeRecoveryError::Layout {
                 source: Box::new(source),
             })?;
@@ -272,7 +323,6 @@ impl HomeStore {
         reacquire_registry(&mut generation, &registrations)?;
         validate_generation_control(&generation, self)
             .map_err(|source| HomeRecoveryError::Validation { source })?;
-        validate_reopen_registry(&generation, &crate::SidecarVerifier::new(self))?;
         generation
             .database
             .persist(PersistMode::SyncAll)
@@ -290,11 +340,26 @@ impl HomeStore {
             .map_err(|source| HomeRecoveryError::StorageHealth {
                 source: Box::new(ClassifiedFjallError::direct(source)),
             })?;
-        *generation_slot = Some(generation);
-        // Recovery may unpoison only this unit writer lock, and only after the
-        // validated replacement generation has been published.
-        self.writer.clear_poison();
-        Ok(RecoveryReceipt { generation: next })
+        let writer_id = crate::store::next_writer_instance();
+        let recovered = HomeStore {
+            generation: std::sync::RwLock::new(Some(generation)),
+            registrations: std::sync::Mutex::new(registrations),
+            writer: std::sync::Mutex::new(()),
+            theme_mutation: std::sync::Mutex::new(()),
+            theme_watcher: crate::theme::ThemeWatcherCoordinator::default(),
+            writer_id,
+            health: std::sync::Arc::clone(&self.health),
+            faults: self.faults.clone(),
+            reconciliation: self.reconciliation.clone(),
+            scrub: std::sync::Arc::clone(&self.scrub),
+            lifecycle: std::sync::Arc::clone(&self.lifecycle),
+            storage_profile: self.storage_profile,
+            database_path: self.database_path.clone(),
+            home_id: self.home_id,
+            schema: self.schema,
+            recovery_transferred: false,
+        };
+        Ok((recovered, RecoveryReceipt { generation: next }))
     }
 }
 
@@ -414,17 +479,6 @@ fn require_existing_layout(path: &std::path::Path) -> Result<(), HomeRecoveryErr
         | Err(LayoutAdmissionError::Unreadable { source, .. }) => Err(HomeRecoveryError::Layout {
             source: Box::new(source),
         }),
-    }
-}
-
-fn map_verification_maintenance(error: HealthMaintenanceError) -> HealthVerificationError {
-    match error {
-        HealthMaintenanceError::InProgress { state } => {
-            HealthVerificationError::InProgress { state }
-        }
-        HealthMaintenanceError::InvalidState { state } => {
-            HealthVerificationError::InvalidState { state }
-        }
     }
 }
 

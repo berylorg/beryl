@@ -1,17 +1,10 @@
 use beryl_home_store::{
-    CommandError, CommandOutcome, DomainRegistrationError, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, DomainRegistrationError, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore,
 };
 use syndic_storage::test_faults::PersistedProviderNarrativeCorruption;
 
 use super::{restart::*, *};
-
-#[derive(Debug, thiserror::Error)]
-enum PartialStageError {
-    #[error(transparent)]
-    Command(#[from] CommandError),
-    #[error("stop after the first durable partial batch")]
-    Stop,
-}
 
 #[test]
 fn provable_partial_narrative_corruption_is_rejected_on_reopen() {
@@ -50,20 +43,49 @@ fn provable_partial_narrative_corruption_is_rejected_on_reopen() {
         }
 
         let mut first = None;
+        let stale_home_revision = store.home_revision().unwrap();
         let stopped = stage_provider_frame(
             &prepared,
             prepared.initial_build().clone(),
-            &mut |batch: &ProviderFrameStageBatch| -> Result<(), PartialStageError> {
-                store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))?;
-                first = Some(batch.clone());
-                Err(PartialStageError::Stop)
+            &mut |batch: &ProviderFrameStageBatch| {
+                if first.is_none() {
+                    first = Some(batch.clone());
+                    store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))
+                } else {
+                    let mut command = HomeCommand::new(stale_home_revision);
+                    command
+                        .add(storage.stage_provider_frame_batch(
+                            storage.revision(&store).unwrap(),
+                            batch.clone(),
+                        ))
+                        .unwrap();
+                    store.execute(command)
+                }
             },
         )
-        .unwrap_err();
-        assert!(matches!(
-            stopped,
-            ProviderFrameStageError::Callback(PartialStageError::Stop)
-        ));
+        .unwrap();
+        match stopped {
+            ProviderFrameStageOutcome::NotCommitted { .. } => {}
+            ProviderFrameStageOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => {
+                reconciliation.install();
+                panic!(
+                    "expected partial staging interruption to be definitive, got indeterminate {failure:?}"
+                )
+            }
+            ProviderFrameStageOutcome::Committed {
+                receipt,
+                later_failure,
+                ..
+            } => panic!(
+                "expected partial staging interruption, got committed outcome with receipt {receipt:?} and later failure {later_failure:?}"
+            ),
+            ProviderFrameStageOutcome::Unchanged { value } => {
+                panic!("expected partial staging interruption, got unchanged build {value:?}")
+            }
+        }
         let batch = first.unwrap();
         let build = batch.next_build();
         let span = batch.narrative_spans()[0];

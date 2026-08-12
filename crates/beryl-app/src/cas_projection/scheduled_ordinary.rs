@@ -105,68 +105,6 @@ pub trait ScheduledOrdinaryExecutionProvider: Send + 'static {
     fn shutdown(&mut self);
 }
 
-/// Exact recovered handle context used to create one service-epoch provider view.
-#[derive(Clone, Copy)]
-pub struct ScheduledOrdinaryProviderEpochContext {
-    home_id: BerylHomeId,
-    home_generation: HomeGeneration,
-    state: beryl_state::BerylState,
-}
-
-impl ScheduledOrdinaryProviderEpochContext {
-    pub(super) const fn new(
-        home_id: BerylHomeId,
-        home_generation: HomeGeneration,
-        state: beryl_state::BerylState,
-    ) -> Self {
-        Self {
-            home_id,
-            home_generation,
-            state,
-        }
-    }
-
-    /// Returns the exact durable home identity for this provider epoch.
-    #[must_use]
-    pub const fn home_id(self) -> BerylHomeId {
-        self.home_id
-    }
-
-    /// Returns the exact healthy home generation for this provider epoch.
-    #[must_use]
-    pub const fn home_generation(self) -> HomeGeneration {
-        self.home_generation
-    }
-
-    /// Returns the complete current-generation Beryl handle set.
-    #[must_use]
-    pub const fn state(self) -> beryl_state::BerylState {
-        self.state
-    }
-}
-
-/// Process-owned factory whose stable session pool survives service-epoch replacement.
-///
-/// A created provider is only an epoch-scoped issuance view. Its [`ScheduledOrdinaryExecutionProvider::shutdown`]
-/// implementation must fence that view and return outstanding checkouts to this factory without
-/// dropping stable admitted-session ownership. [`Self::shutdown`] is the sole final boundary that
-/// releases the stable session pool. The mount owner may retain a weak revocation control for each
-/// issued view so final process shutdown can fence a conservatively retained epoch before invoking
-/// the factory boundary; that control owns neither the service nor its stable connections.
-pub trait ScheduledOrdinaryExecutionProviderFactory: Send + 'static {
-    /// Creates one fresh provider view for the exact healthy service epoch being constructed.
-    fn create_epoch(
-        &mut self,
-        context: ScheduledOrdinaryProviderEpochContext,
-    ) -> Result<
-        Box<dyn ScheduledOrdinaryExecutionProvider>,
-        Box<dyn std::error::Error + Send + Sync + 'static>,
-    >;
-
-    /// Fences all future epochs and releases the stable admitted-session pool.
-    fn shutdown(&mut self);
-}
-
 /// Opaque service-issued authority to complete or decline one exact admission.
 #[must_use = "scheduled ordinary admission must be completed or explicitly declined"]
 pub struct ScheduledOrdinaryAdmission {

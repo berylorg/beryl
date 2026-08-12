@@ -3,23 +3,13 @@ mod support;
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CommandOutcome, CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError,
-    DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec,
-    RecordFamily, RecordVersion, StorageDomain,
+    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
+    DomainReader, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, PointReadLimit, ReadError, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain, WholeHomeScrubTrigger,
 };
-use beryl_model::{
-    CasThreadId, CasTurnId, DynamicToolCallId, JobId, ResolutionIntentId, SyndicDraftId,
-    SyndicThreadId, SyndicTurnId,
-};
-use beryl_state::{
-    AdmitBranchHandoffJob, BranchHandoffJobAdmission, DiscussionContextDigest,
-    DiscussionContextOwnerId, ParentQueueOrdinal, ResolutionAttemptOrdinal,
-    ResolutionRequestIdentity, ResolutionText,
-};
+use beryl_model::JobId;
 use tempfile::tempdir;
-
-use support::{execute, open};
 
 struct DurableJobV2Probe;
 struct JobRecordV2;
@@ -153,59 +143,44 @@ impl fmt::Display for ProbeCodecError {
 impl Error for ProbeCodecError {}
 
 #[test]
-fn durable_job_records_reject_an_unsupported_record_version_on_reopen() {
+fn routine_reopen_defers_an_unsupported_durable_job_record_version_to_explicit_scrub() {
     let directory = tempdir().unwrap();
-    let (store, state) = open(directory.path());
-    let admission = BranchHandoffJobAdmission::new(
-        ResolutionIntentId::from_bytes([1; 16]),
-        ResolutionAttemptOrdinal::FIRST,
-        SyndicThreadId::from_bytes([2; 16]),
-        SyndicThreadId::from_bytes([3; 16]),
-        DiscussionContextOwnerId::Draft(SyndicDraftId::from_bytes([4; 16])),
-        DiscussionContextDigest::from_bytes([5; 32]),
-        SyndicTurnId::from_bytes([6; 16]),
-        ResolutionRequestIdentity::new(
-            CasThreadId::new("child-cas-thread").unwrap(),
-            CasTurnId::new("child-cas-turn").unwrap(),
-            DynamicToolCallId::new("resolution-tool-call").unwrap(),
-        ),
-        ParentQueueOrdinal::new(0),
-        ResolutionText::new("Persist this exact resolution.").unwrap(),
-    );
-    match execute(
-        &store,
-        state.durable_jobs().admit_branch_handoff(
-            state.durable_jobs().revision(&store).unwrap(),
-            AdmitBranchHandoffJob::new(admission),
-        ),
-    ) {
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected committed durable-job admission, got {outcome:?}"),
-    }
-    store.close().unwrap();
-
-    let mut probe = HomeStore::open(HomeOpenOptions::new(
+    let mut store = HomeStore::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let error = probe.register_domain::<DurableJobV2Probe>().unwrap_err();
-    let DomainRegistrationError::ValidationAccess {
-        source: DomainCallbackSource::Read(source),
-        ..
-    } = error
-    else {
-        panic!("expected typed validation-access error, got {error}");
-    };
+    let probe = store.register_domain::<DurableJobV2Probe>().unwrap();
+    store
+        .inject_persisted_corrupt_record::<DurableJobV2Probe, JobRecordV2>(
+            probe,
+            &[1; 16],
+            &1_u32.to_be_bytes(),
+        )
+        .unwrap();
+    store.close().unwrap();
+
+    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let probe = reopened.register_domain::<DurableJobV2Probe>().unwrap();
     assert!(matches!(
-        source,
-        ReadError::UnsupportedRecordVersion {
+        reopened.read_point::<DurableJobV2Probe, JobRecordV2>(
+            probe,
+            &JobId::from_bytes([1; 16]),
+            PointReadLimit::new(128 * 1024 + 4).unwrap(),
+        ),
+        Err(ReadError::UnsupportedRecordVersion {
             supported,
             found: 1,
             ..
-        } if supported == RecordVersion::new(2)
+        }) if supported == RecordVersion::new(2)
     ));
+    assert!(
+        reopened
+            .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+            .is_err()
+    );
 }

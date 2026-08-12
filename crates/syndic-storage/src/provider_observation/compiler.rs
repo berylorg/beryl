@@ -239,7 +239,9 @@ pub enum ProviderObservationFrameStageOutcome {
     /// The supplied build was already sealed, so no command was issued.
     Unchanged { value: ProviderItemBuildRecord },
     /// The offered batch definitely did not commit.
-    NotCommitted { evidence: beryl_home_store::CommandError },
+    NotCommitted {
+        evidence: beryl_home_store::CommandError,
+    },
     /// The returned build is the exact durable successor of the last committed batch.
     Committed {
         value: ProviderItemBuildRecord,
@@ -249,7 +251,7 @@ pub enum ProviderObservationFrameStageOutcome {
     /// The offered batch may have committed; no local successor is inferred.
     Indeterminate {
         failure: beryl_home_store::CommandError,
-        reconciliation: beryl_home_store::ReconciliationDescriptor,
+        reconciliation: beryl_home_store::ReconciliationCustody,
     },
 }
 
@@ -301,7 +303,7 @@ pub enum ProviderObservationFrameStageError {
     #[error("provider-observation frame staging batch has an indeterminate durable outcome")]
     Indeterminate {
         failure: beryl_home_store::CommandError,
-        reconciliation: beryl_home_store::ReconciliationDescriptor,
+        reconciliation: beryl_home_store::ReconciliationCustody,
     },
 }
 

@@ -180,7 +180,7 @@ impl HistorySpec {
         let assembly = fixture
             .storage
             .prepare_recovery_projection(
-                &fixture.store,
+                &*fixture.home(),
                 RecoveryProjectionRequest::for_pending_selected_turn_parent(
                     installed.thread,
                     installed.selected_path,

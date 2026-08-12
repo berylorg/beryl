@@ -9,9 +9,9 @@ use beryl_home_store::{
     SidecarNamespace, StorageDomain,
 };
 use beryl_model::{
-    advance_content_marker_digest, content_marker_digest_seed, AssetId, AssetReferenceSetId,
-    ImageLabelOrdinal, SealedAssetReferenceSetProof, SealedContentMarkerSummary,
-    SyndicContentDigest, SyndicContentId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
+    AssetId, AssetReferenceSetId, ImageLabelOrdinal, SealedAssetReferenceSetProof,
+    SealedContentMarkerSummary, SyndicContentDigest, SyndicContentId, SyndicDraftId,
+    SyndicDraftMarkerId, SyndicItemId, advance_content_marker_digest, content_marker_digest_seed,
 };
 use beryl_state::{
     AppendAssetReferencePage, AssetMediaType, AssetOwner, AssetOwnerHeadAssertion,
@@ -126,7 +126,7 @@ fn marker_summary() -> SealedContentMarkerSummary {
     .unwrap()
 }
 
-fn publish_asset(store: &HomeStore, state: BerylState) -> AssetId {
+fn publish_asset(store: &HomeStore, state: &BerylState) -> AssetId {
     let bytes = b"asset-owner-validation-sidecar";
     let sidecar = store
         .admit_sidecar(
@@ -167,7 +167,7 @@ fn publish_asset(store: &HomeStore, state: BerylState) -> AssetId {
 
 fn sealed_set(
     store: &HomeStore,
-    state: BerylState,
+    state: &BerylState,
     asset_id: AssetId,
 ) -> SealedAssetReferenceSetProof {
     let set_id = AssetReferenceSetId::from_bytes([10; 16]);

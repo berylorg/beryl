@@ -7,8 +7,7 @@ use beryl_app::{
         AdmittedProjectionSession, OrdinaryDynamicToolAuthority, OrdinaryDynamicToolContext,
         OrdinaryDynamicToolHandlers, OrdinaryTurnExecutionRequest, ScheduledOrdinaryAdmission,
         ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
-        ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionProviderFactory,
-        ScheduledOrdinaryExecutionUnavailable, ScheduledOrdinaryProviderEpochContext,
+        ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
         ScheduledOrdinaryRequestPolicy, ScheduledProjectionSessionAuthority,
     },
 };
@@ -157,66 +156,6 @@ pub fn ready_provider(slot: SessionSlot, assets: AssetState) -> CheckoutProvider
         slot,
         assets,
         clear_session_on_shutdown: true,
-    }
-}
-
-pub fn supervised_ready_provider(slot: SessionSlot, assets: AssetState) -> CheckoutProvider {
-    CheckoutProvider {
-        slot,
-        assets,
-        clear_session_on_shutdown: false,
-    }
-}
-
-pub struct ReadyProviderFactory {
-    slot: SessionSlot,
-    ready_epochs: Option<usize>,
-    epochs: usize,
-}
-
-impl ReadyProviderFactory {
-    pub fn every_epoch(slot: SessionSlot) -> Self {
-        Self {
-            slot,
-            ready_epochs: None,
-            epochs: 0,
-        }
-    }
-
-    pub fn first_epoch_only(slot: SessionSlot) -> Self {
-        Self {
-            slot,
-            ready_epochs: Some(1),
-            epochs: 0,
-        }
-    }
-}
-
-impl ScheduledOrdinaryExecutionProviderFactory for ReadyProviderFactory {
-    fn create_epoch(
-        &mut self,
-        context: ScheduledOrdinaryProviderEpochContext,
-    ) -> Result<
-        Box<dyn ScheduledOrdinaryExecutionProvider>,
-        Box<dyn std::error::Error + Send + Sync + 'static>,
-    > {
-        let ready = self
-            .ready_epochs
-            .is_none_or(|ready_epochs| self.epochs < ready_epochs);
-        self.epochs += 1;
-        if ready {
-            Ok(Box::new(CheckoutProvider {
-                slot: self.slot.clone(),
-                assets: context.state().assets(),
-                clear_session_on_shutdown: false,
-            }))
-        } else {
-            Ok(Box::new(UnavailableProvider))
-        }
-    }
-
-    fn shutdown(&mut self) {
-        self.slot.take();
     }
 }
 

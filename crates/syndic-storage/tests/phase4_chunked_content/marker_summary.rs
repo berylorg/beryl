@@ -48,8 +48,7 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
             storage.revision(&store).unwrap(),
             ContentBuild::from_prepared(&content),
         ),
-    )
-    .unwrap();
+    );
     let mut manifest = content.building_manifest();
     while let Some(next) = append_one_batch(&store, storage, &manifest, &content) {
         manifest = next;
@@ -66,8 +65,7 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
         &store,
         storage,
         storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    )
-    .unwrap();
+    );
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -85,5 +83,7 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
             .unwrap(),
         summary
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

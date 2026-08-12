@@ -2,7 +2,7 @@ use std::{convert::Infallible, error::Error};
 
 use thiserror::Error;
 
-use crate::{health::FailureSeverity, ReadError, SidecarError};
+use crate::{ReadError, SidecarError, health::FailureSeverity};
 
 /// Storage-owned failure provenance returned by a logical-domain callback.
 #[derive(Debug, Error)]
@@ -47,17 +47,52 @@ impl ErasedCallbackError {
     }
 }
 
-pub(crate) const fn callback_failure_severity(source: &DomainCallbackSource) -> FailureSeverity {
+pub(crate) fn callback_failure_severity(source: &DomainCallbackSource) -> Option<FailureSeverity> {
     match source {
-        DomainCallbackSource::Read(ReadError::Storage { .. })
-        | DomainCallbackSource::Read(ReadError::HealthGate(_))
-        | DomainCallbackSource::Sidecar(SidecarError::Storage { .. })
-        | DomainCallbackSource::Sidecar(SidecarError::HealthGate(_)) => FailureSeverity::Verify,
+        DomainCallbackSource::Read(ReadError::Storage { source, .. })
+        | DomainCallbackSource::Sidecar(SidecarError::Storage { source, .. }) => {
+            match source.downcast_ref::<crate::health::ClassifiedFjallError>() {
+                Some(source) => source.severity(),
+                None => Some(FailureSeverity::Structural),
+            }
+        }
+        DomainCallbackSource::Read(ReadError::HealthGate(_))
+        | DomainCallbackSource::Sidecar(SidecarError::HealthGate(_)) => None,
         DomainCallbackSource::Read(_)
         | DomainCallbackSource::Sidecar(SidecarError::GenerationPoisoned)
         | DomainCallbackSource::Sidecar(SidecarError::BoundExceeded { .. })
         | DomainCallbackSource::Sidecar(SidecarError::Missing)
         | DomainCallbackSource::Sidecar(SidecarError::ContentMismatch)
-        | DomainCallbackSource::Sidecar(SidecarError::InvalidLayout) => FailureSeverity::Structural,
+        | DomainCallbackSource::Sidecar(SidecarError::InvalidLayout) => {
+            Some(FailureSeverity::Structural)
+        }
+    }
+}
+
+pub(crate) fn reconciliation_callback_failure_severity(
+    source: &DomainCallbackSource,
+) -> Option<FailureSeverity> {
+    match source {
+        DomainCallbackSource::Read(ReadError::Storage { source, .. })
+        | DomainCallbackSource::Sidecar(SidecarError::Storage { source, .. }) => {
+            match source.downcast_ref::<crate::health::ClassifiedFjallError>() {
+                Some(source) if source.is_independently_structural() => {
+                    Some(FailureSeverity::Structural)
+                }
+                Some(_) => None,
+                None if source.downcast_ref::<std::io::Error>().is_some() => None,
+                None => Some(FailureSeverity::Structural),
+            }
+        }
+        DomainCallbackSource::Read(ReadError::HealthGate(_))
+        | DomainCallbackSource::Sidecar(SidecarError::HealthGate(_)) => None,
+        DomainCallbackSource::Read(_)
+        | DomainCallbackSource::Sidecar(SidecarError::GenerationPoisoned)
+        | DomainCallbackSource::Sidecar(SidecarError::BoundExceeded { .. })
+        | DomainCallbackSource::Sidecar(SidecarError::Missing)
+        | DomainCallbackSource::Sidecar(SidecarError::ContentMismatch)
+        | DomainCallbackSource::Sidecar(SidecarError::InvalidLayout) => {
+            Some(FailureSeverity::Structural)
+        }
     }
 }

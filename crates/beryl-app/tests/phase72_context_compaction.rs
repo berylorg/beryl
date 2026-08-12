@@ -15,8 +15,8 @@ use std::{
 use beryl_app::cas_projection::{
     ContextCompactionError, ContextCompactionOutcome, ContextCompactionRequest,
     ContextCompactionTerminalResponseTestOutcome, ContextCompactionWaitTestHarness,
-    ProjectionConnectionService, ProjectionServiceConfig, ScheduledOrdinaryAdmission,
-    ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
+    MinimumTurnCaptureReserve, ProjectionConnectionService, ProjectionServiceConfig,
+    ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
 };
 use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
@@ -66,7 +66,8 @@ fn service() -> (
     let service = ProjectionConnectionService::new(
         home,
         storage,
-        ProjectionServiceConfig::try_new(128, 8).unwrap(),
+        ProjectionServiceConfig::try_new(128, 8, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
         Box::new(UnavailableProvider),
     )
     .unwrap();
@@ -109,7 +110,20 @@ fn publish_provider_event(
             SyndicTimestamp::from_unix_millis(observed_at),
         ),
     ));
-    match outcome { CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ CommandOutcome::NotCommitted { .. } | outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed provider event, got {outcome:?}"), }
+    match outcome {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. }
+        | outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        }
+        | outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed provider event, got {outcome:?}")
+        }
+    }
 }
 
 #[test]
@@ -191,9 +205,10 @@ fn lifecycle_continuation_staging_is_fixed_ownerless_and_idempotent() {
     assert_eq!(first.id(), expected.id());
     assert_eq!(first.encoding(), expected.encoding());
     assert_eq!(first.summary(), expected.summary());
+    let live_home = service.live_home_command().unwrap();
     let manifest = storage
         .content_manifest(
-            &service,
+            live_home.home(),
             first.id(),
             SyndicPointReadLimit::new(1_000_000).unwrap(),
         )
@@ -216,7 +231,7 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
 
     let CompactionAdmissionRead::Admissible(candidate) = source
         .storage
-        .compaction_admission_read(&source.store, thread_id, point_limit())
+        .compaction_admission_read(&*source.home(), thread_id, point_limit())
         .unwrap()
     else {
         panic!("completed thread must admit context compaction")
@@ -233,27 +248,55 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
     );
     let operation_id = admission.operation_id();
     let outcome = source
-        .store
+        .home()
         .execute_current(source.storage.current_admit_compaction_operation(admission));
-    match outcome { CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ CommandOutcome::NotCommitted { .. } | outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed compaction admission, got {outcome:?}"), }
+    match outcome {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. }
+        | outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        }
+        | outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed compaction admission, got {outcome:?}")
+        }
+    }
     let operation = source
         .storage
-        .compaction_operation(&source.store, operation_id, point_limit())
+        .compaction_operation(&*source.home(), operation_id, point_limit())
         .unwrap()
         .unwrap();
-    let outcome = source.store.execute_current(source.storage.current_claim_compaction_dispatch(
+    let outcome = source
+        .home()
+        .execute_current(source.storage.current_claim_compaction_dispatch(
             ClaimCompactionDispatch::new(operation_id, operation.revision(), attempt),
         ));
-    match outcome { CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ CommandOutcome::NotCommitted { .. } | outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed dispatch claim, got {outcome:?}"), }
+    match outcome {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. }
+        | outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        }
+        | outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed dispatch claim, got {outcome:?}")
+        }
+    }
     publish_provider_event(
-        &source.store,
+        &*source.home(),
         source.storage,
         operation_id,
         CompactionProviderEvent::ThreadStatus(syndic_storage::CompactionThreadStatus::Active),
         72_101,
     );
     publish_provider_event(
-        &source.store,
+        &*source.home(),
         source.storage,
         operation_id,
         CompactionProviderEvent::TurnStarted(CasTurnId::new("phase72-provider-stop").unwrap()),
@@ -262,7 +305,7 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
 
     let StopAdmissionRead::Admissible(candidate) = source
         .storage
-        .stop_admission_read(&source.store, thread_id, point_limit())
+        .stop_admission_read(&*source.home(), thread_id, point_limit())
         .unwrap()
     else {
         panic!("live provider operation must admit stop")
@@ -274,13 +317,26 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
     );
     let stop_id = stop.operation_id();
     let outcome = source
-        .store
+        .home()
         .execute_current(source.storage.current_admit_stop_operation(stop));
-    match outcome { CommandOutcome::Committed { later_failure: None, .. } => {}, outcome @ CommandOutcome::NotCommitted { .. } | outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } | outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed stop admission, got {outcome:?}"), }
+    match outcome {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. }
+        | outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        }
+        | outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed stop admission, got {outcome:?}")
+        }
+    }
     assert!(matches!(
         source
             .storage
-            .stop_admission_read(&source.store, thread_id, point_limit())
+            .stop_admission_read(&*source.home(), thread_id, point_limit())
             .unwrap(),
         StopAdmissionRead::Stopping(_)
     ));
@@ -298,13 +354,15 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
     let service = ProjectionConnectionService::new(
         home,
         reopened_storage,
-        ProjectionServiceConfig::try_new(128, 8).unwrap(),
+        ProjectionServiceConfig::try_new(128, 8, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
         Box::new(UnavailableProvider),
     )
     .unwrap();
 
+    let live_home = service.live_home_command().unwrap();
     let operation = reopened_storage
-        .compaction_operation(&service, operation_id, point_limit())
+        .compaction_operation(live_home.home(), operation_id, point_limit())
         .unwrap()
         .unwrap();
     let CompactionOperationState::Consumed(witness) = operation.state() else {
@@ -316,19 +374,25 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
     );
     assert!(matches!(
         reopened_storage
-            .stop_operation(&service, stop_id, point_limit())
+            .stop_operation(live_home.home(), stop_id, point_limit())
             .unwrap()
             .unwrap()
             .state(),
         StopOperationState::Abandoned(_)
     ));
     let gate = reopened_storage
-        .input_gate(&service, thread_id, point_limit())
+        .input_gate(live_home.home(), thread_id, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(gate.state(), &syndic_storage::InputGateState::Idle);
     assert_eq!(gate.live_next_turn_count(), 1);
-    service.validate_registered_domains().unwrap();
+    drop(live_home);
+    service
+        .live_home_command()
+        .unwrap()
+        .home()
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let diagnostics = service.accepted_input_scheduler_diagnostics();
     assert!(diagnostics.recovery_handed_off());
     assert_eq!(diagnostics.startup_active_convergences(), 1);

@@ -60,7 +60,10 @@ fn exact_late_terminal_enters_history_without_retargeting_unknown_interval_work(
         .unwrap();
     assert_ne!(second_record.route_generation(), retained.generation());
     assert_eq!(next_sources(&fixture).len(), 2);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -126,11 +129,10 @@ fn late_terminal_releases_unknown_interval_work_for_exact_promotion() {
         SyndicItemId::from_bytes([81; 16]),
         timestamp(13),
     );
-    execute(
+    assert_clean(execute(
         &fixture.store,
         fixture.storage.promote_accepted_input(promotion.clone()),
-    )
-    .unwrap();
+    ));
 
     assert_eq!(
         fixture
@@ -155,7 +157,10 @@ fn late_terminal_releases_unknown_interval_work_for_exact_promotion() {
         .unwrap()
         .unwrap();
     assert_ne!(second_record.route_generation(), retained.generation());
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -198,14 +203,17 @@ fn exact_terminal_reclassifies_ready_work_into_terminal_history_atomically() {
         AcceptedRouteEffectiveState::NextTurn(NextTurnReason::TerminalHistory)
     );
     assert_eq!(next_sources(&fixture).len(), 1);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
 fn uncertain_terminal_refuses_to_overtake_delivering_work() {
     let fixture = active_fixture("phase65-awaiting-terminal-delivering");
     let input = accept_text(&fixture, "already claimed", draft_id(43), 6);
-    execute(
+    assert_clean(execute(
         &fixture.store,
         fixture.storage.begin_accepted_input_delivery(
             fixture.storage.revision(&fixture.store).unwrap(),
@@ -216,8 +224,7 @@ fn uncertain_terminal_refuses_to_overtake_delivering_work() {
                 steering_target(&fixture),
             ),
         ),
-    )
-    .unwrap();
+    ));
     let state = fixture
         .storage
         .turn_state(&fixture.store, fixture.turn, point_limit())
@@ -245,18 +252,19 @@ fn uncertain_terminal_refuses_to_overtake_delivering_work() {
         timestamp(8),
     )
     .unwrap();
-    let error = execute(
+    let outcome = execute(
         &fixture.store,
         fixture
             .storage
             .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), event),
-    )
-    .unwrap_err();
-    assert!(matches!(
-        typed_error(&error),
-        SyndicMutationError::ActiveSteeringRouteConflict
-            | SyndicMutationError::InputGateStateConflict
-    ));
+    );
+    with_typed_error(outcome, |error| {
+        assert!(matches!(
+            error,
+            SyndicMutationError::ActiveSteeringRouteConflict
+                | SyndicMutationError::InputGateStateConflict
+        ));
+    });
     assert_eq!(
         fixture
             .storage
@@ -273,5 +281,8 @@ fn uncertain_terminal_refuses_to_overtake_delivering_work() {
             .unwrap(),
         gate
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

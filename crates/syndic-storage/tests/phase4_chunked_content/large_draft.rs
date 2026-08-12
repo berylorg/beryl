@@ -31,8 +31,7 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
             storage.revision(&store).unwrap(),
             ContentBuild::from_prepared(&content),
         ),
-    )
-    .unwrap();
+    );
     let mut manifest = content.building_manifest();
     manifest = append_one_batch(&store, storage, &manifest, &content).unwrap();
     assert_eq!(manifest.lifecycle(), ContentLifecycle::Building);
@@ -47,7 +46,9 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
         ),
         ComposerPayload::default()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut store = open(home.path());
@@ -74,8 +75,7 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
         &store,
         storage,
         storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    )
-    .unwrap();
+    );
     let current = storage
         .current_draft(&store, thread, point_limit())
         .unwrap()
@@ -129,23 +129,26 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
         &store,
         storage,
         storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    )
-    .unwrap();
+    );
     let second = storage
         .current_draft(&store, second_thread, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(second.draft().content(), current.draft().content());
 
-    let duplicate = execute(
+    let duplicate = execute_outcome(
         &store,
-        storage,
         storage.begin_content(
             storage.revision(&store).unwrap(),
             ContentBuild::from_prepared(&content),
         ),
-    )
-    .unwrap_err();
+    );
+    let CommandOutcome::NotCommitted {
+        evidence: duplicate,
+    } = duplicate
+    else {
+        panic!("expected rejected duplicate content command, got {duplicate:?}");
+    };
     let CommandError::ContributorValidation { source, .. } = duplicate else {
         panic!("expected content identity rejection");
     };
@@ -158,7 +161,9 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
             .unwrap()
             .is_none()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());

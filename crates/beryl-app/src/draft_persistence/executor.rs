@@ -1,6 +1,6 @@
 use beryl_home_store::{
     CommandBuildError, CommandError, CommandOutcome, CommitReceipt, CommitReceiptError,
-    HomeCommand, HomeHealthState, HomeStore, ReadError, ReconciliationDescriptor,
+    HomeCommand, HomeHealthState, HomeStore, ReadError,
 };
 use beryl_model::DomainRevision;
 use syndic_storage::{
@@ -84,7 +84,6 @@ pub enum DraftSaveExecutionFailure {
     CommandIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("successful receipt was not current: {0}")]
     Receipt(#[source] CommitReceiptError),
@@ -253,13 +252,11 @@ fn execute_auxiliary_command(
             failure,
             reconciliation,
         } => {
+            reconciliation.install();
             return Err(Box::new(suspended(
                 request,
                 DraftSuspensionCause::AmbiguousStorageFailure,
-                DraftSaveExecutionFailure::CommandIndeterminate {
-                    failure,
-                    reconciliation,
-                },
+                DraftSaveExecutionFailure::CommandIndeterminate { failure },
             )));
         }
     };
@@ -345,13 +342,11 @@ fn execute_update(
             failure,
             reconciliation,
         } => {
+            reconciliation.install();
             return suspended(
                 request,
                 DraftSuspensionCause::AmbiguousStorageFailure,
-                DraftSaveExecutionFailure::CommandIndeterminate {
-                    failure,
-                    reconciliation,
-                },
+                DraftSaveExecutionFailure::CommandIndeterminate { failure },
             );
         }
     };
@@ -411,7 +406,10 @@ fn matches_request(current: &SyndicCurrentDraft, request: &DraftSaveRequest) -> 
         && current.draft().revision() == request.expected_revision()
 }
 
-fn classify_not_committed(request: &DraftSaveRequest, evidence: CommandError) -> DraftSaveExecution {
+fn classify_not_committed(
+    request: &DraftSaveRequest,
+    evidence: CommandError,
+) -> DraftSaveExecution {
     let outcome = not_committed_outcome(&evidence);
     DraftSaveExecution {
         token: request.token(),

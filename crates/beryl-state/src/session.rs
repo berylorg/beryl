@@ -1,6 +1,7 @@
 use beryl_home_store::{
-    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    MutationContribution, ReadError, RecordFamily, StorageDomain,
+    DomainHandle, DomainReconciliation, DomainRegistrationError, DomainSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationContribution, ReadError, ReconciliationReader, RecordFamily,
+    StorageDomain,
 };
 use beryl_model::{
     ClaimRevision, RootId, RuntimeId, SessionRevision, SyndicThreadId, WindowId, WindowPlacement,
@@ -55,6 +56,29 @@ impl StorageDomain for SessionDomain {
         reader: &beryl_home_store::DomainReader<'_, Self>,
     ) -> Result<(), Self::ValidationError> {
         validate::validate(reader)
+    }
+
+    fn reconcile(
+        reader: &ReconciliationReader<'_, Self>,
+    ) -> Result<DomainReconciliation, Self::ValidationError> {
+        let mut classification = crate::reconciliation::ReconciliationClassification::new();
+        crate::reconciliation::classify_records::<Self, SessionHeaderCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, SessionWindowCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, ClaimByWindowCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, ClaimByThreadCodec>(
+            reader,
+            &mut classification,
+        )?;
+        Ok(classification.finish())
     }
 }
 
@@ -319,10 +343,26 @@ impl SessionState {
             .map(|handle| Self { handle })
     }
 
+    pub(crate) fn register_with_schema_validation(
+        store: &mut HomeStore,
+    ) -> Result<Self, DomainRegistrationError> {
+        store
+            .register_domain_with_schema_validation::<SessionDomain>()
+            .map(|handle| Self { handle })
+    }
+
     pub(crate) fn reacquire(
         store: &HomeStore,
     ) -> Result<Self, beryl_home_store::DomainHandleError> {
         store
+            .domain_handle::<SessionDomain>()
+            .map(|handle| Self { handle })
+    }
+
+    pub(crate) fn reacquire_candidate(
+        candidate: &beryl_home_store::HomeRecoveryCandidate,
+    ) -> Result<Self, beryl_home_store::DomainHandleError> {
+        candidate
             .domain_handle::<SessionDomain>()
             .map(|handle| Self { handle })
     }

@@ -74,7 +74,9 @@ fn promotion_reconciliation_accepts_draft_save_and_pending_admission_descendants
             .unwrap(),
         AcceptedInputPromotionStatus::Exact
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     drop(store);
     let mut reopened = open(home.path());
@@ -85,7 +87,9 @@ fn promotion_reconciliation_accepts_draft_save_and_pending_admission_descendants
             .unwrap(),
         AcceptedInputPromotionStatus::Exact
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 fn complete_child_answer(
@@ -357,7 +361,9 @@ fn promotion_reconciliation_accepts_multiple_child_activity_handoffs() {
             AcceptedInputPromotionStatus::Exact
         );
     }
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     drop(store);
     let mut reopened = open(fixture.home.path());
@@ -368,5 +374,7 @@ fn promotion_reconciliation_accepts_multiple_child_activity_handoffs() {
             .unwrap(),
         AcceptedInputPromotionStatus::Exact
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

@@ -1,11 +1,10 @@
 use std::{io, path::Path};
 
-use super::CanonicalHomeIdentity;
 use crate::{HomeCloseError, HomeLockCapability, HomeOpenError};
 
-pub(crate) struct OpenedHomeDirectory;
+pub(crate) struct CanonicalHomePath;
 
-impl OpenedHomeDirectory {
+impl CanonicalHomePath {
     pub(crate) fn open(configured_path: &Path) -> Result<Self, HomeOpenError> {
         Err(HomeOpenError::LockUnsupported {
             path: configured_path.to_path_buf(),
@@ -17,15 +16,17 @@ impl OpenedHomeDirectory {
         })
     }
 
-    pub(crate) fn configured_path(&self) -> &Path {
-        unreachable!("unsupported platform never opens a home")
-    }
-
     pub(crate) fn canonical_path(&self) -> &Path {
         unreachable!("unsupported platform never opens a home")
     }
 
-    pub(crate) fn canonical_identity(&self) -> CanonicalHomeIdentity {
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn with_test_seam(self, _seam: crate::HomeOwnershipTestSeam) -> Self {
+        unreachable!("unsupported platform never opens a home")
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn with_durability_tier(self, _tier: crate::HomeDurabilityTier) -> Self {
         unreachable!("unsupported platform never opens a home")
     }
 
@@ -45,15 +46,7 @@ impl HomeOwnership {
         unreachable!("unsupported platform never opens a home")
     }
 
-    pub(crate) fn canonical_identity(&self) -> CanonicalHomeIdentity {
-        unreachable!("unsupported platform never opens a home")
-    }
-
-    pub(crate) fn retain_state_directory(&mut self, _path: &Path) -> io::Result<()> {
-        unreachable!("unsupported platform never opens a home")
-    }
-
-    pub(crate) fn require_same_state_directory(&self, _path: &Path) -> io::Result<()> {
+    pub(crate) fn durability_tier(&self) -> crate::HomeDurabilityTier {
         unreachable!("unsupported platform never opens a home")
     }
 

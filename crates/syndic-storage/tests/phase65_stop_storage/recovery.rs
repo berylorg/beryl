@@ -118,7 +118,10 @@ fn restart_retains_claimed_attempt_but_never_mints_another() {
         assert_eq!(recovered.state(), StopOperationState::DispatchClaimed);
         assert_eq!(recovered.attempt(), Some(attempt));
     }
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -158,13 +161,11 @@ fn claimed_stop_reopens_then_converges_through_startup_abandonment_with_queued_w
         StopOperationTransitionStatus::Exact
     );
     let (_, abandonment) = super::abandonment::startup_abandonment(&fixture);
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_abandon_stop_operation(abandonment.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_abandon_stop_operation(abandonment.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -190,7 +191,10 @@ fn claimed_stop_reopens_then_converges_through_startup_abandonment_with_queued_w
     );
     assert_eq!(fixture.gate().live_next_turn_count(), 1);
     assert_eq!(fixture.gate().live_steering_count(), 0);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -199,13 +203,11 @@ fn pending_stop_without_activation_reopens_and_converges_through_startup_abandon
     fixture.admit_stop();
     let fixture = fixture.reopen();
     let (_, abandonment) = super::abandonment::startup_abandonment(&fixture);
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_abandon_stop_operation(abandonment.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_abandon_stop_operation(abandonment.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -219,5 +221,8 @@ fn pending_stop_without_activation_reopens_and_converges_through_startup_abandon
             .unwrap(),
         StopOperationTransitionStatus::Exact
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

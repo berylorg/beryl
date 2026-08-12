@@ -87,7 +87,7 @@ pub fn execute(store: &HomeStore, contribution: MutationContribution) -> Command
 
 pub fn create_host_runtime(
     store: &HomeStore,
-    state: BerylState,
+    state: &BerylState,
     runtime_byte: u8,
     root_byte: u8,
     executable: &str,

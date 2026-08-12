@@ -29,15 +29,17 @@ fn enum_value(
     value: ProviderEnumValue,
     callback: &mut impl ProviderObservationStageCallback,
 ) {
-    stager
-        .control(
-            ProviderObservationControl::Enum {
-                context: ProviderValueContext::Field(field),
-                value,
-            },
-            callback,
-        )
-        .unwrap();
+    clean_stage(
+        stager
+            .control(
+                ProviderObservationControl::Enum {
+                    context: ProviderValueContext::Field(field),
+                    value,
+                },
+                callback,
+            )
+            .unwrap(),
+    );
 }
 
 fn empty_container(
@@ -47,18 +49,22 @@ fn empty_container(
     callback: &mut impl ProviderObservationStageCallback,
 ) {
     let context = ProviderValueContext::Field(field);
-    stager
-        .control(
-            ProviderObservationControl::BeginContainer { context, container },
-            callback,
-        )
-        .unwrap();
-    stager
-        .control(
-            ProviderObservationControl::EndContainer { context, container },
-            callback,
-        )
-        .unwrap();
+    clean_stage(
+        stager
+            .control(
+                ProviderObservationControl::BeginContainer { context, container },
+                callback,
+            )
+            .unwrap(),
+    );
+    clean_stage(
+        stager
+            .control(
+                ProviderObservationControl::EndContainer { context, container },
+                callback,
+            )
+            .unwrap(),
+    );
 }
 
 fn required_except_status(
@@ -143,12 +149,14 @@ fn begin(
     kind: ProviderObservationItemKind,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
-    ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([byte; 16]),
-        ProviderObservationBegin::Item { lifecycle, kind },
-        callback,
+    clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([byte; 16]),
+            ProviderObservationBegin::Item { lifecycle, kind },
+            callback,
+        )
+        .unwrap(),
     )
-    .unwrap()
 }
 
 #[test]
@@ -171,7 +179,7 @@ fn all_status_bearing_kinds_accept_legal_started_and_completed_statuses() {
             ProviderEnumValue::InProgress,
             &mut callback,
         );
-        started.seal(&mut callback).unwrap().abandon();
+        clean_seal(started.seal(&mut callback).unwrap()).abandon();
 
         let mut completed = begin(
             136 + index as u8,
@@ -186,10 +194,12 @@ fn all_status_bearing_kinds_accept_legal_started_and_completed_statuses() {
             &mut callback,
         );
         required_except_status(&mut completed, kind, &mut callback);
-        completed.seal(&mut callback).unwrap().abandon();
+        clean_seal(completed.seal(&mut callback).unwrap()).abandon();
     }
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -256,6 +266,8 @@ fn completed_in_progress_status_is_rejected_for_all_six_kinds_after_restart() {
             ProviderObservationBuildLifecycle::Building
         );
     }
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

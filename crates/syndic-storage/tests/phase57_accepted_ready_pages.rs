@@ -12,11 +12,10 @@ use syndic_storage::test_faults::{
 };
 use syndic_storage::*;
 
-use accepted_support::{AcceptedOperation, large_ready_generation, seeded};
-use support::{
-    TestHome, batch, commit, id, open, phase11::mixed_abandonment_records,
-    populated::populated_records,
+use accepted_support::{
+    AcceptedOperation, seed_large_ready_generation, seeded_mixed, seeded_populated,
 };
+use support::{TestHome, batch, commit, id, open, populated::seed_populated};
 
 fn limits(items: usize) -> CursorReadLimits {
     CursorReadLimits::new(items, ACCEPTED_READY_PAGE_MAX_BYTES).unwrap()
@@ -37,7 +36,7 @@ fn source(
 
 #[test]
 fn global_ready_source_pages_are_ordered_bounded_and_revision_fenced() {
-    let (_home, store, storage) = seeded("phase57-ready-source-page", populated_records());
+    let (_home, store, storage) = seeded_populated("phase57-ready-source-page");
     let extra = AcceptedReadySourceRecord::new(
         id(50),
         InputGateRevision::new(1).unwrap(),
@@ -94,14 +93,64 @@ fn global_ready_source_pages_are_ordered_bounded_and_revision_fenced() {
     ));
 }
 
-fn terminal_heavy_records() -> Vec<FixtureRecord> {
-    let mut records = large_ready_generation(384);
+fn seed_terminal_heavy(store: &beryl_home_store::HomeStore, storage: SyndicStorage) {
+    seed_large_ready_generation(store, storage, 384);
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
-    for record in &mut records {
-        match record {
-            FixtureRecord::InputGate(gate) if gate.thread_id() == thread => {
-                *gate = InputGateRecord::new(
+    let gate = storage
+        .input_gate(store, thread, accepted_support::limit())
+        .unwrap()
+        .unwrap();
+    let route =
+        syndic_storage::test_faults::accepted_route_generation(store, storage, thread, generation)
+            .unwrap();
+    let mut leaves = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = storage
+            .accepted_route_page(store, thread, generation, route.revision(), cursor)
+            .unwrap();
+        for entry in page.records() {
+            let leaf = entry.leaf();
+            if leaf.ordinal().get() <= 300 && leaf.state() == AcceptedRouteLeafState::Routed {
+                leaves.push(FixtureRecord::AcceptedRouteLeaf(
+                    fixture_route_leaf_with_transition(
+                        AcceptedRouteLeafRecord::new(
+                            leaf.input_id(),
+                            leaf.thread_id(),
+                            leaf.generation(),
+                            leaf.ordinal(),
+                            AcceptedInputRevision::new(3).unwrap(),
+                            AcceptedRouteLeafState::Routed,
+                            AcceptedInputLifecycle::Delivered,
+                        ),
+                        AcceptedRouteLeafTransitionProof::new(
+                            InputGateRevision::new(leaf.ordinal().get() + 1).unwrap(),
+                            AcceptedRouteHeadProof::new(
+                                leaf.generation(),
+                                AcceptedRouteRevision::FIRST,
+                            ),
+                            AcceptedInputRevision::new(2).unwrap(),
+                            AcceptedRouteLeafTransitionKind::Complete,
+                        ),
+                    ),
+                ));
+            }
+        }
+        let Some(next_cursor) = page.next_cursor() else {
+            break;
+        };
+        cursor = Some(next_cursor);
+    }
+    for chunk in leaves.chunks(96) {
+        commit(store, storage, batch(chunk.iter().cloned()));
+    }
+    commit(
+        store,
+        storage,
+        batch([
+            FixtureRecord::InputGate(
+                InputGateRecord::new(
                     thread,
                     gate.revision(),
                     gate.state().clone(),
@@ -112,10 +161,10 @@ fn terminal_heavy_records() -> Vec<FixtureRecord> {
                     1,
                     0,
                 )
-                .unwrap();
-            }
-            FixtureRecord::AcceptedRouteGeneration(route) if route.thread_id() == thread => {
-                *route = AcceptedRouteGenerationRecord::new(
+                .unwrap(),
+            ),
+            FixtureRecord::AcceptedRouteGeneration(
+                AcceptedRouteGenerationRecord::new(
                     thread,
                     generation,
                     route.revision(),
@@ -130,44 +179,21 @@ fn terminal_heavy_records() -> Vec<FixtureRecord> {
                     0,
                     0,
                 )
-                .unwrap();
-            }
-            FixtureRecord::AcceptedRouteLeaf(leaf)
-                if leaf.thread_id() == thread
-                    && leaf.state() == AcceptedRouteLeafState::Routed
-                    && leaf.ordinal().get() <= 300 =>
-            {
-                *leaf = fixture_route_leaf_with_transition(
-                    AcceptedRouteLeafRecord::new(
-                        leaf.input_id(),
-                        leaf.thread_id(),
-                        leaf.generation(),
-                        leaf.ordinal(),
-                        AcceptedInputRevision::new(3).unwrap(),
-                        AcceptedRouteLeafState::Routed,
-                        AcceptedInputLifecycle::Delivered,
-                    ),
-                    AcceptedRouteLeafTransitionProof::new(
-                        InputGateRevision::new(leaf.ordinal().get() + 1).unwrap(),
-                        AcceptedRouteHeadProof::new(
-                            leaf.generation(),
-                            AcceptedRouteRevision::FIRST,
-                        ),
-                        AcceptedInputRevision::new(2).unwrap(),
-                        AcceptedRouteLeafTransitionKind::Complete,
-                    ),
-                );
-            }
-            _ => {}
-        }
-    }
-    records
+                .unwrap(),
+            ),
+        ]),
+    );
 }
 
 #[test]
 fn candidate_pages_advance_across_terminal_history_and_preserve_accepted_order() {
-    let (_home, store, storage) = seeded("phase57-terminal-heavy-ready", terminal_heavy_records());
-    store.validate_registered_domains().unwrap();
+    let home = TestHome::new("phase57-terminal-heavy-ready");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    seed_terminal_heavy(&store, storage);
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let source = source(&store, storage);
     let first = storage
         .accepted_ready_candidate_page(&store, source, None, limits(256))
@@ -204,8 +230,7 @@ fn candidate_pages_advance_across_terminal_history_and_preserve_accepted_order()
 
 #[test]
 fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
-    let (_home, store, storage) =
-        seeded("phase57-ready-candidate-drift", mixed_abandonment_records());
+    let (_home, store, storage) = seeded_mixed("phase57-ready-candidate-drift");
     let old_source = source(&store, storage);
     let first = storage
         .accepted_ready_candidate_page(&store, old_source, None, limits(1))
@@ -215,9 +240,12 @@ fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
 
     match store.execute_current(AcceptedOperation::Retry.current_command(storage)) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected retry command to commit without later failure, got {outcome:?}"),
+        outcome => {
+            panic!("expected retry command to commit without later failure, got {outcome:?}")
+        }
     }
     let new_source = source(&store, storage);
     assert_ne!(new_source, old_source);
@@ -233,13 +261,16 @@ fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
 
 #[test]
 fn claiming_the_last_ready_input_removes_global_source_authority() {
-    let (_home, store, storage) = seeded("phase57-last-ready-claim", populated_records());
+    let (_home, store, storage) = seeded_populated("phase57-last-ready-claim");
     assert_eq!(source(&store, storage).thread_id(), id(40));
     match store.execute_current(AcceptedOperation::Begin.current_command(storage)) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
-        outcome => panic!("expected begin command to commit without later failure, got {outcome:?}"),
+        outcome => {
+            panic!("expected begin command to commit without later failure, got {outcome:?}")
+        }
     }
     let revision = storage.revision(&store).unwrap();
     let page = storage
@@ -247,7 +278,9 @@ fn claiming_the_last_ready_input_removes_global_source_authority() {
         .unwrap();
     assert!(page.records().is_empty());
     assert!(page.next_cursor().is_none());
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 fn assert_reopen_rejects(
@@ -258,9 +291,11 @@ fn assert_reopen_rejects(
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
+    seed_populated(&store, storage);
     corruption(storage, &store);
-    let error = store.validate_registered_domains().unwrap_err();
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(error.to_string().contains(expected), "{error}");
     store.close().unwrap();
 

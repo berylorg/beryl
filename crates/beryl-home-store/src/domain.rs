@@ -11,9 +11,10 @@ use fjall::Keyspace;
 use thiserror::Error;
 
 use crate::{
+    DomainReader, DomainReconciliation, DomainSchemaVersion, KeyspaceSchemaVersion,
+    ReconciliationReader, RecordFamily, SidecarVerifier,
     codec::ErasedEnvelopeValidator,
     metadata::{DomainMetadata, PersistedFamily},
-    DomainReader, DomainSchemaVersion, KeyspaceSchemaVersion, RecordFamily, SidecarVerifier,
 };
 
 pub(crate) mod callback;
@@ -54,6 +55,17 @@ pub trait StorageDomain: Send + Sync + Sized + 'static {
         _sidecars: &SidecarVerifier<'_>,
     ) -> Result<(), Self::ValidationError> {
         Self::validate(reader)
+    }
+
+    /// Classifies one descriptor-bound ambiguous mutation from only its exact natural records.
+    ///
+    /// Domains with mutation-specific successor semantics override this hook. The default is
+    /// deliberately fail-closed: a domain that has not supplied targeted reconciliation can never
+    /// authenticate either side of an ambiguous command.
+    fn reconcile(
+        _reader: &ReconciliationReader<'_, Self>,
+    ) -> Result<DomainReconciliation, Self::ValidationError> {
+        Ok(DomainReconciliation::Collision)
     }
 }
 
@@ -320,6 +332,39 @@ pub enum DomainValidationError {
         #[source]
         source: Box<dyn Error + Send + Sync>,
     },
+    /// The isolated scrub worker panicked before publishing a terminal result.
+    #[error("the whole-home scrub worker panicked")]
+    WorkerPanicked,
+}
+
+/// Shared terminal failure from one per-home whole-home scrub flight.
+#[derive(Clone, Debug)]
+pub struct WholeHomeScrubError {
+    source: std::sync::Arc<DomainValidationError>,
+}
+
+impl WholeHomeScrubError {
+    pub(crate) fn new(source: std::sync::Arc<DomainValidationError>) -> Self {
+        Self { source }
+    }
+
+    /// Returns the exact shared validation failure joined by this caller.
+    #[must_use]
+    pub fn validation_error(&self) -> &DomainValidationError {
+        &self.source
+    }
+}
+
+impl std::fmt::Display for WholeHomeScrubError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.source.fmt(formatter)
+    }
+}
+
+impl Error for WholeHomeScrubError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.source.as_ref())
+    }
 }
 
 /// Why a caller could not reacquire a typed handle after home recovery.
@@ -363,13 +408,17 @@ pub(crate) struct RegisteredFamily {
     pub(crate) keyspace: Keyspace,
 }
 
-pub(crate) type ErasedValidator =
-    fn(&fjall::Snapshot, &RegisteredDomain) -> Result<(), callback::ErasedCallbackError>;
 pub(crate) type ErasedReopenValidator = fn(
     &fjall::Snapshot,
     &RegisteredDomain,
     &SidecarVerifier<'_>,
 ) -> Result<(), callback::ErasedCallbackError>;
+pub(crate) type ErasedReconciler =
+    fn(
+        &fjall::Snapshot,
+        &RegisteredDomain,
+        &crate::command::MaterializedDomainDescriptor,
+    ) -> Result<DomainReconciliation, callback::ErasedCallbackError>;
 
 #[derive(Clone)]
 pub(crate) struct DomainBlueprint {
@@ -377,8 +426,8 @@ pub(crate) struct DomainBlueprint {
     pub(crate) schema: DomainSchemaVersion,
     pub(crate) owner: DomainOwnerId,
     pub(crate) families: Vec<FamilyBlueprint>,
-    pub(crate) validator: ErasedValidator,
     pub(crate) reopen_validator: ErasedReopenValidator,
+    pub(crate) reconciler: ErasedReconciler,
 }
 
 #[derive(Clone)]
@@ -416,8 +465,8 @@ pub(crate) struct RegisteredDomain {
     pub(crate) owner: DomainOwnerId,
     pub(crate) families: Vec<RegisteredFamily>,
     family_slots: HashMap<&'static str, usize>,
-    validator: ErasedValidator,
     reopen_validator: ErasedReopenValidator,
+    pub(crate) reconciler: ErasedReconciler,
 }
 
 impl RegisteredDomain {

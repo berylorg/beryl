@@ -28,7 +28,6 @@ use super::model::{
     ActiveSteeringDeliveryError, ActiveSteeringDeliveryOutcome, ActiveSteeringProjectionLossCause,
     ActiveSteeringRetryCause, ActiveSteeringSaturationCause, ActiveSteeringUnknownCause,
 };
-use super::super::connection::ProviderBrokerLossError;
 
 fn wait_for_route_pair(
     fixture: &DeliveryFixture,
@@ -224,41 +223,6 @@ fn sibling_admission_before_abandonment_preserves_exact_loss_disposition() {
     assert!(fixture.service_is_accepting());
 
     fixture.close(server);
-}
-
-#[test]
-fn unresolved_admission_reconciliation_fails_closed_without_scheduling() {
-    let server = SteeringServer::spawn(SteeringServerScenario::NoSteeringRequest);
-    let fixture = DeliveryFixture::new_scheduled_unresolved_reconciliation(
-        219,
-        &server,
-        STEERING_TEXT,
-    );
-    let deadline = Instant::now() + TIMEOUT;
-    loop {
-        let diagnostics = fixture.scheduler_diagnostics();
-        if diagnostics.stopped() {
-            assert!(diagnostics.fatal());
-            assert_eq!(diagnostics.workers_started(), 0);
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "fail-closed admission did not stop the scheduler: {diagnostics:?}",
-        );
-        thread::yield_now();
-    }
-    assert!(!fixture.service_is_accepting());
-    assert_eq!(
-        fixture.route_state_after_service_close(),
-        AcceptedRouteEffectiveState::Ready
-    );
-    assert_eq!(
-        fixture.route_lifecycle_after_service_close(),
-        AcceptedInputLifecycle::Admitted
-    );
-
-    fixture.close_after_scheduler_failure(server);
 }
 
 #[test]
@@ -585,6 +549,12 @@ fn lifecycle_before_exact_response_still_completes_delivery() {
         AcceptedRouteEffectiveState::Delivered
     );
     assert!(matches!(fixture.binding_state(), BindingState::Active(_)));
+    #[cfg(feature = "test-faults")]
+    assert_eq!(
+        fixture.free_space_observation_count(),
+        0,
+        "active steering must not probe the new-turn free-space reserve"
+    );
 
     fixture.close(server);
 }
@@ -727,12 +697,13 @@ fn after_persist_claim_fault_fails_closed_without_steering_dispatch() {
     let fixture = DeliveryFixture::new(210, 4, &server, STEERING_TEXT);
     fixture.fail_next_claim_after_persist();
 
+    let outcome = fixture.deliver();
     assert!(matches!(
-        fixture.deliver(),
-        Err(ActiveSteeringDeliveryError::Loss(
-            ProviderBrokerLossError::StorageUnavailable
-        ))
+        outcome,
+        Err(ActiveSteeringDeliveryError::PersistentFailureCut)
     ));
+    // `NoSteeringRequest` makes `fixture.close` prove the persistent-failure cut
+    // did not dispatch `turn/steer`.
 
     fixture.close(server);
 }

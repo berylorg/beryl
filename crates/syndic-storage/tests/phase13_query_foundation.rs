@@ -2,19 +2,15 @@
 
 mod support;
 
-use beryl_home_store::CursorReadLimits;
+use beryl_home_store::{CommandOutcome, CursorReadLimits, HomeCommand, HomeStore};
 use beryl_model::{
-    AssetReferenceSetDigest, AssetReferenceSetId, ProjectionRevision, SealedAssetReferenceSetProof,
-    SyndicDraftId, SyndicItemId, SyndicThreadId, ThreadRevision,
+    AssetReferenceSetDigest, AssetReferenceSetId, SealedAssetReferenceSetProof, SyndicDraftId,
+    SyndicItemId, SyndicThreadId, ThreadRevision,
 };
 use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 use syndic_storage::*;
 
-use support::{
-    TestHome, batch, commit, composer_content_records, open,
-    populated::{correlate_source_user_item, populated_records},
-    timestamp,
-};
+use support::{TestHome, batch, commit, open, timestamp};
 
 fn identity(value: u128) -> SyndicThreadId {
     SyndicThreadId::from_bytes(value.to_be_bytes())
@@ -30,6 +26,70 @@ fn point_limit() -> SyndicPointReadLimit {
 
 fn page_limits(items: usize) -> CursorReadLimits {
     CursorReadLimits::new(items, QUERY_PAGE_MAX_STORED_BYTES).unwrap()
+}
+
+fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean phase13 fixture command, got {outcome:?}"),
+    }
+}
+
+fn submit_image_draft(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    next_draft: SyndicDraftId,
+    item: SyndicItemId,
+    payload: ComposerPayload,
+    asset_reference_set: SealedAssetReferenceSetProof,
+) {
+    let prepared = PreparedContent::composer(&payload).unwrap();
+    support::stage_prepared_content(store, storage, &prepared);
+    let current = storage
+        .current_draft(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let DraftPayloadUpdateDecision::Update(update) =
+        DraftPayloadUpdate::prepare(&current, &prepared, timestamp(4)).unwrap()
+    else {
+        panic!("image-label fixture draft must become nonempty");
+    };
+    execute(
+        store,
+        storage.update_draft_payload(storage.revision(store).unwrap(), update),
+    );
+    let current = storage
+        .current_draft(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let gate = storage
+        .input_gate(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    execute(
+        store,
+        storage.submit_idle_draft(
+            storage.revision(store).unwrap(),
+            IdleSubmission::new(
+                thread,
+                current.thread().revision(),
+                current.draft().id(),
+                current.draft().revision(),
+                current.draft().content(),
+                gate.revision(),
+                next_draft,
+                item,
+                Some(asset_reference_set),
+                timestamp(4),
+            ),
+        ),
+    );
 }
 
 #[test]
@@ -152,12 +212,22 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let parent_id = support::id(30);
     let child_id = support::id(36);
+    support::seed_populated(&store, storage);
+    support::converge_and_release_terminal_history(
+        &store,
+        storage,
+        parent_id,
+        support::populated::source_turn(),
+    );
     let marker_id = beryl_model::SyndicDraftMarkerId::from_bytes([88; 16]);
     let gap_label = ImageLabelOrdinal::FIRST;
     let label = ImageLabelOrdinal::new(37).unwrap();
     let payload = ComposerPayload::new(vec![ComposerAtom::image_marker(marker_id, label)]).unwrap();
-    let (content, content_records) = composer_content_records(&payload);
-    let source = content.sealed_marker_summary().unwrap();
+    let source = PreparedContent::composer(&payload)
+        .unwrap()
+        .reference(beryl_model::ContentRevision::new(1).unwrap())
+        .sealed_marker_summary()
+        .unwrap();
     let proof = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([89; 16]),
         source,
@@ -166,29 +236,22 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     )
     .unwrap();
     let item = SyndicItemId::from_bytes([91; 16]);
-    let mut records = populated_records();
-    records.extend(content_records);
-    correlate_source_user_item(
-        &mut records,
+    submit_image_draft(
+        &store,
+        storage,
+        parent_id,
+        draft_identity(92),
         item,
-        ProjectionRevision::new(1).unwrap(),
-        content,
-        Some(proof),
-        timestamp(4),
+        payload,
+        proof,
     );
-    let parent = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::Thread(thread) if thread.id() == parent_id => Some(thread.clone()),
-            _ => None,
-        })
+    let parent = storage
+        .thread(&store, parent_id, point_limit())
+        .unwrap()
         .unwrap();
-    let child = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::Thread(thread) if thread.id() == child_id => Some(thread.clone()),
-            _ => None,
-        })
+    let child = storage
+        .thread(&store, child_id, point_limit())
+        .unwrap()
         .unwrap();
     let parent = ThreadRecord::new(
         parent.id(),
@@ -222,16 +285,15 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
         proof,
     )
     .unwrap();
-    records.retain(|record| {
-        !matches!(record, FixtureRecord::Thread(thread)
-        if thread.id() == parent_id || thread.id() == child_id)
-    });
-    records.extend([
-        FixtureRecord::Thread(parent),
-        FixtureRecord::Thread(child),
-        FixtureRecord::ImageLabelOriginSpan(origin),
-    ]);
-    commit(&store, storage, batch(records));
+    commit(
+        &store,
+        storage,
+        batch([
+            FixtureRecord::Thread(parent),
+            FixtureRecord::Thread(child),
+            FixtureRecord::ImageLabelOriginSpan(origin),
+        ]),
+    );
     let resolved = storage
         .resolve_image_label_origin_span(&store, child_id, gap_label, point_limit())
         .unwrap()

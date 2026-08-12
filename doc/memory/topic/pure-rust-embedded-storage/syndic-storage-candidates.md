@@ -6,7 +6,11 @@ Operator asked which battle-tested pure-Rust embedded storage crates could suppo
 
 The practical pure-Rust shortlist was `redb` and `fjall`.
 
-Refresh on 2026-06-16: this exploratory note is superseded for production Syndic storage choice by `crates/syndic-storage/doc/design.md`, which chooses `fjall` as the primary engine based on later Syndic-shaped benchmark evidence. The original shortlist remains useful background for why `redb` and `fjall` were the two serious candidates.
+Refresh on 2026-08-12: this exploratory note is superseded for production Syndic storage choice by
+`crates/syndic-storage/doc/design.md` and `doc/systems/beryl-home-storage/design.md`. The live
+workspace uses Beryl's owned `fjall` fork at package version 3.1.6; the original crates.io 3.1.5
+shortlist and benchmark observations remain background only and are not current dependency-boundary
+evidence.
 
 `redb` was the lowest-risk initial default candidate because Beryl already depended on `redb = 4.1.0`, it is stable, ACID, MVCC, B-tree based, and exposes double-ended range iterators. It fits ordered metadata tables, turn/item indexes, and fixed-size chunk rows well. It should not be used as one giant appendable value store; large content should be split into chunk rows keyed by resource id and chunk number.
 

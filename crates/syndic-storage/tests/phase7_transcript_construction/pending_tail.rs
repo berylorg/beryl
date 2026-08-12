@@ -328,11 +328,15 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
             .complete()
     );
 
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
     let mut reopened = open(home.path());
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let reopened_item = reopened_storage
         .canonical_item(&reopened, pending.item, point_limit())
         .unwrap()

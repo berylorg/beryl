@@ -20,12 +20,12 @@ impl ProjectionConnectionService {
             .notification()
     }
 
-    pub(in crate::cas_projection) fn attach_recovery_supervisor(
+    pub(in crate::cas_projection) fn attach_terminal_disposer(
         &self,
         signal: std::sync::mpsc::SyncSender<()>,
     ) -> Result<(), ()> {
         self.persistent_failure_notification()
-            .attach_recovery_supervisor(signal)
+            .attach_terminal_disposer(signal)
     }
 
     #[must_use]

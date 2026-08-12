@@ -65,10 +65,10 @@ fn require_committed_command(outcome: CommandOutcome) -> Result<(), ContextCompa
         CommandOutcome::Indeterminate {
             failure,
             reconciliation,
-        } => Err(ContextCompactionError::CommandIndeterminate {
-            failure,
-            reconciliation,
-        }),
+        } => {
+            reconciliation.install();
+            Err(ContextCompactionError::CommandIndeterminate { failure })
+        }
     }
 }
 #[cfg(feature = "test-faults")]

@@ -6,7 +6,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
         let directory = tempdir().unwrap();
         let (mut store, state) = support::open(directory.path());
         let probe = store.register_domain::<ProbeDomain>().unwrap();
-        let proof = sealed_set(&store, state, publish_asset(&store, state));
+        let proof = sealed_set(&store, &state, publish_asset(&store, &state));
         let source = AssetOwner::CurrentDraft(SyndicDraftId::from_bytes([3; 16]));
         let destination =
             AssetOwner::AcceptedInput(beryl_model::SyndicAcceptedInputId::from_bytes([3; 16]));
@@ -224,7 +224,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
 fn mutation_participant_asserts_unchanged_head_while_publishing_another() {
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
-    let proof = sealed_set(&store, state, publish_asset(&store, state));
+    let proof = sealed_set(&store, &state, publish_asset(&store, &state));
     let historical = AssetOwner::SubmittedTurnItem(SyndicItemId::from_bytes([31; 16]));
     let draft = AssetOwner::CurrentDraft(SyndicDraftId::from_bytes([32; 16]));
     execute_asset(
@@ -306,9 +306,11 @@ fn mutation_participant_asserts_unchanged_head_while_publishing_another() {
             },
         }
     ));
-    assert!(state
-        .assets()
-        .owner_head(&store, destination)
-        .unwrap()
-        .is_none());
+    assert!(
+        state
+            .assets()
+            .owner_head(&store, destination)
+            .unwrap()
+            .is_none()
+    );
 }

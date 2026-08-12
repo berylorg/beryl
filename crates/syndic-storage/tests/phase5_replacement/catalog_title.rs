@@ -28,12 +28,11 @@ fn accepted_replacement_rebuilds_the_selected_path_title_once_then_is_exact() {
     let home = TestHome::new("phase75-replacement-catalog-title");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, replacement_seed());
+    let seed = replacement_seed(&store, storage);
 
     let initial = converge_catalog_summary(&store, storage);
-    assert!(initial.title().is_none());
 
-    start_edit(storage, &store);
+    start_edit(storage, &store, &seed);
     let content = PreparedContent::composer(
         &ComposerPayload::new(vec![ComposerAtom::text("Replacement title").unwrap()]).unwrap(),
     )
@@ -43,7 +42,7 @@ fn accepted_replacement_rebuilds_the_selected_path_title_once_then_is_exact() {
         .current_draft(&store, id(30), point_limit())
         .unwrap()
         .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&editing, &content, timestamp(6)).unwrap() {
+    let update = match DraftPayloadUpdate::prepare(&editing, &content, timestamp(12)).unwrap() {
         DraftPayloadUpdateDecision::Update(update) => update,
         DraftPayloadUpdateDecision::NoChange => panic!("replacement payload must change"),
     };
@@ -53,7 +52,11 @@ fn accepted_replacement_rebuilds_the_selected_path_title_once_then_is_exact() {
     );
 
     let before_replacement = converge_catalog_summary(&store, storage);
-    assert!(before_replacement.title().is_none());
+    assert_eq!(before_replacement.title(), initial.title());
+    assert_eq!(
+        before_replacement.revision().get(),
+        initial.revision().get() + 1
+    );
     let current = storage
         .current_draft(&store, id(30), point_limit())
         .unwrap()
@@ -68,11 +71,11 @@ fn accepted_replacement_rebuilds_the_selected_path_title_once_then_is_exact() {
                 current.draft().id(),
                 current.draft().revision(),
                 current.draft().content(),
-                InputGateRevision::new(1).unwrap(),
-                draft_id(70),
-                SyndicItemId::from_bytes([71; 16]),
+                seed.gate.revision(),
+                draft_id(73),
+                SyndicItemId::from_bytes([74; 16]),
                 None,
-                timestamp(7),
+                timestamp(13),
             ),
         ),
     );
@@ -108,5 +111,7 @@ fn accepted_replacement_rebuilds_the_selected_path_title_once_then_is_exact() {
         exact.summary().revision().get(),
         before_replacement.revision().get() + 1,
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

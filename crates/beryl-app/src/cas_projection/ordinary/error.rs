@@ -1,6 +1,4 @@
-use beryl_home_store::{
-    CommandError, CommitReceipt, HomeGeneration, HomeHealthState, ReconciliationDescriptor,
-};
+use beryl_home_store::{CommandError, CommitReceipt, HomeGeneration, HomeHealthState};
 use beryl_model::{BerylHomeId, SyndicThreadId};
 use beryl_state::AssetReadError;
 use syndic_storage::SyndicReadError;
@@ -22,7 +20,9 @@ pub enum OrdinaryTurnExecutionError {
     HomeCommandBuild(#[from] beryl_home_store::CommandBuildError),
     #[error("ordinary history convergence command was proven not committed")]
     HomeCommandNotCommitted(#[source] CommandError),
-    #[error("ordinary history convergence command committed before a later failure: {later_failure}")]
+    #[error(
+        "ordinary history convergence command committed before a later failure: {later_failure}"
+    )]
     HomeCommandCommitted {
         receipt: CommitReceipt,
         #[source]
@@ -32,7 +32,6 @@ pub enum OrdinaryTurnExecutionError {
     HomeCommandIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("ordinary input replay requires a healthy Beryl home, got {state:?}")]
     InputReplayHomeNotHealthy {

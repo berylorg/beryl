@@ -73,7 +73,9 @@ fn observation_callback(
     store: &HomeStore,
     storage: SyndicStorage,
 ) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + '_ {
-    move |batch| store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+    move |batch| {
+        store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+    }
 }
 
 fn committed_stage_value<T>(outcome: ProviderObservationStageOutcome<T>) -> T {
@@ -90,8 +92,66 @@ fn committed_stage_value<T>(outcome: ProviderObservationStageOutcome<T>) -> T {
         ProviderObservationStageOutcome::NotCommitted { evidence } => {
             panic!("expected staging to commit, got NotCommitted: {evidence:?}")
         }
-        ProviderObservationStageOutcome::Indeterminate { failure, .. } => {
+        ProviderObservationStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
             panic!("expected staging to commit, got Indeterminate: {failure:?}")
+        }
+    }
+}
+
+fn committed_seal_value(
+    outcome: ProviderObservationSealOutcome,
+) -> SealedProviderObservationHandle {
+    match outcome {
+        ProviderObservationSealOutcome::Committed {
+            value,
+            receipt: _,
+            later_failure: None,
+        } => value,
+        ProviderObservationSealOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("expected sealing to commit without later failure, got {failure:?}"),
+        ProviderObservationSealOutcome::NotCommitted { evidence } => {
+            panic!("expected sealing to commit, got NotCommitted: {evidence:?}")
+        }
+        ProviderObservationSealOutcome::Indeterminate { failure, custody } => {
+            custody.install();
+            panic!("expected sealing to commit, got Indeterminate: {failure:?}")
+        }
+    }
+}
+
+fn committed_frame_stage_value(
+    outcome: ProviderObservationFrameStageOutcome,
+) -> ProviderItemBuildRecord {
+    match outcome {
+        ProviderObservationFrameStageOutcome::Committed {
+            value,
+            receipt: _,
+            later_failure: None,
+        } => value,
+        ProviderObservationFrameStageOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!(
+            "expected provider-frame staging to commit without later failure, got {failure:?}"
+        ),
+        ProviderObservationFrameStageOutcome::NotCommitted { evidence } => {
+            panic!("expected provider-frame staging to commit, got NotCommitted: {evidence:?}")
+        }
+        ProviderObservationFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected provider-frame staging to commit, got Indeterminate: {failure:?}")
+        }
+        ProviderObservationFrameStageOutcome::Unchanged { value } => {
+            panic!("expected provider-frame staging work, got unchanged build {value:?}")
         }
     }
 }
@@ -203,7 +263,7 @@ fn bind_sealed(
     stager: ProviderObservationStager,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> BoundProviderObservation {
-    committed_stage_value(stager.seal(callback).unwrap())
+    committed_seal_value(stager.seal(callback).unwrap())
         .bind(route(), route())
         .unwrap()
 }
@@ -275,23 +335,45 @@ fn stage_compiler(
     prepared: &PreparedProviderObservationFrame,
 ) -> (CompilerCapture, ProviderItemBuildRecord) {
     let mut capture = CompilerCapture::default();
-    let final_build = stage_provider_observation_frame(
-        storage,
-        store,
-        prepared,
-        prepared.initial_build().clone(),
-        limit(),
-        &mut |batch: &ProviderFrameStageBatch| {
-            capture.batches += 1;
-            assert!(batch.chunks().len() <= CONTENT_APPEND_MAX_CHUNKS);
-            assert!(batch.narrative_spans().len() <= PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS);
-            for chunk in batch.chunks() {
-                capture.bytes.extend_from_slice(chunk.bytes());
-            }
-            capture.narrative_spans += batch.narrative_spans().len();
-            Ok::<_, Infallible>(())
-        },
-    )
-    .unwrap();
+    match store.execute_current(storage.current_begin_provider_observation_frame_build(prepared)) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("expected provider-frame build begin without later failure, got {failure:?}"),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected provider-frame build begin to commit, got NotCommitted: {evidence:?}")
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("expected provider-frame build begin to commit, got Indeterminate: {failure:?}")
+        }
+    }
+    let final_build = committed_frame_stage_value(
+        stage_provider_observation_frame(
+            storage,
+            store,
+            prepared,
+            prepared.initial_build().clone(),
+            limit(),
+            &mut |batch: &ProviderFrameStageBatch| {
+                capture.batches += 1;
+                assert!(batch.chunks().len() <= CONTENT_APPEND_MAX_CHUNKS);
+                assert!(batch.narrative_spans().len() <= PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS);
+                for chunk in batch.chunks() {
+                    capture.bytes.extend_from_slice(chunk.bytes());
+                }
+                capture.narrative_spans += batch.narrative_spans().len();
+                store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()))
+            },
+        )
+        .unwrap(),
+    );
     (capture, final_build)
 }

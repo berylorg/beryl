@@ -4,9 +4,9 @@ use beryl_model::{SessionRevision, WindowId, WindowPlacement};
 use crate::RecordRevision;
 
 use crate::session::{
-    codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec},
     SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError, SessionWindowRecord,
     ThreadClaimRecord, WindowClaimSelection,
+    codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec},
 };
 
 use super::shared::{

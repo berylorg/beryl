@@ -5,6 +5,26 @@
 //! domain uses the one physical [`beryl_home_store`] database and never exposes
 //! Fjall, encoded records, or a second store to callers. Cross-package stable
 //! identities and revisions remain owned by [`beryl_model`].
+//! [`idle_submission_max_footprint`] and [`accepted_input_promotion_max_footprint`] expose the
+//! checked maximum V5 record/key/value shapes for the two durable new-turn starts. Callers pass
+//! those opaque typed participants to `beryl-home-store`; they never supply a byte estimate.
+//!
+//! ```
+//! let footprint = syndic_storage::idle_submission_max_footprint()?;
+//! let _ = footprint;
+//! # Ok::<(), beryl_home_store::DurableStartFootprintError>(())
+//! ```
+//!
+//! # Registration and validation
+//!
+//! [`SyndicStorage::register`], [`SyndicStorage::reacquire`], and
+//! [`SyndicStorage::reacquire_candidate`] are routine declaration-, family-,
+//! exact-type-, and generation-bound operations. They never scan Syndic
+//! application records. Use
+//! [`SyndicStorage::register_with_schema_validation`] only for an explicit
+//! schema-validation boundary. Whole-home scrub and corruption-evidence paths
+//! remain store-owned exhaustive operations; ordinary typed reads still reject
+//! malformed records when they encounter them.
 //!
 //! # Provider-item frames
 //!
@@ -19,9 +39,12 @@
 //! [`ProviderObservationStager`] durably validates the selected provider schema before a sealed
 //! observation can be bound to its admitted route. A [`ProviderObservationStageCallback`] returns
 //! [`beryl_home_store::CommandOutcome`] for each offered exact batch; the stager then returns its
-//! typed [`ProviderObservationStageOutcome`] behind its semantic `Result` boundary. In particular,
-//! a committed batch may retain a later failure, while an indeterminate batch retains its opaque
-//! reconciliation descriptor. [`inspect_provider_observation`] consumes that route-bound
+//! typed [`ProviderObservationStageOutcome`] behind its semantic `Result` boundary. Consuming seal
+//! instead returns [`ProviderObservationSealOutcome`], whose indeterminate variant retains the
+//! inert consumed stager inside a move-only [`ProviderObservationSealCustodyGuard`] until its sole
+//! terminal installation. In particular, a committed batch may retain a later failure, while an
+//! indeterminate batch retains its opaque reconciliation custody. [`inspect_provider_observation`]
+//! consumes that route-bound
 //! authority and extracts fixed-resident identity and lifecycle facts. It can then be consumed into
 //! a private-constructible [`ProviderObservationIssue`] candidate; live-source publication still
 //! proves the supplied closed conflict reason against the exact durable source frontier.
@@ -33,7 +56,7 @@
 //!     ProviderField, ProviderObservationBegin, ProviderObservationControl,
 //!     ProviderObservationIssueReason, ProviderObservationItemKind,
 //!     ProviderObservationItemLifecycle, ProviderObservationRoute,
-//!     ProviderObservationStageBatch, ProviderObservationStager,
+//!     ProviderObservationSealOutcome, ProviderObservationStageBatch, ProviderObservationStager,
 //!     ProviderObservationStageOutcome,
 //!     ProviderObservationStagingBytes, ProviderScalar, ProviderValueContext,
 //!     SyndicPointReadLimit, SyndicStorage, inspect_provider_observation,
@@ -62,8 +85,7 @@
 //!         value
 //!     }
 //!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
-//!         // Transfer both facts to the caller-owned later reconciliation workflow.
-//!         let _retained_reconciliation = reconciliation;
+//!         reconciliation.install();
 //!         return Err(failure.into());
 //!     }
 //! };
@@ -82,7 +104,7 @@
 //!         }
 //!     }
 //!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
-//!         let _retained_reconciliation = reconciliation;
+//!         reconciliation.install();
 //!         return Err(failure.into());
 //!     }
 //! }
@@ -94,7 +116,7 @@
 //!         if let Some(failure) = later_failure { return Err(failure.into()); }
 //!     }
 //!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
-//!         let _retained_reconciliation = reconciliation;
+//!         reconciliation.install();
 //!         return Err(failure.into());
 //!     }
 //! }
@@ -108,7 +130,7 @@
 //!         if let Some(failure) = later_failure { return Err(failure.into()); }
 //!     }
 //!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
-//!         let _retained_reconciliation = reconciliation;
+//!         reconciliation.install();
 //!         return Err(failure.into());
 //!     }
 //! }
@@ -119,19 +141,19 @@
 //!         if let Some(failure) = later_failure { return Err(failure.into()); }
 //!     }
 //!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
-//!         let _retained_reconciliation = reconciliation;
+//!         reconciliation.install();
 //!         return Err(failure.into());
 //!     }
 //! }
 //! let sealed = match staging.seal(&mut commit)? {
-//!     ProviderObservationStageOutcome::NotCommitted { evidence } => return Err(evidence.into()),
-//!     ProviderObservationStageOutcome::Committed { value, receipt, later_failure } => {
+//!     ProviderObservationSealOutcome::NotCommitted { evidence } => return Err(evidence.into()),
+//!     ProviderObservationSealOutcome::Committed { value, receipt, later_failure } => {
 //!         let _exact_receipt = receipt;
 //!         if let Some(failure) = later_failure { return Err(failure.into()); }
 //!         value
 //!     }
-//!     ProviderObservationStageOutcome::Indeterminate { failure, reconciliation } => {
-//!         let _retained_reconciliation = reconciliation;
+//!     ProviderObservationSealOutcome::Indeterminate { failure, custody } => {
+//!         custody.install();
 //!         return Err(failure.into());
 //!     }
 //! };
@@ -215,7 +237,7 @@
 //!         if let Some(failure) = later_failure { return Err(failure.into()); }
 //!     }
 //!     CommandOutcome::Indeterminate { failure, reconciliation } => {
-//!         let _retained_reconciliation = reconciliation;
+//!         reconciliation.install();
 //!         return Err(failure.into());
 //!     }
 //! }
@@ -255,7 +277,7 @@
 //!                 if let Some(failure) = later_failure { return Err(failure.into()); }
 //!             }
 //!             CommandOutcome::Indeterminate { failure, reconciliation } => {
-//!                 let _retained_reconciliation = reconciliation;
+//!                 reconciliation.install();
 //!                 return Err(failure.into());
 //!             }
 //!         }
@@ -311,7 +333,7 @@
 //!         if let Some(failure) = later_failure { return Err(failure.into()); }
 //!     }
 //!     CommandOutcome::Indeterminate { failure, reconciliation } => {
-//!         let _retained_reconciliation = reconciliation;
+//!         reconciliation.install();
 //!         return Err(failure.into());
 //!     }
 //! }
@@ -427,7 +449,7 @@
 //!             if let Some(failure) = later_failure { return Err(failure.into()); }
 //!         }
 //!         CommandOutcome::Indeterminate { failure, reconciliation } => {
-//!             let _retained_reconciliation = reconciliation;
+//!             reconciliation.install();
 //!             return Err(failure.into());
 //!         }
 //!     }
@@ -460,7 +482,7 @@
 //!                 if let Some(failure) = later_failure { return Err(failure.into()); }
 //!             }
 //!             CommandOutcome::Indeterminate { failure, reconciliation } => {
-//!                 let _retained_reconciliation = reconciliation;
+//!                 reconciliation.install();
 //!                 return Err(failure.into());
 //!             }
 //!         }
@@ -880,6 +902,7 @@ mod compaction;
 mod content;
 mod domain;
 mod error;
+mod footprint;
 mod membership;
 mod mutation;
 mod native_projection;
@@ -905,6 +928,7 @@ pub use compaction::{
 pub use content::{ComposerContentAssembler, PreparedContent};
 pub use domain::SyndicStorage;
 pub use error::{RecoveryBudgetKind, RecoveryProjectionError, SyndicReadError, SyndicRecordError};
+pub use footprint::{accepted_input_promotion_max_footprint, idle_submission_max_footprint};
 pub use mutation::{
     AbandonActiveBinding, AbandonCompactionOperation, AbandonStopOperation,
     AcceptGeneratedThreadTitle, AcceptedInputAdmission, AcceptedInputPromotionStatus,
@@ -920,8 +944,8 @@ pub use mutation::{
     ProviderCompletionComparisonMutationError, ProviderFrameMutationError,
     ProviderFramePreparationError, ProviderFramePreparationPlan, ProviderFrameStageBatch,
     ProviderFrameStageBatchError, ProviderFrameStageBatchState, ProviderFrameStageCallback,
-    ProviderFrameStageError, ProviderFrameStageOutcome, ProviderObservationMutationError, PublishActiveCasTurn,
-    PublishActivityChildHandoff, PublishCompactionProviderEvent,
+    ProviderFrameStageError, ProviderFrameStageOutcome, ProviderObservationMutationError,
+    PublishActiveCasTurn, PublishActivityChildHandoff, PublishCompactionProviderEvent,
     PublishCompactionRequestDisposition, PublishStaleBinding, PublishThreadUsage,
     PublishUnboundBinding, PublishValidBinding, RetryAcceptedInputDelivery,
     SafelyReopenStopOperation, SealLifecycleContinuationContent, SettleCompactionOperation,

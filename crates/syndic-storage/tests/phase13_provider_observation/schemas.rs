@@ -6,13 +6,15 @@ fn enum_value<C: ProviderObservationStageCallback>(
     value: ProviderEnumValue,
     callback: &mut C,
 ) -> Result<(), ProviderObservationStagingError> {
-    stager.control(
-        ProviderObservationControl::Enum {
-            context: ProviderValueContext::Field(field),
-            value,
-        },
-        callback,
-    )
+    stager
+        .control(
+            ProviderObservationControl::Enum {
+                context: ProviderValueContext::Field(field),
+                value,
+            },
+            callback,
+        )
+        .map(clean_stage)
 }
 
 fn empty_container<C: ProviderObservationStageCallback>(
@@ -22,14 +24,16 @@ fn empty_container<C: ProviderObservationStageCallback>(
     callback: &mut C,
 ) -> Result<(), ProviderObservationStagingError> {
     let context = ProviderValueContext::Field(field);
-    stager.control(
+    clean_stage(stager.control(
         ProviderObservationControl::BeginContainer { context, container },
         callback,
-    )?;
-    stager.control(
-        ProviderObservationControl::EndContainer { context, container },
-        callback,
-    )
+    )?);
+    stager
+        .control(
+            ProviderObservationControl::EndContainer { context, container },
+            callback,
+        )
+        .map(clean_stage)
 }
 
 fn required_item<C: ProviderObservationStageCallback>(
@@ -217,15 +221,17 @@ fn every_item_and_delta_schema_seals_through_durable_staging() {
                 continue;
             }
             let mut callback = commit_callback(&store, storage);
-            let mut stager = ProviderObservationStager::begin(
-                ProviderObservationId::from_bytes([identity_byte; 16]),
-                ProviderObservationBegin::Item { lifecycle, kind },
-                &mut callback,
-            )
-            .unwrap();
+            let mut stager = clean_stage(
+                ProviderObservationStager::begin(
+                    ProviderObservationId::from_bytes([identity_byte; 16]),
+                    ProviderObservationBegin::Item { lifecycle, kind },
+                    &mut callback,
+                )
+                .unwrap(),
+            );
             common_item(&mut stager, &mut callback).unwrap();
             required_item(&mut stager, kind, &mut callback).unwrap();
-            stager.seal(&mut callback).unwrap().abandon();
+            clean_seal(stager.seal(&mut callback).unwrap()).abandon();
             identity_byte += 1;
         }
     }
@@ -243,12 +249,14 @@ fn every_item_and_delta_schema_seals_through_durable_staging() {
     ];
     for kind in deltas {
         let mut callback = commit_callback(&store, storage);
-        let mut stager = ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([identity_byte; 16]),
-            ProviderObservationBegin::Delta { kind },
-            &mut callback,
-        )
-        .unwrap();
+        let mut stager = clean_stage(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([identity_byte; 16]),
+                ProviderObservationBegin::Delta { kind },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         text(
             &mut stager,
             ProviderField::ItemId,
@@ -316,10 +324,12 @@ fn every_item_and_delta_schema_seals_through_durable_staging() {
             )
             .unwrap(),
         }
-        stager.seal(&mut callback).unwrap().abandon();
+        clean_seal(stager.seal(&mut callback).unwrap()).abandon();
         identity_byte += 1;
     }
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -331,15 +341,17 @@ fn web_search_other_survives_restart_and_seals_unsupported_history_evidence() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     {
         let mut callback = commit_callback(&store, storage);
-        let mut stager = ProviderObservationStager::begin(
-            identity,
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Completed,
-                kind: ProviderObservationItemKind::WebSearch,
-            },
-            &mut callback,
-        )
-        .unwrap();
+        let mut stager = clean_stage(
+            ProviderObservationStager::begin(
+                identity,
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Completed,
+                    kind: ProviderObservationItemKind::WebSearch,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         common_item(&mut stager, &mut callback).unwrap();
         text(
             &mut stager,
@@ -349,24 +361,28 @@ fn web_search_other_survives_restart_and_seals_unsupported_history_evidence() {
         )
         .unwrap();
         let action = ProviderValueContext::Field(ProviderField::WebSearchAction);
-        stager
-            .control(
-                ProviderObservationControl::BeginContainer {
-                    context: action,
-                    container: ProviderContainer::Object,
-                },
-                &mut callback,
-            )
-            .unwrap();
-        stager
-            .control(
-                ProviderObservationControl::Enum {
-                    context: ProviderValueContext::Field(ProviderField::WebSearchActionKind),
-                    value: ProviderEnumValue::Other,
-                },
-                &mut callback,
-            )
-            .unwrap();
+        clean_stage(
+            stager
+                .control(
+                    ProviderObservationControl::BeginContainer {
+                        context: action,
+                        container: ProviderContainer::Object,
+                    },
+                    &mut callback,
+                )
+                .unwrap(),
+        );
+        clean_stage(
+            stager
+                .control(
+                    ProviderObservationControl::Enum {
+                        context: ProviderValueContext::Field(ProviderField::WebSearchActionKind),
+                        value: ProviderEnumValue::Other,
+                    },
+                    &mut callback,
+                )
+                .unwrap(),
+        );
         assert_eq!(
             storage
                 .provider_observation_build(&store, identity, limit())
@@ -388,16 +404,18 @@ fn web_search_other_survives_restart_and_seals_unsupported_history_evidence() {
         .unwrap()
         .unwrap();
     let mut callback = commit_callback(&reopened, storage);
-    stager
-        .control(
-            ProviderObservationControl::EndContainer {
-                context: ProviderValueContext::Field(ProviderField::WebSearchAction),
-                container: ProviderContainer::Object,
-            },
-            &mut callback,
-        )
-        .unwrap();
-    let sealed = stager.seal(&mut callback).unwrap();
+    clean_stage(
+        stager
+            .control(
+                ProviderObservationControl::EndContainer {
+                    context: ProviderValueContext::Field(ProviderField::WebSearchAction),
+                    container: ProviderContainer::Object,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+    );
+    let sealed = clean_seal(stager.seal(&mut callback).unwrap());
     assert_eq!(
         sealed.history_support(),
         ProviderFrameHistorySupportV1::Unsupported(
@@ -433,5 +451,7 @@ fn web_search_other_survives_restart_and_seals_unsupported_history_evidence() {
         ))
     ));
     invalid.abandon();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

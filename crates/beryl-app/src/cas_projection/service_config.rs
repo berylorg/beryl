@@ -7,6 +7,7 @@ use std::{
 };
 
 use beryl_backend::ForegroundSessionConfig;
+use beryl_home_store::{MinimumTurnCaptureReserve, TurnStartAdmissionRequirement};
 use thiserror::Error;
 
 pub(super) const CONNECTION_WORKER_PERMITS: usize = 2;
@@ -21,13 +22,40 @@ const MINIMUM_WORKER_CAPACITY: usize = CONNECTION_WORKER_PERMITS
 pub struct ProjectionServiceConfig {
     foreground: ForegroundSessionConfig,
     worker_capacity: NonZeroUsize,
+    turn_start_admission_requirement: TurnStartAdmissionRequirement,
 }
 
 impl ProjectionServiceConfig {
+    fn compose_turn_start_admission_requirement(
+        minimum_turn_capture_reserve: MinimumTurnCaptureReserve,
+    ) -> Result<TurnStartAdmissionRequirement, ProjectionServiceConfigError> {
+        let direct = beryl_home_store::DurableStartFootprint::compose(
+            syndic_storage::idle_submission_max_footprint()
+                .map_err(ProjectionServiceConfigError::DurableStartFootprint)?,
+            Some(
+                beryl_state::draft_to_submitted_item_owner_transfer_max_footprint()
+                    .map_err(ProjectionServiceConfigError::DurableStartFootprint)?,
+            ),
+        )
+        .map_err(ProjectionServiceConfigError::DurableStartFootprint)?;
+        let queued = beryl_home_store::DurableStartFootprint::compose(
+            syndic_storage::accepted_input_promotion_max_footprint()
+                .map_err(ProjectionServiceConfigError::DurableStartFootprint)?,
+            Some(
+                beryl_state::accepted_input_to_submitted_item_owner_transfer_max_footprint()
+                    .map_err(ProjectionServiceConfigError::DurableStartFootprint)?,
+            ),
+        )
+        .map_err(ProjectionServiceConfigError::DurableStartFootprint)?;
+        TurnStartAdmissionRequirement::try_new(direct, queued, minimum_turn_capture_reserve)
+            .map_err(ProjectionServiceConfigError::TurnStartAdmissionRequirement)
+    }
+
     /// Validates caller-supplied counts before a candidate connection is opened.
     pub fn try_new(
         pre_bind_control_capacity: u64,
         worker_capacity: u64,
+        minimum_turn_capture_reserve: MinimumTurnCaptureReserve,
     ) -> Result<Self, ProjectionServiceConfigError> {
         let pre_bind_control_capacity =
             usize::try_from(pre_bind_control_capacity).map_err(|_| {
@@ -50,9 +78,12 @@ impl ProjectionServiceConfig {
                 required: MINIMUM_WORKER_CAPACITY,
             });
         }
+        let turn_start_admission_requirement =
+            Self::compose_turn_start_admission_requirement(minimum_turn_capture_reserve)?;
         Ok(Self {
             foreground: ForegroundSessionConfig::new(pre_bind_control_capacity),
             worker_capacity,
+            turn_start_admission_requirement,
         })
     }
 
@@ -67,6 +98,12 @@ impl ProjectionServiceConfig {
     pub const fn worker_capacity(self) -> NonZeroUsize {
         self.worker_capacity
     }
+
+    /// Returns the opaque requirement shared by direct and queued new-turn admission.
+    #[must_use]
+    pub const fn turn_start_admission_requirement(self) -> TurnStartAdmissionRequirement {
+        self.turn_start_admission_requirement
+    }
 }
 
 /// Invalid projection-service capacity configuration.
@@ -76,6 +113,10 @@ pub enum ProjectionServiceConfigError {
     ZeroPreBindControlCapacity,
     #[error("projection worker capacity must be nonzero")]
     ZeroWorkerCapacity,
+    #[error("durable-start footprint derivation failed: {0}")]
+    DurableStartFootprint(beryl_home_store::DurableStartFootprintError),
+    #[error("turn-start admission requirement is invalid: {0}")]
+    TurnStartAdmissionRequirement(beryl_home_store::TurnStartAdmissionRequirementError),
     #[error(
         "projection worker capacity {capacity} is below the {required}-permit service minimum (two connection workers, one scheduled ordinary worker, and one protected steering-critical worker)"
     )]

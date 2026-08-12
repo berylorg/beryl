@@ -7,7 +7,7 @@ use beryl_model::{
     AssetId, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal, SyndicDraftMarkerId,
 };
 
-use super::{AssetOwner, ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES};
+use super::{ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES, AssetOwner};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AssetValueError {

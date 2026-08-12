@@ -3,9 +3,9 @@ mod support;
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
+    CommandError, CommandOutcome, CommitReceiptError, HomeCommand, HomeHealthState, ReadError,
+    SidecarNamespace,
     test_faults::{FaultController, FaultPoint},
-    CommandError, CommandOutcome, CommitReceiptError, HealthVerificationError, HomeCommand,
-    HomeHealthState, ReadError, SidecarNamespace,
 };
 use beryl_model::{AssetId, RuntimeId, SyndicThreadId, WindowId};
 use beryl_state::{
@@ -236,7 +236,7 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
             .unwrap(),
         ),
     );
-    let (surfaced, _reconciliation) = match surfaced {
+    let (surfaced, reconciliation) = match surfaced {
         CommandOutcome::Indeterminate {
             failure,
             reconciliation,
@@ -244,26 +244,23 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
         outcome => panic!("expected indeterminate recovery command, got {outcome:?}"),
     };
     assert!(matches!(surfaced, CommandError::Persistence { .. }));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-    assert!(matches!(
-        prior_state.settings().revision(&store),
-        Err(ReadError::HealthGate(_))
-    ));
+    let reconciliation = reconciliation.install_and_handle();
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(store.pending_reconciliations().len(), 1);
     assert_eq!(caller_snapshot.header(), &saved_header);
     assert_eq!(caller_snapshot.windows(), saved_windows.as_slice());
 
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(matches!(
-        store.verify_health(),
-        Err(HealthVerificationError::Persistence { .. })
-    ));
+    store.inject_retained_maintenance_terminal();
+    assert!(store.home_revision().is_err());
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 
-    let recovery = store.recover_same_home().unwrap();
+    let candidate = store.recover_same_home().unwrap();
+    let recovery = candidate.receipt();
     assert!(recovery.generation() > prior_generation);
+    let current_state = BerylState::reacquire_candidate(&candidate).unwrap();
+    let store = candidate.publish();
     assert_eq!(store.home_id(), home_id);
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
-    let current_state = BerylState::reacquire(&store).unwrap();
 
     assert!(matches!(
         current_state
@@ -346,6 +343,10 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     assert_eq!(caller_snapshot.header(), &saved_header);
     assert_eq!(caller_snapshot.windows(), saved_windows.as_slice());
 
+    assert!(matches!(
+        store.reconcile(&reconciliation),
+        Ok(beryl_home_store::ReconciliationResolution::ExactNew { .. })
+    ));
     store.close().unwrap();
     let (reopened, state) = support::open(directory.path());
     let final_snapshot = state

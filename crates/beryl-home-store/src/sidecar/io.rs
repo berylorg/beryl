@@ -29,6 +29,7 @@ pub(super) fn retain_sidecar_directories(
     home_path: &Path,
     address: &SidecarAddress,
     faults: &FaultController,
+    durability_tier: HomeDurabilityTier,
     create_missing: bool,
     repair_barriers: bool,
 ) -> Result<SidecarDirectoryChain, SidecarError> {
@@ -36,7 +37,12 @@ pub(super) fn retain_sidecar_directories(
     let root_path = home_path.join(SIDECAR_DIRECTORY);
     let root = retain_directory(&root_path, create_missing)?;
     if repair_barriers {
-        flush_directory(faults, FaultPoint::BeforeSidecarRootDirectorySync, &home)?;
+        flush_directory(
+            faults,
+            FaultPoint::BeforeSidecarRootDirectorySync,
+            &home,
+            durability_tier,
+        )?;
     }
 
     let namespace_path = root_path.join(address.namespace.as_str());
@@ -46,6 +52,7 @@ pub(super) fn retain_sidecar_directories(
             faults,
             FaultPoint::BeforeSidecarNamespaceDirectorySync,
             &root,
+            durability_tier,
         )?;
     }
 
@@ -60,6 +67,7 @@ pub(super) fn retain_sidecar_directories(
             faults,
             FaultPoint::BeforeSidecarShardDirectorySync,
             &namespace,
+            durability_tier,
         )?;
     }
 
@@ -77,26 +85,24 @@ pub(super) fn open_and_verify_final(
     directories: &SidecarDirectoryChain,
     address: &SidecarAddress,
     expected_bytes: Option<&[u8]>,
-    expected_identity: Option<platform::FileIdentity>,
+    durability_tier: HomeDurabilityTier,
     repair_final_barrier: bool,
-) -> Result<File, SidecarError> {
+) -> Result<(), SidecarError> {
     let path = final_path(directories.shard_path(), address);
-    let mut retained = platform::open_retained_file(&path).map_err(map_final_open_error)?;
+    let mut file = platform::open_final_file(&path).map_err(map_final_open_error)?;
     faults
         .check(FaultPoint::BeforeSidecarVerification)
         .map_err(|source| storage(SidecarStage::OpenFinal, source))?;
-    if expected_identity.is_some_and(|expected| expected != retained.identity) {
-        return Err(SidecarError::InvalidLayout);
-    }
-    verify_file(&mut retained.file, address, expected_bytes)?;
+    verify_file(&mut file, address, expected_bytes)?;
     if repair_final_barrier {
         flush_directory(
             faults,
             FaultPoint::BeforeSidecarFinalDirectorySync,
             &directories.shard,
+            durability_tier,
         )?;
     }
-    Ok(retained.file)
+    Ok(())
 }
 
 fn retain_directory(
@@ -123,12 +129,21 @@ fn flush_directory(
     faults: &FaultController,
     point: FaultPoint,
     directory: &platform::RetainedDirectory,
+    durability_tier: HomeDurabilityTier,
 ) -> Result<(), SidecarError> {
     faults
         .check(point)
         .map_err(|source| storage(SidecarStage::FlushDirectory, source))?;
-    platform::flush_directory(directory)
-        .map_err(|source| storage(SidecarStage::FlushDirectory, source))
+    match platform::flush_directory(directory) {
+        Ok(()) => Ok(()),
+        Err(source)
+            if durability_tier == HomeDurabilityTier::BestEffort
+                && platform::directory_sync_unsupported(&source) =>
+        {
+            Ok(())
+        }
+        Err(source) => Err(storage(SidecarStage::FlushDirectory, source)),
+    }
 }
 
 fn map_directory_open_error(source: platform::OpenObjectError) -> SidecarError {
@@ -234,7 +249,7 @@ pub(super) fn sidecar_failure_severity(error: &SidecarError) -> FailureSeverity 
     match error {
         SidecarError::HealthGate(_)
         | SidecarError::BoundExceeded { .. }
-        | SidecarError::Storage { .. } => FailureSeverity::Verify,
+        | SidecarError::Storage { .. } => FailureSeverity::Structural,
         SidecarError::GenerationPoisoned
         | SidecarError::Missing
         | SidecarError::ContentMismatch

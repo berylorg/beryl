@@ -82,14 +82,6 @@ pub(super) fn deletion_cases() -> Vec<DeletionCase> {
             expected: "replayed projection suffix membership is missing",
         },
         DeletionCase {
-            family: PhysicalFamily::ProjectionResources,
-            delete: FixtureDelete::ProjectionResource {
-                projection: source_resource_projection(),
-                ordinal: ResourceOrdinal::FIRST,
-            },
-            expected: "projection-resource index is missing",
-        },
-        DeletionCase {
             family: PhysicalFamily::BindingHeads,
             delete: FixtureDelete::BindingHead(id(30)),
             expected: "thread binding head is missing",

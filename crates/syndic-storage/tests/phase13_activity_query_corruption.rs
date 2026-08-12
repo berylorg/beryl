@@ -91,7 +91,10 @@ fn reopen_rejects_handoff_entry_fact_that_disagrees_with_membership() {
         ))
         .unwrap();
     match fixture.store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
         outcome => panic!("expected committed activity corruption, got {outcome:?}"),
     }
     fixture.store.close().unwrap();

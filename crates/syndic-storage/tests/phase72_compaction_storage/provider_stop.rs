@@ -169,7 +169,10 @@ fn committed_provider_stop_is_immediately_authenticated_without_an_ordinary_rout
         fixture.operation(compaction_id).state(),
         &CompactionOperationState::Stopping(stop_id.nonce())
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -201,7 +204,10 @@ fn provider_stop_accepts_higher_stopping_revision_with_ordered_provider_witness(
         panic!("ordered provider evidence must authenticate the stopping descendant")
     };
     assert_eq!(live.operation_id(), stop_id);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -267,10 +273,16 @@ fn provider_stop_abandonment_retains_exact_stopping_gate_receipt() {
         InputGateState::Stopping { .. }
     ));
     assert_eq!(receipt.successor_gate().state(), &InputGateState::Idle);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let fixture = fixture.reopen();
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert!(matches!(
         fixture
             .storage
@@ -297,7 +309,10 @@ fn reopened_provider_stop_with_missing_compaction_pair_is_corruption() {
             .stop_admission_read(&fixture.store, fixture.thread, point_limit()),
         Err(syndic_storage::SyndicReadError::Invariant(_))
     ));
-    let error = fixture.store.validate_registered_domains().unwrap_err();
+    let error = fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
@@ -340,7 +355,10 @@ fn provider_stop_rejects_impossible_stopping_compaction_revision() {
             .stop_admission_read(&fixture.store, fixture.thread, point_limit()),
         Err(syndic_storage::SyndicReadError::Invariant(_))
     ));
-    let error = fixture.store.validate_registered_domains().unwrap_err();
+    let error = fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
@@ -382,7 +400,10 @@ fn provider_stop_rejects_unwitnessed_higher_stopping_compaction_revision() {
             .stop_admission_read(&fixture.store, fixture.thread, point_limit()),
         Err(syndic_storage::SyndicReadError::Invariant(_))
     ));
-    let error = fixture.store.validate_registered_domains().unwrap_err();
+    let error = fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()

@@ -39,7 +39,66 @@ fn commit_callback(
     store: &HomeStore,
     storage: SyndicStorage,
 ) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + '_ {
-    move |batch| store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+    move |batch| {
+        store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+    }
+}
+
+fn clean_stage<T>(outcome: ProviderObservationStageOutcome<T>) -> T {
+    match outcome {
+        ProviderObservationStageOutcome::Committed {
+            value,
+            receipt: _receipt,
+            later_failure: None,
+        } => value,
+        ProviderObservationStageOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+            ..
+        } => panic!(
+            "expected clean committed provider-observation staging outcome with {receipt:?}, got later failure {failure:?}"
+        ),
+        ProviderObservationStageOutcome::NotCommitted { evidence } => {
+            panic!(
+                "expected clean committed provider-observation staging outcome, got {evidence:?}"
+            )
+        }
+        ProviderObservationStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!(
+                "expected clean committed provider-observation staging outcome, got indeterminate {failure:?}"
+            )
+        }
+    }
+}
+
+fn clean_seal(outcome: ProviderObservationSealOutcome) -> SealedProviderObservationHandle {
+    match outcome {
+        ProviderObservationSealOutcome::Committed {
+            value,
+            receipt: _receipt,
+            later_failure: None,
+        } => value,
+        ProviderObservationSealOutcome::Committed {
+            receipt,
+            later_failure: Some(failure),
+            ..
+        } => panic!(
+            "expected clean committed provider-observation seal outcome with {receipt:?}, got later failure {failure:?}"
+        ),
+        ProviderObservationSealOutcome::NotCommitted { evidence } => {
+            panic!("expected clean committed provider-observation seal outcome, got {evidence:?}")
+        }
+        ProviderObservationSealOutcome::Indeterminate { failure, custody } => {
+            custody.install();
+            panic!(
+                "expected clean committed provider-observation seal outcome, got indeterminate {failure:?}"
+            )
+        }
+    }
 }
 
 fn scalar<C: ProviderObservationStageCallback>(
@@ -48,13 +107,15 @@ fn scalar<C: ProviderObservationStageCallback>(
     value: ProviderScalar,
     callback: &mut C,
 ) -> Result<(), ProviderObservationStagingError> {
-    stager.control(
-        ProviderObservationControl::Scalar {
-            context: ProviderValueContext::Field(field),
-            value,
-        },
-        callback,
-    )
+    stager
+        .control(
+            ProviderObservationControl::Scalar {
+                context: ProviderValueContext::Field(field),
+                value,
+            },
+            callback,
+        )
+        .map(clean_stage)
 }
 
 fn text<C: ProviderObservationStageCallback>(
@@ -64,14 +125,16 @@ fn text<C: ProviderObservationStageCallback>(
     callback: &mut C,
 ) -> Result<(), ProviderObservationStagingError> {
     let context = ProviderValueContext::Field(field);
-    stager.control(ProviderObservationControl::BeginField(context), callback)?;
+    clean_stage(stager.control(ProviderObservationControl::BeginField(context), callback)?);
     for piece in pieces {
-        stager.fragment(
+        clean_stage(stager.fragment(
             ProviderObservationStagingBytes::new(context, piece)?,
             callback,
-        )?;
+        )?);
     }
-    stager.control(ProviderObservationControl::EndField(context), callback)
+    stager
+        .control(ProviderObservationControl::EndField(context), callback)
+        .map(clean_stage)
 }
 
 fn common_item<C: ProviderObservationStageCallback>(
@@ -91,14 +154,14 @@ fn begin_agent<C: ProviderObservationStageCallback>(
     identity: ProviderObservationId,
     callback: &mut C,
 ) -> Result<ProviderObservationStager, ProviderObservationStagingError> {
-    let mut stager = ProviderObservationStager::begin(
+    let mut stager = clean_stage(ProviderObservationStager::begin(
         identity,
         ProviderObservationBegin::Item {
             lifecycle: ProviderObservationItemLifecycle::Started,
             kind: ProviderObservationItemKind::AgentMessage,
         },
         callback,
-    )?;
+    )?);
     common_item(&mut stager, callback)?;
     Ok(stager)
 }
@@ -128,7 +191,7 @@ fn arbitrary_utf8_fragmentation_is_canonical_and_cursor_has_exact_eof() {
             &mut callback,
         )
         .unwrap();
-        stager.seal(&mut callback).unwrap()
+        clean_seal(stager.seal(&mut callback).unwrap())
     };
     let second = {
         let mut callback = commit_callback(&store, storage);
@@ -141,7 +204,7 @@ fn arbitrary_utf8_fragmentation_is_canonical_and_cursor_has_exact_eof() {
             &mut callback,
         )
         .unwrap();
-        stager.seal(&mut callback).unwrap()
+        clean_seal(stager.seal(&mut callback).unwrap())
     };
     assert!(first.canonical_eq(&second));
 
@@ -167,7 +230,9 @@ fn arbitrary_utf8_fragmentation_is_canonical_and_cursor_has_exact_eof() {
         storage.read_provider_observation_cursor_page(&store, &mut cursor, limit()),
         Err(ProviderObservationCursorError::CursorTerminal)
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -181,18 +246,22 @@ fn partial_build_reopens_resumes_and_exact_batches_reconcile() {
         let mut callback = commit_callback(&store, storage);
         let mut stager = begin_agent(identity, &mut callback).unwrap();
         let context = ProviderValueContext::Field(ProviderField::AgentMessageText);
-        stager
-            .control(
-                ProviderObservationControl::BeginField(context),
-                &mut callback,
-            )
-            .unwrap();
-        stager
-            .fragment(
-                ProviderObservationStagingBytes::new(context, b"restart ").unwrap(),
-                &mut callback,
-            )
-            .unwrap();
+        clean_stage(
+            stager
+                .control(
+                    ProviderObservationControl::BeginField(context),
+                    &mut callback,
+                )
+                .unwrap(),
+        );
+        clean_stage(
+            stager
+                .fragment(
+                    ProviderObservationStagingBytes::new(context, b"restart ").unwrap(),
+                    &mut callback,
+                )
+                .unwrap(),
+        );
         stager.abandon();
     }
     store.close().unwrap();
@@ -226,18 +295,24 @@ fn partial_build_reopens_resumes_and_exact_batches_reconcile() {
         outcome
     };
     let context = ProviderValueContext::Field(ProviderField::AgentMessageText);
-    stager
-        .fragment(
-            ProviderObservationStagingBytes::new(context, b"complete").unwrap(),
-            &mut callback,
-        )
-        .unwrap();
-    stager
-        .control(ProviderObservationControl::EndField(context), &mut callback)
-        .unwrap();
-    let sealed = stager.seal(&mut callback).unwrap();
+    clean_stage(
+        stager
+            .fragment(
+                ProviderObservationStagingBytes::new(context, b"complete").unwrap(),
+                &mut callback,
+            )
+            .unwrap(),
+    );
+    clean_stage(
+        stager
+            .control(ProviderObservationControl::EndField(context), &mut callback)
+            .unwrap(),
+    );
+    let sealed = clean_seal(stager.seal(&mut callback).unwrap());
     assert_eq!(sealed.identity(), identity);
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -257,21 +332,34 @@ fn identity_collision_route_mismatch_and_abandonment_are_explicit() {
             &mut callback,
         )
         .unwrap();
-        stager.seal(&mut callback).unwrap()
+        clean_seal(stager.seal(&mut callback).unwrap())
     };
     {
         let mut callback = commit_callback(&store, storage);
-        assert!(
-            ProviderObservationStager::begin(
-                identity,
-                ProviderObservationBegin::Item {
-                    lifecycle: ProviderObservationItemLifecycle::Started,
-                    kind: ProviderObservationItemKind::AgentMessage,
-                },
-                &mut callback,
-            )
-            .is_err()
-        );
+        match ProviderObservationStager::begin(
+            identity,
+            ProviderObservationBegin::Item {
+                lifecycle: ProviderObservationItemLifecycle::Started,
+                kind: ProviderObservationItemKind::AgentMessage,
+            },
+            &mut callback,
+        )
+        .unwrap()
+        {
+            ProviderObservationStageOutcome::NotCommitted { .. } => {}
+            ProviderObservationStageOutcome::Committed { receipt, .. } => {
+                panic!(
+                    "duplicate provider-observation identity unexpectedly committed with {receipt:?}"
+                )
+            }
+            ProviderObservationStageOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => {
+                reconciliation.install();
+                panic!("duplicate provider-observation identity was indeterminate: {failure:?}")
+            }
+        }
     }
     let trailing = ProviderObservationRoute::new(
         CasThreadId::new("provider-observation-thread").unwrap(),
@@ -309,25 +397,31 @@ fn large_observation_stays_bounded_and_missing_chunk_is_rejected() {
         let mut callback = commit_callback(&store, storage);
         let mut stager = begin_agent(identity, &mut callback).unwrap();
         let context = ProviderValueContext::Field(ProviderField::AgentMessageText);
-        stager
-            .control(
-                ProviderObservationControl::BeginField(context),
-                &mut callback,
-            )
-            .unwrap();
-        let chunk = vec![b'x'; PROVIDER_OBSERVATION_CHUNK_MAX_BYTES];
-        for _ in 0..20 {
+        clean_stage(
             stager
-                .fragment(
-                    ProviderObservationStagingBytes::new(context, &chunk).unwrap(),
+                .control(
+                    ProviderObservationControl::BeginField(context),
                     &mut callback,
                 )
-                .unwrap();
+                .unwrap(),
+        );
+        let chunk = vec![b'x'; PROVIDER_OBSERVATION_CHUNK_MAX_BYTES];
+        for _ in 0..20 {
+            clean_stage(
+                stager
+                    .fragment(
+                        ProviderObservationStagingBytes::new(context, &chunk).unwrap(),
+                        &mut callback,
+                    )
+                    .unwrap(),
+            );
         }
-        stager
-            .control(ProviderObservationControl::EndField(context), &mut callback)
-            .unwrap();
-        stager.seal(&mut callback).unwrap()
+        clean_stage(
+            stager
+                .control(ProviderObservationControl::EndField(context), &mut callback)
+                .unwrap(),
+        );
+        clean_seal(stager.seal(&mut callback).unwrap())
     };
     let build = storage
         .provider_observation_build(&store, sealed.identity(), limit())
@@ -335,7 +429,9 @@ fn large_observation_stays_bounded_and_missing_chunk_is_rejected() {
         .unwrap()
         .clone();
     assert!(build.canonical_bytes() > 1_000_000);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     sealed.abandon();
     match store.execute_current(
         storage
@@ -351,7 +447,9 @@ fn large_observation_stays_bounded_and_missing_chunk_is_rejected() {
         } => {}
         outcome => panic!("expected committed provider-observation corruption, got {outcome:?}"),
     }
-    let error = store.validate_registered_domains().unwrap_err();
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(error.to_string().contains("missing chunk"));
     store.close().unwrap();
 }
@@ -372,7 +470,7 @@ fn corrupted_build_digest_is_rejected_and_new_families_are_registered() {
             &mut callback,
         )
         .unwrap();
-        stager.seal(&mut callback).unwrap().abandon();
+        clean_seal(stager.seal(&mut callback).unwrap()).abandon();
     }
     let build = storage
         .provider_observation_build(&store, identity, limit())
@@ -381,8 +479,11 @@ fn corrupted_build_digest_is_rejected_and_new_families_are_registered() {
         .clone();
     match store.execute_current(
         storage
-            .current_corrupt_provider_observation(&build, ProviderObservationCorruption::BuildDigest)
-                .unwrap(),
+            .current_corrupt_provider_observation(
+                &build,
+                ProviderObservationCorruption::BuildDigest,
+            )
+            .unwrap(),
     ) {
         CommandOutcome::Committed {
             later_failure: None,
@@ -390,7 +491,9 @@ fn corrupted_build_digest_is_rejected_and_new_families_are_registered() {
         } => {}
         outcome => panic!("expected committed provider-observation corruption, got {outcome:?}"),
     }
-    let error = store.validate_registered_domains().unwrap_err();
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(error.to_string().contains("disagrees with chunk replay"));
     assert_eq!(PhysicalFamily::ALL.len(), 61);
     assert!(PhysicalFamily::ALL.contains(&PhysicalFamily::ProviderObservationBuilds));

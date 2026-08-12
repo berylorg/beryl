@@ -24,6 +24,7 @@ pub(super) struct EventRecords {
     summary: Option<HistorySummaryRecord>,
     transcript_head: Option<TranscriptViewHeadRecord>,
     transcript_build: Option<crate::TranscriptBuildRecord>,
+    transcript_path: Option<crate::TranscriptPathTurnRecord>,
     activity: activity::ActivityEffect,
     effect: Option<ItemEffect>,
     terminal_binding: Option<(
@@ -199,6 +200,11 @@ impl LiveSourceEventMutation {
         } else {
             (None, None)
         };
+        let transcript_path = if transcript_dirty {
+            None
+        } else {
+            crate::mutation::transcript::refresh_current_path_state(reader, &thread, &turn, &state)?
+        };
         let summary = if summary.complete() || summary.last_activity_at() != request.observed_at {
             Some(HistorySummaryRecord::new(
                 summary.thread_id(),
@@ -247,6 +253,7 @@ impl LiveSourceEventMutation {
             summary,
             transcript_head,
             transcript_build,
+            transcript_path,
             activity,
             effect,
             terminal_binding,
@@ -284,6 +291,16 @@ impl EventRecords {
                     generation: build.generation(),
                 },
                 build,
+            )?;
+        }
+        if let Some(path) = &self.transcript_path {
+            mutations.put::<TranscriptPathTurnsCodec>(
+                &ThreadTranscriptPathKey {
+                    thread: path.thread_id(),
+                    generation: path.generation(),
+                    depth: path.depth(),
+                },
+                path,
             )?;
         }
         self.activity.contribute(mutations)?;

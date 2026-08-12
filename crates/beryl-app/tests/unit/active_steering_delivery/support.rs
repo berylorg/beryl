@@ -26,6 +26,7 @@ use crate::{
         ProjectionServiceConfig, ProjectionWorkerPoolDiagnostics, ScheduledOrdinaryAdmission,
         ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
         ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
+        MinimumTurnCaptureReserve,
         input_replay::{InputReplayContext, InputReplayFactory, InputReplayRecord},
     },
     input_admission::{
@@ -114,7 +115,6 @@ enum AdmissionMode {
     Scheduled,
     ScheduledDescendantReconciliation,
     ScheduledPair,
-    ScheduledUnresolvedReconciliation,
     ScheduledCancelled,
     ScheduledCancelledAndRenewed,
 }
@@ -251,20 +251,6 @@ impl DeliveryFixture {
         )
     }
 
-    pub(super) fn new_scheduled_unresolved_reconciliation(
-        seed: u8,
-        server: &SteeringServer,
-        steering_text: &str,
-    ) -> Self {
-        Self::build(
-            seed,
-            4,
-            server,
-            FixtureInput::Text(steering_text),
-            AdmissionMode::ScheduledUnresolvedReconciliation,
-        )
-    }
-
     pub(super) fn new_scheduled_cancelled(
         seed: u8,
         worker_capacity: u64,
@@ -370,7 +356,12 @@ impl DeliveryFixture {
             outcome @ CommandOutcome::Indeterminate { .. } => panic!("active-steering submitted-turn command was indeterminate: {outcome:?}"),
         }
 
-        let config = ProjectionServiceConfig::try_new(16, worker_capacity).unwrap();
+        let config = ProjectionServiceConfig::try_new(
+            16,
+            worker_capacity,
+            MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap();
         let service = ProjectionConnectionService::new(
             home,
             storage,
@@ -621,7 +612,6 @@ impl DeliveryFixture {
             }
             AdmissionMode::Scheduled
             | AdmissionMode::ScheduledPair
-            | AdmissionMode::ScheduledUnresolvedReconciliation
             | AdmissionMode::ScheduledCancelled
             | AdmissionMode::ScheduledCancelledAndRenewed => {
                 let prepared = {
@@ -634,25 +624,8 @@ impl DeliveryFixture {
                     )
                     .unwrap()
                 };
-                if matches!(
-                    admission_mode,
-                    AdmissionMode::ScheduledUnresolvedReconciliation
-                ) {
-                    service.fail_admission_reconciliation_for_test(2);
-                }
                 let result = service.execute_accepted_input_admission(prepared);
-                if matches!(
-                    admission_mode,
-                    AdmissionMode::ScheduledUnresolvedReconciliation
-                ) {
-                    assert!(matches!(
-                        result,
-                        Err(AcceptedInputAdmissionExecutionError::Reconciliation(_,))
-                    ));
-                    assert!(!service.is_accepting_for_test());
-                } else {
-                    result.unwrap();
-                }
+                result.unwrap();
             }
         }
         let second_accepted_input_id = if matches!(admission_mode, AdmissionMode::ScheduledPair) {
@@ -950,6 +923,11 @@ impl DeliveryFixture {
     pub(super) fn fail_next_claim_after_persist(&self) {
         self.faults
             .fail_next(beryl_home_store::test_faults::FaultPoint::AfterPersist);
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn free_space_observation_count(&self) -> usize {
+        self.faults.free_space_observation_count()
     }
 
     pub(super) fn cancel(&self) {

@@ -609,10 +609,12 @@ name = "beryl-home-store"
 version = "0.1.0"
 dependencies = [
  "beryl-model",
+ "beryl-state",
  "fjall",
  "getrandom 0.4.2",
  "hex",
  "sha2",
+ "syndic-storage",
  "tempfile",
  "thiserror 2.0.18",
  "wait-timeout",

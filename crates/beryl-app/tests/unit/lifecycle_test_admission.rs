@@ -11,6 +11,7 @@ use crate::cas_projection::{
     ProjectionConnectionService, ProjectionServiceConfig, ScheduledOrdinaryAdmission,
     ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
+    MinimumTurnCaptureReserve,
 };
 
 struct RejectingScheduledOrdinaryProvider;
@@ -39,7 +40,8 @@ fn public_admit_rejects_lifecycle_connector_without_consuming_another_fixture_se
     let service = ProjectionConnectionService::new(
         home,
         storage,
-        ProjectionServiceConfig::try_new(8, 4).unwrap(),
+        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
         Box::new(RejectingScheduledOrdinaryProvider),
     )
     .unwrap();
@@ -102,7 +104,8 @@ fn lifecycle_release_admission_sends_only_initialize_initialized_and_config_read
     let service = ProjectionConnectionService::new(
         home,
         storage,
-        ProjectionServiceConfig::try_new(8, 4).unwrap(),
+        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
         Box::new(RejectingScheduledOrdinaryProvider),
     )
     .unwrap();

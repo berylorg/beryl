@@ -30,7 +30,9 @@ fn pending_root_rejects_a_binding_that_claims_the_undelivered_turn() {
         current_binding_revision(&store, storage, thread),
         BindingRevision::new(2).unwrap()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -140,7 +142,9 @@ fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
             )),
         ]),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let off_path =
         CasRepresentedPrefixProof::new(Some(sibling), selected.thread_revision(), sibling_digest);
@@ -161,7 +165,9 @@ fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
         typed_error(&error),
         SyndicMutationError::BindingPathConflict
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -301,6 +307,8 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
         typed_error(&error),
         SyndicMutationError::TurnLifecycleConflict
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

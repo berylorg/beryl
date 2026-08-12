@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use beryl_home_store::{CommandError, CommitReceipt, ReconciliationDescriptor};
+use beryl_home_store::{CommandError, CommitReceipt};
 use beryl_model::SyndicThreadId;
 use syndic_storage::CompactionAdmissionIneligibility;
 use thiserror::Error;
@@ -78,7 +78,6 @@ pub enum ContextCompactionError {
     CommandIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("the context-compaction driver is unavailable")]
     Driver,

@@ -15,7 +15,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     BindingRevision, CasConversationToolProfile, ContentRevision, DraftRevision,
     ProjectionRevision, SyndicContentId, SyndicDraftId, SyndicPathDigest, SyndicThreadId,
@@ -82,6 +84,10 @@ pub fn commit(store: &HomeStore, storage: SyndicStorage, batch: FixtureBatch) {
         } => {}
         outcome => panic!("expected clean fixture-batch command, got {outcome:?}"),
     }
+}
+
+pub fn seed_populated(store: &HomeStore, storage: SyndicStorage) {
+    populated::seed_populated(store, storage);
 }
 
 pub fn id(byte: u8) -> SyndicThreadId {

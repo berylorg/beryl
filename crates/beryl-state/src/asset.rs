@@ -1,9 +1,10 @@
 use beryl_home_store::{
     AdmittedSidecar, CommandBuildError, CursorDirection, CursorRange, CursorReadLimits,
-    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeStore,
-    KeyspaceSchemaVersion, MutationContribution, PointReadLimit, ReadError, RecordFamily,
-    SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError, SidecarNamespace,
-    SidecarVerifier, StorageDomain, ValidationContribution, VerifiedSidecar,
+    DomainHandle, DomainReconciliation, DomainRegistrationError, DomainSchemaVersion, HomeCommand,
+    HomeStore, KeyspaceSchemaVersion, MutationContribution, PointReadLimit, ReadError,
+    ReconciliationReader, RecordFamily, SidecarAddress, SidecarByteLimit, SidecarDigest,
+    SidecarError, SidecarNamespace, SidecarVerifier, StorageDomain, ValidationContribution,
+    VerifiedSidecar,
 };
 use beryl_model::{
     AssetId, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal, SealedAssetReferenceSetProof,
@@ -15,6 +16,7 @@ use crate::StatePage;
 mod codec;
 mod digest;
 mod error;
+mod footprint;
 mod model;
 mod mutation;
 #[cfg(feature = "test-faults")]
@@ -29,6 +31,10 @@ pub use error::{
     AssetAdmissionError, AssetMutationError, AssetOwnerHeadUpdateError,
     AssetOwnerHeadValidationError, AssetReadError, AssetReferencePageError, AssetValidationError,
     AssetValueError,
+};
+pub use footprint::{
+    accepted_input_to_submitted_item_owner_transfer_max_footprint,
+    draft_to_submitted_item_owner_transfer_max_footprint,
 };
 pub use model::{
     AssetDimensions, AssetLabelDisposition, AssetMediaType, AssetMetadataRecord, AssetOwner,
@@ -89,6 +95,37 @@ impl StorageDomain for AssetDomain {
     ) -> Result<(), Self::ValidationError> {
         validate::validate_reopen(reader, sidecars)
     }
+
+    fn reconcile(
+        reader: &ReconciliationReader<'_, Self>,
+    ) -> Result<DomainReconciliation, Self::ValidationError> {
+        let mut classification = crate::reconciliation::ReconciliationClassification::new();
+        crate::reconciliation::classify_records::<Self, AssetMetadataCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, AssetReferenceManifestCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, AssetReferenceEntryCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, AssetReferenceMarkerCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, AssetReferenceLabelFirstCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, AssetOwnerHeadCodec>(
+            reader,
+            &mut classification,
+        )?;
+        Ok(classification.finish())
+    }
 }
 
 /// Opaque typed access to durable asset metadata, reference-set staging, and owner heads.
@@ -104,10 +141,26 @@ impl AssetState {
             .map(|handle| Self { handle })
     }
 
+    pub(crate) fn register_with_schema_validation(
+        store: &mut HomeStore,
+    ) -> Result<Self, DomainRegistrationError> {
+        store
+            .register_domain_with_schema_validation::<AssetDomain>()
+            .map(|handle| Self { handle })
+    }
+
     pub(crate) fn reacquire(
         store: &HomeStore,
     ) -> Result<Self, beryl_home_store::DomainHandleError> {
         store
+            .domain_handle::<AssetDomain>()
+            .map(|handle| Self { handle })
+    }
+
+    pub(crate) fn reacquire_candidate(
+        candidate: &beryl_home_store::HomeRecoveryCandidate,
+    ) -> Result<Self, beryl_home_store::DomainHandleError> {
+        candidate
             .domain_handle::<AssetDomain>()
             .map(|handle| Self { handle })
     }

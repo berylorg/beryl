@@ -52,7 +52,14 @@ fn sources(source: &RuntimeRootCatalogSource) -> CatalogSourceRevisions {
 fn runtime_root_and_unclaimed_sources_guard_one_catalog_publication() {
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
-    create_host_runtime(&store, state, 1, 2, r"C:\Codex\codex.exe", r"C:\Work\beryl");
+    create_host_runtime(
+        &store,
+        &state,
+        1,
+        2,
+        r"C:\Codex\codex.exe",
+        r"C:\Work\beryl",
+    );
 
     let thread_id = SyndicThreadId::from_bytes([3; 16]);
     let runtime_revision = state.runtime_roots().revision(&store).unwrap();
@@ -121,7 +128,14 @@ fn runtime_root_and_unclaimed_sources_guard_one_catalog_publication() {
 fn exact_runtime_root_validator_rejects_a_same_revision_stale_snapshot() {
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
-    create_host_runtime(&store, state, 1, 2, r"C:\Codex\codex.exe", r"C:\Work\beryl");
+    create_host_runtime(
+        &store,
+        &state,
+        1,
+        2,
+        r"C:\Codex\codex.exe",
+        r"C:\Work\beryl",
+    );
     let stale_source = state
         .runtime_roots()
         .catalog_source(
@@ -186,9 +200,11 @@ fn exact_runtime_root_validator_rejects_a_same_revision_stale_snapshot() {
         Some(RuntimeRootCatalogSourceError::SourceChanged("runtime"))
     ));
     assert!(matches!(error, CommandError::ContributorValidation { .. }));
-    assert!(state
-        .catalog()
-        .row(&store, thread_id, CatalogPointReadLimit::schema_maximum())
-        .unwrap()
-        .is_none());
+    assert!(
+        state
+            .catalog()
+            .row(&store, thread_id, CatalogPointReadLimit::schema_maximum())
+            .unwrap()
+            .is_none()
+    );
 }

@@ -11,15 +11,17 @@ fn multi_page_text_replays_with_bounded_compiler_batches() {
         .collect::<Vec<_>>();
     let bound = {
         let mut callback = observation_callback(&store, storage);
-        let mut stager = committed_stage_value(ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([3; 16]),
-            ProviderObservationBegin::Item {
-                lifecycle: ProviderObservationItemLifecycle::Started,
-                kind: ProviderObservationItemKind::AgentMessage,
-            },
-            &mut callback,
-        )
-        .unwrap());
+        let mut stager = committed_stage_value(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([3; 16]),
+                ProviderObservationBegin::Item {
+                    lifecycle: ProviderObservationItemLifecycle::Started,
+                    kind: ProviderObservationItemKind::AgentMessage,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         field_text(
             &mut stager,
             ProviderField::ItemId,
@@ -62,6 +64,8 @@ fn multi_page_text_replays_with_bounded_compiler_batches() {
     );
     assert_eq!(final_build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
     assert!(final_build.frame_staged());
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

@@ -4,11 +4,7 @@ use super::*;
 fn idle_and_accepted_admission_validate_exact_owner_absence() {
     let fixture = Fixture::new(40);
     fixture.publish_marker_free(2);
-    let current = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
+    let current = fixture.current_draft();
     let user_item = SyndicItemId::from_bytes([42; 16]);
     let next_draft = SyndicDraftId::from_bytes([43; 16]);
     let submission = IdleSubmission::new(
@@ -23,29 +19,24 @@ fn idle_and_accepted_admission_validate_exact_owner_absence() {
         None,
         time(3),
     );
-    let command = idle_submission_command(
-        &fixture.store,
-        fixture.syndic,
-        fixture.state.assets(),
-        submission,
-    )
-    .unwrap();
-    match fixture.store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("expected committed marker setup: {evidence:?}"), outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate marker setup: {outcome:?}"), }
+    fixture
+        .store
+        .execute_idle_submission(fixture.state.assets(), submission)
+        .unwrap();
     assert!(
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, AssetOwner::SubmittedTurnItem(user_item))
+            .owner_head(
+                fixture.home().home(),
+                AssetOwner::SubmittedTurnItem(user_item)
+            )
             .unwrap()
             .is_none()
     );
 
     fixture.publish_text("accepted marker free", 4);
-    let current = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
+    let current = fixture.current_draft();
     let accepted = AcceptedInputAdmission::new(
         fixture.thread,
         current.thread().revision(),
@@ -59,7 +50,7 @@ fn idle_and_accepted_admission_validate_exact_owner_absence() {
     );
     let input = accepted.accepted_input_id();
     let prepared = prepare_accepted_input_admission(
-        &fixture.store,
+        fixture.home().home(),
         fixture.syndic,
         fixture.state.assets(),
         accepted,
@@ -73,7 +64,7 @@ fn idle_and_accepted_admission_validate_exact_owner_absence() {
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, AssetOwner::AcceptedInput(input))
+            .owner_head(fixture.home().home(), AssetOwner::AcceptedInput(input))
             .unwrap()
             .is_none()
     );
@@ -92,14 +83,13 @@ fn admission_rejects_either_stray_owner_head_atomically() {
         if stray_destination {
             let assets = fixture.state.assets();
             let source = assets
-                .owner_head(&fixture.store, AssetOwner::CurrentDraft(draft))
+                .owner_head(fixture.home().home(), AssetOwner::CurrentDraft(draft))
                 .unwrap()
                 .unwrap()
                 .expectation();
-            execute_one(
-                &fixture.store,
+            fixture.execute_one(
                 assets.update_owner_heads(
-                    assets.revision(&fixture.store).unwrap(),
+                    assets.revision(fixture.home().home()).unwrap(),
                     UpdateAssetOwnerHeads::new(
                         vec![
                             AssetOwnerHeadUpdate::replace(
@@ -119,11 +109,7 @@ fn admission_rejects_either_stray_owner_head_atomically() {
                 ),
             );
         }
-        let current = fixture
-            .syndic
-            .current_draft(&fixture.store, fixture.thread, point_limit())
-            .unwrap()
-            .unwrap();
+        let current = fixture.current_draft();
         let submission = IdleSubmission::new(
             fixture.thread,
             current.thread().revision(),
@@ -136,23 +122,24 @@ fn admission_rejects_either_stray_owner_head_atomically() {
             None,
             time(4),
         );
-        let command = idle_submission_command(
-            &fixture.store,
-            fixture.syndic,
-            fixture.state.assets(),
-            submission,
-        )
-        .unwrap();
-        match fixture.store.execute(command) {
-            beryl_home_store::CommandOutcome::NotCommitted { evidence } => assert!(matches!(evidence, beryl_home_store::CommandError::ContributorValidation { .. })),
-            beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => panic!("expected rejected marker-free submission, got committed"),
-            outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected rejected marker-free submission, later failure: {outcome:?}"),
-            outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("expected rejected marker-free submission, indeterminate: {outcome:?}"),
-        }
+        assert!(matches!(
+            fixture
+                .store
+                .execute_idle_submission(fixture.state.assets(), submission),
+            Err(
+                beryl_app::cas_projection::IdleSubmissionExecutionError::Command(
+                    CommandError::ContributorValidation { .. }
+                )
+            )
+        ));
         assert!(
             fixture
                 .syndic
-                .turn(&fixture.store, draft.submitted_turn_id(), point_limit())
+                .turn(
+                    fixture.home().home(),
+                    draft.submitted_turn_id(),
+                    point_limit()
+                )
                 .unwrap()
                 .is_none()
         );

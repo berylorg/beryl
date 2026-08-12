@@ -79,7 +79,6 @@ pub fn correlate_source_user_item(
         content,
     );
     let item_revision = ProjectionRevision::new(4).unwrap();
-    records.extend(provider.records);
     records.extend([
         FixtureRecord::TurnState(fixture_turn_state(
             source,

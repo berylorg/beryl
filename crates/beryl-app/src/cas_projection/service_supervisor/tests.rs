@@ -18,36 +18,12 @@ use syndic_storage::SyndicStorage;
 
 use super::*;
 use crate::cas_projection::{
-    ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
-    ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
+    MinimumTurnCaptureReserve, ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError,
+    ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryExecutionProvider,
+    ScheduledOrdinaryExecutionUnavailable,
 };
 
-struct FactoryProbe {
-    epochs: Arc<AtomicUsize>,
-    provider_shutdowns: Arc<AtomicUsize>,
-    factory_shutdowns: Arc<AtomicUsize>,
-}
-
 struct ProviderProbe(Arc<AtomicUsize>);
-
-impl ScheduledOrdinaryExecutionProviderFactory for FactoryProbe {
-    fn create_epoch(
-        &mut self,
-        _context: ScheduledOrdinaryProviderEpochContext,
-    ) -> Result<
-        Box<dyn ScheduledOrdinaryExecutionProvider>,
-        Box<dyn std::error::Error + Send + Sync + 'static>,
-    > {
-        self.epochs.fetch_add(1, Ordering::SeqCst);
-        Ok(Box::new(ProviderProbe(Arc::clone(
-            &self.provider_shutdowns,
-        ))))
-    }
-
-    fn shutdown(&mut self) {
-        self.factory_shutdowns.fetch_add(1, Ordering::SeqCst);
-    }
-}
 
 impl ScheduledOrdinaryExecutionProvider for ProviderProbe {
     fn try_issue(
@@ -74,7 +50,7 @@ fn wait_until(description: &str, mut predicate: impl FnMut() -> bool) {
 }
 
 #[test]
-fn persistent_failure_terminally_disposes_without_opening_a_replacement_epoch() {
+fn persistent_failure_terminally_disposes_and_makes_the_service_unavailable() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let mut home = HomeStore::open_with_faults(
@@ -84,17 +60,12 @@ fn persistent_failure_terminally_disposes_without_opening_a_replacement_epoch() 
     .unwrap();
     SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();
-    let epochs = Arc::new(AtomicUsize::new(0));
     let provider_shutdowns = Arc::new(AtomicUsize::new(0));
-    let factory_shutdowns = Arc::new(AtomicUsize::new(0));
-    let supervisor = RunningSessionRecoverySupervisor::start(
+    let supervisor = TerminalServiceSupervisor::start(
         home,
-        ProjectionServiceConfig::try_new(8, 4).unwrap(),
-        Box::new(FactoryProbe {
-            epochs: Arc::clone(&epochs),
-            provider_shutdowns: Arc::clone(&provider_shutdowns),
-            factory_shutdowns: Arc::clone(&factory_shutdowns),
-        }),
+        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
+        Box::new(ProviderProbe(Arc::clone(&provider_shutdowns))),
     )
     .unwrap();
 
@@ -123,13 +94,11 @@ fn persistent_failure_terminally_disposes_without_opening_a_replacement_epoch() 
     });
     assert!(matches!(
         supervisor.acquire(),
-        Err(RunningServiceAvailability::Unavailable)
+        Err(ServiceAvailability::Unavailable)
     ));
-    assert_eq!(epochs.load(Ordering::SeqCst), 1);
     assert!(matches!(
         supervisor.shutdown(),
-        Err(RunningSessionRecoveryShutdownError::TerminalRecovery)
+        Err(TerminalServiceShutdownError::TerminalUnavailable)
     ));
     assert_eq!(provider_shutdowns.load(Ordering::SeqCst), 1);
-    assert_eq!(factory_shutdowns.load(Ordering::SeqCst), 1);
 }

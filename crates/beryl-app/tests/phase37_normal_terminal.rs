@@ -97,7 +97,7 @@ fn raw_websocket_ordinary_success_reaches_durable_terminal() {
         (2..=3).contains(&active_workers.high_water()),
         "the connection pair may overlap the one-permit startup scheduler scan"
     );
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
     let projection_request = beryl_app::cas_projection::CasProjectionRequest::new(
         fixture.thread,
         fixture.selected_path(fixture.thread),
@@ -109,7 +109,7 @@ fn raw_websocket_ordinary_success_reaches_durable_terminal() {
     );
     let projection = coordinator
         .obtain_projection(
-            &fixture.store,
+            &*fixture.home(),
             fixture.storage,
             &mut session,
             &projection_request,
@@ -124,7 +124,7 @@ fn raw_websocket_ordinary_success_reaches_durable_terminal() {
     let mut branch = NoopBranch::default();
     let outcome = coordinator
         .execute_ordinary_turn(
-            &fixture.store,
+            &*fixture.home(),
             fixture.storage,
             fixture.state.assets(),
             projection,

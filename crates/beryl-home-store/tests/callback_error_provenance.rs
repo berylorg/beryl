@@ -11,7 +11,7 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{committed, not_committed, AlphaDomain, PutBytes};
+use support::{AlphaDomain, PutBytes, committed, not_committed};
 
 struct AccessDomain;
 struct AccessRecord;
@@ -228,7 +228,7 @@ fn put(value: impl Into<Vec<u8>>) -> Put {
 }
 
 #[test]
-fn storage_access_from_either_callback_stage_enters_verification() {
+fn storage_access_from_either_callback_stage_fails_closed_with_provenance() {
     for (validation, contribution, expected_stage) in [
         (
             Failure::Storage,
@@ -266,12 +266,14 @@ fn storage_access_from_either_callback_stage_enters_verification() {
                 ..
             } if stage == expected_stage
         ));
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-        store.verify_health().unwrap();
-        assert_eq!(store.health().state(), HomeHealthState::Healthy);
+        assert_eq!(store.health().state(), HomeHealthState::Failed);
+        let candidate = store.recover_same_home().unwrap();
+        let domain = candidate.domain_handle::<AccessDomain>().unwrap();
+        let store = candidate.publish();
         assert_eq!(store.home_revision().unwrap(), home_before);
         assert_eq!(store.domain_revision(domain).unwrap(), domain_before);
+        committed(execute(&store, domain, put(b"committed")));
+        assert_eq!(store.health().state(), HomeHealthState::Healthy);
         store.close().unwrap();
     }
 }
@@ -358,8 +360,8 @@ fn validation_only_participant_preserves_semantic_and_access_provenance() {
                         source: DomainCallbackSource::Read(ReadError::Storage { .. }),
                     }
                 ));
-                assert_eq!(store.health().state(), HomeHealthState::Verifying);
-                store.verify_health().unwrap();
+                assert_eq!(store.health().state(), HomeHealthState::Failed);
+                continue;
             }
             Failure::Structural => {
                 assert!(matches!(
@@ -419,7 +421,9 @@ fn registration_preserves_access_provenance_and_semantic_rejection() {
         store.close().unwrap();
 
         let mut reopened = open(directory.path());
-        let error = reopened.register_domain::<AccessDomain>().unwrap_err();
+        let error = reopened
+            .register_domain_with_schema_validation::<AccessDomain>()
+            .unwrap_err();
         if access {
             assert!(matches!(
                 error,
@@ -428,7 +432,7 @@ fn registration_preserves_access_provenance_and_semantic_rejection() {
                     ..
                 }
             ));
-            assert_eq!(reopened.health().state(), HomeHealthState::Verifying);
+            assert_eq!(reopened.health().state(), HomeHealthState::Failed);
         } else {
             assert!(matches!(error, DomainRegistrationError::Validation { .. }));
             assert_eq!(reopened.health().state(), HomeHealthState::Failed);

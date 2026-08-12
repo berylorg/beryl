@@ -4,21 +4,28 @@ use std::{
     thread,
 };
 
+use beryl_home_store::DURABLE_START_ADMISSION_BUDGET_BYTES;
+
 use super::*;
 
 #[test]
 fn service_config_rejects_invalid_capacity_boundaries() {
     assert_eq!(
-        ProjectionServiceConfig::try_new(0, MINIMUM_WORKER_CAPACITY as u64),
+        MinimumTurnCaptureReserve::try_new(0),
+        Err(beryl_home_store::TurnStartAdmissionRequirementError::ZeroMinimumTurnCaptureReserve)
+    );
+    let reserve = MinimumTurnCaptureReserve::try_new(1).unwrap();
+    assert_eq!(
+        ProjectionServiceConfig::try_new(0, MINIMUM_WORKER_CAPACITY as u64, reserve),
         Err(ProjectionServiceConfigError::ZeroPreBindControlCapacity)
     );
     assert_eq!(
-        ProjectionServiceConfig::try_new(1, 0),
+        ProjectionServiceConfig::try_new(1, 0, reserve),
         Err(ProjectionServiceConfigError::ZeroWorkerCapacity)
     );
     for capacity in 1..MINIMUM_WORKER_CAPACITY {
         assert_eq!(
-            ProjectionServiceConfig::try_new(1, capacity as u64),
+            ProjectionServiceConfig::try_new(1, capacity as u64, reserve),
             Err(ProjectionServiceConfigError::InsufficientWorkerCapacity {
                 capacity,
                 required: MINIMUM_WORKER_CAPACITY,
@@ -29,10 +36,16 @@ fn service_config_rejects_invalid_capacity_boundaries() {
 
 #[test]
 fn service_config_preserves_valid_fixed_counts() {
-    let config = ProjectionServiceConfig::try_new(17, MINIMUM_WORKER_CAPACITY as u64).unwrap();
+    let reserve = MinimumTurnCaptureReserve::try_new(23).unwrap();
+    let config = ProjectionServiceConfig::try_new(17, MINIMUM_WORKER_CAPACITY as u64, reserve)
+        .unwrap();
 
     assert_eq!(config.foreground().pre_bind_control_capacity().get(), 17);
     assert_eq!(config.worker_capacity().get(), MINIMUM_WORKER_CAPACITY);
+    let requirement = config.turn_start_admission_requirement();
+    assert_eq!(requirement.durable_start_budget_bytes(), 268_435_456);
+    assert_eq!(requirement.minimum_turn_capture_reserve(), reserve);
+    assert_eq!(requirement.total_bytes(), 268_435_479);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -410,7 +423,11 @@ fn provisional_steering_scan_cannot_satisfy_scheduled_capacity_demand() {
 #[test]
 fn service_config_rejects_cross_platform_unrepresentable_counts() {
     assert!(matches!(
-        ProjectionServiceConfig::try_new(u64::MAX, 2),
+        ProjectionServiceConfig::try_new(
+            u64::MAX,
+            2,
+            MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        ),
         Err(
             ProjectionServiceConfigError::UnrepresentablePreBindControlCapacity {
                 capacity: u64::MAX
@@ -418,7 +435,49 @@ fn service_config_rejects_cross_platform_unrepresentable_counts() {
         )
     ));
     assert!(matches!(
-        ProjectionServiceConfig::try_new(1, u64::MAX),
+        ProjectionServiceConfig::try_new(
+            1,
+            u64::MAX,
+            MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        ),
         Err(ProjectionServiceConfigError::UnrepresentableWorkerCapacity { capacity: u64::MAX })
     ));
+}
+
+#[test]
+fn durable_start_budget_is_exact_and_covers_the_owner_composed_maximum() {
+    assert_eq!(DURABLE_START_ADMISSION_BUDGET_BYTES, 256 * 1024 * 1024);
+
+    let direct = beryl_home_store::DurableStartFootprint::compose(
+        syndic_storage::idle_submission_max_footprint().unwrap(),
+        Some(beryl_state::draft_to_submitted_item_owner_transfer_max_footprint().unwrap()),
+    )
+    .unwrap();
+    let queued = beryl_home_store::DurableStartFootprint::compose(
+        syndic_storage::accepted_input_promotion_max_footprint().unwrap(),
+        Some(
+            beryl_state::accepted_input_to_submitted_item_owner_transfer_max_footprint().unwrap(),
+        ),
+    )
+    .unwrap();
+
+    assert_eq!(direct.logical().encoded_key_value_bytes().unwrap(), 1_263_194);
+    assert_eq!(queued.logical().encoded_key_value_bytes().unwrap(), 1_328_212);
+    assert_eq!(queued.journal_append_bytes(), 1_328_763);
+    assert!(direct.journal_append_bytes() <= DURABLE_START_ADMISSION_BUDGET_BYTES);
+    assert!(queued.journal_append_bytes() <= DURABLE_START_ADMISSION_BUDGET_BYTES);
+}
+
+#[test]
+fn turn_start_requirement_rejects_checked_add_overflow() {
+    let capture = MinimumTurnCaptureReserve::try_new(u64::MAX).unwrap();
+    assert_eq!(
+        ProjectionServiceConfig::try_new(1, MINIMUM_WORKER_CAPACITY as u64, capture),
+        Err(ProjectionServiceConfigError::TurnStartAdmissionRequirement(
+            beryl_home_store::TurnStartAdmissionRequirementError::ArithmeticOverflow {
+                budget_bytes: DURABLE_START_ADMISSION_BUDGET_BYTES,
+                capture_reserve_bytes: u64::MAX,
+            }
+        ))
+    );
 }

@@ -20,7 +20,10 @@ fn stopping_gate_without_its_selected_record_is_rejected() {
     fixture.admit_stop();
     delete(&fixture, FixtureDelete::StopOperation(fixture.operation_id));
 
-    let error = fixture.store.validate_registered_domains().unwrap_err();
+    let error = fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
@@ -55,13 +58,11 @@ fn safe_reopen_reconciliation_rejects_a_missing_successor_route_half() {
         fixture.gate().revision(),
         fixture.stop().revision(),
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_safely_reopen_stop_operation(request.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_safely_reopen_stop_operation(request.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -119,14 +120,17 @@ fn matching_terminal_reconciliation_rejects_a_missing_event_half() {
         crate::support::timestamp(6),
     )
     .unwrap();
-    fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_admit_live_source_event(event.clone()),
-        )
-        .unwrap();
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_admit_live_source_event(event.clone()),
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean terminal setup, got {outcome:?}"),
+    }
     delete(
         &fixture,
         FixtureDelete::SourceEvent {
@@ -155,14 +159,17 @@ fn abandonment_reconciliation_rejects_a_missing_successor_binding_membership() {
     let fixture = active_stop_fixture("phase66-stop-missing-abandon-membership");
     fixture.admit_stop();
     let (_, request) = super::abandonment::startup_abandonment(&fixture);
-    fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_abandon_stop_operation(request.clone()),
-        )
-        .unwrap();
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_abandon_stop_operation(request.clone()),
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected clean abandonment setup, got {outcome:?}"),
+    }
     let successor_revision = fixture.target.binding_revision().checked_next().unwrap();
     delete(
         &fixture,
@@ -219,7 +226,10 @@ fn unselected_live_stop_record_is_rejected() {
         crate::support::batch([FixtureRecord::StopOperation(orphan)]),
     );
 
-    let error = fixture.store.validate_registered_domains().unwrap_err();
+    let error = fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()

@@ -13,7 +13,10 @@ use syndic_storage::*;
 use accepted_next_support::{
     GenerationSpec, next_turn_records, set_gate_state, set_projection_lost,
 };
-use support::{TestHome, batch, commit, id, open, populated::active_turn};
+use support::{TestHome, batch, commit, id, open, populated::active_turn, seed_populated};
+
+const FIXTURE_DELTA_RECORDS_PER_COMMAND: usize = 96;
+const POPULATED_SEED_ACTIVE_THREAD_BYTE: u8 = 40;
 
 fn seeded(
     name: &str,
@@ -22,7 +25,10 @@ fn seeded(
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(records));
+    seed_populated(&store, storage);
+    for delta in records.chunks(FIXTURE_DELTA_RECORDS_PER_COMMAND) {
+        commit(&store, storage, batch(delta.iter().cloned()));
+    }
     (home, store, storage)
 }
 
@@ -36,7 +42,12 @@ fn sources(store: &beryl_home_store::HomeStore, storage: SyndicStorage) -> Vec<A
         .accepted_next_source_page(store, revision, None, limits(256))
         .unwrap()
         .records()
-        .to_vec()
+        .iter()
+        // Candidate assertions below address the source introduced by each test's
+        // delta, rather than the independent active-route source in the real seed.
+        .filter(|source| source.thread_id() != id(POPULATED_SEED_ACTIVE_THREAD_BYTE))
+        .cloned()
+        .collect()
 }
 
 fn ordered_thread(value: u64) -> SyndicThreadId {
@@ -47,7 +58,9 @@ fn ordered_thread(value: u64) -> SyndicThreadId {
 
 #[test]
 fn global_source_pages_are_ordered_clamped_and_revision_fenced() {
-    let records = (1..=300).map(|value| {
+    // The real populated seed contributes its own later-sorting source. Together
+    // with this bounded delta, the scan remains exactly 300 records wide.
+    let records = (1..=299).map(|value| {
         FixtureRecord::AcceptedNextSource(AcceptedNextSourceRecord::new(
             ordered_thread(value),
             AcceptedRouteGeneration::FIRST,

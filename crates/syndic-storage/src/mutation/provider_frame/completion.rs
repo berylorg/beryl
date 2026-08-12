@@ -6,10 +6,10 @@ use beryl_home_store::{
 use beryl_model::DomainRevision;
 
 use crate::{
+    ProviderItemBuildRecord, SyndicStorage,
     codec::*,
     domain::SyndicDomain,
-    validation::{advance_provider_completion_comparison, ProviderFrameStorageValidationError},
-    ProviderItemBuildRecord, SyndicStorage,
+    validation::{ProviderFrameStorageValidationError, advance_provider_completion_comparison},
 };
 
 /// Why one bounded completion-equality mutation was rejected.

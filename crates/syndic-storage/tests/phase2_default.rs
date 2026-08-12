@@ -42,7 +42,9 @@ fn normal_features_register_reopen_and_read_an_empty_domain() {
     let home = TestHome::new();
     let mut store = open(home.path());
     SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -56,6 +58,8 @@ fn normal_features_register_reopen_and_read_an_empty_domain() {
             .unwrap()
             .is_none()
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

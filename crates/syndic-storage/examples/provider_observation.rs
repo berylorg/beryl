@@ -2,7 +2,6 @@ use std::{io, path::PathBuf};
 
 use beryl_home_store::{
     CommandError, CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    ReconciliationDescriptor,
 };
 use beryl_model::ProviderObservationId;
 use syndic_storage::{
@@ -51,10 +50,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             failure,
             reconciliation,
         } => {
-            return Err(Box::new(ExampleOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            }))
+            reconciliation.install();
+            return Err(Box::new(ExampleOutcome::Indeterminate(failure)));
         }
     };
     match staging.control(
@@ -81,10 +78,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             failure,
             reconciliation,
         } => {
-            return Err(Box::new(ExampleOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            }))
+            reconciliation.install();
+            return Err(Box::new(ExampleOutcome::Indeterminate(failure)));
         }
     }
     let item = ProviderValueContext::Field(ProviderField::ItemId);
@@ -106,10 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             failure,
             reconciliation,
         } => {
-            return Err(Box::new(ExampleOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            }))
+            reconciliation.install();
+            return Err(Box::new(ExampleOutcome::Indeterminate(failure)));
         }
     }
     match staging.fragment(
@@ -133,10 +126,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             failure,
             reconciliation,
         } => {
-            return Err(Box::new(ExampleOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            }))
+            reconciliation.install();
+            return Err(Box::new(ExampleOutcome::Indeterminate(failure)));
         }
     }
     match staging.control(ProviderObservationControl::EndField(item), &mut commit)? {
@@ -157,17 +148,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             failure,
             reconciliation,
         } => {
-            return Err(Box::new(ExampleOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            }))
+            reconciliation.install();
+            return Err(Box::new(ExampleOutcome::Indeterminate(failure)));
         }
     }
     let sealed = match staging.seal(&mut commit)? {
-        syndic_storage::ProviderObservationStageOutcome::NotCommitted { evidence } => {
+        syndic_storage::ProviderObservationSealOutcome::NotCommitted { evidence } => {
             return Err(Box::new(ExampleOutcome::NotCommitted(evidence)));
         }
-        syndic_storage::ProviderObservationStageOutcome::Committed {
+        syndic_storage::ProviderObservationSealOutcome::Committed {
             value,
             receipt,
             later_failure,
@@ -178,14 +167,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             value
         }
-        syndic_storage::ProviderObservationStageOutcome::Indeterminate {
-            failure,
-            reconciliation,
-        } => {
-            return Err(Box::new(ExampleOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            }))
+        syndic_storage::ProviderObservationSealOutcome::Indeterminate { failure, custody } => {
+            custody.install();
+            return Err(Box::new(ExampleOutcome::Indeterminate(failure)));
         }
     };
     assert_eq!(sealed.identity(), identity);
@@ -198,10 +182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 enum ExampleOutcome {
     NotCommitted(CommandError),
     CommittedLaterFailure(CommandError),
-    Indeterminate {
-        failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
-    },
+    Indeterminate(CommandError),
 }
 
 impl std::fmt::Display for ExampleOutcome {
@@ -211,12 +192,9 @@ impl std::fmt::Display for ExampleOutcome {
             Self::CommittedLaterFailure(failure) => {
                 write!(formatter, "stage committed before later failure: {failure}")
             }
-            Self::Indeterminate {
-                failure,
-                reconciliation,
-            } => write!(
+            Self::Indeterminate(failure) => write!(
                 formatter,
-                "stage outcome is indeterminate ({failure}); retain {reconciliation:?} for reconciliation"
+                "stage outcome is indeterminate after reconciliation custody installation: {failure}"
             ),
         }
     }

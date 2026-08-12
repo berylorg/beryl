@@ -16,8 +16,7 @@ use beryl_state::{
 use syndic_storage::{
     AcceptedInputAdmission, ComposerAtom, ComposerPayload, ContentAppend, ContentBuild,
     CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission,
-    ImageLabelOrdinal, PreparedContent, SyndicCurrentDraft, SyndicPointReadLimit,
-    SyndicTimestamp,
+    ImageLabelOrdinal, PreparedContent, SyndicCurrentDraft, SyndicPointReadLimit, SyndicTimestamp,
 };
 
 use super::*;
@@ -57,11 +56,7 @@ impl Fixture {
         Self::from_store(seed, directory, store)
     }
 
-    fn from_store(
-        seed: u8,
-        directory: tempfile::TempDir,
-        mut store: HomeStore,
-    ) -> Self {
+    fn from_store(seed: u8, directory: tempfile::TempDir, mut store: HomeStore) -> Self {
         let storage = SyndicStorage::register(&mut store).unwrap();
         let state = BerylState::register(&mut store).unwrap();
         let thread = SyndicThreadId::from_bytes([seed; 16]);
@@ -110,18 +105,24 @@ impl Fixture {
             None,
             time(3),
         );
-        let command = idle_submission_command(
-            &self.store,
-            self.storage,
-            self.state.assets(),
-            submission,
-        )
-        .unwrap();
+        let command =
+            idle_submission_command(&self.store, self.storage, self.state.assets(), submission)
+                .unwrap();
         match self.store.execute(command) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("pending-turn fixture command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("pending-turn fixture command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("pending-turn fixture command was indeterminate: {outcome:?}"),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("pending-turn fixture command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("pending-turn fixture command was not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("pending-turn fixture command was indeterminate: {outcome:?}")
+            }
         }
     }
 
@@ -186,18 +187,24 @@ impl Fixture {
             time(admitted_at),
         );
         let input_id = admission.accepted_input_id();
-        let command = build_accepted_input_command(
-            &self.store,
-            self.storage,
-            self.state.assets(),
-            admission,
-        )
-        .unwrap();
+        let command =
+            build_accepted_input_command(&self.store, self.storage, self.state.assets(), admission)
+                .unwrap();
         match self.store.execute(command) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("accepted-input fixture command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("accepted-input fixture command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("accepted-input fixture command was indeterminate: {outcome:?}"),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("accepted-input fixture command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("accepted-input fixture command was not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("accepted-input fixture command was indeterminate: {outcome:?}")
+            }
         }
         self.storage
             .accepted_input(&self.store, input_id, point_limit())
@@ -239,6 +246,30 @@ impl Fixture {
         )
     }
 
+    #[cfg(feature = "test-faults")]
+    pub(super) fn recover_same_home(self) -> Self {
+        let Self {
+            _directory,
+            store,
+            storage: _,
+            state: _,
+            thread,
+            seed,
+        } = self;
+        let candidate = store.recover_same_home().unwrap();
+        let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+        let state = BerylState::reacquire_candidate(&candidate).unwrap();
+        let store = candidate.publish();
+        Self {
+            _directory,
+            store,
+            storage,
+            state,
+            thread,
+            seed,
+        }
+    }
+
     fn publish_asset(&self, bytes: &[u8]) -> AssetId {
         let sidecar = self
             .store
@@ -269,10 +300,20 @@ impl Fixture {
         let mut command = HomeCommand::new(self.store.home_revision().unwrap());
         metadata.add_to(&mut command).unwrap();
         match self.store.execute(command) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("asset metadata fixture command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("asset metadata fixture command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("asset metadata fixture command was indeterminate: {outcome:?}"),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("asset metadata fixture command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("asset metadata fixture command was not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("asset metadata fixture command was indeterminate: {outcome:?}")
+            }
         }
         asset
     }
@@ -284,11 +325,7 @@ impl Fixture {
         asset: AssetId,
     ) -> beryl_model::SealedAssetReferenceSetProof {
         let current = self.current();
-        let source = current
-            .draft()
-            .content()
-            .sealed_marker_summary()
-            .unwrap();
+        let source = current.draft().content().sealed_marker_summary().unwrap();
         let assets = self.state.assets();
         let begin = BeginAssetReferenceSet::new(
             AssetReferenceSetId::from_bytes([self.seed.wrapping_add(10); 16]),
@@ -350,10 +387,7 @@ impl Fixture {
     pub(super) fn accept_repeated_image(&self, leading_text: &str) -> AcceptedInputRecord {
         self.establish_pending_turn();
         let draft = self.current().draft().id();
-        let marker_ids = [
-            marker_id(draft, 1),
-            marker_id(draft, 2),
-        ];
+        let marker_ids = [marker_id(draft, 1), marker_id(draft, 2)];
         let label = ImageLabelOrdinal::FIRST;
         let payload = ComposerPayload::new(vec![
             ComposerAtom::text(leading_text).unwrap(),
@@ -370,17 +404,24 @@ impl Fixture {
     }
 }
 
-pub(super) fn execute_one(
-    store: &HomeStore,
-    contribution: beryl_home_store::MutationContribution,
-) {
+pub(super) fn execute_one(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
     match store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("fixture contribution command committed with later failure: {outcome:?}"),
-        CommandOutcome::NotCommitted { evidence } => panic!("fixture contribution command was not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("fixture contribution command was indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("fixture contribution command committed with later failure: {outcome:?}"),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("fixture contribution command was not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("fixture contribution command was indeterminate: {outcome:?}")
+        }
     }
 }
 

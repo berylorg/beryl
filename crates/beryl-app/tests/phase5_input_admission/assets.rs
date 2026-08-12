@@ -11,7 +11,7 @@ use beryl_state::{
 };
 use syndic_storage::ImageLabelOrdinal;
 
-use super::{Fixture, execute_one, point_limit};
+use super::Fixture;
 
 pub(super) fn admit_asset(
     fixture: &mut Fixture,
@@ -39,7 +39,8 @@ pub(super) fn admit_asset_at_label(
     set_seed: u8,
 ) -> (AssetId, SealedAssetReferenceSetProof) {
     let sidecar = fixture
-        .store
+        .home()
+        .home()
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
             bytes,
@@ -51,7 +52,7 @@ pub(super) fn admit_asset_at_label(
         NonZeroU64::new(sidecar.address().length()).unwrap(),
     );
     let assets = fixture.state.assets();
-    let revision = assets.revision(&fixture.store).unwrap();
+    let revision = assets.revision(fixture.home().home()).unwrap();
     let metadata = assets
         .publish_metadata(
             revision,
@@ -64,9 +65,24 @@ pub(super) fn admit_asset_at_label(
             ),
         )
         .unwrap();
-    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
+    let mut command = HomeCommand::new(fixture.home().home().home_revision().unwrap());
     metadata.add_to(&mut command).unwrap();
-    match fixture.store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("expected committed asset admission: {evidence:?}"), outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate asset admission: {outcome:?}"), }
+    match fixture.home().home().execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed asset admission: {evidence:?}")
+        }
+        outcome @ beryl_home_store::CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("unexpected later failure: {outcome:?}"),
+        outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => {
+            panic!("indeterminate asset admission: {outcome:?}")
+        }
+    }
 
     let proof = admit_reference_set(fixture, marker_id, label, asset_id, owner_draft, set_seed);
     (asset_id, proof)
@@ -82,10 +98,7 @@ pub(super) fn admit_reference_set(
 ) -> SealedAssetReferenceSetProof {
     let assets = fixture.state.assets();
     let source = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap()
+        .current_draft()
         .draft()
         .content()
         .sealed_marker_summary()
@@ -93,18 +106,16 @@ pub(super) fn admit_reference_set(
     let begin =
         BeginAssetReferenceSet::new(AssetReferenceSetId::from_bytes([set_seed; 16]), source);
     let staging = begin.staging_authority();
-    execute_one(
-        &fixture.store,
-        assets.begin_reference_set(assets.revision(&fixture.store).unwrap(), begin),
+    fixture.execute_one(
+        assets.begin_reference_set(assets.revision(fixture.home().home()).unwrap(), begin),
     );
     let build = assets
-        .staged_reference_set_manifest(&fixture.store, staging)
+        .staged_reference_set_manifest(fixture.home().home(), staging)
         .unwrap()
         .build_proof();
-    execute_one(
-        &fixture.store,
+    fixture.execute_one(
         assets.append_reference_page(
-            assets.revision(&fixture.store).unwrap(),
+            assets.revision(fixture.home().home()).unwrap(),
             AppendAssetReferencePage::new(
                 build,
                 Box::from([AssetReferencePageEntry::new(marker_id, label, asset_id)]),
@@ -113,21 +124,17 @@ pub(super) fn admit_reference_set(
         ),
     );
     let build = assets
-        .staged_reference_set_manifest(&fixture.store, staging)
+        .staged_reference_set_manifest(fixture.home().home(), staging)
         .unwrap()
         .build_proof();
     let proof = build.sealed_proof().unwrap();
-    execute_one(
-        &fixture.store,
-        assets.seal_reference_set(
-            assets.revision(&fixture.store).unwrap(),
-            SealAssetReferenceSet::new(build, source),
-        ),
-    );
-    execute_one(
-        &fixture.store,
+    fixture.execute_one(assets.seal_reference_set(
+        assets.revision(fixture.home().home()).unwrap(),
+        SealAssetReferenceSet::new(build, source),
+    ));
+    fixture.execute_one(
         assets.update_owner_heads(
-            assets.revision(&fixture.store).unwrap(),
+            assets.revision(fixture.home().home()).unwrap(),
             UpdateAssetOwnerHeads::new(
                 vec![AssetOwnerHeadUpdate::replace(
                     AssetOwner::CurrentDraft(owner_draft),

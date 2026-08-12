@@ -6,8 +6,8 @@ use beryl_model::SyndicThreadId;
 use crate::UnixMillis;
 
 use super::{
-    CatalogArchiveSummary, CatalogDomain, CatalogFacts, CatalogFreshness, CatalogRecencyCursor,
-    CatalogRevision, CatalogRow, CATALOG_RECORD_LIMIT,
+    CATALOG_RECORD_LIMIT, CatalogArchiveSummary, CatalogDomain, CatalogFacts, CatalogFreshness,
+    CatalogRecencyCursor, CatalogRevision, CatalogRow,
 };
 
 #[path = "codec/parts.rs"]

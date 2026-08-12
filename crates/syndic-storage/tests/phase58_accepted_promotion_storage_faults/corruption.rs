@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn reopen_rejects_a_promoted_leaf_whose_successor_witness_was_removed() {
+fn routine_reopen_defers_a_removed_promoted_leaf_witness_to_explicit_scrub() {
     let fixture = promotion_fixture(93, id(93));
     let (home, store, storage) = seed("phase58-promotion-missing-witness", fixture.records.clone());
     let request = promotion(
@@ -12,11 +12,14 @@ fn reopen_rejects_a_promoted_leaf_whose_successor_witness_was_removed() {
     );
     match execute_promotion(&store, storage, request) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
     }
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let initial_generation = fixture
         .records
@@ -62,7 +65,9 @@ fn reopen_rejects_a_promoted_leaf_whose_successor_witness_was_removed() {
         batch([FixtureRecord::AcceptedRouteLeaf(corrupt)]),
     );
 
-    let error = store.validate_registered_domains().unwrap_err();
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
@@ -72,15 +77,16 @@ fn reopen_rejects_a_promoted_leaf_whose_successor_witness_was_removed() {
     store.close().unwrap();
 
     let mut reopened = open(home.path());
-    let error = match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("promoted leaf without its successor witness reopened successfully"),
-        Err(error) => error,
-    };
+    let _storage = SyndicStorage::register(&mut reopened)
+        .expect("routine reopen must validate declarations without scanning application records");
+    let error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
             .contains("promoted accepted-route leaf is missing its successor witness"),
-        "unexpected reopen error: {error}",
+        "unexpected explicit scrub error after routine reopen: {error}",
     );
     reopened.close().unwrap();
 }

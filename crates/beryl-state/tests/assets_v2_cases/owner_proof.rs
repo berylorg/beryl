@@ -8,7 +8,7 @@ fn every_owner_variant_round_trips_and_multi_head_rejection_is_atomic() {
         AssetDimensions::new(NonZeroU64::new(640).unwrap(), NonZeroU64::new(480).unwrap());
     let (asset_id, sidecar_path) = publish_metadata_bytes(
         &store,
-        state,
+        &state,
         b"owner-round-trip-asset",
         AssetMediaType::new("image/avif").unwrap(),
         Some(dimensions),
@@ -16,7 +16,7 @@ fn every_owner_variant_round_trips_and_multi_head_rejection_is_atomic() {
     let set_id = AssetReferenceSetId::from_bytes([43; 16]);
     let proof = seal_one_entry_set(
         &store,
-        state,
+        &state,
         set_id,
         marker(1),
         ImageLabelOrdinal::new(7).unwrap(),
@@ -55,11 +55,13 @@ fn every_owner_variant_round_trips_and_multi_head_rejection_is_atomic() {
         AssetMutationError::ReferenceSetMissing(actual)
             if *actual == missing_proof.set_id()
     ));
-    assert!(owners[..2].iter().all(|owner| state
-        .assets()
-        .owner_head(&store, *owner)
-        .unwrap()
-        .is_none()));
+    assert!(
+        owners[..2].iter().all(|owner| state
+            .assets()
+            .owner_head(&store, *owner)
+            .unwrap()
+            .is_none())
+    );
 
     let first_batch = owners[..ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES]
         .iter()
@@ -178,7 +180,7 @@ fn authoritative_reference_reads_require_the_complete_sealed_proof() {
     let (store, state) = support::open(directory.path());
     let (asset_id, _) = publish_metadata_bytes(
         &store,
-        state,
+        &state,
         b"proof-bound-reference-read",
         AssetMediaType::new("image/png").unwrap(),
         None,
@@ -186,7 +188,7 @@ fn authoritative_reference_reads_require_the_complete_sealed_proof() {
     let set_id = AssetReferenceSetId::from_bytes([44; 16]);
     let proof = seal_one_entry_set(
         &store,
-        state,
+        &state,
         set_id,
         marker(1),
         ImageLabelOrdinal::FIRST,

@@ -38,20 +38,28 @@ fn invalid_context_text(
     bytes: &[u8],
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationValidatorError {
-    stager
-        .control(ProviderObservationControl::BeginField(context), callback)
-        .unwrap();
+    clean_stage(
+        stager
+            .control(ProviderObservationControl::BeginField(context), callback)
+            .unwrap(),
+    );
     if !bytes.is_empty() {
-        match stager.fragment(
-            ProviderObservationStagingBytes::new(context, bytes).unwrap(),
-            callback,
-        ) {
+        match stager
+            .fragment(
+                ProviderObservationStagingBytes::new(context, bytes).unwrap(),
+                callback,
+            )
+            .map(clean_stage)
+        {
             Err(ProviderObservationStagingError::Validation(error)) => return error,
             Err(error) => panic!("unexpected staging error: {error}"),
             Ok(()) => {}
         }
     }
-    match stager.control(ProviderObservationControl::EndField(context), callback) {
+    match stager
+        .control(ProviderObservationControl::EndField(context), callback)
+        .map(clean_stage)
+    {
         Err(ProviderObservationStagingError::Validation(error)) => error,
         Err(error) => panic!("unexpected staging error: {error}"),
         Ok(()) => panic!("invalid identity was accepted"),
@@ -63,15 +71,17 @@ fn begin_item(
     kind: ProviderObservationItemKind,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
-    let mut stager = ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([byte; 16]),
-        ProviderObservationBegin::Item {
-            lifecycle: ProviderObservationItemLifecycle::Completed,
-            kind,
-        },
-        callback,
-    )
-    .unwrap();
+    let mut stager = clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([byte; 16]),
+            ProviderObservationBegin::Item {
+                lifecycle: ProviderObservationItemLifecycle::Completed,
+                kind,
+            },
+            callback,
+        )
+        .unwrap(),
+    );
     scalar(
         &mut stager,
         ProviderField::LifecycleObservedAt,
@@ -102,12 +112,14 @@ fn every_item_and_delta_item_id_uses_exact_cas_item_identity_validation() {
         stager.abandon();
     }
     for (index, kind) in DELTA_KINDS.into_iter().enumerate() {
-        let mut stager = ProviderObservationStager::begin(
-            ProviderObservationId::from_bytes([180 + index as u8; 16]),
-            ProviderObservationBegin::Delta { kind },
-            &mut callback,
-        )
-        .unwrap();
+        let mut stager = clean_stage(
+            ProviderObservationStager::begin(
+                ProviderObservationId::from_bytes([180 + index as u8; 16]),
+                ProviderObservationBegin::Delta { kind },
+                &mut callback,
+            )
+            .unwrap(),
+        );
         assert_eq!(
             invalid_context_text(
                 &mut stager,
@@ -120,7 +132,9 @@ fn every_item_and_delta_item_id_uses_exact_cas_item_identity_validation() {
         stager.abandon();
     }
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -144,7 +158,7 @@ fn item_identity_enforces_exact_empty_length_trim_and_control_contract() {
         &mut callback,
     )
     .unwrap();
-    accepted.seal(&mut callback).unwrap().abandon();
+    clean_seal(accepted.seal(&mut callback).unwrap()).abandon();
 
     for (byte, invalid) in [
         (191, Vec::new()),
@@ -169,7 +183,9 @@ fn item_identity_enforces_exact_empty_length_trim_and_control_contract() {
         stager.abandon();
     }
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -187,18 +203,22 @@ fn identity_byte_frontier_is_persisted_and_enforced_after_restart() {
             &mut callback,
         );
         let context = ProviderValueContext::Field(ProviderField::ItemId);
-        stager
-            .control(
-                ProviderObservationControl::BeginField(context),
-                &mut callback,
-            )
-            .unwrap();
-        stager
-            .fragment(
-                ProviderObservationStagingBytes::new(context, &[b'x'; 256]).unwrap(),
-                &mut callback,
-            )
-            .unwrap();
+        clean_stage(
+            stager
+                .control(
+                    ProviderObservationControl::BeginField(context),
+                    &mut callback,
+                )
+                .unwrap(),
+        );
+        clean_stage(
+            stager
+                .fragment(
+                    ProviderObservationStagingBytes::new(context, &[b'x'; 256]).unwrap(),
+                    &mut callback,
+                )
+                .unwrap(),
+        );
         stager.abandon();
     }
     store.close().unwrap();
@@ -233,7 +253,9 @@ fn identity_byte_frontier_is_persisted_and_enforced_after_restart() {
             .unwrap(),
         before
     );
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -243,15 +265,17 @@ fn enum_value(
     value: ProviderEnumValue,
     callback: &mut impl ProviderObservationStageCallback,
 ) {
-    stager
-        .control(
-            ProviderObservationControl::Enum {
-                context: ProviderValueContext::Field(field),
-                value,
-            },
-            callback,
-        )
-        .unwrap();
+    clean_stage(
+        stager
+            .control(
+                ProviderObservationControl::Enum {
+                    context: ProviderValueContext::Field(field),
+                    value,
+                },
+                callback,
+            )
+            .unwrap(),
+    );
 }
 
 fn prepare_collab(
@@ -307,24 +331,28 @@ fn only_closed_collaboration_and_subagent_thread_fields_use_thread_identity_rule
     )
     .unwrap();
     let receivers = ProviderValueContext::Field(ProviderField::CollabReceiverThreadIds);
-    receiver
-        .control(
-            ProviderObservationControl::BeginContainer {
-                context: receivers,
-                container: ProviderContainer::List,
-            },
-            &mut callback,
-        )
-        .unwrap();
-    receiver
-        .control(
-            ProviderObservationControl::BeginElement {
-                context: receivers,
-                index: 0,
-            },
-            &mut callback,
-        )
-        .unwrap();
+    clean_stage(
+        receiver
+            .control(
+                ProviderObservationControl::BeginContainer {
+                    context: receivers,
+                    container: ProviderContainer::List,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+    );
+    clean_stage(
+        receiver
+            .control(
+                ProviderObservationControl::BeginElement {
+                    context: receivers,
+                    index: 0,
+                },
+                &mut callback,
+            )
+            .unwrap(),
+    );
     assert_eq!(
         invalid_context_text(
             &mut receiver,
@@ -365,6 +393,8 @@ fn only_closed_collaboration_and_subagent_thread_fields_use_thread_identity_rule
     );
     subagent.abandon();
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

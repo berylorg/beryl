@@ -1,41 +1,27 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "support/fjall.rs"]
+mod fjall_support;
 mod support;
 
-use std::{num::NonZeroU64, sync::Arc, thread, time::Duration};
+use std::{fs, process::Command, thread, time::Duration};
 
 use beryl_home_store::{
+    HomeHealthSnapshot, HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion,
+    HomeStore, ReadError,
     test_faults::{FaultController, FaultPoint},
-    CommandError, CommitReceiptError, DomainValidationError, HealthVerificationError, HomeCommand,
-    HomeHealthSnapshot, HomeHealthState, HomeOpenError, HomeOpenOptions, HomeRecoveryError,
-    HomeSchemaVersion, HomeStore, ReadError, RecoveryRetrySchedule,
 };
+use fjall::{Database, PersistMode};
 use tempfile::tempdir;
 
-use support::{committed, AlphaDomain, BytesRecord, PutBytes};
+use support::AlphaDomain;
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
+fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
     HomeStore::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
     .unwrap()
-}
-
-fn command(
-    store: &HomeStore,
-    domain: beryl_home_store::DomainHandle<AlphaDomain>,
-    key: u64,
-    value: &[u8],
-) -> HomeCommand {
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
-            PutBytes::<AlphaDomain>::new(key, value.to_vec()),
-        ))
-        .unwrap();
-    command
 }
 
 #[test]
@@ -46,281 +32,189 @@ fn opening_snapshot_has_no_generation() {
 }
 
 #[test]
-fn surfaced_commit_failure_gates_reads_until_bounded_verification_succeeds() {
+fn candidate_abort_retains_failed_authority_and_allows_a_fresh_retry() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open_with_faults(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-    let generation = store.health().generation().unwrap();
-
-    faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(matches!(
-        store.execute(command(&store, alpha, 7, b"never committed")),
-        beryl_home_store::CommandOutcome::NotCommitted {
-            evidence: CommandError::Commit { .. }
-        }
-    ));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-    assert!(matches!(
-        store.home_revision(),
-        Err(ReadError::HealthGate(error)) if error.state() == HomeHealthState::Verifying
-    ));
-
-    let health = store.verify_health().unwrap();
-    assert_eq!(health.state(), HomeHealthState::Healthy);
-    assert_eq!(health.generation(), Some(generation));
-    assert_eq!(store.home_revision().unwrap().get(), 1);
-    assert_eq!(
-        store
-            .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-                alpha,
-                &7,
-                beryl_home_store::PointReadLimit::new(1_028).unwrap(),
-            )
-            .unwrap(),
-        None
-    );
-}
-
-#[test]
-fn failed_verification_force_recovers_only_the_same_locked_home() {
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = open_with_faults(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut store = open(directory.path(), faults.clone());
+    let stale = store.register_domain::<AlphaDomain>().unwrap();
     let home_id = store.home_id();
     let original_generation = store.health().generation().unwrap();
-    let stale_command = command(&store, alpha, 91, b"stale");
+    let original_tier = store.durability_tier();
 
-    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
-    assert!(matches!(
-        store.execute(command(&store, alpha, 9, b"indeterminate")),
-        beryl_home_store::CommandOutcome::Indeterminate {
-            failure: CommandError::Persistence { .. },
-            reconciliation: _,
-        }
-    ));
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(matches!(
-        store.verify_health(),
-        Err(HealthVerificationError::Persistence { .. })
-    ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-    assert!(matches!(
-        HomeStore::open(HomeOpenOptions::new(
-            directory.path(),
-            HomeSchemaVersion::CURRENT,
-        )),
-        Err(HomeOpenError::Busy { .. })
-    ));
-
-    let receipt = store.recover_same_home().unwrap();
-    assert_eq!(receipt.generation().get(), original_generation.get() + 1);
-    assert_eq!(store.health().state(), HomeHealthState::Healthy);
-    assert_eq!(store.home_id(), home_id);
-    assert!(matches!(
-        store.execute(stale_command),
-        beryl_home_store::CommandOutcome::NotCommitted {
-            evidence: CommandError::ForeignDomain { .. }
-        }
-    ));
-
-    let alpha = store.domain_handle::<AlphaDomain>().unwrap();
-    let revision = store.home_revision().unwrap().get();
-    let value = store
-        .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
-            &9,
-            beryl_home_store::PointReadLimit::new(1_028).unwrap(),
-        )
-        .unwrap();
-    assert!(
-        (revision == 1 && value.is_none())
-            || (revision == 2 && value.as_deref() == Some(b"indeterminate"))
-    );
-}
-
-#[test]
-fn same_home_recovery_rejects_a_prior_generation_success_receipt() {
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = open_with_faults(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-    let prior_generation = store.health().generation().unwrap();
-    let receipt = committed(store.execute(command(&store, alpha, 1, b"durable prior result")));
-    let receipt_domain_revision = store
-        .receipt_domain_revision(&receipt, alpha)
-        .unwrap()
-        .unwrap();
-    assert_eq!(receipt.generation(), prior_generation);
-
-    faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(matches!(
-        store.execute(command(&store, alpha, 2, b"indeterminate")),
-        beryl_home_store::CommandOutcome::NotCommitted {
-            evidence: CommandError::Commit { .. }
-        }
-    ));
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(store.verify_health().is_err());
-    let recovery = store.recover_same_home().unwrap();
-    let current = store.domain_handle::<AlphaDomain>().unwrap();
-
-    assert!(recovery.generation() > prior_generation);
-    assert_eq!(store.home_revision().unwrap(), receipt.home_revision());
-    assert_eq!(
-        store.domain_revision(current).unwrap(),
-        receipt_domain_revision
-    );
-    assert!(matches!(
-        store.receipt_domain_revision(&receipt, current),
-        Err(CommitReceiptError::StaleOrForeign {
-            receipt_generation,
-            current_generation,
-        }) if receipt_generation == prior_generation
-            && current_generation == recovery.generation()
-    ));
-}
-
-#[test]
-fn recovery_is_single_flight_and_new_signals_join_the_active_attempt() {
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = open_with_faults(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-
-    faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(matches!(
-        store.execute(command(&store, alpha, 1, b"x")),
-        beryl_home_store::CommandOutcome::NotCommitted { .. }
-    ));
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(store.verify_health().is_err());
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-
-    let block = faults.block_next(FaultPoint::BeforeReopen);
-    let store = Arc::new(store);
-    let recovering = Arc::clone(&store);
-    let worker = thread::spawn(move || recovering.recover_same_home());
-    assert!(block.wait_until_reached(Duration::from_secs(10)));
-    assert_eq!(store.health().state(), HomeHealthState::Reopening);
-    assert!(matches!(
-        store.recover_same_home(),
-        Err(HomeRecoveryError::InProgress {
-            state: HomeHealthState::Reopening,
-        })
-    ));
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(matches!(
         store.home_revision(),
-        Err(ReadError::HealthGate(error)) if error.state() == HomeHealthState::Reopening
+        Err(ReadError::Storage { .. })
     ));
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
 
-    block.release();
-    worker.join().unwrap().unwrap();
-    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    let candidate = store.recover_same_home().unwrap();
+    assert_eq!(candidate.home_id(), home_id);
+    assert_eq!(candidate.generation().get(), original_generation.get() + 1);
+    assert_eq!(candidate.durability_tier(), original_tier);
+    let aborted = candidate.domain_handle::<AlphaDomain>().unwrap();
+    let failed = candidate.abort();
+    assert_eq!(failed.health().state(), HomeHealthState::Failed);
+
+    let candidate = failed.recover_same_home().unwrap();
+    let current = candidate.domain_handle::<AlphaDomain>().unwrap();
+    let recovered = candidate.publish();
+    assert_eq!(recovered.health().state(), HomeHealthState::Healthy);
+    assert!(recovered.domain_revision(stale).is_err());
+    assert!(recovered.domain_revision(aborted).is_err());
+    assert_eq!(recovered.domain_revision(current).unwrap().get(), 1);
+    recovered.close().unwrap();
 }
 
 #[test]
-fn failed_recovery_can_retry_the_same_home_without_replacement_creation() {
+fn recovery_is_rejected_outside_failed_authority() {
     let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = open_with_faults(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-
-    faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(matches!(
-        store.execute(command(&store, alpha, 1, b"x")),
-        beryl_home_store::CommandOutcome::NotCommitted { .. }
-    ));
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(store.verify_health().is_err());
-
-    faults.fail_next(FaultPoint::BeforeReopen);
-    assert!(matches!(
-        store.recover_same_home(),
-        Err(HomeRecoveryError::Layout { .. })
-    ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-
-    faults.fail_next(FaultPoint::AfterReopen);
-    assert!(matches!(
-        store.recover_same_home(),
-        Err(HomeRecoveryError::Persistence { .. })
-    ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-
-    store.recover_same_home().unwrap();
-    assert_eq!(store.health().state(), HomeHealthState::Healthy);
-}
-
-#[test]
-fn retry_schedule_uses_the_accepted_bounded_delays() {
-    let mut schedule = RecoveryRetrySchedule::default();
-    let delays: Vec<_> = (0..7).map(|_| schedule.next_delay()).collect();
+    let store = open(directory.path(), FaultController::new());
+    let failure = store.recover_same_home().unwrap_err();
     assert_eq!(
-        delays,
-        [1_u64, 2, 5, 10, 30, 30, 30].map(Duration::from_secs)
+        failure.into_store().health().state(),
+        HomeHealthState::Healthy
     );
-    schedule.reset();
-    assert_eq!(schedule.next_delay(), Duration::from_secs(1));
 }
 
-#[test]
-fn recovery_rejects_validator_disagreement_and_remains_failed() {
-    use support::ValidatedDomain;
-
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = open_with_faults(directory.path(), faults.clone());
-    let domain = store.register_domain::<ValidatedDomain>().unwrap();
-    committed(store.execute(command_for_validated(&store, domain, b"reject")));
-
-    faults.fail_next(FaultPoint::BeforeSidecarWrite);
-    assert!(store
-        .admit_sidecar(
-            beryl_home_store::SidecarNamespace::new("fixture").unwrap(),
-            b"sidecar",
-            beryl_home_store::SidecarByteLimit::new(NonZeroU64::new(64).unwrap()),
-        )
-        .is_err());
+fn fail_store(store: HomeStore, faults: &FaultController) -> HomeStore {
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(matches!(
-        store.verify_health(),
-        Err(HealthVerificationError::DomainValidation(
-            DomainValidationError::Rejected {
-                domain: "validated",
-                ..
-            }
-        ))
-    ));
-    assert!(matches!(
-        store.recover_same_home(),
-        Err(HomeRecoveryError::DomainValidation(
-            DomainValidationError::Rejected {
-                domain: "validated",
-                ..
-            }
-        ))
+        store.home_revision(),
+        Err(ReadError::Storage { .. })
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
-}
-
-fn command_for_validated(
-    store: &HomeStore,
-    domain: beryl_home_store::DomainHandle<support::ValidatedDomain>,
-    value: &[u8],
-) -> HomeCommand {
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
-            PutBytes::<support::ValidatedDomain>::new(1, value.to_vec()),
-        ))
-        .unwrap();
-    command
+    store
 }
 
 #[test]
-fn sidecar_limit_type_remains_explicitly_nonzero() {
-    let limit = beryl_home_store::SidecarByteLimit::new(NonZeroU64::new(1).unwrap());
-    assert_eq!(limit.get(), 1);
+fn recovery_rejects_current_state_file_without_fresh_fallback() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let store = fail_store(open(directory.path(), faults.clone()), &faults);
+    let state = directory.path().join("state");
+    let saved_state = directory.path().join("saved-state");
+    let block = faults.block_next(FaultPoint::BeforeReopen);
+    let worker = thread::spawn(move || store.recover_same_home());
+    assert!(block.wait_until_reached(Duration::from_secs(10)));
+
+    fs::rename(&state, &saved_state).unwrap();
+    fs::write(&state, b"state-file-collision").unwrap();
+    block.release();
+
+    let failure = worker
+        .join()
+        .unwrap()
+        .expect_err("candidate must remain unpublished");
+    assert!(matches!(failure.error(), HomeRecoveryError::Layout { .. }));
+    assert_eq!(fs::read(&state).unwrap(), b"state-file-collision");
+    assert!(saved_state.join("version").is_file());
+    let failed = failure.into_store();
+    assert_eq!(failed.health().state(), HomeHealthState::Failed);
+    failed.close().unwrap();
+}
+
+#[test]
+fn recovery_rejects_missing_current_state_without_fresh_fallback() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let store = fail_store(open(directory.path(), faults.clone()), &faults);
+    let state = directory.path().join("state");
+    let saved_state = directory.path().join("saved-state");
+    let block = faults.block_next(FaultPoint::BeforeReopen);
+    let worker = thread::spawn(move || store.recover_same_home());
+    assert!(block.wait_until_reached(Duration::from_secs(10)));
+
+    fs::rename(&state, &saved_state).unwrap();
+    block.release();
+
+    let failure = worker
+        .join()
+        .unwrap()
+        .expect_err("candidate must remain unpublished");
+    assert!(matches!(failure.error(), HomeRecoveryError::Layout { .. }));
+    assert!(!state.exists());
+    assert!(saved_state.join("version").is_file());
+    let failed = failure.into_store();
+    assert_eq!(failed.health().state(), HomeHealthState::Failed);
+    failed.close().unwrap();
+}
+
+#[test]
+fn recovery_rejects_current_state_header_schema_mismatch() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let store = fail_store(open(directory.path(), faults.clone()), &faults);
+    let state = directory.path().join("state");
+    let block = faults.block_next(FaultPoint::BeforeReopen);
+    let worker = thread::spawn(move || store.recover_same_home());
+    assert!(block.wait_until_reached(Duration::from_secs(10)));
+
+    let database = Database::recover(fjall_support::config(&state)).unwrap();
+    let header = database.open_keyspace("_beryl_home").unwrap();
+    let mut mismatched_header = [0_u8; 30];
+    mismatched_header[..8].copy_from_slice(b"BRYLHOME");
+    mismatched_header[8..10].copy_from_slice(&1_u16.to_be_bytes());
+    mismatched_header[10..14].copy_from_slice(&2_u32.to_be_bytes());
+    header.insert(b"header", mismatched_header).unwrap();
+    database.persist(PersistMode::SyncAll).unwrap();
+    drop(header);
+    drop(database);
+    block.release();
+
+    let failure = worker
+        .join()
+        .unwrap()
+        .expect_err("candidate must remain unpublished");
+    assert!(matches!(failure.error(), HomeRecoveryError::HomeMismatch));
+    let failed = failure.into_store();
+    assert_eq!(failed.health().state(), HomeHealthState::Failed);
+    failed.close().unwrap();
+}
+
+#[test]
+fn recovery_rejects_current_state_reparse_point() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let store = fail_store(open(directory.path(), faults.clone()), &faults);
+    let state = directory.path().join("state");
+    let saved_state = directory.path().join("saved-state");
+    let external = directory.path().join("external-state");
+    let block = faults.block_next(FaultPoint::BeforeReopen);
+    let worker = thread::spawn(move || store.recover_same_home());
+    assert!(block.wait_until_reached(Duration::from_secs(10)));
+
+    fs::rename(&state, &saved_state).unwrap();
+    fs::create_dir(&external).unwrap();
+    let sentinel = external.join("sentinel");
+    fs::write(&sentinel, b"external state remains untouched").unwrap();
+    let output = Command::new("cmd.exe")
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(&state)
+        .arg(&external)
+        .output()
+        .expect("run built-in junction command");
+    assert!(
+        output.status.success(),
+        "junction creation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    block.release();
+
+    let failure = worker
+        .join()
+        .unwrap()
+        .expect_err("candidate must remain unpublished");
+    assert!(matches!(failure.error(), HomeRecoveryError::Layout { .. }));
+    assert!(state.is_dir());
+    assert_eq!(
+        fs::read(&sentinel).unwrap(),
+        b"external state remains untouched"
+    );
+    assert!(!external.join("version").exists());
+    assert!(saved_state.join("version").is_file());
+    let failed = failure.into_store();
+    assert_eq!(failed.health().state(), HomeHealthState::Failed);
+    failed.close().unwrap();
+    fs::remove_dir(&state).unwrap();
 }

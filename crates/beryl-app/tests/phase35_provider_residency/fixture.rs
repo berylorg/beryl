@@ -66,7 +66,7 @@ impl LiveHarness {
                 TIMEOUT,
             )
             .unwrap();
-        let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+        let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
         let request = CasProjectionRequest::new(
             fixture.thread,
             fixture.selected_path(fixture.thread),
@@ -78,7 +78,7 @@ impl LiveHarness {
         );
         let projection = coordinator
             .obtain_projection(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 &mut session,
                 &request,
@@ -102,8 +102,8 @@ impl LiveHarness {
         }
     }
 
-    pub(super) fn store(&self) -> &beryl_home_store::HomeStore {
-        &self.fixture.as_ref().unwrap().store
+    pub(super) fn store(&self) -> crate::syndic::FixtureHome<'_> {
+        self.fixture.as_ref().unwrap().home()
     }
 
     pub(super) fn storage(&self) -> syndic_storage::SyndicStorage {
@@ -205,8 +205,8 @@ impl LiveHarness {
     }
 
     pub(super) fn assert_unpublished(&self, sequence: u64) {
-        assert_atomic_frontier(self.store(), self.storage(), self.thread, self.turn, 0);
-        assert_item_absent(self.store(), self.storage(), &self.source, sequence);
+        assert_atomic_frontier(&*self.store(), self.storage(), self.thread, self.turn, 0);
+        assert_item_absent(&*self.store(), self.storage(), &self.source, sequence);
     }
 
     pub(super) fn abandon_target(&mut self) {
@@ -215,7 +215,7 @@ impl LiveHarness {
 
     pub(super) fn assert_frontier(&self, expected: u64) {
         assert_atomic_frontier(
-            self.store(),
+            &*self.store(),
             self.storage(),
             self.thread,
             self.turn,
@@ -229,16 +229,10 @@ impl LiveHarness {
         loop {
             let actual = match self
                 .storage()
-                .turn_state(self.store(), self.turn, point_limit())
+                .turn_state(&*self.store(), self.turn, point_limit())
             {
                 Ok(Some(state)) => state.source_event_count(),
                 Ok(None) => panic!("active turn disappeared while waiting for source frontier"),
-                Err(SyndicReadError::Read(ReadError::HealthGate(error)))
-                    if error.state() == HomeHealthState::Verifying && Instant::now() < deadline =>
-                {
-                    thread::sleep(Duration::from_millis(2));
-                    continue;
-                }
                 Err(error) => {
                     panic!("source frontier read failed while waiting for {expected}: {error:?}")
                 }
@@ -263,7 +257,7 @@ impl LiveHarness {
     }
 
     pub(super) fn assert_digest(&self, spec: ObservationSpec) {
-        assert_item_digest(self.store(), self.storage(), &self.source, spec);
+        assert_item_digest(&*self.store(), self.storage(), &self.source, spec);
     }
 
     pub(super) fn close(mut self) {
@@ -314,18 +308,20 @@ fn activate_projection(
 ) -> CasTurnSource {
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, fixture.thread, point_limit())
+        .current_binding(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let selected = fixture.selected_path(fixture.thread);
     let snapshot = SyndicExecutionSnapshotId::from_bytes(*submitted.turn.as_bytes());
     let started_at = SyndicTimestamp::from_unix_millis(35_001);
-    let outcome = fixture.store.execute_current(
+    let outcome = fixture
+        .home()
+        .execute_current(
             fixture
                 .storage
                 .current_activate_binding(ActivateBinding::new(
@@ -340,23 +336,35 @@ fn activate_projection(
                 )),
         );
     match outcome {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed binding activation, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed binding activation, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed binding activation, got {outcome:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed binding activation, got {outcome:?}")
+        }
     }
     let binding = fixture
         .storage
-        .current_binding(&fixture.store, fixture.thread, point_limit())
+        .current_binding(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let cas_turn = CasTurnId::new(CAS_TURN_ID).unwrap();
-    let outcome = fixture.store.execute_current(fixture.storage.current_publish_active_cas_turn(
+    let outcome = fixture
+        .home()
+        .execute_current(fixture.storage.current_publish_active_cas_turn(
             PublishActiveCasTurn::new(
                 fixture.thread,
                 binding.binding().revision(),
@@ -368,20 +376,30 @@ fn activate_projection(
             ),
         ));
     match outcome {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed CAS publication, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed CAS publication, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed CAS publication, got {outcome:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed CAS publication, got {outcome:?}")
+        }
     }
     let source = CasTurnSource::new(projection.cas_thread_id().clone(), cas_turn);
     let state = fixture
         .storage
-        .turn_state(&fixture.store, submitted.turn, point_limit())
+        .turn_state(&*fixture.home(), submitted.turn, point_limit())
         .unwrap()
         .unwrap();
     let gate = fixture
         .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(&*fixture.home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let activation = LiveSourceEvent::new(
@@ -396,13 +414,23 @@ fn activate_projection(
     )
     .unwrap();
     let outcome = fixture
-        .store
+        .home()
         .execute_current(fixture.storage.current_admit_live_source_event(activation));
     match outcome {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed live event, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed live event, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed live event, got {outcome:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed live event, got {outcome:?}")
+        }
     }
     source
 }
@@ -437,13 +465,13 @@ pub fn prove_transport_backpressure_and_cancellation() {
     harness.wait_for_page_leases(0);
     assert_broker_idle_and_bounded(provider_broker_snapshot(harness.session()));
     assert_atomic_frontier(
-        harness.store(),
+        &*harness.store(),
         harness.storage(),
         harness.thread,
         harness.turn,
         1,
     );
-    assert_item_digest(harness.store(), harness.storage(), &harness.source, spec);
+    assert_item_digest(&*harness.store(), harness.storage(), &harness.source, spec);
     drop(barrier);
     harness.close();
 

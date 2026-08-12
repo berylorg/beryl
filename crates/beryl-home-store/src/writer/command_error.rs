@@ -1,9 +1,9 @@
 use std::error::Error;
 
 use crate::{
-    domain::callback::{callback_failure_severity, ErasedCallbackError},
-    health::{ClassifiedFjallError, FailureSeverity},
     CodecOperation, CommandError, ContributorCallbackStage, ReadError, ReadStage,
+    domain::callback::{ErasedCallbackError, callback_failure_severity},
+    health::{ClassifiedFjallError, FailureSeverity},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -85,7 +85,7 @@ pub(super) fn command_failure_severity(error: &CommandError) -> Option<FailureSe
         | CommandError::ReconciliationReservationMismatch { .. }
         | CommandError::RevisionExhausted { .. }
         | CommandError::Metadata { .. } => None,
-        CommandError::ContributorAccess { source, .. } => Some(callback_failure_severity(source)),
+        CommandError::ContributorAccess { source, .. } => callback_failure_severity(source),
         CommandError::Commit { source } | CommandError::Persistence { source } => {
             erased_storage_failure_severity(source.as_ref())
         }
@@ -96,13 +96,73 @@ pub(super) fn command_failure_severity(error: &CommandError) -> Option<FailureSe
             .into_iter()
             .chain(command_failure_severity(persistence))
             .max_by_key(|severity| match severity {
-                FailureSeverity::Verify => 0,
-                FailureSeverity::Structural => 1,
+                FailureSeverity::Structural => 0,
             }),
         CommandError::RevisionRead { source } => read_failure_severity(source),
         CommandError::WriterPoisoned
         | CommandError::GenerationPoisoned
         | CommandError::DomainRegistrationInvariant { .. } => Some(FailureSeverity::Structural),
+    }
+}
+
+/// Classifies only evidence that is independently structural when a command's
+/// commit state is already indeterminate. The indeterminate outcome itself is
+/// reconciled at domain scope and must not poison the whole home merely because
+/// its underlying storage error was I/O or durability related.
+pub(super) fn indeterminate_failure_severity(error: &CommandError) -> Option<FailureSeverity> {
+    match error {
+        CommandError::Commit { source } | CommandError::Persistence { source } => {
+            independently_structural_storage_failure(source.as_ref())
+        }
+        CommandError::PersistenceAfterCommitFailure {
+            commit,
+            persistence,
+        } => indeterminate_failure_severity(commit)
+            .or_else(|| indeterminate_failure_severity(persistence)),
+        CommandError::RevisionRead { source } => independently_structural_read_failure(source),
+        CommandError::WriterPoisoned
+        | CommandError::GenerationPoisoned
+        | CommandError::DomainRegistrationInvariant { .. } => Some(FailureSeverity::Structural),
+        _ => None,
+    }
+}
+
+fn independently_structural_storage_failure(
+    source: &(dyn Error + Send + Sync + 'static),
+) -> Option<FailureSeverity> {
+    if source.downcast_ref::<BatchAccountingOverflow>().is_some() {
+        return None;
+    }
+    if source.downcast_ref::<std::io::Error>().is_some() {
+        return None;
+    }
+    match source.downcast_ref::<ClassifiedFjallError>() {
+        Some(source) if source.is_independently_structural() => Some(FailureSeverity::Structural),
+        Some(_) => None,
+        None => Some(FailureSeverity::Structural),
+    }
+}
+
+fn independently_structural_read_failure(error: &ReadError) -> Option<FailureSeverity> {
+    match error {
+        ReadError::Storage { source, .. } => {
+            independently_structural_storage_failure(source.as_ref())
+        }
+        ReadError::GenerationPoisoned
+        | ReadError::InvalidStoredKeySize { .. }
+        | ReadError::InvalidStoredValueSize { .. }
+        | ReadError::UnsupportedRecordVersion { .. }
+        | ReadError::MalformedRecord { .. }
+        | ReadError::InvalidRevisionMetadata { .. } => Some(FailureSeverity::Structural),
+        ReadError::Codec { operation, .. }
+            if matches!(
+                operation,
+                CodecOperation::DecodeKey | CodecOperation::DecodeValue
+            ) =>
+        {
+            Some(FailureSeverity::Structural)
+        }
+        _ => None,
     }
 }
 
@@ -114,7 +174,7 @@ fn erased_storage_failure_severity(
     }
     match source.downcast_ref::<ClassifiedFjallError>() {
         Some(source) => source.severity(),
-        None => Some(FailureSeverity::Verify),
+        None => Some(FailureSeverity::Structural),
     }
 }
 

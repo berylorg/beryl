@@ -76,13 +76,11 @@ fn live_request_publication_reconciles_prior_then_exact() {
             .unwrap(),
         CompactionRequestTransitionStatus::Prior
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_publish_compaction_request_disposition(request),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_publish_compaction_request_disposition(request),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..

@@ -56,7 +56,7 @@ fn production_recovery_rendezvous_holds_one_fixed_page_then_releases() {
     let observer = session.recovery_replay_diagnostics_observer();
     assert!(observer.snapshot().is_none());
 
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
     let request = CasProjectionRequest::new(
         fixture.thread,
         fixture.selected_path(fixture.thread),
@@ -71,7 +71,7 @@ fn production_recovery_rendezvous_holds_one_fixed_page_then_releases() {
     let projection = thread::scope(|scope| {
         let worker = scope.spawn(|| {
             coordinator.obtain_projection(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 &mut session,
                 &request,
@@ -124,7 +124,7 @@ fn production_recovery_cancellation_returns_typed_failure_and_releases() {
         )
         .unwrap();
     let observer = session.recovery_replay_diagnostics_observer();
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.store).unwrap();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
     let request = CasProjectionRequest::new(
         fixture.thread,
         fixture.selected_path(fixture.thread),
@@ -139,7 +139,7 @@ fn production_recovery_cancellation_returns_typed_failure_and_releases() {
     let error = thread::scope(|scope| {
         let worker = scope.spawn(|| {
             coordinator.obtain_projection(
-                &fixture.store,
+                &*fixture.home(),
                 fixture.storage,
                 &mut session,
                 &request,

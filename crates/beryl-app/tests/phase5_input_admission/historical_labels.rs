@@ -1,7 +1,7 @@
 use super::{
     AcceptedInputAdmission, AssetOwner, Fixture, IdleSubmission, InputAdmissionBuildError,
-    InputAdmissionStatus, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
-    idle_submission_command, point_limit, prepare_accepted_input_admission, time,
+    InputAdmissionStatus, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, point_limit,
+    prepare_accepted_input_admission, time,
 };
 use crate::assets::{admit_asset_at_label, admit_reference_set};
 use beryl_model::{AssetId, SealedAssetReferenceSetProof};
@@ -29,14 +29,10 @@ fn establish_origin(
         draft,
         seed.wrapping_add(1),
     );
-    let current = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
+    let current = fixture.current_draft();
     let gate = fixture
         .syndic
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(fixture.home().home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let submission = IdleSubmission::new(
@@ -51,14 +47,10 @@ fn establish_origin(
         Some(proof),
         time(3),
     );
-    let command = idle_submission_command(
-        &fixture.store,
-        fixture.syndic,
-        fixture.state.assets(),
-        submission,
-    )
-    .unwrap();
-    match fixture.store.execute(command) { beryl_home_store::CommandOutcome::Committed { later_failure: None, .. } => {}, beryl_home_store::CommandOutcome::NotCommitted { evidence } => panic!("expected committed origin: {evidence:?}"), outcome @ beryl_home_store::CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ beryl_home_store::CommandOutcome::Indeterminate { .. } => panic!("indeterminate origin: {outcome:?}"), }
+    fixture
+        .store
+        .execute_idle_submission(fixture.state.assets(), submission)
+        .unwrap();
     Origin { asset_id, proof }
 }
 
@@ -70,11 +62,7 @@ fn prepare_reuse(
 ) -> AcceptedInputAdmission {
     let marker = SyndicDraftMarkerId::from_bytes([seed; 16]);
     fixture.publish_marker_at(marker, label, 4);
-    let current = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
+    let current = fixture.current_draft();
     let proof = admit_reference_set(
         fixture,
         marker,
@@ -83,14 +71,10 @@ fn prepare_reuse(
         current.draft().id(),
         seed.wrapping_add(1),
     );
-    let current = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
+    let current = fixture.current_draft();
     let gate = fixture
         .syndic
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(fixture.home().home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     AcceptedInputAdmission::new(
@@ -113,7 +97,12 @@ fn current_label_reuse_with_the_exact_origin_asset_is_accepted() {
     let origin = establish_origin(&mut fixture, label, b"origin image", 82);
     let resolved = fixture
         .syndic
-        .resolve_image_label_origin_span(&fixture.store, fixture.thread, label, point_limit())
+        .resolve_image_label_origin_span(
+            fixture.home().home(),
+            fixture.thread,
+            label,
+            point_limit(),
+        )
         .unwrap()
         .unwrap();
     assert_eq!(resolved.span().start_label(), ImageLabelOrdinal::FIRST);
@@ -123,7 +112,7 @@ fn current_label_reuse_with_the_exact_origin_asset_is_accepted() {
     let admission = prepare_reuse(&mut fixture, label, origin.asset_id, 86);
     let input = admission.accepted_input_id();
     let prepared = prepare_accepted_input_admission(
-        &fixture.store,
+        fixture.home().home(),
         fixture.syndic,
         fixture.state.assets(),
         admission.clone(),
@@ -136,7 +125,7 @@ fn current_label_reuse_with_the_exact_origin_asset_is_accepted() {
 
     let stored = fixture
         .syndic
-        .accepted_input(&fixture.store, input, point_limit())
+        .accepted_input(fixture.home().home(), input, point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -147,11 +136,17 @@ fn current_label_reuse_with_the_exact_origin_asset_is_accepted() {
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, AssetOwner::AcceptedInput(input))
+            .owner_head(fixture.home().home(), AssetOwner::AcceptedInput(input))
             .unwrap()
             .is_some()
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .live_home_command()
+        .unwrap()
+        .home()
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -162,23 +157,13 @@ fn current_label_reuse_with_a_different_asset_is_rejected() {
 
     let marker = SyndicDraftMarkerId::from_bytes([106; 16]);
     fixture.publish_marker_at(marker, label, 4);
-    let draft = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap()
-        .draft()
-        .id();
+    let draft = fixture.current_draft().draft().id();
     let (_different_asset, proof) =
         admit_asset_at_label(&mut fixture, marker, label, b"different asset", draft, 107);
-    let current = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
+    let current = fixture.current_draft();
     let gate = fixture
         .syndic
-        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .input_gate(fixture.home().home(), fixture.thread, point_limit())
         .unwrap()
         .unwrap();
     let admission = AcceptedInputAdmission::new(
@@ -195,7 +180,7 @@ fn current_label_reuse_with_a_different_asset_is_rejected() {
 
     assert!(matches!(
         prepare_accepted_input_admission(
-            &fixture.store,
+            fixture.home().home(),
             fixture.syndic,
             fixture.state.assets(),
             admission.clone(),
@@ -206,7 +191,7 @@ fn current_label_reuse_with_a_different_asset_is_rejected() {
     assert_eq!(
         fixture
             .syndic
-            .accepted_input_status(&fixture.store, &admission, point_limit())
+            .accepted_input_status(fixture.home().home(), &admission, point_limit())
             .unwrap(),
         InputAdmissionStatus::Absent
     );
@@ -214,7 +199,7 @@ fn current_label_reuse_with_a_different_asset_is_rejected() {
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, AssetOwner::CurrentDraft(draft))
+            .owner_head(fixture.home().home(), AssetOwner::CurrentDraft(draft))
             .unwrap()
             .unwrap()
             .set(),
@@ -234,7 +219,7 @@ fn a_gap_reserved_by_an_earlier_maximum_label_cannot_be_reused() {
 
     assert!(matches!(
         prepare_accepted_input_admission(
-            &fixture.store,
+            fixture.home().home(),
             fixture.syndic,
             fixture.state.assets(),
             admission.clone(),
@@ -245,7 +230,7 @@ fn a_gap_reserved_by_an_earlier_maximum_label_cannot_be_reused() {
     assert_eq!(
         fixture
             .syndic
-            .accepted_input_status(&fixture.store, &admission, point_limit())
+            .accepted_input_status(fixture.home().home(), &admission, point_limit())
             .unwrap(),
         InputAdmissionStatus::Absent
     );
@@ -253,7 +238,7 @@ fn a_gap_reserved_by_an_earlier_maximum_label_cannot_be_reused() {
         fixture
             .state
             .assets()
-            .owner_head(&fixture.store, AssetOwner::CurrentDraft(draft))
+            .owner_head(fixture.home().home(), AssetOwner::CurrentDraft(draft))
             .unwrap()
             .unwrap()
             .set(),

@@ -6,7 +6,7 @@ pub(super) fn seed_pending_turn(
 ) -> (SyndicThreadId, SyndicTurnId) {
     let thread = id(1);
     let draft = draft_id(2);
-    execute(
+    assert_committed(execute(
         store,
         storage.create_thread(
             storage.revision(store).unwrap(),
@@ -17,8 +17,7 @@ pub(super) fn seed_pending_turn(
                 timestamp(1),
             ),
         ),
-    )
-    .unwrap();
+    ));
 
     let payload = ComposerPayload::new(vec![ComposerAtom::text("question").unwrap()]).unwrap();
     let content = PreparedContent::composer(&payload).unwrap();
@@ -31,11 +30,10 @@ pub(super) fn seed_pending_turn(
         DraftPayloadUpdateDecision::Update(update) => update,
         DraftPayloadUpdateDecision::NoChange => unreachable!(),
     };
-    execute(
+    assert_committed(execute(
         store,
         storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    )
-    .unwrap();
+    ));
 
     let current = storage
         .current_draft(store, thread, limit())
@@ -54,11 +52,10 @@ pub(super) fn seed_pending_turn(
         timestamp(3),
     );
     let turn = submission.submitted_turn_id();
-    execute(
+    assert_committed(execute(
         store,
         storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
-    )
-    .unwrap();
+    ));
     (thread, turn)
 }
 
@@ -174,12 +171,11 @@ pub(super) fn stage_item_frame_for_publication(
     frame: ProviderItemFrameV1,
 ) -> SealedProviderFrameReference {
     let prepared = prepare_item_frame(store, storage, turn, item_id, source, frame);
-    execute(
+    assert_committed(execute(
         store,
         storage.begin_provider_frame_build(storage.revision(store).unwrap(), &prepared),
-    )
-    .unwrap();
-    let mut build = stage_provider_frame(
+    ));
+    let mut build = match stage_provider_frame(
         &prepared,
         prepared.initial_build().clone(),
         &mut |batch: &ProviderFrameStageBatch| {
@@ -187,21 +183,26 @@ pub(super) fn stage_item_frame_for_publication(
                 store,
                 storage.stage_provider_frame_batch(storage.revision(store).unwrap(), batch.clone()),
             )
-            .unwrap();
-            Ok::<(), Infallible>(())
         },
     )
-    .unwrap();
+    .expect("provider-frame staging traversal must remain valid")
+    {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            later_failure: None,
+            ..
+        } => value,
+        outcome => panic!("expected clean provider-frame staging, got {outcome:?}"),
+    };
     for _ in 0..4_096 {
         if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
             assert_eq!(build.target(), prepared.target());
             return prepared.target().clone();
         }
-        execute(
+        assert_committed(execute(
             store,
             storage.compare_provider_completion(storage.revision(store).unwrap(), build),
-        )
-        .unwrap();
+        ));
         build = storage
             .provider_item_build(store, item_id, limit())
             .unwrap()
@@ -360,14 +361,13 @@ pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item_id: S
         .unwrap()
         .unwrap();
     let generation = ItemProjectionGeneration::FIRST;
-    execute(
+    assert_committed(execute(
         store,
         storage.start_item_projection_build(
             storage.revision(store).unwrap(),
             StartItemProjectionBuild::new(item_id, item.revision(), generation),
         ),
-    )
-    .unwrap();
+    ));
     loop {
         if storage
             .item_projection_set(store, item_id, generation, limit())
@@ -380,14 +380,13 @@ pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item_id: S
             .item_projection_build(store, item_id, generation, limit())
             .unwrap()
             .unwrap();
-        execute(
+        assert_committed(execute(
             store,
             storage.advance_item_projection_build(
                 storage.revision(store).unwrap(),
                 AdvanceItemProjectionBuild::new(item_id, generation, build.revision()),
             ),
-        )
-        .unwrap();
+        ));
     }
 }
 
@@ -414,7 +413,7 @@ pub(super) fn complete_item_frontier(
     });
     if provider_is_live {
         let state = storage.turn_state(store, turn, limit()).unwrap().unwrap();
-        execute(
+        assert_committed(execute(
             store,
             storage.freeze_next_turn_item(
                 storage.revision(store).unwrap(),
@@ -427,8 +426,7 @@ pub(super) fn complete_item_frontier(
                     updated_at,
                 ),
             ),
-        )
-        .unwrap();
+        ));
     }
     let item = storage
         .canonical_item(store, item_id, limit())
@@ -438,12 +436,11 @@ pub(super) fn complete_item_frontier(
         project_item(store, storage, item_id);
     }
     let state = storage.turn_state(store, turn, limit()).unwrap().unwrap();
-    execute(
+    assert_committed(execute(
         store,
         storage.finalize_next_turn_item(
             storage.revision(store).unwrap(),
             FinalizeNextTurnItem::new(thread, turn, state.revision(), ordinal, item_id, updated_at),
         ),
-    )
-    .unwrap();
+    ));
 }

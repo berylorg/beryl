@@ -13,12 +13,11 @@ fn stage_mismatched_completion(
     frame: ProviderItemFrameV1,
 ) -> SealedProviderFrameReference {
     let prepared = prepare_item_frame(store, storage, turn, item, source, frame);
-    execute(
+    assert_committed(execute(
         store,
         storage.begin_provider_frame_build(storage.revision(store).unwrap(), &prepared),
-    )
-    .unwrap();
-    let mut build = stage_provider_frame(
+    ));
+    let mut build = match stage_provider_frame(
         &prepared,
         prepared.initial_build().clone(),
         &mut |batch: &ProviderFrameStageBatch| {
@@ -26,18 +25,23 @@ fn stage_mismatched_completion(
                 store,
                 storage.stage_provider_frame_batch(storage.revision(store).unwrap(), batch.clone()),
             )
-            .unwrap();
-            Ok::<(), Infallible>(())
         },
     )
-    .unwrap();
+    .expect("mismatched provider-frame staging traversal must remain valid")
+    {
+        ProviderFrameStageOutcome::Committed {
+            value,
+            later_failure: None,
+            ..
+        } => value,
+        outcome => panic!("expected clean provider-frame staging, got {outcome:?}"),
+    };
     assert_eq!(build.lifecycle(), ProviderItemBuildLifecycle::Staging);
 
-    execute(
+    assert_committed(execute(
         store,
         storage.compare_provider_completion(storage.revision(store).unwrap(), build),
-    )
-    .unwrap();
+    ));
     build = storage
         .provider_item_build(store, item, limit())
         .unwrap()
@@ -50,11 +54,10 @@ fn stage_mismatched_completion(
     };
     assert_eq!(frontier.compared_utf8_bytes(), 65_536);
 
-    execute(
+    assert_committed(execute(
         store,
         storage.compare_provider_completion(storage.revision(store).unwrap(), build),
-    )
-    .unwrap();
+    ));
     build = storage
         .provider_item_build(store, item, limit())
         .unwrap()
@@ -226,11 +229,12 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
         SourceEventPayload::TurnEnded(TurnEndStatus::complete()),
         timestamp(9),
     );
-    let error = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), rejected),
-    )
-    .unwrap_err();
+    ) else {
+        panic!("expected definitive terminal-item audit rejection");
+    };
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::TerminalItemAuditConflict
@@ -280,12 +284,16 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
             .complete()
     );
     let selected = selected_path(&store, storage, thread);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let canonical = storage
         .canonical_item(&reopened, assistant, limit())
         .unwrap()

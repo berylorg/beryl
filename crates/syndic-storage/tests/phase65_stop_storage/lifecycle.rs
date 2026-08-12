@@ -38,7 +38,10 @@ fn admission_reconciles_and_retains_the_exact_stop_cut() {
         } if *turn_id == fixture.turn
             && *operation_nonce == fixture.operation_id.nonce()
     ));
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     match fixture.store.execute_current(
         fixture
@@ -62,13 +65,11 @@ fn multiple_admission_causes_share_first_and_reconcile_as_the_exact_initial_set(
         fixture.admission.expected_route(),
         initial,
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_admit_stop_operation(admission.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_admit_stop_operation(admission.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -195,7 +196,10 @@ fn pending_published_target_stops_and_consumes_a_matching_terminal_without_activ
     assert_eq!(before.lifecycle(), syndic_storage::TurnLifecycle::Pending);
     assert_eq!(before.source_event_count(), 0);
     fixture.admit_stop();
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let stop_revision = fixture.stop().revision();
     let event = LiveSourceEvent::new(
@@ -225,13 +229,11 @@ fn pending_published_target_stops_and_consumes_a_matching_terminal_without_activ
             .unwrap(),
         StopOperationTransitionStatus::Prior
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_admit_live_source_event(event.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_admit_live_source_event(event.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -252,7 +254,10 @@ fn pending_published_target_stops_and_consumes_a_matching_terminal_without_activ
             .unwrap(),
         StopOperationTransitionStatus::Exact
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -357,13 +362,11 @@ fn cause_claim_and_safe_reopen_are_exact_monotonic_transitions() {
         gate_revision,
         claimed.revision(),
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_safely_reopen_stop_operation(reopen.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_safely_reopen_stop_operation(reopen.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -402,7 +405,10 @@ fn cause_claim_and_safe_reopen_are_exact_monotonic_transitions() {
         CommandOutcome::NotCommitted { .. } => {}
         outcome => panic!("expected stale stop admission rejection, got {outcome:?}"),
     }
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -435,13 +441,11 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         join_first.stop().revision(),
         join_first_attempt,
     );
-    match join_first
-        .store
-        .execute_current(
-            join_first
-                .storage
-                .current_claim_stop_dispatch(claim.clone()),
-        ) {
+    match join_first.store.execute_current(
+        join_first
+            .storage
+            .current_claim_stop_dispatch(claim.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -455,13 +459,11 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         join_first.stop().revision(),
         StopCause::HealthyHomeWindowClose,
     );
-    match join_first
-        .store
-        .execute_current(
-            join_first
-                .storage
-                .current_join_stop_cause(latest_join.clone()),
-        ) {
+    match join_first.store.execute_current(
+        join_first
+            .storage
+            .current_join_stop_cause(latest_join.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -497,13 +499,11 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         claim_first.stop().revision(),
         claim_first_attempt,
     );
-    match claim_first
-        .store
-        .execute_current(
-            claim_first
-                .storage
-                .current_claim_stop_dispatch(early_claim.clone()),
-        ) {
+    match claim_first.store.execute_current(
+        claim_first
+            .storage
+            .current_claim_stop_dispatch(early_claim.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -517,13 +517,11 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         claim_first.stop().revision(),
         StopCause::HealthyHomeWindowClose,
     );
-    match claim_first
-        .store
-        .execute_current(
-            claim_first
-                .storage
-                .current_join_stop_cause(middle_join.clone()),
-        ) {
+    match claim_first.store.execute_current(
+        claim_first
+            .storage
+            .current_join_stop_cause(middle_join.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -537,13 +535,11 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         claim_first.stop().revision(),
         StopCause::DiagnosticControl,
     );
-    match claim_first
-        .store
-        .execute_current(
-            claim_first
-                .storage
-                .current_join_stop_cause(later_join.clone()),
-        ) {
+    match claim_first.store.execute_current(
+        claim_first
+            .storage
+            .current_join_stop_cause(later_join.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -578,13 +574,11 @@ fn join_and_claim_orders_retain_distinct_exact_provenance_through_consumption() 
         join_first_gate,
         join_first.stop().revision(),
     );
-    match join_first
-        .store
-        .execute_current(
-            join_first
-                .storage
-                .current_safely_reopen_stop_operation(reopen),
-        ) {
+    match join_first.store.execute_current(
+        join_first
+            .storage
+            .current_safely_reopen_stop_operation(reopen),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -673,13 +667,11 @@ fn claim_before_an_intervening_cause_join_does_not_authenticate_the_later_claim(
         fixture.stop().revision(),
         attempt,
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_claim_stop_dispatch(current_claim.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_claim_stop_dispatch(current_claim.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -746,7 +738,10 @@ fn interrupting_approval_prevents_safe_reopen() {
         outcome => panic!("expected stale safe-reopen rejection, got {outcome:?}"),
     }
     assert!(fixture.stop().state().is_live());
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -795,13 +790,11 @@ fn matching_terminal_atomically_consumes_the_live_stop() {
             .unwrap(),
         StopOperationTransitionStatus::Prior
     );
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_admit_live_source_event(event.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_admit_live_source_event(event.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -831,7 +824,10 @@ fn matching_terminal_atomically_consumes_the_live_stop() {
         fixture.gate().state(),
         &InputGateState::FinalizingHistory(fixture.turn)
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -851,13 +847,11 @@ fn consuming_transitions_win_cleanly_against_a_stale_cause_join() {
         reopened.gate().revision(),
         reopened.stop().revision(),
     );
-    match reopened
-        .store
-        .execute_current(
-            reopened
-                .storage
-                .current_safely_reopen_stop_operation(reopen),
-        ) {
+    match reopened.store.execute_current(
+        reopened
+            .storage
+            .current_safely_reopen_stop_operation(reopen),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..

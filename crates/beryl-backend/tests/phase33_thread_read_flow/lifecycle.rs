@@ -7,7 +7,7 @@ use super::{
     send_thread_read_response,
     support::{
         TIMEOUT, assert_initialize, assert_initialized, connector, expect_close, read_json,
-        send_initialize_response, send_json, send_recognized_rejection, spawn_server,
+        send_initialize_response, send_json, spawn_server,
     },
 };
 
@@ -20,7 +20,10 @@ fn structured_rejection_leaves_the_request_only_session_reusable() {
         let rejected = read_json(socket).unwrap();
         assert_eq!(rejected["id"], 2);
         assert_eq!(rejected["method"], "thread/read");
-        send_recognized_rejection(socket, 2);
+        send_json(
+            socket,
+            r#"{"error":{"code":-32600,"message":"request rejected"},"id":2}"#,
+        );
         let retry = read_json(socket).unwrap();
         assert_eq!(retry["id"], 3);
         assert_eq!(retry["method"], "thread/read");

@@ -6,6 +6,11 @@ The Operator authorized the locally cached crates.io package source as the exact
 
 # Outcome
 
+This note is historical evidence for the original crates.io 3.1.5 evaluation. The live workspace
+now resolves Beryl's owned `fjall` fork at package version 3.1.6, whose design, failure records, and
+tests own the corrected journal, recovery, configured-limit, and Windows durability boundaries.
+Do not use this note as current exact-fork evidence or infer that its 3.1.5 blocker remains open.
+
 ## Proof Target And Verdict
 
 The inspected artifact is crates.io `fjall` 3.1.5, archive SHA-256 `038acd422d607e0eca09e093f299f9eccf9bd097554343d93746afff81a45113`, published from upstream commit `41bc2136e5979289ba92a32797afae72fe693ab8`. The target is the Windows Beryl-home store described by the controlling system and package designs.

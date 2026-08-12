@@ -98,7 +98,7 @@
   compatibility recovery path, or unbounded outage buffer may conceal the missing boundary.
 - The private release-pinned exact terminal-turn repair adapter is the only allowed live CAS-history
   dependency; no ordinary transcript, catalog, or replay path may consume it.
-- Until Checkpoint 6 supplies atomic cross-domain repair-media admission, every terminal repair
+- Until Checkpoint 7 supplies atomic cross-domain repair-media admission, every terminal repair
   remains successor-gated and undispatched because the historical request may be the first complete
   media proof. Runtime consumes no durable repair-request claim, fixes no incomplete outcome merely
   because the target slice is absent, and admits no media-less fallback.
@@ -148,33 +148,37 @@
 
 ## Checkpoint 3: Establish Syndic Threads And CAS Projections
 
-- [x] Established typed Syndic threads, drafts, submitted and accepted input, canonical history,
-  transcript projections, exact CAS bindings, thread properties, summaries, and catalog sources.
-- [x] Established bounded incremental provider ingress, exact narrative and operational capture,
-  replayable outbound descriptors, generated-media handoff metadata, and normal terminal audit.
-- [x] Established exact ordinary start, steering, next-turn scheduling, restart recovery, exact soft
-  interruption, context compaction, and CAS-native lineage or bounded one-time injection.
-- [x] Reconciled practical local bounds across Beryl, the owned Fjall stack, and CAS-facing parser,
-  queue, page, worker, storage, and projection boundaries without a universal resource governor.
-- [x] Cut the pinned CAS target atomically to 0.146.0 without a dual-version branch or Beryl-owned
-  collaboration imitation.
-- [x] Removed runtime capability probes while preserving exact release admission, ordinary capture,
-  model paging, and metadata-only activity reads.
-- [x] Removed diagnostic and backend hard-stop/coarse-cleanup surfaces and obsolete tests while
-  preserving exact soft-stop approval, close, compaction, and command-bound pre-writer ordering.
-- [x] Removed retained-service adoption, service-epoch transfer, quarantine and candidate promotion,
-  replacement publication, and obsolete tests; failure now ends in terminal disposal and stable
-  unavailability without publishing a replacement.
-- [ ] Preserve Fjall `NotCommitted`, `Committed`, and `Indeterminate` through every home-store
-  caller, including synchronous provider-ingress registry custody before acknowledgement and no
-  reconciliation execution from custody installation alone.
-- [ ] Add operation-scoped domain-owned targeted reconciliation while unrelated structurally
-  healthy work remains available.
-- [ ] Split routine reopen and fresh-writer reacquisition from exhaustive schema validation and scrub.
-- [ ] Remove home/state/sidecar object-identity continuity and classify native NTFS versus warned
-  best-effort filesystems while retaining reliable lifetime locking and crash-safe publication.
-- [ ] Add the synchronous one-query free-space reserve API and invoke it once at every direct or
-  queued new-turn start attempt before durable admission, preserving draft or queued input on denial.
+- [x] Closed: established and verified the bounded fail-closed Syndic/CAS projection and Beryl-home
+  storage foundation, exact package and outcome boundaries, restart behavior, configured limits,
+  residue removal, terminal unavailability, and one-query new-turn free-space admission.
+
+## Checkpoint 4: Build The Multi-Window Shell And Navigation
+
+- [ ] Obtain the existing Operator gate before beginning GUI implementation.
+- [x] Implemented the typed editable-file theme repository, coherent hot reload, exact retained
+  reconciliation, atomic appearance publication, and single preview arbiter without mounting GUI.
+- [ ] Implement the missing range/page/edit-sink API in `gpui-text-input` before mounting large
+  Beryl drafts; no Beryl whole-string adapter may substitute for that dependency boundary.
+- [ ] Replace whole-payload draft activation and mutable marker residency with revision-bound text
+  and marker ranges, bounded editor windows and compact restoration seeds, incremental
+  autosave/undo/submission, and very-large-draft verification.
+- [ ] Mount native-lineage recovery loading, unavailable, failure, and ready states; unmount and
+  rebind the composer through the bounded compact restoration seed without retaining whole values.
+- [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
+  bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
+- [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
+  composer-history, transcript, and settings sources with virtualized presentation.
+- [ ] Mount the bounded notice queue, warned best-effort-home startup notice, exact soft-stop
+  feedback, bounded notification-audio ownership, and explicit fail-closed repair and recovery
+  unavailable states without pretending deferred capabilities are mounted.
+- [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
+  mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.
+- [ ] Gate: verify multi-window lifecycle, activation, large drafts, logical marker scale, long
+  transcript traversal, local cache/page release, and configured working-set behavior before
+  Checkpoint 5.
+
+## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
+
 - [ ] Add the private bounded exact terminal-turn backend adapter; accept and discard bounded cursor
   metadata without following it and provide no adjacent-turn, item-history, or whole-thread
   fallback.
@@ -189,36 +193,10 @@
   content canonical history.
 - [ ] Rebuild running-session same-home recovery through old-service disposal, an unpublished fresh
   candidate stack, durable startup convergence, supervisor attachment, and atomic publication.
-- [ ] Gate: complete functional storage, protocol, concurrency, restart, configured-limit, static
-  boundary, residue, boundary-owned outcome coverage, and independent architectural review before
-  Checkpoint 4.
+- [ ] Gate: verify terminal repair, fail-closed successor gating, outage capture, and fresh same-home
+  recovery before branch-discussion implementation begins.
 
-## Checkpoint 4: Build The Multi-Window Shell And Navigation
-
-- [ ] Obtain the existing Operator gate before beginning GUI implementation.
-- [ ] Implement the typed theme repository, exact reconciliation, atomic appearance publication,
-  and single preview arbiter before mounting the Themes settings surface.
-- [ ] Implement the missing range/page/edit-sink API in `gpui-text-input` before mounting large
-  Beryl drafts; no Beryl whole-string adapter may substitute for that dependency boundary.
-- [ ] Replace whole-payload draft activation and mutable marker residency with revision-bound text
-  and marker ranges, bounded editor windows and compact restoration seeds, incremental
-  autosave/undo/submission, and very-large-draft verification.
-- [ ] Mount native-lineage recovery loading, unavailable, failure, and ready states; unmount and
-  rebind the composer through the bounded compact restoration seed without retaining whole values.
-- [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
-  bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
-- [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
-  composer-history, transcript, and settings sources with virtualized presentation.
-- [ ] Mount the bounded notice queue, warned best-effort-home startup notice, repair provenance,
-  backend recovery, exact soft-stop feedback, bounded notification-audio ownership, and other
-  accepted disabled/error states.
-- [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
-  mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.
-- [ ] Gate: verify multi-window lifecycle, activation, large drafts, logical marker scale, long
-  transcript traversal, local cache/page release, and configured working-set behavior before
-  Checkpoint 5.
-
-## Checkpoint 5: Implement Branch Discussion And Resolution Handoff
+## Checkpoint 6: Implement Branch Discussion And Resolution Handoff
 
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, and ordinary child conversation.
@@ -228,9 +206,9 @@
   label maps.
 - [ ] Gate: verify child creation, inherited labels, first submission, resolution ordering, restart,
   retry, archive, navigation, failure states, and independent architectural review before
-  Checkpoint 6.
+  Checkpoint 7.
 
-## Checkpoint 6: Implement Assets And Deferred Cleanup Boundaries
+## Checkpoint 7: Implement Assets And Deferred Cleanup Boundaries
 
 - [ ] Implement Beryl-home image admission for paste and generated output, content-addressed
   sidecars, labels, references, Host/WSL projection, and generated-output ownership.
@@ -247,9 +225,9 @@
   collection operation.
 - [ ] Gate: verify arbitrary asset size, adversarial dimensions, concurrent windows, cancellation,
   collisions, generated-image repair, atomic publication, device loss, eviction, deferred cleanup,
-  and independent architectural review before Checkpoint 7.
+  and independent architectural review before Checkpoint 8.
 
-## Checkpoint 7: Integrate, Harden, And Close The Rework
+## Checkpoint 8: Integrate, Harden, And Close The Rework
 
 - [ ] Reconcile final root, feature, system, package, GUI, settings, hotkey, diagnostics, source,
   dependency, memory, failure, and plan authority after implementation exposes the target state.

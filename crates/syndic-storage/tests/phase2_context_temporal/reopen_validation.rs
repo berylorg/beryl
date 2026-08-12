@@ -20,21 +20,29 @@ fn context_reopen_checks_finalization_kind_association_and_text() {
             .unwrap(),
         )]),
     );
-    assert_context_rejection(
+    assert_seeded_context_rejection(
         "context-source-not-terminal",
         "context source turn is not finalized terminal history",
-        unknown_terminal_source_mutation(),
+        unknown_terminal_source_mutation,
     );
     assert_context_rejection(
         "context-projection-not-current",
         "context source projection is outside its current item set",
-        batch([FixtureRecord::ContextEnvelope(
-            context_record_with_projection(
+        batch([
+            FixtureRecord::ContextEnvelope(context_record_with_projection(
                 DiscussionContextOwnerId::Draft(draft_id(37)),
                 source_resource_projection(),
                 "assistant",
-            ),
-        )]),
+            )),
+            FixtureRecord::Projection(ProjectionRecord::new(
+                source_resource_projection(),
+                ProjectionRevision::new(1).unwrap(),
+                source_item(),
+                source_turn(),
+                ProjectionOrdinal::new(2).unwrap(),
+                ProjectionPayload::Empty,
+            )),
+        ]),
     );
     assert_context_rejection(
         "context-source-not-assistant",

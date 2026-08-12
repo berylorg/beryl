@@ -6,13 +6,15 @@ fn enum_control<C: ProviderObservationStageCallback>(
     value: ProviderEnumValue,
     callback: &mut C,
 ) -> Result<(), ProviderObservationStagingError> {
-    stager.control(
-        ProviderObservationControl::Enum {
-            context: ProviderValueContext::Field(field),
-            value,
-        },
-        callback,
-    )
+    stager
+        .control(
+            ProviderObservationControl::Enum {
+                context: ProviderValueContext::Field(field),
+                value,
+            },
+            callback,
+        )
+        .map(clean_stage)
 }
 
 fn begin_item<C: ProviderObservationStageCallback>(
@@ -21,11 +23,11 @@ fn begin_item<C: ProviderObservationStageCallback>(
     kind: ProviderObservationItemKind,
     callback: &mut C,
 ) -> Result<ProviderObservationStager, ProviderObservationStagingError> {
-    let mut stager = ProviderObservationStager::begin(
+    let mut stager = clean_stage(ProviderObservationStager::begin(
         ProviderObservationId::from_bytes([byte; 16]),
         ProviderObservationBegin::Item { lifecycle, kind },
         callback,
-    )?;
+    )?);
     common_item(&mut stager, callback)?;
     Ok(stager)
 }
@@ -48,7 +50,7 @@ fn container<C: ProviderObservationStageCallback>(
             container: kind,
         }
     };
-    stager.control(control, callback)
+    stager.control(control, callback).map(clean_stage)
 }
 
 fn element<C: ProviderObservationStageCallback>(
@@ -63,10 +65,12 @@ fn element<C: ProviderObservationStageCallback>(
     } else {
         ProviderObservationControl::EndElement { context, index }
     };
-    stager.control(control, callback)
+    stager.control(control, callback).map(clean_stage)
 }
 
-fn validation_error(result: Result<(), ProviderObservationStagingError>) -> ProviderObservationValidatorError {
+fn validation_error(
+    result: Result<(), ProviderObservationStagingError>,
+) -> ProviderObservationValidatorError {
     match result {
         Err(ProviderObservationStagingError::Validation(error)) => error,
         Err(error) => panic!("unexpected staging error: {error}"),
@@ -80,12 +84,14 @@ fn context_text<C: ProviderObservationStageCallback>(
     bytes: &[u8],
     callback: &mut C,
 ) -> Result<(), ProviderObservationStagingError> {
-    stager.control(ProviderObservationControl::BeginField(context), callback)?;
-    stager.fragment(
+    clean_stage(stager.control(ProviderObservationControl::BeginField(context), callback)?);
+    clean_stage(stager.fragment(
         ProviderObservationStagingBytes::new(context, bytes).unwrap(),
         callback,
-    )?;
-    stager.control(ProviderObservationControl::EndField(context), callback)
+    )?);
+    stager
+        .control(ProviderObservationControl::EndField(context), callback)
+        .map(clean_stage)
 }
 
 #[test]
@@ -95,15 +101,17 @@ fn exact_scalar_enum_and_value_controls_reject_substitutions() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let mut callback = commit_callback(&store, storage);
 
-    let mut agent = ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([80; 16]),
-        ProviderObservationBegin::Item {
-            lifecycle: ProviderObservationItemLifecycle::Completed,
-            kind: ProviderObservationItemKind::AgentMessage,
-        },
-        &mut callback,
-    )
-    .unwrap();
+    let mut agent = clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([80; 16]),
+            ProviderObservationBegin::Item {
+                lifecycle: ProviderObservationItemLifecycle::Completed,
+                kind: ProviderObservationItemKind::AgentMessage,
+            },
+            &mut callback,
+        )
+        .unwrap(),
+    );
     assert_eq!(
         validation_error(scalar(
             &mut agent,
@@ -168,7 +176,7 @@ fn exact_scalar_enum_and_value_controls_reject_substitutions() {
         &mut callback,
     )
     .unwrap();
-    agent.seal(&mut callback).unwrap().abandon();
+    clean_seal(agent.seal(&mut callback).unwrap()).abandon();
 
     let mut sleep = begin_item(
         81,
@@ -202,7 +210,7 @@ fn exact_scalar_enum_and_value_controls_reject_substitutions() {
         &mut callback,
     )
     .unwrap();
-    sleep.seal(&mut callback).unwrap().abandon();
+    clean_seal(sleep.seal(&mut callback).unwrap()).abandon();
 
     let mut hook = begin_item(
         82,
@@ -274,7 +282,7 @@ fn duplicates_and_other_placement_are_rejected_while_completion_only_start_seals
         )),
         ProviderObservationValidatorError::OtherMarkerMismatch
     );
-    agent.seal(&mut callback).unwrap().abandon();
+    clean_seal(agent.seal(&mut callback).unwrap()).abandon();
 
     let mut subagent = begin_item(
         84,
@@ -304,7 +312,7 @@ fn duplicates_and_other_placement_are_rejected_while_completion_only_start_seals
         &mut callback,
     )
     .unwrap();
-    let sealed = subagent.seal(&mut callback).unwrap();
+    let sealed = clean_seal(subagent.seal(&mut callback).unwrap());
     assert_eq!(
         sealed.begin(),
         ProviderObservationBegin::Item {
@@ -421,14 +429,18 @@ fn malformed_nesting_context_depth_and_indices_are_rejected() {
     )
     .unwrap();
     assert_eq!(
-        validation_error(dynamic.control(
-            ProviderObservationControl::BeginObjectEntry {
-                root: ProviderField::DynamicArguments,
-                depth: 0,
-                entry: 0,
-            },
-            &mut callback,
-        )),
+        validation_error(
+            dynamic
+                .control(
+                    ProviderObservationControl::BeginObjectEntry {
+                        root: ProviderField::DynamicArguments,
+                        depth: 0,
+                        entry: 0,
+                    },
+                    &mut callback,
+                )
+                .map(clean_stage)
+        ),
         ProviderObservationValidatorError::IndexMismatch
     );
     dynamic

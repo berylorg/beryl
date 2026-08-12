@@ -19,7 +19,9 @@ mod route_allocator;
 #[path = "phase9_binding_invariants/selected_prefix.rs"]
 mod selected_prefix;
 
-use beryl_home_store::{CommandOutcome, CursorReadLimits, DomainRegistrationError, HomeCommand, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, CursorReadLimits, DomainRegistrationError, HomeCommand, HomeStore,
+};
 use beryl_model::{
     BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasNativeTurnCount,
     CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding, InputGateRevision, PathFlavor,
@@ -29,7 +31,6 @@ use beryl_model::{
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::*;
 
-use support::populated::{active_snapshot as populated_active_snapshot, populated_records};
 use support::semantic::exercise_case;
 use support::*;
 
@@ -37,10 +38,7 @@ fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
-fn execute(
-    store: &HomeStore,
-    contribution: beryl_home_store::MutationContribution,
-) {
+fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     match execute_outcome(store, contribution) {
         CommandOutcome::Committed {
             later_failure: None,
@@ -482,6 +480,5 @@ fn publish_valid(store: &HomeStore, storage: SyndicStorage, request: PublishVali
     execute(
         store,
         storage.publish_valid_binding(storage.revision(store).unwrap(), request),
-    )
-    .unwrap();
+    );
 }

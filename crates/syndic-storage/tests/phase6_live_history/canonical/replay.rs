@@ -19,11 +19,15 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    let duplicate = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted {
+        evidence: duplicate,
+    } = execute(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), activation.clone()),
     )
-    .unwrap_err();
+    else {
+        panic!("expected definitive duplicate-event rejection");
+    };
     assert!(matches!(
         typed_error(&duplicate),
         SyndicMutationError::SourceEventAlreadyAdmitted
@@ -47,11 +51,12 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         timestamp(5),
     )
     .unwrap();
-    let error = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), collision),
-    )
-    .unwrap_err();
+    ) else {
+        panic!("expected definitive source-event collision rejection");
+    };
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceEventCollision
@@ -70,11 +75,12 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         timestamp(5),
     )
     .unwrap();
-    let error = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), out_of_order),
-    )
-    .unwrap_err();
+    ) else {
+        panic!("expected definitive source-event sequence rejection");
+    };
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceEventSequenceConflict { .. }
@@ -185,11 +191,12 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         },
         timestamp(9),
     );
-    let error = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), closed_event),
-    )
-    .unwrap_err();
+    ) else {
+        panic!("expected definitive terminal-turn closure rejection");
+    };
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::TerminalTurnClosed
@@ -236,7 +243,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         "unfinished but durable"
     );
 
-    let error = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
         storage.finalize_next_turn_item(
             storage.revision(&store).unwrap(),
@@ -249,28 +256,37 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
                 timestamp(11),
             ),
         ),
-    )
-    .unwrap_err();
+    ) else {
+        panic!("expected definitive canonical-finalization rejection");
+    };
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::CanonicalFinalizationConflict
     ));
 
-    let duplicate_terminal = execute(
+    let beryl_home_store::CommandOutcome::NotCommitted {
+        evidence: duplicate_terminal,
+    } = execute(
         &store,
         storage.admit_live_source_event(storage.revision(&store).unwrap(), terminal),
     )
-    .unwrap_err();
+    else {
+        panic!("expected definitive duplicate-terminal rejection");
+    };
     assert!(matches!(
         typed_error(&duplicate_terminal),
         SyndicMutationError::SourceEventAlreadyAdmitted
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .turn_state(&reopened, turn, limit())

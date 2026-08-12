@@ -91,9 +91,9 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn ordinary_error_cut_co
         OrdinaryTurnExecutionError::HomeCommandCommitted { later_failure, .. } => {
             failure::is_cut_correlated_command(later_failure, home_generation)
         }
-        OrdinaryTurnExecutionError::HomeCommandIndeterminate { failure: source, .. } => {
-            failure::is_cut_correlated_command(source, home_generation)
-        }
+        OrdinaryTurnExecutionError::HomeCommandIndeterminate {
+            failure: source, ..
+        } => failure::is_cut_correlated_command(source, home_generation),
         OrdinaryTurnExecutionError::InputReplayHomeNotHealthy {
             state: beryl_home_store::HomeHealthState::Failed,
             expected_home_id,

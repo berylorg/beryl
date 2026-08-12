@@ -1,4 +1,5 @@
 mod item_records;
+mod provider_seed;
 mod route_records;
 
 use beryl_model::{
@@ -15,6 +16,7 @@ use syndic_storage::test_faults::{
 };
 use syndic_storage::*;
 
+use super::provider::ProviderSeedTurn;
 use super::{
     AgentItemFixtureState, active_item, active_projection, active_snapshot, activity_item,
     agent_item_fixture, build_item, cas_item, cas_thread, cas_turn, command_item_fixture,
@@ -24,6 +26,8 @@ use crate::support::{
     composer_content_records, draft_id, fixture_turn_state_with_capture, id, test_tool_profile,
     timestamp,
 };
+
+pub(super) use provider_seed::seed_provider_records;
 
 pub(super) fn records() -> Vec<FixtureRecord> {
     let thread = id(40);
@@ -380,10 +384,6 @@ pub(super) fn records() -> Vec<FixtureRecord> {
     ];
     records.extend(empty_content_records);
     records.extend(steering_content_records);
-    records.extend(active_provider.records);
-    records.extend(suffix_provider.records);
-    records.extend(build_provider.records);
-    records.extend(activity_provider.records);
 
     records.extend(item_records::records(item_records::ItemRecordFacts {
         item,

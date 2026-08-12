@@ -4,12 +4,12 @@ use beryl_model::{ClaimRevision, SessionRevision, SyndicThreadId, WindowId};
 use crate::RecordRevision;
 
 use super::super::{
+    CLAIM_V1_BYTES, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES, SessionDomain,
+    SessionExitIntent, SessionHeader, SessionMutationError, SessionWindowRecord, ThreadClaimRecord,
+    WindowClaimSelection,
     codec::{
-        ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec, HEADER_KEY,
+        ClaimByThreadCodec, ClaimByWindowCodec, HEADER_KEY, SessionHeaderCodec, SessionWindowCodec,
     },
-    SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError, SessionWindowRecord,
-    ThreadClaimRecord, WindowClaimSelection, CLAIM_V1_BYTES, SESSION_HEADER_V1_BYTES,
-    SESSION_WINDOW_V1_BYTES,
 };
 
 pub(super) fn header(

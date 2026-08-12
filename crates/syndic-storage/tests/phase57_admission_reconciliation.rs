@@ -16,8 +16,8 @@ use support::{
     TestHome, batch, commit, draft_id, empty_composer_content,
     exact_cas::submit_current_draft,
     id, open,
-    phase11::{abandonment_request, delivering_input, mixed_abandonment_records},
-    populated::{active_snapshot, active_turn, next_input, populated_records, steering_input},
+    phase11::{abandonment_request, delivering_input, seed_mixed_abandonment},
+    populated::{active_snapshot, active_turn, next_input, seed_populated, steering_input},
     stage_prepared_content, timestamp,
 };
 
@@ -36,51 +36,72 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
     command.add(contribution).unwrap();
     match store.execute(command) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => panic!("expected command to commit without later failure, got {outcome:?}"),
     }
 }
 
-fn seeded(name: &str, records: Vec<FixtureRecord>) -> (TestHome, HomeStore, SyndicStorage) {
+fn seeded_active(name: &str, case: ActiveGateCase) -> (TestHome, HomeStore, SyndicStorage) {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(records));
+    seed_active(&store, storage, case);
     (home, store, storage)
 }
 
-fn active_records(case: ActiveGateCase) -> Vec<FixtureRecord> {
-    let mut records = populated_records();
+fn seed_mixed(name: &str) -> (TestHome, HomeStore, SyndicStorage) {
+    let home = TestHome::new(name);
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    seed_mixed_abandonment(&store, storage);
+    (home, store, storage)
+}
+
+fn seed_active(store: &HomeStore, storage: SyndicStorage, case: ActiveGateCase) {
+    seed_populated(store, storage);
     let thread = id(40);
     let turn = active_turn();
-    for record in &mut records {
-        match record {
-            FixtureRecord::InputGate(gate) if gate.thread_id() == thread => {
-                let state = match case {
-                    ActiveGateCase::Awaiting => InputGateState::AwaitingSteering(turn),
-                    ActiveGateCase::Steerable => InputGateState::Steerable(turn),
-                };
-                *gate = InputGateRecord::new(
-                    gate.thread_id(),
-                    gate.revision(),
-                    state,
-                    gate.accepted_high_water(),
-                    gate.route_generation_high_water(),
-                    gate.selected_route(),
-                    gate.live_steering_count(),
-                    gate.live_next_turn_count(),
-                    gate.live_logical_utf8_bytes(),
-                )
-                .unwrap();
-            }
-            FixtureRecord::AcceptedRouteGeneration(route)
-                if route.thread_id() == thread && matches!(case, ActiveGateCase::Awaiting) =>
-            {
-                let AcceptedRouteTarget::Steering(target) = route.target() else {
-                    panic!("active fixture must have a steering target");
-                };
-                *route = AcceptedRouteGenerationRecord::new(
+    let gate = storage
+        .input_gate(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let state = match case {
+        ActiveGateCase::Awaiting => InputGateState::AwaitingSteering(turn),
+        ActiveGateCase::Steerable => InputGateState::Steerable(turn),
+    };
+    let mut fixture = FixtureBatch::new();
+    fixture
+        .put(FixtureRecord::InputGate(
+            InputGateRecord::new(
+                gate.thread_id(),
+                gate.revision(),
+                state,
+                gate.accepted_high_water(),
+                gate.route_generation_high_water(),
+                gate.selected_route(),
+                gate.live_steering_count(),
+                gate.live_next_turn_count(),
+                gate.live_logical_utf8_bytes(),
+            )
+            .unwrap(),
+        ))
+        .unwrap();
+    if matches!(case, ActiveGateCase::Awaiting) {
+        let route = syndic_storage::test_faults::accepted_route_generation(
+            store,
+            storage,
+            thread,
+            AcceptedRouteGeneration::FIRST,
+        )
+        .unwrap();
+        let AcceptedRouteTarget::Steering(target) = route.target() else {
+            panic!("active fixture must have a steering target");
+        };
+        fixture
+            .put(FixtureRecord::AcceptedRouteGeneration(
+                AcceptedRouteGenerationRecord::new(
                     route.thread_id(),
                     route.generation(),
                     route.revision(),
@@ -95,20 +116,19 @@ fn active_records(case: ActiveGateCase) -> Vec<FixtureRecord> {
                     route.live_logical_utf8_bytes(),
                     route.delivering_logical_utf8_bytes(),
                 )
-                .unwrap();
-            }
-            _ => {}
-        }
-    }
-    if !matches!(case, ActiveGateCase::Steerable) {
-        records.retain(|record| {
-            !matches!(
-                record,
-                FixtureRecord::AcceptedReadySource(source) if source.thread_id() == thread
+                .unwrap(),
+            ))
+            .unwrap();
+        fixture
+            .delete(
+                syndic_storage::test_faults::FixtureDelete::AcceptedReadySource {
+                    thread,
+                    generation: AcceptedRouteGeneration::FIRST,
+                },
             )
-        });
+            .unwrap();
     }
-    records
+    commit(store, storage, fixture);
 }
 
 fn select_compacting_route(store: &HomeStore, storage: SyndicStorage) {
@@ -209,7 +229,9 @@ fn commit_admission(store: &HomeStore, storage: SyndicStorage, admission: &Accep
             .unwrap(),
         InputAdmissionStatus::ExactAccepted
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 fn seed_pending_gate(name: &str) -> (TestHome, HomeStore, SyndicStorage) {
@@ -237,7 +259,9 @@ fn seed_pending_gate(name: &str) -> (TestHome, HomeStore, SyndicStorage) {
         "initial turn",
         timestamp(2),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     (home, store, storage)
 }
 
@@ -253,8 +277,10 @@ fn active_admission_reconciliation_accepts_awaiting_and_steerable_successors() {
             ActiveGateCase::Steerable,
         ),
     ] {
-        let (_home, store, storage) = seeded(name, active_records(case));
-        store.validate_registered_domains().unwrap();
+        let (_home, store, storage) = seeded_active(name, case);
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         save_text(&store, storage, "active admission", timestamp(20));
         let admission = admission(&store, storage, 90, timestamp(21));
         commit_admission(&store, storage, &admission);
@@ -264,7 +290,9 @@ fn active_admission_reconciliation_accepts_awaiting_and_steerable_successors() {
 #[test]
 fn next_turn_admission_reconciliation_accepts_an_existing_pending_gate() {
     let (_home, store, storage) = seed_pending_gate("phase57-admission-reconcile-pending");
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     save_text(&store, storage, "next admission", timestamp(20));
     let admission = admission(&store, storage, 91, timestamp(21));
     commit_admission(&store, storage, &admission);
@@ -278,7 +306,9 @@ fn compacting_gate_without_its_selected_operation_is_rejected() {
     commit_admission(&store, storage, &seed);
     select_compacting_route(&store, storage);
 
-    let error = store.validate_registered_domains().unwrap_err();
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
@@ -288,9 +318,9 @@ fn compacting_gate_without_its_selected_operation_is_rejected() {
 
 #[test]
 fn later_admission_preserves_the_original_exact_receipt() {
-    let (_home, store, storage) = seeded(
+    let (_home, store, storage) = seeded_active(
         "phase57-admission-reconcile-drift",
-        active_records(ActiveGateCase::Steerable),
+        ActiveGateCase::Steerable,
     );
     save_text(&store, storage, "first admission", timestamp(20));
     let first = admission(&store, storage, 92, timestamp(21));
@@ -306,14 +336,16 @@ fn later_admission_preserves_the_original_exact_receipt() {
             .unwrap(),
         InputAdmissionStatus::ExactAccepted
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
 fn complete_receipt_discriminators_reject_same_natural_identity_collisions() {
-    let (_home, store, storage) = seeded(
+    let (_home, store, storage) = seeded_active(
         "phase57-admission-reconcile-discriminators",
-        active_records(ActiveGateCase::Steerable),
+        ActiveGateCase::Steerable,
     );
     save_text(&store, storage, "receipt discriminators", timestamp(20));
     let original = admission(&store, storage, 94, timestamp(21));
@@ -377,10 +409,8 @@ fn complete_receipt_discriminators_reject_same_natural_identity_collisions() {
 
 #[test]
 fn accepted_input_v3_receipt_reopens_and_v2_is_rejected() {
-    let (home, store, storage) = seeded(
-        "phase57-admission-reconcile-v3",
-        active_records(ActiveGateCase::Steerable),
-    );
+    let (home, store, storage) =
+        seeded_active("phase57-admission-reconcile-v3", ActiveGateCase::Steerable);
     save_text(&store, storage, "v3 receipt", timestamp(20));
     let admission = admission(&store, storage, 96, timestamp(21));
     commit_admission(&store, storage, &admission);
@@ -453,10 +483,10 @@ impl DeliveryRace {
         }
     }
 
-    fn records(self) -> Vec<FixtureRecord> {
+    fn seed(self, store: &HomeStore, storage: SyndicStorage) {
         match self {
-            Self::Begin => active_records(ActiveGateCase::Steerable),
-            Self::Retry | Self::Complete | Self::Reject => mixed_abandonment_records(),
+            Self::Begin => seed_active(store, storage, ActiveGateCase::Steerable),
+            Self::Retry | Self::Complete | Self::Reject => seed_mixed_abandonment(store, storage),
         }
     }
 
@@ -550,10 +580,13 @@ impl StableDeliveryRequest {
         };
         match store.execute_current(command) {
             CommandOutcome::Committed {
-                later_failure: None, ..
+                later_failure: None,
+                ..
             } => {}
             outcome => {
-                panic!("expected delivery transition to commit without later failure, got {outcome:?}")
+                panic!(
+                    "expected delivery transition to commit without later failure, got {outcome:?}"
+                )
             }
         }
     }
@@ -593,7 +626,10 @@ fn route_leaf(
 fn sibling_admission_between_snapshot_and_delivery_transition_preserves_stable_intent() {
     for operation in DeliveryRace::ALL {
         let name = format!("phase57-sibling-delivery-{}", operation.name());
-        let (_home, store, storage) = seeded(&name, operation.records());
+        let home = TestHome::new(&name);
+        let mut store = open(home.path());
+        let storage = SyndicStorage::register(&mut store).unwrap();
+        operation.seed(&store, storage);
         let request = operation.request(&store, storage);
 
         save_text(&store, storage, "pre-transition sibling", timestamp(30));
@@ -632,7 +668,9 @@ fn sibling_admission_between_snapshot_and_delivery_transition_preserves_stable_i
             AcceptedInputDeliveryTransitionStatus::Exact,
             "a compatible sibling descendant must not require a quiet shared revision",
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
     }
 }
 
@@ -641,7 +679,7 @@ fn sibling_admission_between_snapshot_and_abandonment_preserves_stable_intent() 
     for named in [false, true] {
         let suffix = if named { "named" } else { "generic" };
         let name = format!("phase57-sibling-abandonment-{suffix}");
-        let (_home, store, storage) = seeded(&name, mixed_abandonment_records());
+        let (_home, store, storage) = seed_mixed(&name);
         let generic = abandonment_request(&store, storage);
         let request = if named {
             AbandonActiveBinding::after_exact_rejection(
@@ -677,10 +715,13 @@ fn sibling_admission_between_snapshot_and_abandonment_preserves_stable_intent() 
 
         match store.execute_current(storage.current_abandon_active_binding(request.clone())) {
             CommandOutcome::Committed {
-                later_failure: None, ..
+                later_failure: None,
+                ..
             } => {}
             outcome => {
-                panic!("expected active-binding abandonment to commit without later failure, got {outcome:?}")
+                panic!(
+                    "expected active-binding abandonment to commit without later failure, got {outcome:?}"
+                )
             }
         }
         assert_eq!(
@@ -711,7 +752,9 @@ fn sibling_admission_between_snapshot_and_abandonment_preserves_stable_intent() 
             BindingPublicationStatus::Exact,
             "a compatible sibling descendant must preserve abandonment evidence",
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
     }
 }
 
@@ -742,7 +785,9 @@ fn assert_missing_transition_witness_rejected(
             remove_transition_witness(&leaf),
         )]),
     );
-    let error = store.validate_registered_domains().unwrap_err();
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
@@ -767,7 +812,10 @@ fn assert_missing_transition_witness_rejected(
 fn every_delivery_successor_requires_its_transition_witness_on_validation_and_reopen() {
     for operation in DeliveryRace::ALL {
         let name = format!("phase57-missing-delivery-witness-{}", operation.name());
-        let (home, store, storage) = seeded(&name, operation.records());
+        let home = TestHome::new(&name);
+        let mut store = open(home.path());
+        let storage = SyndicStorage::register(&mut store).unwrap();
+        operation.seed(&store, storage);
         operation.request(&store, storage).execute(&store, storage);
         assert_missing_transition_witness_rejected(&home, store, storage, operation.input());
     }
@@ -775,10 +823,7 @@ fn every_delivery_successor_requires_its_transition_witness_on_validation_and_re
 
 #[test]
 fn exact_projection_loss_successor_requires_its_transition_witness() {
-    let (home, store, storage) = seeded(
-        "phase57-missing-projection-loss-witness",
-        mixed_abandonment_records(),
-    );
+    let (home, store, storage) = seed_mixed("phase57-missing-projection-loss-witness");
     let generic = abandonment_request(&store, storage);
     let request = AbandonActiveBinding::after_exact_rejection(
         generic.thread_id(),
@@ -791,10 +836,13 @@ fn exact_projection_loss_successor_requires_its_transition_witness() {
     );
     match store.execute_current(storage.current_abandon_active_binding(request)) {
         CommandOutcome::Committed {
-            later_failure: None, ..
+            later_failure: None,
+            ..
         } => {}
         outcome => {
-            panic!("expected active-binding abandonment to commit without later failure, got {outcome:?}")
+            panic!(
+                "expected active-binding abandonment to commit without later failure, got {outcome:?}"
+            )
         }
     }
     assert_missing_transition_witness_rejected(&home, store, storage, delivering_input());
@@ -807,7 +855,7 @@ fn legal_delivery_descendants_preserve_exact_admission_reconciliation() {
         ("phase57-admission-descendant-complete", "complete"),
         ("phase57-admission-descendant-rejection", "rejection"),
     ] {
-        let (_home, store, storage) = seeded(name, active_records(ActiveGateCase::Steerable));
+        let (_home, store, storage) = seeded_active(name, ActiveGateCase::Steerable);
         save_text(&store, storage, "route descendant", timestamp(20));
         let admission = admission(&store, storage, 97, timestamp(21));
         commit_admission(&store, storage, &admission);
@@ -850,15 +898,17 @@ fn legal_delivery_descendants_preserve_exact_admission_reconciliation() {
                 .unwrap(),
             InputAdmissionStatus::ExactAccepted
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
     }
 }
 
 #[test]
 fn projection_loss_descendant_preserves_exact_reconciliation() {
-    let (_home, store, storage) = seeded(
+    let (_home, store, storage) = seeded_active(
         "phase57-admission-descendant-projection-loss",
-        active_records(ActiveGateCase::Steerable),
+        ActiveGateCase::Steerable,
     );
     save_text(&store, storage, "projection-loss descendant", timestamp(20));
     let projection_loss_admission = admission(&store, storage, 99, timestamp(21));
@@ -914,7 +964,9 @@ fn projection_loss_descendant_preserves_exact_reconciliation() {
             .unwrap(),
         InputAdmissionStatus::ExactAccepted
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -952,16 +1004,16 @@ fn receipt_construction_and_reopen_validation_reject_corrupt_identity_chains() {
         Err(SyndicRecordError::AcceptedInputIdentityMismatch)
     ));
 
-    let mut records = active_records(ActiveGateCase::Steerable);
-    let input = records
-        .iter_mut()
-        .find_map(|record| match record {
-            FixtureRecord::AcceptedInput(input) if input.id() == next_input() => Some(input),
-            _ => None,
-        })
+    let (home, store, storage) = seeded_active(
+        "phase57-admission-corrupt-descendant",
+        ActiveGateCase::Steerable,
+    );
+    let input = storage
+        .accepted_input(&store, next_input(), point_limit())
+        .unwrap()
         .unwrap();
     let proof = input.admission();
-    *input = AcceptedInputRecord::new(
+    let corrupted = AcceptedInputRecord::new(
         input.id(),
         input.thread_id(),
         input.ordinal(),
@@ -979,11 +1031,19 @@ fn receipt_construction_and_reopen_validation_reject_corrupt_identity_chains() {
         input.admitted_at(),
     )
     .unwrap();
-    let (_home, store, _storage) = seeded("phase57-admission-corrupt-descendant", records);
-    let error = store.validate_registered_domains().unwrap_err();
+    commit(
+        &store,
+        storage,
+        batch([FixtureRecord::AcceptedInput(corrupted)]),
+    );
+    let error = store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
             .contains("accepted-input replacement descendant is not exclusive")
     );
+    store.close().unwrap();
+    drop(home);
 }

@@ -13,7 +13,7 @@ use beryl_state::BerylStateRegistrationError;
 fn reopen_rejects_owner_head_with_a_different_full_proof_for_the_same_set() {
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
-    let proof = sealed_set(&store, state, publish_asset(&store, state));
+    let proof = sealed_set(&store, &state, publish_asset(&store, &state));
     let owner = AssetOwner::CurrentDraft(SyndicDraftId::from_bytes([5; 16]));
     execute_asset(
         &store,
@@ -51,8 +51,8 @@ fn reopen_rejects_owner_head_with_a_different_full_proof_for_the_same_set() {
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let error = match BerylState::register(&mut reopened) {
-        Ok(_) => panic!("corrupt owner head must fail asset-domain registration"),
+    let error = match BerylState::register_with_schema_validation(&mut reopened) {
+        Ok(_) => panic!("corrupt owner head must fail asset-domain schema validation"),
         Err(error) => error,
     };
     let BerylStateRegistrationError::Domain { domain, source } = error else {

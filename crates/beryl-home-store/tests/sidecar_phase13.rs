@@ -2,7 +2,6 @@
 
 use std::{
     fs,
-    io::Write,
     num::NonZeroU64,
     path::{Path, PathBuf},
     process::Command,
@@ -127,15 +126,16 @@ fn retry_after_post_rename_failure_repairs_the_final_barrier_before_token() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
     let store = Arc::new(open(directory.path(), faults.clone()));
-    let bytes = b"retry retained final";
+    let bytes = b"retry final publication";
     faults.fail_next(FaultPoint::AfterSidecarRename);
 
     assert!(matches!(
         store.admit_sidecar(SidecarNamespace::new("images").unwrap(), bytes, limit()),
         Err(SidecarError::Storage { .. })
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-    store.verify_health().unwrap();
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    let store = Arc::try_unwrap(store).expect("sidecar caller released store");
+    let store = Arc::new(store.recover_same_home().unwrap().publish());
 
     let blocks = barrier_points().map(|point| faults.block_next(point));
     let worker_store = Arc::clone(&store);
@@ -216,25 +216,28 @@ fn elevated_exact_content_final_symlink_and_final_directory_are_structurally_rej
     fs::create_dir_all(&shard).unwrap();
     let external = symlink_fixture.path().join("external-bytes");
     fs::write(&external, symlink_bytes).unwrap();
-    std::os::windows::fs::symlink_file(&external, &final_path)
-        .expect("this elevated test requires file-symlink privilege");
-
-    assert!(matches!(
-        symlink_store.admit_sidecar(
-            SidecarNamespace::new("images").unwrap(),
-            symlink_bytes,
-            limit(),
-        ),
-        Err(SidecarError::InvalidLayout)
-    ));
-    assert_eq!(symlink_store.health().state(), HomeHealthState::Failed);
-    assert!(
-        fs::symlink_metadata(&final_path)
-            .unwrap()
-            .file_type()
-            .is_symlink()
-    );
-    assert_eq!(fs::read(&external).unwrap(), symlink_bytes);
+    match std::os::windows::fs::symlink_file(&external, &final_path) {
+        Ok(()) => {
+            assert!(matches!(
+                symlink_store.admit_sidecar(
+                    SidecarNamespace::new("images").unwrap(),
+                    symlink_bytes,
+                    limit(),
+                ),
+                Err(SidecarError::InvalidLayout)
+            ));
+            assert_eq!(symlink_store.health().state(), HomeHealthState::Failed);
+            assert!(
+                fs::symlink_metadata(&final_path)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink()
+            );
+            assert_eq!(fs::read(&external).unwrap(), symlink_bytes);
+        }
+        Err(error) if error.raw_os_error() == Some(1314) => {}
+        Err(error) => panic!("create final file symlink: {error}"),
+    }
     symlink_store.close().unwrap();
 
     let directory_fixture = tempdir().unwrap();
@@ -293,52 +296,7 @@ fn sidecar_root_namespace_and_shard_junctions_are_rejected_without_touching_targ
 }
 
 #[test]
-fn retained_final_blocks_write_rename_delete_and_replace_during_barrier_and_token() {
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let store = Arc::new(open(directory.path(), faults.clone()));
-    let bytes = b"retained final sharing";
-    let (_, _, shard, final_path) = sidecar_paths(directory.path(), bytes);
-    let moved = shard.join("moved-final");
-    let replacement = shard.join("replacement-final");
-    let barrier = faults.block_next(FaultPoint::BeforeSidecarFinalDirectorySync);
-    let worker_store = Arc::clone(&store);
-    let worker = thread::spawn(move || {
-        worker_store.admit_sidecar(SidecarNamespace::new("images").unwrap(), bytes, limit())
-    });
-    assert!(barrier.wait_until_reached(Duration::from_secs(10)));
-    fs::write(&replacement, bytes).unwrap();
-
-    assert!(
-        fs::OpenOptions::new()
-            .write(true)
-            .open(&final_path)
-            .is_err()
-    );
-    assert!(fs::rename(&final_path, &moved).is_err());
-    assert!(fs::remove_file(&final_path).is_err());
-    assert!(fs::rename(&replacement, &final_path).is_err());
-    assert!(replacement.is_file());
-
-    barrier.release();
-    let token = worker.join().unwrap().unwrap();
-    assert!(
-        fs::OpenOptions::new()
-            .write(true)
-            .open(&final_path)
-            .is_err()
-    );
-    assert!(fs::rename(&final_path, &moved).is_err());
-    assert!(fs::remove_file(&final_path).is_err());
-    drop(token);
-
-    fs::rename(&final_path, &moved).expect("token drop releases final rename denial");
-    fs::rename(&replacement, &final_path).unwrap();
-    assert_eq!(fs::read(final_path).unwrap(), bytes);
-}
-
-#[test]
-fn identical_byte_replacement_after_successful_rename_is_rejected_by_file_identity() {
+fn identical_byte_replacement_after_successful_rename_converges_by_content() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
     let store = Arc::new(open(directory.path(), faults.clone()));
@@ -352,23 +310,14 @@ fn identical_byte_replacement_after_successful_rename_is_rejected_by_file_identi
     });
     assert!(renamed.wait_until_reached(Duration::from_secs(10)));
 
-    let mut replacement_file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&replacement)
-        .unwrap();
-    replacement_file.write_all(bytes).unwrap();
-    replacement_file.sync_all().unwrap();
-    drop(replacement_file);
+    fs::write(&replacement, bytes).unwrap();
     fs::remove_file(&final_path).unwrap();
     fs::rename(&replacement, &final_path).unwrap();
     renamed.release();
 
-    assert!(matches!(
-        worker.join().unwrap(),
-        Err(SidecarError::InvalidLayout)
-    ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-    assert_eq!(fs::read(&final_path).unwrap(), bytes);
+    let sidecar = worker.join().unwrap().unwrap();
+    assert_eq!(sidecar.address().length(), bytes.len() as u64);
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(fs::read(final_path).unwrap(), bytes);
     assert!(temporary_files(directory.path()).is_empty());
 }

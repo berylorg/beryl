@@ -9,7 +9,7 @@ use crate::cas_projection::connection::router::{
     TargetInvalidation,
 };
 
-use super::staging::staging_authority;
+use super::staging::staging_rejection;
 
 impl Ingester {
     pub(in super::super) fn seal(
@@ -75,16 +75,37 @@ impl Ingester {
             observation.storage,
         );
         let sealed = match observation.stager.seal(&mut commit) {
-            Ok(sealed) => sealed,
-            Err(error) if staging_authority(&error).is_some() => {
-                permit.settle_authority_lost();
-                return self.authority_lost_terminal();
-            }
-            Err(_) => {
+            Ok(syndic_storage::ProviderObservationSealOutcome::Committed {
+                value,
+                later_failure: None,
+                ..
+            }) => value,
+            Ok(syndic_storage::ProviderObservationSealOutcome::Indeterminate {
+                custody, ..
+            }) => {
+                custody.install();
                 drop(permit);
                 return self.reject(
                     OrderedTurnStreamOperation::ProviderSeal(route),
                     OrderedTurnStreamRejection::StagingConflict,
+                );
+            }
+            Ok(syndic_storage::ProviderObservationSealOutcome::NotCommitted { .. })
+            | Ok(syndic_storage::ProviderObservationSealOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            }) => {
+                drop(permit);
+                return self.reject(
+                    OrderedTurnStreamOperation::ProviderSeal(route),
+                    OrderedTurnStreamRejection::StagingConflict,
+                );
+            }
+            Err(error) => {
+                drop(permit);
+                return self.reject(
+                    OrderedTurnStreamOperation::ProviderSeal(route),
+                    staging_rejection(&error),
                 );
             }
         };
@@ -96,83 +117,35 @@ impl Ingester {
             Ok(bound) => bound,
             Err(_) => return self.failed_permit(route, permit),
         };
-        let observation_identity = bound.identity();
-        let observation_route = bound.route().clone();
-        let mut bound = Some(bound);
-        let prepared = loop {
-            let verification = match self.live_command().enter_current_home(
-                &self.home,
-                self.home_id,
-                self.home_generation,
-            ) {
-                Ok(verification) => verification,
-                Err(_) => {
-                    if let Some(observation) = bound.take() {
-                        observation.abandon();
-                    }
-                    permit.settle_authority_lost();
-                    return self.authority_lost_terminal();
-                }
-            };
-            let observation = match bound.take() {
-                Some(observation) => observation,
-                None => match super::super::super::consumer::reopen_exact(
-                    &self.home,
-                    storage,
-                    observation_identity,
-                    &observation_route,
-                    point_limit(),
-                ) {
-                    Ok(observation) => observation,
-                    Err(error) => {
-                        let settlement = verification.settle_after_operation();
-                        match settlement {
-                            Ok(settlement)
-                                if settlement.requires_retry()
-                                    && error.verification_ambiguous(self.home_generation) =>
-                            {
-                                continue;
-                            }
-                            Err(_) => {
-                                permit.settle_authority_lost();
-                                return self.authority_lost_terminal();
-                            }
-                            Ok(_) => {
-                                let _ = self.live_command().observe_persistent_failure();
-                                return self.failed_permit(route, permit);
-                            }
-                        }
-                    }
-                },
-            };
-            let attempt = super::super::super::consumer::prepare(
-                &self.home,
-                storage,
-                permit.syndic_thread_id(),
-                observation,
-                point_limit(),
-                &self.cancelled,
-            );
-            match verification.settle_after_operation() {
-                Ok(settlement) if settlement.requires_retry() => match attempt {
-                    Ok(prepared) => break prepared,
-                    Err(error) if error.verification_ambiguous(self.home_generation) => continue,
-                    Err(_) => {
-                        let _ = self.live_command().observe_persistent_failure();
-                        return self.failed_permit(route, permit);
-                    }
-                },
-                Ok(_) => match attempt {
-                    Ok(prepared) => break prepared,
-                    Err(_) => {
-                        let _ = self.live_command().observe_persistent_failure();
-                        return self.failed_permit(route, permit);
-                    }
-                },
-                Err(_) => {
-                    permit.settle_authority_lost();
-                    return self.authority_lost_terminal();
-                }
+        let verification = match self.live_command().enter_current_home(
+            &self.home,
+            self.home_id,
+            self.home_generation,
+        ) {
+            Ok(verification) => verification,
+            Err(_) => {
+                bound.abandon();
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
+        };
+        let prepared = super::super::super::consumer::prepare(
+            &self.home,
+            storage,
+            permit.syndic_thread_id(),
+            bound,
+            point_limit(),
+            &self.cancelled,
+        );
+        if verification.settle_after_operation().is_err() {
+            permit.settle_authority_lost();
+            return self.authority_lost_terminal();
+        }
+        let prepared = match prepared {
+            Ok(prepared) => prepared,
+            Err(_) => {
+                let _ = self.live_command().observe_persistent_failure();
+                return self.failed_permit(route, permit);
             }
         };
         let publication = super::super::super::consumer::publish(
@@ -187,6 +160,13 @@ impl Ingester {
         );
         match publication {
             Ok(()) => {}
+            Err(error) if error.custody_installed() => {
+                drop(permit);
+                return self.reject(
+                    OrderedTurnStreamOperation::ProviderSeal(route),
+                    OrderedTurnStreamRejection::StagingConflict,
+                );
+            }
             Err(error) if error.authority().is_some() => {
                 permit.settle_authority_lost();
                 return self.authority_lost_terminal();

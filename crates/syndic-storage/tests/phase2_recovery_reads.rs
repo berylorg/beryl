@@ -6,8 +6,8 @@ mod support;
 
 use beryl_home_store::{
     CursorReadLimits, DomainCallbackSource, DomainRegistrationError, DomainValidationError,
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
-    ReadError,
+    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, ReadError,
+    WholeHomeScrubTrigger,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
@@ -24,16 +24,16 @@ use syndic_storage::{
     AcceptedNextSourceRecord, AcceptedOrderIndexRecord, AcceptedRouteEffectiveState,
     AcceptedRouteGeneration, AcceptedRouteGenerationRecord, AcceptedRouteLeafRecord,
     AcceptedRouteLeafState, AcceptedRouteRevision, AcceptedRouteTarget, BindingLifecycle,
-    DraftByThreadRecord, HistorySummaryRecord, InputGateRecord, InputGateState,
-    ItemProjectionGeneration, NextTurnReason, SelectedPathProof, SourceEventSequence,
-    SyndicPointReadLimit, SyndicReadError, SyndicStorage, ThreadRecord, TranscriptGeneration,
+    DraftByThreadRecord, HistorySummaryRecord, InputGateRecord, InputGateState, NextTurnReason,
+    SelectedPathProof, SourceEventSequence, SyndicPointReadLimit, SyndicReadError, SyndicStorage,
+    ThreadRecord,
 };
 
 use support::populated::*;
 use support::*;
 
 #[test]
-fn version_key_and_codec_corruption_fail_registration_verification_and_recovery() {
+fn malformed_physical_records_are_found_only_by_explicit_validation_or_scrub() {
     assert_eq!(PhysicalFamily::ALL.len(), 61);
     for family in PhysicalFamily::ALL {
         for corruption in [
@@ -46,38 +46,45 @@ fn version_key_and_codec_corruption_fail_registration_verification_and_recovery(
             let storage = SyndicStorage::register(&mut store).unwrap();
             inject_physical_corruption(&store, storage, family, corruption).unwrap();
             assert!(matches!(
-                store.validate_registered_domains(),
-                Err(DomainValidationError::Access {
-                    domain: "syndic",
-                    ..
-                })
+                store.scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit),
+                Err(error) if matches!(
+                    error.validation_error(),
+                    DomainValidationError::Access { domain: "syndic", .. }
+                )
             ));
-            assert!(matches!(
-                store.recover_same_home(),
-                Err(HomeRecoveryError::DomainValidation(
-                    DomainValidationError::Access {
-                        domain: "syndic",
-                        ..
-                    }
-                ))
-            ));
-            store.close().unwrap();
+            let candidate = store.recover_same_home().unwrap();
+            let recovered_storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+            let recovered = candidate.publish();
+            assert!(storage.revision(&recovered).is_err());
+            recovered_storage.revision(&recovered).unwrap();
+            recovered.close().unwrap();
 
             let mut reopened = open(home.path());
             assert!(matches!(
-                SyndicStorage::register(&mut reopened),
+                SyndicStorage::register_with_schema_validation(&mut reopened),
                 Err(DomainRegistrationError::ValidationAccess {
                     domain: "syndic",
                     source: DomainCallbackSource::Read(_),
                 })
             ));
             reopened.close().unwrap();
+
+            let mut scrubbed = open(home.path());
+            SyndicStorage::register(&mut scrubbed).unwrap();
+            assert!(matches!(
+                scrubbed.scrub_whole_home(WholeHomeScrubTrigger::Explicit),
+                Err(error) if matches!(
+                    error.validation_error(),
+                    DomainValidationError::Access { domain: "syndic", .. }
+                )
+            ));
+            scrubbed.close().unwrap();
         }
     }
 }
 
 #[test]
-fn strict_decoders_reject_unknown_tags_trailing_bytes_and_noncanonical_options() {
+fn strict_decoders_reject_unknown_tags_trailing_bytes_and_noncanonical_options_on_explicit_paths() {
     for corruption in [
         RepresentativePhysicalCorruption::UnknownTag,
         RepresentativePhysicalCorruption::TrailingBytes,
@@ -88,26 +95,19 @@ fn strict_decoders_reject_unknown_tags_trailing_bytes_and_noncanonical_options()
         let storage = SyndicStorage::register(&mut store).unwrap();
         inject_representative_physical_corruption(&store, storage, corruption).unwrap();
         assert!(matches!(
-            store.validate_registered_domains(),
-            Err(DomainValidationError::Access {
-                domain: "syndic",
-                ..
-            })
+            store.scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit),
+            Err(error) if matches!(
+                error.validation_error(),
+                DomainValidationError::Access { domain: "syndic", .. }
+            )
         ));
-        assert!(matches!(
-            store.recover_same_home(),
-            Err(HomeRecoveryError::DomainValidation(
-                DomainValidationError::Access {
-                    domain: "syndic",
-                    ..
-                }
-            ))
-        ));
-        store.close().unwrap();
+        let recovered = store.recover_same_home().unwrap().publish();
+        SyndicStorage::reacquire(&recovered).unwrap();
+        recovered.close().unwrap();
 
         let mut reopened = open(home.path());
         assert!(matches!(
-            SyndicStorage::register(&mut reopened),
+            SyndicStorage::register_with_schema_validation(&mut reopened),
             Err(DomainRegistrationError::ValidationAccess {
                 domain: "syndic",
                 source: DomainCallbackSource::Read(_),
@@ -115,6 +115,41 @@ fn strict_decoders_reject_unknown_tags_trailing_bytes_and_noncanonical_options()
         ));
         reopened.close().unwrap();
     }
+}
+
+#[test]
+fn routine_reopen_leaves_dormant_malformed_records_for_the_encountering_typed_read() {
+    let home = TestHome::new("routine-reopen-dormant-threads");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    inject_physical_corruption(
+        &store,
+        storage,
+        PhysicalFamily::Threads,
+        PhysicalCorruption::MalformedCodecPayload,
+    )
+    .unwrap();
+    store.close().unwrap();
+
+    let mut reopened = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    assert!(
+        storage
+            .thread(&reopened, id(1), SyndicPointReadLimit::new(1_024).unwrap())
+            .is_err()
+    );
+    assert_eq!(reopened.health().state(), HomeHealthState::Failed);
+    reopened.close().unwrap();
+
+    let mut validating = open(home.path());
+    assert!(matches!(
+        SyndicStorage::register_with_schema_validation(&mut validating),
+        Err(DomainRegistrationError::ValidationAccess {
+            domain: "syndic",
+            source: DomainCallbackSource::Read(_),
+        })
+    ));
+    validating.close().unwrap();
 }
 
 #[test]
@@ -312,7 +347,7 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
     let home = TestHome::new("populated-point-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
+    support::seed_populated(&store, storage);
     let limit = SyndicPointReadLimit::new(65_536).unwrap();
 
     assert_eq!(
@@ -384,13 +419,12 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .id(),
         source_projection()
     );
-    assert_eq!(
+    assert!(
         storage
             .resource(&store, source_resource(), limit)
             .unwrap()
-            .unwrap()
-            .id(),
-        source_resource()
+            .is_none(),
+        "the real plain-text provider projection must not recreate the former synthetic attachment"
     );
     assert!(
         storage

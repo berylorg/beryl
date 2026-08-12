@@ -47,28 +47,6 @@ impl CheckedUserPreparationError {
             _ => None,
         }
     }
-
-    fn verification_ambiguous(
-        &self,
-        expected_generation: beryl_home_store::HomeGeneration,
-    ) -> bool {
-        let read = match self {
-            Self::LiveSource(LiveSourcePublicationError::Read(source)) | Self::Read(source) => {
-                source
-            }
-            Self::Reacquire(beryl_home_store::DomainHandleError::HealthGate(source)) => {
-                return source.state() == beryl_home_store::HomeHealthState::Verifying
-                    && source.generation() == expected_generation;
-            }
-            _ => return false,
-        };
-        matches!(
-            read,
-            syndic_storage::SyndicReadError::Read(beryl_home_store::ReadError::HealthGate(source))
-                if source.state() == beryl_home_store::HomeHealthState::Verifying
-                    && source.generation() == expected_generation
-        )
-    }
 }
 
 impl Ingester {
@@ -105,7 +83,7 @@ impl Ingester {
         #[cfg(feature = "test-faults")]
         let _publication_activity = test_metrics.begin_checked_user_publication();
         let limit = point_limit();
-        let (home_generation, mut storage) = match self
+        let (home_generation, storage) = match self
             .publish_source_activation(&permit, limit)
             .map_err(CheckedUserPreparationError::Activation)
         {
@@ -116,29 +94,19 @@ impl Ingester {
             }
             Err(_) => return self.failed_checked_user_permit(permit, message),
         };
-        let mut verified_continuation = false;
-        let mut refresh_storage = false;
-        let prepared = loop {
-            let verification = if verified_continuation {
-                None
-            } else {
-                match self.live_command().enter_current_home(
-                    &self.home,
-                    self.home_id,
-                    home_generation,
-                ) {
-                    Ok(verification) => Some(verification),
-                    Err(source) => break Err(CheckedUserPreparationError::Authority(source)),
+        let verification =
+            match self
+                .live_command()
+                .enter_current_home(&self.home, self.home_id, home_generation)
+            {
+                Ok(verification) => verification,
+                Err(_) => {
+                    permit.settle_authority_lost();
+                    return self.authority_lost_terminal();
                 }
             };
-            let attempt: Result<
-                (LiveSourceTarget, SubmittedUserFrame),
-                CheckedUserPreparationError,
-            > = (|| {
-                if refresh_storage {
-                    storage = SyndicStorage::reacquire(&self.home)
-                        .map_err(CheckedUserPreparationError::Reacquire)?;
-                }
+        let prepared: Result<(LiveSourceTarget, SubmittedUserFrame), CheckedUserPreparationError> =
+            (|| {
                 let target = LiveSourceTarget::resolve(
                     &self.home,
                     storage,
@@ -162,31 +130,10 @@ impl Ingester {
                     self.submitted_user_frame(&message, &permit, &target, storage, limit)?;
                 Ok((target, frame))
             })();
-            let Some(verification) = verification else {
-                match attempt {
-                    Err(error) if error.verification_ambiguous(home_generation) => {
-                        verified_continuation = false;
-                        refresh_storage = true;
-                        continue;
-                    }
-                    result => break result,
-                }
-            };
-            match verification.settle_after_operation() {
-                Ok(settlement)
-                    if settlement.requires_retry()
-                        && attempt
-                            .as_ref()
-                            .is_err_and(|error| error.verification_ambiguous(home_generation)) =>
-                {
-                    verified_continuation = true;
-                    refresh_storage = true;
-                    continue;
-                }
-                Ok(_) => break attempt,
-                Err(source) => break Err(CheckedUserPreparationError::Authority(source)),
-            }
-        };
+        if verification.settle_after_operation().is_err() {
+            permit.settle_authority_lost();
+            return self.authority_lost_terminal();
+        }
         let (target, frame) = match prepared {
             Ok(prepared) => prepared,
             Err(error) if error.authority().is_some() => {

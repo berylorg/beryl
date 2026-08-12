@@ -1,4 +1,4 @@
-use std::{io, path::PathBuf};
+use std::{fmt, io, path::PathBuf};
 
 use thiserror::Error;
 
@@ -11,10 +11,8 @@ pub enum HomeOpenStage {
     ValidateConfiguredPath,
     /// The configured home directory could not be created.
     CreateHomeDirectory,
-    /// The home directory could not be opened with retained ownership semantics.
+    /// The home directory could not be canonicalized.
     OpenHomeDirectory,
-    /// The opened home could not be assigned a canonical path and identity.
-    IdentifyHomeDirectory,
     /// A reserved physical-layout path collided with another object.
     AdmitPhysicalLayout,
     /// The fixed ownership file could not be opened.
@@ -36,10 +34,6 @@ pub enum HomeOpenStage {
 pub enum HomeLockCapability {
     /// This platform does not implement the Windows home-ownership contract.
     WindowsPlatform,
-    /// The filesystem cannot provide a stable opened-object identity.
-    OpenedObjectIdentity,
-    /// The opened target cannot be proved local.
-    LocalStorage,
     /// The filesystem cannot provide the required exclusive byte-range lock.
     ExclusiveFileLock,
 }
@@ -159,9 +153,89 @@ impl HomeOpenError {
     }
 }
 
-/// Failure while explicitly releasing an orderly home ownership handle.
-#[derive(Debug, Error)]
-#[error("failed to release the Beryl-home ownership lock: {source}")]
+/// Failure while explicitly closing an open home.
 pub struct HomeCloseError {
-    pub(crate) source: io::Error,
+    kind: HomeCloseErrorKind,
+}
+
+enum HomeCloseErrorKind {
+    PendingReconciliation {
+        scopes: usize,
+        store: Box<crate::HomeStore>,
+    },
+    Ownership(io::Error),
+}
+
+impl HomeCloseError {
+    pub(crate) fn pending_reconciliation(store: crate::HomeStore, scopes: usize) -> Self {
+        Self {
+            kind: HomeCloseErrorKind::PendingReconciliation {
+                scopes,
+                store: Box::new(store),
+            },
+        }
+    }
+
+    pub(crate) fn ownership(source: io::Error) -> Self {
+        Self {
+            kind: HomeCloseErrorKind::Ownership(source),
+        }
+    }
+
+    /// Returns the number of registry scopes preventing close, if custody is pending.
+    pub const fn pending_reconciliation_scopes(&self) -> Option<usize> {
+        match &self.kind {
+            HomeCloseErrorKind::PendingReconciliation { scopes, .. } => Some(*scopes),
+            HomeCloseErrorKind::Ownership(_) => None,
+        }
+    }
+
+    /// Recovers the still-open store retained by a pending-custody close failure.
+    pub fn into_open_store(self) -> Option<crate::HomeStore> {
+        match self.kind {
+            HomeCloseErrorKind::PendingReconciliation { store, .. } => Some(*store),
+            HomeCloseErrorKind::Ownership(_) => None,
+        }
+    }
+}
+
+impl fmt::Debug for HomeCloseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.kind {
+            HomeCloseErrorKind::PendingReconciliation { scopes, .. } => formatter
+                .debug_struct("HomeCloseError")
+                .field("pending_reconciliation_scopes", scopes)
+                .finish_non_exhaustive(),
+            HomeCloseErrorKind::Ownership(source) => formatter
+                .debug_struct("HomeCloseError")
+                .field("ownership_source", source)
+                .finish(),
+        }
+    }
+}
+
+impl fmt::Display for HomeCloseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.kind {
+            HomeCloseErrorKind::PendingReconciliation { scopes, .. } => write!(
+                formatter,
+                "cannot close the Beryl home while {scopes} reconciliation scope(s) retain custody"
+            ),
+            HomeCloseErrorKind::Ownership(source) => {
+                write!(
+                    formatter,
+                    "failed to release the Beryl-home ownership lock: {source}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for HomeCloseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            HomeCloseErrorKind::PendingReconciliation { .. } => None,
+            HomeCloseErrorKind::Ownership(source) => Some(source),
+        }
+    }
 }

@@ -3,7 +3,7 @@
 mod support;
 
 use beryl_home_store::{
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{DraftRevision, InputGateRevision, SyndicItemId, ThreadRevision};
@@ -118,38 +118,73 @@ fn persistence_cuts_reconcile_to_wholly_absent_or_exactly_submitted() {
             .unwrap();
 
         faults.fail_next(point);
-        match (point, store.execute(command)) {
+        let reconciliation_installed = match (point, store.execute(command)) {
             (
                 FaultPoint::BeforeCommit,
                 beryl_home_store::CommandOutcome::NotCommitted {
                     evidence: CommandError::Commit { .. },
                 },
-            )
-            | (
+            ) => false,
+            (
                 FaultPoint::AfterPersist,
                 beryl_home_store::CommandOutcome::Committed {
                     later_failure: Some(CommandError::Persistence { .. }),
                     ..
                 },
-            ) => {}
+            ) => false,
             (
                 FaultPoint::AfterCommitBeforePersist,
-                outcome @ beryl_home_store::CommandOutcome::Indeterminate {
+                beryl_home_store::CommandOutcome::Indeterminate {
                     failure: CommandError::Persistence { .. },
+                    reconciliation,
                     ..
                 },
-            ) => assert!(format!("{outcome:?}").contains("Indeterminate")),
+            ) => {
+                reconciliation.install();
+                true
+            }
             (_, outcome) => panic!("unexpected submit fault outcome: {outcome:?}"),
-        }
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-        store.verify_health().unwrap();
+        };
+        let (store, storage) = if reconciliation_installed {
+            assert_eq!(store.health().state(), HomeHealthState::Healthy);
+            (store, storage)
+        } else {
+            assert_eq!(store.health().state(), HomeHealthState::Failed);
+            let recovery = store.recover_same_home().unwrap();
+            let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
+            let store = recovery.publish();
+            assert_eq!(store.health().state(), HomeHealthState::Healthy);
+            (store, storage)
+        };
         assert_eq!(
             storage
                 .idle_submission_status(&store, &submission, limit())
                 .unwrap(),
             expected
         );
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        if reconciliation_installed {
+            let close_error = store
+                .close()
+                .expect_err("installed indeterminate custody must block orderly close");
+            assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+            continue;
+        }
         store.close().unwrap();
+
+        let mut reopened = open_with_faults(home.path(), FaultController::new());
+        let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+        assert_eq!(
+            reopened_storage
+                .idle_submission_status(&reopened, &submission, limit())
+                .unwrap(),
+            expected
+        );
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        reopened.close().unwrap();
     }
 }

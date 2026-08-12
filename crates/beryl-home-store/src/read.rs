@@ -5,16 +5,16 @@ use fjall::Snapshot;
 use thiserror::Error;
 
 use crate::{
+    CursorDirection, CursorPage, CursorRange, CursorReadLimits, CursorRecord, DomainHandle,
+    PointReadLimit, RecordCodec, RecordVersion, StorageDomain,
     codec::RECORD_VERSION_BYTES,
     domain::{RegisteredDomain, RegisteredFamily},
     fault::FaultPoint,
     health::{ClassifiedFjallError, FailureSeverity},
     metadata::{
-        decode_home_revision, DomainMetadata, HOME_REVISION_BYTES, MAX_DOMAIN_METADATA_BYTES,
+        DomainMetadata, HOME_REVISION_BYTES, MAX_DOMAIN_METADATA_BYTES, decode_home_revision,
     },
     store::{HomeStore, StoreGeneration},
-    CursorDirection, CursorPage, CursorRange, CursorReadLimits, CursorRecord, DomainHandle,
-    PointReadLimit, RecordCodec, RecordVersion, StorageDomain,
 };
 
 mod execute;
@@ -369,7 +369,7 @@ impl HomeStore {
             return result;
         }
         if let Err(source) = self.faults.check(FaultPoint::BeforeReadConfirmation) {
-            admission.fail(FailureSeverity::Verify);
+            admission.fail(FailureSeverity::Structural);
             return Err(storage(ReadStage::Confirmation, source));
         }
         admission.confirm_database(&generation.database, |source| {
@@ -461,7 +461,7 @@ fn read_failure_severity(error: &ReadError) -> Option<FailureSeverity> {
         | ReadError::BoundExceeded { .. } => None,
         ReadError::Storage { source, .. } => match source.downcast_ref::<ClassifiedFjallError>() {
             Some(source) => source.severity(),
-            None => Some(FailureSeverity::Verify),
+            None => Some(FailureSeverity::Structural),
         },
         ReadError::GenerationPoisoned
         | ReadError::InvalidStoredKeySize { .. }

@@ -75,8 +75,7 @@ fn activate_recovered(store: &HomeStore, storage: SyndicStorage, fixture: &Recov
                 timestamp(8),
             ),
         ),
-    )
-    .unwrap();
+    );
 }
 
 fn stale_from_usable(
@@ -147,12 +146,16 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
             ),
         ),
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let binding = storage
         .current_binding(&reopened, fixture.thread, point_limit())
         .unwrap()
@@ -303,12 +306,16 @@ fn recovered_abandonment_retains_exact_active_snapshot_generation() {
         stale.observed_lineage(),
         Some(CasLineageProof::recovered(fixture.proof))
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let binding = storage
         .current_binding(&reopened, fixture.thread, point_limit())
         .unwrap()

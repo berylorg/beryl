@@ -97,6 +97,15 @@ This is not repaired by lifecycle exhaustive validation: corruption may become v
 - `doc/systems/beryl-home-storage/design.md`, `crates/beryl-home-store/doc/design.md`, and `crates/beryl-state/doc/design.md` must be reconciled as each corrected boundary is implemented.
 - Fjall issue #304 remains a separate Operator-accepted dependency defect and does not excuse any of these Beryl-controlled gaps.
 
+## Current Status
+
+The original Checkpoint 2 findings and the later Phase 14 read-health finding are closed and are not
+live Phase 106 blockers. Subsequent Checkpoint 3 authority deliberately removed filesystem-object
+identity continuity and retained-service recovery from the target architecture; current filesystem,
+routine-reopen, targeted-reconciliation, whole-home-scrub, and fail-closed behavior is owned by
+`doc/systems/beryl-home-storage/design.md` and its package designs. The retained history below
+explains the invalidated assumptions but must not override that later authority.
+
 ## Phase 15 Persisted-Corruption Proof Blocker
 
 The planned Phase 15 proof assumed that the existing closed-home raw Fjall fixture could insert an oversized stored key or value and that the reopened Beryl store could then exercise an ordinary typed point or cursor read over that record.

@@ -1,14 +1,14 @@
 mod batch;
 
-use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, ReconciliationDescriptor};
+use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, ReconciliationCustody};
 
 use crate::{
-    advance_content_chain, encode_provider_item_frame_v1, ContentByteSpanRecord,
-    ContentChunkOrdinal, ContentChunkRecord, ProviderFrameEncodeError, ProviderFrameReferenceV1,
-    ProviderFrameSinkV1, ProviderFrameTextSpanV1, ProviderItemBuildLifecycle,
-    ProviderItemBuildRecord, ProviderItemValidationError, ProviderLogicalTextRoleV1,
-    ProviderNarrativeReference, ProviderNarrativeSpanRecord, ProviderStorageRecordError,
-    SyndicRecordError, SyndicValueError, CONTENT_APPEND_MAX_CHUNKS,
+    CONTENT_APPEND_MAX_CHUNKS, ContentByteSpanRecord, ContentChunkOrdinal, ContentChunkRecord,
+    ProviderFrameEncodeError, ProviderFrameReferenceV1, ProviderFrameSinkV1,
+    ProviderFrameTextSpanV1, ProviderItemBuildLifecycle, ProviderItemBuildRecord,
+    ProviderItemValidationError, ProviderLogicalTextRoleV1, ProviderNarrativeReference,
+    ProviderNarrativeSpanRecord, ProviderStorageRecordError, SyndicRecordError, SyndicValueError,
+    advance_content_chain, encode_provider_item_frame_v1,
 };
 
 use super::PreparedProviderFrame;
@@ -53,7 +53,7 @@ pub enum ProviderFrameStageOutcome {
     /// The offered batch may have committed; no local successor is inferred.
     Indeterminate {
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
+        reconciliation: ReconciliationCustody,
     },
 }
 
@@ -95,7 +95,7 @@ pub enum ProviderFrameStageError {
     #[error("provider-frame staging batch has an indeterminate durable outcome")]
     Indeterminate {
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
+        reconciliation: ReconciliationCustody,
     },
 }
 
@@ -105,7 +105,7 @@ pub enum ProviderFrameStageError {
 /// initial build or an exact partially staged build after restart. This durable traversal still runs
 /// once for the whole frame and discards the already staged prefix; it is never rerun per batch. A
 /// callback returns every exact command outcome. The staging result advances only after a
-/// `Committed` callback outcome and retains an indeterminate descriptor without retrying.
+/// `Committed` callback outcome and forwards indeterminate custody without retrying.
 pub fn stage_provider_frame<C: ProviderFrameStageCallback>(
     prepared: &PreparedProviderFrame,
     current: ProviderItemBuildRecord,

@@ -1,13 +1,8 @@
-use super::{callback::ErasedCallbackError, DomainValidationError, RegisteredDomain};
+use super::{DomainValidationError, RegisteredDomain, callback::ErasedCallbackError};
 use crate::{DomainCallbackSource, ReadError, SidecarVerifier};
 
 impl RegisteredDomain {
-    pub(crate) fn validate(&self, snapshot: &fjall::Snapshot) -> Result<(), ErasedCallbackError> {
-        self.validate_physical_families(snapshot)?;
-        (self.validator)(snapshot, self)
-    }
-
-    pub(crate) fn validate_reopen(
+    pub(crate) fn validate_schema(
         &self,
         snapshot: &fjall::Snapshot,
         sidecars: &SidecarVerifier<'_>,

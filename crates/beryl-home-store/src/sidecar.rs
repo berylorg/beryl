@@ -1,6 +1,5 @@
 use std::{
     error::Error,
-    fs::File,
     num::NonZeroU64,
     path::{Path, PathBuf},
 };
@@ -8,8 +7,8 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    domain::StoreInstanceId, fault::FaultController, fault::FaultPoint, health::FailureSeverity,
-    HealthGateError, HomeGeneration, HomeStore,
+    HealthGateError, HomeDurabilityTier, HomeGeneration, HomeStore, domain::StoreInstanceId,
+    fault::FaultController, fault::FaultPoint, health::FailureSeverity,
 };
 
 mod io;
@@ -77,7 +76,7 @@ impl SidecarDigest {
     }
 }
 
-/// Durable physical identity of one content-addressed sidecar.
+/// Durable address of one content-addressed sidecar.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SidecarAddress {
     namespace: SidecarNamespace,
@@ -133,11 +132,10 @@ impl SidecarByteLimit {
     }
 }
 
-/// Durable sidecar publication retained through a following metadata commit.
+/// Logical sidecar publication authorization for a following metadata commit.
 pub struct AdmittedSidecar {
     address: SidecarAddress,
     path: PathBuf,
-    _file: File,
     pub(crate) store: StoreInstanceId,
     pub(crate) generation: HomeGeneration,
 }
@@ -166,11 +164,10 @@ impl AdmittedSidecar {
     }
 }
 
-/// Verified existing sidecar retained against replacement for this value's lifetime.
+/// A sidecar that was verified at one healthy store generation.
 pub struct VerifiedSidecar {
     address: SidecarAddress,
     path: PathBuf,
-    _file: File,
     generation: HomeGeneration,
 }
 
@@ -192,7 +189,7 @@ impl VerifiedSidecar {
         &self.address
     }
 
-    /// Returns the canonical Host path retained by this verification.
+    /// Returns the canonical Host path verified by this operation.
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
@@ -209,6 +206,7 @@ impl VerifiedSidecar {
 pub struct SidecarVerifier<'a> {
     home: &'a Path,
     faults: &'a FaultController,
+    durability_tier: HomeDurabilityTier,
 }
 
 impl<'a> SidecarVerifier<'a> {
@@ -216,6 +214,7 @@ impl<'a> SidecarVerifier<'a> {
         Self {
             home: store.canonical_path(),
             faults: &store.faults,
+            durability_tier: store.durability_tier(),
         }
     }
 
@@ -226,9 +225,22 @@ impl<'a> SidecarVerifier<'a> {
         limit: SidecarByteLimit,
     ) -> Result<(), SidecarError> {
         ensure_bound(address.length, limit)?;
-        let directories =
-            retain_sidecar_directories(self.home, address, self.faults, false, false)?;
-        open_and_verify_final(self.faults, &directories, address, None, None, false).map(drop)
+        let directories = retain_sidecar_directories(
+            self.home,
+            address,
+            self.faults,
+            self.durability_tier,
+            false,
+            false,
+        )?;
+        open_and_verify_final(
+            self.faults,
+            &directories,
+            address,
+            None,
+            self.durability_tier,
+            false,
+        )
     }
 }
 

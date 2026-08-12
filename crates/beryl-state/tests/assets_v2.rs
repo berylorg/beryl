@@ -7,18 +7,19 @@ use beryl_home_store::{
     HomeSchemaVersion, HomeStore, SidecarByteLimit, SidecarError, SidecarNamespace,
 };
 use beryl_model::{
-    advance_content_marker_digest, content_marker_digest_seed, AssetId, AssetReferenceSetDigest,
-    AssetReferenceSetId, ImageLabelOrdinal, SealedAssetReferenceSetProof,
-    SealedContentMarkerSummary, SyndicAcceptedInputId, SyndicContentDigest, SyndicContentId,
-    SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
+    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
+    SealedAssetReferenceSetProof, SealedContentMarkerSummary, SyndicAcceptedInputId,
+    SyndicContentDigest, SyndicContentId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
+    SyndicProjectionId, SyndicRetryRecordId, advance_content_marker_digest,
+    content_marker_digest_seed,
 };
 use beryl_state::{
-    AppendAssetReferencePage, AssetDimensions, AssetLabelDisposition, AssetMediaType,
-    AssetMutationError, AssetOwner, AssetOwnerHeadUpdate, AssetReadError, AssetReferenceOrdinal,
-    AssetReferencePageEntry, AssetReferencePageError, AssetReferenceSetLifecycle,
-    AssetReferenceSetStagingAuthority, BeginAssetReferenceSet, BerylState, PublishAssetMetadata,
-    SealAssetReferenceSet, UpdateAssetOwnerHeads, ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES,
-    ASSET_REFERENCE_PAGE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_STORED_BYTES,
+    ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES,
+    ASSET_REFERENCE_PAGE_MAX_STORED_BYTES, AppendAssetReferencePage, AssetDimensions,
+    AssetLabelDisposition, AssetMediaType, AssetMutationError, AssetOwner, AssetOwnerHeadUpdate,
+    AssetReadError, AssetReferenceOrdinal, AssetReferencePageEntry, AssetReferencePageError,
+    AssetReferenceSetLifecycle, AssetReferenceSetStagingAuthority, BeginAssetReferenceSet,
+    BerylState, PublishAssetMetadata, SealAssetReferenceSet, UpdateAssetOwnerHeads,
 };
 use tempfile::tempdir;
 
@@ -52,7 +53,7 @@ fn marker(index: u64) -> SyndicDraftMarkerId {
 
 fn begin_reference_set(
     store: &HomeStore,
-    state: BerylState,
+    state: &BerylState,
     set_id: AssetReferenceSetId,
     source: SealedContentMarkerSummary,
 ) -> AssetReferenceSetStagingAuthority {
@@ -93,7 +94,7 @@ fn marker_summary_for(
     SealedContentMarkerSummary::new(content_id, content_digest, digest, count, maximum).unwrap()
 }
 
-fn publish_metadata(store: &HomeStore, state: BerylState) -> (AssetId, std::path::PathBuf) {
+fn publish_metadata(store: &HomeStore, state: &BerylState) -> (AssetId, std::path::PathBuf) {
     publish_metadata_bytes(
         store,
         state,
@@ -105,7 +106,7 @@ fn publish_metadata(store: &HomeStore, state: BerylState) -> (AssetId, std::path
 
 fn publish_metadata_bytes(
     store: &HomeStore,
-    state: BerylState,
+    state: &BerylState,
     bytes: &[u8],
     media_type: AssetMediaType,
     dimensions: Option<AssetDimensions>,
@@ -155,7 +156,7 @@ fn asset_mutation_error(error: &CommandError) -> &AssetMutationError {
 
 fn seal_one_entry_set(
     store: &HomeStore,
-    state: BerylState,
+    state: &BerylState,
     set_id: AssetReferenceSetId,
     marker_id: SyndicDraftMarkerId,
     label: ImageLabelOrdinal,
@@ -211,7 +212,7 @@ fn digest_vector(
     let (store, state) = support::open(directory.path());
     let (asset_id, _) = publish_metadata_bytes(
         &store,
-        state,
+        &state,
         asset_bytes,
         AssetMediaType::new("image/png").unwrap(),
         None,
@@ -223,7 +224,7 @@ fn digest_vector(
         SyndicContentDigest::from_bytes([content_digest_byte; 32]),
         [(marker_id, label)],
     );
-    let staging = begin_reference_set(&store, state, set_id, source);
+    let staging = begin_reference_set(&store, &state, set_id, source);
     let building = state
         .assets()
         .staged_reference_set_manifest(&store, staging)

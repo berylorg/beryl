@@ -9,14 +9,14 @@ use syndic_storage::test_faults::{
 use syndic_storage::*;
 
 use crate::{
-    accepted_support::{large_ready_generation, limit, seeded},
+    accepted_support::{limit, seeded_large_ready, seeded_mixed, seeded_populated},
     support::{
-        id,
-        phase11::{delivering_input, mixed_abandonment_records, retryable_input},
+        batch, commit, id,
+        phase11::{delivering_input, retryable_input},
         populated::{
-            active_snapshot, active_turn, cas_thread, cas_turn, next_input, populated_records,
-            steering_input,
+            active_snapshot, active_turn, cas_thread, cas_turn, next_input, steering_input,
         },
+        timestamp,
     },
 };
 
@@ -25,8 +25,7 @@ static READY_READ_LOCK: Mutex<()> = Mutex::new(());
 #[test]
 fn exact_ready_input_resolves_with_fixed_point_work_on_a_large_generation() {
     let _ready_read_guard = READY_READ_LOCK.lock().unwrap();
-    let (_home, store, storage) =
-        seeded("phase53-large-ready-steering", large_ready_generation(384));
+    let (_home, store, storage) = seeded_large_ready("phase53-large-ready-steering", 384);
 
     reset_ready_steering_read_metrics();
     let resolved = storage
@@ -78,7 +77,7 @@ fn exact_ready_input_resolves_with_fixed_point_work_on_a_large_generation() {
 #[test]
 fn admitted_and_retryable_are_ready_but_delivering_next_and_missing_are_not() {
     let _ready_read_guard = READY_READ_LOCK.lock().unwrap();
-    let (_home, store, storage) = seeded("phase53-ready-lifecycle", mixed_abandonment_records());
+    let (_home, store, storage) = seeded_mixed("phase53-ready-lifecycle");
 
     let admitted = storage
         .ready_steering_input(&store, steering_input(), limit())
@@ -108,28 +107,20 @@ fn admitted_and_retryable_are_ready_but_delivering_next_and_missing_are_not() {
 #[test]
 fn inconsistent_active_cas_turn_target_is_an_invariant_failure() {
     let _ready_read_guard = READY_READ_LOCK.lock().unwrap();
-    let mut records = populated_records();
-    let publication = records
-        .iter_mut()
-        .find_map(|record| match record {
-            FixtureRecord::ActiveCasTurn(publication)
-                if publication.snapshot_id() == active_snapshot() =>
-            {
-                Some(publication)
-            }
-            _ => None,
-        })
-        .unwrap();
-    *publication = ActiveCasTurnRecord::new(
-        publication.snapshot_id(),
-        publication.thread_id(),
-        publication.turn_id(),
-        publication.binding_revision(),
-        publication.cas_thread_id().clone(),
-        CasTurnId::new("wrong-ready-steering-turn").unwrap(),
-        publication.published_at(),
+    let (_home, store, storage) = seeded_populated("phase53-ready-target-corruption");
+    commit(
+        &store,
+        storage,
+        batch([FixtureRecord::ActiveCasTurn(ActiveCasTurnRecord::new(
+            active_snapshot(),
+            id(40),
+            active_turn(),
+            beryl_model::BindingRevision::new(3).unwrap(),
+            cas_thread(),
+            CasTurnId::new("wrong-ready-steering-turn").unwrap(),
+            timestamp(8),
+        ))]),
     );
-    let (_home, store, storage) = seeded("phase53-ready-target-corruption", records);
 
     assert!(matches!(
         storage.ready_steering_input(&store, steering_input(), limit()),

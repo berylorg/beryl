@@ -9,6 +9,7 @@ use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader, DomainSchemaVersion,
     HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
     MutationBuildError, MutationBuilder, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    WholeHomeScrubTrigger,
 };
 use tempfile::tempdir;
 
@@ -103,7 +104,9 @@ impl DomainMutation<CountedDomain> for Put {
         &self,
         reservation: &mut beryl_home_store::ReconciliationReservation<'_, CountedDomain>,
     ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<CountedRecord>(1).map_err(PutError)?;
+        reservation
+            .reserve_records::<CountedRecord>(1)
+            .map_err(PutError)?;
         Ok(())
     }
 
@@ -138,7 +141,9 @@ fn one_command_never_scans_the_existing_domain() {
     assert_eq!(DECODE_CALLS.load(Ordering::Relaxed), 0);
     assert_eq!(VALIDATOR_CALLS.load(Ordering::Relaxed), 0);
 
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(DECODE_CALLS.load(Ordering::Relaxed), 130);
     assert_eq!(VALIDATOR_CALLS.load(Ordering::Relaxed), 1);
 }

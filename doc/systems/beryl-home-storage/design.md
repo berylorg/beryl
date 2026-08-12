@@ -49,18 +49,23 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   storage; Beryl does not retain filesystem-object identity or deny external replacement for the
   store lifetime.
 - The home also owns bounded sidecar directories for large image and Syndic resource payloads and
-  the physical file-based installed-theme repository.
+  the physical file-based installed-theme repository at `themes/manifest.toml` with directly
+  editable installed documents under `themes/installed/<stable-theme-id>.toml`.
 - Image bytes are ordinary content-addressed sidecar files under the Beryl home, never Fjall values or blob payloads. Fjall stores their typed metadata, durable references, and sidecar state.
 - Scalar application settings, runtime/root configuration, window/session state, durable
   orchestration jobs, catalog projections, and asset references live in Beryl-owned Fjall keyspaces.
   Intrinsic thread properties live in Syndic keyspaces in the same physical home.
 - Installed theme documents and order remain in that physical repository; the active theme identity
   and other scalar theme settings live in Beryl Settings records.
-- Physical theme access supplies bounded range reads, staged immutable generation files, exact
+- Physical theme access supplies bounded range reads, staged atomic replacements, exact
   length/digest verification, file and directory durability, and an atomic owner-manifest
-  publication step to the `beryl-state` theme service. New document files become authoritative only
-  through the durable owner manifest, so readers observe one complete old or new repository
-  generation.
+  publication step to the `beryl-state` theme service. Newly installed document files become
+  authoritative only through the durable owner manifest, so readers observe one complete old or
+  new manifest generation.
+- The manifest owns membership, names, and order but does not pin installed document bytes. Bounded
+  coalesced filesystem notifications treat stable installed-document changes as supported external
+  input; the typed theme service rereads and validates them before publication. Unlisted files stay
+  inert, and notification signals never become content or commit authority.
 - The physical boundary reports proven non-publication, exact durable publication, or indeterminate
   owner-manifest publication with the exact file evidence needed for targeted reread. It does not
   parse compact TOML, assign theme ids, interpret installed order, resolve roles, arbitrate preview,
@@ -192,7 +197,11 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - `beryl-home-store` owns one process-local reconciliation-scope registry for each open home. Its
   lifetime begins with home ownership and ends only after final home close; it outlives individual
   Fjall generations, failed services, unpublished recovery candidates, brokers, connections, and
-  CAS-live services. The registry has exactly 1,024 slots, a 64-MiB encoded-byte ceiling for each
+  CAS-live services. The registry core and lifetime-lock custodian share one ownership lifetime.
+  Any reserved custody retains that core directly; the first descriptor-bearing installed scope
+  makes the core self-retaining until Phase 102 terminal classification removes the last such
+  scope. This bounded retention is local to that home and starts no thread, worker, or global map.
+  The registry has exactly 1,024 slots, a 64-MiB encoded-byte ceiling for each
   potential descriptor, and a 256-MiB aggregate retained descriptor-budget ceiling. Before writer
   admission, every mutation that could become indeterminate obtains one move-only reservation and
   proves from its
@@ -208,19 +217,32 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   admitted classification work or remains failed and leaves the home open. After no descriptor-
   bearing scope remains, final home close may dispose collision-sealed process-local facts together
   with the registry; the exact durable natural records remain authoritative on the next process
-  open. Forced process termination publishes no in-memory result or acknowledgement.
+  open. Dropping the store or a pending-close error while any scope remains releases disposable
+  Fjall and service state but not the self-retained registry core or lifetime lock, so another open
+  in the same process remains denied. Forced process termination publishes no in-memory result or
+  acknowledgement.
 - A directly classified `NotCommitted` or `Committed` command releases its reservation with its
   writer-time state. `Indeterminate` first transfers the reservation and sole descriptor into its
   move-only custody value. The immediate recipient must synchronously consume that value into the
   already-reserved exact registry gate before it translates or erases the result, installs an
   acknowledgement, releases operation state, or observes route cancellation. Registry acceptance
   is infallible because capacity was reserved before writer admission. Once accepted, the registry
-  is the unique owner; no other result, acknowledgement, broker, or service retains a copy.
+  is the unique owner; no other result, acknowledgement, broker, or service retains a copy. Explicit
+  `install` is the required ordinary path. Destruction of an unconsumed custody value performs the
+  same infallible installation as a fail-closed fallback, without authorizing acknowledgement,
+  publication, or reconciliation, so Rust `Drop` cannot discard the sole descriptor.
 - Provider ingress uses the same rule: the app-owned `Ingester` performs the registry handoff before
   completing `BrokerReply`, closing `AckSlot`, or releasing `ActiveObservation`. The acknowledgement
   may report that publication did not occur and reconciliation is required, but it carries neither
   a receipt nor the descriptor. Connection loss, target retirement, caller cancellation, and
   service failure cannot discard or retract registry-owned custody.
+- The consuming provider-observation seal path returns `Indeterminate` with one seal-specific
+  move-only custody guard. That guard owns the sole home-store custody and the inert consumed
+  stager until its only terminal `install` operation first installs home custody and only then
+  releases the stager. It exposes no stager, receipt, sealed handle, successor, retry, publication,
+  or reconciliation capability and cannot cross acknowledgement, cancellation, retirement, or
+  service disposal. Ordinary guard destruction relies on the non-discardable home custody field,
+  which is destroyed before the stager and therefore performs the same home-first fallback cut.
 - Installing custody closes the exact publication scope but authorizes no reread, retry, rollback,
   publication, or reconciliation execution. A separately admitted targeted-reconciliation trigger
   may later consume that retained scope under the worker and natural-record-hook rules below.
@@ -261,6 +283,27 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 
 ## Turn-Start Free-Space Admission
 
+- `DURABLE_START_ADMISSION_BUDGET_BYTES` is one immutable 256-MiB Beryl product policy. It is a
+  conservative admission budget for the greater owner-derived bounded direct-or-queued logical and
+  journal append envelope, not a physical allocation quote or a caller-tunable reserve.
+- `syndic-storage` owns checked maximum mutation footprints for idle submission and accepted-input
+  promotion. `beryl-state` owns the checked asset-owner-transfer footprint. `beryl-home-store` owns
+  checked composition of those typed participant footprints with participating-domain metadata,
+  the home revision mutation, its owned Fjall journal framing, the immutable fixed product budget,
+  and validation of the opaque turn-start admission requirement. `beryl-app` owns service
+  configuration: it obtains the direct and queued owner-derived footprints, supplies the separately
+  configured typed nonzero minimum turn-capture reserve, and retains the resulting requirement. No
+  caller supplies an arbitrary pre-aggregated durable-start total.
+- Under the current owner bounds, direct admission contributes at most 26 records and 1,263,194
+  encoded key-plus-value bytes, while queued promotion contributes at most 25 records and 1,328,212
+  encoded key-plus-value bytes. Owned Fjall journal framing raises the queued envelope to 1,328,763
+  bytes, the current shared maximum. The 256-MiB policy deliberately leaves product headroom above
+  that maximum so bounded schema growth does not require tuning a filesystem-allocation estimate.
+- `beryl-home-store` requirement construction checks each owner-derived direct and queued envelope
+  against `DURABLE_START_ADMISSION_BUDGET_BYTES`, then checked-adds the separately configured
+  nonzero minimum turn-capture reserve. Zero capture reserve, envelope drift, or arithmetic overflow
+  invalidates service configuration before publication and before any free-space query can run.
+  Every direct or queued new-turn start uses that one opaque requirement.
 - The home-store query reports exactly `FreeSpaceOutcome::Sufficient`,
   `FreeSpaceOutcome::BelowReserve`, `FreeSpaceOutcome::Unavailable`, or
   `FreeSpaceOutcome::Indeterminate`. The latter two distinguish a proven inability to query from a
@@ -274,7 +317,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   `FreeSpaceOutcome::Sufficient` permits the ordinary revision-checked admission attempt but
   reserves no bytes.
 - The reserve check is an early admission guard, not a promise that later writes cannot encounter
-  `ENOSPC`. Ordinary storage-error and ambiguous-outcome handling still applies to every write.
+  `ENOSPC`. Journal rotation, flush, compaction, and filesystem allocation make a physical-consumption
+  upper bound unavailable; ordinary storage-error and ambiguous-outcome handling still applies to
+  every write.
 
 ## Sidecar Commit Ordering
 
@@ -535,9 +580,14 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   rejection, fully supported local NTFS homes, best-effort filesystem tiers, unreliable-lock
   rejection, and explicit orderly release.
 - Concurrency tests cover competing draft saves, simultaneous different-thread submissions, claim-or-create races, session close versus Exit, resolution admission versus queued input, CAS binding transitions, and stale expected revisions.
-- Admission tests cover all four free-space outcomes and prove exactly one immediate query for each
-  direct or queued new turn, no query for steering, exact input preservation and zero CAS dispatch
-  on denial, and ordinary later `ENOSPC` classification.
+- Admission tests prove the owner-derived direct footprint of 26 records and 1,263,194 encoded key-
+  plus-value bytes, queued footprint of 25 records and 1,328,212 bytes, and current journal-framed
+  shared maximum of 1,328,763 bytes remain beneath the immutable 256-MiB product budget. They prove
+  zero capture reserve and checked-add overflow reject service configuration before service
+  publication or any query, and that direct and queued starts pass the same composed requirement.
+  They cover all four free-space outcomes and prove exactly one immediate query for each direct or
+  queued new turn, no query for steering, exact input preservation and zero CAS dispatch on denial,
+  no capacity reservation on success, and ordinary later `ENOSPC` classification.
 - Tests assert that no failed command is reported accepted, no two windows own one thread, no thread
   has two current drafts or active turns, and no durable metadata points at missing committed
   sidecar bytes. Recovery tests permit only the one exact correlated terminal CAS turn snapshot
@@ -558,4 +608,6 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   move-only reservation and descriptor reach the exact per-home registry before acknowledgement,
   cancellation, connection retirement, service disposal, or operation-state release. No path may
   publish, retry, fabricate a receipt, or drop custody; orderly final close cannot dispose a
-  descriptor-bearing gate.
+  descriptor-bearing gate. Seal-specific proofs additionally show the guard retains the inert old
+  stager until installation, installs home custody before dropping that stager, and exposes no
+  process-local continuation.

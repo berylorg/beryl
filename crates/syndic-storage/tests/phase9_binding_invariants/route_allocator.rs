@@ -109,7 +109,9 @@ fn consecutive_empty_active_epochs_allocate_distinct_generations() {
         gate.selected_route().unwrap().generation(),
         AcceptedRouteGeneration::new(2).unwrap()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -201,12 +203,16 @@ fn unselected_next_turn_generations_and_later_activation_share_one_allocator() {
         gate.selected_route().unwrap().generation(),
         active_generation
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 

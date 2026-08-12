@@ -135,7 +135,9 @@ fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chr
         gate.selected_route().unwrap().generation(),
         AcceptedRouteGeneration::new(2).unwrap()
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let binding = storage
         .current_binding(&store, thread, point_limit())
@@ -157,7 +159,9 @@ fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chr
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let binding = storage
         .current_binding(&reopened, thread, point_limit())
         .unwrap()
@@ -312,7 +316,9 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
             "{cas_name} redefined recovered lineage"
         );
     }
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -424,6 +430,8 @@ fn active_cas_turn_rejects_pre_start_time_and_reconciles_different_second_public
             .unwrap(),
         ActiveCasTurnPublicationStatus::Collision
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

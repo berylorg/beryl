@@ -65,13 +65,11 @@ fn empty_active_route_returns_an_exact_safe_admission_source() {
     );
     assert_eq!(request.operation_id().thread_id(), fixture.thread);
     assert_eq!(request.target(), &fixture.target);
-    match fixture
-        .store
-        .execute_current(
-            fixture
-                .storage
-                .current_admit_stop_operation(request.clone()),
-        ) {
+    match fixture.store.execute_current(
+        fixture
+            .storage
+            .current_admit_stop_operation(request.clone()),
+    ) {
         CommandOutcome::Committed {
             later_failure: None,
             ..

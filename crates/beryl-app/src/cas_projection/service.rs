@@ -7,8 +7,8 @@ use std::{
 
 use beryl_backend::{ManagedBackendClientConnector, ManagedBackendError, ManagedBackendSession};
 use beryl_home_store::{
-    CommandError, CommitReceipt, HomeCloseError, HomeGeneration, HomeHealthState, HomeStore,
-    ReconciliationDescriptor,
+    CommandError, CommitReceipt, FreeSpaceOutcome, HomeCloseError, HomeGeneration, HomeHealthState,
+    HomeStore,
 };
 #[cfg(test)]
 use beryl_model::SyndicAcceptedInputId;
@@ -61,7 +61,7 @@ use super::{
         WindowCloseStopBarrier, WindowCloseStopOutcome,
     },
 };
-use crate::input_admission::PreparedAcceptedInputAdmission;
+use crate::input_admission::{InputAdmissionBuildError, PreparedAcceptedInputAdmission};
 #[cfg(test)]
 use std::sync::{
     atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -174,7 +174,6 @@ pub enum AcceptedInputAdmissionExecutionError {
     CommandIndeterminate {
         #[source]
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
     },
     #[error("accepted-input publication reconciliation failed; the service was closed: {0}")]
     Reconciliation(#[from] SyndicReadError),
@@ -184,6 +183,32 @@ pub enum AcceptedInputAdmissionExecutionError {
     ImpossibleReconciliation,
     #[error("accepted-input publication collided with current durable state")]
     Collision,
+}
+
+/// Failure while making a direct idle submission durable.
+#[derive(Debug, Error)]
+pub enum IdleSubmissionExecutionError {
+    #[error("the projection connection service is closed")]
+    ServiceClosed,
+    #[error(transparent)]
+    Authority(#[from] ProjectionCoordinatorError),
+    #[error(transparent)]
+    Build(#[from] InputAdmissionBuildError),
+    #[error("turn-start free-space admission denied: {0:?}")]
+    FreeSpace(FreeSpaceOutcome),
+    #[error("idle submission did not commit: {0}")]
+    Command(#[source] CommandError),
+    #[error("idle submission committed before a later failure: {later_failure}")]
+    CommandCommitted {
+        receipt: CommitReceipt,
+        #[source]
+        later_failure: CommandError,
+    },
+    #[error("idle submission has an indeterminate durable outcome: {failure}")]
+    CommandIndeterminate {
+        #[source]
+        failure: CommandError,
+    },
 }
 
 #[derive(Debug, Error)]

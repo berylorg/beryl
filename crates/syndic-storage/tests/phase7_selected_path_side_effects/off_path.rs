@@ -41,12 +41,16 @@ fn terminal_history_converges_before_replacement_changes_the_selected_path() {
     assert_eq!(old_state.finalized_item_count(), 2);
     assert_eq!(head(&store, storage, old.thread), selected_head);
     assert_eq!(summary(&store, storage, old.thread), selected_summary);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(head(&reopened, storage, old.thread), selected_head);
     assert_eq!(summary(&reopened, storage, old.thread), selected_summary);
     assert_eq!(

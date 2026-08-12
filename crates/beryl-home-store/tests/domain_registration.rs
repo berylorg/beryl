@@ -7,14 +7,14 @@ use std::collections::BTreeSet;
 use beryl_home_store::{
     DomainDefinitionError, DomainRegistrationError, DomainValidationError, HomeCommand,
     HomeHealthState, HomeOpenError, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    HomeUnreadableStage, KeyspaceSchemaVersion,
+    HomeUnreadableStage, KeyspaceSchemaVersion, WholeHomeScrubTrigger,
 };
 use fjall::{Database, PersistMode};
 use tempfile::tempdir;
 
 use support::{
-    committed, open_home, AlphaDomain, AlphaDomainSchema2, AlphaFamilySchema2,
-    DuplicateFamilyDomain, EmptyDomain, PutBytes, ValidatedDomain,
+    AlphaDomain, AlphaDomainSchema2, AlphaFamilySchema2, DuplicateFamilyDomain, EmptyDomain,
+    PutBytes, ValidatedDomain, committed, open_home,
 };
 
 #[test]
@@ -34,7 +34,9 @@ fn fresh_registration_reopens_and_rejects_a_duplicate_generation_registration() 
     let mut reopened = open_home(directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
     assert_eq!(reopened.domain_revision(alpha).unwrap().get(), 1);
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -201,7 +203,7 @@ fn create_unregistered_alpha_family(home: &std::path::Path, record: Option<(&[u8
 }
 
 #[test]
-fn existing_domain_validator_runs_before_registration_is_published() {
+fn persisted_registration_distinguishes_routine_reacquisition_from_schema_validation() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let domain = store.register_domain::<ValidatedDomain>().unwrap();
@@ -223,21 +225,27 @@ fn existing_domain_validator_runs_before_registration_is_published() {
         .unwrap();
     committed(store.execute(rejected));
     assert!(matches!(
-        store.validate_registered_domains(),
-        Err(DomainValidationError::Rejected {
+        store
+            .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
+            .unwrap_err()
+            .validation_error(),
+        DomainValidationError::Rejected {
             domain: "validated",
             ..
-        })
+        }
     ));
     store.close().unwrap();
 
     let mut reopened = open_home(directory.path());
+    reopened.register_domain::<ValidatedDomain>().unwrap();
+    reopened.close().unwrap();
+
+    let mut validating = open_home(directory.path());
     assert!(matches!(
-        reopened.register_domain::<ValidatedDomain>(),
+        validating.register_domain_with_schema_validation::<ValidatedDomain>(),
         Err(DomainRegistrationError::Validation {
             domain: "validated",
             ..
         })
     ));
-    reopened.close().unwrap();
 }

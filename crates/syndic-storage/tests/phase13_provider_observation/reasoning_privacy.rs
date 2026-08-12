@@ -4,14 +4,16 @@ fn begin(
     byte: u8,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
-    ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([byte; 16]),
-        ProviderObservationBegin::Delta {
-            kind: ProviderDeltaKind::ReasoningTextObserved,
-        },
-        callback,
+    clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([byte; 16]),
+            ProviderObservationBegin::Delta {
+                kind: ProviderDeltaKind::ReasoningTextObserved,
+            },
+            callback,
+        )
+        .unwrap(),
     )
-    .unwrap()
 }
 
 fn assert_validation(
@@ -47,7 +49,7 @@ fn reasoning_text_observed_seals_only_identity_and_content_index() {
             &mut callback,
         )
         .unwrap();
-        stager.seal(&mut callback).unwrap()
+        clean_seal(stager.seal(&mut callback).unwrap())
     };
 
     let bound = sealed.bind(route(), route()).unwrap();
@@ -86,7 +88,9 @@ fn reasoning_text_observed_seals_only_identity_and_content_index() {
         .unwrap()
         .unwrap();
     assert_eq!(build.lifecycle(), ProviderObservationBuildLifecycle::Sealed);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -106,12 +110,14 @@ fn reasoning_text_observed_rejects_text_substitution_duplicate_and_missing_index
     )
     .unwrap();
     assert_validation(
-        exact.control(
-            ProviderObservationControl::BeginField(ProviderValueContext::Field(
-                ProviderField::DeltaText,
-            )),
-            &mut callback,
-        ),
+        exact
+            .control(
+                ProviderObservationControl::BeginField(ProviderValueContext::Field(
+                    ProviderField::DeltaText,
+                )),
+                &mut callback,
+            )
+            .map(clean_stage),
         ProviderObservationValidatorError::FieldNotAllowed,
     );
     assert_validation(
@@ -139,7 +145,7 @@ fn reasoning_text_observed_rejects_text_substitution_duplicate_and_missing_index
         ),
         ProviderObservationValidatorError::DuplicateField,
     );
-    exact.seal(&mut callback).unwrap().abandon();
+    clean_seal(exact.seal(&mut callback).unwrap()).abandon();
 
     let missing_identity = ProviderObservationId::from_bytes([122; 16]);
     let mut missing = begin(122, &mut callback);
@@ -165,6 +171,8 @@ fn reasoning_text_observed_rejects_text_substitution_duplicate_and_missing_index
             .lifecycle(),
         ProviderObservationBuildLifecycle::Building
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

@@ -1,5 +1,8 @@
-use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, ReconciliationDescriptor};
+use beryl_home_store::{CommandError, CommandOutcome, CommitReceipt, ReconciliationCustody};
 use beryl_model::ProviderObservationId;
+use std::fmt;
+#[cfg(feature = "test-faults")]
+use std::sync::{Arc, Weak};
 
 use super::{
     CanonicalObservationError, CanonicalObservationState, ProviderObservationBegin,
@@ -178,8 +181,68 @@ pub enum ProviderObservationStageOutcome<T> {
     /// The offered batch may have committed and state did not advance locally.
     Indeterminate {
         failure: CommandError,
-        reconciliation: ReconciliationDescriptor,
+        reconciliation: ReconciliationCustody,
     },
+}
+
+/// Exact durable outcome of consuming one provider-observation seal attempt.
+pub enum ProviderObservationSealOutcome {
+    /// The seal definitely did not commit and exposes no sealed authority.
+    NotCommitted { evidence: CommandError },
+    /// The seal committed and returned its exact durable sealed handle.
+    Committed {
+        value: SealedProviderObservationHandle,
+        receipt: CommitReceipt,
+        later_failure: Option<CommandError>,
+    },
+    /// The seal may have committed and retains its consumed stager until custody installation.
+    Indeterminate {
+        failure: CommandError,
+        custody: ProviderObservationSealCustodyGuard,
+    },
+}
+
+impl fmt::Debug for ProviderObservationSealOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotCommitted { evidence } => formatter
+                .debug_struct("NotCommitted")
+                .field("evidence", evidence)
+                .finish(),
+            Self::Committed {
+                receipt,
+                later_failure,
+                ..
+            } => formatter
+                .debug_struct("Committed")
+                .field("receipt", receipt)
+                .field("later_failure", later_failure)
+                .finish_non_exhaustive(),
+            Self::Indeterminate { failure, .. } => formatter
+                .debug_struct("Indeterminate")
+                .field("failure", failure)
+                .finish_non_exhaustive(),
+        }
+    }
+}
+
+/// Move-only terminal custody for an indeterminate consuming seal.
+#[must_use = "indeterminate seal custody must be installed synchronously"]
+pub struct ProviderObservationSealCustodyGuard {
+    reconciliation: ReconciliationCustody,
+    stager: ProviderObservationStager,
+}
+
+impl ProviderObservationSealCustodyGuard {
+    /// Installs home custody before releasing the inert consumed stager.
+    pub fn install(self) {
+        let Self {
+            reconciliation,
+            stager,
+        } = self;
+        reconciliation.install();
+        drop(stager);
+    }
 }
 
 /// Consuming, non-cloneable unpublished observation stager.
@@ -187,6 +250,8 @@ pub struct ProviderObservationStager {
     current: ProviderObservationBuildRecord,
     validator: ProviderObservationValidatorState,
     canonical: CanonicalObservationState,
+    #[cfg(feature = "test-faults")]
+    lifetime: Arc<()>,
 }
 
 impl ProviderObservationStager {
@@ -216,6 +281,8 @@ impl ProviderObservationStager {
                     current,
                     validator: ProviderObservationValidatorState::initial(),
                     canonical,
+                    #[cfg(feature = "test-faults")]
+                    lifetime: Arc::new(()),
                 },
                 receipt,
                 later_failure,
@@ -246,7 +313,14 @@ impl ProviderObservationStager {
             current,
             validator,
             canonical,
+            #[cfg(feature = "test-faults")]
+            lifetime: Arc::new(()),
         })
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn lifetime_probe(&self) -> Weak<()> {
+        Arc::downgrade(&self.lifetime)
     }
 
     /// Stages one bounded typed structural control.
@@ -344,10 +418,7 @@ impl ProviderObservationStager {
     pub fn seal<C: ProviderObservationStageCallback>(
         self,
         callback: &mut C,
-    ) -> Result<
-        ProviderObservationStageOutcome<SealedProviderObservationHandle>,
-        ProviderObservationStagingError,
-    > {
+    ) -> Result<ProviderObservationSealOutcome, ProviderObservationStagingError> {
         self.validator.finish(self.current.begin())?;
         let next = self.current.advance(
             self.canonical.canonical_bytes(),
@@ -356,15 +427,16 @@ impl ProviderObservationStager {
             ProviderObservationBuildLifecycle::Sealed,
             false,
         )?;
-        let batch = ProviderObservationStageBatch::advance(self.current, next.clone(), None);
+        let batch =
+            ProviderObservationStageBatch::advance(self.current.clone(), next.clone(), None);
         match callback.stage_batch(&batch) {
             CommandOutcome::NotCommitted { evidence } => {
-                Ok(ProviderObservationStageOutcome::NotCommitted { evidence })
+                Ok(ProviderObservationSealOutcome::NotCommitted { evidence })
             }
             CommandOutcome::Committed {
                 receipt,
                 later_failure,
-            } => Ok(ProviderObservationStageOutcome::Committed {
+            } => Ok(ProviderObservationSealOutcome::Committed {
                 value: SealedProviderObservationHandle::from_build(&next),
                 receipt,
                 later_failure,
@@ -372,9 +444,12 @@ impl ProviderObservationStager {
             CommandOutcome::Indeterminate {
                 failure,
                 reconciliation,
-            } => Ok(ProviderObservationStageOutcome::Indeterminate {
+            } => Ok(ProviderObservationSealOutcome::Indeterminate {
                 failure,
-                reconciliation,
+                custody: ProviderObservationSealCustodyGuard {
+                    reconciliation,
+                    stager: self,
+                },
             }),
         }
     }

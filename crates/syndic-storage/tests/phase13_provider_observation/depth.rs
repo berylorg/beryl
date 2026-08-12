@@ -8,7 +8,7 @@ fn control(
     control: ProviderObservationControl,
     callback: &mut impl ProviderObservationStageCallback,
 ) {
-    stager.control(control, callback).unwrap();
+    clean_stage(stager.control(control, callback).unwrap());
 }
 
 fn container_context(depth: u8) -> ProviderValueContext {
@@ -39,15 +39,17 @@ fn begin_mcp(
     byte: u8,
     callback: &mut impl ProviderObservationStageCallback,
 ) -> ProviderObservationStager {
-    let mut stager = ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([byte; 16]),
-        ProviderObservationBegin::Item {
-            lifecycle: ProviderObservationItemLifecycle::Completed,
-            kind: ProviderObservationItemKind::McpToolCall,
-        },
-        callback,
-    )
-    .unwrap();
+    let mut stager = clean_stage(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([byte; 16]),
+            ProviderObservationBegin::Item {
+                lifecycle: ProviderObservationItemLifecycle::Completed,
+                kind: ProviderObservationItemKind::McpToolCall,
+            },
+            callback,
+        )
+        .unwrap(),
+    );
     common_item(&mut stager, callback).unwrap();
     text(
         &mut stager,
@@ -124,18 +126,24 @@ fn open_worst_location(
             callback,
         );
         let key = entry_context(depth, true);
-        stager
-            .control(ProviderObservationControl::BeginField(key), callback)
-            .unwrap();
-        stager
-            .fragment(
-                ProviderObservationStagingBytes::new(key, b"k").unwrap(),
-                callback,
-            )
-            .unwrap();
-        stager
-            .control(ProviderObservationControl::EndField(key), callback)
-            .unwrap();
+        clean_stage(
+            stager
+                .control(ProviderObservationControl::BeginField(key), callback)
+                .unwrap(),
+        );
+        clean_stage(
+            stager
+                .fragment(
+                    ProviderObservationStagingBytes::new(key, b"k").unwrap(),
+                    callback,
+                )
+                .unwrap(),
+        );
+        clean_stage(
+            stager
+                .control(ProviderObservationControl::EndField(key), callback)
+                .unwrap(),
+        );
         if depth < MAX_DEPTH {
             control(
                 stager,
@@ -216,9 +224,11 @@ fn worst_location_accepts_exact_semantic_depth_128() {
     let mut stager = begin_mcp(150, &mut callback);
     open_worst_location(&mut stager, &mut callback);
     close_worst_location(&mut stager, &mut callback);
-    stager.seal(&mut callback).unwrap().abandon();
+    clean_seal(stager.seal(&mut callback).unwrap()).abandon();
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -244,9 +254,11 @@ fn exact_depth_128_worst_location_resumes_with_complete_259_frame_stack() {
         .unwrap();
     let mut callback = commit_callback(&reopened, storage);
     close_worst_location(&mut stager, &mut callback);
-    stager.seal(&mut callback).unwrap().abandon();
+    clean_seal(stager.seal(&mut callback).unwrap()).abandon();
     drop(callback);
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }
 
@@ -272,6 +284,8 @@ fn worst_location_rejects_semantic_depth_129() {
     ));
     stager.abandon();
     drop(callback);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

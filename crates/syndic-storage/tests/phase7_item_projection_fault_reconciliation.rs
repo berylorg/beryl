@@ -263,7 +263,12 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
             ))
             .unwrap();
         faults.fail_next(point);
-        match (point, store.execute(command)) {
+        let outcome = store.execute(command);
+        let retained_custody = matches!(
+            &outcome,
+            beryl_home_store::CommandOutcome::Indeterminate { .. }
+        );
+        let expected_health = match (point, outcome) {
             (
                 FaultPoint::BeforeCommit,
                 beryl_home_store::CommandOutcome::NotCommitted {
@@ -276,25 +281,44 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
                     later_failure: Some(CommandError::Persistence { .. }),
                     ..
                 },
-            ) => {}
+            ) => HomeHealthState::Healthy,
             (
                 FaultPoint::AfterCommitBeforePersist,
-                outcome @ beryl_home_store::CommandOutcome::Indeterminate {
+                beryl_home_store::CommandOutcome::Indeterminate {
                     failure: CommandError::Persistence { .. },
-                    ..
+                    reconciliation,
                 },
-            ) => assert!(format!("{outcome:?}").contains("Indeterminate")),
+            ) => {
+                reconciliation.install();
+                HomeHealthState::Healthy
+            }
             (_, outcome) => panic!("unexpected projection fault outcome: {outcome:?}"),
-        }
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-        store.verify_health().unwrap();
+        };
+        assert_eq!(store.health().state(), expected_health);
         assert_recovered_state(&store, storage, &pending, expected);
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+        if retained_custody {
+            let close_error = store.close().unwrap_err();
+            assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
+            drop(close_error);
+            assert!(
+                HomeStore::open(HomeOpenOptions::new(
+                    home.path(),
+                    HomeSchemaVersion::CURRENT
+                ))
+                .is_err()
+            );
+            continue;
+        }
         store.close().unwrap();
 
         let mut reopened = open(home.path());
         let storage = SyndicStorage::register(&mut reopened).unwrap();
-        reopened.validate_registered_domains().unwrap();
+        reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         assert_recovered_state(&reopened, storage, &pending, expected);
         reopened.close().unwrap();
     }

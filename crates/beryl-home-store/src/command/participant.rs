@@ -3,12 +3,12 @@ use std::marker::PhantomData;
 use beryl_model::DomainRevision;
 
 use crate::{
+    DomainReader, StorageDomain,
     command::{
         DomainMutation, DomainValidator, MutationBuilder, MutationContribution, PendingMutation,
         ReconciliationReservation, ReconciliationReservationOutput, ValidationContribution,
     },
-    domain::{callback::ErasedCallbackError, DomainOwnerId, RegisteredDomain, StoreInstanceId},
-    DomainReader, StorageDomain,
+    domain::{DomainOwnerId, RegisteredDomain, StoreInstanceId, callback::ErasedCallbackError},
 };
 
 trait ErasedValidation: Send {

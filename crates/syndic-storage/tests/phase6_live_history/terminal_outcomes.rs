@@ -57,7 +57,9 @@ fn every_proven_terminal_outcome_persists_its_exact_gate_semantics() {
             .unwrap()
             .unwrap();
         assert_eq!(gate.state(), &InputGateState::FinalizingHistory(turn));
-        store.validate_registered_domains().unwrap();
+        store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         store.close().unwrap();
     }
 }
@@ -79,7 +81,7 @@ fn active_sourced_unknown_terminal_enters_queue_only_wait_without_stop_authority
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    execute(
+    assert_committed(execute(
         &store,
         storage.admit_live_source_event(
             storage.revision(&store).unwrap(),
@@ -99,8 +101,7 @@ fn active_sourced_unknown_terminal_enters_queue_only_wait_without_stop_authority
                 timestamp(5),
             ),
         ),
-    )
-    .unwrap();
+    ));
 
     let state = storage.turn_state(&store, turn, limit()).unwrap().unwrap();
     assert_eq!(state.lifecycle(), TurnLifecycle::UnknownTerminal);
@@ -112,6 +113,8 @@ fn active_sourced_unknown_terminal_enters_queue_only_wait_without_stop_authority
     assert_eq!(gate.state(), &InputGateState::AwaitingTerminal(turn));
     assert_eq!(gate.live_steering_count(), 0);
     assert_eq!(gate.state().stop_operation_nonce(), None);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

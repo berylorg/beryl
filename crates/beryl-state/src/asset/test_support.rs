@@ -4,8 +4,8 @@ use beryl_home_store::{
 use beryl_model::SealedAssetReferenceSetProof;
 
 use super::{
-    codec::AssetOwnerHeadCodec, AssetDomain, AssetMutationError, AssetOwner,
-    AssetOwnerHeadExpectation, AssetOwnerHeadRecord, ASSET_HEAD_LIMIT,
+    ASSET_HEAD_LIMIT, AssetDomain, AssetMutationError, AssetOwner, AssetOwnerHeadExpectation,
+    AssetOwnerHeadRecord, codec::AssetOwnerHeadCodec,
 };
 
 pub(super) struct CorruptOwnerHeadProof {

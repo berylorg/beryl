@@ -42,10 +42,12 @@ impl ContextCompactionCoordinator {
             command,
         ));
         self.install_local(Arc::clone(&local))?;
-        require_committed_command(self.home.execute_current(
-            self.storage
-                .current_admit_compaction_operation(admission.clone()),
-        ))?;
+        require_committed_command(
+            self.home.execute_current(
+                self.storage
+                    .current_admit_compaction_operation(admission.clone()),
+            ),
+        )?;
         let operation = match self.read_operation(operation_id) {
             Ok(operation) => operation,
             Err(error) => {
@@ -108,10 +110,12 @@ impl ContextCompactionCoordinator {
             command,
         ));
         self.install_local(Arc::clone(&local))?;
-        require_committed_command(self.home.execute_current(
-            self.storage
-                .current_admit_compaction_operation(admission.clone()),
-        ))?;
+        require_committed_command(
+            self.home.execute_current(
+                self.storage
+                    .current_admit_compaction_operation(admission.clone()),
+            ),
+        )?;
         let operation = match self.read_operation(operation_id) {
             Ok(operation) => operation,
             Err(error) => {

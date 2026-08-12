@@ -58,7 +58,10 @@ fn manual_success_consumes_exact_provider_evidence_and_reopens_idle_gate() {
     assert_eq!(provider_state.source_event_count(), 0);
     assert_eq!(terminal.status(), provider_state.end_status().unwrap());
     assert_eq!(terminal.turn_state_revision(), provider_state.revision());
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -130,7 +133,10 @@ fn lifecycle_continuation_uses_durable_home_and_preserves_current_draft() {
             content_id: content.id()
         },
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -170,7 +176,10 @@ fn accepted_user_work_wins_lifecycle_settlement_after_compaction_admission() {
             .unwrap()
             .is_none()
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }
 
 #[test]
@@ -211,7 +220,10 @@ fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen(
         syndic_storage::SourceEventPayload::TurnActivated,
         timestamp(42),
     );
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         fixture
             .storage
@@ -241,10 +253,16 @@ fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen(
         timestamp(44),
     );
     converge_and_release_terminal_history(&fixture.store, fixture.storage, fixture.thread, turn_id);
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let fixture = fixture.reopen();
-    fixture.store.validate_registered_domains().unwrap();
+    fixture
+        .store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         fixture
             .storage

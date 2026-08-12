@@ -1,16 +1,9 @@
-use std::{
-    panic::{AssertUnwindSafe, catch_unwind},
-    thread,
-    time::Instant,
-};
+use std::{thread, time::Instant};
 
-use beryl_app::{
-    cas_projection::{PersistentFailureNotificationStatus, RunningSessionRecoverySupervisor},
-    input_admission::prepare_accepted_input_admission,
-};
+use beryl_app::input_admission::prepare_accepted_input_admission;
 use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    test_faults::{FaultController, FaultPoint},
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    test_faults::FaultController,
 };
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
@@ -31,10 +24,7 @@ pub use server::{AUTHORIZATION, NormalTerminalServer, SUBMITTED_TEXT, TIMEOUT};
 
 #[path = "support/execution.rs"]
 mod execution;
-pub use execution::{
-    CheckoutProvider, ReadyProviderFactory, SessionSlot, UnavailableProvider, ready_provider,
-    supervised_ready_provider,
-};
+pub use execution::{CheckoutProvider, SessionSlot, UnavailableProvider, ready_provider};
 
 mod records {
     include!(concat!(
@@ -121,12 +111,24 @@ pub fn install_next_records(
         .add(storage.fixture_contribution(storage.revision(store).unwrap(), batch))
         .unwrap();
     match store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed fixture setup, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed fixture setup, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed fixture setup, got {outcome:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed fixture setup, got {outcome:?}")
+        }
     }
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     NextRecordIds {
         thread,
@@ -153,7 +155,10 @@ pub fn seed_runtime_next_input_without_wake(
     fixture.complete_active_without_assistant(active, &source);
     {
         let command_home = fixture.store.live_home_command().unwrap();
-        command_home.home().validate_registered_domains().unwrap();
+        command_home
+            .home()
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
     }
     ids
 }
@@ -230,7 +235,8 @@ pub fn admit_runtime_awaiting_terminal_input(
             admission,
         )
         .unwrap();
-        home.validate_registered_domains().unwrap();
+        home.scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         (thread, parent, accepted_input, prepared)
     };
     fixture
@@ -271,41 +277,21 @@ fn execute_contribution(store: &HomeStore, contribution: beryl_home_store::Mutat
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
     match store.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => panic!("expected committed contribution, got {outcome:?}"),
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("expected committed contribution, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::NotCommitted { .. } => {
+            panic!("expected committed contribution, got {outcome:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("expected no later failure, got {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("expected committed contribution, got {outcome:?}")
+        }
     }
-}
-
-pub fn fail_home_generation_before_promotion(
-    supervisor: &RunningSessionRecoverySupervisor,
-    storage: SyndicStorage,
-    faults: &FaultController,
-    ids: &NextRecordIds,
-) {
-    let service = supervisor.acquire().unwrap();
-    let live = service.live_home_command().unwrap();
-    let store = live.home();
-    let accepted = storage
-        .accepted_input(store, ids.accepted_input, point_limit())
-        .unwrap()
-        .expect("generation-drift fixture retains its accepted input");
-    let mut batch = FixtureBatch::new();
-    batch.put(FixtureRecord::AcceptedInput(accepted)).unwrap();
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(storage.fixture_contribution(storage.revision(store).unwrap(), batch))
-        .unwrap();
-
-    faults.panic_next(FaultPoint::BeforeCommit);
-    assert!(catch_unwind(AssertUnwindSafe(|| store.execute(command))).is_err());
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-    drop(live);
-    assert!(matches!(
-        service.persistent_failure_notification().notify(),
-        PersistentFailureNotificationStatus::Signaled | PersistentFailureNotificationStatus::Joined
-    ));
 }
 
 pub fn accepted_route_state(

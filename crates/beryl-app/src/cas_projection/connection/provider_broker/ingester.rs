@@ -15,7 +15,7 @@ use beryl_backend::{
     ClientUserMessageId, OrderedTurnStreamOperation, OrderedTurnStreamRejection,
     OrderedTurnStreamSink, OrderedTurnStreamSubmitCause,
 };
-use beryl_home_store::{HomeGeneration, HomeHealthState, HomeStore};
+use beryl_home_store::{HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, ProviderObservationId};
 use beryl_stream::{
     ChannelBuildError, PagePool, PagePoolDiagnostics, PagePoolError, fixed_channel,
@@ -83,24 +83,6 @@ enum CurrentObservationAuthorityError {
         before: beryl_home_store::HomeHealthSnapshot,
         after: beryl_home_store::HomeHealthSnapshot,
     },
-}
-
-impl CurrentObservationAuthorityError {
-    fn verification_ambiguous(&self, expected_generation: HomeGeneration) -> bool {
-        let snapshot_matches = |snapshot: &beryl_home_store::HomeHealthSnapshot| {
-            snapshot.state() == HomeHealthState::Verifying
-                && snapshot.generation() == Some(expected_generation)
-        };
-        match self {
-            Self::Health(snapshot) => snapshot_matches(snapshot),
-            Self::Changed { after, .. } => snapshot_matches(after),
-            Self::Reacquire(beryl_home_store::DomainHandleError::HealthGate(source)) => {
-                source.state() == HomeHealthState::Verifying
-                    && source.generation() == expected_generation
-            }
-            _ => false,
-        }
-    }
 }
 
 #[derive(Debug, Error)]

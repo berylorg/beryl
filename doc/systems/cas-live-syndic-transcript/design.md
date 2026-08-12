@@ -60,8 +60,20 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 ## Submission And Turn-Start Admission
 
-- Before durable admission of an ordinary turn that can require `turn/start`, Beryl queries the Beryl-home free-space reserve through the storage boundary.
-- Admission proceeds only when the reserve can cover the fixed durable start envelope and the configured minimum capture reserve. A low-space, unavailable, or indeterminate result rejects admission before consuming the draft; the input and image markers remain intact.
+- Before durable admission of an ordinary turn that can require `turn/start`, Beryl queries the
+  Beryl-home free-space reserve through the storage boundary with the one service-configured turn-
+  start requirement. Direct submission and queued accepted-input promotion use that same
+  requirement; callers cannot substitute a path-specific or pre-aggregated byte total.
+- The requirement is the checked sum of the immutable 256-MiB
+  `DURABLE_START_ADMISSION_BUDGET_BYTES` product policy and a separately configured nonzero minimum
+  turn-capture reserve. Service configuration is invalid before service publication or any query
+  when that sum overflows or the capture reserve is zero.
+- The fixed budget conservatively covers the greater owner-derived bounded append envelope for the
+  direct and queued durable-start commands. The Beryl-home storage system owns the derivation and
+  its cross-package responsibility split; it is not a claim that the physical filesystem will
+  consume exactly or at most that many bytes.
+- A low-space, unavailable, or indeterminate result rejects admission before consuming the draft;
+  the input and image markers remain intact.
 - The reserve check is an admission fence, not a promise that later provider output will fit. A later store failure enters the bounded outage path.
 - Durable admission precedes composer clearing, transcript-visible publication, accepted-input scheduling, or any CAS request.
 - Admission atomically freezes exact text and image atoms, creates the submitted Syndic turn and canonical user-input item, advances the selected tail, creates the replacement draft, and records the delivery identity.
@@ -91,6 +103,12 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   retired, as required by `doc/systems/beryl-home-storage/design.md`. The acknowledgement carries
   neither a receipt nor a descriptor, publishes no source fact, and authorizes no retry, rollback,
   publication, or reconciliation execution.
+- For consuming seal, Syndic returns one seal-specific custody guard that retains both the sole
+  home-store custody and the inert consumed stager. The `Ingester` immediately consumes the guard;
+  its terminal installation puts home custody in the registry before releasing the stager. The
+  guard exposes no stager or successor and is never stored in a broker reply, acknowledgement slot,
+  active observation, connection, or service. Ordinary destruction cannot discard the result: the
+  guard's non-discardable home custody performs fallback installation before its stager is dropped.
 - After registry handoff, the old process-local observation stager and operation holder are
   disposable and never cross connection or service retirement. A later `ExactNew` successor is
   reconstructed only from durable natural records; `ExactOld` exposes a continuation only to the

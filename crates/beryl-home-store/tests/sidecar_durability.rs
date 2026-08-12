@@ -2,16 +2,16 @@
 
 mod support;
 
-use std::{fs, num::NonZeroU64};
+use std::{env, fs, num::NonZeroU64, path::PathBuf, process::Command};
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     SidecarByteLimit, SidecarError, SidecarNamespace,
+    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
-use support::{committed, AlphaDomain, PutBytes};
+use support::{AlphaDomain, PutBytes, committed};
 
 fn limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap())
@@ -127,7 +127,7 @@ fn failed_temporary_flush_leaves_inert_bytes_and_gates_metadata_commands() {
         ),
         Err(SidecarError::Storage { .. })
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
     let mut command = HomeCommand::new(beryl_model::HomeRevision::new(1).unwrap());
     command
         .add(alpha.contribution(
@@ -144,8 +144,9 @@ fn failed_temporary_flush_leaves_inert_bytes_and_gates_metadata_commands() {
 
     let temporary_count = count_temporary_files(directory.path());
     assert_eq!(temporary_count, 1);
-    store.verify_health().unwrap();
+    let store = store.recover_same_home().unwrap().publish();
     assert_eq!(count_temporary_files(directory.path()), temporary_count);
+    store.close().unwrap();
 }
 
 #[test]
@@ -166,8 +167,9 @@ fn failure_after_atomic_rename_retains_unreferenced_final_bytes() {
     let final_files = final_sidecar_files(directory.path());
     assert_eq!(final_files.len(), 1);
     assert_eq!(fs::read(&final_files[0]).unwrap(), b"renamed orphan");
-    store.verify_health().unwrap();
+    let store = store.recover_same_home().unwrap().publish();
     assert!(final_files[0].exists());
+    store.close().unwrap();
 }
 
 #[test]
@@ -188,9 +190,10 @@ fn rename_and_directory_flush_failures_never_publish_a_metadata_token() {
             ),
             Err(SidecarError::Storage { .. })
         ));
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-        store.verify_health().unwrap();
+        assert_eq!(store.health().state(), HomeHealthState::Failed);
+        let store = store.recover_same_home().unwrap().publish();
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
+        store.close().unwrap();
     }
 }
 
@@ -220,10 +223,10 @@ fn sidecar_token_from_an_obsolete_generation_cannot_authorize_metadata() {
         store.execute(failed),
         beryl_home_store::CommandOutcome::NotCommitted { .. }
     ));
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(store.verify_health().is_err());
-    store.recover_same_home().unwrap();
-    let alpha = store.domain_handle::<AlphaDomain>().unwrap();
+    assert!(store.home_revision().is_err());
+    let candidate = store.recover_same_home().unwrap();
+    let alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
+    let store = candidate.publish();
 
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.require_sidecar(sidecar).unwrap();
@@ -278,4 +281,90 @@ fn all_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
         }
     }
     files
+}
+
+const SIDECAR_CRASH_HOME_ENV: &str = "BERYL_SIDECAR_CRASH_HOME";
+const SIDECAR_CRASH_POINT_ENV: &str = "BERYL_SIDECAR_CRASH_POINT";
+const SIDECAR_CRASH_BYTES: &[u8] = b"sidecar crash-cut bytes";
+
+#[test]
+fn sidecar_crash_cut_helper() {
+    let Some(home) = env::var_os(SIDECAR_CRASH_HOME_ENV).map(PathBuf::from) else {
+        return;
+    };
+    let point = match env::var(SIDECAR_CRASH_POINT_ENV).unwrap().as_str() {
+        "before-file-sync" => FaultPoint::BeforeSidecarFileSync,
+        "before-rename" => FaultPoint::BeforeSidecarRename,
+        "after-rename" => FaultPoint::AfterSidecarRename,
+        value => panic!("unknown sidecar crash point {value}"),
+    };
+    let faults = FaultController::new();
+    faults.abort_next(point);
+    let store = open(&home, faults);
+    let _ = store.admit_sidecar(
+        SidecarNamespace::new("images").unwrap(),
+        SIDECAR_CRASH_BYTES,
+        limit(),
+    );
+    panic!("sidecar crash point did not abort the subprocess");
+}
+
+#[test]
+fn subprocess_sidecar_crash_cuts_leave_inert_residue_and_later_converge() {
+    assert_sidecar_crash_cut("before-file-sync", SidecarCrashResidue::Temporary);
+    assert_sidecar_crash_cut("before-rename", SidecarCrashResidue::Temporary);
+    assert_sidecar_crash_cut("after-rename", SidecarCrashResidue::Final);
+}
+
+#[derive(Clone, Copy)]
+enum SidecarCrashResidue {
+    Temporary,
+    Final,
+}
+
+fn assert_sidecar_crash_cut(point: &str, expected_residue: SidecarCrashResidue) {
+    let directory = tempdir().unwrap();
+    let mut initial = open(directory.path(), FaultController::new());
+    initial.register_domain::<AlphaDomain>().unwrap();
+    initial.close().unwrap();
+
+    let status = Command::new(env::current_exe().unwrap())
+        .args(["--exact", "sidecar_crash_cut_helper", "--nocapture"])
+        .env(SIDECAR_CRASH_HOME_ENV, directory.path())
+        .env(SIDECAR_CRASH_POINT_ENV, point)
+        .status()
+        .unwrap();
+    assert!(!status.success(), "sidecar helper unexpectedly succeeded");
+
+    let mut reopened = open(directory.path(), FaultController::new());
+    let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
+    assert_eq!(reopened.home_revision().unwrap().get(), 1);
+    assert_eq!(reopened.domain_revision(alpha).unwrap().get(), 1);
+
+    let temporary_before = count_temporary_files(directory.path());
+    let final_before = final_sidecar_files(directory.path());
+    match expected_residue {
+        SidecarCrashResidue::Temporary => {
+            assert_eq!(temporary_before, 1);
+            assert!(final_before.is_empty());
+        }
+        SidecarCrashResidue::Final => {
+            assert_eq!(temporary_before, 0);
+            assert_eq!(final_before.len(), 1);
+            assert_eq!(fs::read(&final_before[0]).unwrap(), SIDECAR_CRASH_BYTES);
+        }
+    }
+
+    let sidecar = reopened
+        .admit_sidecar(
+            SidecarNamespace::new("images").unwrap(),
+            SIDECAR_CRASH_BYTES,
+            limit(),
+        )
+        .unwrap();
+    assert_eq!(fs::read(sidecar.path()).unwrap(), SIDECAR_CRASH_BYTES);
+    drop(sidecar);
+    assert_eq!(count_temporary_files(directory.path()), temporary_before);
+    assert_eq!(final_sidecar_files(directory.path()).len(), 1);
+    reopened.close().unwrap();
 }

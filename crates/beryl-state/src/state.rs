@@ -5,6 +5,7 @@ use beryl_model::BerylHomeId;
 
 use crate::{
     AssetState, CatalogState, DurableJobState, RuntimeRootState, SessionState, SettingsState,
+    ThemeService, ThemeServiceError,
 };
 
 /// One explicitly bounded page of typed state records.
@@ -49,7 +50,12 @@ pub struct BerylStateBootstrap {
 }
 
 impl BerylStateBootstrap {
-    /// Registers and validates only the bounded session/window/claim domain.
+    /// Routinely registers only the bounded session/window/claim domain.
+    ///
+    /// This admits the exact persistent declaration, codec family, and current
+    /// generation without scanning application records. Composition roots that
+    /// deliberately need an exhaustive schema boundary must instead use
+    /// [`BerylState::register_with_schema_validation`].
     pub fn register(store: &mut HomeStore) -> Result<Self, BerylStateRegistrationError> {
         let session = SessionState::register(store).map_err(|source| {
             BerylStateRegistrationError::Domain {
@@ -69,7 +75,7 @@ impl BerylStateBootstrap {
         self.session
     }
 
-    /// Registers the remaining Beryl domains after ordinary shells may open.
+    /// Routinely registers the remaining Beryl domains after ordinary shells may open.
     pub fn complete(
         self,
         store: &mut HomeStore,
@@ -88,7 +94,7 @@ impl BerylStateBootstrap {
 }
 
 /// Complete set of registered Beryl-owned typed state domains.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct BerylState {
     session: SessionState,
     runtime_roots: RuntimeRootState,
@@ -96,12 +102,80 @@ pub struct BerylState {
     durable_jobs: DurableJobState,
     catalog: CatalogState,
     assets: AssetState,
+    themes: ThemeService,
 }
 
 impl BerylState {
-    /// Registers or validates every exact Beryl-owned state schema.
+    /// Routinely registers every exact Beryl-owned state domain.
+    ///
+    /// Registration verifies durable declarations, exact owner and codec types,
+    /// required families, and the current generation, but does not scan persisted
+    /// application records. Use [`Self::register_with_schema_validation`] only
+    /// when the composition root deliberately requests exhaustive validation.
     pub fn register(store: &mut HomeStore) -> Result<Self, BerylStateRegistrationError> {
         BerylStateBootstrap::register(store)?.complete(store)
+    }
+
+    /// Registers the complete Beryl-state handle set at an explicit exhaustive
+    /// schema-validation boundary.
+    ///
+    /// This is intentionally separate from routine bootstrap and recovery
+    /// reacquisition. Every Beryl domain keeps its exact exhaustive validator,
+    /// which the home store invokes here before this method returns its handle
+    /// set. A composition root should call this only for a deliberate scrub or
+    /// schema-validation request.
+    pub fn register_with_schema_validation(
+        store: &mut HomeStore,
+    ) -> Result<Self, BerylStateRegistrationError> {
+        let session = SessionState::register_with_schema_validation(store).map_err(|source| {
+            BerylStateRegistrationError::Domain {
+                domain: "beryl-session",
+                source,
+            }
+        })?;
+        let runtime_roots =
+            RuntimeRootState::register_with_schema_validation(store).map_err(|source| {
+                BerylStateRegistrationError::Domain {
+                    domain: "beryl-runtime-root",
+                    source,
+                }
+            })?;
+        let settings = SettingsState::register_with_schema_validation(store).map_err(|source| {
+            BerylStateRegistrationError::Domain {
+                domain: "beryl-settings",
+                source,
+            }
+        })?;
+        let durable_jobs =
+            DurableJobState::register_with_schema_validation(store).map_err(|source| {
+                BerylStateRegistrationError::Domain {
+                    domain: "beryl-durable-job",
+                    source,
+                }
+            })?;
+        let catalog = CatalogState::register_with_schema_validation(store).map_err(|source| {
+            BerylStateRegistrationError::Domain {
+                domain: "beryl-catalog",
+                source,
+            }
+        })?;
+        let assets = AssetState::register_with_schema_validation(store).map_err(|source| {
+            BerylStateRegistrationError::Domain {
+                domain: "beryl-assets",
+                source,
+            }
+        })?;
+        let themes = ThemeService::acquire(store)
+            .map_err(|source| BerylStateRegistrationError::Theme { source })?;
+        Ok(Self {
+            session,
+            runtime_roots,
+            settings,
+            durable_jobs,
+            catalog,
+            assets,
+            themes,
+        })
     }
 
     fn register_after_session(
@@ -137,6 +211,8 @@ impl BerylState {
                 domain: "beryl-assets",
                 source,
             })?;
+        let themes = ThemeService::acquire(store)
+            .map_err(|source| BerylStateRegistrationError::Theme { source })?;
         Ok(Self {
             session,
             runtime_roots,
@@ -144,10 +220,14 @@ impl BerylState {
             durable_jobs,
             catalog,
             assets,
+            themes,
         })
     }
 
-    /// Reacquires current-generation handles after successful same-home recovery.
+    /// Routinely reacquires current-generation handles after successful same-home recovery.
+    ///
+    /// This checks exact registered domain identity and generation only; it never
+    /// performs exhaustive application-record validation.
     pub fn reacquire(store: &HomeStore) -> Result<Self, BerylStateReacquireError> {
         let session =
             SessionState::reacquire(store).map_err(|source| BerylStateReacquireError::Domain {
@@ -181,6 +261,8 @@ impl BerylState {
                 domain: "beryl-assets",
                 source,
             })?;
+        let themes = ThemeService::acquire(store)
+            .map_err(|source| BerylStateReacquireError::Theme { source })?;
         Ok(Self {
             session,
             runtime_roots,
@@ -188,6 +270,66 @@ impl BerylState {
             durable_jobs,
             catalog,
             assets,
+            themes,
+        })
+    }
+
+    /// Reacquires the complete Beryl-state handle set from an unpublished
+    /// same-home recovery candidate.
+    ///
+    /// The returned handles are bound to the candidate's fresh generation and
+    /// remain unusable until its composition owner publishes that candidate. This
+    /// routine checks only registered owner/type/declaration/generation facts and
+    /// never invokes exhaustive domain validation.
+    pub fn reacquire_candidate(
+        candidate: &beryl_home_store::HomeRecoveryCandidate,
+    ) -> Result<Self, BerylStateReacquireError> {
+        let session = SessionState::reacquire_candidate(candidate).map_err(|source| {
+            BerylStateReacquireError::Domain {
+                domain: "beryl-session",
+                source,
+            }
+        })?;
+        let runtime_roots = RuntimeRootState::reacquire_candidate(candidate).map_err(|source| {
+            BerylStateReacquireError::Domain {
+                domain: "beryl-runtime-root",
+                source,
+            }
+        })?;
+        let settings = SettingsState::reacquire_candidate(candidate).map_err(|source| {
+            BerylStateReacquireError::Domain {
+                domain: "beryl-settings",
+                source,
+            }
+        })?;
+        let durable_jobs = DurableJobState::reacquire_candidate(candidate).map_err(|source| {
+            BerylStateReacquireError::Domain {
+                domain: "beryl-durable-job",
+                source,
+            }
+        })?;
+        let catalog = CatalogState::reacquire_candidate(candidate).map_err(|source| {
+            BerylStateReacquireError::Domain {
+                domain: "beryl-catalog",
+                source,
+            }
+        })?;
+        let assets = AssetState::reacquire_candidate(candidate).map_err(|source| {
+            BerylStateReacquireError::Domain {
+                domain: "beryl-assets",
+                source,
+            }
+        })?;
+        let themes = ThemeService::reacquire_candidate(candidate)
+            .map_err(|source| BerylStateReacquireError::Theme { source })?;
+        Ok(Self {
+            session,
+            runtime_roots,
+            settings,
+            durable_jobs,
+            catalog,
+            assets,
+            themes,
         })
     }
 
@@ -220,6 +362,12 @@ impl BerylState {
     pub const fn assets(&self) -> AssetState {
         self.assets
     }
+
+    /// Returns the fresh typed theme service bound to this state generation.
+    #[must_use]
+    pub fn themes(&self) -> ThemeService {
+        self.themes.clone()
+    }
 }
 
 /// Failure while registering or validating one exact Beryl-state domain.
@@ -235,6 +383,9 @@ pub enum BerylStateRegistrationError {
     BootstrapHomeMismatch {
         expected: BerylHomeId,
         current: BerylHomeId,
+    },
+    Theme {
+        source: ThemeServiceError,
     },
 }
 
@@ -255,6 +406,9 @@ impl fmt::Display for BerylStateRegistrationError {
                 formatter,
                 "session bootstrap belongs to Beryl home {expected}, not {current}"
             ),
+            Self::Theme { source } => {
+                write!(formatter, "could not acquire Beryl theme service: {source}")
+            }
         }
     }
 }
@@ -265,6 +419,7 @@ impl Error for BerylStateRegistrationError {
             Self::Domain { source, .. } => Some(source),
             Self::BootstrapHandle { source } => Some(source),
             Self::BootstrapHomeMismatch { .. } => None,
+            Self::Theme { source } => Some(source),
         }
     }
 }
@@ -276,6 +431,9 @@ pub enum BerylStateReacquireError {
         domain: &'static str,
         source: DomainHandleError,
     },
+    Theme {
+        source: ThemeServiceError,
+    },
 }
 
 impl fmt::Display for BerylStateReacquireError {
@@ -285,6 +443,12 @@ impl fmt::Display for BerylStateReacquireError {
                 formatter,
                 "could not reacquire Beryl-state domain `{domain}`: {source}"
             ),
+            Self::Theme { source } => {
+                write!(
+                    formatter,
+                    "could not reacquire Beryl theme service: {source}"
+                )
+            }
         }
     }
 }
@@ -293,6 +457,7 @@ impl Error for BerylStateReacquireError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Domain { source, .. } => Some(source),
+            Self::Theme { source } => Some(source),
         }
     }
 }

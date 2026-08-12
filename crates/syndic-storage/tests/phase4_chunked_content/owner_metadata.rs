@@ -181,7 +181,9 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
     ]);
     commit(&store, storage, batch(records));
     project_item(&store, storage, item);
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let accepted = storage
         .accepted_input(&store, input, point_limit())
@@ -198,6 +200,8 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

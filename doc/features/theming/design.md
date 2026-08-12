@@ -71,6 +71,18 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 - Unsupported entries in installed theme files are ignored on load and omitted on later saves.
 - Installed theme documents and active theme selection are Beryl-owned state, never backend-owned
   Codex configuration.
+- Each installed theme has one directly editable compact TOML file at
+  `<beryl-home>/themes/installed/<stable-theme-id>.toml`. Editing that file outside Beryl is a
+  supported workflow rather than corruption or an unsupported repository modification.
+- A valid external edit to the active theme becomes visible automatically as one coherent update
+  across all Beryl windows. A valid edit to another installed theme becomes the document used by
+  its next validation, edit, preview, or activation operation.
+- An invalid, partial, missing, or unreadable external edit while Beryl is running preserves the
+  last coherent appearance and presents localized feedback for that installed theme. A later valid
+  edit retries automatically; Beryl never applies a readable subset or flashes the built-in theme
+  between live-edit attempts.
+- Files not named by the installed manifest are not installed merely because they appear in the
+  `installed` directory. Installation remains an explicit Beryl repository command.
 
 ## Active Theme Startup And Repository Refresh
 
@@ -80,6 +92,9 @@ Give users durable, validated control over Beryl's appearance theme system, incl
   complete cross-window application succeed. If the saved identity cannot be resolved or its
   document is missing, unreadable, invalid, or cannot be applied, every window uses the complete
   built-in fallback instead of a partial theme.
+- The startup fallback rule applies equally when the active installed file was edited externally
+  while Beryl was not running: invalid startup content selects the complete built-in theme. This is
+  distinct from a failed live edit, which preserves the last coherent running appearance.
 - The Themes page identifies the unavailable saved theme or active-theme setting, explains the
   failure, and offers Retry without presenting the fallback as a successful load of that identity.
 - A repository refresh preserves the last coherent installed collection and current coherent

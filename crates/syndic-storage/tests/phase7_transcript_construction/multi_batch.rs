@@ -94,7 +94,9 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     store.close().unwrap();
     store = open(home.path());
     storage = SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .transcript_build(&store, thread, generation, point_limit())
@@ -151,7 +153,9 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     store.close().unwrap();
     store = open(home.path());
     storage = SyndicStorage::register(&mut store).unwrap();
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .transcript_build(&store, thread, generation, point_limit())
@@ -209,6 +213,8 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
         assert_eq!(entry.projection_id(), projection);
     }
 
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

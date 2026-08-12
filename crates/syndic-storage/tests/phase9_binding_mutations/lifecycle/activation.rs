@@ -169,12 +169,16 @@ fn valid_activation_and_one_way_turn_publication_are_atomic_and_reopen_cleanly()
             .unwrap(),
         immutable_snapshot
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(
         storage
             .active_cas_turn_publication_status(&reopened, &publish, point_limit())
@@ -282,5 +286,7 @@ fn queued_admission_revision_descendant_preserves_binding_activation() {
             .unwrap(),
         BindingPublicationStatus::Exact
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 }

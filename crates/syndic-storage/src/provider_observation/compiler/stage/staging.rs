@@ -2,18 +2,18 @@ use beryl_home_store::{CommandOutcome, HomeStore};
 use beryl_model::SyndicContentDigest;
 
 use crate::{
-    advance_content_chain, ContentByteSpanRecord, ContentChunkOrdinal, ContentChunkRecord,
+    CONTENT_APPEND_MAX_CHUNKS, ContentByteSpanRecord, ContentChunkOrdinal, ContentChunkRecord,
     ProviderFrameReferenceV1, ProviderFrameSinkV1, ProviderFrameStageBatch,
     ProviderFrameStageCallback, ProviderFrameTextSpanV1, ProviderItemBuildLifecycle,
     ProviderItemBuildRecord, ProviderLogicalTextRoleV1, ProviderNarrativeReference,
-    ProviderNarrativeSpanRecord, SyndicPointReadLimit, SyndicStorage, CONTENT_APPEND_MAX_CHUNKS,
+    ProviderNarrativeSpanRecord, SyndicPointReadLimit, SyndicStorage, advance_content_chain,
 };
 
 use super::super::{
-    encode::{encode_observation, ObservationEncodeError},
-    replay::{ObservationReplayReader, ReplayError},
     PreparedProviderObservationFrame, ProviderObservationFrameStageError,
     ProviderObservationFrameStageOutcome,
+    encode::{ObservationEncodeError, encode_observation},
+    replay::{ObservationReplayReader, ReplayError},
 };
 
 mod count;

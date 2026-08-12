@@ -56,11 +56,15 @@ fn selected_path_finalization_stales_transcript_and_updates_history_summary() {
     assert_eq!(rebuilt.entry_count(), 2);
     assert!(!rebuilt_summary.complete());
     assert_eq!(rebuilt_summary.last_activity_at(), timestamp(10));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     store.close().unwrap();
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
-    reopened.validate_registered_domains().unwrap();
+    reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     reopened.close().unwrap();
 }

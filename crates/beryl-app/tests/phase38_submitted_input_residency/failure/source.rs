@@ -73,7 +73,7 @@ fn run_source_failure(seed: u8, run_id: u64, expected_source: StreamedInputSourc
         abort.reason(),
         RequestAbortReason::PeerClose | RequestAbortReason::TransportEof
     ));
-    assert_eq!(fixture.store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(fixture.home().health().state(), HomeHealthState::Healthy);
     common::assert_durable_stream_loss(&fixture, thread, seeded.submitted.turn, 1);
     common::assert_released(&session);
     close_execution(session, server);

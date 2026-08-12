@@ -1,7 +1,9 @@
 #![cfg(feature = "test-faults")]
 
 use beryl_app::input_admission::{InputAdmissionBuildError, start_replacement_edit_command};
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     BindingRevision, ContentRevision, DraftRevision, ExecutionBinding, InputGateRevision,
     PathFlavor, ProjectionRevision, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
@@ -266,7 +268,7 @@ fn replacement_start_copies_asset_ownership_without_moving_history() {
     let historical_owner = AssetOwner::SubmittedTurnItem(item);
     let (asset, proof) = create_historical_asset(
         &mut store,
-        state,
+        state.clone(),
         Some(historical_owner),
         marker_id,
         7,
@@ -276,7 +278,20 @@ fn replacement_start_copies_asset_ownership_without_moving_history() {
     let mut seed = HomeCommand::new(store.home_revision().unwrap());
     seed.add(syndic.fixture_contribution(syndic.revision(&store).unwrap(), fixture))
         .unwrap();
-    match store.execute(seed) { CommandOutcome::Committed { later_failure: None, .. } => {}, CommandOutcome::NotCommitted { evidence } => panic!("expected committed seed: {evidence:?}"), outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ CommandOutcome::Indeterminate { .. } => panic!("indeterminate seed: {outcome:?}"), }
+    match store.execute(seed) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed seed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("unexpected later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("indeterminate seed: {outcome:?}"),
+    }
 
     let selected = SelectedPathProof::new(
         Some(turn),
@@ -297,8 +312,25 @@ fn replacement_start_copies_asset_ownership_without_moving_history() {
         time(2),
     );
     let command = start_replacement_edit_command(&store, syndic, state.assets(), edit).unwrap();
-    match store.execute(command) { CommandOutcome::Committed { later_failure: None, .. } => {}, CommandOutcome::NotCommitted { evidence } => panic!("expected committed replacement: {evidence:?}"), outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ CommandOutcome::Indeterminate { .. } => panic!("indeterminate replacement: {outcome:?}"), }
-    store.validate_registered_domains().unwrap();
+    match store.execute(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed replacement: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("unexpected later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("indeterminate replacement: {outcome:?}")
+        }
+    }
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
 
     let draft_owner = AssetOwner::CurrentDraft(draft);
     assert_eq!(
@@ -357,14 +389,20 @@ fn replacement_start_rejects_historical_asset_disagreement_before_building_a_com
     let historical_owner = AssetOwner::SubmittedTurnItem(item);
     let (historical_asset, historical_proof) = create_historical_asset(
         &mut store,
-        state,
+        state.clone(),
         Some(historical_owner),
         marker_id,
         26,
         b"historical image",
     );
-    let (_conflicting_asset, conflicting_proof) =
-        create_historical_asset(&mut store, state, None, marker_id, 27, b"conflicting image");
+    let (_conflicting_asset, conflicting_proof) = create_historical_asset(
+        &mut store,
+        state.clone(),
+        None,
+        marker_id,
+        27,
+        b"conflicting image",
+    );
     let fixture = replacement_fixture(
         thread,
         draft,
@@ -376,7 +414,20 @@ fn replacement_start_rejects_historical_asset_disagreement_before_building_a_com
     let mut seed = HomeCommand::new(store.home_revision().unwrap());
     seed.add(syndic.fixture_contribution(syndic.revision(&store).unwrap(), fixture))
         .unwrap();
-    match store.execute(seed) { CommandOutcome::Committed { later_failure: None, .. } => {}, CommandOutcome::NotCommitted { evidence } => panic!("expected committed seed: {evidence:?}"), outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("unexpected later failure: {outcome:?}"), outcome @ CommandOutcome::Indeterminate { .. } => panic!("indeterminate seed: {outcome:?}"), }
+    match store.execute(seed) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("expected committed seed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("unexpected later failure: {outcome:?}"),
+        outcome @ CommandOutcome::Indeterminate { .. } => panic!("indeterminate seed: {outcome:?}"),
+    }
 
     let selected = SelectedPathProof::new(
         Some(turn),
@@ -427,6 +478,8 @@ fn replacement_start_rejects_historical_asset_disagreement_before_building_a_com
             .asset_id(),
         historical_asset
     );
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

@@ -10,7 +10,7 @@ use beryl_home_store::{
 use tempfile::tempdir;
 
 use support::{
-    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord, PutBytes,
+    AlphaDomain, BetaDomain, BytesRecord, PutBytes, committed, not_committed, open_home,
 };
 
 #[derive(Clone, Copy)]
@@ -94,13 +94,14 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
             .unwrap();
 
         let error = not_committed(store.execute(rejected));
-        match failure {
+        let (store, alpha, beta) = match failure {
             Failure::Semantic => {
                 assert!(matches!(
                     error,
                     CommandError::ContributorValidation { domain: "beta", .. }
                 ));
                 assert_eq!(store.health().state(), HomeHealthState::Healthy);
+                (store, alpha, beta)
             }
             Failure::Access => {
                 assert!(matches!(
@@ -111,10 +112,13 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
                         source: DomainCallbackSource::Read(ReadError::Storage { .. }),
                     }
                 ));
-                assert_eq!(store.health().state(), HomeHealthState::Verifying);
-                store.verify_health().unwrap();
+                assert_eq!(store.health().state(), HomeHealthState::Failed);
+                let candidate = store.recover_same_home().unwrap();
+                let alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
+                let beta = candidate.domain_handle::<BetaDomain>().unwrap();
+                (candidate.publish(), alpha, beta)
             }
-        }
+        };
         assert_eq!(store.home_revision().unwrap(), home_before);
         assert_eq!(store.domain_revision(alpha).unwrap(), alpha_before);
         assert_eq!(store.domain_revision(beta).unwrap(), beta_before);
@@ -142,10 +146,12 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
             ))
             .unwrap();
         let receipt = committed(store.execute(accepted));
-        assert!(store
-            .receipt_domain_revision(&receipt, alpha)
-            .unwrap()
-            .is_some());
+        assert!(
+            store
+                .receipt_domain_revision(&receipt, alpha)
+                .unwrap()
+                .is_some()
+        );
         assert_eq!(store.receipt_domain_revision(&receipt, beta).unwrap(), None);
         assert_eq!(
             store

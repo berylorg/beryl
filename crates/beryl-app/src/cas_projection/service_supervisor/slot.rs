@@ -6,7 +6,7 @@ use std::{
 use beryl_home_store::HomeGeneration;
 use beryl_state::BerylState;
 
-use super::{RunningServiceAvailability, RunningSessionRecoveryDiagnostics};
+use super::{ServiceAvailability, TerminalServiceDiagnostics};
 use crate::cas_projection::{
     PersistentFailureNotification, ProjectionConnectionService, ProjectionServiceGeneration,
 };
@@ -24,7 +24,7 @@ pub(in crate::cas_projection) struct RunningServiceSlot {
 struct RunningServiceSlotState {
     current: Option<RunningServiceOwner>,
     active_leases: usize,
-    recovering: bool,
+    disposing: bool,
     shutting_down: bool,
     terminal_failures: u64,
     terminal_settled: bool,
@@ -32,7 +32,7 @@ struct RunningServiceSlotState {
 
 /// Non-cloneable scoped access to the exact currently published projection service and Beryl
 /// handles. Dropping the lease permits persistent-failure withdrawal to consume the service.
-pub struct RunningProjectionServiceLease {
+pub(super) struct RunningServiceLease {
     service: Option<Arc<ProjectionConnectionService>>,
     state: BerylState,
     slot: Arc<RunningServiceSlot>,
@@ -47,7 +47,7 @@ impl RunningServiceSlot {
                     state,
                 }),
                 active_leases: 0,
-                recovering: false,
+                disposing: false,
                 shutting_down: false,
                 terminal_failures: 0,
                 terminal_settled: false,
@@ -56,33 +56,31 @@ impl RunningServiceSlot {
         })
     }
 
-    pub(super) fn acquire(
-        self: &Arc<Self>,
-    ) -> Result<RunningProjectionServiceLease, RunningServiceAvailability> {
+    pub(super) fn acquire(self: &Arc<Self>) -> Result<RunningServiceLease, ServiceAvailability> {
         let mut state = self
             .state
             .lock()
-            .map_err(|_| RunningServiceAvailability::Unavailable)?;
+            .map_err(|_| ServiceAvailability::Unavailable)?;
         if state.terminal_failures != 0 {
-            return Err(RunningServiceAvailability::Unavailable);
+            return Err(ServiceAvailability::Unavailable);
         }
         if state.shutting_down {
-            return Err(RunningServiceAvailability::ShuttingDown);
+            return Err(ServiceAvailability::ShuttingDown);
         }
         let current = state.current.as_ref().ok_or_else(|| {
             if state.terminal_failures != 0 {
-                RunningServiceAvailability::Unavailable
+                ServiceAvailability::Unavailable
             } else {
-                RunningServiceAvailability::Recovering
+                ServiceAvailability::Disposing
             }
         })?;
         let service = Arc::clone(&current.service);
-        let beryl_state = current.state;
+        let beryl_state = current.state.clone();
         state.active_leases = state
             .active_leases
             .checked_add(1)
-            .ok_or(RunningServiceAvailability::Unavailable)?;
-        Ok(RunningProjectionServiceLease {
+            .ok_or(ServiceAvailability::Unavailable)?;
+        Ok(RunningServiceLease {
             service: Some(service),
             state: beryl_state,
             slot: Arc::clone(self),
@@ -117,7 +115,7 @@ impl RunningServiceSlot {
         if current.service.service_generation() != expected {
             return Err(());
         }
-        state.recovering = true;
+        state.disposing = true;
         state.current.take().ok_or(())
     }
 
@@ -137,7 +135,7 @@ impl RunningServiceSlot {
     pub(super) fn mark_terminal(&self) {
         if let Ok(mut state) = self.state.lock() {
             state.terminal_failures = state.terminal_failures.saturating_add(1);
-            state.recovering = false;
+            state.disposing = false;
         }
     }
 
@@ -167,17 +165,17 @@ impl RunningServiceSlot {
         state.current.take()
     }
 
-    pub(super) fn diagnostics(&self) -> RunningSessionRecoveryDiagnostics {
+    pub(super) fn diagnostics(&self) -> TerminalServiceDiagnostics {
         let state = self
             .state
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         let current = state.current.as_ref();
-        RunningSessionRecoveryDiagnostics {
-            current_home_generation: current.map(|epoch| epoch.service.home_generation()),
-            current_service_generation: current.map(|epoch| epoch.service.service_generation()),
+        TerminalServiceDiagnostics {
+            current_home_generation: current.map(|owner| owner.service.home_generation()),
+            current_service_generation: current.map(|owner| owner.service.service_generation()),
             active_service_leases: state.active_leases,
-            recovering: state.recovering,
+            disposing: state.disposing,
             shutting_down: state.shutting_down,
             terminal_failures: state.terminal_failures,
             terminal_settled: state.terminal_settled,
@@ -197,15 +195,15 @@ impl RunningServiceOwner {
     }
 }
 
-impl RunningProjectionServiceLease {
-    /// Returns the exact complete Beryl handle set published with this service epoch.
+impl RunningServiceLease {
+    /// Returns the exact complete Beryl handle set owned with this service.
     #[must_use]
-    pub const fn state(&self) -> BerylState {
-        self.state
+    pub fn state(&self) -> BerylState {
+        self.state.clone()
     }
 }
 
-impl Deref for RunningProjectionServiceLease {
+impl Deref for RunningServiceLease {
     type Target = ProjectionConnectionService;
 
     fn deref(&self) -> &Self::Target {
@@ -215,9 +213,9 @@ impl Deref for RunningProjectionServiceLease {
     }
 }
 
-impl Drop for RunningProjectionServiceLease {
+impl Drop for RunningServiceLease {
     fn drop(&mut self) {
-        // The slot count authorizes exact-owner recovery, so the Arc must leave first. Struct
+        // The slot count authorizes exact-owner disposal, so the Arc must leave first. Struct
         // fields otherwise drop only after this method returns, allowing a zero-count wake to race
         // Arc::try_unwrap on the still-live service owner.
         drop(self.service.take());

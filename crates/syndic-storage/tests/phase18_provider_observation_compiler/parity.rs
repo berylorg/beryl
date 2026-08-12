@@ -6,15 +6,17 @@ fn started_agent_observation(
     message: &[u8],
     callback: &mut impl ProviderObservationStageCallback,
 ) -> BoundProviderObservation {
-    let mut stager = committed_stage_value(ProviderObservationStager::begin(
-        ProviderObservationId::from_bytes([identity_byte; 16]),
-        ProviderObservationBegin::Item {
-            lifecycle: ProviderObservationItemLifecycle::Started,
-            kind: ProviderObservationItemKind::AgentMessage,
-        },
-        callback,
-    )
-    .unwrap());
+    let mut stager = committed_stage_value(
+        ProviderObservationStager::begin(
+            ProviderObservationId::from_bytes([identity_byte; 16]),
+            ProviderObservationBegin::Item {
+                lifecycle: ProviderObservationItemLifecycle::Started,
+                kind: ProviderObservationItemKind::AgentMessage,
+            },
+            callback,
+        )
+        .unwrap(),
+    );
 
     // The compiler must select by field identity, not the provider's object-field order.
     field_text(
@@ -83,7 +85,9 @@ fn arbitrary_order_agent_observation_matches_materialized_encoding_and_staging()
     assert_eq!(compiled.narrative_spans, 1);
     assert_eq!(final_build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
     assert!(final_build.frame_staged());
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }
 
@@ -116,6 +120,8 @@ fn destination_item_disagreement_has_a_distinct_semantic_error() {
             ProviderObservationFrameSemanticError::ItemIdentityMismatch
         ))
     ));
-    store.validate_registered_domains().unwrap();
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     store.close().unwrap();
 }

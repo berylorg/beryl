@@ -152,6 +152,22 @@ fn execute_candidate(
     };
     #[cfg(feature = "test-faults")]
     crate::cas_projection::test_faults::pause_scheduled_promotion(promotion.thread_id());
+    let free_space = validator
+        .home
+        .query_free_space(validator.turn_start_admission_requirement());
+    if !matches!(
+        free_space,
+        beryl_home_store::FreeSpaceOutcome::Sufficient { .. }
+    ) {
+        return match reservation.release() {
+            Ok(ConnectionPromotionReleaseOutcome::Ordinary)
+            | Ok(ConnectionPromotionReleaseOutcome::Closed) => WorkerDisposition::NextParked,
+            Ok(ConnectionPromotionReleaseOutcome::PersistentFailure) => {
+                WorkerDisposition::PersistentHomeFailure
+            }
+            Err(_) => WorkerDisposition::Fatal,
+        };
+    }
     let dispatch = validator.home.execute(command);
     #[cfg(feature = "test-faults")]
     crate::cas_projection::test_faults::pause_scheduled_promotion_reconciliation(
@@ -175,10 +191,10 @@ fn execute_candidate(
         CommandOutcome::Indeterminate {
             failure,
             reconciliation,
-        } => Some(WorkerDisposition::CommandIndeterminate {
-            failure,
-            reconciliation,
-        }),
+        } => {
+            reconciliation.install();
+            Some(WorkerDisposition::CommandIndeterminate { failure })
+        }
     };
     match reservation.release() {
         Ok(ConnectionPromotionReleaseOutcome::Ordinary) => {}

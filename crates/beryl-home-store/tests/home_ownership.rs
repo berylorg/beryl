@@ -70,25 +70,18 @@ fn process_death_leaves_a_reusable_lock_file() {
 }
 
 #[test]
-fn retained_handles_prevent_home_and_lock_path_replacement() {
+fn retained_lock_handle_does_not_prevent_lock_path_rename() {
     let directory = tempfile::tempdir().expect("temp directory");
     let home = directory.path().join("home");
-    let moved = directory.path().join("moved-home");
-    let store = open(&home).expect("open home");
     let lock_path = home.join("home.lock");
+    let moved_lock_path = home.join("moved-home.lock");
+    let store = open(&home).expect("open home");
 
-    assert!(
-        fs::rename(&home, &moved).is_err(),
-        "retained directory handle must deny rename"
-    );
-    assert!(
-        fs::remove_file(&lock_path).is_err(),
-        "retained lock handle must deny deletion"
-    );
+    fs::rename(&lock_path, &moved_lock_path)
+        .expect("the lifetime lock handle does not retain the lock path against rename");
+    fs::rename(&moved_lock_path, &lock_path).expect("restore lock path before orderly close");
 
-    store.close().expect("release retained handles");
-    fs::rename(&home, &moved).expect("rename succeeds after release");
-    assert!(moved.join("home.lock").is_file());
+    store.close().expect("close home");
 }
 
 struct Holder {

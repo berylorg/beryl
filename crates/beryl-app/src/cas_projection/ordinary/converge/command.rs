@@ -29,9 +29,9 @@ pub(super) fn dispatch(
         CommandOutcome::Indeterminate {
             failure,
             reconciliation,
-        } => Err(OrdinaryTurnExecutionError::HomeCommandIndeterminate {
-            failure,
-            reconciliation,
-        }),
+        } => {
+            reconciliation.install();
+            Err(OrdinaryTurnExecutionError::HomeCommandIndeterminate { failure })
+        }
     }
 }

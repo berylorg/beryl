@@ -10,6 +10,65 @@ enum PreparedStop {
 }
 
 impl ProjectionConnectionService {
+    /// Builds, admits, and executes one direct idle new-turn submission.
+    ///
+    /// The final reserve query is synchronous and immediately precedes writer admission. Any
+    /// non-sufficient outcome leaves the caller's draft and editor projection untouched.
+    pub fn execute_idle_submission(
+        &self,
+        assets: beryl_state::AssetState,
+        submission: syndic_storage::IdleSubmission,
+    ) -> Result<(), IdleSubmissionExecutionError> {
+        let command = self
+            .command_authorizer
+            .authorize()
+            .map_err(|_| IdleSubmissionExecutionError::ServiceClosed)?;
+        self.ensure_current()?;
+        let home = self
+            .home
+            .as_deref()
+            .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
+        let prepared = crate::input_admission::idle_submission_command(
+            home,
+            self.storage,
+            assets,
+            submission,
+        )?;
+        if !command.is_current() {
+            return Err(IdleSubmissionExecutionError::ServiceClosed);
+        }
+        let free_space = home.query_free_space(self.config.turn_start_admission_requirement());
+        if !matches!(
+            free_space,
+            beryl_home_store::FreeSpaceOutcome::Sufficient { .. }
+        ) {
+            return Err(IdleSubmissionExecutionError::FreeSpace(free_space));
+        }
+        match home.execute(prepared) {
+            beryl_home_store::CommandOutcome::NotCommitted { evidence } => {
+                Err(IdleSubmissionExecutionError::Command(evidence))
+            }
+            beryl_home_store::CommandOutcome::Committed {
+                receipt: _,
+                later_failure: None,
+            } => Ok(()),
+            beryl_home_store::CommandOutcome::Committed {
+                receipt,
+                later_failure: Some(later_failure),
+            } => Err(IdleSubmissionExecutionError::CommandCommitted {
+                receipt,
+                later_failure,
+            }),
+            beryl_home_store::CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => {
+                reconciliation.install();
+                Err(IdleSubmissionExecutionError::CommandIndeterminate { failure })
+            }
+        }
+    }
+
     /// Executes and reconciles one exact accepted-input publication.
     ///
     /// Exact durable acceptance wakes automatic steering only after receipt
@@ -73,10 +132,10 @@ impl ProjectionConnectionService {
             beryl_home_store::CommandOutcome::Indeterminate {
                 failure,
                 reconciliation,
-            } => Err(AcceptedInputAdmissionExecutionError::CommandIndeterminate {
-                failure,
-                reconciliation,
-            }),
+            } => {
+                reconciliation.install();
+                Err(AcceptedInputAdmissionExecutionError::CommandIndeterminate { failure })
+            }
         }
     }
 

@@ -458,11 +458,7 @@ fn context_bearing_pending_turn_requires_the_later_context_projection() {
     let home = TestHome::new("phase10-native-discussion-context");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    support::commit(
-        &store,
-        storage,
-        support::batch(support::populated::populated_records()),
-    );
+    support::populated::seed_populated(&store, storage);
     let thread = support::id(36);
     let draft = storage
         .current_draft(&store, thread, point_limit())
