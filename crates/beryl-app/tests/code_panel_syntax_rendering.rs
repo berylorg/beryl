@@ -1,37 +1,14 @@
 #![allow(dead_code, unused_imports)]
 
-#[path = "../src/shell/layout.rs"]
-pub(crate) mod layout;
-
 #[path = "../src/shell/syntax_highlighting.rs"]
 pub(crate) mod syntax_highlighting;
 
 mod shell {
-    pub(crate) use crate::layout;
     pub(crate) use crate::syntax_highlighting;
-
-    pub(crate) struct ShellRenderStyleSnapshot;
-
-    impl ShellRenderStyleSnapshot {
-        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
-            0x000000
-        }
-    }
-
-    pub(crate) struct ShellView;
-
-    impl ShellView {
-        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
-            0x000000
-        }
-    }
 }
 
 #[path = "../src/shell/render/code_panel.rs"]
 mod code_panel;
-
-#[path = "../src/shell/render/scrollbars.rs"]
-mod scrollbars;
 
 use code_panel::{CodePanelSyntaxTheme, CodePanelWrapMode};
 use gpui::{FontWeight, Rgba, TextRun, px, rgb};
@@ -301,12 +278,8 @@ fn large_precomputed_projection_materializes_only_visible_display_rows() {
     let source = "plain line\n".repeat(10_000);
     let projection =
         code_panel::CodePanelDisplayProjection::new(source.as_str(), CodePanelWrapMode::NoWrap);
-    let window = code_panel::code_panel_display_window(
-        projection.display_line_count(),
-        Some(px(80.0)),
-        None,
-        2,
-    );
+    let window =
+        code_panel::code_panel_display_window(projection.display_line_count(), Some(px(80.0)), 2);
     let visible_lines = projection.display_lines_for_window(window.range.clone());
 
     assert_eq!(projection.display_line_count(), 10_001);

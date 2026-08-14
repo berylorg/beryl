@@ -2,7 +2,7 @@ use std::{mem::size_of, ops::Range};
 
 use gpui::{Pixels, px};
 
-use super::{CodePanelScrollChrome, CodePanelWrapMode, DEFAULT_CODE_PANEL_LINE_HEIGHT};
+use super::{CodePanelWrapMode, DEFAULT_CODE_PANEL_LINE_HEIGHT};
 
 #[allow(dead_code)]
 pub(crate) fn smart_wrap_for_columns(text: &str, columns: usize) -> String {
@@ -56,22 +56,6 @@ impl CodePanelDisplayProjection {
             .map_or_else(Vec::new, <[_]>::to_vec)
     }
 
-    pub(super) fn display_window(
-        &self,
-        viewport_height: Option<Pixels>,
-        scroll_chrome: Option<&CodePanelScrollChrome>,
-        overscan_lines: usize,
-        row_height: Pixels,
-    ) -> CodePanelDisplayWindow {
-        code_panel_display_window_for_row_height(
-            self.display_line_count(),
-            viewport_height,
-            scroll_chrome,
-            overscan_lines,
-            row_height,
-        )
-    }
-
     pub(crate) fn max_display_text(&self) -> &str {
         self.max_display_text.as_str()
     }
@@ -116,13 +100,11 @@ impl CodePanelDisplayWindow {
 pub(crate) fn code_panel_display_window(
     display_line_count: usize,
     viewport_height: Option<Pixels>,
-    scroll_chrome: Option<&CodePanelScrollChrome>,
     overscan_lines: usize,
 ) -> CodePanelDisplayWindow {
     code_panel_display_window_for_row_height(
         display_line_count,
         viewport_height,
-        scroll_chrome,
         overscan_lines,
         px(DEFAULT_CODE_PANEL_LINE_HEIGHT),
     )
@@ -131,7 +113,6 @@ pub(crate) fn code_panel_display_window(
 fn code_panel_display_window_for_row_height(
     display_line_count: usize,
     viewport_height: Option<Pixels>,
-    scroll_chrome: Option<&CodePanelScrollChrome>,
     overscan_lines: usize,
     row_height: Pixels,
 ) -> CodePanelDisplayWindow {
@@ -156,18 +137,8 @@ fn code_panel_display_window_for_row_height(
         };
     }
 
-    let handle_viewport_height = scroll_chrome
-        .map(|chrome| chrome.handle.bounds().size.height)
-        .filter(|height| *height > Pixels::ZERO)
-        .unwrap_or(viewport_height);
-    let scroll_offset = scroll_chrome
-        .map(|chrome| -chrome.handle.offset().y)
-        .unwrap_or(Pixels::ZERO);
-    let max_scroll_offset = (content_height - handle_viewport_height).max(Pixels::ZERO);
-    let scroll_offset = scroll_offset.clamp(Pixels::ZERO, max_scroll_offset);
-    let first_visible_row = (f32::from(scroll_offset) / f32::from(row_height)).floor() as usize;
-    let visible_end_row =
-        (f32::from(scroll_offset + handle_viewport_height) / f32::from(row_height)).ceil() as usize;
+    let first_visible_row = 0;
+    let visible_end_row = (f32::from(viewport_height) / f32::from(row_height)).ceil() as usize;
     let start = first_visible_row
         .min(display_line_count)
         .saturating_sub(overscan_lines);

@@ -1,37 +1,14 @@
 #![allow(dead_code, unused_imports)]
 
-#[path = "../src/shell/layout.rs"]
-pub(crate) mod layout;
-
 #[path = "../src/shell/syntax_highlighting.rs"]
 pub(crate) mod syntax_highlighting;
 
 mod shell {
-    pub(crate) use crate::layout;
     pub(crate) use crate::syntax_highlighting;
-
-    pub(crate) struct ShellRenderStyleSnapshot;
-
-    impl ShellRenderStyleSnapshot {
-        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
-            0x000000
-        }
-    }
-
-    pub(crate) struct ShellView;
-
-    impl ShellView {
-        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
-            0x000000
-        }
-    }
 }
 
 #[path = "../src/shell/render/code_panel.rs"]
 mod code_panel;
-
-#[path = "../src/shell/render/scrollbars.rs"]
-mod scrollbars;
 
 use std::ops::Range;
 

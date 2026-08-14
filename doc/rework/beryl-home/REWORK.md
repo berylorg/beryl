@@ -169,8 +169,10 @@
 - [x] Completed bounded exact-geometry pre-context replay across released pages and authoritative
   opaque-atom segmentation boundaries.
 - [x] Integrated the range-backed `gpui-text-input` widget lifecycle without a whole-string adapter.
-- [ ] Integrate `gpui-settings-window` with the keyed scrollbar lifecycle and publish one exact-GPUI
-  dependency graph before Beryl mounts range-backed draft editing.
+- [x] Integrated the keyed `gpui-settings-window` lifecycle, removed the unowned Beryl scrollbar
+  render chain, and published one exact-GPUI dependency graph.
+- [ ] Implement revision-bound bounded-page split sources in `gpui-settings-window` before Beryl
+  mounts any growing settings collection.
 - [ ] Replace whole-payload draft activation and mutable marker residency with revision-bound text
   and marker ranges, bounded editor windows and compact restoration seeds, incremental
   autosave/undo/submission, and very-large-draft verification.

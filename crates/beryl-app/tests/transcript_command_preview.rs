@@ -1,39 +1,16 @@
 #![allow(dead_code, unused_imports)]
 
-#[path = "../src/shell/layout.rs"]
-pub(crate) mod layout;
-
 #[path = "../src/shell/syntax_highlighting.rs"]
 pub(crate) mod syntax_highlighting;
 
 mod shell {
-    pub(crate) use crate::layout;
     pub(crate) use crate::syntax_highlighting;
-
-    pub(crate) struct ShellRenderStyleSnapshot;
-
-    impl ShellRenderStyleSnapshot {
-        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
-            0x000000
-        }
-    }
-
-    pub(crate) struct ShellView;
-
-    impl ShellView {
-        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
-            0x000000
-        }
-    }
 }
 
 #[path = "../src/shell/render/code_panel.rs"]
 mod code_panel;
 
-#[path = "../src/shell/render/scrollbars.rs"]
-mod scrollbars;
-
-use gpui::{Overflow, point, px, size};
+use gpui::px;
 
 #[test]
 fn smart_wrap_for_columns_falls_back_to_forced_breaks() {
@@ -196,125 +173,5 @@ fn clamp_resizable_code_panel_height_preserves_resize_state_bounds() {
     assert_eq!(
         code_panel::clamp_resizable_code_panel_height(px(140.0), px(80.0), None),
         px(140.0)
-    );
-}
-
-#[test]
-fn code_panel_scroll_overflow_allows_owned_vertical_wheel() {
-    assert_eq!(
-        code_panel::code_panel_scroll_overflow(
-            code_panel::ScrollbarAxes {
-                horizontal: true,
-                vertical: true,
-            },
-            code_panel::CodePanelVerticalWheelOwnership::Panel,
-        ),
-        code_panel::CodePanelScrollOverflow {
-            horizontal: Overflow::Scroll,
-            vertical: Overflow::Scroll,
-        }
-    );
-}
-
-#[test]
-fn code_panel_scroll_overflow_hides_unowned_vertical_wheel() {
-    assert_eq!(
-        code_panel::code_panel_scroll_overflow(
-            code_panel::ScrollbarAxes {
-                horizontal: true,
-                vertical: true,
-            },
-            code_panel::CodePanelVerticalWheelOwnership::Parent,
-        ),
-        code_panel::CodePanelScrollOverflow {
-            horizontal: Overflow::Scroll,
-            vertical: Overflow::Hidden,
-        }
-    );
-}
-
-#[test]
-fn code_panel_scroll_overflow_preserves_horizontal_no_wrap_scrolling() {
-    assert_eq!(
-        code_panel::code_panel_scroll_overflow(
-            code_panel::ScrollbarAxes {
-                horizontal: true,
-                vertical: false,
-            },
-            code_panel::CodePanelVerticalWheelOwnership::Parent,
-        ),
-        code_panel::CodePanelScrollOverflow {
-            horizontal: Overflow::Scroll,
-            vertical: Overflow::Visible,
-        }
-    );
-}
-
-#[test]
-fn owned_vertical_wheel_stops_propagation_to_transcript() {
-    assert!(code_panel::code_panel_stops_scroll_wheel_propagation(
-        code_panel::ScrollbarAxes {
-            horizontal: true,
-            vertical: true,
-        },
-        code_panel::CodePanelVerticalWheelOwnership::Panel,
-    ));
-}
-
-#[test]
-fn unowned_vertical_wheel_propagates_to_transcript() {
-    assert!(!code_panel::code_panel_stops_scroll_wheel_propagation(
-        code_panel::ScrollbarAxes {
-            horizontal: true,
-            vertical: true,
-        },
-        code_panel::CodePanelVerticalWheelOwnership::Parent,
-    ));
-}
-
-#[test]
-fn horizontal_only_panel_does_not_stop_vertical_transcript_scroll() {
-    assert!(!code_panel::code_panel_stops_scroll_wheel_propagation(
-        code_panel::ScrollbarAxes {
-            horizontal: true,
-            vertical: false,
-        },
-        code_panel::CodePanelVerticalWheelOwnership::Panel,
-    ));
-}
-
-#[test]
-fn code_panel_scroll_delta_clamps_vertical_offset() {
-    assert_eq!(
-        code_panel::code_panel_offset_after_scroll_delta(
-            point(px(0.0), px(-95.0)),
-            size(px(0.0), px(100.0)),
-            point(px(0.0), px(-20.0)),
-        ),
-        point(px(0.0), px(-100.0))
-    );
-}
-
-#[test]
-fn code_panel_scroll_delta_clamps_horizontal_offset() {
-    assert_eq!(
-        code_panel::code_panel_offset_after_scroll_delta(
-            point(px(-95.0), px(0.0)),
-            size(px(100.0), px(0.0)),
-            point(px(-20.0), px(0.0)),
-        ),
-        point(px(-100.0), px(0.0))
-    );
-}
-
-#[test]
-fn code_panel_scroll_delta_keeps_dominant_diagonal_axis() {
-    assert_eq!(
-        code_panel::code_panel_offset_after_scroll_delta(
-            point(px(-20.0), px(-20.0)),
-            size(px(100.0), px(100.0)),
-            point(px(-8.0), px(-16.0)),
-        ),
-        point(px(-20.0), px(-36.0))
     );
 }
