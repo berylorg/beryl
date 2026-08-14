@@ -3,7 +3,8 @@
 /forks/
 /localtest/
 /myeasylog.log
-/.cargo/config.toml
+/.cargo/local.toml
+/.cargo/local/
 /*.bat
 /doc/rework/beryl-home/old-doc/next-big-rework.md
 /.serena/

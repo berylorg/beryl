@@ -73,6 +73,8 @@
 - [GPUI text-input spec](../../../../gpui-text-input/doc/gui/widgets/text-input/spec.md)
 - [GPUI text-input design](../../../../gpui-text-input/doc/design.md)
 - [GPUI text-input external specs](../../../../gpui-text-input/doc/gui/external-specs.md)
+- [Owned Unicode segmentation design](../../../../unicode-segmentation-fork/doc/design.md)
+- [Owned GPUI fork design](../../../../zed-fork/doc/design.md)
 - [GPUI settings-window design](../../../../gpui-settings-window/doc/design.md)
 - [GPUI settings-window external specs](../../../../gpui-settings-window/doc/gui/external-specs.md)
 - [GPUI settings-window spec](../../../../gpui-settings-window/doc/gui/widgets/settings-window/spec.md)
@@ -154,11 +156,21 @@
 
 ## Checkpoint 4: Build The Multi-Window Shell And Navigation
 
-- [ ] Obtain the existing Operator gate before beginning GUI implementation.
+- [x] Obtained the Operator gate to begin the ordered GUI implementation phases.
 - [x] Implemented the typed editable-file theme repository, coherent hot reload, exact retained
   reconciliation, atomic appearance publication, and single preview arbiter without mounting GUI.
-- [ ] Implement the missing range/page/edit-sink API in `gpui-text-input` before mounting large
-  Beryl drafts; no Beryl whole-string adapter may substitute for that dependency boundary.
+- [x] Established the owned `unicode-segmentation` fork with exact bounded streaming word
+  boundaries from the resolved 1.13.2 source commit.
+- [x] Established fixed-residency segmentation and source-selected UTF-8-safe `gpui-text-input`
+  page envelopes over the accepted streaming owners.
+- [x] Exposed clone-stable actual-handle identity from the owned GPUI `ScrollHandle` boundary.
+- [x] Established the exact keyed-owner, instance-receipt, provider-reentrant `gpui-scrollbar`
+  lifecycle before range-backed text input consumes it.
+- [x] Completed bounded exact-geometry pre-context replay across released pages and authoritative
+  opaque-atom segmentation boundaries.
+- [x] Integrated the range-backed `gpui-text-input` widget lifecycle without a whole-string adapter.
+- [ ] Integrate `gpui-settings-window` with the keyed scrollbar lifecycle and publish one exact-GPUI
+  dependency graph before Beryl mounts range-backed draft editing.
 - [ ] Replace whole-payload draft activation and mutable marker residency with revision-bound text
   and marker ranges, bounded editor windows and compact restoration seeds, incremental
   autosave/undo/submission, and very-large-draft verification.
