@@ -1,0 +1,4 @@
+interface:
+  display_name: "GPUI Scroll Surfaces"
+  short_description: "Build fast bounded GPUI lists."
+  default_prompt: "Use $gpui-scroll-surfaces to design or review this GPUI scrollable list for bounded rendering."

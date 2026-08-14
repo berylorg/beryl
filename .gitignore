@@ -1,0 +1,17 @@
+/target/
+/ENV.md
+/forks/
+/localtest/
+/myeasylog.log
+/.cargo/config.toml
+/*.bat
+/.codex/skills/capture-repeatable-lessons
+/.codex/skills/cargo-projects
+/.codex/skills/dependency-source-notes
+/.codex/skills/failure-logging
+/.codex/skills/feature-design-docs
+/.codex/skills/implementation-planning
+/.codex/skills/project-doc-authority
+/.codex/skills/research-notes
+/.codex/skills/subagent-orchestration
+/.codex/skills/workspace-package-policy

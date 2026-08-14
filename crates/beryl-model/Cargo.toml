@@ -1,0 +1,13 @@
+[package]
+name = "beryl-model"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+deunicode.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

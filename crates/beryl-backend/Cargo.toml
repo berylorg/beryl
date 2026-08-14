@@ -1,0 +1,36 @@
+[package]
+name = "beryl-backend"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[features]
+lifecycle-test-support = []
+
+[[test]]
+name = "managed_process_lifecycle"
+path = "tests/managed_process_lifecycle.rs"
+required-features = ["lifecycle-test-support"]
+
+[dependencies]
+base64.workspace = true
+beryl-model.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shlex.workspace = true
+soketto.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+wait-timeout.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+tungstenite.workspace = true

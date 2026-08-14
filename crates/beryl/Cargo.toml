@@ -1,0 +1,15 @@
+[package]
+name = "beryl"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+beryl-app.workspace = true
+beryl-backend.workspace = true
+beryl-model.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

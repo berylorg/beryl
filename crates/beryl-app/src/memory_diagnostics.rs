@@ -1,0 +1,611 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use serde::Serialize;
+use tracing::info;
+
+const TARGET: &str = "beryl_app::memory_milestones";
+
+static ENABLED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct MemoryMilestone {
+    milestone: &'static str,
+    workspace_id: Option<String>,
+    runtime: Option<String>,
+    thread_id: Option<String>,
+    backend_pid: Option<u32>,
+    turn_count: Option<usize>,
+    item_count: Option<usize>,
+    generated_image_count: Option<usize>,
+    retained_state: RetainedStateSnapshot,
+    note: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RetainedStateSnapshot {
+    pub(crate) retained_payload_bytes_lower_bound: Option<usize>,
+    pub(crate) loaded_transcript_turns: Option<usize>,
+    pub(crate) loaded_transcript_items: Option<usize>,
+    pub(crate) loaded_transcript_text_bytes: Option<usize>,
+    pub(crate) transcript_user_fragments: Option<usize>,
+    pub(crate) transcript_user_fragment_text_bytes: Option<usize>,
+    pub(crate) transcript_backend_input_records: Option<usize>,
+    pub(crate) transcript_backend_input_bytes: Option<usize>,
+    pub(crate) transcript_image_marker_bytes: Option<usize>,
+    pub(crate) transcript_narrative_entries: Option<usize>,
+    pub(crate) released_transcript_placeholders: Option<usize>,
+    pub(crate) active_turn_payload_bytes: Option<usize>,
+    pub(crate) transcript_agent_text_bytes: Option<usize>,
+    pub(crate) transcript_reasoning_summary_bytes: Option<usize>,
+    pub(crate) transcript_reasoning_content_bytes: Option<usize>,
+    pub(crate) transcript_command_text_bytes: Option<usize>,
+    pub(crate) transcript_command_output_bytes: Option<usize>,
+    pub(crate) transcript_file_change_path_bytes: Option<usize>,
+    pub(crate) transcript_file_change_output_bytes: Option<usize>,
+    pub(crate) transcript_generated_image_inline_bytes: Option<usize>,
+    pub(crate) transcript_generated_image_metadata_bytes: Option<usize>,
+    pub(crate) transcript_error_bytes: Option<usize>,
+    pub(crate) transcript_identity_bytes: Option<usize>,
+    pub(crate) presentation_rows: Option<usize>,
+    pub(crate) presentation_items: Option<usize>,
+    pub(crate) presentation_text_bytes: Option<usize>,
+    pub(crate) presentation_identity_bytes: Option<usize>,
+    pub(crate) presentation_anchor_bytes: Option<usize>,
+    pub(crate) presentation_placeholder_rows: Option<usize>,
+    pub(crate) presentation_range_rows: Option<usize>,
+    pub(crate) history_pages: Option<usize>,
+    pub(crate) history_resident_pages: Option<usize>,
+    pub(crate) history_released_pages: Option<usize>,
+    pub(crate) history_loading_pages: Option<usize>,
+    pub(crate) history_pinned_pages: Option<usize>,
+    pub(crate) history_turn_ids: Option<usize>,
+    pub(crate) history_turn_id_bytes: Option<usize>,
+    pub(crate) history_cursor_bytes: Option<usize>,
+    pub(crate) history_metadata_bytes: Option<usize>,
+    pub(crate) markdown_cache_entries: Option<usize>,
+    pub(crate) markdown_cache_pending_entries: Option<usize>,
+    pub(crate) markdown_source_bytes: Option<usize>,
+    pub(crate) markdown_estimated_retained_bytes: Option<usize>,
+    pub(crate) markdown_in_flight_source_bytes: Option<usize>,
+    pub(crate) markdown_displayed_source_bytes: Option<usize>,
+    pub(crate) markdown_parsed_source_bytes: Option<usize>,
+    pub(crate) markdown_estimated_structure_bytes: Option<usize>,
+    pub(crate) markdown_blocks: Option<usize>,
+    pub(crate) markdown_inlines: Option<usize>,
+    pub(crate) markdown_media_requests: Option<usize>,
+    pub(crate) syntax_highlight_cache_entries: Option<usize>,
+    pub(crate) syntax_highlight_represented_source_bytes: Option<usize>,
+    pub(crate) syntax_highlight_estimated_retained_bytes: Option<usize>,
+    pub(crate) syntax_highlight_tokens: Option<usize>,
+    pub(crate) media_cache_entries: Option<usize>,
+    pub(crate) media_cache_pending_entries: Option<usize>,
+    pub(crate) media_cache_loaded_entries: Option<usize>,
+    pub(crate) media_cache_loaded_retained_byte_entries: Option<usize>,
+    pub(crate) media_cache_loaded_source_backed_file_entries: Option<usize>,
+    pub(crate) media_cache_loaded_native_generated_source_backed_file_entries: Option<usize>,
+    pub(crate) media_cache_loaded_native_generated_retained_byte_entries: Option<usize>,
+    pub(crate) media_cache_loaded_image_bytes: Option<usize>,
+    pub(crate) media_cache_decoded_image_bytes_estimate: Option<usize>,
+    pub(crate) media_cache_thumbnail_count: Option<usize>,
+    pub(crate) stream_projection_entries: Option<usize>,
+    pub(crate) stream_projection_key_bytes: Option<usize>,
+    pub(crate) stream_projection_text_bytes: Option<usize>,
+    pub(crate) stream_projection_uncommitted_entries: Option<usize>,
+    pub(crate) activity_records: Option<usize>,
+    pub(crate) activity_rows: Option<usize>,
+    pub(crate) activity_visible_thread_indexes: Option<usize>,
+    pub(crate) activity_label_count: Option<usize>,
+    pub(crate) activity_label_bytes: Option<usize>,
+    pub(crate) activity_reasoning_summary_parts: Option<usize>,
+    pub(crate) activity_reasoning_summary_bytes: Option<usize>,
+    pub(crate) activity_subagent_metadata_count: Option<usize>,
+    pub(crate) activity_subagent_metadata_bytes: Option<usize>,
+    pub(crate) activity_parent_thread_links: Option<usize>,
+    pub(crate) activity_parent_thread_link_bytes: Option<usize>,
+    pub(crate) activity_visible_thread_index_maps: Option<usize>,
+    pub(crate) activity_visible_thread_index_key_bytes: Option<usize>,
+    pub(crate) activity_visible_thread_index_bytes: Option<usize>,
+    pub(crate) activity_record_payload_bytes: Option<usize>,
+    pub(crate) activity_row_payload_bytes: Option<usize>,
+    pub(crate) graph_nodes: Option<usize>,
+    pub(crate) graph_soft_links: Option<usize>,
+    pub(crate) graph_thread_refs: Option<usize>,
+    pub(crate) graph_committed_nodes: Option<usize>,
+    pub(crate) graph_committed_soft_links: Option<usize>,
+    pub(crate) graph_committed_thread_refs: Option<usize>,
+    pub(crate) graph_columns: Option<usize>,
+    pub(crate) graph_pending_optimistic_mutations: Option<usize>,
+    pub(crate) graph_queued_commits: Option<usize>,
+    pub(crate) inventory_groups: Option<usize>,
+    pub(crate) inventory_threads: Option<usize>,
+    pub(crate) known_threads: Option<usize>,
+    pub(crate) composer_draft_text_bytes: Option<usize>,
+    pub(crate) composer_draft_images: Option<usize>,
+    pub(crate) composer_draft_image_bytes: Option<usize>,
+    pub(crate) composer_draft_atoms: Option<usize>,
+    pub(crate) composer_draft_atom_bytes: Option<usize>,
+    pub(crate) composer_clipboard_payloads: Option<usize>,
+    pub(crate) composer_clipboard_text_bytes: Option<usize>,
+    pub(crate) composer_clipboard_images: Option<usize>,
+    pub(crate) composer_clipboard_image_bytes: Option<usize>,
+    pub(crate) composer_clipboard_atoms: Option<usize>,
+    pub(crate) composer_clipboard_atom_bytes: Option<usize>,
+    pub(crate) composer_history_lanes: Option<usize>,
+    pub(crate) composer_history_entries: Option<usize>,
+    pub(crate) composer_history_text_bytes: Option<usize>,
+    pub(crate) composer_history_images: Option<usize>,
+    pub(crate) composer_history_image_bytes: Option<usize>,
+    pub(crate) composer_history_atoms: Option<usize>,
+    pub(crate) composer_history_atom_bytes: Option<usize>,
+    pub(crate) pending_composer_image_asset_paste_bytes: Option<usize>,
+    pub(crate) composer_image_popup_bytes: Option<usize>,
+    pub(crate) pending_turn_input_fragments: Option<usize>,
+    pub(crate) pending_turn_input_bytes: Option<usize>,
+    pub(crate) pending_steering_fragments: Option<usize>,
+    pub(crate) pending_steering_bytes: Option<usize>,
+    pub(crate) workspace_persistence_pending_work: Option<usize>,
+    pub(crate) thread_title_workers: Option<usize>,
+    pub(crate) inventory_worker_active: Option<usize>,
+    pub(crate) text_input_count: Option<usize>,
+    pub(crate) text_input_current_text_bytes: Option<usize>,
+    pub(crate) text_input_current_atoms: Option<usize>,
+    pub(crate) text_input_current_atom_bytes: Option<usize>,
+    pub(crate) text_input_undo_snapshots: Option<usize>,
+    pub(crate) text_input_redo_snapshots: Option<usize>,
+    pub(crate) text_input_undo_bytes: Option<usize>,
+    pub(crate) text_input_redo_bytes: Option<usize>,
+    pub(crate) text_input_widget_layout_lines: Option<usize>,
+    pub(crate) text_input_widget_visual_lines: Option<usize>,
+    pub(crate) text_input_widget_visible_text_bytes: Option<usize>,
+    pub(crate) backend_work_receivers: Option<usize>,
+    pub(crate) backend_event_queue_estimate: Option<usize>,
+    pub(crate) backend_client_connection_estimate: Option<usize>,
+    pub(crate) turn_steering_receivers: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessMemorySnapshot {
+    pub pid: u32,
+    pub private_bytes: u64,
+    pub working_set_bytes: u64,
+    pub pagefile_usage_bytes: u64,
+    pub handle_count: Option<u32>,
+    pub thread_count: Option<u32>,
+}
+
+impl MemoryMilestone {
+    pub(crate) fn new(milestone: &'static str) -> Self {
+        Self {
+            milestone,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn workspace_id(mut self, workspace_id: impl Into<String>) -> Self {
+        self.workspace_id = Some(workspace_id.into());
+        self
+    }
+
+    pub(crate) fn runtime(mut self, runtime: impl Into<String>) -> Self {
+        self.runtime = Some(runtime.into());
+        self
+    }
+
+    pub(crate) fn thread_id(mut self, thread_id: impl Into<String>) -> Self {
+        self.thread_id = Some(thread_id.into());
+        self
+    }
+
+    pub(crate) fn backend_pid(mut self, backend_pid: Option<u32>) -> Self {
+        self.backend_pid = backend_pid;
+        self
+    }
+
+    pub(crate) fn turn_count(mut self, turn_count: usize) -> Self {
+        self.turn_count = Some(turn_count);
+        self
+    }
+
+    pub(crate) fn history_counts(
+        mut self,
+        turn_count: usize,
+        item_count: usize,
+        generated_image_count: usize,
+    ) -> Self {
+        self.turn_count = Some(turn_count);
+        self.item_count = Some(item_count);
+        self.generated_image_count = Some(generated_image_count);
+        self
+    }
+
+    pub(crate) fn retained_state(mut self, retained_state: RetainedStateSnapshot) -> Self {
+        self.retained_state = retained_state;
+        self
+    }
+
+    pub(crate) fn retained_state_if_enabled(
+        mut self,
+        retained_state: impl FnOnce() -> RetainedStateSnapshot,
+    ) -> Self {
+        if enabled() {
+            self.retained_state = retained_state();
+        }
+        self
+    }
+
+    pub(crate) fn note(mut self, note: impl Into<String>) -> Self {
+        self.note = Some(note.into());
+        self
+    }
+
+    pub(crate) fn log(self) {
+        if !enabled() {
+            return;
+        }
+
+        let workspace_id = self.workspace_id.unwrap_or_default();
+        let runtime = self.runtime.unwrap_or_default();
+        let thread_id = self.thread_id.unwrap_or_default();
+        let backend_pid = self
+            .backend_pid
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let turn_count = self
+            .turn_count
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let item_count = self
+            .item_count
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let generated_image_count = self
+            .generated_image_count
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let retained_state = self.retained_state;
+        let retained_payload_bytes_lower_bound =
+            optional_usize(retained_state.retained_payload_bytes_lower_bound);
+        let loaded_transcript_turns = optional_usize(retained_state.loaded_transcript_turns);
+        let loaded_transcript_items = optional_usize(retained_state.loaded_transcript_items);
+        let loaded_transcript_text_bytes =
+            optional_usize(retained_state.loaded_transcript_text_bytes);
+        let transcript_user_fragments = optional_usize(retained_state.transcript_user_fragments);
+        let transcript_backend_input_records =
+            optional_usize(retained_state.transcript_backend_input_records);
+        let transcript_narrative_entries =
+            optional_usize(retained_state.transcript_narrative_entries);
+        let released_transcript_placeholders =
+            optional_usize(retained_state.released_transcript_placeholders);
+        let presentation_rows = optional_usize(retained_state.presentation_rows);
+        let presentation_items = optional_usize(retained_state.presentation_items);
+        let presentation_text_bytes = optional_usize(retained_state.presentation_text_bytes);
+        let presentation_range_rows = optional_usize(retained_state.presentation_range_rows);
+        let history_pages = optional_usize(retained_state.history_pages);
+        let history_resident_pages = optional_usize(retained_state.history_resident_pages);
+        let history_released_pages = optional_usize(retained_state.history_released_pages);
+        let markdown_cache_entries = optional_usize(retained_state.markdown_cache_entries);
+        let markdown_cache_pending_entries =
+            optional_usize(retained_state.markdown_cache_pending_entries);
+        let markdown_source_bytes = optional_usize(retained_state.markdown_source_bytes);
+        let markdown_estimated_retained_bytes =
+            optional_usize(retained_state.markdown_estimated_retained_bytes);
+        let markdown_in_flight_source_bytes =
+            optional_usize(retained_state.markdown_in_flight_source_bytes);
+        let markdown_displayed_source_bytes =
+            optional_usize(retained_state.markdown_displayed_source_bytes);
+        let markdown_parsed_source_bytes =
+            optional_usize(retained_state.markdown_parsed_source_bytes);
+        let markdown_estimated_structure_bytes =
+            optional_usize(retained_state.markdown_estimated_structure_bytes);
+        let markdown_blocks = optional_usize(retained_state.markdown_blocks);
+        let markdown_inlines = optional_usize(retained_state.markdown_inlines);
+        let markdown_media_requests = optional_usize(retained_state.markdown_media_requests);
+        let syntax_highlight_cache_entries =
+            optional_usize(retained_state.syntax_highlight_cache_entries);
+        let syntax_highlight_represented_source_bytes =
+            optional_usize(retained_state.syntax_highlight_represented_source_bytes);
+        let syntax_highlight_estimated_retained_bytes =
+            optional_usize(retained_state.syntax_highlight_estimated_retained_bytes);
+        let syntax_highlight_tokens = optional_usize(retained_state.syntax_highlight_tokens);
+        let media_cache_entries = optional_usize(retained_state.media_cache_entries);
+        let media_cache_pending_entries =
+            optional_usize(retained_state.media_cache_pending_entries);
+        let media_cache_loaded_entries = optional_usize(retained_state.media_cache_loaded_entries);
+        let media_cache_loaded_retained_byte_entries =
+            optional_usize(retained_state.media_cache_loaded_retained_byte_entries);
+        let media_cache_loaded_source_backed_file_entries =
+            optional_usize(retained_state.media_cache_loaded_source_backed_file_entries);
+        let media_cache_loaded_native_generated_source_backed_file_entries = optional_usize(
+            retained_state.media_cache_loaded_native_generated_source_backed_file_entries,
+        );
+        let media_cache_loaded_native_generated_retained_byte_entries = optional_usize(
+            retained_state.media_cache_loaded_native_generated_retained_byte_entries,
+        );
+        let media_cache_loaded_image_bytes =
+            optional_usize(retained_state.media_cache_loaded_image_bytes);
+        let media_cache_decoded_image_bytes_estimate =
+            optional_usize(retained_state.media_cache_decoded_image_bytes_estimate);
+        let media_cache_thumbnail_count =
+            optional_usize(retained_state.media_cache_thumbnail_count);
+        let activity_records = optional_usize(retained_state.activity_records);
+        let activity_rows = optional_usize(retained_state.activity_rows);
+        let activity_visible_thread_indexes =
+            optional_usize(retained_state.activity_visible_thread_indexes);
+        let graph_nodes = optional_usize(retained_state.graph_nodes);
+        let graph_soft_links = optional_usize(retained_state.graph_soft_links);
+        let graph_thread_refs = optional_usize(retained_state.graph_thread_refs);
+        let graph_committed_nodes = optional_usize(retained_state.graph_committed_nodes);
+        let graph_committed_soft_links = optional_usize(retained_state.graph_committed_soft_links);
+        let graph_committed_thread_refs =
+            optional_usize(retained_state.graph_committed_thread_refs);
+        let graph_columns = optional_usize(retained_state.graph_columns);
+        let graph_pending_optimistic_mutations =
+            optional_usize(retained_state.graph_pending_optimistic_mutations);
+        let graph_queued_commits = optional_usize(retained_state.graph_queued_commits);
+        let inventory_groups = optional_usize(retained_state.inventory_groups);
+        let inventory_threads = optional_usize(retained_state.inventory_threads);
+        let known_threads = optional_usize(retained_state.known_threads);
+        let backend_work_receivers = optional_usize(retained_state.backend_work_receivers);
+        let backend_event_queue_estimate =
+            optional_usize(retained_state.backend_event_queue_estimate);
+        let backend_client_connection_estimate =
+            optional_usize(retained_state.backend_client_connection_estimate);
+        let turn_steering_receivers = optional_usize(retained_state.turn_steering_receivers);
+        let note = self.note.unwrap_or_default();
+
+        match current_process_memory() {
+            Ok(snapshot) => {
+                info!(
+                    target: TARGET,
+                    milestone = self.milestone,
+                    pid = snapshot.pid,
+                    private_bytes = snapshot.private_bytes,
+                    working_set_bytes = snapshot.working_set_bytes,
+                    pagefile_usage_bytes = snapshot.pagefile_usage_bytes,
+                    workspace_id = %workspace_id,
+                    runtime = %runtime,
+                    thread_id = %thread_id,
+                    backend_pid = %backend_pid,
+                    turn_count = %turn_count,
+                    item_count = %item_count,
+                    generated_image_count = %generated_image_count,
+                    retained_state = ?retained_state,
+                    retained_payload_bytes_lower_bound = %retained_payload_bytes_lower_bound,
+                    loaded_transcript_turns = %loaded_transcript_turns,
+                    loaded_transcript_items = %loaded_transcript_items,
+                    loaded_transcript_text_bytes = %loaded_transcript_text_bytes,
+                    transcript_user_fragments = %transcript_user_fragments,
+                    transcript_backend_input_records = %transcript_backend_input_records,
+                    transcript_narrative_entries = %transcript_narrative_entries,
+                    released_transcript_placeholders = %released_transcript_placeholders,
+                    presentation_rows = %presentation_rows,
+                    presentation_items = %presentation_items,
+                    presentation_text_bytes = %presentation_text_bytes,
+                    presentation_range_rows = %presentation_range_rows,
+                    history_pages = %history_pages,
+                    history_resident_pages = %history_resident_pages,
+                    history_released_pages = %history_released_pages,
+                    markdown_cache_entries = %markdown_cache_entries,
+                    markdown_cache_pending_entries = %markdown_cache_pending_entries,
+                    markdown_source_bytes = %markdown_source_bytes,
+                    markdown_estimated_retained_bytes = %markdown_estimated_retained_bytes,
+                    markdown_in_flight_source_bytes = %markdown_in_flight_source_bytes,
+                    markdown_displayed_source_bytes = %markdown_displayed_source_bytes,
+                    markdown_parsed_source_bytes = %markdown_parsed_source_bytes,
+                    markdown_estimated_structure_bytes = %markdown_estimated_structure_bytes,
+                    markdown_blocks = %markdown_blocks,
+                    markdown_inlines = %markdown_inlines,
+                    markdown_media_requests = %markdown_media_requests,
+                    syntax_highlight_cache_entries = %syntax_highlight_cache_entries,
+                    syntax_highlight_represented_source_bytes = %syntax_highlight_represented_source_bytes,
+                    syntax_highlight_estimated_retained_bytes = %syntax_highlight_estimated_retained_bytes,
+                    syntax_highlight_tokens = %syntax_highlight_tokens,
+                    media_cache_entries = %media_cache_entries,
+                    media_cache_pending_entries = %media_cache_pending_entries,
+                    media_cache_loaded_entries = %media_cache_loaded_entries,
+                    media_cache_loaded_retained_byte_entries = %media_cache_loaded_retained_byte_entries,
+                    media_cache_loaded_source_backed_file_entries = %media_cache_loaded_source_backed_file_entries,
+                    media_cache_loaded_native_generated_source_backed_file_entries = %media_cache_loaded_native_generated_source_backed_file_entries,
+                    media_cache_loaded_native_generated_retained_byte_entries = %media_cache_loaded_native_generated_retained_byte_entries,
+                    media_cache_loaded_image_bytes = %media_cache_loaded_image_bytes,
+                    media_cache_decoded_image_bytes_estimate = %media_cache_decoded_image_bytes_estimate,
+                    media_cache_thumbnail_count = %media_cache_thumbnail_count,
+                    activity_records = %activity_records,
+                    activity_rows = %activity_rows,
+                    activity_visible_thread_indexes = %activity_visible_thread_indexes,
+                    graph_nodes = %graph_nodes,
+                    graph_soft_links = %graph_soft_links,
+                    graph_thread_refs = %graph_thread_refs,
+                    graph_committed_nodes = %graph_committed_nodes,
+                    graph_committed_soft_links = %graph_committed_soft_links,
+                    graph_committed_thread_refs = %graph_committed_thread_refs,
+                    graph_columns = %graph_columns,
+                    graph_pending_optimistic_mutations = %graph_pending_optimistic_mutations,
+                    graph_queued_commits = %graph_queued_commits,
+                    inventory_groups = %inventory_groups,
+                    inventory_threads = %inventory_threads,
+                    known_threads = %known_threads,
+                    backend_work_receivers = %backend_work_receivers,
+                    backend_event_queue_estimate = %backend_event_queue_estimate,
+                    backend_client_connection_estimate = %backend_client_connection_estimate,
+                    turn_steering_receivers = %turn_steering_receivers,
+                    note = %note,
+                    "memory milestone"
+                );
+            }
+            Err(error) => {
+                info!(
+                    target: TARGET,
+                    milestone = self.milestone,
+                    pid = std::process::id(),
+                    memory_counters_available = false,
+                    error = %error,
+                    workspace_id = %workspace_id,
+                    runtime = %runtime,
+                    thread_id = %thread_id,
+                    backend_pid = %backend_pid,
+                    turn_count = %turn_count,
+                    item_count = %item_count,
+                    generated_image_count = %generated_image_count,
+                    retained_state = ?retained_state,
+                    retained_payload_bytes_lower_bound = %retained_payload_bytes_lower_bound,
+                    loaded_transcript_turns = %loaded_transcript_turns,
+                    loaded_transcript_items = %loaded_transcript_items,
+                    loaded_transcript_text_bytes = %loaded_transcript_text_bytes,
+                    transcript_user_fragments = %transcript_user_fragments,
+                    transcript_backend_input_records = %transcript_backend_input_records,
+                    transcript_narrative_entries = %transcript_narrative_entries,
+                    released_transcript_placeholders = %released_transcript_placeholders,
+                    presentation_rows = %presentation_rows,
+                    presentation_items = %presentation_items,
+                    presentation_text_bytes = %presentation_text_bytes,
+                    presentation_range_rows = %presentation_range_rows,
+                    history_pages = %history_pages,
+                    history_resident_pages = %history_resident_pages,
+                    history_released_pages = %history_released_pages,
+                    markdown_cache_entries = %markdown_cache_entries,
+                    markdown_cache_pending_entries = %markdown_cache_pending_entries,
+                    markdown_source_bytes = %markdown_source_bytes,
+                    markdown_estimated_retained_bytes = %markdown_estimated_retained_bytes,
+                    markdown_in_flight_source_bytes = %markdown_in_flight_source_bytes,
+                    markdown_displayed_source_bytes = %markdown_displayed_source_bytes,
+                    markdown_parsed_source_bytes = %markdown_parsed_source_bytes,
+                    markdown_estimated_structure_bytes = %markdown_estimated_structure_bytes,
+                    markdown_blocks = %markdown_blocks,
+                    markdown_inlines = %markdown_inlines,
+                    markdown_media_requests = %markdown_media_requests,
+                    syntax_highlight_cache_entries = %syntax_highlight_cache_entries,
+                    syntax_highlight_represented_source_bytes = %syntax_highlight_represented_source_bytes,
+                    syntax_highlight_estimated_retained_bytes = %syntax_highlight_estimated_retained_bytes,
+                    syntax_highlight_tokens = %syntax_highlight_tokens,
+                    media_cache_entries = %media_cache_entries,
+                    media_cache_pending_entries = %media_cache_pending_entries,
+                    media_cache_loaded_entries = %media_cache_loaded_entries,
+                    media_cache_loaded_retained_byte_entries = %media_cache_loaded_retained_byte_entries,
+                    media_cache_loaded_source_backed_file_entries = %media_cache_loaded_source_backed_file_entries,
+                    media_cache_loaded_native_generated_source_backed_file_entries = %media_cache_loaded_native_generated_source_backed_file_entries,
+                    media_cache_loaded_native_generated_retained_byte_entries = %media_cache_loaded_native_generated_retained_byte_entries,
+                    media_cache_loaded_image_bytes = %media_cache_loaded_image_bytes,
+                    media_cache_decoded_image_bytes_estimate = %media_cache_decoded_image_bytes_estimate,
+                    media_cache_thumbnail_count = %media_cache_thumbnail_count,
+                    activity_records = %activity_records,
+                    activity_rows = %activity_rows,
+                    activity_visible_thread_indexes = %activity_visible_thread_indexes,
+                    graph_nodes = %graph_nodes,
+                    graph_soft_links = %graph_soft_links,
+                    graph_thread_refs = %graph_thread_refs,
+                    graph_committed_nodes = %graph_committed_nodes,
+                    graph_committed_soft_links = %graph_committed_soft_links,
+                    graph_committed_thread_refs = %graph_committed_thread_refs,
+                    graph_columns = %graph_columns,
+                    graph_pending_optimistic_mutations = %graph_pending_optimistic_mutations,
+                    graph_queued_commits = %graph_queued_commits,
+                    inventory_groups = %inventory_groups,
+                    inventory_threads = %inventory_threads,
+                    known_threads = %known_threads,
+                    backend_work_receivers = %backend_work_receivers,
+                    backend_event_queue_estimate = %backend_event_queue_estimate,
+                    backend_client_connection_estimate = %backend_client_connection_estimate,
+                    turn_steering_receivers = %turn_steering_receivers,
+                    note = %note,
+                    "memory milestone unavailable"
+                );
+            }
+        }
+    }
+}
+
+pub(crate) fn configure(enabled: bool) {
+    ENABLED.store(enabled, Ordering::Release);
+}
+
+pub(crate) fn enabled() -> bool {
+    ENABLED.load(Ordering::Acquire)
+}
+
+pub fn current_process_memory_snapshot() -> Result<ProcessMemorySnapshot, &'static str> {
+    current_process_memory()
+}
+
+fn optional_usize(value: Option<usize>) -> String {
+    value.map(|value| value.to_string()).unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn current_process_memory() -> Result<ProcessMemorySnapshot, &'static str> {
+    use windows::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessHandleCount};
+
+    let mut counters = PROCESS_MEMORY_COUNTERS_EX {
+        cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+        ..PROCESS_MEMORY_COUNTERS_EX::default()
+    };
+    let cb = counters.cb;
+
+    unsafe {
+        GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            &mut counters as *mut PROCESS_MEMORY_COUNTERS_EX as *mut PROCESS_MEMORY_COUNTERS,
+            cb,
+        )
+        .map_err(|_| "GetProcessMemoryInfo failed")?;
+    }
+
+    let mut handle_count = 0u32;
+    let handle_count = unsafe {
+        GetProcessHandleCount(GetCurrentProcess(), &mut handle_count)
+            .map(|_| handle_count)
+            .ok()
+    };
+
+    Ok(ProcessMemorySnapshot {
+        pid: std::process::id(),
+        private_bytes: counters.PrivateUsage as u64,
+        working_set_bytes: counters.WorkingSetSize as u64,
+        pagefile_usage_bytes: counters.PagefileUsage as u64,
+        handle_count,
+        thread_count: current_process_thread_count(),
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn current_process_memory() -> Result<ProcessMemorySnapshot, &'static str> {
+    Err("process memory counters are only implemented on Windows")
+}
+
+#[cfg(target_os = "windows")]
+fn current_process_thread_count() -> Option<u32> {
+    use windows::Win32::{
+        Foundation::CloseHandle,
+        System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+        },
+    };
+
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0).ok()? };
+    let mut entry = THREADENTRY32 {
+        dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
+        ..THREADENTRY32::default()
+    };
+    let current_pid = std::process::id();
+    let mut thread_count = 0u32;
+    let first = unsafe { Thread32First(snapshot, &mut entry).is_ok() };
+    if first {
+        loop {
+            if entry.th32OwnerProcessID == current_pid {
+                thread_count = thread_count.saturating_add(1);
+            }
+            entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+            if unsafe { Thread32Next(snapshot, &mut entry) }.is_err() {
+                break;
+            }
+        }
+    }
+    let _ = unsafe { CloseHandle(snapshot) };
+
+    first.then_some(thread_count)
+}
