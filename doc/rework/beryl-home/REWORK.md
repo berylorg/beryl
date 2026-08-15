@@ -171,8 +171,28 @@
 - [x] Integrated the range-backed `gpui-text-input` widget lifecycle without a whole-string adapter.
 - [x] Integrated the keyed `gpui-settings-window` lifecycle, removed the unowned Beryl scrollbar
   render chain, and published one exact-GPUI dependency graph.
-- [ ] Implement revision-bound bounded-page split sources in `gpui-settings-window` before Beryl
-  mounts any growing settings collection.
+- [x] Implemented and independently accepted revision-bound bounded-page split sources in
+  `gpui-settings-window` without a resident or compatibility path.
+- [x] Established and independently accepted composite positions, ordered zero-width objects,
+  exact geometry and hits, and bounded hot-path resume and accounting in owned GPUI.
+- [x] Established exact composite positions, bounded object paging and presentation, crate-owned
+  scalar proofs, separate capped residency, and the ordinary accepted-GPUI cutover in `gpui-text-input`.
+- [x] Added exact staged source-zero-width object mutations and successor adoption in `gpui-text-input`.
+- [x] Added bounded exact composite clipboard and payload-free compact restoration validation in
+  `gpui-text-input`.
+- [x] Integrated bounded exact source-zero-width object realization into canonical GPUI geometry.
+- [x] Established the bounded widget-owned cross-owner staged-publication boundary for exact
+  geometry, text and object residency, terminal surfaces, queued requests, desired state, active-
+  object state, and deferred effects, with exact post-retirement admission and no stable rendering-
+  path work.
+- [x] Corrected owned-GPUI composite trailing-boundary ownership, zero-width line occupancy and
+  resume validation, and capped UTF-8 style-run boundary admission without changing hot-path
+  asymptotics.
+- [ ] Finish exact inline-object interaction, activation, bounded presentation, and lifecycle
+  release through the accepted staged-publication boundary without an accessibility payload or
+  integration.
+- [ ] Independently accept and prepare the complete external `gpui-text-input` boundary for publication.
+- [ ] Establish bounded streamed ComposerV1 successor construction in `syndic-storage`.
 - [ ] Replace whole-payload draft activation and mutable marker residency with revision-bound text
   and marker ranges, bounded editor windows and compact restoration seeds, incremental
   autosave/undo/submission, and very-large-draft verification.

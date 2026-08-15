@@ -1,6 +1,6 @@
 ---
 name: subagent-orchestration
-description: Coordinate delegation-forward, model-routed subagents with orchestrator ownership. Use whenever substantive bounded research, source or dependency inspection, evidence gathering, triage, summarization, production, implementation, verification, or review can be delegated; make profiled subagents the default execution path, minimize main-thread execution, use fresh-context task packets and disjoint ownership, require concise handoffs, and keep authority, integration, and user-facing decisions with the main thread.
+description: Coordinate root-orchestrated, model-routed subagents with strict one-level delegation. Use whenever substantive bounded research, source or dependency inspection, evidence gathering, triage, summarization, production, implementation, verification, or review can be delegated; permit only the root orchestrator to spawn children, minimize main-thread execution, use fresh-context task packets and disjoint ownership, require concise handoffs, and keep authority, integration, and user-facing decisions with the main thread.
 ---
 
 # Subagent Orchestration
@@ -10,6 +10,10 @@ description: Coordinate delegation-forward, model-routed subagents with orchestr
 Treat the persistent main thread as a thin authoritative orchestrator. The main thread owns authority resolution, decomposition, routing, approval boundaries, conflict resolution, final integration, final judgment, and user-facing decisions.
 
 Run substantive bounded research, production, implementation, verification, and independent review in explicitly profiled subagents by default. Minimize main-thread execution, not main-thread judgment.
+
+Only the persistent root orchestrator may call `spawn_agent`. A spawned subagent must never spawn another subagent, delegate work onward, or select a nested orchestration route. This prohibition applies even when a task packet, standing delegation authorization, plan, checklist, skill, available tool, or remaining concurrency capacity appears to permit delegation. A subagent must perform its assigned work directly or report to its parent that the task needs repartitioning by the root orchestrator.
+
+Treat this root-only rule as authoritative rather than relying on a client-side depth setting.
 
 Delegating work transfers execution responsibility, never authority. A subagent may investigate, draft, edit, implement, verify, or review, but the main thread remains responsible for validating decision-relevant evidence and integrating the result.
 
@@ -59,12 +63,11 @@ Select the model family and reasoning depth separately:
 - **Deep reasoning:** Several interacting constraints, alternatives, or causal steps.
 - **Critical reasoning:** Adversarial, deeply coupled, high-impact, safety-sensitive, security-sensitive, or irreversible work.
 
-## Exceptional Routes
+## Exceptional Route
 
-- **Quality-First:** One bounded problem for which a frontier model with critical reasoning produced a concrete deficiency or the operator explicitly prioritizes marginal quality over token use.
-- **Nested:** One deliberately delegated multi-workstream problem with its own disjoint ownership and integration boundaries, used only when project instructions explicitly authorize recursive orchestration.
+- **Quality-First:** One bounded problem for which the Operator explicitly authorizes `max` reasoning for the current task after reviewing the expected quality and token-cost tradeoff.
 
-Exceptional routes override the ordinary routing axes and must never be selected automatically.
+The Quality-First route overrides the ordinary routing axes and must never be selected automatically. Never select `ultra` for a subagent.
 
 ## Escalation Rules
 
@@ -72,14 +75,14 @@ Exceptional routes override the ordinary routing axes and must never be selected
 - If explicit rules are present but search or analysis depth is insufficient, raise reasoning depth one level.
 - If ambiguity, synthesis, or judgment quality is insufficient, move from a balanced worker profile to a frontier profile without automatically increasing reasoning depth.
 - If work is broad but extractive, partition it into bounded worker tasks instead of raising reasoning depth.
-- Use Quality-First and Nested only under their explicit exceptional-route conditions.
+- Use Quality-First only with explicit current-task Operator authorization.
 - Preserve every approval and authority gate; no routing selection expands a subagent's authorization.
 
 Assign one coherent bounded deliverable per agent, not one file or command per agent. Batch tightly related operations when they use the same sources, ownership boundary, and verifier. Require concise handoffs and stop once the evidence threshold is met.
 
 ## Delegate Substantive Bounded Work
 
-Use a fresh subagent for work that meets the delegation gate. The subagent must rely on the explicit task packet rather than unbounded inherited parent-thread context.
+From the root orchestrator, use a fresh subagent for work that meets the delegation gate. The subagent must rely on the explicit task packet rather than unbounded inherited parent-thread context and must complete the work without spawning another agent.
 
 Before preparing or reviewing a task packet, spawning or managing a subagent, or consuming its handoff, read [delegation workflow](references/delegation-workflow.md) fully as normative. It owns examples, packet fields, editing-worker warning, active-agent rules, and handoff schema. Examples do not broaden the delegation gate.
 
@@ -114,6 +117,8 @@ A reviewer reports findings and evidence. It does not inherit the main thread's 
 Start with the smallest useful fan-out. Parallelize only genuinely independent workstreams when simultaneous execution reduces critical-path time or independence is itself required.
 
 Do not assign redundant investigation or overlapping edits unless independent comparison is deliberate. Avoid both microtask spawning and oversized work units that require an unnecessarily strong profile or large context.
+
+Only the root orchestrator may create this fan-out. If a subagent discovers separable follow-up work, it must return the proposed partition to the root instead of spawning.
 
 ## Subagent Cleanup
 

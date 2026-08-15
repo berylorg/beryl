@@ -23,11 +23,14 @@ Combine the selected model family and reasoning depth directly. Do not raise one
 ## Current Exceptional-Route Map
 
 - Quality-First: `gpt-5.6-sol` / `max`.
-- Nested: `gpt-5.6-sol` / `ultra`.
+
+Quality-First requires explicit current-task Operator authorization. Do not use `ultra` for any subagent.
 
 ## Spawn Mechanics
 
 Set `model` and `reasoning_effort` explicitly for every routed subagent.
+
+Only the root orchestrator may spawn a subagent. A subagent must not call `spawn_agent`, even if delegation tooling is available or another instruction appears to request recursive work.
 
 Use `fork_turns="none"` by default so the task packet is the complete context. Use a bounded positive `fork_turns` value only when recent conversational context is genuinely required.
 

@@ -2,6 +2,10 @@
 
 This reference is normative for preparing a task packet, spawning a subagent, managing an active subagent, and consuming its handoff. Apply the delegation gate, routing policy, authority boundaries, ownership rules, review requirements, parallelism constraints, and cleanup rules from the parent skill.
 
+## Root-Only Spawn Invariant
+
+Only the persistent root orchestrator may spawn subagents. A spawned subagent must perform its assigned work directly and must not spawn, delegate to, or orchestrate another agent. If its task needs repartitioning, it must stop that expansion and return the proposed partition to the root orchestrator.
+
 ## Delegable Work Examples
 
 Use these examples only after the work satisfies the parent skill's delegation gate:
@@ -28,6 +32,7 @@ Provide every subagent an explicit task packet containing:
 - Owned files, artifacts, packages, modules, or subjects when edits are allowed.
 - The completion condition and required verification or evidence standard.
 - The expected handoff shape.
+- An explicit statement that the subagent must not spawn or delegate to another agent.
 
 For editing work, tell workers they are not alone in the workspace, must not revert others' edits, and must adjust to concurrent or existing changes.
 
