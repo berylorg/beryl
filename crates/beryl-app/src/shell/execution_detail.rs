@@ -885,6 +885,7 @@ impl ExecutionDetailState {
                 TurnStreamEvent::TokenUsageUpdated { .. } => {}
                 TurnStreamEvent::AccountRateLimitsUpdated { .. } => {}
                 TurnStreamEvent::ThreadNameUpdated { .. } => {}
+                TurnStreamEvent::TurnError { .. } => {}
                 TurnStreamEvent::ThreadClosed { .. } => {}
                 TurnStreamEvent::ApprovalRequested(_) => {}
                 TurnStreamEvent::DynamicToolCallRequested(_) => {}
@@ -931,6 +932,9 @@ fn stream_event_matches_active_turn(turn: &TurnExecutionRecord, event: &TurnStre
             thread_id,
             turn: info,
         } => stream_turn_identity_matches_active_turn(turn, thread_id, &info.id),
+        TurnStreamEvent::TurnError {
+            thread_id, turn_id, ..
+        } => stream_turn_identity_matches_active_turn(turn, thread_id, turn_id),
         TurnStreamEvent::ItemStarted {
             thread_id, turn_id, ..
         }

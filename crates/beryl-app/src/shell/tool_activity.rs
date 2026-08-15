@@ -592,6 +592,7 @@ impl ToolActivityProjection {
             | TurnStreamEvent::TokenUsageUpdated { .. }
             | TurnStreamEvent::AccountRateLimitsUpdated { .. }
             | TurnStreamEvent::ThreadNameUpdated { .. }
+            | TurnStreamEvent::TurnError { .. }
             | TurnStreamEvent::ApprovalRequested(..)
             | TurnStreamEvent::DynamicToolCallRequested(..) => false,
         }

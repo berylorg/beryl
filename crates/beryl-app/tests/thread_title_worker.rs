@@ -8,7 +8,7 @@ use std::{
 
 use beryl_backend::{
     AgentMessageItem, ProtocolPhase, ThreadItem, ThreadSessionResponse, ThreadStartOptions,
-    ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, TurnInfo, TurnStartOptions,
+    ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, TurnError, TurnInfo, TurnStartOptions,
     TurnStartResponse, TurnStatus, TurnStreamEvent,
 };
 use beryl_model::workspace::WorkspaceId;
@@ -88,6 +88,49 @@ fn title_worker_fails_when_generation_turn_fails() {
     assert!(matches!(result, ThreadTitleResult::Failed { .. }));
     assert!(backend.set_names.is_empty());
     assert_eq!(backend.unsubscribed, vec!["maintenance_thread".to_string()]);
+}
+
+#[test]
+fn title_worker_ignores_turn_error_until_terminal_completion() {
+    for will_retry in [true, false] {
+        let candidate = candidate();
+        let mut backend = FakeTitleBackend::with_turn(in_progress_title_turn());
+        backend
+            .events
+            .push_back(Ok(Some(TurnStreamEvent::TurnError {
+                thread_id: "maintenance_thread".to_string(),
+                turn_id: "maintenance_turn".to_string(),
+                error: TurnError {
+                    message: "backend reported an error".to_string(),
+                    additional_details: None,
+                    codex_error_info: None,
+                },
+                will_retry,
+            })));
+        backend
+            .events
+            .push_back(Ok(Some(TurnStreamEvent::TurnCompleted {
+                thread_id: "maintenance_thread".to_string(),
+                turn: completed_title_turn("Useful Title").turn,
+            })));
+
+        assert_eq!(
+            run_thread_title_attempt(
+                &mut backend,
+                &workspace(),
+                candidate,
+                Duration::from_secs(1),
+                Duration::from_secs(1),
+            ),
+            ThreadTitleResult::Applied {
+                title: "Useful Title".to_string()
+            }
+        );
+        assert_eq!(
+            backend.set_names,
+            vec![("target_thread".to_string(), "Useful Title".to_string())]
+        );
+    }
 }
 
 #[test]

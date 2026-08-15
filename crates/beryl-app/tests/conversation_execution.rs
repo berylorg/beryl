@@ -261,6 +261,7 @@ fn execution_detail_keeps_failed_turn_without_fabricated_answer() {
             error: Some(beryl_backend::TurnError {
                 message: "command failed".to_string(),
                 additional_details: Some("exit code 1".to_string()),
+                codex_error_info: None,
             }),
         },
     });
@@ -395,6 +396,7 @@ fn execution_detail_bounds_turn_error_detail() {
             error: Some(beryl_backend::TurnError {
                 message: "failed".to_string(),
                 additional_details: Some("E".repeat(MAX_ERROR_MESSAGE_BYTES + 1024)),
+                codex_error_info: None,
             }),
         },
     });
@@ -405,6 +407,40 @@ fn execution_detail_bounds_turn_error_detail() {
         .expect("failed turn should retain bounded error detail");
     assert!(error.len() <= MAX_ERROR_MESSAGE_BYTES);
     assert!(error.contains("Beryl omitted additional turn error detail"));
+}
+
+#[test]
+fn turn_error_notification_keeps_the_matching_turn_active_and_unmodified() {
+    let mut state = ExecutionDetailState::default();
+    state.begin_turn("Continue work".to_string());
+    state.apply_stream_event(TurnStreamEvent::TurnStarted {
+        thread_id: "thread_1".to_string(),
+        turn: TurnInfo {
+            id: "turn_1".to_string(),
+            status: TurnStatus::InProgress,
+            items: Vec::new(),
+            error: None,
+        },
+    });
+
+    for will_retry in [true, false] {
+        assert_eq!(
+            state.apply_stream_event(TurnStreamEvent::TurnError {
+                thread_id: "thread_1".to_string(),
+                turn_id: "turn_1".to_string(),
+                error: beryl_backend::TurnError {
+                    message: "temporary backend report".to_string(),
+                    additional_details: None,
+                    codex_error_info: None,
+                },
+                will_retry,
+            }),
+            Some(0),
+        );
+        assert_eq!(state.working_turn_index(), Some(0));
+        assert_eq!(state.turns()[0].status, TurnExecutionStatus::Running);
+        assert!(state.turns()[0].error_message.is_none());
+    }
 }
 
 #[test]

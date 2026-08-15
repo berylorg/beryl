@@ -3,11 +3,13 @@
 #[path = "../src/shell/surface_notice.rs"]
 mod surface_notice;
 
-use beryl_backend::{TurnError, TurnInfo, TurnStatus};
+use beryl_backend::{ThreadStatus, TurnError, TurnInfo, TurnStatus, TurnStreamEvent};
 use surface_notice::{
-    MAX_REPORTED_SURFACE_NOTICE_SOURCE_KEYS, SurfaceNotice, SurfaceNoticeQueue,
-    SurfaceNoticeSourceKey, backend_turn_error_detail, local_turn_failure_notice,
-    selected_backend_turn_error_notice,
+    MAX_REPORTED_SURFACE_NOTICE_SOURCE_KEYS, MAX_TURN_ERROR_NOTICE_DETAIL_BYTES, SurfaceNotice,
+    SurfaceNoticeQueue, SurfaceNoticeSourceKey, backend_turn_error_detail,
+    local_turn_failure_notice, selected_active_stream_failure_notice,
+    selected_active_turn_error_notice, selected_backend_turn_error_notice,
+    selected_turn_stream_error_notice,
 };
 
 #[test]
@@ -94,6 +96,7 @@ fn selected_failed_backend_turn_builds_turn_error_notice() {
         Some(TurnError {
             message: "backend rejected turn".to_string(),
             additional_details: None,
+            codex_error_info: None,
         }),
     );
 
@@ -102,6 +105,201 @@ fn selected_failed_backend_turn_builds_turn_error_notice() {
 
     assert_eq!(notice.title(), "Turn error");
     assert_eq!(notice.detail(), "backend rejected turn");
+}
+
+#[test]
+fn selected_active_non_retryable_notification_builds_a_turn_error_notice() {
+    let notice = selected_active_turn_error_notice(
+        Some("thread_1"),
+        Some(("thread_1", "turn_1")),
+        "thread_1",
+        "turn_1",
+        &turn_error("backend rejected turn"),
+        false,
+    )
+    .expect("matching selected active notification should build a notice");
+
+    assert_eq!(notice.title(), "Turn error");
+    assert_eq!(notice.detail(), "backend rejected turn");
+}
+
+#[test]
+fn retryable_or_nonmatching_turn_error_notifications_do_not_build_notices() {
+    let cases = [
+        (
+            Some("thread_1"),
+            Some(("thread_1", "turn_1")),
+            "thread_1",
+            "turn_1",
+            true,
+        ),
+        (
+            Some("thread_1"),
+            Some(("thread_1", "turn_1")),
+            "thread_2",
+            "turn_1",
+            false,
+        ),
+        (
+            Some("thread_1"),
+            Some(("thread_1", "turn_1")),
+            "thread_1",
+            "turn_2",
+            false,
+        ),
+        (
+            Some("thread_2"),
+            Some(("thread_1", "turn_1")),
+            "thread_1",
+            "turn_1",
+            false,
+        ),
+        (
+            Some("thread_1"),
+            Some(("thread_1", "turn_1")),
+            "   ",
+            "turn_1",
+            false,
+        ),
+        (
+            Some("thread_1"),
+            Some(("thread_1", "turn_1")),
+            "thread_1",
+            "",
+            false,
+        ),
+        (
+            None,
+            Some(("thread_1", "turn_1")),
+            "thread_1",
+            "turn_1",
+            false,
+        ),
+        (
+            Some("thread_1"),
+            Some(("   ", "turn_1")),
+            "   ",
+            "turn_1",
+            false,
+        ),
+        (
+            Some("thread_1"),
+            Some(("thread_1", " ")),
+            "thread_1",
+            " ",
+            false,
+        ),
+        (Some("thread_1"), None, "thread_1", "turn_1", false),
+    ];
+
+    for (
+        selected_thread_id,
+        active_turn,
+        notification_thread_id,
+        notification_turn_id,
+        will_retry,
+    ) in cases
+    {
+        assert!(
+            selected_active_turn_error_notice(
+                selected_thread_id,
+                active_turn,
+                notification_thread_id,
+                notification_turn_id,
+                &turn_error("ignored"),
+                will_retry,
+            )
+            .is_none()
+        );
+    }
+}
+
+#[test]
+fn stream_event_notice_selection_centralizes_completion_and_notification_routing() {
+    let completion = TurnStreamEvent::TurnCompleted {
+        thread_id: "thread_1".to_string(),
+        turn: turn_info(
+            "turn_1",
+            TurnStatus::Failed,
+            Some(turn_error("completed failure")),
+        ),
+    };
+    let notification = TurnStreamEvent::TurnError {
+        thread_id: "thread_1".to_string(),
+        turn_id: "turn_1".to_string(),
+        error: turn_error("notification failure"),
+        will_retry: false,
+    };
+    let unrelated = TurnStreamEvent::ThreadStatusChanged {
+        thread_id: "thread_1".to_string(),
+        status: ThreadStatus::Idle,
+    };
+
+    assert_eq!(
+        selected_turn_stream_error_notice(&completion, Some("thread_1"), None)
+            .map(|notice| notice.detail().to_string()),
+        Some("completed failure".to_string())
+    );
+    assert_eq!(
+        selected_turn_stream_error_notice(
+            &notification,
+            Some("thread_1"),
+            Some(("thread_1", "turn_1")),
+        )
+        .map(|notice| notice.detail().to_string()),
+        Some("notification failure".to_string())
+    );
+    assert!(selected_turn_stream_error_notice(&unrelated, Some("thread_1"), None).is_none());
+}
+
+#[test]
+fn notification_completion_and_stream_failure_share_turn_error_deduplication() {
+    let mut queue = SurfaceNoticeQueue::default();
+    let notification = selected_active_turn_error_notice(
+        Some("thread_1"),
+        Some(("thread_1", "turn_1")),
+        "thread_1",
+        "turn_1",
+        &turn_error("early error"),
+        false,
+    )
+    .unwrap();
+    let completion = selected_backend_turn_error_notice(
+        Some("thread_1"),
+        "thread_1",
+        &turn_info(
+            "turn_1",
+            TurnStatus::Failed,
+            Some(turn_error("completed error")),
+        ),
+    )
+    .unwrap();
+    let stream_failure = selected_active_stream_failure_notice(
+        "stream failed",
+        Some("thread_1"),
+        Some(("thread_1", "turn_1")),
+    );
+
+    assert!(queue.push(notification));
+    assert!(!queue.push(completion));
+    assert!(!queue.push(stream_failure));
+    assert_eq!(queue.len(), 1);
+}
+
+#[test]
+fn unselected_or_identityless_stream_failures_remain_unkeyed() {
+    let mut queue = SurfaceNoticeQueue::default();
+    let unselected = selected_active_stream_failure_notice(
+        "stream failed",
+        Some("thread_2"),
+        Some(("thread_1", "turn_1")),
+    );
+    let identityless =
+        selected_active_stream_failure_notice("stream failed", Some("thread_1"), None);
+
+    assert!(queue.push(unselected));
+    assert!(queue.push(identityless));
+    assert_eq!(queue.len(), 2);
 }
 
 #[test]
@@ -165,12 +363,14 @@ fn backend_error_detail_uses_non_empty_additional_details_only() {
     let detail = backend_turn_error_detail(Some(&TurnError {
         message: "primary message".to_string(),
         additional_details: Some("  extra context  ".to_string()),
+        codex_error_info: None,
     }));
     assert_eq!(detail, "primary message\n\nextra context");
 
     let detail = backend_turn_error_detail(Some(&TurnError {
         message: "primary message".to_string(),
         additional_details: Some("   ".to_string()),
+        codex_error_info: None,
     }));
     assert_eq!(detail, "primary message");
 
@@ -178,6 +378,19 @@ fn backend_error_detail_uses_non_empty_additional_details_only() {
         backend_turn_error_detail(None),
         "The turn failed without an error payload from the backend."
     );
+}
+
+#[test]
+fn backend_error_detail_is_bounded_without_rendering_codex_error_info() {
+    let detail = backend_turn_error_detail(Some(&TurnError {
+        message: "M".repeat(MAX_TURN_ERROR_NOTICE_DETAIL_BYTES + 1024),
+        additional_details: Some("additional detail".to_string()),
+        codex_error_info: Some(serde_json::json!({"internal": "do not render"})),
+    }));
+
+    assert!(detail.len() <= MAX_TURN_ERROR_NOTICE_DETAIL_BYTES);
+    assert!(detail.ends_with("..."));
+    assert!(!detail.contains("do not render"));
 }
 
 #[test]
@@ -203,5 +416,13 @@ fn turn_info(id: &str, status: TurnStatus, error: Option<TurnError>) -> TurnInfo
         status,
         items: Vec::new(),
         error,
+    }
+}
+
+fn turn_error(message: &str) -> TurnError {
+    TurnError {
+        message: message.to_string(),
+        additional_details: None,
+        codex_error_info: None,
     }
 }

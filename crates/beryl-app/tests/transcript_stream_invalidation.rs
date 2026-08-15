@@ -1,7 +1,7 @@
 #[path = "../src/shell/transcript_stream_invalidation.rs"]
 mod transcript_stream_invalidation;
 
-use beryl_backend::{ThreadStatus, TurnInfo, TurnStatus, TurnStreamEvent};
+use beryl_backend::{ThreadStatus, TurnError, TurnInfo, TurnStatus, TurnStreamEvent};
 use transcript_stream_invalidation::{
     TRANSCRIPT_STREAM_INVALIDATION_MAX_THREADS,
     TRANSCRIPT_STREAM_INVALIDATION_MAX_TURNS_PER_THREAD,
@@ -65,6 +65,16 @@ fn thread_lifecycle_events_do_not_target_invalidated_turns() {
         },
         TurnStreamEvent::ThreadDeleted {
             thread_id: "thread_a".to_string(),
+        },
+        TurnStreamEvent::TurnError {
+            thread_id: "thread_a".to_string(),
+            turn_id: "turn_1".to_string(),
+            error: TurnError {
+                message: "transient backend error".to_string(),
+                additional_details: None,
+                codex_error_info: None,
+            },
+            will_retry: true,
         },
     ] {
         assert_eq!(stream_event_thread_turn_id(&event), None);

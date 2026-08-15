@@ -61,6 +61,15 @@ fn backend_error_classification_groups_probe_and_transport_failures() {
         BackendUnavailableKind::ProbeFailed.diagnostic_label(),
         "probe_failed"
     );
+
+    let malformed_error_notification =
+        ManagedBackendError::MalformedTurnErrorNotificationEnvelope {
+            detail: "params are required",
+        };
+    assert_eq!(
+        BackendUnavailableKind::from_backend_error(&malformed_error_notification),
+        BackendUnavailableKind::ProbeFailed
+    );
 }
 
 #[test]

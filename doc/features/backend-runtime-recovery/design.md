@@ -66,6 +66,15 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 - Recovery actions may include relaunching a managed backend for the same runtime and resumed thread binding or closing the application instance.
 - The GUI must not silently switch the user to a different backend process after disconnect.
 
+## Turn-Stream Error Recovery
+
+- A valid normalized app-server `error` notification is correlated only by its exact thread and turn identity. It is not a JSON-RPC protocol failure and does not by itself make the foreground stream unusable.
+- An `error` notification with `willRetry = true` is a nonterminal recovery signal. It must not finish turn state, terminalize Activity rows, finalize hard-stop tracking or turn execution-detail state, trigger completion sound, or enqueue a terminal turn notice.
+- An `error` notification with `willRetry = false` is a correlated failure precursor. It may make the exact selected user-visible active turn eligible for early failure reporting, but it does not substitute for `turn/completed` or an actual turn-stream failure as authority for terminal status, Activity finalization, hard-stop and execution-detail cleanup, or completion attention effects.
+- Error-notification effects require exact nonblank thread and turn identity matching the active operation. Mismatched or blank identity must not mutate another turn, and repeated notifications must not duplicate terminal effects.
+- Error notifications observed by title generation, inventory refresh, compaction, startup probing, or other background and maintenance operations remain scoped to that operation and must not leak into the selected conversation's lifecycle or notices.
+- A recognized `error` notification with a malformed envelope or malformed required typed fields is an invalid notification and follows the actual stream-failure recovery path for that client and operation rather than the valid error-notification path.
+
 ## Protocol Boundary
 
 - Cross-boundary communication uses the app-server contract rather than direct access to Codex storage or process memory.

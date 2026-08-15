@@ -109,6 +109,9 @@ Own Beryl's integration boundary with `codex app-server`.
 - Activity normalization does not synthesize human-friendly labels, inspect command arguments for display names, or decide GUI visibility, retention, sorting, command-line truncation, or log presentation policy.
 - Turn-stream normalization exposes app-server approval server requests with enough structure for callers to deny them and, when necessary, interrupt the associated turn without depending on raw protocol messages.
 - Approval response normalization can send protocol-specific denial responses for command-execution, file-change, and permission-expansion approval requests without deciding when a GUI should deny a request.
+- Turn-stream normalization exposes the app-server notification method `error` as a distinct normalized event rather than conflating it with a JSON-RPC `ProtocolError`.
+- A normalized `error` event preserves the exact backend `threadId` and `turnId`, `willRetry`, and a `TurnError` containing a required `message`, optional `additionalDetails`, and any opaque `codexErrorInfo`. The retained message and additional details are bounded, and this crate neither interprets the opaque classification nor reassigns the event to different stream identity.
+- A recognized `error` notification whose envelope or required typed fields are malformed is an explicit invalid notification and therefore a stream failure; it must not be downgraded to an uncorrelated generic error event.
 - Turn-stream normalization distinguishes idle receive polling from fatal stream failure. A quiet interval returns no event while transport errors, backend process exit, protocol errors, and invalid notifications remain explicit failures or events for callers to handle.
 
 ## Dependency Boundary

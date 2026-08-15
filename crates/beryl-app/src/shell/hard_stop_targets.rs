@@ -122,6 +122,7 @@ impl HardStopTargetProjection {
             | TurnStreamEvent::TokenUsageUpdated { .. }
             | TurnStreamEvent::AccountRateLimitsUpdated { .. }
             | TurnStreamEvent::ThreadNameUpdated { .. }
+            | TurnStreamEvent::TurnError { .. }
             | TurnStreamEvent::ApprovalRequested(..)
             | TurnStreamEvent::DynamicToolCallRequested(..) => false,
         }

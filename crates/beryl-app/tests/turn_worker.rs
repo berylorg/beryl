@@ -24,7 +24,7 @@ pub use beryl_app::{
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallOutputContentItem, DynamicToolCallRequest,
     DynamicToolCallResponse, JsonRpcError, ThreadSessionResponse, ThreadStartOptions, ThreadStatus,
-    TurnInfo, TurnStatus, TurnStreamEvent, UserInput, parse_approval_request,
+    TurnError, TurnInfo, TurnStatus, TurnStreamEvent, UserInput, parse_approval_request,
     parse_dynamic_tool_call_request,
 };
 use beryl_model::{
@@ -232,6 +232,39 @@ fn stream_completion_requires_exact_thread_and_turn_before_idle_can_finish() {
             completion_grace
         ]
     );
+}
+
+#[test]
+fn turn_error_events_are_nonterminal_and_streams_continue_to_completion() {
+    for will_retry in [true, false] {
+        let idle_poll = Duration::from_secs(10);
+        let completion_grace = Duration::from_millis(500);
+        let mut backend = FakeTurnStreamBackend::new([
+            Ok(Some(turn_error("thread_1", "turn_1", will_retry))),
+            Ok(Some(turn_completed("thread_1", "turn_1"))),
+            Ok(None),
+        ]);
+        let mut emitted = Vec::new();
+
+        stream_active_turn_events(
+            &mut backend,
+            "thread_1",
+            "turn_1",
+            idle_poll,
+            completion_grace,
+            unexpected_dynamic_tool_call,
+            |_| panic!("test did not expect a lifecycle yield"),
+            |event| {
+                emitted.push(event);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(matches!(emitted[0], TurnStreamEvent::TurnError { .. }));
+        assert!(matches!(emitted[1], TurnStreamEvent::TurnCompleted { .. }));
+        assert_eq!(backend.polls, vec![idle_poll, idle_poll, completion_grace]);
+    }
 }
 
 #[test]
@@ -1292,6 +1325,19 @@ fn turn_completed(thread_id: &str, turn_id: &str) -> TurnStreamEvent {
             items: Vec::new(),
             error: None,
         },
+    }
+}
+
+fn turn_error(thread_id: &str, turn_id: &str, will_retry: bool) -> TurnStreamEvent {
+    TurnStreamEvent::TurnError {
+        thread_id: thread_id.to_string(),
+        turn_id: turn_id.to_string(),
+        error: TurnError {
+            message: "backend reported an error".to_string(),
+            additional_details: None,
+            codex_error_info: None,
+        },
+        will_retry,
     }
 }
 

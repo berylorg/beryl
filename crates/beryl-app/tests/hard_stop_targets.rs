@@ -4,7 +4,8 @@ mod hard_stop_targets;
 mod status_line;
 
 use beryl_backend::{
-    HardStopCapabilities, HardStopTarget, ThreadItem, TurnInfo, TurnStatus, TurnStreamEvent,
+    HardStopCapabilities, HardStopTarget, ThreadItem, TurnError, TurnInfo, TurnStatus,
+    TurnStreamEvent,
 };
 use hard_stop_targets::HardStopTargetProjection;
 use serde_json::json;
@@ -273,6 +274,37 @@ fn projection_removes_completed_command_execution_process_handles() {
 }
 
 #[test]
+fn turn_error_never_removes_matching_hard_stop_targets() {
+    for will_retry in [true, false] {
+        let mut projection = HardStopTargetProjection::default();
+        projection.set_capabilities(HardStopCapabilities::new(true, true));
+        projection.apply_stream_event(&turn_started("thread_parent", "turn_parent"));
+        projection.apply_stream_event(&started(
+            "thread_parent",
+            "turn_parent",
+            command_item_with_process("cmd_1", Some("proc_1")),
+        ));
+
+        assert!(!projection.apply_stream_event(&turn_error(
+            "thread_parent",
+            "turn_parent",
+            will_retry,
+        )));
+        let targets = selected_parent_targets(&projection);
+        assert!(
+            targets
+                .targets
+                .contains(&HardStopTarget::turn("thread_parent", "turn_parent"))
+        );
+        assert!(
+            targets
+                .targets
+                .contains(&HardStopTarget::command_execution("proc_1"))
+        );
+    }
+}
+
+#[test]
 fn projection_removes_only_archived_or_deleted_thread_targets() {
     for lifecycle_event in [
         thread_archived as fn(&str) -> TurnStreamEvent,
@@ -419,6 +451,19 @@ fn turn_started(thread_id: &str, turn_id: &str) -> TurnStreamEvent {
             items: Vec::new(),
             error: None,
         },
+    }
+}
+
+fn turn_error(thread_id: &str, turn_id: &str, will_retry: bool) -> TurnStreamEvent {
+    TurnStreamEvent::TurnError {
+        thread_id: thread_id.to_string(),
+        turn_id: turn_id.to_string(),
+        error: TurnError {
+            message: "backend reported an error".to_string(),
+            additional_details: None,
+            codex_error_info: None,
+        },
+        will_retry,
     }
 }
 

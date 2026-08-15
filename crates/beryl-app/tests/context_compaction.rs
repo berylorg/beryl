@@ -1,7 +1,7 @@
 #[path = "../src/shell/context_compaction.rs"]
 mod context_compaction;
 
-use beryl_backend::{ThreadItem, ThreadStatus, TurnInfo, TurnStatus, TurnStreamEvent};
+use beryl_backend::{ThreadItem, ThreadStatus, TurnError, TurnInfo, TurnStatus, TurnStreamEvent};
 use context_compaction::ContextCompactionStreamState;
 use serde_json::json;
 
@@ -213,6 +213,45 @@ fn turn_with_compaction_item_then_idle_finishes() {
             status: ThreadStatus::Idle,
         },
     ));
+}
+
+#[test]
+fn turn_error_notifications_do_not_finish_compaction_before_selected_thread_becomes_idle() {
+    for will_retry in [true, false] {
+        let mut state = ContextCompactionStreamState::default();
+
+        assert!(!state.observe(
+            "thread_1",
+            &TurnStreamEvent::ItemStarted {
+                thread_id: "thread_1".to_string(),
+                turn_id: "turn_compact".to_string(),
+                item: context_compaction_item(),
+            },
+        ));
+
+        assert!(!state.observe(
+            "thread_1",
+            &TurnStreamEvent::TurnError {
+                thread_id: "thread_1".to_string(),
+                turn_id: "turn_compact".to_string(),
+                error: TurnError {
+                    message: "backend reported an error".to_string(),
+                    additional_details: None,
+                    codex_error_info: None,
+                },
+                will_retry,
+            },
+        ));
+        assert_eq!(state.active_turn_id(), Some("turn_compact"));
+
+        assert!(state.observe(
+            "thread_1",
+            &TurnStreamEvent::ThreadStatusChanged {
+                thread_id: "thread_1".to_string(),
+                status: ThreadStatus::Idle,
+            },
+        ));
+    }
 }
 
 fn context_compaction_item() -> ThreadItem {

@@ -152,6 +152,7 @@ pub(crate) enum LivenessCategory {
     ThreadClosed,
     TurnStarted,
     TurnCompleted,
+    TurnError,
     ItemStarted,
     ItemCompleted,
     AgentMessageDelta,

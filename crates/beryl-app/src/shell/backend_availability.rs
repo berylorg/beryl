@@ -215,6 +215,7 @@ impl BackendUnavailableKind {
             | ManagedBackendError::ThreadListPageLimitExceeded { .. }
             | ManagedBackendError::ThreadListCursorRepeated { .. }
             | ManagedBackendError::UnexpectedMessageShape
+            | ManagedBackendError::MalformedTurnErrorNotificationEnvelope { .. }
             | ManagedBackendError::BoundedResourceExceeded { .. }
             | ManagedBackendError::DeserializeNotification { .. }
             | ManagedBackendError::DeserializeServerRequest { .. } => Self::ProbeFailed,

@@ -248,6 +248,7 @@ pub(crate) fn event_thread_id(event: &TurnStreamEvent) -> Option<&str> {
         | TurnStreamEvent::ThreadDeleted { thread_id }
         | TurnStreamEvent::TurnStarted { thread_id, .. }
         | TurnStreamEvent::TurnCompleted { thread_id, .. }
+        | TurnStreamEvent::TurnError { thread_id, .. }
         | TurnStreamEvent::ItemStarted { thread_id, .. }
         | TurnStreamEvent::ItemCompleted { thread_id, .. }
         | TurnStreamEvent::AgentMessageDelta { thread_id, .. }

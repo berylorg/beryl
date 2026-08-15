@@ -818,6 +818,7 @@ fn record_turn_event_ingress(
         TurnStreamEvent::ThreadClosed { .. } => LivenessCategory::ThreadClosed,
         TurnStreamEvent::TurnStarted { .. } => LivenessCategory::TurnStarted,
         TurnStreamEvent::TurnCompleted { .. } => LivenessCategory::TurnCompleted,
+        TurnStreamEvent::TurnError { .. } => LivenessCategory::TurnError,
         TurnStreamEvent::ItemStarted { .. } => LivenessCategory::ItemStarted,
         TurnStreamEvent::ItemCompleted { .. } => LivenessCategory::ItemCompleted,
         TurnStreamEvent::AgentMessageDelta { .. } => LivenessCategory::AgentMessageDelta,
@@ -840,6 +841,13 @@ fn record_turn_event_ingress(
             exact_thread_match: thread_id == active_thread_id,
             exact_turn_match: turn.id == active_turn_id,
             terminal: true,
+            ..LivenessFlags::default()
+        },
+        TurnStreamEvent::TurnError {
+            thread_id, turn_id, ..
+        } => LivenessFlags {
+            exact_thread_match: thread_id == active_thread_id,
+            exact_turn_match: turn_id == active_turn_id,
             ..LivenessFlags::default()
         },
         _ => LivenessFlags::default(),

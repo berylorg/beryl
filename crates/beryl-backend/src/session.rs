@@ -83,6 +83,7 @@ const REQUEST_ONLY_NOTIFICATION_METHODS: &[&str] = &[
     "account/rateLimits/updated",
     "turn/started",
     "turn/completed",
+    "error",
     "turn/diff/updated",
     "item/started",
     "item/completed",
@@ -389,6 +390,8 @@ pub enum ManagedBackendError {
     RequestFailed { method: String, error: JsonRpcError },
     #[error("backend response line did not match JSON-RPC response or notification shape")]
     UnexpectedMessageShape,
+    #[error("backend returned malformed error notification envelope: {detail}")]
+    MalformedTurnErrorNotificationEnvelope { detail: &'static str },
     #[error(
         "bounded backend resource exceeded while handling {method}: {resource} exceeded limit {limit}"
     )]
@@ -4044,6 +4047,39 @@ fn parse_incoming_value(value: Value) -> Result<IncomingMessage, ManagedBackendE
     };
 
     if let Some(method) = object.get("method").and_then(Value::as_str) {
+        if method == "error" {
+            if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+                return Err(
+                    ManagedBackendError::MalformedTurnErrorNotificationEnvelope {
+                        detail: "jsonrpc must be exactly 2.0",
+                    },
+                );
+            }
+            if object.contains_key("id") {
+                return Err(
+                    ManagedBackendError::MalformedTurnErrorNotificationEnvelope {
+                        detail: "notifications must not include id",
+                    },
+                );
+            }
+            let Some(params) = object.get("params").cloned() else {
+                return Err(
+                    ManagedBackendError::MalformedTurnErrorNotificationEnvelope {
+                        detail: "params are required",
+                    },
+                );
+            };
+            parse_turn_stream_event(method, Some(params.clone())).map_err(|source| {
+                ManagedBackendError::DeserializeNotification {
+                    method: method.to_string(),
+                    source,
+                }
+            })?;
+            return Ok(IncomingMessage::Notification {
+                method: method.to_string(),
+                params: Some(params),
+            });
+        }
         if let Some(id) = object.get("id").cloned().filter(|id| !id.is_null()) {
             return Ok(IncomingMessage::ServerRequest {
                 id,

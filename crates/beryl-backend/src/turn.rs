@@ -23,6 +23,7 @@ const THREAD_DELETED_METHOD: &str = "thread/deleted";
 const THREAD_CLOSED_METHOD: &str = "thread/closed";
 const TURN_STARTED_METHOD: &str = "turn/started";
 const TURN_COMPLETED_METHOD: &str = "turn/completed";
+const TURN_ERROR_METHOD: &str = "error";
 const ITEM_STARTED_METHOD: &str = "item/started";
 const ITEM_COMPLETED_METHOD: &str = "item/completed";
 const TURN_STREAM_WARNING_FIELD_CHAR_LIMIT: usize = 256;
@@ -98,6 +99,8 @@ pub struct TurnError {
     pub message: String,
     #[serde(default)]
     pub additional_details: Option<String>,
+    #[serde(default)]
+    pub codex_error_info: Option<Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -380,6 +383,12 @@ pub enum TurnStreamEvent {
     TurnCompleted {
         thread_id: String,
         turn: TurnInfo,
+    },
+    TurnError {
+        thread_id: String,
+        turn_id: String,
+        error: TurnError,
+        will_retry: bool,
     },
     ItemStarted {
         thread_id: String,
@@ -1455,6 +1464,11 @@ pub fn parse_turn_stream_event(
     method: &str,
     params: Option<Value>,
 ) -> Result<Option<TurnStreamEvent>, serde_json::Error> {
+    if method == TURN_ERROR_METHOD {
+        let params: TurnErrorNotification = serde_json::from_value(params.unwrap_or(Value::Null))?;
+        return Ok(Some(params.into_turn_stream_event()));
+    }
+
     let Some(params) = params else {
         return Ok(None);
     };
@@ -1658,6 +1672,35 @@ struct ThreadClosedNotification {
 struct TurnNotification {
     thread_id: String,
     turn: TurnInfo,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TurnErrorNotification {
+    thread_id: String,
+    turn_id: String,
+    error: TurnError,
+    will_retry: bool,
+}
+
+impl TurnErrorNotification {
+    fn into_turn_stream_event(mut self) -> TurnStreamEvent {
+        // Error notifications are transient user-facing stream observations. Retain their text
+        // with the established 256-character, UTF-8-safe stream-field bound, while preserving
+        // completion and history TurnError payloads exactly through their ordinary deserializer.
+        self.error.message = bounded_turn_stream_warning_field(&self.error.message);
+        self.error.additional_details = self
+            .error
+            .additional_details
+            .as_deref()
+            .map(bounded_turn_stream_warning_field);
+        TurnStreamEvent::TurnError {
+            thread_id: self.thread_id,
+            turn_id: self.turn_id,
+            error: self.error,
+            will_retry: self.will_retry,
+        }
+    }
 }
 
 #[derive(Deserialize)]

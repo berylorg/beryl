@@ -24,7 +24,12 @@ Report user-visible errors, recovery states, and completion attention signals wi
 
 ## Turn Error Notices
 
-- When a selected user-visible parent turn fails with backend error detail or local turn-delivery failure, Beryl enqueues a `Turn error` notice with available detail.
+- When a selected user-visible parent turn reaches a reportable backend failure or local turn-delivery failure, Beryl enqueues a `Turn error` notice with available bounded detail.
+- A retryable app-server `error` notification does not enqueue a `Turn error` notice or another terminal notice.
+- A non-retryable app-server `error` notification for the exact selected user-visible active parent turn may enqueue the existing `Turn error` notice before terminal turn authority arrives. Its detail uses bounded `TurnError.message` and optional `TurnError.additionalDetails`; opaque backend classification metadata is not interpreted as notice text.
+- Early non-retryable error reporting does not mark the turn complete or failed and does not itself make the turn eligible for end-turn sound.
+- Early notification reporting and later `turn/completed` or stream-failure reporting use the same exact thread-and-turn deduplication key, so one failed turn enqueues at most one `Turn error` notice across those paths and across repeated notifications.
+- Notifications with blank or mismatched thread or turn identity do not enqueue a notice for the selected turn. Error notifications from background or maintenance operations remain scoped to those operations and do not become selected-conversation turn notices.
 - Turn-error notices may replace or outlive other localized notices through the shared queue, but Beryl must not stack notice popups or merge unrelated errors into one body.
 - Interrupted turns without actual error payload update turn status but do not enqueue a turn-error notice by themselves.
 

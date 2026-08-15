@@ -181,6 +181,7 @@ pub(crate) fn stream_event_thread_turn_id(event: &TurnStreamEvent) -> Option<(&s
         | TurnStreamEvent::ThreadClosed { .. }
         | TurnStreamEvent::AccountRateLimitsUpdated { .. }
         | TurnStreamEvent::ThreadNameUpdated { .. }
+        | TurnStreamEvent::TurnError { .. }
         | TurnStreamEvent::ApprovalRequested(_)
         | TurnStreamEvent::DynamicToolCallRequested(_)
         | TurnStreamEvent::ProtocolError { .. } => None,

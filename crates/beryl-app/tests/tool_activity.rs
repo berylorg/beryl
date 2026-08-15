@@ -8,8 +8,8 @@ mod activity_presentation_diagnostics;
 mod tool_activity;
 
 use beryl_backend::{
-    JsonRpcError, ThreadItem, ThreadReadMetadata, ThreadSessionMetadata, ThreadSummary, TurnInfo,
-    TurnStatus, TurnStreamEvent,
+    JsonRpcError, ThreadItem, ThreadReadMetadata, ThreadSessionMetadata, ThreadSummary, TurnError,
+    TurnInfo, TurnStatus, TurnStreamEvent,
 };
 use beryl_model::workspace::WorkspaceId;
 use serde_json::{Value, json};
@@ -54,6 +54,33 @@ fn projection_classifies_completed_items_from_raw_status() {
     assert_eq!(rows[0].status, ToolActivityRowStatus::FinishedOk);
     assert_eq!(rows[1].tool_display_value, "dir");
     assert_eq!(rows[1].status, ToolActivityRowStatus::FinishedError);
+}
+
+#[test]
+fn matching_turn_error_keeps_running_activity_unchanged() {
+    for will_retry in [true, false] {
+        let mut projection = ToolActivityProjection::default();
+        projection.apply_stream_event(
+            &started("thread_main", "turn_1", command_item("cmd_1")),
+            Some("Main".to_string()),
+        );
+
+        assert!(!projection.apply_stream_event(
+            &TurnStreamEvent::TurnError {
+                thread_id: "thread_main".to_string(),
+                turn_id: "turn_1".to_string(),
+                error: TurnError {
+                    message: "backend reported an error".to_string(),
+                    additional_details: None,
+                    codex_error_info: None,
+                },
+                will_retry,
+            },
+            Some("Main".to_string()),
+        ));
+        assert_eq!(projection.rows().len(), 1);
+        assert_eq!(projection.rows()[0].status, ToolActivityRowStatus::Running);
+    }
 }
 
 #[test]

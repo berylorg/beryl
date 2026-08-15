@@ -241,6 +241,9 @@ It is an implementation aid, not a design authority. Relevant feature, system, a
 - Unknown methods return structured JSON-RPC errors through the active app-server transport.
 - Malformed transport input can produce stderr deserialization logs instead of structured protocol errors.
 - The local probe observed non-fatal startup stderr warnings unrelated to the core request flow, so the GUI must tolerate noisy stderr while still treating protocol failures as request-level or process-level failures.
+- On exact Codex App Server 0.146.0, the server `error` notification is separate from a JSON-RPC response error. Its fields are `error`, `willRetry`, `threadId`, and `turnId`; `TurnError.codexErrorInfo` and `TurnError.additionalDetails` are optional.
+- A retryable `error` notification is an automatic intermediate retry and does not interrupt the turn. A non-retryable status-affecting error can later be copied into a failed `turn/completed`; that completion remains the terminal status signal.
+- Correlate `error` notifications by their supplied thread and turn identities. The inspected schema does not promise exactly-once delivery or global notification ordering.
 
 ## Backend Integration Implications
 

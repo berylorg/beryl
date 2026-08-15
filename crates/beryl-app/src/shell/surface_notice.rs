@@ -3,9 +3,10 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use beryl_backend::{TurnError, TurnInfo, TurnStatus};
+use beryl_backend::{TurnError, TurnInfo, TurnStatus, TurnStreamEvent};
 
 const MAX_SURFACE_NOTICES: usize = 8;
+pub(super) const MAX_TURN_ERROR_NOTICE_DETAIL_BYTES: usize = 128 * 1024;
 pub(super) const MAX_REPORTED_SURFACE_NOTICE_SOURCE_KEYS: usize = MAX_SURFACE_NOTICES * 8;
 static NEXT_SURFACE_NOTICE_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -165,7 +166,27 @@ pub(super) fn backend_turn_error_detail(error: Option<&TurnError>) -> String {
         }
     }
 
+    truncate_detail_to_byte_limit(&mut detail, MAX_TURN_ERROR_NOTICE_DETAIL_BYTES);
     detail
+}
+
+fn truncate_detail_to_byte_limit(detail: &mut String, max_bytes: usize) {
+    if detail.len() <= max_bytes {
+        return;
+    }
+
+    const SUFFIX: &str = "...";
+    let suffix = if max_bytes >= SUFFIX.len() {
+        SUFFIX
+    } else {
+        ""
+    };
+    let mut end = max_bytes.saturating_sub(suffix.len());
+    while end > 0 && !detail.is_char_boundary(end) {
+        end -= 1;
+    }
+    detail.truncate(end);
+    detail.push_str(suffix);
 }
 
 pub(super) fn selected_backend_turn_error_notice(
@@ -186,6 +207,91 @@ pub(super) fn selected_backend_turn_error_notice(
     ))
 }
 
+pub(super) fn selected_active_turn_error_notice(
+    selected_thread_id: Option<&str>,
+    active_turn: Option<(&str, &str)>,
+    notification_thread_id: &str,
+    notification_turn_id: &str,
+    error: &TurnError,
+    will_retry: bool,
+) -> Option<SurfaceNotice> {
+    if will_retry
+        || notification_thread_id.trim().is_empty()
+        || notification_turn_id.trim().is_empty()
+    {
+        return None;
+    }
+
+    let (active_thread_id, active_turn_id) = active_turn?;
+    if active_thread_id.trim().is_empty()
+        || active_turn_id.trim().is_empty()
+        || selected_thread_id != Some(active_thread_id)
+        || notification_thread_id != active_thread_id
+        || notification_turn_id != active_turn_id
+    {
+        return None;
+    }
+
+    Some(SurfaceNotice::turn_error(
+        backend_turn_error_detail(Some(error)),
+        SurfaceNoticeSourceKey::TurnError {
+            thread_id: notification_thread_id.to_string(),
+            turn_id: notification_turn_id.to_string(),
+        },
+    ))
+}
+
+pub(super) fn selected_turn_stream_error_notice(
+    event: &TurnStreamEvent,
+    selected_thread_id: Option<&str>,
+    active_turn: Option<(&str, &str)>,
+) -> Option<SurfaceNotice> {
+    match event {
+        TurnStreamEvent::TurnCompleted { thread_id, turn } => {
+            selected_backend_turn_error_notice(selected_thread_id, thread_id, turn)
+        }
+        TurnStreamEvent::TurnError {
+            thread_id,
+            turn_id,
+            error,
+            will_retry,
+        } => selected_active_turn_error_notice(
+            selected_thread_id,
+            active_turn,
+            thread_id,
+            turn_id,
+            error,
+            *will_retry,
+        ),
+        _ => None,
+    }
+}
+
 pub(super) fn local_turn_failure_notice(message: impl Into<String>) -> SurfaceNotice {
     SurfaceNotice::new("Turn error", message)
+}
+
+pub(super) fn selected_active_stream_failure_notice(
+    message: impl Into<String>,
+    selected_thread_id: Option<&str>,
+    active_turn: Option<(&str, &str)>,
+) -> SurfaceNotice {
+    let message = message.into();
+    let Some((thread_id, turn_id)) = active_turn else {
+        return local_turn_failure_notice(message);
+    };
+    if thread_id.trim().is_empty()
+        || turn_id.trim().is_empty()
+        || selected_thread_id != Some(thread_id)
+    {
+        return local_turn_failure_notice(message);
+    }
+
+    SurfaceNotice::turn_error(
+        message,
+        SurfaceNoticeSourceKey::TurnError {
+            thread_id: thread_id.to_string(),
+            turn_id: turn_id.to_string(),
+        },
+    )
 }

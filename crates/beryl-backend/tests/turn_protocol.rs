@@ -6,8 +6,8 @@ use beryl_backend::{
     ThreadItem, ThreadListResponse, ThreadReadOptions, ThreadReadResponse, ThreadResumeOptions,
     ThreadRollbackResponse, ThreadSessionResponse, ThreadStatus, ThreadTurnsListOptions,
     ThreadTurnsListResponse, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, ToolActivityEvent,
-    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStartOptions,
-    TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput,
+    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnInfo,
+    TurnStartOptions, TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput,
     active_turn_not_steerable_error, parse_approval_request, parse_dynamic_tool_call_request,
     parse_turn_stream_event,
 };
@@ -41,6 +41,154 @@ fn parse_item_activity(method: &str, item: Value) -> ToolActivityEvent {
     .unwrap()
     .activity()
     .expect("expected normalized activity")
+}
+
+#[test]
+fn error_notification_normalizes_retryable_error_with_exact_identity_and_opaque_metadata() {
+    let event = parse_turn_stream_event(
+        "error",
+        Some(json!({
+            "threadId": "thread_exact",
+            "turnId": "turn_exact",
+            "willRetry": true,
+            "error": {
+                "message": "rate limit reached",
+                "additionalDetails": "retrying after a short delay",
+                "codexErrorInfo": {
+                    "classification": "rate_limit",
+                    "retryAfterSeconds": 3,
+                    "nested": ["opaque", true]
+                }
+            }
+        })),
+    )
+    .unwrap()
+    .unwrap();
+
+    let TurnStreamEvent::TurnError {
+        thread_id,
+        turn_id,
+        error,
+        will_retry,
+    } = event
+    else {
+        panic!("expected normalized turn error");
+    };
+
+    assert_eq!(thread_id, "thread_exact");
+    assert_eq!(turn_id, "turn_exact");
+    assert!(will_retry);
+    assert_eq!(error.message, "rate limit reached");
+    assert_eq!(
+        error.additional_details.as_deref(),
+        Some("retrying after a short delay")
+    );
+    assert_eq!(
+        error.codex_error_info,
+        Some(json!({
+            "classification": "rate_limit",
+            "retryAfterSeconds": 3,
+            "nested": ["opaque", true]
+        }))
+    );
+}
+
+#[test]
+fn error_notification_normalizes_nonretryable_error_and_bounds_retained_text() {
+    let long_message = "é".repeat(257);
+    let long_details = "d".repeat(257);
+    let event = parse_turn_stream_event(
+        "error",
+        Some(json!({
+            "threadId": "thread_nonretryable",
+            "turnId": "turn_nonretryable",
+            "willRetry": false,
+            "error": {
+                "message": long_message,
+                "additionalDetails": long_details,
+                "codexErrorInfo": null
+            }
+        })),
+    )
+    .unwrap()
+    .unwrap();
+
+    let TurnStreamEvent::TurnError {
+        error, will_retry, ..
+    } = event
+    else {
+        panic!("expected normalized turn error");
+    };
+
+    assert!(!will_retry);
+    assert_eq!(error.message, format!("{}...", "é".repeat(256)));
+    assert_eq!(
+        error.additional_details,
+        Some(format!("{}...", "d".repeat(256)))
+    );
+    assert_eq!(error.codex_error_info, None);
+}
+
+#[test]
+fn turn_info_errors_remain_unbounded_outside_error_notifications() {
+    let long_message = "é".repeat(257);
+    let long_details = "d".repeat(257);
+    let turn: TurnInfo = serde_json::from_value(json!({
+        "id": "turn_unbounded",
+        "status": "failed",
+        "items": [],
+        "error": {
+            "message": long_message,
+            "additionalDetails": long_details
+        }
+    }))
+    .unwrap();
+    let error = turn.error.as_ref().unwrap();
+    assert_eq!(error.message, "é".repeat(257));
+    assert_eq!(
+        error.additional_details.as_deref(),
+        Some("d".repeat(257).as_str())
+    );
+
+    let history: ThreadTurnsListResponse = serde_json::from_value(json!({
+        "data": [serde_json::to_value(&turn).unwrap()]
+    }))
+    .unwrap();
+    let history_error = history.data[0].error.as_ref().unwrap();
+    assert_eq!(history_error.message, "é".repeat(257));
+    assert_eq!(
+        history_error.additional_details.as_deref(),
+        Some("d".repeat(257).as_str())
+    );
+
+    let event = parse_turn_stream_event(
+        "turn/completed",
+        Some(json!({ "threadId": "thread_123", "turn": turn })),
+    )
+    .unwrap()
+    .unwrap();
+    let TurnStreamEvent::TurnCompleted { turn, .. } = event else {
+        panic!("expected completed turn");
+    };
+    assert_eq!(turn.error.unwrap().message, "é".repeat(257));
+}
+
+#[test]
+fn error_notification_rejects_missing_null_and_malformed_params() {
+    assert!(parse_turn_stream_event("error", None).is_err());
+    assert!(parse_turn_stream_event("error", Some(Value::Null)).is_err());
+    assert!(
+        parse_turn_stream_event(
+            "error",
+            Some(json!({
+                "threadId": "thread_123",
+                "turnId": "turn_123",
+                "willRetry": "not a boolean",
+                "error": { "message": "bad payload" }
+            })),
+        )
+        .is_err()
+    );
 }
 
 #[test]

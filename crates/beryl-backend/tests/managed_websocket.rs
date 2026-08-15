@@ -88,6 +88,170 @@ fn managed_websocket_clients_keep_stream_notifications_isolated() {
 }
 
 #[test]
+fn managed_websocket_routes_error_notification_as_a_turn_event() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        send_notification(
+            &mut socket,
+            "error",
+            json!({
+                "threadId": "stream_thread",
+                "turnId": "stream_turn",
+                "willRetry": false,
+                "error": {
+                    "message": "stream failure precursor",
+                    "additionalDetails": "backend detail",
+                    "codexErrorInfo": { "opaque": "classification" }
+                }
+            }),
+        );
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let event = client
+        .next_turn_stream_event(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
+    let TurnStreamEvent::TurnError {
+        thread_id,
+        turn_id,
+        error,
+        will_retry,
+    } = event
+    else {
+        panic!("expected normalized turn error");
+    };
+
+    assert_eq!(thread_id, "stream_thread");
+    assert_eq!(turn_id, "stream_turn");
+    assert!(!will_retry);
+    assert_eq!(error.message, "stream failure precursor");
+    assert_eq!(error.additional_details.as_deref(), Some("backend detail"));
+    assert_eq!(
+        error.codex_error_info,
+        Some(json!({ "opaque": "classification" }))
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn managed_websocket_rejects_error_notification_without_params() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "method": "error"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let error = client
+        .next_turn_stream_event(Duration::from_secs(2))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        ManagedBackendError::MalformedTurnErrorNotificationEnvelope { .. }
+    ));
+    server.join().unwrap();
+}
+
+#[test]
+fn managed_websocket_rejects_malformed_error_notification_envelopes() {
+    for message in [
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "error",
+            "params": valid_error_notification_params()
+        }),
+        json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "method": "error",
+            "params": valid_error_notification_params()
+        }),
+        json!({
+            "method": "error",
+            "params": valid_error_notification_params()
+        }),
+        json!({
+            "jsonrpc": "1.0",
+            "method": "error",
+            "params": valid_error_notification_params()
+        }),
+    ] {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+        let server = thread::spawn(move || {
+            let mut socket = accept_authenticated(&listener, "Bearer test-token");
+            expect_initialize(&mut socket, 1);
+            expect_initialized(&mut socket);
+            socket.send(Message::text(message.to_string())).unwrap();
+        });
+
+        let mut client = connect_test_client(&endpoint);
+        let error = client
+            .next_turn_stream_event(Duration::from_secs(2))
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            ManagedBackendError::MalformedTurnErrorNotificationEnvelope { .. }
+        ));
+        server.join().unwrap();
+    }
+}
+
+#[test]
+fn managed_websocket_keeps_unknown_notifications_on_the_warning_ignore_path() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        socket
+            .send(Message::text(
+                json!({ "method": "future/unknown", "params": { "ignored": true } }).to_string(),
+            ))
+            .unwrap();
+        send_notification(
+            &mut socket,
+            "thread/status/changed",
+            json!({
+                "threadId": "after_unknown",
+                "status": { "type": "idle" }
+            }),
+        );
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    assert_eq!(
+        client
+            .next_turn_stream_event(Duration::from_secs(2))
+            .unwrap()
+            .unwrap(),
+        TurnStreamEvent::ThreadStatusChanged {
+            thread_id: "after_unknown".to_string(),
+            status: ThreadStatus::Idle,
+        }
+    );
+    server.join().unwrap();
+}
+
+#[test]
 #[cfg(feature = "lifecycle-test-support")]
 fn managed_websocket_stream_poll_completes_header_started_before_idle_deadline() {
     assert_stream_poll_completes_across_idle_deadline(false);
@@ -986,6 +1150,12 @@ fn assert_thread_started_not_opted_out(request: &Value) {
             .all(|method| method.as_str() != Some("thread/started")),
         "initialize must not opt out of thread/started notifications"
     );
+    assert!(
+        opt_out_methods
+            .iter()
+            .all(|method| method.as_str() != Some("error")),
+        "foreground initialize must not opt out of error notifications"
+    );
 }
 
 fn expect_initialized(socket: &mut WebSocket<TcpStream>) {
@@ -1006,6 +1176,15 @@ fn send_notification(socket: &mut WebSocket<TcpStream>, method: &str, params: Va
             .to_string(),
         ))
         .unwrap();
+}
+
+fn valid_error_notification_params() -> Value {
+    json!({
+        "threadId": "thread_123",
+        "turnId": "turn_123",
+        "willRetry": false,
+        "error": { "message": "backend error" }
+    })
 }
 
 fn large_generated_image_result() -> String {

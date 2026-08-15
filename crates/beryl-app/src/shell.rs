@@ -625,7 +625,7 @@ use status_operation::{StatusOperationUpdate, spawn_context_compaction_worker};
 use status_operation_state::{StatusLineOperationState, StatusModelListCache};
 use surface_notice::{
     SurfaceNotice, SurfaceNoticeQueue, local_turn_failure_notice,
-    selected_backend_turn_error_notice,
+    selected_active_stream_failure_notice, selected_turn_stream_error_notice,
 };
 use thread_history_worker::{
     ThreadHistoryPageOutcome, ThreadHistoryPageUpdate, spawn_older_thread_history_page_worker,
@@ -4210,12 +4210,14 @@ impl ConversationSurfaceState {
             }
             _ => None,
         };
-        let turn_error_notice = match &event {
-            beryl_backend::TurnStreamEvent::TurnCompleted { thread_id, turn } => {
-                selected_backend_turn_error_notice(self.selected_thread_id(), thread_id, turn)
-            }
-            _ => None,
-        };
+        let active_turn = self.execution_details.active_turn_identity();
+        let turn_error_notice = selected_turn_stream_error_notice(
+            &event,
+            self.selected_thread_id(),
+            active_turn
+                .as_ref()
+                .and_then(|turn| Some((turn.thread_id.as_deref()?, turn.turn_id.as_deref()?))),
+        );
         if let beryl_backend::TurnStreamEvent::ThreadStatusChanged { thread_id, status } = &event
             && self.selected_thread_id() == Some(thread_id.as_str())
         {
@@ -4295,7 +4297,13 @@ impl ConversationSurfaceState {
         let Some(turn_index) = self.execution_details.finish_turn_failure(message.clone()) else {
             return None;
         };
-        self.set_notice(local_turn_failure_notice(message));
+        self.set_notice(selected_active_stream_failure_notice(
+            message.clone(),
+            self.selected_thread_id(),
+            active_turn
+                .as_ref()
+                .and_then(|turn| Some((turn.thread_id.as_deref()?, turn.turn_id.as_deref()?))),
+        ));
         if let Some(thread_id) = self.selected_thread_id().map(str::to_string) {
             self.mark_selected_turn_finished_idle(&thread_id);
         }

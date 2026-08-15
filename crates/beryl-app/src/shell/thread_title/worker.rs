@@ -346,6 +346,7 @@ impl ThreadTitleAttempt {
             | TurnStreamEvent::AgentLabelUpdated { .. }
             | TurnStreamEvent::ThreadStarted { .. }
             | TurnStreamEvent::ThreadStatusChanged { .. }
+            | TurnStreamEvent::TurnError { .. }
             | TurnStreamEvent::TokenUsageUpdated { .. }
             | TurnStreamEvent::ReasoningSummaryPartAdded { .. }
             | TurnStreamEvent::ReasoningSummaryTextDelta { .. }

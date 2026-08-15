@@ -2459,6 +2459,11 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
                 .iter()
                 .any(|method| method.as_str() == Some("item/completed"))
         );
+        assert!(
+            opt_out_methods
+                .iter()
+                .any(|method| method.as_str() == Some("error"))
+        );
 
         socket
             .send(Message::text(
@@ -3530,6 +3535,12 @@ fn assert_thread_started_not_opted_out(request: &Value) {
             .iter()
             .all(|method| method.as_str() != Some("thread/started")),
         "initialize must not opt out of thread/started notifications"
+    );
+    assert!(
+        opt_out_methods
+            .iter()
+            .all(|method| method.as_str() != Some("error")),
+        "foreground initialize must not opt out of error notifications"
     );
 }
 
