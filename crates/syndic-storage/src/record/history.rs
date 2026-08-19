@@ -27,7 +27,7 @@ pub struct ReplacementEditIntent {
 
 impl ReplacementEditIntent {
     #[must_use]
-    pub const fn new(
+    pub fn new(
         target_turn_id: SyndicTurnId,
         selected_path: SelectedPathProof,
         transcript_entry: CurrentTranscriptEntryProof,
@@ -73,7 +73,7 @@ pub struct DraftRecord {
     thread_id: SyndicThreadId,
     revision: DraftRevision,
     submission_intent: DraftSubmissionIntent,
-    content: ContentReference,
+    piece_root: crate::DraftPieceRootReferenceV1,
     created_at: SyndicTimestamp,
     updated_at: SyndicTimestamp,
 }
@@ -86,7 +86,7 @@ impl DraftRecord {
         thread_id: SyndicThreadId,
         revision: DraftRevision,
         submission_intent: DraftSubmissionIntent,
-        content: ContentReference,
+        piece_root: crate::DraftPieceRootReferenceV1,
         created_at: SyndicTimestamp,
         updated_at: SyndicTimestamp,
     ) -> Self {
@@ -95,11 +95,13 @@ impl DraftRecord {
             thread_id,
             revision,
             submission_intent,
-            content,
+            piece_root,
             created_at,
             updated_at,
         }
     }
+
+    #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub const fn id(&self) -> SyndicDraftId {
         self.id
@@ -117,8 +119,8 @@ impl DraftRecord {
         self.submission_intent
     }
     #[must_use]
-    pub const fn content(&self) -> ContentReference {
-        self.content
+    pub const fn piece_root(&self) -> crate::DraftPieceRootReferenceV1 {
+        self.piece_root
     }
     #[must_use]
     pub const fn created_at(&self) -> SyndicTimestamp {

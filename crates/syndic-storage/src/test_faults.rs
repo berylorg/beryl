@@ -6,6 +6,10 @@ use crate::{
 };
 
 mod content_text;
+mod draft_composer;
+mod draft_piece_candidate_drift;
+mod draft_piece_corruption;
+mod draft_piece_current_drift;
 mod fixture_command;
 mod fixture_delete;
 mod fixture_put;
@@ -25,6 +29,36 @@ pub(crate) use content_text::ContentTextReadResidencyLease;
 pub use content_text::{
     ContentTextReadResidency, ContentTextReadResidencySnapshot, ContentTextReadResidencyTracker,
 };
+pub use draft_composer::{
+    DraftComposerBuildCorruption, DraftComposerOutputCorruption,
+    delete_draft_composer_origin_build, delete_draft_composer_source,
+    draft_composer_build_truncation_is_rejected, draft_composer_full_carry_remaining_bytes,
+    draft_composer_mapping_truncation_is_rejected, draft_composer_provisional_output,
+    draft_composer_terminal_build_encoded_size, draft_composer_terminal_build_has_maximal_shape,
+    inject_draft_composer_build_corruption, inject_draft_composer_chunk_corruption,
+    inject_draft_composer_manifest_corruption, inject_draft_composer_mapping_corruption,
+    inject_draft_composer_output_corruption, inject_draft_composer_prepared_chunk,
+};
+pub use draft_piece_candidate_drift::arm_draft_piece_candidate_read_fault;
+pub(crate) use draft_piece_candidate_drift::run_draft_piece_candidate_read_fault;
+pub use draft_piece_corruption::{
+    DraftEditorCandidateOpenReceiptCorruption, DraftPieceBuildCorruption,
+    DraftPieceCandidateRootCollision, DraftPieceDescendantCorruption, DraftPieceDescendantTarget,
+    DraftPieceFragmentCorruption, DraftPieceImmutableDeletion, DraftPieceProgressReceiptCorruption,
+    delete_draft_piece_immutable_record, delete_draft_piece_terminal_build,
+    draft_piece_fragment_is_stored_exactly, draft_piece_fragment_zero_ordinal_codec_rejections,
+    draft_piece_position_record_count, inject_draft_editor_candidate_open_receipt_corruption,
+    inject_draft_editor_candidate_session_published_beyond_newest,
+    inject_draft_piece_build_corruption, inject_draft_piece_candidate_root_collision,
+    inject_draft_piece_coordinated_stage_target_replacement,
+    inject_draft_piece_custody_endpoint_corruption, inject_draft_piece_descendant_corruption,
+    inject_draft_piece_fragment_ahead, inject_draft_piece_fragment_corruption,
+    inject_draft_piece_occupied_stage_target, inject_draft_piece_progress_receipt_corruption,
+    inject_draft_piece_session_generation_inflation,
+    inject_draft_piece_settlement_closure_corruption,
+};
+pub use draft_piece_current_drift::arm_draft_piece_current_read_fault;
+pub(crate) use draft_piece_current_drift::run_draft_piece_current_read_fault;
 pub use fixture_command::{FixtureBatch, FixtureBuildError, FixtureMutationError};
 pub use metrics::{
     CurrentBindingReadMetrics, DeliveringSteeringReadMetrics, ReadySteeringReadMetrics,
@@ -51,6 +85,10 @@ pub use schema_history::{
     AwaitingTerminalCodecTags, AwaitingTerminalPredecessorFamily, awaiting_terminal_codec_tags,
     inject_awaiting_terminal_predecessor,
 };
+
+pub fn syndic_v5_family_names() -> Vec<&'static str> {
+    crate::domain::v5_family_names().collect()
+}
 
 /// Computes the exact canonical receipt commitment for deliberate corruption fixtures.
 #[must_use]

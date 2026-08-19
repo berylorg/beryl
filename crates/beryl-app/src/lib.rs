@@ -3,60 +3,6 @@
 //! Target modules are mounted here only when their owning rework checkpoint
 //! supplies the complete target boundary.
 //!
-//! [`draft_persistence`] is the non-GPUI, single-current-draft coordinator. It
-//! correlates exact binding, edit, timer, and request generations while leaving
-//! durable record ownership to `syndic-storage`.
-//!
-//! ```
-//! use beryl_app::draft_persistence::{
-//!     DEFAULT_AUTOSAVE_SECONDS, DraftAutosavePublication,
-//! };
-//!
-//! let initial = DraftAutosavePublication::absent_default();
-//! assert_eq!(
-//!     initial.interval().duration().as_secs(),
-//!     DEFAULT_AUTOSAVE_SECONDS,
-//! );
-//! ```
-//!
-//! [`input_admission`] composes Syndic admission with the exact compact Beryl
-//! asset-owner transfer, or validates both marker-free heads are absent, in one
-//! durability-barrier command. [`cas_projection::ProjectionConnectionService`]
-//! owns the final direct new-turn execution boundary: it queries the configured
-//! reserve immediately before writer admission, before the caller clears or
-//! otherwise publishes acceptance of the editor projection.
-//!
-//! ```no_run
-//! use beryl_app::cas_projection::ProjectionConnectionService;
-//! use beryl_model::{InputGateRevision, SyndicDraftId, SyndicItemId};
-//! use beryl_state::AssetState;
-//! use syndic_storage::{
-//!     IdleSubmission, SyndicCurrentDraft, SyndicStorage, SyndicTimestamp,
-//! };
-//!
-//! # fn admit(
-//! #     service: &ProjectionConnectionService,
-//! #     syndic: SyndicStorage,
-//! #     assets: AssetState,
-//! #     current: &SyndicCurrentDraft,
-//! # ) -> Result<(), Box<dyn std::error::Error>> {
-//! let request = IdleSubmission::new(
-//!     current.thread().id(),
-//!     current.thread().revision(),
-//!     current.draft().id(),
-//!     current.draft().revision(),
-//!     current.draft().content(),
-//!     InputGateRevision::new(1)?,
-//!     SyndicDraftId::from_bytes([3; 16]),
-//!     SyndicItemId::from_bytes([4; 16]),
-//!     None,
-//!     SyndicTimestamp::from_unix_millis(2),
-//! );
-//! service.execute_idle_submission(assets, request)?;
-//! # Ok(())
-//! # }
-//! ```
-//!
 //! [`catalog_projection::prepare_thread_catalog_projection`] performs one explicit non-GUI,
 //! source-fenced join. A stale Syndic summary is rebuilt in the same home command as the Beryl
 //! catalog row; exact agreement and a missing thread do not create a command.
@@ -234,8 +180,8 @@
 mod branch_discussion_dynamic_tools;
 pub mod cas_projection;
 pub mod catalog_projection;
+pub mod composer_host;
 pub mod conversation_tools;
-pub mod draft_persistence;
 mod dynamic_tool_namespace;
 pub mod input_admission;
 mod lifecycle_dynamic_tools;

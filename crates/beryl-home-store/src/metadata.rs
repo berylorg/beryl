@@ -15,7 +15,15 @@ const METADATA_ENCODING: u32 = 1;
 pub(crate) const MAX_HOME_HEADER_BYTES: usize = 64;
 pub(crate) const HOME_REVISION_BYTES: usize = 20;
 pub(crate) const MAX_DOMAIN_METADATA_BYTES: usize = 8 * 1_024;
-const MAX_FAMILIES: usize = 64;
+const DOMAIN_METADATA_ENVELOPE_BYTES: usize = 26;
+const MIN_PERSISTED_FAMILY_BYTES: usize = 12;
+const MAX_FAMILIES_FROM_METADATA_BYTES: usize =
+    (MAX_DOMAIN_METADATA_BYTES - DOMAIN_METADATA_ENVELOPE_BYTES) / MIN_PERSISTED_FAMILY_BYTES;
+const MAX_FAMILIES: usize = if MAX_FAMILIES_FROM_METADATA_BYTES < u16::MAX as usize {
+    MAX_FAMILIES_FROM_METADATA_BYTES
+} else {
+    u16::MAX as usize
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PersistedFamily {
@@ -89,7 +97,9 @@ impl DomainMetadata {
     }
 
     pub(crate) fn decode(encoded: &[u8]) -> io::Result<Self> {
-        if encoded.len() > MAX_DOMAIN_METADATA_BYTES || encoded.len() < 26 {
+        if encoded.len() > MAX_DOMAIN_METADATA_BYTES
+            || encoded.len() < DOMAIN_METADATA_ENVELOPE_BYTES
+        {
             return Err(invalid_data("domain metadata has an invalid size"));
         }
         if &encoded[..8] != DOMAIN_MAGIC {
@@ -112,7 +122,7 @@ impl DomainMetadata {
             ));
         }
 
-        let mut offset = 26;
+        let mut offset = DOMAIN_METADATA_ENVELOPE_BYTES;
         let mut families = Vec::with_capacity(count);
         for _ in 0..count {
             let logical_name = read_string(encoded, &mut offset)?;
@@ -138,6 +148,9 @@ impl DomainMetadata {
 
 fn write_string(encoded: &mut Vec<u8>, value: &str) -> io::Result<()> {
     let bytes = value.as_bytes();
+    if bytes.is_empty() {
+        return Err(invalid_data("metadata string is empty"));
+    }
     let length =
         u8::try_from(bytes.len()).map_err(|_| invalid_data("metadata string exceeds 255 bytes"))?;
     encoded.push(length);
@@ -151,6 +164,9 @@ fn read_string(encoded: &[u8], offset: &mut usize) -> io::Result<String> {
             .get(*offset)
             .ok_or_else(|| invalid_data("metadata string length is missing"))?,
     );
+    if length == 0 {
+        return Err(invalid_data("metadata string is empty"));
+    }
     *offset += 1;
     let end = offset
         .checked_add(length)
@@ -205,4 +221,26 @@ fn read_u64(encoded: &[u8], offset: usize) -> io::Result<u64> {
 
 fn invalid_data(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
+}
+
+#[cfg(feature = "test-faults")]
+pub fn encode_test_domain_metadata(families: &[(String, String)]) -> io::Result<Vec<u8>> {
+    DomainMetadata {
+        schema: DomainSchemaVersion::new(1),
+        revision: DomainRevision::new(1).expect("one is a valid revision"),
+        families: families
+            .iter()
+            .map(|(logical_name, physical_name)| PersistedFamily {
+                logical_name: logical_name.clone(),
+                physical_name: physical_name.clone(),
+                schema: KeyspaceSchemaVersion::new(1),
+            })
+            .collect(),
+    }
+    .encode()
+}
+
+#[cfg(feature = "test-faults")]
+pub fn decode_test_domain_metadata(encoded: &[u8]) -> io::Result<()> {
+    DomainMetadata::decode(encoded).map(|_| ())
 }

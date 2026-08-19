@@ -7,9 +7,24 @@
 - A dirty worktree does not imply human ownership of source code or tests and is not, by itself, a reason to avoid changing them.
 - Do not blindly discard unrelated or concurrent work. Reconcile existing changes against current authority and the active phase, and preserve work that remains consistent with them.
 
+## Source-Code Documentation
+
+- In this Beryl repository, documentation in source code is banned. Do not add or expand Rust doc
+  comments (`///` or `//!`), doctest examples, source-level API documentation, or a `missing_docs`
+  lint.
+- Put important product, system, package, subproject, API, and GUI contracts in their authoritative
+  feature, system, package or subproject, and GUI documentation instead of source files.
+- Ordinary implementation comments are allowed only when they concisely explain non-obvious local
+  mechanics; they are not documentation authority.
+- Do not create dedicated work to rewrite pre-existing source comments unless the active plan or
+  the Operator explicitly requires it.
+
 ## Owned Dependency Forks
 
 - When an architectural choice arises within a Beryl-owned dependency fork, prefer the option that best satisfies Beryl's authoritative requirements and lifecycle, even when another option would make the dependency more generally reusable or convenient in isolation.
+- Delete examples and doctests in Beryl-owned dependency forks when they no longer align with
+  Beryl's changes. Do not spend implementation or review work repairing internal-fork examples or
+  doctests unless the Operator or authoritative project documentation explicitly requires them.
 
 ## Rust code navigation
 

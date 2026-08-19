@@ -4,7 +4,10 @@ use beryl_model::{
     SyndicTurnId,
 };
 
-use crate::{BindingRecord, SourceEventRecord, SyndicReadError, codec::*, domain::SyndicStorage};
+use crate::{
+    BindingRecord, ContentLifecycle, SourceEventRecord, SyndicPointReadLimit, SyndicReadError,
+    codec::*, domain::SyndicStorage,
+};
 
 use super::SyndicPage;
 
@@ -21,6 +24,7 @@ impl SyndicStorage {
         after: Option<crate::ContentChunkOrdinal>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::ContentChunkRecord>, SyndicReadError> {
+        self.require_public_content(store, content)?;
         self.owner_page::<ContentChunksFamily>(store, content, after, limits)
     }
 
@@ -31,6 +35,7 @@ impl SyndicStorage {
         after_start: Option<u64>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::ContentByteSpanRecord>, SyndicReadError> {
+        self.require_public_content(store, content)?;
         let first = ContentByteSpanKey {
             owner: content,
             start: 0,
@@ -59,6 +64,7 @@ impl SyndicStorage {
         after_logical_start: Option<u64>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::ContentTextSpanRecord>, SyndicReadError> {
+        self.require_public_content(store, content)?;
         let last = ContentTextSpanKey {
             owner: content,
             logical_start: u64::MAX,
@@ -89,7 +95,31 @@ impl SyndicStorage {
         after: Option<crate::ContentPieceOrdinal>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::ContentPieceRecord>, SyndicReadError> {
+        self.require_public_content(store, content)?;
         self.owner_page::<ContentPiecesFamily>(store, content, after, limits)
+    }
+
+    fn require_public_content(
+        &self,
+        store: &HomeStore,
+        content: SyndicContentId,
+    ) -> Result<(), SyndicReadError> {
+        let manifest = self
+            .point::<ContentManifestsFamily>(
+                store,
+                content,
+                SyndicPointReadLimit::new(
+                    family_point_limit::<ContentManifestsFamily>().max_bytes(),
+                )
+                .expect("content manifest bound is nonzero"),
+            )?
+            .ok_or(SyndicReadError::Invariant("content manifest is missing"))?;
+        if manifest.owner().is_none() && manifest.lifecycle() != ContentLifecycle::Sealed {
+            return Err(SyndicReadError::Invariant(
+                "ownerless content is unavailable before seal",
+            ));
+        }
+        Ok(())
     }
 
     pub fn source_events(

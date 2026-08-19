@@ -5,10 +5,6 @@ use beryl_home_store::{
 
 use crate::{codec::*, domain::SyndicDomain};
 
-/// Returns the owner-derived maximum footprint for an idle draft submission.
-///
-/// The maximum includes every optional V5 write set: child and parent indexes,
-/// image-label origin span, transcript build, and the two-record context move.
 pub fn idle_submission_max_footprint()
 -> Result<SyndicDurableStartFootprint, DurableStartFootprintError> {
     SyndicDurableStartFootprint::idle_submission(
@@ -17,11 +13,6 @@ pub fn idle_submission_max_footprint()
     )
 }
 
-/// Returns the owner-derived maximum footprint for accepted-input promotion.
-///
-/// The maximum includes the optional route head, transcript build, and parent
-/// index, and uses the larger next-source replacement shape rather than its
-/// deletion branch.
 pub fn accepted_input_promotion_max_footprint()
 -> Result<SyndicDurableStartFootprint, DurableStartFootprintError> {
     SyndicDurableStartFootprint::accepted_input_promotion(

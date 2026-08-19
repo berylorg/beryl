@@ -130,7 +130,7 @@ pub(super) fn projection_records(
         BindingLifecycle::Unbound,
         selected_path.digest(),
     );
-    let thread_parent_index = crate::mutation::admission::thread_parent_index(thread);
+    let thread_parent_index = crate::mutation::admission_helpers::thread_parent_index(thread);
     Ok(PromotionProjectionRecords {
         transcript_head,
         transcript_build,

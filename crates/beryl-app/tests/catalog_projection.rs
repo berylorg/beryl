@@ -1,12 +1,6 @@
-use std::time::Duration;
-
 use beryl_app::catalog_projection::{
     CatalogProjectionBuildError, ThreadCatalogProjectionPreparation,
     prepare_thread_catalog_projection,
-};
-use beryl_app::draft_persistence::{
-    DraftAutosavePublication, DraftFlushAction, DraftPersistenceService, DraftPersistenceTime,
-    execute_draft_save, read_draft_persistence_seed,
 };
 use beryl_home_store::{
     CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
@@ -21,10 +15,7 @@ use beryl_state::{
     CreateRuntimeWithHomeRoot, InitializeThreadlessWindow, RememberedTarget, ReplaceWindowClaim,
     RootRegistration, RuntimeRegistration, UnixMillis,
 };
-use syndic_storage::{
-    ComposerAtom, ComposerPayload, CreateThread, SyndicPointReadLimit, SyndicStorage,
-    SyndicTimestamp,
-};
+use syndic_storage::{CreateThread, SyndicStorage, SyndicTimestamp};
 
 struct Fixture {
     _directory: tempfile::TempDir,
@@ -189,32 +180,6 @@ fn execute_contribution(store: &HomeStore, contribution: beryl_home_store::Mutat
     }
 }
 
-fn persist_draft(fixture: &Fixture, text: &str, updated_at: u64) {
-    let point_limit = SyndicPointReadLimit::new(1024 * 1024).expect("point-read limit");
-    let seed = read_draft_persistence_seed(
-        &fixture.store,
-        &fixture.syndic,
-        fixture.thread_id,
-        point_limit,
-        DraftPersistenceTime::from_duration(Duration::ZERO),
-    )
-    .expect("read draft seed")
-    .expect("current draft");
-    let mut service =
-        DraftPersistenceService::from_seed(seed, DraftAutosavePublication::absent_default());
-    let payload = ComposerPayload::new(vec![ComposerAtom::text(text).expect("bounded text")])
-        .expect("bounded payload");
-    service
-        .edit(payload, SyndicTimestamp::from_unix_millis(updated_at))
-        .expect("edit draft");
-    let request = match service.flush().expect("flush draft") {
-        DraftFlushAction::Started(request) => request,
-        other => panic!("unexpected draft flush action: {other:?}"),
-    };
-    let execution = execute_draft_save(&fixture.store, &fixture.syndic, &request, point_limit);
-    assert!(execution.failure().is_none());
-}
-
 #[test]
 fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     let fixture = Fixture::new(r"C:\Work\Beryl");
@@ -281,8 +246,6 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     assert_eq!(row.facts().claim().window_id(), Some(window_id));
     assert_eq!(row.facts().claim().kind(), Some(CatalogClaimKind::Active));
     assert!(row.sources().claim().is_some());
-    let initial_summary_revision = row.sources().syndic_summary();
-
     let exact = prepare_thread_catalog_projection(
         &fixture.store,
         fixture.syndic,
@@ -292,60 +255,6 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     .expect("prepare current projection");
     assert!(matches!(
         exact,
-        ThreadCatalogProjectionPreparation::ExactCurrent
-    ));
-
-    persist_draft(&fixture, "later draft", 20);
-    let command = match prepare_thread_catalog_projection(
-        &fixture.store,
-        fixture.syndic,
-        fixture.state.clone(),
-        fixture.thread_id,
-    )
-    .expect("prepare source-stale projection")
-    {
-        ThreadCatalogProjectionPreparation::Publish(command) => command,
-        ThreadCatalogProjectionPreparation::ThreadMissing => panic!("thread unexpectedly missing"),
-        ThreadCatalogProjectionPreparation::ExactCurrent => {
-            panic!("draft activity must stale the compact summary")
-        }
-    };
-    match fixture.store.execute(command) {
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        CommandOutcome::NotCommitted { evidence } => {
-            panic!("catalog rebuild unexpectedly not committed: {evidence:?}")
-        }
-        outcome @ CommandOutcome::Committed {
-            later_failure: Some(_),
-            ..
-        } => panic!("catalog rebuild committed with later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => {
-            panic!("catalog rebuild indeterminate: {outcome:?}")
-        }
-    }
-    let rebuilt = fixture
-        .state
-        .catalog()
-        .row(
-            &fixture.store,
-            fixture.thread_id,
-            CatalogPointReadLimit::schema_maximum(),
-        )
-        .expect("read rebuilt catalog row")
-        .expect("rebuilt catalog row");
-    assert!(rebuilt.sources().syndic_summary() > initial_summary_revision);
-    assert_eq!(rebuilt.facts().last_activity_at(), UnixMillis::new(20));
-    assert!(matches!(
-        prepare_thread_catalog_projection(
-            &fixture.store,
-            fixture.syndic,
-            fixture.state.clone(),
-            fixture.thread_id,
-        )
-        .expect("prepare rebuilt projection"),
         ThreadCatalogProjectionPreparation::ExactCurrent
     ));
 }

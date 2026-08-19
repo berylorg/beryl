@@ -112,9 +112,8 @@ pub use scheduled_ordinary::{
     ScheduledOrdinaryRequestPolicy, ScheduledProjectionSessionAuthority,
 };
 pub use service::{
-    AcceptedInputAdmissionExecutionError, CasProjectionCoordinator, IdleSubmissionExecutionError,
-    LiveHomeCommand, ProjectionConnectionService, ProjectionConnectionServiceCloseError,
-    ProjectionConnectionServiceCloseOutcome,
+    CasProjectionCoordinator, LiveHomeCommand, ProjectionConnectionService,
+    ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
 };
 pub use service_config::{
     ProjectionServiceConfig, ProjectionServiceConfigError, ProjectionWorkerPoolDiagnostics,

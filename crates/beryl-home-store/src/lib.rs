@@ -330,6 +330,7 @@ pub mod test_faults {
         FaultBlock, FaultController, FaultPoint, FaultScope, FreeSpaceTestObservation,
         PersistedCorruptionError, PersistedCorruptionStage,
     };
+    pub use crate::metadata::{decode_test_domain_metadata, encode_test_domain_metadata};
     pub use crate::scrub::{ScrubTerminalDecisionBlock, ScrubTestSnapshot};
 }
 

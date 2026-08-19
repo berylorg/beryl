@@ -72,11 +72,12 @@ label map.
 
 Every Syndic thread owns exactly one current draft.
 
-A current draft is durable mutable pre-submission state with a stable id and revision. Its small
-metadata record references a sealed content manifest whose bounded ordered chunks retain exact
-composer-authored atoms plus one closed ordinary, branch-context, or replacement submission
-intent. An image atom retains its stable marker identity and final label ordinal while the
-image-asset system resolves that marker to durable bytes.
+A current draft is durable mutable pre-submission state with a stable id and selector revision. Its
+small metadata record selects one exact immutable combined draft root and one closed ordinary,
+branch-context, or replacement submission intent. The root binds a copy-on-write composite
+sequence piece tree and marker-identity index; text and zero-width image markers may be read in
+bounded ranges without making the whole draft resident. An image marker retains its stable identity
+and final label ordinal while the image-asset system resolves that marker to durable bytes.
 
 Ordinary drafts have no parent and no branch context; they are only the user's unsent composer
 state. A branch-discussion first draft's context intent owns exact selected-text provenance whose
@@ -86,29 +87,40 @@ coexist. Beryl may derive one presentation-only synthetic context group at that 
 
 `DiscussionContextRange` is a half-open range in absolute canonical logical UTF-8 byte coordinates within the source item, not a projection-local range. It must lie within one finalized source projection, and admission and scoped context resolution read its exact bytes through bounded logical-range reads over the canonical content indexes.
 
-Draft autosave may change only the sealed content reference and mutable draft timestamps. Thread
-ownership and the submission intent remain unchanged by autosave; branch context is immutable,
-while replacement start or cancellation uses its own explicit revisioned operation. Chunk
-construction is staged and unreachable until one atomic manifest-and-draft publication, so
-interrupted autosave never exposes a partial payload.
+Range edits build immutable successors in one session-qualified candidate lineage. A committed edit
+adopts its exact successor as that editor session's newest candidate; it does not publish the
+current-draft selector. Autosave or a lifecycle flush separately publishes the newest eligible
+candidate by atomically advancing the selector and the same session's published frontier. Thread
+ownership and submission intent remain unchanged; branch context is immutable, while replacement
+start or cancellation uses its own explicit revisioned operation. An interrupted publication
+exposes wholly the prior or new selected root, never a partial draft. Fresh activation trusts only
+that durable selector, so unpublished candidates from an abandoned session are ignored.
+
+The same publication uses the single image-asset `CurrentDraft(draft id)` owner head. A changed
+marker set replaces its sealed set or removes the head after the last marker; an unchanged nonempty
+marker set validation-only checks the existing exact head and proof and reuses its sealed set; an
+already marker-free draft validation-only checks that the single head is absent.
 
 A branch-context or replacement intent requires an idle input gate with no live accepted work.
 Consequently, an idle gate with queued next-turn work can be promoted without reading or changing
 the ordinary current draft.
 
-An idle-thread submission resolves every marker to its exact durable asset identity, selects the
-then-current committed tail as the ordinary turn's parent under the exact thread, draft, and gate
-revisions, transitions the same draft identity into a submitted turn, creates the typed canonical
-user-input item, advances the thread's committed tail, and creates its replacement current draft
-atomically. First branch-context and replacement submissions derive parentage from their explicit
-typed provenance instead.
+An idle-thread submission first flushes the editor candidate session, then materializes the exact
+selected combined root into sealed canonical `ComposerV1` content. Acceptance resolves every marker
+to its exact durable asset identity, selects the then-current committed tail as the ordinary turn's
+parent under the exact thread, draft, selected-root, and gate revisions, transitions the same draft
+identity into a submitted turn, creates the typed canonical user-input item, advances the thread's
+committed tail, and creates its replacement current draft atomically. A later candidate or selector
+change makes an older materialization ineligible without mutating it. First branch-context and
+replacement submissions derive parentage from their explicit typed provenance instead.
 
 That transition preserves the exact 128-bit identity payload while changing its typed identity from draft to submitted turn. It does not allocate an unrelated turn identity.
 
-Input accepted while another turn is active or context compaction is running is frozen from the
-current draft into one immutable durable ordered accepted-input record with exact resolved marker
-facts, one route-generation identity, and the complete source thread/draft/gate revision plus
-source/replacement draft admission proof, then replaced by a new current draft. That permanent
+Input accepted while another turn is active or context compaction is running follows the same flush
+and exact-selected-root materialization rule, then freezes the sealed `ComposerV1` content into one
+immutable durable ordered accepted-input record with exact resolved marker facts, one route-
+generation identity, and the complete source thread/draft/root/gate revision plus source or
+replacement draft admission proof before replacing the current draft. That permanent
 receipt remains exact after the draft or route advances. A bounded mutable route leaf plus the
 selected generation head resolves steering, pending, next-turn, and terminal delivery state while
 retaining the same accepted-input identity and marker ownership; queueing does not manufacture

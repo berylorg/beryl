@@ -106,6 +106,8 @@
   because the target slice is absent, and admits no media-less fallback.
 - Large drafts and marker collections remain logically unbounded. Their final editor, storage, and
   presentation paths must be range-backed and paged; no whole-value compatibility path is allowed.
+- During the active cutover, Syndic V5 registers only implemented families; deferred materializer
+  and repair families join in their owning phases rather than existing as empty placeholders.
 
 # Reference Snapshot
 
@@ -188,11 +190,17 @@
 - [x] Corrected owned-GPUI composite trailing-boundary ownership, zero-width line occupancy and
   resume validation, and capped UTF-8 style-run boundary admission without changing hot-path
   asymptotics.
-- [ ] Finish exact inline-object interaction, activation, bounded presentation, and lifecycle
-  release through the accepted staged-publication boundary without an accessibility payload or
-  integration.
-- [ ] Independently accept and prepare the complete external `gpui-text-input` boundary for publication.
-- [ ] Establish bounded streamed ComposerV1 successor construction in `syndic-storage`.
+- [x] Finished exact inline-object interaction, activation, bounded presentation, lifecycle release,
+  and atomic text, object, and geometry-index delivery through the accepted staged-publication
+  boundary without an accessibility payload or integration.
+- [x] Published and canonically pinned the accepted `gpui-text-input` boundary and its owned GPUI dependency chain.
+- [x] Replaced the fixed domain-family ceiling with the exact encoded-metadata-derived capacity
+  needed by registered domains.
+- [x] Established persistent composite draft roots with exact candidate-session, logical-line,
+  directional range-source, and bounded marker-proof conformance.
+- [x] Established immutable build-transition receipts and bounded session-qualified candidate-only
+  edit adoption with exact replay, custody, crash reconciliation, and fail-closed corruption.
+- [x] Established bounded exact-root ComposerV1 materialization in `syndic-storage`.
 - [ ] Replace whole-payload draft activation and mutable marker residency with revision-bound text
   and marker ranges, bounded editor windows and compact restoration seeds, incremental
   autosave/undo/submission, and very-large-draft verification.

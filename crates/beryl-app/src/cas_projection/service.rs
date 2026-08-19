@@ -6,19 +6,13 @@ use std::{
 };
 
 use beryl_backend::{ManagedBackendClientConnector, ManagedBackendError, ManagedBackendSession};
-use beryl_home_store::{
-    CommandError, CommitReceipt, FreeSpaceOutcome, HomeCloseError, HomeGeneration, HomeHealthState,
-    HomeStore,
-};
-#[cfg(test)]
-use beryl_model::SyndicAcceptedInputId;
+use beryl_home_store::{HomeCloseError, HomeGeneration, HomeHealthState, HomeStore};
 use beryl_model::{
     BerylHomeId, CasProcessGeneration, DomainRevision, ExecutionBinding, RuntimeId, SyndicThreadId,
     SyndicTurnId,
 };
 use syndic_storage::{
-    AcceptedInputAdmission, InputAdmissionStatus, StopAdmissionIneligibility, StopAdmissionRead,
-    StopCause, SyndicPointReadLimit, SyndicReadError, SyndicStorage,
+    StopAdmissionIneligibility, StopAdmissionRead, StopCause, SyndicPointReadLimit, SyndicStorage,
 };
 use thiserror::Error;
 
@@ -61,12 +55,6 @@ use super::{
         WindowCloseStopBarrier, WindowCloseStopOutcome,
     },
 };
-use crate::input_admission::{InputAdmissionBuildError, PreparedAcceptedInputAdmission};
-#[cfg(test)]
-use std::sync::{
-    atomic::{AtomicU64, AtomicUsize, Ordering},
-    mpsc::{Receiver, SyncSender, sync_channel},
-};
 
 mod admission;
 mod commands;
@@ -77,29 +65,10 @@ mod shutdown;
 
 pub(super) use flight_registry::ProjectionFlight;
 
-#[cfg(test)]
-static NEXT_ADMISSION_RECONCILIATION_PAUSE: AtomicU64 = AtomicU64::new(1);
-
 struct PreparedProjectionSessionAdmission {
     command: super::LiveCommandPermit,
     home: Arc<HomeStore>,
     worker_permits: ProjectionWorkerPermitPair,
-}
-
-#[cfg(test)]
-struct PendingAdmissionReconciliationPause {
-    token: u64,
-    input_id: SyndicAcceptedInputId,
-    arrived: SyncSender<()>,
-    release: Receiver<()>,
-}
-
-#[cfg(test)]
-pub(in crate::cas_projection) struct AdmissionReconciliationPauseController {
-    slot: Arc<Mutex<Option<PendingAdmissionReconciliationPause>>>,
-    token: u64,
-    arrived: Receiver<()>,
-    release: SyncSender<()>,
 }
 
 /// Process-owned admission and shutdown boundary for projection connections.
@@ -115,10 +84,6 @@ pub struct ProjectionConnectionService {
     command_gate: MasterCommandGate,
     command_authorizer: LiveCommandAuthorizer,
     persistent_failure: Option<PersistentFailureCoordinator>,
-    #[cfg(test)]
-    admission_reconciliation_failures: AtomicUsize,
-    #[cfg(test)]
-    admission_reconciliation_pause: Arc<Mutex<Option<PendingAdmissionReconciliationPause>>>,
     connections: Arc<ProjectionServiceConnectionRegistry>,
     stop_coordinator: Arc<StopCoordinator>,
     context_compaction: Option<Arc<super::context_compaction::ContextCompactionCoordinator>>,
@@ -154,61 +119,6 @@ impl LiveHomeCommand<'_> {
     pub const fn home(&self) -> &HomeStore {
         self.home
     }
-}
-
-#[derive(Debug, Error)]
-pub enum AcceptedInputAdmissionExecutionError {
-    #[error("the projection connection service is closed")]
-    ServiceClosed,
-    #[error(transparent)]
-    Authority(#[from] ProjectionCoordinatorError),
-    #[error("accepted-input publication did not commit: {0}")]
-    Command(#[source] CommandError),
-    #[error("accepted-input publication committed before a later failure: {later_failure}")]
-    CommandCommitted {
-        receipt: CommitReceipt,
-        #[source]
-        later_failure: CommandError,
-    },
-    #[error("accepted-input publication has an indeterminate durable outcome: {failure}")]
-    CommandIndeterminate {
-        #[source]
-        failure: CommandError,
-    },
-    #[error("accepted-input publication reconciliation failed; the service was closed: {0}")]
-    Reconciliation(#[from] SyndicReadError),
-    #[error(
-        "accepted-input publication reported success without exact durable admission; the service was closed"
-    )]
-    ImpossibleReconciliation,
-    #[error("accepted-input publication collided with current durable state")]
-    Collision,
-}
-
-/// Failure while making a direct idle submission durable.
-#[derive(Debug, Error)]
-pub enum IdleSubmissionExecutionError {
-    #[error("the projection connection service is closed")]
-    ServiceClosed,
-    #[error(transparent)]
-    Authority(#[from] ProjectionCoordinatorError),
-    #[error(transparent)]
-    Build(#[from] InputAdmissionBuildError),
-    #[error("turn-start free-space admission denied: {0:?}")]
-    FreeSpace(FreeSpaceOutcome),
-    #[error("idle submission did not commit: {0}")]
-    Command(#[source] CommandError),
-    #[error("idle submission committed before a later failure: {later_failure}")]
-    CommandCommitted {
-        receipt: CommitReceipt,
-        #[source]
-        later_failure: CommandError,
-    },
-    #[error("idle submission has an indeterminate durable outcome: {failure}")]
-    CommandIndeterminate {
-        #[source]
-        failure: CommandError,
-    },
 }
 
 #[derive(Debug, Error)]

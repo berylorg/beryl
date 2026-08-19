@@ -61,10 +61,13 @@ Keep independent main-window presentation responsive while process-wide services
 - Startup accepts the validated minimal-session result plus each restored window's validated selected-
   thread identity, current-draft identity, visible editor range, compact editor-frontier seed, and
   transcript seed. Controller construction retains only those bounded inputs and never preloads a
-  complete draft.
-- Later activation accepts one revision-consistent bundle containing the target claim, draft,
-  transcript seed, and window-local projection facts, then atomically replaces the controller's
-  prior bundle or leaves it unchanged.
+  complete draft. It reads only the durable current-draft selector and opens a fresh editor-
+  candidate session; no unpublished session from a prior process is routine recovery authority.
+- Later activation first flushes the prior candidate session, then accepts one revision-consistent
+  bundle containing the target claim, durable draft selector, fresh candidate-session head,
+  transcript seed, and window-local projection facts. It atomically replaces the controller's prior
+  bundle or leaves the complete prior bundle and session frontier unchanged on cancellation,
+  failure, conflict, or ambiguity.
 - The [main-windows](../../../doc/features/main-windows/design.md) and
   [conversation-threads](../../../doc/features/conversation-threads/design.md) features own startup
   and activation behavior; [GUI integration](../../../doc/gui/integration.md) owns the window
@@ -91,11 +94,11 @@ Keep independent main-window presentation responsive while process-wide services
   update, asset reference, CAS-binding transition, and handoff-job transition use typed revision-
   checked commands.
 - Correctness-sensitive success is not published until the home-store command reports the required durability barrier complete.
-- Cancellation may withdraw queued draft persistence only before writer admission. An admitted save
-  is drained; a surfaced post-admission storage or persistence failure suspends its exact draft
-  binding until targeted reconciliation of that retained opaque operation scope, or fresh same-home
-  recovery, establishes the durable revision and sealed content reference through a coherent
-  current-draft read.
+- Cancellation may win a draft edit's durable `Cancelled` settlement only before its candidate-
+  adoption command is admitted. An admitted command is drained; an indeterminate adoption retains
+  the exact operation and reconciliation custody until its immutable settlement proof and coherent
+  candidate-session read establish the adopted root. An indeterminate autosave or flush instead
+  reconciles its exact publication receipt against both current-draft and session heads.
 - Store-health transitions invalidate outstanding mutation authority by revision. Persistent failure preserves existing window controllers and their last coherent in-memory presentation while feature-owned gates reject further store-dependent work.
 - Reopen validates and preserves the same durable home identity, then rebinds services only to the
   newly published monotonic home generation; it never creates a substitute home, imports old state,
@@ -121,29 +124,89 @@ Keep independent main-window presentation responsive while process-wide services
   row realization, layout, focus, or overscan policy.
 - Catalog construction and refresh never enumerate CAS threads, read CAS historical transcripts, or use backend names and working directories as Beryl metadata.
 - Thread creation, pristine-thread reuse, current-thread no-op, first-runtime creation, additional-window acquisition, selection, and release use atomic home-store/Syndic claim operations rather than app-local check-then-act logic.
-- The selected composer is a range-backed editor projection over the exact durable current draft. It
-  retains only configured visible and overscan pages, bounded edit/IME state, compact positions and
-  markers, and a bounded undo frontier. Dirty revision tracking, timed autosave, flush barriers,
-  activation, replacement-edit intent, and acceptance call typed Syndic/home services rather than
-  persisting or reconstructing a window-owned whole-draft buffer.
+- The selected composer host opens one exact Syndic editor-candidate session from the durable
+  current-draft selector, binds the session's newest candidate root, and exposes it to the
+  range-backed text input as revision-bound bounded text and zero-width-marker page sources. The
+  window retains only configured visible and overscan pages, bounded edit and IME state, compact
+  positions, resident marker facts, and source and presentation generations; it never owns or
+  reconstructs the complete draft.
+- Compact editor restoration facts contain only the exact published combined-root binding and logical extent,
+  caret and selection positions, scroll anchor or continuation, and the opaque bounded undo/redo
+  frontier. They contain no text or marker pages, complete marker collection, piece tree, layout
+  state, or draft-sized inverse content.
+- The host maps typing, paste, deletion, marker commands, undo, and redo to exact predecessor-
+  candidate composite range replacements. It supplies inserted text and marker changes through
+  bounded ordered staging commands, completes both copy-on-write piece-tree and marker-identity-
+  index successors under the exact `(draft, session, operation)` build/root identity, and submits
+  one atomic candidate-adoption command. No partial replacement is
+  exposed to the widget, session head, or current-draft selector.
+- Every admitted draft edit reaches exactly one durable `Committed`, `Rejected`, `Conflict`,
+  `Cancelled`, or `Error` settlement. An indeterminate command remains reconciliation custody rather
+  than a sixth result; the host preserves the last coherent projection and exact operation intent,
+  suppresses dependent mutations, and accepts only the matching immutable settlement proof on
+  replay. Only `Committed` means the host durably and exactly adopted the immutable successor into
+  that editor candidate session and may return its root, extent, caret, and selection facts to the
+  widget. It does not publish the current-draft selector. Every other settlement adopts none of that
+  edit, and the widget releases all staged fragments at terminal settlement.
+- Build, root, settlement, and indeterminate custody are all session-qualified. Abandoning a
+  crashed session releases its app custody and cannot occupy or block the natural identities of the
+  fresh session opened from the durable selector.
+- Candidate-head drift in the ordinary single-owner widget slot is treated as a stale internal
+  completion, not as evidence that an external writer changed the durable draft. An exact existing
+  settlement is consumed; otherwise `Conflict` settles that widget transaction without adoption.
+  The host retains only its bounded logical authored intent and may re-propose it against the newly
+  authoritative candidate when exact position mapping is proven. If mapping or rebase cannot be
+  proven, the editor becomes coherently unavailable instead of dropping or guessing content.
+- The host alone owns the bounded undo/redo frontier. It advances only on adopted candidate
+  settlement, preserves the frontier on rejection, conflict, cancellation, error, or indeterminate
+  custody, clears redo on a newly adopted ordinary edit, and moves one bounded entry between undo
+  and redo only after that operation is adopted. Autosave does not mutate this frontier. Undo and
+  redo use the same candidate path; neither the widget nor window retains draft-sized inverse text,
+  a complete marker registry, or an independent durable draft authority.
 - Ordinary draft seeds and persistence requests carry no selected-path parent. Idle acceptance
-  names the expected thread, draft, gate, and content authority, and Syndic selects the current
-  thread tail atomically. Background accepted-input promotion never changes the resident editor,
-  draft record, draft revision, undo state, or draft asset owner.
-- A draft save fences the exact current draft identity/revision rather than an older selected-path
-  thread revision. The app persistence binding and request carry no thread revision, so a completed
-  tail advance that preserves the draft does not invalidate an in-flight save. A genuine
-  serialized conflict reconciles against exact draft state and retries the retained edit; it does
-  not report changed immutable draft shape or discard the edit.
-- Draft persistence retains exact binding, edit, request, and timer generations around one in-flight save. A stale completion cannot clean a later edit; a lifecycle flush drains the in-flight save and, when necessary, chains the latest edit only after exact receipt or recovered-state reconciliation.
-- A save executor prepares the exact chunk manifest away from GPUI, resumes or creates its content-addressed building object, appends only bounded chunk batches, and finally publishes the sealed content reference with the draft revision. Intermediate durable chunks do not change the visible or durable current draft.
-- Draft-save publication consumes one opaque executor-issued completion bound to the full request identity, including home generation, thread, draft, expected revision, sealed content reference and proof, timestamp, and scheduling generations. A caller-constructed status value or another service's numerically similar generations cannot publish success.
-- Input admission streams each draft marker through exact Beryl-state asset metadata into one
-  unpublished paged reference set. After seal, one home command validates its source identity,
-  count, frontier and digest, rebinds the compact draft/admitted owner heads, and publishes the
-  matching Syndic admission. Marker-free admission carries no synthetic empty set; one typed
-  validation-only Asset participant proves both source and destination heads absent on the same
-  serialized writer snapshot as Syndic publication.
+  names the expected thread, draft, gate, combined root, root-bound materialization, and asset proof,
+  and Syndic selects the current thread tail atomically. Background accepted-input promotion never
+  changes the resident editor, draft record, draft revision, undo state, or draft asset owner.
+- Dirty autosave and timed or lifecycle flush barriers snapshot only an already adopted candidate
+  frontier. One atomic home command advances the durable current-draft selector and the same
+  session's published frontier with exactly one Asset case against the single
+  `CurrentDraft(draft id)` head: changed markers replace it with the newly sealed set or remove it
+  after last-marker removal; unchanged nonempty markers validation-only assert its existing exact
+  head and proof and reuse the already sealed set; and an already marker-free draft validation-only
+  asserts that the single head is absent. It creates neither a per-root head nor a synthetic set. It
+  fences the exact durable draft identity, selector revision/root, candidate-session lineage, and
+  captured generation; carries no selected-path thread revision; performs no work proportional to
+  unchanged draft length; and never builds `ComposerV1`.
+- Edits may continue adopting newer candidates while one captured frontier publishes. Draft
+  orchestration retains only exact session, candidate, timer, publication-request, and dirty
+  generations around that work. A completion clears only its captured generation and cannot clean
+  a later candidate. A successful dirty save rearms from the applicable interval; a superseded
+  timer or settings generation cannot rearm. A flush drains an admitted publication, reconciles an
+  ambiguous writer outcome, and repeats from the newest eligible dirty frontier until published
+  and candidate frontiers agree; external durable-base conflict or terminal unavailability leaves
+  the barrier unsatisfied.
+- Canonical `ComposerV1` materialization is submission-only orchestration and starts only after the
+  required flush has selected one exact immutable candidate root as the current draft. The app
+  starts or resumes the bounded Syndic materializer without changing the draft or session and
+  accepts only its exact sealed root-bound mapping. A later candidate adoption or publication
+  neither conflicts with nor rewrites that build or sealed result; it only makes the older result
+  ineligible for an acceptance that names the newer current root.
+- Submission preparation merge-joins bounded marker pages from that exact root with exact
+  Beryl-state asset metadata into one unpublished paged reference set. The admitting home command
+  validates the root-bound `ComposerV1`, marker identity/count/digest, sealed asset proof, and exact
+  compact source and destination owner heads, then publishes Syndic acceptance and the asset-owner
+  transition atomically. Marker-free admission carries no synthetic empty set; its validation-only
+  Asset participant proves both heads absent on the same serialized writer snapshot.
+- Submission admission validates the same clean editor session and exact published root used by the
+  materialization. Only atomic accepted send-and-clear disposes that session and authorizes the app
+  to clear the editor and undo/redo frontier. Rejection, conflict, cancellation, error, or ambiguous
+  writer custody preserves the last coherent editor/session frontier until exact reconciliation.
+- Ordinary thread switch, healthy window close, Exit, and submission dispose a session only after
+  its flush succeeds. An unexpected process loss performs no recovery of unpublished candidates:
+  fresh activation opens from the durable selector, so edits after the last completed autosave may
+  be lost and old candidate sessions, roots, and owner-neutral asset sets remain unreachable for
+  future garbage collection. Persistent external selector conflict makes the old editor coherently
+  unavailable rather than rebasing it implicitly.
 - Image-label readiness retains only an exact Syndic thread frontier/revision and bounded current
   draft marker facts. Allocation and same-label proof use point reads and bounded lineage queries;
   the app never synchronizes a complete historical label cache.
@@ -163,7 +226,11 @@ Keep independent main-window presentation responsive while process-wide services
   app never enumerates every marker merely to treat a partial match or blind mutation replay as
   success.
 - An in-flight save or reconciliation rearms autosave only while its captured timer generation remains current. A newer committed autosave-setting publication retains its interval, record revision, generation, and publication-time deadline anchor.
-- Thread activation keeps the prior coherent selection until the target is ready and publishes title, lineage, draft, composer-history scope, transcript seed, runtime/root memory, and claim transition together.
+- Thread activation keeps the prior coherent selection until the target claim, exact combined-root
+  binding, first required text and marker pages, and other activation facts are ready. It publishes
+  title, lineage, composer source, compact editor facts, composer-history scope, transcript seed,
+  runtime/root memory, and claim transition together; cancellation or failure leaves the prior
+  bundle authoritative.
 - Lineage and activity snapshots are query generations with bounded resident pages, not complete
   ancestor or process-session collections. Composer history uses one fixed-capacity process pool of
   compact sealed Syndic input references and recalls content through range-backed copy-on-write

@@ -20,18 +20,3 @@ pub(super) fn validate_prepared_manifest(
     }
     Ok(())
 }
-
-pub(super) fn validate_publishable(
-    manifest: &ContentManifestRecord,
-    expected: ContentSummary,
-) -> Result<(), SyndicMutationError> {
-    if manifest.expected() != expected
-        || manifest.id() != SyndicContentId::from_digest(*expected.digest().as_bytes())
-        || manifest.chunk_count() != expected.chunk_count()
-        || manifest.encoded_bytes() != expected.encoded_bytes()
-        || manifest.chain_digest() != expected.digest()
-    {
-        return Err(SyndicMutationError::ContentNotComplete);
-    }
-    Ok(())
-}

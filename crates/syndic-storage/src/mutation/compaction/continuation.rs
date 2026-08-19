@@ -169,7 +169,7 @@ impl SettleLifecycleMutation {
         }
         let parent = ConversationParent::from_turn(admission_snapshot.selected_path().tail());
         let (depth, digest, ancestor_skip) =
-            crate::mutation::admission::turn_shape(reader, request.turn_id, parent)?;
+            crate::mutation::admission_helpers::turn_shape(reader, request.turn_id, parent)?;
         let thread_revision = admission_snapshot
             .selected_path()
             .thread_revision()

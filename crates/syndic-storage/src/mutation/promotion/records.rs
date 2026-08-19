@@ -64,8 +64,11 @@ impl PromotionRecords {
             .committed_tail()
             .ok_or(SyndicMutationError::AcceptedInputPromotionConflict)?;
         let parent = ConversationParent::Turn(parent_id);
-        let (depth, digest, ancestor_skip) =
-            crate::mutation::admission::turn_shape(reader, promotion.successor_turn_id(), parent)?;
+        let (depth, digest, ancestor_skip) = crate::mutation::admission_helpers::turn_shape(
+            reader,
+            promotion.successor_turn_id(),
+            parent,
+        )?;
         let thread_revision = basis.thread().revision().checked_next()?;
         let selected_path =
             SelectedPathProof::new(Some(promotion.successor_turn_id()), thread_revision, digest);

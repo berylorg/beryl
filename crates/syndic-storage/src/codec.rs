@@ -5,7 +5,7 @@ use beryl_home_store::{PointReadLimit, RECORD_VERSION_BYTES, RecordCodec, Record
 use crate::domain::SyndicDomain;
 
 mod keys;
-mod parts;
+pub(crate) mod parts;
 mod primary;
 mod secondary;
 

@@ -2,8 +2,8 @@ use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, HomeStore
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ContentChunkOrdinal, ContentChunkRecord, ContentLifecycle, ContentManifestRecord,
-    ContentReference, ContentTextSpanRecord, SyndicReadError,
+    ContentChunkOrdinal, ContentChunkRecord, ContentEncoding, ContentLifecycle,
+    ContentManifestRecord, ContentReference, ContentTextSpanRecord, SyndicReadError,
     codec::{
         ContentChunkKey, ContentChunksFamily, ContentManifestsFamily, ContentTextSpanKey,
         ContentTextSpansCodec, Family, family_cursor_max_bytes, family_point_limit,
@@ -255,7 +255,9 @@ pub(super) fn validate_manifest(
         || manifest.chunk_count() != summary.chunk_count()
         || manifest.encoded_bytes() != summary.encoded_bytes()
         || manifest.chain_digest() != summary.digest()
-        || content.id() != beryl_model::SyndicContentId::from_digest(*summary.digest().as_bytes())
+        || (content.encoding() != ContentEncoding::ComposerV1
+            && content.id()
+                != beryl_model::SyndicContentId::from_digest(*summary.digest().as_bytes()))
     {
         return Err(SyndicReadError::Invariant(
             "sealed content reference disagrees with its exact manifest",

@@ -1,33 +1,31 @@
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
 use beryl_model::{
-    BindingRevision, ContentRevision, DomainRevision, DraftRevision, ExecutionBinding,
-    ProjectionRevision, SyndicDraftId, SyndicThreadId, SyndicTurnId, ThreadRevision,
+    BindingRevision, DomainRevision, DraftRevision, ExecutionBinding, ProjectionRevision,
+    SyndicDraftId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 
 use crate::{
-    BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState, ComposerPayload,
-    ContentChunkRecord, ContentManifestRecord, DraftByThreadRecord, DraftRecord,
-    DraftSubmissionIntent, HistorySummaryRecord, InputGateRecord, PreparedContent,
-    ProjectionLifecycle, SelectedPathProof, SyndicStorage, SyndicThreadTail, SyndicTimestamp,
-    ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadLineageProof,
-    ThreadRecord, ThreadUsageRecord, TranscriptGeneration, TranscriptViewHeadRecord, codec::*,
-    domain::SyndicDomain, empty_selected_path_digest, root_thread_lineage_digest,
+    BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState, DraftByThreadRecord,
+    DraftPieceRootRecordV1, DraftRecord, DraftSubmissionIntent, HistorySummaryRecord,
+    InputGateRecord, ProjectionLifecycle, SelectedPathProof, SyndicStorage, SyndicThreadTail,
+    SyndicTimestamp, ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord,
+    ThreadLineageProof, ThreadRecord, ThreadUsageRecord, TranscriptGeneration,
+    TranscriptViewHeadRecord, canonical_empty_draft_piece_root_v1, codec::*, domain::SyndicDomain,
+    draft_piece::*, empty_selected_path_digest, root_thread_lineage_digest,
 };
 
 mod accepted;
 mod activity;
-mod admission;
+mod admission_helpers;
 mod binding;
 mod compaction;
 mod content;
 mod error;
-mod initial_content;
 mod live;
 pub(crate) mod projection;
 mod promotion;
 mod provider_frame;
 mod provider_observation;
-mod replacement;
 mod stop;
 mod thread_properties;
 mod transcript;
@@ -37,7 +35,6 @@ pub use accepted::{
     SteeringRejection,
 };
 pub use activity::PublishActivityChildHandoff;
-pub use admission::{AcceptedInputAdmission, IdleSubmission, InputAdmissionStatus};
 #[cfg(feature = "test-faults")]
 pub(crate) use binding::active_cas_turn_fault_scope;
 pub use binding::{
@@ -50,12 +47,8 @@ pub use compaction::{
     CompactionProviderEvent, PublishCompactionProviderEvent, PublishCompactionRequestDisposition,
     SealLifecycleContinuationContent, SettleCompactionOperation, SettleLifecycleCompaction,
 };
-pub use content::{
-    CONTENT_APPEND_MAX_CHUNKS, ContentAppend, ContentBuild, DraftPayloadUpdate,
-    DraftPayloadUpdateDecision,
-};
+pub use content::{CONTENT_APPEND_MAX_CHUNKS, ContentAppend, ContentBuild};
 pub use error::{CreateThreadError, SyndicMutationError, ThreadCreationStatus};
-use initial_content::validate_initial_content;
 #[cfg(feature = "test-faults")]
 pub(crate) use live::live_source_event_fault_scope;
 pub use live::{
@@ -75,7 +68,6 @@ pub use provider_frame::{
 pub use provider_observation::ProviderObservationMutationError;
 #[cfg(feature = "test-faults")]
 pub(crate) use provider_observation::provider_observation_stage_fault_scope;
-pub use replacement::{CancelReplacementEdit, StartReplacementEdit};
 pub use stop::{
     AbandonStopOperation, AdmitStopOperation, ClaimStopDispatch, JoinStopCause,
     SafelyReopenStopOperation,
@@ -167,9 +159,7 @@ pub(crate) struct InitialThreadRecords {
     pub(crate) usage: ThreadUsageRecord,
     pub(crate) catalog_summary: ThreadCatalogSummaryRecord,
     pub(crate) draft: DraftRecord,
-    pub(crate) content_manifest: ContentManifestRecord,
-    pub(crate) content_chunks: Vec<ContentChunkRecord>,
-    pub(crate) content_spans: Vec<crate::ContentByteSpanRecord>,
+    pub(crate) draft_piece_root: DraftPieceRootRecordV1,
     pub(crate) draft_index: DraftByThreadRecord,
     pub(crate) transcript_head: TranscriptViewHeadRecord,
     pub(crate) transcript_build: Option<crate::TranscriptBuildRecord>,
@@ -186,9 +176,6 @@ impl CreateThread {
         let draft_revision = DraftRevision::new(1).expect("initial revision is nonzero");
         let projection_revision = ProjectionRevision::new(1).expect("initial revision is nonzero");
         let binding_revision = BindingRevision::new(1).expect("initial revision is nonzero");
-        let content_revision = ContentRevision::new(1).expect("initial revision is nonzero");
-        let content = PreparedContent::composer(&ComposerPayload::default())
-            .expect("empty composer payload has a canonical content encoding");
         let selected_path = self.source.as_ref().map_or_else(
             || SelectedPathProof::new(None, thread_revision, empty_selected_path_digest()),
             |source| {
@@ -212,18 +199,21 @@ impl CreateThread {
             crate::ThreadImageLabelFrontiers::empty(),
             None,
         );
+        let draft_piece_root = canonical_empty_draft_piece_root_v1(
+            self.draft_id,
+            draft_revision,
+            canonical_empty_draft_root_operation_id_v1(self.draft_id),
+        );
         let draft = DraftRecord::new(
             self.draft_id,
             self.thread_id,
             draft_revision,
             DraftSubmissionIntent::Ordinary,
-            content.reference(content_revision),
+            draft_piece_root.reference(),
             self.created_at,
             self.created_at,
         );
         let stale = self.source.is_some();
-        let content_spans = crate::content_byte_spans(content.chunks(), 0)
-            .expect("prepared empty content has valid bounded byte spans");
         let binding_state = BindingState::unbound("new thread has no CAS projection")
             .expect("static unbound reason is valid");
         let transcript_build = (!stale).then(|| {
@@ -271,9 +261,7 @@ impl CreateThread {
             usage,
             catalog_summary,
             draft,
-            content_manifest: content.sealed_manifest(content_revision),
-            content_chunks: content.chunks().to_vec(),
-            content_spans,
+            draft_piece_root,
             draft_index: DraftByThreadRecord::new(
                 self.thread_id,
                 self.draft_id,
@@ -435,6 +423,8 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             || point::<ThreadUsageFamily>(reader, &records.thread.id())?.is_some()
             || point::<ThreadCatalogSummariesFamily>(reader, &records.thread.id())?.is_some()
             || point::<DraftsFamily>(reader, &records.draft.id())?.is_some()
+            || point::<DraftPieceRootsFamily>(reader, &records.draft_piece_root.reference().key())?
+                .is_some()
             || point::<DraftByThreadFamily>(reader, &records.thread.id())?.is_some()
             || point::<TranscriptHeadsFamily>(reader, &records.thread.id())?.is_some()
             || transcript_build_collision
@@ -463,7 +453,6 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
         if let Some(source) = &self.creation.source {
             validate_source_tail(reader, source, self.creation.created_at)?;
         }
-        validate_initial_content(reader, &records)?;
         Ok(())
     }
 
@@ -472,19 +461,13 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
         reservation: &mut beryl_home_store::ReconciliationReservation<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
         let records = self.creation.records();
-        reservation.reserve_records::<ContentManifestsCodec>(1)?;
-        if !records.content_chunks.is_empty() {
-            reservation.reserve_records::<ContentChunksCodec>(records.content_chunks.len())?;
-        }
-        if !records.content_spans.is_empty() {
-            reservation.reserve_records::<ContentByteSpansCodec>(records.content_spans.len())?;
-        }
         reservation.reserve_records::<ThreadsCodec>(1)?;
         reservation.reserve_records::<ThreadExecutionsCodec>(1)?;
         reservation.reserve_records::<ThreadAttributesCodec>(1)?;
         reservation.reserve_records::<ThreadUsageCodec>(1)?;
         reservation.reserve_records::<ThreadCatalogSummariesCodec>(1)?;
         reservation.reserve_records::<DraftsCodec>(1)?;
+        reservation.reserve_records::<DraftPieceRootsCodec>(1)?;
         reservation.reserve_records::<DraftByThreadCodec>(1)?;
         reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
         if records.transcript_build.is_some() {
@@ -500,34 +483,10 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
 
     fn contribute(
         &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        _reader: &DomainReader<'_, SyndicDomain>,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
         let records = self.creation.records();
-        if point::<ContentManifestsFamily>(reader, &records.content_manifest.id())?.is_none() {
-            mutations.put::<ContentManifestsCodec>(
-                &records.content_manifest.id(),
-                &records.content_manifest,
-            )?;
-            for chunk in &records.content_chunks {
-                mutations.put::<ContentChunksCodec>(
-                    &ContentChunkKey {
-                        owner: chunk.content_id(),
-                        ordinal: chunk.ordinal(),
-                    },
-                    chunk,
-                )?;
-            }
-            for span in &records.content_spans {
-                mutations.put::<ContentByteSpansCodec>(
-                    &ContentByteSpanKey {
-                        owner: span.content_id(),
-                        start: span.start(),
-                    },
-                    span,
-                )?;
-            }
-        }
         mutations.put::<ThreadsCodec>(&records.thread.id(), &records.thread)?;
         mutations.put::<ThreadExecutionsCodec>(&records.thread.id(), &records.execution)?;
         mutations.put::<ThreadAttributesCodec>(&records.thread.id(), &records.attributes)?;
@@ -535,6 +494,10 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
         mutations
             .put::<ThreadCatalogSummariesCodec>(&records.thread.id(), &records.catalog_summary)?;
         mutations.put::<DraftsCodec>(&records.draft.id(), &records.draft)?;
+        mutations.put::<DraftPieceRootsCodec>(
+            &records.draft_piece_root.reference().key(),
+            &records.draft_piece_root,
+        )?;
         mutations.put::<DraftByThreadCodec>(&records.thread.id(), &records.draft_index)?;
         mutations.put::<TranscriptHeadsCodec>(&records.thread.id(), &records.transcript_head)?;
         if let Some(build) = &records.transcript_build {

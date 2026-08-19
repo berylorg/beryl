@@ -38,8 +38,9 @@ confusing current drafts with submitted transcript history or image identity.
   the last coherent editor presentation plus the exact locally held request intent and evidence,
   and suppresses duplicate activation and dependent mutations.
 - Reconciliation may prove exact success, prove noncommit, or return `Collision`, presented as
-  terminal `Unavailable`, because it can prove neither. Only proven success publishes the new
-  composer state. Only proven noncommit restores the prior state as authoritative. `Unavailable`
+  terminal `Unavailable`, because it can prove neither. Only proven edit success adopts the new
+  active-editor state; only proven autosave or flush success publishes a new current durable draft.
+  Only proven noncommit restores the prior state as authoritative. `Unavailable`
   does neither and retains the prior presentation only as coherent context, not as proof that the
   request did not commit.
 - A terminally unavailable request and every composer action that depends on its result remain
@@ -73,20 +74,28 @@ confusing current drafts with submitted transcript history or image identity.
   parent and remains unchanged when previously accepted input advances the thread.
 - A branch-discussion first draft retains its immutable selected context, and a replacement-edit
   draft retains its explicit replacement target. An ordinary draft retains neither.
-- Composer edits update the visible range immediately and preserve exact authored content through
-  autosave, submission, recovery, history browsing, and replacement editing without requiring a
-  second whole-draft payload.
+- Composer edits update the visible range immediately. A settled edit is durably adopted by the
+  active editor and may be followed immediately by another edit, but it does not by itself become
+  the draft restored after a crash. Autosave or flush separately publishes the newest eligible
+  adopted editor state as the current durable draft without requiring a second whole-draft payload.
 - Dirty-only autosave runs every 30 seconds by default. Settings may tune the required interval from 5 through 300 whole seconds but may not disable autosave.
 - Publishing a committed autosave-interval change rearms the next dirty-draft deadline from that publication time using the new interval; it does not preserve a deadline derived from the superseded setting.
 - Thread switch, ordinary window close, application Exit, and submission create dirty-draft flush barriers instead of waiting for the timer.
 - Autosave publication is all-or-nothing: after a crash, the current draft is wholly the prior saved
   state or wholly the newly saved state, never a partial mixture.
+- Editing remains available while autosave publishes a captured state. A completion for an older
+  captured state never marks later edits saved; those edits remain dirty for the next autosave or
+  flush.
 - A flush lets a save already underway reach an exact outcome instead of cancelling it. If the
   durable outcome is ambiguous, the barrier remains unsatisfied while same-home verification or
   recovery classifies it as proven saved, proven not saved, or terminally unavailable. Terminal
   unavailability leaves the barrier unsatisfied and follows Durable Mutation Reconciliation rather
   than being treated as a failed save that can be repeated.
-- Draft content survives restart, thread switching, backend failure and retry, ordinary window close/reopen, and application Exit.
+- Successfully autosaved or flushed draft content survives restart, thread switching, backend
+  failure and retry, ordinary window close/reopen, and application Exit. An unexpected process or
+  machine loss may discard edits made after the last completed autosave; reopen presents the last
+  wholly published draft and never exposes a partially saved or abandoned editor candidate. Work
+  left by the abandoned editor cannot block editing in the freshly reopened composer.
 - Native-lineage recovery-prompt entry does not clear, submit, rewrite, or discard the current
   draft. Leaving the prompt after recovery mounts an eligible replacement editor that restores the
   exact durable draft plus its captured caret, selection, bounded undo/redo availability, and scroll
@@ -97,11 +106,16 @@ confusing current drafts with submitted transcript history or image identity.
   is published from an ambiguous or terminally unavailable durable outcome. A terminally
   unavailable save also preserves its exact local save intent and evidence without restoring the
   visible draft as proof of durable noncommit.
+- If an exact edit conflicts with a newer editor state, that edit is not adopted. Beryl preserves
+  the user's bounded authored intent and reapplies it only when exact position mapping is proven;
+  otherwise the composer becomes coherently unavailable instead of losing content or guessing a
+  merge. Released widget fragments are never used as recovery state.
 - A replacement-edit draft durably retains its target separately from editable content. Restart or
   thread reactivation restores edit mode against that exact target instead of silently treating the
   text as an ordinary append.
 - Cancelling replacement edit clears only the edit target and keeps the draft content and editor state.
-- A persistent draft-storage failure disables editing because further changes cannot be kept durable.
+- A persistent candidate-adoption or draft-publication failure disables editing because further
+  changes cannot be kept coherent and durable.
 - Branch discussions with a resolution in pending, handing-off, retryably failed, recovery, or
   terminal `Unavailable` state disable editing, as do archived discussions. A terminal
   non-collision handoff failure releases its composer gate and leaves the unarchived discussion
@@ -114,7 +128,9 @@ confusing current drafts with submitted transcript history or image identity.
   become resident.
 - A later thread activation keeps the prior selected thread and its draft authoritative until the
   target transcript and first required editor range are ready.
-- Edits made before activation commits continue to belong to the prior thread and are flushed before the atomic switch.
+- Edits made before activation commits continue to belong to the prior thread. Its newest adopted
+  editor state is flushed before the atomic switch; cancellation, failure, or ambiguity preserves
+  the complete prior selection and editor state.
 - Successful activation publishes the target title, lineage, transcript, current draft, and
   composer-history scope together.
 - Failed or cancelled activation leaves the prior draft, caret, selection, undo history, and dirty state intact.
@@ -132,7 +148,7 @@ confusing current drafts with submitted transcript history or image identity.
   insertion point. `Escape` may cancel before the edit is accepted; an accepted edit remains
   pending through the exact success, proven-noncommit, or terminally unavailable dispositions in
   Durable Mutation Reconciliation.
-- Successful paste publishes the complete edit once, places the caret after the inserted range, and
+- Successful paste adopts the complete edit into the active editor once, places the caret after the inserted range, and
   records one logical undo operation without retaining a second copy of the inserted bytes.
   Ordinary failure, proven noncommit, or pre-admission cancellation restores the prior writable
   state unchanged. A terminally unavailable paste instead keeps the prior presentation, captured
@@ -147,7 +163,10 @@ confusing current drafts with submitted transcript history or image identity.
   without weakening this limit.
 - Undo and redo cover a bounded recent operation history. When an older edit has left that history,
   the command is unavailable rather than retaining draft-sized inverse text. Autosave and durable
-  draft state remain independent of that GUI history bound.
+  draft state remain independent of that GUI history bound. The available undo/redo frontier
+  changes only after the requested edit is adopted, stays unchanged on rejection, conflict,
+  cancellation, error, or reconciliation, clears redo after a newly adopted edit, and is not
+  changed merely because autosave completes.
 - The composer reserves focused `Enter` for submission and focused `Shift+Enter` for inserting a real newline.
 - When thread-edit mode is active, focused `Enter` attempts edit commit instead of ordinary turn start, active-turn steering, or compaction-time queueing.
 - When thread-edit mode is active and no higher-priority popup handles `Escape`, focused `Escape` cancels edit mode without mutating the draft buffer, image markers, caret, selection, or undo history.
@@ -161,9 +180,10 @@ confusing current drafts with submitted transcript history or image identity.
 - Image paste exposes ready, paste-pending, and unavailable outcomes. A ready paste of supported
   image clipboard content inserts one compact marker at the captured caret or replaces the captured
   selection. Paste-pending preserves the prior draft, caret, selection, labels, and exact local
-  paste intent through reconciliation. Proven success publishes the complete marker edit; proven
-  noncommit leaves the prior draft authoritative. A terminally unavailable paste follows Durable
-  Mutation Reconciliation and does not present the unchanged draft as proof of noncommit. An
+  paste intent through reconciliation. Proven success adopts the complete marker edit into the
+  active editor's candidate lineage; autosave or flush separately publishes the current-draft
+  selector. Proven noncommit leaves the prior draft authoritative. A terminally unavailable paste
+  follows Durable Mutation Reconciliation and does not present the unchanged draft as proof of noncommit. An
   ordinary unavailable or failed pre-admission paste reports the reason and leaves the draft
   unchanged.
 - Labels follow the visible sequence `A`, `B`, `C`, continuing spreadsheet-style when needed. A
@@ -213,6 +233,9 @@ confusing current drafts with submitted transcript history or image identity.
 
 ## Submission And Queuing
 
+- Submission first flushes the newest adopted editor state and prepares input from that exact
+  published draft. If a later edit changes the editor before acceptance, preparation from the older
+  draft is ineligible and cannot clear or submit the newer content.
 - Immediately before Beryl accepts work that will start a new turn, it must be able to confirm
   sufficient storage capacity. A below-reserve, unavailable, or indeterminate result rejects the
   attempt before acceptance or backend delivery. Direct submission preserves the exact current
@@ -223,7 +246,10 @@ confusing current drafts with submitted transcript history or image identity.
 - While the selected thread has a repair-pending turn, successor submission is unavailable with the
   current draft intact. Input already accepted for a later turn remains visible and queued until
   the affected turn is repaired or resolves as incomplete.
-- When a non-empty draft is accepted for submission, it clears immediately and appears in the transcript as one distinct user input fragment.
+- When a non-empty draft is accepted for submission, its send, editor/session clear, and undo/redo-
+  frontier clear are one coherent result; it clears immediately and appears in the transcript as
+  one distinct user input fragment. No rejected, cancelled, failed, conflicting, or ambiguous
+  attempt clears any of them.
 - Rejected submissions, including empty drafts, backend-unavailable targets, pre-admission resource
   rejection, or image/submission preparation failure before acceptance, keep the draft intact and
   report the rejection.

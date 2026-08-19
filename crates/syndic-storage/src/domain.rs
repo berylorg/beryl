@@ -6,7 +6,7 @@ use beryl_home_store::{
 };
 use beryl_model::DomainRevision;
 
-use crate::{codec::*, error::SyndicValidationError};
+use crate::{codec::*, draft_piece::*, error::SyndicValidationError};
 
 const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<ThreadsCodec>(KeyspaceSchemaVersion::new(1)),
@@ -15,6 +15,17 @@ const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<ThreadUsageCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ThreadCatalogSummariesCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftPieceRootsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftPieceNodesCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftPieceLeavesCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftMarkerIdentityIndexCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftPieceBuildsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftPieceBuildFragmentsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftPieceBuildProgressCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftPieceSettlementsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftEditorCandidateSessionsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftComposerBuildsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftComposerMaterializationsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ContentManifestsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ContentChunksCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ContentByteSpansCodec>(KeyspaceSchemaVersion::new(1)),
@@ -71,7 +82,7 @@ const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<CasTurnIndexCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ProviderObservationChunksCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 61] = [(); V5_FAMILIES.len()];
+const _: [(); 72] = [(); V5_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
 pub(crate) fn v5_family_names() -> impl Iterator<Item = &'static str> {
@@ -107,6 +118,17 @@ impl StorageDomain for SyndicDomain {
         classify!(ThreadUsageCodec);
         classify!(ThreadCatalogSummariesCodec);
         classify!(DraftsCodec);
+        classify!(DraftPieceRootsCodec);
+        classify!(DraftPieceNodesCodec);
+        classify!(DraftPieceLeavesCodec);
+        classify!(DraftMarkerIdentityIndexCodec);
+        classify!(DraftPieceBuildsCodec);
+        classify!(DraftPieceBuildFragmentsCodec);
+        classify!(DraftPieceBuildProgressCodec);
+        classify!(DraftPieceSettlementsCodec);
+        classify!(DraftEditorCandidateSessionsCodec);
+        classify!(DraftComposerBuildsCodec);
+        classify!(DraftComposerMaterializationsCodec);
         classify!(ContentManifestsCodec);
         classify!(ContentChunksCodec);
         classify!(ContentByteSpansCodec);

@@ -5,16 +5,6 @@
 //! domain uses the one physical [`beryl_home_store`] database and never exposes
 //! Fjall, encoded records, or a second store to callers. Cross-package stable
 //! identities and revisions remain owned by [`beryl_model`].
-//! [`idle_submission_max_footprint`] and [`accepted_input_promotion_max_footprint`] expose the
-//! checked maximum V5 record/key/value shapes for the two durable new-turn starts. Callers pass
-//! those opaque typed participants to `beryl-home-store`; they never supply a byte estimate.
-//!
-//! ```
-//! let footprint = syndic_storage::idle_submission_max_footprint()?;
-//! let _ = footprint;
-//! # Ok::<(), beryl_home_store::DurableStartFootprintError>(())
-//! ```
-//!
 //! # Registration and validation
 //!
 //! [`SyndicStorage::register`], [`SyndicStorage::reacquire`], and
@@ -194,57 +184,6 @@
 //! A recovered generation is reacquired with [`SyndicStorage::reacquire`]; old
 //! handles cannot authorize reads or command receipts in the replacement generation.
 //!
-//! # Ordinary threads and durable drafts
-//!
-//! Thread creation contributes one mutually consistent thread/draft aggregate plus its canonical
-//! empty content to one revision-checked [`beryl_home_store::HomeCommand`]. The caller owns natural
-//! identities and can reconcile an ambiguous admitted result with
-//! [`SyndicStorage::thread_creation_status`]. [`SyndicStorage::current_draft`]
-//! returns an index-stabilized thread/draft pair; [`DraftPayloadUpdate::prepare`]
-//! returns an explicit no-change result instead of scheduling an unchanged write.
-//!
-//! ```no_run
-//! use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
-//! use beryl_model::{
-//!     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
-//!     SyndicDraftId, SyndicThreadId,
-//! };
-//! use syndic_storage::{CreateThread, SyndicStorage, SyndicTimestamp};
-//!
-//! # fn example(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-//! let mut home = HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))?;
-//! let syndic = SyndicStorage::register(&mut home)?;
-//! let creation = CreateThread::ordinary(
-//!     SyndicThreadId::from_bytes([1; 16]),
-//!     SyndicDraftId::from_bytes([2; 16]),
-//!     ExecutionBinding::new(
-//!         RuntimeId::from_bytes([3; 16]),
-//!         RootId::from_bytes([4; 16]),
-//!         RuntimeNativePath::from_admitted(
-//!             RuntimeMode::host(),
-//!             PathFlavor::Windows,
-//!             "C:\\beryl-syndic-example",
-//!         )?,
-//!     ),
-//!     SyndicTimestamp::from_unix_millis(1),
-//! );
-//! let mut command = HomeCommand::new(home.home_revision()?);
-//! command.add(syndic.create_thread(syndic.revision(&home)?, creation))?;
-//! match home.execute(command) {
-//!     CommandOutcome::NotCommitted { evidence } => return Err(evidence.into()),
-//!     CommandOutcome::Committed { receipt, later_failure } => {
-//!         let _exact_receipt = receipt;
-//!         if let Some(failure) = later_failure { return Err(failure.into()); }
-//!     }
-//!     CommandOutcome::Indeterminate { failure, reconciliation } => {
-//!         reconciliation.install();
-//!         return Err(failure.into());
-//!     }
-//! }
-//! # Ok(())
-//! # }
-//! ```
-//!
 //! # Compact catalog summaries
 //!
 //! [`SyndicStorage::prepare_thread_catalog_summary`] stabilizes canonical title, attributes,
@@ -283,59 +222,6 @@
 //!         }
 //!     }
 //!     None => {}
-//! }
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! # Input admission and exact reconciliation
-//!
-//! Admission requests name the exact current content and all caller-owned result
-//! identities. After an ambiguous admitted outcome, callers verify the same home
-//! and use [`SyndicStorage::idle_submission_status`] or
-//! [`SyndicStorage::accepted_input_status`] before publishing success or retrying.
-//! Non-idle commits persist a complete [`AcceptedInputAdmissionProof`]; its checked
-//! construction keeps source and replacement drafts distinct, while
-//! [`AcceptedInputRecord`] binds the accepted identity to the source draft. Exact
-//! accepted reconciliation remains valid across later mutable route, gate, lifecycle,
-//! and replacement-draft descendants.
-//!
-//! ```no_run
-//! use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
-//! use beryl_model::{InputGateRevision, SyndicDraftId, SyndicItemId};
-//! use syndic_storage::{
-//!     IdleSubmission, SyndicCurrentDraft, SyndicStorage, SyndicTimestamp,
-//! };
-//!
-//! # fn admit(
-//! #     home: &HomeStore,
-//! #     syndic: SyndicStorage,
-//! #     current: &SyndicCurrentDraft,
-//! # ) -> Result<(), Box<dyn std::error::Error>> {
-//! let submission = IdleSubmission::new(
-//!     current.thread().id(),
-//!     current.thread().revision(),
-//!     current.draft().id(),
-//!     current.draft().revision(),
-//!     current.draft().content(),
-//!     InputGateRevision::new(1)?,
-//!     SyndicDraftId::from_bytes([3; 16]),
-//!     SyndicItemId::from_bytes([4; 16]),
-//!     None,
-//!     SyndicTimestamp::from_unix_millis(2),
-//! );
-//! let mut command = HomeCommand::new(home.home_revision()?);
-//! command.add(syndic.submit_idle_draft(syndic.revision(home)?, submission))?;
-//! match home.execute(command) {
-//!     CommandOutcome::NotCommitted { evidence } => return Err(evidence.into()),
-//!     CommandOutcome::Committed { receipt, later_failure } => {
-//!         let _exact_receipt = receipt;
-//!         if let Some(failure) = later_failure { return Err(failure.into()); }
-//!     }
-//!     CommandOutcome::Indeterminate { failure, reconciliation } => {
-//!         reconciliation.install();
-//!         return Err(failure.into());
-//!     }
 //! }
 //! # Ok(())
 //! # }
@@ -901,6 +787,7 @@ mod codec;
 mod compaction;
 mod content;
 mod domain;
+mod draft_piece;
 mod error;
 mod footprint;
 mod membership;
@@ -927,19 +814,19 @@ pub use compaction::{
 };
 pub use content::{ComposerContentAssembler, PreparedContent};
 pub use domain::SyndicStorage;
+pub use draft_piece::*;
 pub use error::{RecoveryBudgetKind, RecoveryProjectionError, SyndicReadError, SyndicRecordError};
 pub use footprint::{accepted_input_promotion_max_footprint, idle_submission_max_footprint};
 pub use mutation::{
     AbandonActiveBinding, AbandonCompactionOperation, AbandonStopOperation,
-    AcceptGeneratedThreadTitle, AcceptedInputAdmission, AcceptedInputPromotionStatus,
-    ActivateBinding, ActiveCasTurnPublicationStatus, AdmitCompactionOperation, AdmitStopOperation,
+    AcceptGeneratedThreadTitle, AcceptedInputPromotionStatus, ActivateBinding,
+    ActiveCasTurnPublicationStatus, AdmitCompactionOperation, AdmitStopOperation,
     AdvanceItemProjectionBuild, AdvanceTranscriptBuild, ArchiveBranchDiscussionThread,
     BeginAcceptedInputDelivery, BindingPublicationStatus, CONTENT_APPEND_MAX_CHUNKS,
-    CancelBindingActivation, CancelReplacementEdit, ClaimCompactionDispatch, ClaimStopDispatch,
-    CompactionProviderEvent, CompleteAcceptedInputDelivery, CompleteTerminalHistory, ContentAppend,
-    ContentBuild, CreateThread, CreateThreadError, DraftPayloadUpdate, DraftPayloadUpdateDecision,
-    ExactRejectedInputDelivery, FinalizeNextTurnItem, FreezeNextTurnItem, IdleSubmission,
-    InputAdmissionStatus, JoinStopCause, LiveSourceEvent, LiveSourceEventStatus,
+    CancelBindingActivation, ClaimCompactionDispatch, ClaimStopDispatch, CompactionProviderEvent,
+    CompleteAcceptedInputDelivery, CompleteTerminalHistory, ContentAppend, ContentBuild,
+    CreateThread, CreateThreadError, ExactRejectedInputDelivery, FinalizeNextTurnItem,
+    FreezeNextTurnItem, JoinStopCause, LiveSourceEvent, LiveSourceEventStatus,
     PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS, PreparedProviderFrame, PromoteAcceptedInput,
     ProviderCompletionComparisonMutationError, ProviderFrameMutationError,
     ProviderFramePreparationError, ProviderFramePreparationPlan, ProviderFrameStageBatch,
@@ -949,9 +836,8 @@ pub use mutation::{
     PublishCompactionRequestDisposition, PublishStaleBinding, PublishThreadUsage,
     PublishUnboundBinding, PublishValidBinding, RetryAcceptedInputDelivery,
     SafelyReopenStopOperation, SealLifecycleContinuationContent, SettleCompactionOperation,
-    SettleLifecycleCompaction, StartItemProjectionBuild, StartReplacementEdit,
-    StartTranscriptBuild, SteeringRejection, SyndicMutationError, ThreadCreationStatus,
-    prepare_provider_frame, stage_provider_frame,
+    SettleLifecycleCompaction, StartItemProjectionBuild, StartTranscriptBuild, SteeringRejection,
+    SyndicMutationError, ThreadCreationStatus, prepare_provider_frame, stage_provider_frame,
 };
 pub use native_projection::{
     NativeProjectionBasis, NativeProjectionError, NativeProjectionPlan, NativeProjectionRequest,

@@ -142,10 +142,6 @@ impl ProjectionConnectionService {
             command_gate,
             command_authorizer,
             persistent_failure: Some(persistent_failure),
-            #[cfg(test)]
-            admission_reconciliation_failures: AtomicUsize::new(0),
-            #[cfg(test)]
-            admission_reconciliation_pause: Arc::new(Mutex::new(None)),
             connections,
             stop_coordinator,
             context_compaction: Some(context_compaction),

@@ -1,11 +1,10 @@
 use beryl_home_store::HomeStore;
 use beryl_model::{DomainRevision, ExecutionBinding, SyndicThreadId, SyndicTurnId};
 
+use crate::draft_piece::DraftPieceRootsFamily;
 use crate::{
-    CanonicalItemKind, ContentLifecycle, ContentManifestRecord, CreateThread, DraftByThreadRecord,
-    DraftRecord, HistorySummaryRecord, IdleSubmission, InputAdmissionStatus, SelectedPathProof,
+    CreateThread, DraftByThreadRecord, DraftRecord, HistorySummaryRecord, SelectedPathProof,
     SyndicReadError, SyndicTimestamp, ThreadCatalogTitle, ThreadCreationStatus, ThreadRecord,
-    TurnItemOrdinal, TurnKind,
     catalog_title::{
         HistoryTitlePath, HistoryTitleReadError, StoreTitleSnapshot, derive_history_title,
     },
@@ -13,14 +12,14 @@ use crate::{
     domain::SyndicStorage,
 };
 
-use super::{SyndicPointReadLimit, admission::*};
+use super::SyndicPointReadLimit;
 
 /// One index-stabilized current thread/draft pair.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SyndicCurrentDraft {
     thread: ThreadRecord,
     draft: DraftRecord,
-    content: ContentManifestRecord,
+    root: crate::DraftPieceRootRecordV1,
 }
 
 impl SyndicCurrentDraft {
@@ -35,8 +34,8 @@ impl SyndicCurrentDraft {
     }
 
     #[must_use]
-    pub const fn content(&self) -> &ContentManifestRecord {
-        &self.content
+    pub const fn root(&self) -> &crate::DraftPieceRootRecordV1 {
+        &self.root
     }
 }
 
@@ -107,9 +106,9 @@ impl SyndicStorage {
             self.point::<DraftsFamily>(store, index.draft_id(), limit)?,
             "current draft record is missing",
         )?;
-        let content = required(
-            self.point::<ContentManifestsFamily>(store, draft.content().id(), limit)?,
-            "current draft content manifest is missing",
+        let root = required(
+            self.point::<DraftPieceRootsFamily>(store, draft.piece_root().key(), limit)?,
+            "current draft piece root is missing",
         )?;
         let second = required(
             self.point::<DraftByThreadFamily>(store, thread_id, limit)?,
@@ -118,11 +117,11 @@ impl SyndicStorage {
         if second != index {
             return Err(concurrent("current-draft read"));
         }
-        validate_current(&thread, &draft, &content, &index)?;
+        validate_current(&thread, &draft, &root, &index)?;
         Ok(Some(SyndicCurrentDraft {
             thread,
             draft,
-            content,
+            root,
         }))
     }
 
@@ -195,19 +194,11 @@ impl SyndicStorage {
         let catalog_summary =
             self.point::<ThreadCatalogSummariesFamily>(store, creation.thread_id(), limit)?;
         let draft = self.point::<DraftsFamily>(store, creation.draft_id(), limit)?;
-        let content =
-            self.point::<ContentManifestsFamily>(store, expected.content_manifest.id(), limit)?;
-        let mut content_chunks = Vec::with_capacity(expected.content_chunks.len());
-        for chunk in &expected.content_chunks {
-            content_chunks.push(self.point::<ContentChunksFamily>(
-                store,
-                ContentChunkKey {
-                    owner: chunk.content_id(),
-                    ordinal: chunk.ordinal(),
-                },
-                limit,
-            )?);
-        }
+        let root = self.point::<DraftPieceRootsFamily>(
+            store,
+            expected.draft_piece_root.reference().key(),
+            limit,
+        )?;
         let index = self.point::<DraftByThreadFamily>(store, creation.thread_id(), limit)?;
         let head = self.point::<TranscriptHeadsFamily>(store, creation.thread_id(), limit)?;
         let transcript_build = match &expected.transcript_build {
@@ -254,6 +245,7 @@ impl SyndicStorage {
             && usage.is_none()
             && catalog_summary.is_none()
             && draft.is_none()
+            && root.is_none()
             && index.is_none()
             && head.is_none()
             && transcript_build.is_none()
@@ -273,11 +265,7 @@ impl SyndicStorage {
             && matches_record(usage, &expected.usage)
             && matches_record(catalog_summary, &expected.catalog_summary)
             && matches_record(draft, &expected.draft)
-            && matches_record(content, &expected.content_manifest)
-            && content_chunks
-                .into_iter()
-                .zip(&expected.content_chunks)
-                .all(|(stored, expected)| matches_record(stored, expected))
+            && matches_record(root, &expected.draft_piece_root)
             && matches_record(index, &expected.draft_index)
             && matches_record(head, &expected.transcript_head)
             && match (&expected.transcript_build, transcript_build) {
@@ -298,104 +286,12 @@ impl SyndicStorage {
             ThreadCreationStatus::Collision
         })
     }
-
-    /// Reconciles one idle submission through its draft-derived immutable identities.
-    pub fn idle_submission_status(
-        &self,
-        store: &HomeStore,
-        submission: &IdleSubmission,
-        limit: SyndicPointReadLimit,
-    ) -> Result<InputAdmissionStatus, SyndicReadError> {
-        let before = self.revision(store)?;
-        let draft = self.point::<DraftsFamily>(store, submission.draft_id(), limit)?;
-        let turn = self.point::<TurnsFamily>(store, submission.submitted_turn_id(), limit)?;
-        let accepted = self.point::<AcceptedInputsFamily>(
-            store,
-            submission.draft_id().accepted_input_id(),
-            limit,
-        )?;
-        let item = self.point::<CanonicalItemsFamily>(store, submission.user_item_id(), limit)?;
-        let current = self.current_draft(store, submission.thread_id(), limit)?;
-        let gate = self.input_gate(store, submission.thread_id(), limit)?;
-        if before != self.revision(store)? {
-            return Err(concurrent("idle-submission reconciliation"));
-        }
-        if draft_matches_submission(draft.as_ref(), submission)
-            && turn.is_none()
-            && accepted.is_none()
-            && item.is_none()
-        {
-            return Ok(InputAdmissionStatus::Absent);
-        }
-        let exact_turn = turn.as_ref().is_some_and(|stored| {
-            let turn = stored;
-            turn.id() == submission.submitted_turn_id()
-                && turn.origin_thread_id() == submission.thread_id()
-                && turn.kind() == TurnKind::OrdinaryUser
-                && turn.submitted_at() == submission.admitted_at()
-        });
-        let exact_item = item.as_ref().is_some_and(|stored| {
-            let item = stored;
-            item.id() == submission.user_item_id()
-                && item.turn_id() == submission.submitted_turn_id()
-                && item.ordinal() == TurnItemOrdinal::FIRST
-                && item.kind() == CanonicalItemKind::UserInput
-                && item.source_event().is_none()
-                && item.cas_source().is_none()
-                && item.presentation_content() == Some(submission.expected_content())
-                && item.presentation().asset_reference_set() == submission.asset_reference_set()
-        });
-        let exact_current = current.as_ref().is_some_and(|current| {
-            replacement_draft_matches(
-                current,
-                submission.expected_thread_revision(),
-                submission.next_draft_id(),
-                submission.admitted_at(),
-            ) && current.thread().committed_tail() == Some(submission.submitted_turn_id())
-        });
-        let exact_gate = gate.as_ref().is_some_and(|stored| {
-            submission.expected_gate_revision().checked_next().ok() == Some(stored.revision())
-                && stored.state()
-                    == &crate::InputGateState::PendingTurn(submission.submitted_turn_id())
-        });
-        Ok(
-            if draft.is_none()
-                && accepted.is_none()
-                && exact_turn
-                && exact_item
-                && exact_current
-                && exact_gate
-            {
-                InputAdmissionStatus::ExactSubmitted
-            } else {
-                InputAdmissionStatus::Collision
-            },
-        )
-    }
-}
-
-pub(super) fn replacement_draft_matches(
-    current: &SyndicCurrentDraft,
-    expected_thread_revision: beryl_model::ThreadRevision,
-    next_draft_id: beryl_model::SyndicDraftId,
-    admitted_at: SyndicTimestamp,
-) -> bool {
-    expected_thread_revision.checked_next().ok() == Some(current.thread().revision())
-        && current.draft().id() == next_draft_id
-        && current.draft().revision().get() == 1
-        && matches!(
-            current.draft().submission_intent(),
-            crate::DraftSubmissionIntent::Ordinary
-        )
-        && current.draft().created_at() == admitted_at
-        && current.draft().updated_at() == admitted_at
-        && current.draft().content().summary().atom_count() == 0
 }
 
 fn validate_current(
     thread: &ThreadRecord,
     draft: &DraftRecord,
-    content: &ContentManifestRecord,
+    root: &crate::DraftPieceRootRecordV1,
     index: &DraftByThreadRecord,
 ) -> Result<(), SyndicReadError> {
     if thread.current_draft_id() != draft.id()
@@ -404,8 +300,7 @@ fn validate_current(
         || index.draft_id() != draft.id()
         || index.draft_revision() != draft.revision()
         || index.thread_revision() != thread.revision()
-        || content.lifecycle() != ContentLifecycle::Sealed
-        || content.sealed_reference() != Some(draft.content())
+        || root.reference() != draft.piece_root()
     {
         return Err(SyndicReadError::Invariant(
             "thread, current draft, and reverse index disagree",

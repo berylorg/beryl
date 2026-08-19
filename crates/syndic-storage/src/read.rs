@@ -1,7 +1,6 @@
 mod accepted_delivery;
 mod accepted_next;
 mod accepted_ready;
-mod admission;
 mod binding;
 mod capture;
 mod capture_text;
@@ -70,13 +69,13 @@ use beryl_model::{
 use crate::{AcceptedInputRecord, ProjectionTextSource, SyndicReadError};
 use crate::{
     ActiveCasTurnRecord, BindingHeadRecord, BindingRecord, CanonicalItemRecord,
-    CasThreadIndexRecord, CasTurnIndexRecord, ContentManifestRecord, ContextEnvelopeRecord,
-    DraftRecord, ExecutionSnapshotRecord, HistorySummaryRecord, InputGateRecord,
-    ItemProjectionBuildRecord, ItemProjectionHeadRecord, ItemProjectionSetRecord, ProjectionRecord,
-    ResourceMetadataRecord, SourceEventRecord, StopOperationId, StopOperationRecord,
-    ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadUsageRecord,
-    TranscriptBuildRecord, TranscriptViewHeadRecord, TurnRecord, TurnStateRecord, codec::*,
-    domain::SyndicStorage,
+    CasThreadIndexRecord, CasTurnIndexRecord, ContentLifecycle, ContentManifestRecord,
+    ContextEnvelopeRecord, DraftRecord, ExecutionSnapshotRecord, HistorySummaryRecord,
+    InputGateRecord, ItemProjectionBuildRecord, ItemProjectionHeadRecord, ItemProjectionSetRecord,
+    ProjectionRecord, ResourceMetadataRecord, SourceEventRecord, StopOperationId,
+    StopOperationRecord, ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord,
+    ThreadUsageRecord, TranscriptBuildRecord, TranscriptViewHeadRecord, TurnRecord,
+    TurnStateRecord, codec::*, domain::SyndicStorage,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -251,7 +250,18 @@ impl SyndicStorage {
         id: SyndicContentId,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<ContentManifestRecord>, SyndicReadError> {
-        self.point::<ContentManifestsFamily>(store, id, limit)
+        let manifest = self.point::<ContentManifestsFamily>(store, id, limit)?;
+        if matches!(
+            manifest.as_ref(),
+            Some(manifest)
+                if manifest.owner().is_none()
+                    && manifest.lifecycle() != ContentLifecycle::Sealed
+        ) {
+            return Err(SyndicReadError::Invariant(
+                "ownerless content is unavailable before seal",
+            ));
+        }
+        Ok(manifest)
     }
     pub fn context_envelope(
         &self,

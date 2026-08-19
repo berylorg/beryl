@@ -22,6 +22,7 @@ use binding::*;
 pub(crate) use compaction::*;
 pub(crate) use content::*;
 use core_record::*;
+pub(crate) use core_record::{decode_draft_record, encode_draft_record};
 pub(crate) use input_gate::*;
 use projection::*;
 use projection_build::*;

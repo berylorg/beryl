@@ -5,6 +5,7 @@ use beryl_model::{
 };
 use sha2::{Digest, Sha256};
 
+use crate::draft_piece::DraftPieceRootsFamily;
 use crate::{
     ContentEncoding, ContentLifecycle, codec::*, domain::SyndicDomain, error::SyndicValidationError,
 };
@@ -334,7 +335,15 @@ fn validate_draft_references(
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<(), SyndicValidationError> {
     scan::<DraftsFamily>(reader, |_, draft| {
-        require_sealed_reference(reader, draft.content(), ContentEncoding::ComposerV1)
+        let root = require::<DraftPieceRootsFamily>(
+            reader,
+            &draft.piece_root().key(),
+            "draft piece root is missing",
+        )?;
+        if root.reference() != draft.piece_root() {
+            return invariant("draft piece root reference disagrees with its immutable record");
+        }
+        Ok(())
     })
 }
 

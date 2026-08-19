@@ -41,6 +41,21 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - Registration never gives a domain a raw database or keyspace handle.
 - Each live domain blueprint, handle, command contribution, and reacquired recovery registration carries the exact process-local Rust owner type. Each family likewise carries the exact process-local codec type. Stable names and schemas remain durable compatibility facts, but cannot impersonate either live Rust owner; neither `TypeId` is persisted.
 - Stable domain and family identifiers are bounded lowercase ASCII components. The persistent registry records the exact domain schema, complete sorted family declaration, exact family schemas, physical family names, and current domain revision; reopening rejects missing families or any incompatible declaration instead of creating or guessing it.
+- Persistent domain metadata has an 8-KiB stored-byte ceiling as its primary capacity bound and no
+  independent fixed family-count policy. Before allocating or iterating families, encoding and
+  decoding derive the conservative count ceiling as the lesser of the `u16` count maximum and the
+  number of minimum valid family entries that fit after the fixed envelope. In encoding V1 the
+  envelope is 26 bytes. Its minimum valid entry is 12 bytes: one byte of logical family identifier,
+  the five-byte minimum exact derived physical name `d.{domain}.{family}`, two one-byte string
+  lengths, and a four-byte nonzero schema. The derived ceiling is therefore 680 families. Decoding
+  rejects a malformed count above 680 before allocation or entry traversal, and allocation is
+  bounded by the validated count. Encoding applies the same derived ceiling before entry traversal.
+  Both paths then enforce the exact final 8-KiB ceiling, the `u16` count representation, the logical
+  identifiers' existing nonempty lowercase-ASCII component grammar and length bounds, every stored
+  string's 1-to-255-byte bound, the physical names' exact `d.{domain}.{family}` derivation and
+  declaration match, nonzero schemas, and complete exact declaration matching. Physical names
+  contain separators and are not themselves lowercase-ASCII components. The format admits a valid
+  73-family domain, while a 681-family count or any exact encoding above 8 KiB is rejected.
 - Routine open, reopen, and typed-handle reacquisition validate the exact live owner and codec
   types, durable declarations, required physical families, and generation. They do not run the
   exhaustive record or domain validator.

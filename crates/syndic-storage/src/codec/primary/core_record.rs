@@ -51,7 +51,7 @@ pub(super) fn decode_thread_record(bytes: &[u8]) -> Result<ThreadRecord, CodecEr
     Ok(value)
 }
 
-pub(super) fn encode_draft_record(value: &DraftRecord) -> Result<Vec<u8>, CodecError> {
+pub(crate) fn encode_draft_record(value: &DraftRecord) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
     enc_draft(&mut e, value.id());
     enc_thread(&mut e, value.thread_id());
@@ -70,37 +70,42 @@ pub(super) fn encode_draft_record(value: &DraftRecord) -> Result<Vec<u8>, CodecE
             enc_transcript_pos(&mut e, intent.transcript_entry().position());
         }
     }
-    enc_content_ref(&mut e, value.content());
+    crate::draft_piece::enc_root_reference(&mut e, value.piece_root());
     enc_timestamp(&mut e, value.created_at());
     enc_timestamp(&mut e, value.updated_at());
     Ok(e.finish())
 }
 
-pub(super) fn decode_draft_record(bytes: &[u8]) -> Result<DraftRecord, CodecError> {
+pub(crate) fn decode_draft_record(bytes: &[u8]) -> Result<DraftRecord, CodecError> {
     let mut d = Decoder::new(bytes);
+    let id = dec_draft(&mut d)?;
+    let thread_id = dec_thread(&mut d)?;
+    let revision = dec_draft_rev(&mut d)?;
+    let submission_intent = match d.u8()? {
+        0 => DraftSubmissionIntent::Ordinary,
+        1 => DraftSubmissionIntent::DiscussionContext(dec_context_owner(&mut d)?),
+        2 => DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
+            dec_turn(&mut d)?,
+            dec_selected_path(&mut d)?,
+            CurrentTranscriptEntryProof::new(
+                dec_transcript_generation(&mut d)?,
+                dec_transcript_pos(&mut d)?,
+            ),
+        )),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "draft submission intent",
+                tag,
+            });
+        }
+    };
+    let piece_root = crate::draft_piece::dec_root_reference(&mut d)?;
     let value = DraftRecord::new(
-        dec_draft(&mut d)?,
-        dec_thread(&mut d)?,
-        dec_draft_rev(&mut d)?,
-        match d.u8()? {
-            0 => DraftSubmissionIntent::Ordinary,
-            1 => DraftSubmissionIntent::DiscussionContext(dec_context_owner(&mut d)?),
-            2 => DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
-                dec_turn(&mut d)?,
-                dec_selected_path(&mut d)?,
-                CurrentTranscriptEntryProof::new(
-                    dec_transcript_generation(&mut d)?,
-                    dec_transcript_pos(&mut d)?,
-                ),
-            )),
-            tag => {
-                return Err(CodecError::InvalidTag {
-                    kind: "draft submission intent",
-                    tag,
-                });
-            }
-        },
-        dec_content_ref(&mut d)?,
+        id,
+        thread_id,
+        revision,
+        submission_intent,
+        piece_root,
         dec_timestamp(&mut d)?,
         dec_timestamp(&mut d)?,
     );
