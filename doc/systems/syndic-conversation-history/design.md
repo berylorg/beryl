@@ -63,7 +63,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   lineage traversal instead of copying a history-sized label map.
 - The visible submitted transcript path is obtained by walking immutable turn parents backward from the committed tail to a root. The current draft is excluded.
 - A current draft is a durable typed pre-submission metadata record with stable id and selector
-  revision, one exact immutable published combined draft-root reference, and one closed submission intent: ordinary,
+  revision, one exact immutable published combined draft-root reference, its exact published edit-
+  history frontier reference and retention-policy revision, and one closed submission intent: ordinary,
   branch-context, or replacement. The reference binds both the composite sequence piece-tree root
   and the persistent marker-identity-index root as one revision. Sequence leaves are UTF-8 text or
   zero-width image markers; each marker includes its stable identity, same-anchor order, and final
@@ -73,16 +74,20 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   the exact immutable envelope whose source turn is the branch point; a replacement intent names
   its exact target and selected-path proof. The closed intent makes those cases mutually exclusive.
 - Beryl transcript presentation may derive one synthetic readonly context group from that immutable envelope at the branch boundary. The group remains presentation-only and keeps stable semantic identity when first submission transitions the context-owning draft into a submitted turn.
-- Only the draft's published combined root, selector revision, and mutable timestamps change during
-  autosave or flush publication. Thread
-  owner and submission intent change only through their explicit typed operations; ordinary
-  selected-path parentage is not draft state.
+- Autosave or flush publication changes the draft's published combined-root/edit-history pair,
+  selector revision, and mutable timestamps. An explicit revision-checked sealed-content import may
+  instead select an imported root with its fresh-baseline history in the same atomic replacement-
+  edit or recall operation. Thread owner and submission intent change only through their explicit
+  typed operations; replacement start may atomically pair its intent change with that import, and
+  ordinary selected-path parentage is not draft state. No operation selects only a root or only a
+  history frontier.
 - A branch-context or replacement draft may exist only with an idle gate and zero live accepted
   work. Promotion's idle gate with positive next-turn work therefore proves that the untouched
   current draft is ordinary without reading or fencing its record.
 - Draft edits stage immutable combined sequence/index successors through bounded commands inside one
   explicitly identified durable editor-candidate session. One atomic candidate-adoption command
-  writes the immutable settlement and root and advances only that session's newest-candidate head;
+  writes the immutable settlement, root, and history transition and advances only that session's
+  newest candidate/history pair;
   widget `Committed` means this exact adoption, not current-draft publication. A separate autosave
   or flush publication may later select an eligible candidate as the durable current draft.
   Incomplete admitted staging remains unreachable from draft reads but stays under its session's
@@ -360,14 +365,17 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   same-anchor markers remain exact without assigning source bytes to markers. A bare byte offset is
   valid only when no gap choice is ambiguous. This contract carries no GPUI or widget type.
 - One draft edit transaction names the exact draft, editor-candidate session, predecessor candidate
-  revision and combined root, operation
-  identity, and a sequence of half-open composite replacement ranges. Ranges are strictly ordered and
+  revision and combined root, operation identity, exact predecessor caret and directed selection,
+  and a sequence of half-open composite replacement ranges. Ranges are strictly ordered and
   non-overlapping in the predecessor composite order; adjacency is permitted, every endpoint witness is
   validated against the predecessor combined root, and all replacements are interpreted simultaneously
   against that predecessor rather than shifted by earlier replacements. Inserted UTF-8 and marker leaves arrive
-  as bounded ordered fragments, marker moves are explicit removal-plus-insertion operations, and
-  the envelope names exact intended successor caret and selection positions or one exact mapping
-  for its captured base endpoints.
+  as bounded cursor pages with canonical cumulative identity and explicit finish-input, marker
+  moves are explicit removal-plus-insertion operations, and the envelope names exact intended
+  successor caret and directed selection or one exact mapping for its captured base endpoints.
+  Marker removals use predecessor coordinates; insertions and moves use successor-relative
+  composite coordinates and order so they may target newly inserted text. No whole-operation
+  fragment collection or hardcoded cumulative fragment count is transaction authority.
 - Two empty replacement ranges at the same composite position are invalid. Callers coalesce their
   inserted fragments into one replacement before staging; storage never invents a tie-breaker or
   lets fragment arrival order choose the successor. Other adjacent non-overlapping ranges remain
@@ -389,6 +397,14 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   inserted-piece, removal, insertion, and move-reconciliation facts. Neither record form embeds or
   retains the whole edit or payload. Construction never reconstructs, decodes, or writes the
   complete draft merely because one range changed.
+- Source and canonical-proposal pages carry positive per-page item and retained-byte ceilings,
+  exact cursors and ordinals, the prior cumulative identity, and canonical page bytes. Accepted
+  pages release their payload after their durable effect and cumulative identity are fixed. Exact
+  replay requires canonical byte and chain equality; conflicting cursor or operation reuse is a
+  collision. Small keystrokes take a one-page fast path through these same begin, finish, adoption,
+  and settlement rules. Total edit size may require any representable number of bounded commands
+  and is not limited by a resident collection, viewport dimensions, or an arbitrary 256/257-page
+  cap.
 - Every bounded begin, canonical-fragment stage, successor-construction advance, and terminal
   election names one exact expected source receipt, with `None` valid exactly when the target has
   transition ordinal one, and one
@@ -441,27 +457,75 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Before candidate adoption, the completed sequence and identity-index successors are cross-validated for
   equal marker count and exact stable occurrence-fact agreement across every changed marker and
   reused authenticated subtree commitment. The final revision-checked candidate-adoption command
-  atomically writes the combined successor root and summary, immutable settlement proof, and the
-  matching editor session's next candidate revision and newest-candidate frontier. It does not
-  advance the durable current-draft selector or published frontier. Its committed result returns
-  only that adopted candidate root, logical extent, and successor positions after their gap
+  atomically writes the combined successor root and summary, immutable settlement proof and history
+  transition, and the matching editor session's next candidate revision and newest candidate/
+  history pair. It does not advance the durable current-draft selector or published root/history
+  pair. Its committed result returns that adopted candidate root, matching history frontier, logical
+  extent, and successor positions after their gap
   witnesses validate against the new sequence tree; neither structure can publish independently.
 - Each editor-candidate session is keyed by exact draft and session identity and has one bounded
-  durable head. It retains only its immutable durable-base selector revision/root, latest published
-  candidate frontier, newest adopted candidate frontier, monotonic candidate/session and dirty
-  generations, active/disposed lifecycle facts, and one fixed-size optional active-operation
-  custody slot. The slot retains the exact operation id, canonical proposal identity, predecessor
+  durable head. It retains only its immutable durable-base selector revision and root/history pair;
+  distinct latest published candidate root/history and newest adopted candidate root/history
+  references with their exact candidate and frontier revisions; monotonic candidate/session and
+  dirty generations; active/disposed lifecycle facts; and one fixed-size optional active-operation
+  custody slot. Each history reference selects the root and generation beside it. The slot retains
+  the exact operation id, canonical proposal identity, predecessor
   candidate generation/root, and admitted build/receipt endpoint needed for point-readable
   recovery; it contains no proposal payload or receipt chain. Candidate settlements are exact predecessor-
   linked immutable operations validated by the package. The head contains no text, marker
   collection, whole edit, undo payload, or root graph and is not current-draft authority,
   transcript state, or routine reopen authority.
-- Candidate-head conflict supersedes only an edit build whose named predecessor is no longer the
-  session's exact newest candidate and adopts none of that edit. Cancellation before final-command
+- Each current draft selects an immutable published edit-history reference: the deterministic
+  canonical-empty reference, a named session/frontier publication snapshot, or a fresh-baseline
+  snapshot created with an atomic sealed-content import. Every form binds one exact selected root,
+  policy revision, and availability; a fresh baseline has no transition or stack heads and reports
+  undo and redo unavailable. Opening a fresh editor-candidate
+  session forks one compact durable edit-history frontier from that reference and never discovers
+  an unpublished frontier from an earlier session. Immutable
+  root-transition journal records contain only exact same-draft predecessor and successor combined
+  roots, before/after caret and directed selection, transition kind, compact lineage and replay
+  identity, and immutable stack links. They contain no copied inverse text, marker registry, root
+  graph, or document-sized payload. The frontier contains only current root, undo and redo heads,
+  retention floor and cumulative retained-byte facts, policy revision, and exact availability.
+- Every newly adopted ordinary candidate edit atomically appends its authenticated transition to
+  that journal, advances the history frontier to the successor root, and clears redo. Rejection,
+  conflict, cancellation, error, and indeterminate custody append nothing and preserve the exact
+  frontier. Autosave may publish the candidate and matching history frontier with the durable
+  current-draft selector, but it never derives history by scanning candidate roots or copying
+  inverse content.
+- Undo and redo authenticate the current frontier, selected immutable transition, same-draft root
+  ownership, and root membership in that frontier's retained lineage, then use one dedicated
+  historical-root adoption operation. It creates a new candidate generation that directly selects
+  the existing historical combined root, atomically records its one settlement and history action,
+  moves the durable undo/redo heads, and restores the transition's exact before or after caret and
+  directed selection. It never reconstructs a whole value, streams inverse text, decomposes the
+  action into multiple logical edits, or permits a detached root merely because its digest agrees.
+- Historical-root adoption has the same closed `Committed`, `Rejected`, `Conflict`, `Cancelled`,
+  and `Error` settlement family as ordinary edits. Replay requires the complete operation,
+  predecessor frontier, target transition, target root, selection, and successor frontier to
+  agree. Identity collision, frontier drift, missing or corrupt root, wrong-draft membership,
+  cancellation before command admission, late response, or indeterminate command custody fails
+  closed without advancing either candidate or history authority. One user undo or redo remains
+  one logical transaction and one terminal settlement even when validation and reconciliation take
+  multiple bounded commands.
+- The journal uses an explicit configurable durable encoded-byte budget and retention policy.
+  Transition records carry cumulative encoded-byte positions so bounded indexed seeks can advance
+  the oldest eligible floor without loading or walking complete history. Exhaustion evicts the
+  oldest eligible transitions, clears only undo or redo reachability that crosses the new floor,
+  and never blocks ordinary editing. The frontier reports exact undo and redo availability after
+  every adoption, eviction, publication, restart, rebind, and release. There is no document-size
+  rule or hardcoded entry-count limit.
+- Every retained undo or redo transition pins both referenced immutable combined roots and their
+  authenticated node closure against later garbage collection. Eviction removes the history pin
+  and availability only; physical root and journal reclamation belongs to the later explicit
+  garbage-collection design and must still honor current-draft, candidate-session, materialization,
+  submission, and other durable references.
+- Candidate-head conflict supersedes only an edit build whose named predecessor root/history pair is
+  no longer the session's exact newest pair and adopts none of that edit. Cancellation before final-command
   admission leaves the predecessor current;
   cancellation after admission cannot retract the result. Crash or an indeterminate final command
   remains nonterminal while it is reconciled from the operation identity, base and successor
-  combined roots, candidate revision, and complete paired-root summary. An exact retry returns the
+  combined-root/history pairs, candidate revision, and complete paired-root summary. An exact retry returns the
   already classified result only through the target-head and complete-closure check above; a
   disagreeing identity reuse can return only the occupied-identity
   `Error` proof defined below.
@@ -491,17 +555,17 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Every valid admitted edit transaction settles exactly once through the closed public outcomes
   `Committed`, `Rejected`, `Conflict`, `Cancelled`, or `Error`, and every replay that passes the
   target-head and complete-closure check returns its durable settlement proof. `Committed` returns
-  the exact adopted candidate revision, combined root, extent, and
+  the exact adopted candidate revision, combined root, matching edit-history frontier, extent, and
   successor positions. `Rejected` proves the envelope or a fragment was invalid before edit publication.
-  `Conflict` proves a different newest candidate predecessor and absence of this operation's adoption.
+  `Conflict` proves a different newest candidate/history predecessor and absence of this operation's adoption.
   `Cancelled` proves cancellation won the terminal election before publication. `Error` proves an
   operational failure and exact noncommit. That sole terminal settlement atomically clears the
   session's matching custody slot; a missing, different, or prematurely cleared slot is corruption,
   not noncommit or replay. The latter four publish none of the proposed
   replacement.
 - `Committed` writes the settlement proof atomically with both successor structures, the combined
-  root, session/candidate revision and newest-candidate advance, terminal progress receipt, and
-  committed build state, and clears the matching active-operation custody slot.
+  root, history transition/frontier, session/candidate revision and newest-pair advance, terminal
+  progress receipt, and committed build state, and clears the matching active-operation custody slot.
   It does not publish the current draft. Each no-change
   outcome atomically writes its settlement proof with the exact base/proposal facts, absence of an
   operation successor, outcome-
@@ -534,16 +598,19 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   paging remains a sequence-tree traversal. A current-root read separately stabilizes the mutable durable draft selector
   around that exact-root traversal and returns concurrent change rather than combining selections.
   Historical combined roots remain valid. An explicit live-session read may stabilize the named
-  candidate-session head and newest candidate, but routine startup and fresh activation never
+  candidate-session head and newest candidate/history pair, but routine startup and fresh activation never
   discover or adopt such a session. Restoration retains only the exact published combined-root
-  binding, compact positions and gap witnesses, scroll continuation, and bounded undo/redo
-  frontier; it never embeds the tree, a whole marker registry, or draft-sized inverse content.
+  binding, compact positions and gap witnesses, scroll continuation, and compact durable edit-
+  history frontier identity plus exact undo/redo availability; it never embeds the tree, a whole
+  marker registry, or draft-sized inverse content.
 - Fresh range-backed editor activation first stabilizes the durable thread/draft selector and exact
-  closed combined-root reference, then opens one caller-identified candidate session only if that
-  selector and root still match. The resulting exact session head repeats the durable-base selector
-  revision and complete root-build identity and initializes its published and newest frontiers to
-  that root. The active range source binds the exact draft, session, session generation, candidate
-  generation, complete root reference, and logical byte/line extent returned by that open; a digest,
+  closed combined-root/history pair, then opens one caller-identified candidate session only if that
+  complete selector pair still matches. The resulting exact session head repeats the durable-base
+  selector revision and complete root-build/history identities, initializes its published pair to
+  that immutable current-draft pair, and canonically forks its distinct newest live history frontier
+  at the same root and exact availability. The active range source binds the exact draft, session,
+  session generation, candidate generation, complete root/history pair, and logical byte/line extent
+  returned by that open; a digest,
   draft id, or selector revision alone cannot activate it. An identical canonical open against the
   identical active session returns `ExactReplay(head)`; the same request against the identical
   disposed session returns `StaleDisposed(head)`. Reuse of that session identity with different
@@ -573,22 +640,26 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   descents and successor/predecessor steps, never a whole-anchor or whole-draft marker scan.
 - Exact-root operations remain valid for immutable historical roots. Current-root wrappers stabilize
   the complete thread/draft/reverse selector set before and after the exact-root operation;
-  candidate-root wrappers stabilize the exact named active session head and candidate frontier.
+  candidate-root wrappers stabilize the exact named active session head and candidate/history pair.
   Neither wrapper can combine facts selected from different revisions. Malformed coordinates,
   cursors, UTF-8, limits, order, ranges, edge facts, or continuations are rejected; stale binding,
   session, candidate, or selector generations return stale or concurrent change as applicable;
   missing or digest-, summary-, owner-, build-identity-, or cross-index-inconsistent records fail
   closed as absence or invariant failure. No range-source request scans a whole draft or marker set,
   constructs an edit, publishes autosave state, materializes `ComposerV1`, or submits content.
-- Autosave snapshots one exact candidate frontier, then atomically advances the current-draft
-  selector and the same session's published frontier only if the draft's durable base and the
+- Autosave snapshots one exact candidate and matching edit-history frontier, then atomically
+  advances the current-draft selector/root/history triple and the same session's published
+  candidate/history pair only if the draft's durable base and the
   package-authenticated session lineage still match and the active-operation custody slot is
-  absent. Later edits may advance the newest candidate
-  during publication. Completion clears only its captured dirty generation; a newer candidate
+  absent. Its immutable receipt owns the captured pair and complete current-draft and session
+  before/after pairs; replay validates that closure rather than deriving history from the mutable
+  frontier. Later edits may advance the newest candidate/history pair
+  during publication. Completion clears only its captured dirty generation; a newer pair
   stays dirty. Validation point-reads the captured immutable settlement/frontier and the compact
   session head and never walks the candidate chain.
 - Candidate adoption does not advance the Beryl-state current-draft asset-owner head. Publication
-  atomically pairs the Syndic selector/session-frontier advance with exactly one Asset-domain case
+  atomically pairs the Syndic selector/root/history and session published-pair advance with exactly
+  one Asset-domain case
   against the single `CurrentDraft(draft id)` owner head: a changed marker set replaces that head
   with its newly sealed set, or removes it when the last marker is removed; an unchanged nonempty
   marker set uses a validation-only assertion of the existing exact head and proof and reuses its
@@ -596,24 +667,28 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   single head is absent. No per-root owner head or zero-marker synthetic set exists. Rejected,
   conflicting, cancelled, failed, superseded, or abandoned candidates never become durable asset
   owners, and their inert sets remain future-GC orphans.
-- The app host, not Syndic or the widget, owns the bounded undo/redo frontier. It advances only with
-  candidate adoption, preserves on every noncommit or indeterminate outcome, clears redo on a new
-  adopted ordinary edit, and moves one bounded entry only after adopted undo or redo. Autosave and
-  flush never mutate it. No session record contains inverse content or a root graph.
+- The app host coordinates undo and redo but does not own their authoritative history. Syndic owns
+  the durable transition journal and frontier; the widget retains only compact current availability
+  and one in-flight protocol session. Autosave and flush preserve exact frontier/root agreement and
+  never synthesize transitions. No app, widget, or session record contains inverse content, a
+  marker registry, or a root graph.
 - No typing, paste, deletion, marker edit, undo, redo, autosave, or dirty-draft flush constructs a
   full `ComposerV1` successor. Autosave publishes the already adopted combined candidate and does
   no work proportional to unchanged draft length. A flush drains an admitted publication,
   reconciles an ambiguous writer outcome by exact operation identity, and repeats from the newest
-  eligible dirty frontier until the session's published and candidate frontiers agree.
-- Fresh activation creates a new editor-candidate session from only the durable current-draft
-  selector. A crash may therefore lose all edits adopted after the last successful autosave while
-  preserving the last published draft exactly. Staging for a disposed old session may be an
+  eligible dirty pair until the session's published and newest candidate root/history pairs agree.
+- Fresh activation creates a new editor-candidate session from the durable current-draft selector
+  and its matching published edit-history frontier. It authenticates retained transitions and
+  exact availability without loading history or root graphs. A crash may therefore lose all edits
+  and journal actions after the last successful autosave while preserving the last published draft
+  and matching history frontier exactly. Staging for a disposed old session may be an
   unreachable orphan only when no transition ever admitted it or claimed that session's slot; an
   admitted operation must reach its one terminal settlement before clean disposal. An already
   disposed old session's unclaimed orphan records do not block a fresh session because every key is
   session-qualified. Ordinary switch, close, Exit, and submission flush before their transition.
-  Session disposal and every safe ownership release require equal published/candidate frontiers and
-  an absent custody slot; disposal then makes later candidate adoption or publication stale without
+  Session disposal and every safe ownership release require byte-equal published and newest
+  candidate root/history pairs and an absent custody slot; the disposal receipt owns that exact
+  equality and lifecycle transition. Disposal then makes later candidate adoption or publication stale without
   deleting immutable terminal roots or receipts.
 - Consumers that require canonical composer content use a separate bounded streamed
   materialization from one exact immutable combined root. The materializer walks sequence text and
@@ -634,15 +709,22 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   sealed exact result remains reusable by other canonical consumers naming that root, while a later
   draft root requires a distinct result.
 - Submission validates that the active candidate session is clean at the same published root used
-  by its materialization and has no active-operation custody. Only the atomic accepted send-and-clear transition disposes that session
-  and authorizes the app to clear its editor and undo/redo frontier. Rejection, conflict,
+  by its materialization, that its published and newest root/history pairs are equal, and that it has
+  no active-operation custody. Only the atomic accepted send-and-clear transition disposes that session
+  and atomically closes its durable edit-history frontier while authorizing the app to clear its
+  editor. Rejection, conflict,
   cancellation, error, or ambiguous writer custody preserves the coherent session/frontier until
   exact reconciliation.
 - When an existing sealed `ComposerV1` value becomes editable draft content, replacement and recall
   preparation stream it through bounded canonical text and marker reads into a new immutable piece-
-  tree and marker-identity index. Only a final revision-checked draft operation selects that
-  complete combined root; no reverse import flattens the value, exposes partial content, or changes
-  the submitted source.
+  tree and marker-identity index. Only a final revision-checked draft operation selects that complete
+  combined root and an immutable fresh-baseline history snapshot bound to the same draft, import,
+  and root. The import is not a text edit: undo and redo are both exactly unavailable until a later
+  ordinary edit appends a transition. The same command advances the import session's published and
+  newest pairs together to that baseline so it remains clean. Its receipt owns the complete
+  predecessor and successor current-draft and session root/history pairs; restart, restoration, and
+  fresh session open consume only the successor pair. No reverse import flattens the value, exposes partial content, changes the
+  submitted source, or infers history from root identity.
 
 ## Intrinsic Thread Properties
 

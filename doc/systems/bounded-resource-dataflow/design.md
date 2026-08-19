@@ -165,6 +165,19 @@ of every allocation made by Beryl or its dependencies.
 - GPUI receives only the realized transcript frame, bounded overscan, and explicitly retained
   nested-widget data. Scrolling does not accumulate one element, measurement, or shaped line per
   visited record.
+- Editor realization uses a configured retained-memory budget and a configured per-frame work
+  budget, not a budget computed from raw viewport pixel dimensions. Capacity credits are reserved
+  before text pages, object pages, shaped fragments, geometry, or publication state become
+  resident and are released on retirement, cancellation, supersession, rebind, or unmount.
+- Credit-gated editor realization prioritizes caret, IME, and directed-selection geometry, then the
+  active interaction or scroll anchor, then nearby content. Nominally visible regions that do not
+  fit are coalesced into bounded filler coverage; Beryl retains no demand record per missing line,
+  object, or pixel interval and exposes the typed capacity-saturated or viewport-exceeds-rendering-
+  capacity state to the owning feature.
+- Logical editor scroll extent comes from paged source indexes independently from the retained
+  projection. Interaction with filler re-anchors the target and admits only the next bounded fetch
+  and realization work. A large viewport may therefore require repeated bounded realization
+  without becoming a document-size or viewport-proportional residency obligation.
 - Large text records expose indexed source-byte ranges, and Beryl retains only the ranges needed
   for the realized frame and bounded overscan before presentation adaptation, syntax work, line
   layout, or `SharedString` construction would create an unreasonable whole-record working set.
@@ -173,6 +186,10 @@ of every allocation made by Beryl or its dependencies.
   remains available.
 - Render and prepaint paths consume prepared presentation data. They do not perform blocking
   storage, backend, filesystem, image decode, or full-history work.
+- The OS-window shell and renderer own rejection or clamping of an unrepresentable drawable
+  surface, framebuffer, or renderer allocation. The composer and transcript own only their bounded
+  retained projections and never reinterpret an external drawable-surface limit as a logical
+  content, edit, selection, or undo limit.
 
 ## Media, Files, And Clipboard
 
@@ -195,11 +212,28 @@ of every allocation made by Beryl or its dependencies.
 - Logically unbounded drafts are durably chunked and presented through revision-bound range and
   page sources. Editor activation, app state, undo, autosave, and rendering never require a whole-
   draft resident value or proportional duplicate.
+- Logical document, selection, edit, undo, and redo size is not capped by resident RAM, viewport
+  dimensions, a hardcoded cumulative fragment count, or a whole-operation collection. Fixed limits
+  apply to one source or proposal page, one durable command and record batch, resident working
+  sets, custody and request queues, and per-frame work. Large operations retain compact cursors and
+  make bounded progress over time through the same semantic transaction as small operations.
+- One edit session captures exact predecessor caret and directed selection, streams bounded source
+  and canonical proposal pages under cumulative replay identity, and finishes only through an
+  explicit authenticated end-of-input. Consumed payload pages are released after acceptance.
+  Replay, collision, cancellation, late response, and indeterminate reconciliation retain bounded
+  identity and custody state; one logical operation produces one terminal settlement and never a
+  partially visible prefix.
+- Ordinary small edits use bounded or logarithmic tree-path work and a low-latency page fast path
+  through that same protocol. They do not scan or rebuild the complete root. Large edits and
+  historical-root adoption may require more bounded commands, but remain cancellable before their
+  terminal commit and never require history-sized RAM.
 - Draft image-marker metadata remains paged or range-indexed. An editor realizes only the marker
   pages needed for its current ranges plus configured overscan; it does not materialize every
   marker merely because the draft is open.
-- Undo, history, autosave staging, image markers, and navigation histories use practical count or
-  byte limits. Limits protect the working set without redefining the durable logical content.
+- Undo, history, autosave staging, image markers, and navigation histories use practical byte,
+  page, queue, or operation limits. Undo retention uses its owning durable configurable byte budget
+  and explicit retention policy rather than document size or a hardcoded entry count. Limits
+  protect working sets and retained history without redefining durable logical content.
 - Window, popup, preview, background-session, and worker counts have explicit generous caps where
   unbounded creation could multiply substantial state. Ordinary small UI objects do not require a
   memory reservation protocol.

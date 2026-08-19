@@ -68,7 +68,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - The package exposes operations for constructing its opaque domain handle, creating threads and
   current drafts, opening, reading, publishing, and disposing bounded editor-candidate sessions,
   revisioned predecessor-linked combined sequence/index candidate transactions, bounded draft text
-  and marker reads, compact restoration validation, exactly-once durable candidate settlement and replay,
+  and marker reads, compact restoration validation, durable edit-history frontier reads and
+  retention, exactly-once ordinary transition append, direct authenticated historical-root
+  adoption for undo/redo, and exactly-once durable candidate settlement and replay,
   exact-root streamed `ComposerV1` materialization, atomic draft submission/replacement, accepted-input
   admission, revision-bound ready-steering source and candidate pages, revision-bound next-source
   pages, atomic accepted-input promotion and exact reconciliation, exact steering-delivery
@@ -188,7 +190,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   generation, connection generation, and monotonic provider-control ordinal. Usage publication
   requires the current valid or active route and cannot advance thread or attributes revisions.
 - A current-draft record stores stable draft identity, owning thread id, selector revision, one exact
-  immutable combined `DraftPieceRootReferenceV1`, one closed `DraftSubmissionIntent`, and timestamps. The
+  immutable combined `DraftPieceRootReferenceV1`, one exact published
+  `DraftEditHistoryFrontierReferenceV1`, one closed `DraftSubmissionIntent`, and timestamps. The
   intent is exactly `Ordinary`, `DiscussionContext` with its immutable context-owner identity, or
   `Replacement` with the exact target and bounded selected-transcript proof. It stores no ordinary
   or generic conversation parent. The context envelope itself occupies the separate
@@ -208,7 +211,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `DraftLogicalExtentV1` is the exact public pair of checked logical UTF-8 byte length and logical
   line count committed by a combined root. Its line count is zero exactly when byte length is zero
   and otherwise equals the committed checked newline count plus one. Every edit settlement,
-  candidate head, activation binding, range-source wrapper, and restoration request that names a
+  candidate root/history head, activation binding, range-source wrapper, and restoration request that names a
   logical extent uses this pair rather than a byte length alone.
 - V1 piece digests use domain-separated SHA-256 over canonical package encodings. A text leaf hashes
   its exact UTF-8 bytes and summary; a marker leaf hashes its stable identity, order key, final
@@ -299,9 +302,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `DraftEditorCandidateSessionIdV1` is an opaque caller-owned 16-byte identity.
   `DraftEditorCandidateSessionV1` is the one bounded mutable head keyed by exact 16-byte draft and
   session identities. It retains only the immutable opening durable-base selector
-  revision/root, the latest published candidate generation/root and matching selector revision,
-  the newest adopted candidate generation/root, monotonic session and dirty generations, and its
-  active or disposed lifecycle. It also has one fixed-size optional active-operation custody slot
+  revision plus root/history pair, the latest published candidate generation/root and matching
+  immutable published edit-history frontier reference plus selector revision, the newest adopted
+  candidate generation/root and matching exact live edit-history frontier revision reference,
+  monotonic session and dirty generations, and its active or disposed lifecycle. Each published or
+  newest root is valid only with its named history reference selecting that same root and candidate
+  generation. It also has one fixed-size optional active-operation custody slot
   containing the exact operation id, canonical proposal identity, predecessor candidate generation/
   root, and admitted build/progress endpoint required for point-readable recovery. It contains no
   proposal payload or receipt chain. The head contains no text, marker collection, whole edit, undo payload,
@@ -309,11 +315,58 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `draft-editor-candidate-sessions` family also holds bounded immutable open, publication, and
   disposal receipts keyed by their natural session/operation identities; these make exact replay
   and byte-disagreeing identity collision point-readable without growing the head.
+- `DraftEditHistoryTransitionV1` is one immutable compact same-draft root transition. It stores the
+  exact predecessor and successor combined-root references, before/after caret and directed
+  selection, ordinary-edit or history-action kind, predecessor journal link, undo/redo stack links,
+  canonical operation identity, cumulative encoded-byte position, and digest. It stores no inverse
+  text, marker registry, root graph, proposal payload, or copied root content. Both roots must
+  authenticate to the same draft and to the transition's retained lineage.
+- `DraftEditHistoryFrontierReferenceV1` is either the deterministic canonical-empty history for a
+  newly created empty draft or one exact immutable snapshot produced by a named editor-session
+  frontier publication or atomic sealed-content direct-root selection. The snapshot repeats its
+  selected root and candidate generation when applicable, retained journal/stack heads, floor,
+  budget and policy revision, and exact availability. A sealed-content direct-root selection
+  creates a fresh-baseline snapshot bound to that import operation and imported root, with no
+  transition or stack heads and both undo and redo unavailable. A current draft references only an
+  immutable form, never a mutable live-session head, and may never select a root without its matching
+  history reference.
+- Every operation that selects a root outside ordinary candidate publication selects its matching
+  history authority in the same atomic result. Canonical-empty draft creation selects canonical-
+  empty history. Replacement-edit and composer-history recall imports select a fresh-baseline
+  snapshot at the sealed imported root with exact `undo unavailable` and `redo unavailable` facts;
+  the import itself is not an undoable text transition. Undo and redo are the only direct candidate-
+  root selectors that preserve and move existing transition history, and they require the
+  authenticated retained transition described below. Any other root-only selection is invalid.
+- `DraftEditHistoryFrontierV1` is one bounded mutable record selected by an editor-candidate session.
+  It stores the exact current candidate root and generation, journal head, undo and redo heads,
+  oldest eligible transition, cumulative retained encoded bytes, configured budget and retention-
+  policy revision, monotonic frontier revision, and exact undo/redo availability. Its immutable
+  receipts make exact replay and byte-disagreeing frontier-operation collision point-readable.
+  Opening a fresh session forks its mutable head from the current draft's exact immutable published
+  reference; it never discovers or adopts an unpublished head from an earlier session.
+- An ordinary `Committed` candidate adoption writes the new transition and advances the candidate
+  session and history frontier in the same command. It clears redo and may advance the oldest-
+  eligible floor according to the configured durable byte budget. A no-change settlement changes
+  neither history record. The transition's cumulative encoded-byte position supports a bounded
+  indexed seek to the oldest eligible retained transition, so eviction does not scan history and
+  editing never waits for document-sized cleanup.
+- `DraftHistoricalRootAdoptionV1` is a dedicated immutable settlement keyed by draft, editor
+  session, and operation. It authenticates the source frontier, selected retained transition,
+  direction, same-draft target root, target caret and directed selection, and exact successor
+  candidate/history frontiers. `Committed` directly selects that existing immutable root under one
+  new candidate generation and atomically moves the undo/redo heads. `Rejected`, `Conflict`,
+  `Cancelled`, and `Error` prove exact noncommit. The command never constructs a root, accepts
+  detached digest membership, streams inverse bytes, or expands one undo into multiple edits.
+- Retained transitions are durable root pins. Advancing the eligibility floor removes undo/redo
+  reachability and the history pin but deletes no root, transition, node, or leaf; physical
+  reclamation remains unavailable until the future explicit garbage-collection design accounts for
+  every current-draft, candidate-session, materialization, submission, and history reference.
 - Each candidate edit or sealed-composer import has one `draft-piece-builds` record keyed by exact
   draft, session, and caller-owned operation identity, with a closed edit-successor or sealed-
   composer-import kind. An edit build retains the exact predecessor candidate generation and
-  combined root, canonical proposal-header bytes and digest, declared replacement and move
-  counts, next bounded fragment, sequence-path, identity-removal, identity-insertion, move-
+  combined root, predecessor caret and directed selection, canonical proposal-header bytes and
+  digest, cumulative checked replacement, move, item, and byte counts, next bounded source and
+  proposal cursors, explicit finish-input identity, sequence-path, identity-removal, identity-insertion, move-
   reconciliation, and cross-validation frontiers, compact checked summaries, and intended
   successor-position digest. A sealed-composer-import build additionally retains the exact sealed `ComposerV1` reference,
   canonical proposal-header bytes and digest, bounded canonical
@@ -353,14 +406,19 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `DraftPieceSettlementV1` is an immutable record keyed by draft, editor session, and operation
   identity. It repeats
   the canonical proposal-header bytes and digest, declared fragment count and terminal fragment-
-  chain commitment, exact predecessor candidate generation/combined root, optional exact build digest, terminal
+  chain commitment, exact predecessor candidate generation/combined root and history frontier,
+  optional exact build digest, terminal
   outcome, settlement-command source basis, terminal progress-receipt key and digest, that receipt's
   immediate-predecessor/root closure, and complete outcome-specific proof. `Committed`
-  stores the adopted successor candidate generation/combined root, paired summary, logical extent,
-  positions, adoption receipt, and terminal build digest. `Rejected` stores the closed invalid-envelope/
+  stores a closed edit-adoption or sealed-import-selection proof. Edit adoption stores the successor
+  candidate generation/combined root and history frontier, paired summary, logical extent,
+  positions, adoption receipt, and terminal build digest. Sealed-import selection instead stores
+  the imported root and fresh-baseline history reference, exact unavailable undo/redo facts, the
+  current-draft selector/root/history before and after triples, and the session published/newest
+  root/history pairs made equal by that same command. `Rejected` stores the closed invalid-envelope/
   fragment reason and exact
   absence of candidate adoption. `Conflict` stores the different newest candidate
-  generation/combined root observed by the writer and exact absence of candidate adoption.
+  generation/combined-root/history pair observed by the writer and exact absence of candidate adoption.
   `Cancelled` stores the pre-adoption cancellation-election witness and exact absence of candidate
   adoption. `Error` stores the closed operational reason plus exact absence of candidate adoption or the immutable occupied-
   identity canonical-byte comparison witness that proved this mismatching proposal was never
@@ -891,11 +949,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2;
   every other V5 family uses record V1. V5 is a clean replacement
   schema: no prior-record decoder, migration path, or compatibility adapter exists.
-- The 53 primary V5 families are `threads`, `thread-executions`, `thread-attributes`,
+- The 56 primary V5 families are `threads`, `thread-executions`, `thread-attributes`,
   `thread-usage`, `thread-catalog-summaries`, `drafts`, `draft-piece-roots`,
   `draft-piece-nodes`, `draft-piece-leaves`, `draft-marker-identity-index`,
   `draft-editor-candidate-sessions`, `draft-piece-builds`,
   `draft-piece-build-fragments`, `draft-piece-build-progress`, `draft-piece-settlements`,
+  `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
+  `draft-historical-root-adoptions`,
   `draft-composer-builds`,
   `draft-composer-materializations`,
   `content-manifests`,
@@ -910,8 +970,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `activity-query-heads`, `item-projection-heads`, `item-projection-sets`,
   `item-projection-builds`, `transcript-view-heads`, `transcript-builds`, `projections`,
   `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`.
-- `draft-marker-identity-index`, `draft-editor-candidate-sessions`, and
-  `draft-piece-build-progress` are distinct V5 primary families. The marker index uses tagged
+- `draft-marker-identity-index`, `draft-editor-candidate-sessions`,
+  `draft-piece-build-progress`, `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
+  and `draft-historical-root-adoptions` are distinct V5 primary families. The marker index uses tagged
   internal-node and leaf records, and the candidate-session family uses tagged head and immutable
   receipt records. Build progress instead requires its own append-only family so canonical proposal
   fragments remain the only values in `draft-piece-build-fragments`.
@@ -922,7 +983,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V5 inventory is exactly 53 primary plus 23 index families, or 76 total. A release
+- The complete V5 inventory is exactly 56 primary plus 23 index families, or 79 total. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
 - `draft-piece-roots`, `draft-piece-nodes`, `draft-piece-leaves`, and
@@ -965,15 +1026,41 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   mismatch is corruption. Explicit schema
   validation may compare every mapping in bounded pages; routine edit uniqueness never does so.
 - `draft-editor-candidate-sessions` uses canonical tagged V1 keys beneath one exact draft/session
-  prefix. Its mutable head repeats the key and only the bounded base, published, newest-candidate,
-  generation, dirty, lifecycle, and optional fixed-size active-operation custody facts defined
-  above. Immutable open, publication, and disposal
-  receipts repeat their exact operation identity and canonical request bytes, record the resulting
-  before/after head revisions, and make a differing reuse a typed occupied-identity collision. A
-  missing or mismatched frontier root, generation regression, published generation newer than the
-  candidate generation, selector revision/root disagreement after a recorded publication, or
-  disposed head that later advances is corruption. A newly opened head has no custody; a cleanly
-  disposed head must have no custody.
+  prefix. Its mutable head repeats the key and only the bounded durable-base, published, newest-
+  candidate, generation, dirty, lifecycle, and optional fixed-size active-operation custody facts
+  defined above. The base, published, and newest checkpoints each pair one exact candidate root with
+  one exact edit-history frontier reference; the published and newest history references are
+  distinct fields even when opening canonically derives equal root/history state for both.
+  Immutable open receipts own the complete initial paired checkpoints. Publication receipts own the
+  captured candidate/history pair, prior and successor current-draft selector/root/history triples,
+  and before/after session-head revisions and published pairs. Disposal receipts own the complete
+  final published/newest pairs and lifecycle transition. All receipts repeat their exact operation
+  identity and canonical request bytes and make a differing reuse a typed occupied-identity
+  collision. A missing or mismatched root/history pair, generation regression, published generation
+  newer than the candidate generation, selector root/history disagreement after a recorded
+  publication, or disposed head that later advances is corruption. A newly opened head has no
+  custody; a cleanly disposed head must have no custody and must have byte-equal published and newest
+  root/history pairs.
+- `draft-edit-history-frontiers` stores one bounded mutable V1 head per exact draft/editor session
+  plus deterministic canonical-empty references, immutable session-publication and sealed-import
+  fresh-baseline snapshots, and immutable operation receipts under tagged keys. Every immutable
+  reference repeats its selected root and exact availability. The head repeats the current candidate root
+  and generation, journal/undo/redo heads, oldest eligible cumulative-byte floor, retained encoded-
+  byte total, nonzero configured byte budget, retention-policy revision, frontier revision, and
+  exact availability. Unknown links, a current root that disagrees with the session, a retained
+  total above policy, or availability across the floor is invalid.
+- `draft-edit-history-transitions` stores immutable V1 compact transition and stack-link records
+  keyed by draft, editor session, and monotonic journal identity. Each transition repeats its exact
+  predecessor/successor same-draft root references, before/after caret and directed selection,
+  transition kind, prior journal and stack links, cumulative encoded-byte position, operation
+  identity, and digest. Cumulative positions are checked and strictly increasing. The family has no
+  codec field for inverse text, marker collections, root graphs, or document payloads.
+- `draft-historical-root-adoptions` stores one immutable V1 settlement per exact draft/session/
+  operation. It repeats the source history frontier, selected retained transition and direction,
+  target historical root, restored caret and directed selection, terminal result, and exact
+  successor candidate/history frontiers when committed. It is the only direct-root candidate
+  adoption schema. A missing transition, root outside the same-draft retained lineage, stale
+  frontier, disagreeing replay, collision, or no-change result that names a successor is invalid.
 - `draft-piece-builds` is keyed by the exact 48-byte draft/session/operation identity. Its V1
   value repeats the closed edit-successor or sealed-composer-import kind, canonical proposal-header
   bytes and digest, predecessor candidate generation and exact combined root, optional exact sealed
@@ -1007,11 +1094,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   together with byte equality of the complete same-command closure.
 - `draft-piece-settlements` is keyed by the exact 48-byte draft/session/operation identity. Its immutable V1
   value repeats the key, canonical proposal-header bytes and digest, declared fragment count and
-  terminal fragment-chain commitment, predecessor candidate generation/combined root, optional build digest, terminal
+  terminal fragment-chain commitment, predecessor candidate generation/combined-root/history pair,
+  optional build digest, terminal
   outcome, source basis, terminal progress-receipt key/digest and immediate-predecessor/root closure,
   and the complete outcome-specific proof defined above. Unknown or
   incomplete outcomes, a no-change outcome naming an adopted successor, a committed outcome
-  missing its exact paired-root/build/session-head adoption, a terminal build without its agreeing
+  missing its exact paired-root/history/build/session-head adoption or direct-selection closure, a terminal build without its agreeing
   progress receipt and settlement, a settlement disagreed with by the candidate, receipt closure, or
   historical combined-root closure, or a second canonical value at the same key is corruption.
   Exact settlement replay requires the stored build head already to select the terminal target
@@ -1205,6 +1293,17 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   Candidate adoption never reads or writes the current-draft selector, reverse index, or history
   summary. One publication command point-reads one captured candidate settlement/root, the session
   head, current draft and reverse index, and history summary; it never traverses the candidate chain.
+- Those 256 records are one-command page capacity, never a cumulative operation limit. Source and
+  proposal pages use checked `u64` cursors, counts, lengths, and cumulative canonical identities;
+  explicit finish-input fixes the final totals. One logical edit may consume any representable
+  number of pages without a whole-operation collection or a special 256/257 boundary. Accepted page
+  payloads are released after their progress receipt and cumulative identity are durable.
+- Edit-history transition, frontier, stack-link, and historical-root-adoption values each fit the
+  65,536-byte value ceiling and contain only compact roots, positions, links, counters, policy, and
+  replay facts. The configured durable history byte budget is a nonzero checked `u64`, not an entry
+  count and not a function of document length. A bounded indexed seek over cumulative encoded-byte
+  positions selects the new oldest eligible floor; one adoption may evict any older prefix from
+  availability without reading, copying, or deleting that prefix.
 - Draft text, marker, composite-piece, and materialization input pages return at most 256 records
   and 65,536 payload bytes. One lookup binary-searches at most 128 authenticated child envelopes per
   level and performs at most 64 sequence-node reads. Exact adjacent-gap validation performs at most
@@ -1250,6 +1349,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   logical draft, edit, same-anchor marker set, or sealed Composer value. Progress-transition
   ordinals also use checked `u64`; one fixed-size receipt per bounded work quantum keeps retained
   state and command work fixed without imposing a smaller whole-edit bound.
+- Ordinary candidate adoption, undo, and redo use bounded or logarithmic path and index work and
+  never scan the full root or journal. An undo or redo may require multiple bounded validation and
+  reconciliation commands, but its direct historical-root adoption remains one logical operation,
+  one candidate generation, and one terminal settlement with no history-sized resident state.
 - Provider structured values accept at most 128 nested list/object containers, matching the pinned
   backend JSON parser's configured recursion depth. The streaming validator uses fixed bounded depth
   state; string bytes and collection element counts remain chunked and have no smaller per-item cap.
@@ -1379,14 +1482,18 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 ## Revisions And Ordering
 
 - Thread, durable draft-selector, and editor-candidate session revisions are monotonic and
-  independently checked. A candidate revision is meaningful only with its exact draft and session.
+  independently checked. A candidate revision is meaningful only with its exact draft, session,
+  combined root, and edit-history frontier revision.
 - `DraftEditorCandidateSessionOpenOutcomeV1` is `Opened(head)`, `ExactReplay(head)`,
   `StaleDisposed(head)`, `SelectorConflict(current selector)`, or
   `OccupiedIdentityCollision(proof)`. Open atomically
   validates the expected thread, draft, complete current selector and root, fresh session identity,
-  and open-operation identity, then creates one active head whose base, published, and newest-
-  candidate frontiers all name that exact selector, root, closed root-build identity, and logical
-  byte/line extent. `ExactReplay` requires the same canonical open request and head bytes while the
+  matching history reference, and open-operation identity, then creates one active head whose base,
+  published, and newest-candidate checkpoints all name that exact selector, root, matching history
+  state, closed root-build identity, and logical byte/line extent. The published checkpoint retains
+  the immutable current-draft history reference; the newest checkpoint retains the canonically
+  forked live frontier revision that selects the same root. `ExactReplay` requires the same canonical
+  open request and head bytes while the
   identical session remains active. The identical request and head bytes against that session after
   disposal return `StaleDisposed(head)`. An occupied session identity with different canonical
   request or durable-base bytes returns `OccupiedIdentityCollision(proof)`, never a stale outcome.
@@ -1396,8 +1503,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `Disposed(head)`, `Absent`, `ConcurrentChange`, or `InvariantFailure`; it is an explicit
   session-id read and never a routine current-draft or reopen scan.
 - A draft-piece transaction derives its natural settlement key, canonical proposal-header bytes,
-  and proposal digest from one exact draft/session/predecessor candidate revision and combined root,
-  unique caller-owned operation identity, declared ranges and fragments, terminal frontier, and
+  and proposal digest from one exact draft/session/predecessor candidate revision, combined root,
+  and edit-history frontier, unique caller-owned operation identity, declared ranges and fragments, terminal frontier, and
   intended successor positions. The first admitted transition, whether an ordinary begin or a
   terminal-before-begin election, names a `None` source and the exact ordinal-one receipt, initial
   or terminal build head, custody-slot transition, and bounded effects as its target; admission
@@ -1415,8 +1522,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `Error(OccupiedIdentityNoncommit)` with the first immutable occupied natural-key comparison
   witness. A different operation or proposal while the slot is occupied returns the typed inert
   `ActiveOperationConflict(custody)` outcome and mutates nothing. No staging command advances the
-  candidate frontier or durable draft-selector revision or makes staged leaves readable through
-  either selected boundary; only its custody endpoint in the session head advances.
+  candidate/history frontier or durable draft-selector revision or makes staged leaves readable
+  through either selected boundary; only its custody endpoint in the session head advances.
 - Source-receipt presence is determined only by transition ordinal, never by command kind. Ordinal
   one names `None`, including a terminal-before-ordinary-begin election; every ordinal greater than
   one names the exact immediately preceding receipt. Each canonical-fragment stage, successor-
@@ -1481,32 +1588,54 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   checks every aggregate with `u64` arithmetic. Global marker uniqueness follows from the keyed
   index; it is never inferred by scanning sequence leaves.
 - Final candidate adoption requires the settlement absent, an active session with the exact
-  predecessor as its newest-candidate frontier and the exact matching active-operation custody, a
-  complete matching build, and the exact per-session
-  candidate-root natural key absent. One command authenticates the current progress endpoint and
+  predecessor root/history pair as its newest checkpoint and the exact matching active-operation custody, a
+  complete matching build, the exact matching edit-history frontier, and the exact per-session
+  candidate-root and history-transition natural keys absent. One command authenticates the current progress endpoint and
   immediate-predecessor/root closure; creates the next terminal progress receipt and immutable
   paired-root record; advances only that session by exactly one candidate generation; marks the new
-  generation dirty; writes the immutable `Committed` settlement bound to that terminal receipt and
+  generation dirty; appends the compact before/after root, caret, and directed-selection transition,
+  advances the durable history frontier and the session head's newest root/history pair, clears
+  redo, applies oldest-eligible byte-budget eviction;
+  writes the immutable `Committed` settlement bound to that terminal receipt and
   predecessor/root closure; terminalizes the build to that settlement; and clears the custody slot.
   It does not read or
-  advance the current draft, reverse index, published frontier, history activity, or asset owner. A
-  changed newest-candidate frontier instead admits one no-change command that verifies absence of
+  advance the current draft, reverse index, published root/history pair, history activity, or asset
+  owner. A changed newest candidate/history pair instead admits one no-change command that verifies absence of
   this operation's adoption, creates and binds the next terminal receipt, writes the immutable
-  `Conflict` settlement with the different candidate frontier, and terminalizes the build.
+  `Conflict` settlement with the different candidate/history pair, and terminalizes the build.
   Cancellation similarly competes through settlement absence and writes `Cancelled`; whichever
   terminal command is admitted first fixes the outcome.
+- Historical-root adoption requires no piece build or candidate-root creation. The command
+  authenticates the active session, exact current candidate/history frontier, retained transition
+  and stack link, same-draft target root and node closure, operation identity, and target caret and
+  directed selection. A committed undo or redo directly advances the session to that existing root
+  under one new candidate generation, marks it dirty, appends the compact history action and
+  immutable adoption settlement, and atomically moves undo/redo heads. An ordinary edit after undo
+  clears redo by its ordinary adoption command. Every no-change outcome preserves both frontiers;
+  indeterminate completion reconciles the complete source/target closure before returning one of
+  the same five terminal results.
+- Sealed-composer import final selection is not ordinary edit adoption and appends no transition.
+  It requires the revision-checked current-draft root/history pair, the completed import build, an
+  absent custody slot, and a session whose published/newest pairs are still equal at that
+  predecessor. One atomic command selects the imported root and fresh-baseline history in the
+  current draft, advances both session published/newest pairs to that same imported pair so the
+  session remains clean, records exact unavailable undo/redo facts, terminalizes the build, and
+  writes the kind-specific immutable settlement/selection receipt. Replay validates the complete
+  predecessor and successor current-draft and session pairs; collision, conflict, cancellation,
+  error, or indeterminate custody cannot expose a root/history mismatch.
 - If final adoption observes any record at the candidate-root natural key, it compares the complete
   canonical root bytes in bounded point-read work. Exact bytes are accepted only through matching
   replay authority; any disagreement returns `Error(OccupiedIdentityNoncommit)` naming that root
   key and adopts nothing. Root digest equality alone never proves replay.
 - `DraftPieceTransactionOutcomeV1` is the closed public exactly-once settlement:
-  `Committed(successor candidate generation, combined root, logical extent, caret, selection)`, `Rejected`, `Conflict`,
+  `Committed(successor candidate generation, combined root, matching edit-history frontier,
+  logical extent, caret, selection)`, `Rejected`, `Conflict`,
   `Cancelled`, or `Error`. Each value contains its immutable `DraftPieceSettlementProofV1`.
   `Rejected` is durably elected after bounded validation proves the proposal or staged fragment
   invalid and verifies no candidate adoption. `Conflict` proves the expected predecessor was not
   the session head and this edit was not adopted. `Cancelled` proves cancellation won before adoption.
   `Error` proves an operational failure or occupied-identity rejection plus exact noncommit. Only
-  `Committed` changes the candidate frontier; every terminal outcome clears the matching session
+  `Committed` changes the newest candidate/history pair; every terminal outcome clears the matching session
   custody slot exactly once. Replaying the same canonically byte-equal proposal
   returns the same settlement record and never applies another edit only when the stored build head
   already selects the terminal target receipt and the complete same-command closure is byte-equal;
@@ -1552,19 +1681,24 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   never claimed a slot may remain an orphan after that old session is cleanly disposed; admitted
   work remains claimed until terminal settlement and cannot be cleanly disposed as an orphan. An
   already-disposed old session's unclaimed orphan records cannot block a fresh session.
-- `DraftEditorCandidatePublicationOutcomeV1` is `Published(new selector, published frontier)`,
-  `ExactReplay(receipt)`, `Superseded(captured generation, current published frontier)`,
+- `DraftEditorCandidatePublicationOutcomeV1` is `Published(new selector, published root/history
+  pair)`, `ExactReplay(receipt)`, `Superseded(captured generation, current published root/history pair)`,
   `DurableBaseConflict(current selector)`, `SessionDisposed`, or
-  `OccupiedIdentityCollision(proof)`. Publication snapshots one candidate generation/root and uses
+  `OccupiedIdentityCollision(proof)`. Publication snapshots one candidate generation/root and its
+  exact immutable edit-history frontier snapshot and uses
   one atomic command to require the active-operation custody slot absent and validate its immutable
   adopted settlement, bound terminal progress receipt
-  and immediate-predecessor/root closure, the session's base and published frontier, and the current
-  durable selector; advance the selector, reverse index, activity time,
-  and same session's published frontier; and write the immutable receipt. A newer
-  newest-candidate frontier is allowed and remains dirty. A generation at or behind the published
-  frontier is exact replay or supersession, never a second publication. Validation point-reads the
-  captured settlement/root, receipt endpoint and immediate predecessor, and compact head and never
-  walks predecessor settlements or progress receipts.
+  and immediate-predecessor/root closure, the session's base and published root/history pair, and
+  the current durable selector/root/history triple; advance the selector and current-draft
+  root/history pair,
+  reverse index, activity time, and same session's published candidate/history frontiers; and write
+  the immutable receipt. The receipt owns the captured pair and complete selector/session
+  before/after closure, so replay validates and returns that exact closure rather than deriving a
+  history reference from the current mutable frontier. A newer newest candidate/history pair is
+  allowed and remains dirty. A generation at or behind the published pair is exact replay or
+  supersession, never a second publication. Validation point-reads the captured settlement/root/
+  history snapshot, receipt endpoint and immediate predecessor, and compact head and never walks
+  predecessor settlements or progress receipts.
 - Publication cancellation is effective only before writer admission. `HomeCommand::NotCommitted`
   preserves the exact prior selector and head. `HomeCommand::Indeterminate` returns sole
   reconciliation custody; only the exact immutable publication receipt plus a coherent selector
@@ -1573,8 +1707,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   same boundary.
 - `DraftEditorCandidateSessionDisposeOutcomeV1` is `Disposed(head)`, `ExactReplay(receipt)`,
   `DirtyConflict(head)`, `AlreadyDisposed(head)`, or `OccupiedIdentityCollision(proof)`. Clean
-  disposal and safe session-ownership release require published and newest-candidate frontiers
-  equal and the active-operation custody slot absent, then atomically mark the head disposed. An
+  disposal and safe session-ownership release require byte-equal published and newest candidate
+  root/history pairs and the active-operation custody slot absent, then atomically mark the head
+  disposed and record that equality in its receipt. An
   admitted operation must be reconciled and terminally settled before clean disposal; neither a
   crash nor an external conflict permits clearing its slot or abandoning it as inert staging.
   Fresh activation may use a new session identity without scanning that old live session, and an
@@ -1793,12 +1928,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Starting replacement edit first streams the target user item's exact sealed content and marker
   facts through a sealed-composer-import build into one complete immutable sequence tree and
   marker-identity index. Its final command revision-checks the current empty draft and atomically
-  selects that combined root while
+  selects that combined root with a fresh-baseline history snapshot bound to the same import
+  operation and root, both undo and redo unavailable, while
   setting the exact ordinary-user-turn target and selected-path proof. It retains the target item
   as immutable history and changes no selected path, committed tail, input gate, or CAS binding.
 - Cancelling replacement edit revision-checks the current draft and atomically clears only its
   exact target and selected-path proof; provider-operation turns are never replacement targets, and
-  cancellation preserves the selected combined root.
+  cancellation preserves the selected combined root and its matching history reference unchanged.
 - Provider event updates never mutate submitted turn parentage.
 - Provider item and lifecycle publication atomically advances the affected activity-query head and
   ordered entry when that event has activity presentation. A bounded GUI-derived fact such as a
@@ -1922,9 +2058,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   records in `draft-piece-build-fragments`; each bounded work quantum appends one fixed-size
   immutable `draft-piece-build-progress` receipt and atomically advances the compact build head to
   that receipt. The receipt endpoint, its immediate predecessor/root closure, and the sequence,
-  index, move, candidate, and published frontiers are the durable progress authority.
+  index, move, candidate/history, and published root/history frontiers are the durable progress
+  authority.
   Work and writes for an edit are proportional to its inserted fragments, affected base ranges, and
   copied paths in both bounded-height structures, not to unchanged prefix or suffix length.
+- The final ordinary adoption command also appends one compact root transition and advances the
+  durable history frontier. Undo and redo instead use the dedicated direct historical-root adoption
+  command. Neither path copies inverse content or scans unchanged root/history state; both publish
+  candidate and history authority atomically or publish neither.
 - Draft-piece staging, successor construction, candidate adoption, autosave publication, and
   Composer materialization publish no partial result. A crash between bounded steps exposes only
   the prior or new current-draft selector atomically; candidate adoption alone never changes reopen
@@ -2103,8 +2244,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   retains its primary local loss reason while preserving the separate issue field in turn state;
   neither transition erases or rewrites the issue source record.
 - No API may detach or rewrite a submitted turn parent edge. Replacement edits create a new turn and update only the selected thread bindings.
-- Starting or cancelling replacement edit changes only the draft's explicit typed intent and
-  selected combined draft root. The accepted replacement turn derives its parent from the immutable target
+- Starting replacement edit changes only the draft's explicit typed intent and selected combined
+  draft root/fresh-baseline history pair; cancellation changes only that intent and preserves the
+  selected pair. The accepted replacement turn derives its parent from the immutable target
   turn, while a bounded current transcript-generation entry proves that target belonged to the
   selected path when edit intent was admitted.
 
@@ -2112,7 +2254,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 - Empty ordinary-thread creation atomically contributes the thread, immutable execution record,
   initial attributes and usage records, empty current draft referencing the canonical immutable
-  empty combined sequence/index root, draft reverse index, current zero-entry transcript head,
+  empty combined sequence/index root and deterministic canonical-empty edit-history reference,
+  draft reverse index, current zero-entry transcript head,
   complete history summary, initial compact catalog summary, unbound binding revision, and binding
   head. Natural thread and draft identities are caller-owned inputs; the package derives
   `CanonicalEmptyDraftRootBuildOperationIdV1` from that draft id and accepts no caller-selected
@@ -2124,21 +2267,31 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   command it inherits the source thread's immutable execution and publishes the child's initial
   attributes, usage, compact catalog summary, unbound binding revision, and binding head.
 - Every mutation that creates a caller-named replacement draft uses the same deterministic empty-
-  root-build identity derived from that replacement draft id. Creation rejects any target identity
+  root-build identity and canonical-empty edit-history reference derived from that replacement
+  draft id. Creation rejects any target identity
   or required-record collision. A bounded stable reconciliation read classifies the natural
   identity set as absent, exactly committed, or collided after replay or an ambiguous admitted
   outcome; exactly committed requires canonical bytes for every occupied natural record to equal
   the proposed canonical bytes, not merely matching digests.
+- A completed sealed-composer import for replacement editing or composer-history recall is selected
+  only by one revision-checked atomic current-draft command that writes the imported combined root
+  and a fresh-baseline immutable history snapshot bound to the same draft/import/root identity. Its
+  exact visible availability is undo unavailable and redo unavailable. The command requires any
+  prior non-import editor session to be absent or cleanly disposed with equal published/newest
+  root/history pairs; its named import session must instead be active, clean at the predecessor, and
+  advances both pairs to the baseline in the command. Its receipt owns the old and new selector/root/history triples for replay and
+  reconciliation. Restart, restoration, and the next editor-session open consume the new pair; none
+  may infer history from the imported root or recover the superseded pair by root digest.
 - Current-draft reads stabilize the reverse index around the thread and draft reads and reject concurrent or contradictory publication rather than returning a mixed generation.
 - An edit starts from one exact candidate-session predecessor, completes its immutable combined
   sequence/index successor, and adopts it only into that session. Autosave or flush later captures
-  one adopted candidate frontier. Its publication requires the exact current draft identity and
-  selector revision/root, active session base and published frontier, absent active-operation
+  one adopted candidate/history pair. Its publication requires the exact current draft identity and
+  selector revision/root/history triple, active session base and published root/history pair, absent active-operation
   custody, captured immutable settlement
-  and combined-root summary, and unique publication operation identity; it takes no expected
+  and combined-root summary plus captured immutable history snapshot, and unique publication operation identity; it takes no expected
   selected-path thread revision. On the serialized writer snapshot it permits a newer candidate
   head, carries the then-current thread revision into the reverse index, advances the draft selector
-  and same session's published frontier to the captured candidate, preserves thread ownership,
+  and same session's published root/history pair to the captured pair, preserves thread ownership,
   submission intent, identity, and creation facts, and updates history-summary activity atomically.
 - Exact combined-root-reference equality is a typed caller-visible no-change decision and produces no home
   command. Semantic equality between differently shaped roots is not inferred from aggregate counts
@@ -2159,16 +2312,21 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   integrity read when a newer root becomes current. A missing or inconsistent referenced root is
   absence or invariant failure, not `ConcurrentChange` caused by an unrelated later autosave.
 - Opening an editor-candidate session requires the expected thread, draft, complete current-draft
-  selector revision, exact `DraftPieceRootReferenceV1`, fresh caller-owned session identity, and
+  selector revision, exact `DraftPieceRootReferenceV1`, matching published edit-history frontier,
+  fresh caller-owned session identity, and
   caller-owned open-operation identity. One atomic command validates the thread/draft/reverse
   selectors and creates or exactly replays the session-qualified head and open receipt. The initial
   head repeats the complete durable-base root including its closed root-build identity and sets its
-  published and newest candidate frontiers and logical byte/line extent to that root. The identical
+  published root/history pair to the current-draft pair and its newest root/history pair to the
+  canonically forked live frontier selecting that same root and exact availability. It sets the
+  logical byte/line extent to that root. The identical
   canonical request against the identical active session returns `ExactReplay(head)`; after that
   identical session is disposed, the same request returns `StaleDisposed(head)` and cannot reopen
   it. An occupied session identity with different canonical request or durable-base bytes returns
   `OccupiedIdentityCollision(proof)`, never stale. Only an absent fresh session whose expected
-  selector drifted returns `SelectorConflict(current selector)`. The returned activation binding
+  selector drifted returns `SelectorConflict(current selector)`. Opening authenticates the retained
+  history links, policy revision, root membership, and exact undo/redo availability through bounded
+  point reads and indexed seeks; it loads no transition collection. The returned activation binding
   names the exact draft, session, session generation, candidate generation, complete root reference,
   and checked logical byte/line extent. No detached digest, draft id, or selector revision is an
   activation binding.
@@ -2179,8 +2337,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   consult mutable selectors. Callers that
   need only immutable historical integrity do not request this wrapper.
 - The separate candidate-root wrapper requires an exact live session identity, stabilizes its head
-  and expected session and candidate generations around the same exact-root read, and returns only
-  the named newest candidate root and logical byte/line extent. A stale candidate or session request
+  and expected session, candidate, and newest history-frontier revisions around the same exact-root
+  read, and returns the named newest candidate root, matching history frontier and availability, and
+  logical byte/line extent. A stale candidate or session request
   is rejected: head drift is `ConcurrentChange`, disposal returns the exact disposed head, and
   absence returns `Absent`; a successful result repeats the stabilized session and candidate
   generations, and none can return a page from an older head. It is
@@ -2246,17 +2405,20 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   cross-tree facts return operational or invariant failure and never degrade into absence, stale
   data, clamping, truncation, or a whole-root fallback.
 - Compact restoration validation accepts the exact combined root, logical extent, caret and selection
-  positions, scroll anchor/continuation, and optional opaque undo/redo frontier. It validates every
+  positions, scroll anchor/continuation, durable edit-history frontier identity, and exact undo/redo
+  availability. It validates every
   distinct offset and gap through bounded text and marker reads and returns only exact validated
   positions. It does not translate an older root, clamp an invalid boundary, or return text,
-  marker collections, resident pages, layout state, or undo payloads.
+  marker collections, resident pages, layout state, or undo payloads. A frontier that is stale,
+  outside retention, wrong-draft, or disagrees with the selected root fails closed rather than
+  restoring approximate availability.
 - A bounded composite comparison accepts two exact combined roots and advances paired text/marker cursors
   until it proves equality, the first ordered difference, or exact EOF. Counts and digests may
   reject inequality early but cannot by themselves assert semantic equality between different root
   references. Retained state and each step remain within the public page bounds.
 - Range-source activation, text and marker demands, position translation, and restoration validation
   are read/session-conformance operations only. They do not stage or settle edits, advance dirty or
-  published frontiers, autosave the current selector, construct or materialize `ComposerV1`, or
+  published root/history pairs, autosave the current selector, construct or materialize `ComposerV1`, or
   submit a draft. Those mutations and whole-root streamed consumers remain separate later
   boundaries.
 

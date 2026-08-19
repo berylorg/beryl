@@ -12,6 +12,12 @@ The feature configures the composer's external `text-input` dependency as range-
 editable, Enter-propagates, atom-clipboard-propagates, and rich-paste-propagates. It owns the
 resulting submission, replacement-edit, clipboard-marker, and paste commands.
 
+The feature supplies the configured retained-memory and per-frame work budgets. When the external
+widget reports capacity saturation, the composer retains its ordinary panel and configures its
+bounded filler and viewport-exceeds-rendering-capacity treatment; it does not add a second scroll
+surface, progress row, or per-region placeholder collection. Caret, IME, selection, and the active
+interaction anchor remain the first realization priorities.
+
 The feature supplies the composer height clamp as half the OS-window height, further constrained to preserve the transcript-region minimum height. The canonical widget grows and shrinks to wrapped content within that allocation and owns inner editor overflow.
 
 The mounted composition adds no manual resize handle and no persistent `Run Turn` or submit
@@ -30,7 +36,8 @@ its exact host terminal, so the widget reaches the external contract's quiescent
 incorporates each terminal result into the current authoritative draft binding and revision, then
 captures the external `text-input`'s exact
 compact restoration seed: that binding, revision, and logical extent plus logical caret, selection,
-host-owned undo-frontier, and semantic inner-scroll anchor facts. Only after that seed is complete does the slot
+durable edit-history frontier identity and exact undo/redo availability, and semantic inner-scroll
+anchor facts. Only after that seed is complete does the slot
 host unmount the ordinary `conversation composer` and publish the prompt.
 
 Under the external `text-input` contract, unmount cancels cancellable page, segmentation,

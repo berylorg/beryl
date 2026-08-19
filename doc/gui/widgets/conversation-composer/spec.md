@@ -24,18 +24,20 @@ Widgets:
 # Anatomy
 
 The conversation composer consists of a root panel, editor surface, range-backed multiline
-text-input, inline-atom hosts, and optional transient state treatment.
+text-input, inline-atom hosts, bounded unrealized-region filler, and optional transient state
+treatment.
 
 The external text-input's range-backed variant owns text-editing mechanics, caret, compact logical
 selection, bounded clipboard primitives, IME composition, opaque atom ranges, resident-range
 wrapping, visible byte-range demand, inner vertical scrolling, and routing edit, undo, and redo
-commands through its bounded pending-mutation protocol. The host supplies the authoritative
-revision-bound document source and edit sink and owns undo/redo authority and the authoritative
-undo/redo frontier. The conversation composer neither stores nor advances that frontier. The
-text-input retains only the visible range, bounded overscan, active editing/IME ranges, one bounded
-pending-mutation record, and compact range identities; it never requests or stores the complete
-document. The conversation composer owns the surrounding panel surface, adaptive panel measurement,
-state treatment, and integration of owner-supplied inline atom widgets.
+commands through its cursor-based bounded-page mutation protocol. The host supplies the
+authoritative revision-bound document source and edit sink plus opaque durable undo/redo
+authority and exact availability. The conversation composer neither stores nor advances that
+frontier. The text-input retains only the visible range, bounded overscan, active editing/IME
+ranges, one bounded pending-mutation session with compact cursors, and compact range identities; it
+never requests or stores the complete document or operation. The conversation composer owns the
+surrounding panel surface, adaptive panel measurement, bounded filler and capacity-saturated state
+treatment, and integration of owner-supplied inline atom widgets.
 
 The widget does not contain a persistent submission button or a manual resize handle.
 
@@ -56,7 +58,12 @@ Inline atoms remain compact and baseline-aligned with surrounding text. The acti
 
 The widget supports writable, focused, unfocused, empty, populated, submission-ready,
 submission-disabled, inert, activation-pending, paste-pending, atom-present, growing, clamped,
-inner-overflowing, and inner-scrolling states.
+inner-overflowing, inner-scrolling, capacity-saturated, and viewport-exceeds-rendering-capacity
+states.
+
+Capacity saturation retains the coherent editor, caret, selection, active interaction anchor,
+logical scroll extent, and undo/redo availability while bounded filler covers unrealized nominally
+visible regions. It does not imply document truncation, edit rejection, or whole-viewport residency.
 
 Submission-disabled and inert are distinct. Submission-disabled keeps the text-input editable; inert makes the text-input disabled or read-only according to the owner-supplied state and rejects draft-changing interaction.
 
@@ -71,8 +78,8 @@ part of the incoming content.
 Text editing, pointer selection, caret movement, clipboard behavior, IME, and inline-atom hit
 testing follow the external text-input contract's range-backed multiline variant. Undo and redo
 input is routed by text-input as an exact revision-bound host-mutation request. The host decides
-whether that request is available and advances or preserves the authoritative undo/redo frontier
-through the atomic result. Crossing a nonresident boundary requests bounded document pages and
+whether that request is available and advances or preserves the opaque durable undo/redo
+frontier through the atomic result. Crossing a nonresident boundary requests bounded document pages and
 preserves the last coherent editor frame until they arrive.
 
 The owning feature chooses whether focused Enter propagates as a submission or edit-commit command and whether Shift+Enter inserts a newline. The widget reports those key events without defining acceptance, queueing, steering, or persistence effects.
@@ -89,13 +96,13 @@ When inert, pointer and keyboard input cannot mutate text or atoms. Existing con
 Inline image markers occupy indivisible opaque atom ranges in the text-input. The text-input owns
 caret traversal and range selection and routes deletion, cut, paste, undo, and redo requests around
 those atoms through the same bounded host-mutation protocol. The host owns acceptance, authoritative
-mutation, and the undo/redo frontier. Marker activation reports the exact stable atom identity and
-geometry to the owning feature.
+mutation coordination, and supplies the opaque undo/redo authority. Marker activation reports the
+exact stable atom identity and geometry to the owning feature.
 
 When wrapped content exceeds the current panel clamp, the text-input owns vertical scrolling and keeps the caret or active selection endpoint visible. Scroll input propagates outward when the inner editor cannot scroll further, following `scroll-ownership`.
 
 Panel growth or shrinkage remeasures surrounding layout without changing the editor document,
-caret, selection, host-owned undo/redo frontier, or inner scroll position except where the external
+caret, selection, durable undo/redo availability, or inner scroll position except where the external
 text-input must reveal the active endpoint.
 
 Content-free diagnostics expose widget instance id, state family, focus presence, resident atom
@@ -113,6 +120,13 @@ to the available inline size and does not horizontally scroll. Before the clamp 
 measured wrapped content grows or shrinks the panel. After the clamp is reached, panel height
 remains bounded and the text-input owns vertical overflow. Total logical line count and total draft
 size never determine resident layout or shaped-text storage.
+
+Realization obeys owner-supplied retained-memory and per-frame work budgets rather than raw viewport
+dimensions. Capacity goes first to caret, IME, and directed-selection geometry, then the active
+interaction or scroll anchor, then nearby content. Any remaining nominally visible gap is
+coalesced into bounded filler coverage; interaction re-anchors the external text-input and requests
+only the next bounded work. The containing OS-window shell and renderer own rejection or clamping
+of an unrepresentable drawable surface or framebuffer.
 
 Inline atoms participate in text shaping as indivisible ranges. Their outer geometry contributes to line height without creating a separate panel row.
 

@@ -58,7 +58,7 @@ confusing current drafts with submitted transcript history or image identity.
 - Ordinary backend warm-up and unavailability keep the editor available for drafting. The
   composer is replaced only by the explicit native-lineage recovery decision defined by the
   backend-runtime-recovery feature when execution needs that decision. Replacement unmounts the
-  editor; the durable draft and only its compact host-owned caret, selection, bounded undo/redo
+  editor; the durable draft and only its compact caret, directed selection, exact durable undo/redo
   availability, and scroll restoration facts remain intact.
 - A draft containing at least one image marker and no non-whitespace text is non-empty for submission.
 
@@ -66,6 +66,11 @@ confusing current drafts with submitted transcript history or image identity.
 
 - Every conversation thread owns exactly one current durable draft. The composer supports drafts sized for
   million-token or larger model contexts without imposing a smaller whole-draft product limit.
+- Representable document, caret, directed-selection, edit, undo, and redo size is not capped by
+  resident RAM, viewport dimensions, a hardcoded cumulative fragment count, or a requirement to
+  collect one whole operation. Fixed implementation bounds may limit one page, command, retained
+  working set, queue, or frame; large operations make bounded visible progress over time as one
+  logical operation.
 - Large drafts are intentional product state. Selecting, saving, submitting, or restoring one
   loads only the content needed for the visible editor range and requested operation; it does not
   require the complete draft to become resident first.
@@ -142,6 +147,11 @@ confusing current drafts with submitted transcript history or image identity.
 - Caret movement, selection, scrolling, wrapping, and editing across a large draft preserve the last
   coherent editor surface while nonresident content loads; they never require the whole draft to
   flatten into one value.
+- Ordinary small typing, deletion, and marker edits remain immediately responsive through bounded
+  or logarithmic path work and never scan or rebuild the complete draft. A large paste, replacement,
+  undo, or redo may remain pending across more bounded steps, remains cancellable until its terminal
+  commit is admitted, and publishes exactly one complete success or one non-mutating terminal
+  outcome rather than a partial prefix.
 - Pasting a large supported text or rich-atom clipboard representation is one draft edit. While it
   is visibly paste-pending, the composer preserves coherent text, caret, and selection; draft
   mutation and submission are temporarily unavailable so later typing cannot race the captured
@@ -161,12 +171,21 @@ confusing current drafts with submitted transcript history or image identity.
   the clipboard and leaves the draft unchanged; cut never deletes content whose copy did not
   complete. A separately defined streaming save or export command may provide an alternative
   without weakening this limit.
-- Undo and redo cover a bounded recent operation history. When an older edit has left that history,
-  the command is unavailable rather than retaining draft-sized inverse text. Autosave and durable
-  draft state remain independent of that GUI history bound. The available undo/redo frontier
-  changes only after the requested edit is adopted, stays unchanged on rejection, conflict,
-  cancellation, error, or reconciliation, clears redo after a newly adopted edit, and is not
-  changed merely because autosave completes.
+- Undo and redo cover recent root transitions retained under an explicit configurable durable byte
+  budget and retention policy. Retention is never derived from draft size or a hardcoded entry
+  count. Exhaustion evicts the oldest eligible history without blocking editing; the commands
+  expose exact current availability, and an evicted action is unavailable rather than retaining
+  draft-sized inverse text. The frontier changes only after the requested operation is adopted,
+  stays unchanged on rejection, conflict, cancellation, error, or reconciliation, clears redo after
+  a newly adopted ordinary edit, and restores exact caret and directed selection on undo or redo.
+  Autosave publishes matching draft and history authority but does not itself create an undo step.
+- When the configured retained rendering capacity cannot cover the nominal viewport, the composer
+  presents an explicit capacity-saturated state while keeping the exact draft, caret, selection,
+  undo/redo availability, and logical scroll extent intact. It prioritizes the active caret, IME,
+  selection, or interaction anchor, represents other unrealized visible regions with bounded filler,
+  and re-anchors and fetches on interaction. Capacity saturation never truncates or rejects the
+  logical draft. If the OS or renderer cannot represent the drawable surface itself, the window
+  shell reports or clamps that surface independently from composer retention.
 - The composer reserves focused `Enter` for submission and focused `Shift+Enter` for inserting a real newline.
 - When thread-edit mode is active, focused `Enter` attempts edit commit instead of ordinary turn start, active-turn steering, or compaction-time queueing.
 - When thread-edit mode is active and no higher-priority popup handles `Escape`, focused `Escape` cancels edit mode without mutating the draft buffer, image markers, caret, selection, or undo history.

@@ -201,9 +201,9 @@
 - [x] Established immutable build-transition receipts and bounded session-qualified candidate-only
   edit adoption with exact replay, custody, crash reconciliation, and fail-closed corruption.
 - [x] Established bounded exact-root ComposerV1 materialization in `syndic-storage`.
-- [ ] Replace whole-payload draft activation and mutable marker residency with revision-bound text
-  and marker ranges, bounded editor windows and compact restoration seeds, incremental
-  autosave/undo/submission, and very-large-draft verification.
+- [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
+  transition history, credit-gated editor realization, compact restoration, autosave, submission,
+  and very-large-draft verification.
 - [ ] Mount native-lineage recovery loading, unavailable, failure, and ready states; unmount and
   rebind the composer through the bounded compact restoration seed without retaining whole values.
 - [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive

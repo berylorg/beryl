@@ -130,16 +130,29 @@ Keep independent main-window presentation responsive while process-wide services
   window retains only configured visible and overscan pages, bounded edit and IME state, compact
   positions, resident marker facts, and source and presentation generations; it never owns or
   reconstructs the complete draft.
+- The composer host configures an explicit retained-memory budget and per-frame work budget for
+  realization; neither is computed from raw viewport dimensions. It grants capacity first to
+  caret/IME/directed-selection geometry, then the interaction or scroll anchor, then nearby content.
+  Unrealized nominally visible regions collapse into bounded filler coverage and one typed capacity-
+  saturated state rather than an unbounded demand queue. Logical scroll extent remains sourced from
+  paged indexes, and filler interaction re-anchors and requests only bounded work. The OS shell and
+  renderer, not this retained projection, reject or clamp an unrepresentable drawable surface or
+  framebuffer.
 - Compact editor restoration facts contain only the exact published combined-root binding and logical extent,
-  caret and selection positions, scroll anchor or continuation, and the opaque bounded undo/redo
-  frontier. They contain no text or marker pages, complete marker collection, piece tree, layout
-  state, or draft-sized inverse content.
-- The host maps typing, paste, deletion, marker commands, undo, and redo to exact predecessor-
-  candidate composite range replacements. It supplies inserted text and marker changes through
-  bounded ordered staging commands, completes both copy-on-write piece-tree and marker-identity-
-  index successors under the exact `(draft, session, operation)` build/root identity, and submits
-  one atomic candidate-adoption command. No partial replacement is
-  exposed to the widget, session head, or current-draft selector.
+  caret and directed-selection positions, scroll anchor or continuation, durable edit-history
+  frontier identity, and exact undo/redo availability. They contain no text or marker pages,
+  complete marker collection, piece tree, layout state, or draft-sized inverse content.
+- The host maps typing, paste, deletion, and marker commands to exact predecessor-candidate
+  composite range replacements through the app-neutral text-input transaction-session protocol.
+  Begin captures exact predecessor caret and directed selection. Bounded source and proposal pages
+  carry canonical cumulative identity and explicit finish-input; inserted and moved markers use
+  successor-relative coordinates and order. The host releases consumed payload pages after their
+  durable effect is fixed, completes both copy-on-write piece-tree and marker-identity-index
+  successors under the exact `(draft, session, operation)` build/root identity, and submits one
+  atomic candidate-adoption command. Small keystrokes use the one-page fast path through the same
+  protocol. No partial replacement is exposed to the widget, session head, history frontier, or
+  current-draft selector, and no whole-operation fragment vector or hardcoded cumulative page cap
+  exists.
 - Every admitted draft edit reaches exactly one durable `Committed`, `Rejected`, `Conflict`,
   `Cancelled`, or `Error` settlement. An indeterminate command remains reconciliation custody rather
   than a sixth result; the host preserves the last coherent projection and exact operation intent,
@@ -157,19 +170,22 @@ Keep independent main-window presentation responsive while process-wide services
   The host retains only its bounded logical authored intent and may re-propose it against the newly
   authoritative candidate when exact position mapping is proven. If mapping or rebase cannot be
   proven, the editor becomes coherently unavailable instead of dropping or guessing content.
-- The host alone owns the bounded undo/redo frontier. It advances only on adopted candidate
-  settlement, preserves the frontier on rejection, conflict, cancellation, error, or indeterminate
-  custody, clears redo on a newly adopted ordinary edit, and moves one bounded entry between undo
-  and redo only after that operation is adopted. Autosave does not mutate this frontier. Undo and
-  redo use the same candidate path; neither the widget nor window retains draft-sized inverse text,
-  a complete marker registry, or an independent durable draft authority.
+- The host coordinates but does not own undo/redo authority. Syndic's compact durable root-
+  transition journal and frontier advance atomically with every adopted ordinary candidate and
+  clear redo only in that committed command. Undo and redo authenticate exact retained lineage,
+  then request the dedicated direct historical-root adoption that creates one new candidate
+  generation, advances the durable frontier, and restores exact caret and directed selection.
+  Rejection, conflict, cancellation, error, collision, late response, or indeterminate custody
+  preserves both frontiers. The widget and window retain only current availability and one bounded
+  operation cursor; neither retains inverse text, a marker registry, a root graph, or history-sized
+  RAM. Autosave publishes the candidate with its matching frontier rather than synthesizing history.
 - Ordinary draft seeds and persistence requests carry no selected-path parent. Idle acceptance
   names the expected thread, draft, gate, combined root, root-bound materialization, and asset proof,
   and Syndic selects the current thread tail atomically. Background accepted-input promotion never
   changes the resident editor, draft record, draft revision, undo state, or draft asset owner.
 - Dirty autosave and timed or lifecycle flush barriers snapshot only an already adopted candidate
-  frontier. One atomic home command advances the durable current-draft selector and the same
-  session's published frontier with exactly one Asset case against the single
+  and edit-history frontier. One atomic home command advances the durable current-draft selector
+  and the same session's published candidate/history frontiers with exactly one Asset case against the single
   `CurrentDraft(draft id)` head: changed markers replace it with the newly sealed set or remove it
   after last-marker removal; unchanged nonempty markers validation-only assert its existing exact
   head and proof and reuse the already sealed set; and an already marker-free draft validation-only
@@ -199,7 +215,8 @@ Keep independent main-window presentation responsive while process-wide services
   Asset participant proves both heads absent on the same serialized writer snapshot.
 - Submission admission validates the same clean editor session and exact published root used by the
   materialization. Only atomic accepted send-and-clear disposes that session and authorizes the app
-  to clear the editor and undo/redo frontier. Rejection, conflict, cancellation, error, or ambiguous
+  to clear the editor and atomically close its durable edit-history frontier. Rejection, conflict,
+  cancellation, error, or ambiguous
   writer custody preserves the last coherent editor/session frontier until exact reconciliation.
 - Ordinary thread switch, healthy window close, Exit, and submission dispose a session only after
   its flush succeeds. An unexpected process loss performs no recovery of unpublished candidates:
