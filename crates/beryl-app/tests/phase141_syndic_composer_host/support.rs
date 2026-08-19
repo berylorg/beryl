@@ -13,7 +13,9 @@ use beryl_model::{
 };
 use syndic_storage::{
     CreateThread, DraftCompositeGapWitnessV1, DraftCompositePositionV1,
-    DraftEditorCandidateSessionIdV1, DraftPieceBuildFragmentV1, DraftPieceEditHeaderV1,
+    DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionOpenOutcomeV1,
+    DraftEditorCandidateSessionOpenRequestV1, DraftEditorCandidateSessionV1,
+    DraftEditorCurrentSelectorV1, DraftPieceBuildFragmentV1, DraftPieceEditHeaderV1,
     DraftPieceMarkerV1, DraftPieceOperationIdV1, DraftPieceReplacementV1, DraftPieceV1,
     PreparedDraftPieceEditV1, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
     canonical_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_fragment_chain_v1,
@@ -43,7 +45,7 @@ impl Drop for TestHome {
 
 #[derive(Clone)]
 pub struct Transaction {
-    session: DraftEditorCandidateSessionIdV1,
+    session: DraftEditorCandidateSessionV1,
     operation: DraftPieceOperationIdV1,
     prepared: PreparedDraftPieceEditV1,
     fragments: Vec<DraftPieceBuildFragmentV1>,
@@ -71,6 +73,42 @@ pub fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, Syn
     (home, store, storage, thread)
 }
 
+#[cfg(feature = "test-faults")]
+pub fn fault_fixture(
+    name: &str,
+    seed: u8,
+) -> (
+    TestHome,
+    HomeStore,
+    SyndicStorage,
+    SyndicThreadId,
+    beryl_home_store::test_faults::FaultController,
+) {
+    let home = TestHome::new(name);
+    let faults = beryl_home_store::test_faults::FaultController::new();
+    let mut store = HomeStore::open_with_faults(
+        HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let thread = SyndicThreadId::from_bytes([seed; 16]);
+    let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
+    committed(execute(
+        &store,
+        storage.create_thread(
+            storage.revision(&store).unwrap(),
+            CreateThread::ordinary(
+                thread,
+                draft,
+                execution(),
+                SyndicTimestamp::from_unix_millis(1),
+            ),
+        ),
+    ));
+    (home, store, storage, thread, faults)
+}
+
 pub fn populate(
     storage: SyndicStorage,
     store: &HomeStore,
@@ -82,6 +120,7 @@ pub fn populate(
     let right = marker(session_seed.wrapping_add(2), 2);
     let transaction = transaction(
         storage,
+        store,
         &current,
         session_seed,
         session_seed.wrapping_add(10),
@@ -103,34 +142,51 @@ pub fn populate(
 
 pub fn transaction(
     storage: SyndicStorage,
+    store: &HomeStore,
     current: &syndic_storage::SyndicCurrentDraft,
     session_seed: u8,
     operation_seed: u8,
     replacements: Vec<DraftPieceReplacementV1>,
     caret: DraftCompositePositionV1,
 ) -> Transaction {
-    let session = DraftEditorCandidateSessionIdV1::from_bytes([session_seed; 16]);
+    let session = open_session(storage, store, current, session_seed, operation_seed);
+    transaction_for_session(
+        storage,
+        session,
+        operation_seed.wrapping_add(1),
+        replacements,
+        caret,
+    )
+}
+
+pub fn transaction_for_session(
+    storage: SyndicStorage,
+    session: DraftEditorCandidateSessionV1,
+    operation_seed: u8,
+    replacements: Vec<DraftPieceReplacementV1>,
+    caret: DraftCompositePositionV1,
+) -> Transaction {
     let operation = DraftPieceOperationIdV1::from_bytes([operation_seed; 16]);
     let chain = canonical_draft_piece_fragment_chain_v1(&replacements);
     let header = DraftPieceEditHeaderV1::new(
-        current.draft().id(),
-        session,
-        current.draft().revision(),
-        current.draft().piece_root(),
+        session.draft_id(),
+        session.session_id(),
+        session.newest_candidate_generation(),
+        session.newest_root(),
         operation,
         caret,
         caret,
         replacements.len() as u64,
         chain,
     );
-    let prepared = storage.prepare_draft_piece_edit(header).unwrap();
+    let prepared = storage.prepare_draft_piece_edit(header, &session).unwrap();
     let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
     let fragments = replacements
         .into_iter()
         .enumerate()
         .map(|(ordinal, replacement)| {
             let fragment = storage
-                .prepare_draft_piece_fragment(&prepared, ordinal as u64, preceding, replacement)
+                .prepare_draft_piece_fragment(&prepared, ordinal as u64 + 1, preceding, replacement)
                 .unwrap();
             preceding = fragment.chain_digest();
             fragment
@@ -148,7 +204,7 @@ pub fn run_transaction(
     storage: SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
-    timestamp: u64,
+    _timestamp: u64,
 ) {
     committed(execute(
         store,
@@ -172,7 +228,7 @@ pub fn run_transaction(
             .prepare_draft_piece_build_advance(
                 store,
                 transaction.prepared.header().draft_id(),
-                transaction.session,
+                transaction.session.session_id(),
                 transaction.operation,
             )
             .unwrap()
@@ -189,9 +245,46 @@ pub fn run_transaction(
         storage.settle_draft_piece_edit(
             storage.revision(store).unwrap(),
             transaction.prepared.clone(),
-            SyndicTimestamp::from_unix_millis(timestamp),
         ),
     ));
+}
+
+fn open_session(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    current: &syndic_storage::SyndicCurrentDraft,
+    session_seed: u8,
+    operation_seed: u8,
+) -> DraftEditorCandidateSessionV1 {
+    let request = DraftEditorCandidateSessionOpenRequestV1::new(
+        DraftEditorCurrentSelectorV1::new(
+            current.thread().id(),
+            current.thread().revision(),
+            current.draft().id(),
+            current.draft().revision(),
+            current.draft().piece_root(),
+        ),
+        DraftEditorCandidateSessionIdV1::from_bytes([session_seed; 16]),
+        DraftPieceOperationIdV1::from_bytes([operation_seed; 16]),
+    );
+    let prepared = storage
+        .prepare_open_draft_editor_candidate_session(store, request)
+        .unwrap();
+    let outcome = execute(
+        store,
+        storage.open_draft_editor_candidate_session(
+            storage.revision(store).unwrap(),
+            prepared.clone(),
+        ),
+    );
+    match storage
+        .reconcile_draft_editor_candidate_session_open(store, &prepared, outcome)
+        .unwrap()
+    {
+        DraftEditorCandidateSessionOpenOutcomeV1::Opened(head)
+        | DraftEditorCandidateSessionOpenOutcomeV1::ExactReplay(head) => head,
+        other => panic!("candidate session did not open: {other:?}"),
+    }
 }
 
 pub fn current(
@@ -216,13 +309,16 @@ pub fn execute(store: &HomeStore, contribution: MutationContribution) -> Command
 }
 
 pub fn committed(outcome: CommandOutcome) {
-    assert!(matches!(
-        outcome,
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        }
-    ));
+    assert!(
+        matches!(
+            &outcome,
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ),
+        "command did not commit cleanly: {outcome:?}"
+    );
 }
 
 fn marker(seed: u8, order: u64) -> DraftPieceMarkerV1 {

@@ -29,24 +29,16 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 142: Establish Session-Qualified Candidate Edit Adoption (finished)
+# Phase 143: Route Exact Composer Host Range Mutations (finished)
 
-Replaced one-stage draft settlement with bounded session-qualified candidate-only adoption. A
-dedicated immutable progress family, one-based fragment and transition records, exact predecessor
-and target replay closure, resumable copy-on-write sequence and marker-index work, explicit marker
-moves, and one active-operation custody slot now fail closed across collision, corruption, drift,
-partial cancellation, terminal-first settlement, crash reconciliation, and stale-session races.
-Only the candidate head advances; durable current, reverse index, history, Asset ownership, and
-`ComposerV1` remain untouched. Ordinary and fault-enabled library checks, 9/9 and 22/22 Phase 142
-tests, 14/14 and 34/34 Phase 136/137/140 regressions, formatting and hygiene gates, and corrected
-independent acceptance review passed.
-
-# Phase 143: Route Exact Composer Host Range Mutations (pending)
-
-Connect the range widget's one pending mutation slot to the accepted candidate-only edit protocol.
-Stage and reconcile full-key typing, paste, deletion, cut, marker, and host-initiated requests;
-publish only coherent committed successor bindings; preserve authored intent on conflict only when
-exact position mapping is proven; and reject stale, duplicate, rebind, release, and late results.
+Connected the widget's single staged-mutation slot to bounded session-qualified candidate adoption
+with exact composite positions, marker metadata and moves, one-based fragments, full request replay
+identity, five-way settlement, indeterminate custody, conflict-intent retention, and fail-closed
+rebind, release, late-result, and cancellation behavior. Only coherent committed candidates advance
+the host binding; durable current, undo/redo, autosave, Asset ownership, history, and `ComposerV1`
+remain untouched. Phase 143 passed 9/9 ordinary and 14/14 fault tests, Phase 141 and Phase 142
+regressions, both `beryl-app` library checks, formatting and hygiene gates, and corrected independent
+acceptance review.
 
 # Phase 144: Add Bounded Host-Owned Undo And Redo (pending)
 

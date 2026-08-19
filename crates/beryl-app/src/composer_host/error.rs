@@ -1,8 +1,8 @@
 use beryl_home_store::{CommandBuildError, HomeGeneration, HomeHealthState, ReadError};
 use beryl_model::BerylHomeId;
 use syndic_storage::{
-    DraftEditorCandidateSessionCommandErrorV1, DraftPiecePrepareErrorV1,
-    DraftPieceRangeSourceErrorV1, SyndicReadError,
+    DraftEditorCandidateSessionCommandErrorV1, DraftPieceCommandReconciliationErrorV1,
+    DraftPiecePrepareErrorV1, DraftPieceRangeSourceErrorV1, SyndicMutationError, SyndicReadError,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -39,16 +39,34 @@ pub enum ComposerHostError {
     RequestNotPending,
     #[error("the executed result does not match the admitted request")]
     RequestMismatch,
+    #[error("a composer mutation is already pending")]
+    MutationPending,
+    #[error("an admitted composer mutation still owns reconciliation custody")]
+    MutationCustodyPending,
+    #[error("the bounded composer mutation work quantum is exhausted")]
+    MutationWorkPending,
+    #[error("the mutation is not pending for this active binding")]
+    MutationNotPending,
+    #[error("the range-widget mutation cannot be represented exactly")]
+    MutationMalformed,
+    #[error("the range-widget mutation identity collides with different authored intent")]
+    MutationIdentityCollision,
+    #[error("the composer mutation path is unavailable")]
+    MutationUnavailable,
     #[error("home read failed: {0}")]
     HomeRead(#[from] ReadError),
     #[error("home command construction failed: {0}")]
     CommandBuild(#[from] CommandBuildError),
     #[error("Syndic read failed: {0}")]
     SyndicRead(#[from] SyndicReadError),
+    #[error("Syndic mutation failed: {0}")]
+    SyndicMutation(#[from] SyndicMutationError),
     #[error("candidate-session command failed: {0}")]
     SessionCommand(#[from] DraftEditorCandidateSessionCommandErrorV1),
     #[error("draft range source failed: {0}")]
     Range(#[from] DraftPieceRangeSourceErrorV1),
     #[error("draft restoration validation failed: {0}")]
     Restoration(#[from] DraftPiecePrepareErrorV1),
+    #[error("draft-piece command reconciliation failed: {0}")]
+    Reconciliation(#[from] DraftPieceCommandReconciliationErrorV1),
 }

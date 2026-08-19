@@ -103,7 +103,7 @@ impl SyndicComposerHost {
                 ComposerHostReadTarget::Candidate => Ok(ComposerHostResponseValue::CandidateText(
                     self.storage.candidate_draft_piece_text_demand(
                         store,
-                        active.binding.candidate(),
+                        active.storage_candidate,
                         *demand,
                         *max_bytes,
                     )?,
@@ -129,7 +129,7 @@ impl SyndicComposerHost {
                     Ok(ComposerHostResponseValue::CandidateMarkers(
                         self.storage.candidate_draft_piece_marker_demand(
                             store,
-                            active.binding.candidate(),
+                            active.storage_candidate,
                             demand.clone(),
                         )?,
                     ))
@@ -164,7 +164,7 @@ impl SyndicComposerHost {
                     Ok(ComposerHostResponseValue::CandidateMarkerProof(
                         self.storage.candidate_draft_piece_marker_edge_proof(
                             store,
-                            active.binding.candidate(),
+                            active.storage_candidate,
                             *request,
                             *retained_byte_ceiling,
                         )?,
@@ -217,10 +217,10 @@ impl SyndicComposerHost {
                 {
                     return Err(ComposerHostError::RestorationBindingMismatch);
                 }
-                let before = candidate_head(&self.storage, store, active.binding.candidate())?;
+                let before = candidate_head(&self.storage, store, active.storage_candidate)?;
                 self.storage
                     .validate_draft_piece_restoration(store, seed.restoration())?;
-                let after = candidate_head(&self.storage, store, active.binding.candidate())?;
+                let after = candidate_head(&self.storage, store, active.storage_candidate)?;
                 if before != after {
                     return Err(ComposerHostError::Range(
                         DraftPieceRangeSourceErrorV1::ConcurrentChange,
@@ -267,7 +267,7 @@ fn validate_target(
     }
 }
 
-fn validate_store(
+pub(super) fn validate_store(
     binding: ComposerHostBinding,
     store: &HomeStore,
 ) -> Result<(), ComposerHostError> {
@@ -290,7 +290,7 @@ fn validate_store(
     Ok(())
 }
 
-fn candidate_head(
+pub(super) fn candidate_head(
     storage: &syndic_storage::SyndicStorage,
     store: &HomeStore,
     expected: syndic_storage::DraftEditorCandidateActivationBindingV1,
