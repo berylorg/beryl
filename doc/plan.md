@@ -29,26 +29,14 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-The Operator paused implementation after the Phase 144 authority and planning correction. Phase 145
-and every later implementation phase remain pending until the Operator explicitly resumes the plan.
+# Phase 145: Implement Cursor-Based Bounded Widget Mutations (finished)
 
-# Phase 144: Reconcile Large Composer Mutation, History, And Realization Authority (finished)
-
-Reconciled and independently accepted logically unbounded cursor-paged edits, durable compact root-
-transition history with direct authenticated historical-root adoption, and credit-gated realization
-under configured memory and frame-work budgets. Recorded the invalidated whole-operation and copied-
-inverse approach, split implementation into Phases 145–149, shifted later boundaries consistently,
-and updated the Checkpoint 4 tracker slice. Scoped Markdown, inventory, contradiction, numbering, and
-diff checks passed in Beryl and `gpui-text-input`.
-
-# Phase 145: Implement Cursor-Based Bounded Widget Mutations (pending)
-
-Replace `gpui-text-input` whole-operation mutation accumulation with one app-neutral cursor/session
-protocol over bounded source and proposal pages, cumulative canonical identity, explicit finish-
-input, exact predecessor caret and directed selection, successor-relative inline objects, payload
-release, cancellation, replay, collision, rebind, and one terminal settlement. Preserve a low-
-latency small-edit fast path through the same protocol and prove logical edit size is independent of
-resident memory and any hardcoded cumulative fragment count.
+Replaced whole-operation accumulation in `gpui-text-input` with bounded cursor/page sessions,
+canonical replay and collision identity, exact directed selection and inline-object semantics,
+explicit finish, fixed queue and recursive payload accounting, and exact cancellation, detach,
+rebind, and late-settlement behavior. The one-page editing fast path remains on the same protocol.
+Full nextest passed 258/258; locked metadata, all-target check, formatting, diff and residue scans
+passed; independent acceptance approved the final implementation.
 
 # Phase 146: Integrate Durable Bounded Composer Mutation Staging (pending)
 
