@@ -11,6 +11,7 @@ mod draft_edit_history;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 mod draft_piece_current_drift;
+mod draft_piece_staging;
 mod fixture_command;
 mod fixture_delete;
 mod fixture_put;
@@ -68,6 +69,16 @@ pub use draft_piece_corruption::{
 };
 pub use draft_piece_current_drift::arm_draft_piece_current_read_fault;
 pub(crate) use draft_piece_current_drift::run_draft_piece_current_read_fault;
+pub use draft_piece_staging::{
+    delete_draft_mutation_staging_head, delete_draft_mutation_staging_page,
+    delete_draft_mutation_staging_receipt, inject_draft_mutation_staging_head_ahead,
+    inject_draft_mutation_staging_head_digest_corruption, inject_draft_mutation_staging_head_fork,
+    inject_draft_mutation_staging_occupied_page,
+    inject_draft_mutation_staging_page_ceiling_corruption,
+    inject_draft_mutation_staging_page_digest_corruption,
+    inject_draft_mutation_staging_receipt_digest_corruption,
+    inject_draft_mutation_terminal_same_operation_custody,
+};
 pub use fixture_command::{FixtureBatch, FixtureBuildError, FixtureMutationError};
 pub use metrics::{
     CurrentBindingReadMetrics, DeliveringSteeringReadMetrics, ReadySteeringReadMetrics,

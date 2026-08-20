@@ -6,6 +6,8 @@ mod mutation;
 mod persistent;
 mod read;
 mod session;
+mod staging;
+mod staging_model;
 mod tree;
 
 pub use history::*;
@@ -16,6 +18,11 @@ pub use read::DraftPieceCommandReconciliationErrorV1;
 pub use session::{
     DraftEditorCandidateSessionCommandErrorV1, PreparedDraftEditorCandidateSessionOpenV1,
 };
+pub use staging::{
+    DraftMutationStagingErrorV1, PreparedDraftMutationStagingCommandV1,
+    PreparedDraftMutationTransferV1, PreparedDraftPieceStagingPageV1,
+};
+pub use staging_model::*;
 pub use tree::{
     DraftPiecePrepareErrorV1, canonical_draft_piece_fragment_chain_v1,
     canonical_empty_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_root_v1,
@@ -31,6 +38,8 @@ pub(crate) use history::{
     dec_history_transition, enc_history_frontier, enc_history_reference, enc_history_transition,
 };
 pub(crate) use persistent::*;
+#[cfg(feature = "test-faults")]
+pub(crate) use staging::head_digest;
 pub(crate) use tree::*;
 
 pub const DRAFT_PIECE_MAX_CHILDREN: usize = 128;

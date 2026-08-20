@@ -480,13 +480,16 @@ fn multi_page_utf8_source_reopens_at_every_durable_frontier() {
 #[test]
 fn corrupt_build_mapping_manifest_and_output_are_rejected() {
     let names = syndic_v5_family_names();
-    assert_eq!(names.len(), 74);
+    assert_eq!(names.len(), 77);
     assert_eq!(names[12], "draft-piece-build-progress");
     assert_eq!(names[14], "draft-editor-candidate-sessions");
-    assert_eq!(names[15], "draft-edit-history-frontiers");
-    assert_eq!(names[16], "draft-edit-history-transitions");
-    assert_eq!(names[17], "draft-composer-builds");
-    assert_eq!(names[18], "draft-composer-materializations");
+    assert_eq!(names[15], "draft-mutation-staging-heads");
+    assert_eq!(names[16], "draft-mutation-staging-pages");
+    assert_eq!(names[17], "draft-mutation-staging-progress");
+    assert_eq!(names[18], "draft-edit-history-frontiers");
+    assert_eq!(names[19], "draft-edit-history-transitions");
+    assert_eq!(names[20], "draft-composer-builds");
+    assert_eq!(names[21], "draft-composer-materializations");
 
     for (name, corruption) in [
         ("build-cursor", DraftComposerBuildCorruption::Cursor),

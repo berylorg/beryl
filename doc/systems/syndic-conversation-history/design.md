@@ -411,19 +411,32 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   transfer has exactly one staging-transfer receipt, one ordinal-one build receipt, one staging-head
   successor, one build-head successor, and one candidate-session `Staging`-to-`Building` custody
   transition under the package's fixed encoded-command bound; it writes no page or candidate root.
-- Cancellation before the first staging command is admitted changes no durable state. Cancellation
-  may instead win an ordinal-one terminal-before-begin election whose custody transition is exactly
-  `None` to `None`, or may terminalize an admitted receiving or finished staging head through an
-  exact `Staging`-to-`None` custody clear, as `Cancelled`. `Rejected`, `Conflict`, and `Error` use the
-  same no-adoption terminal closure. Its immutable receipt carries closed fixed-size outcome
-  evidence: rejected reason and anchor; expected and observed candidate pair for conflict;
-  cancellation election facts; or operational/occupied-identity error evidence. After custody transfers to the draft-piece
-  builder, its existing terminal election owns cancellation and settlement, and cancellation after
-  final candidate-adoption admission cannot retract the result. Every admitted transaction still
-  returns exactly one public `Committed`, `Rejected`, `Conflict`, `Cancelled`, or `Error` outcome;
-  `Committed` exists only through complete candidate adoption.
+- Cancellation before the first staging command is admitted changes no durable state. A pre-build
+  outcome may instead win an ordinal-one terminal-before-begin election whose custody transition is
+  exactly `None` to `None`. `Conflict` remains structurally present in that closed terminal-evidence
+  union but is reachable only in this shape, when a stale `MutationBegin` expects a same-session
+  candidate generation/root/history pair different from that same session's exact observed current
+  pair, meaning its newest pair; the evidence also fixes the observed session revision. That pair is
+  neither another session nor the durable current-draft selector.
+- Once `MutationBegin` is admitted, its `Staging` custody repeats the exact predecessor pair that
+  admission validated as the session's newest pair. The single custody slot prevents another same-
+  session mutation from advancing that pair while a coherent receiving or finished staging head
+  exists. Admitted pre-build terminalization therefore permits only `Rejected`, `Cancelled`, or
+  `Error`, each with its exact outcome evidence and `Staging`-to-`None` custody transition. Any
+  attempt to elect an admitted `Staging`-to-`None` `Conflict` rejects or fails closed without
+  mutation. The immutable terminal receipt carries the rejected reason and anchor, cancellation
+  election facts, or operational/occupied-identity error evidence; terminal-before-begin `Conflict`
+  carries the expected and observed same-session pair and observed session revision. After custody
+  transfers to the draft-piece builder, its existing terminal election owns cancellation and
+  settlement, and cancellation after final candidate-adoption admission cannot retract the result.
+  Every transaction that reaches a durable terminal closure still returns exactly one public
+  `Committed`, `Rejected`, `Conflict`, `Cancelled`, or `Error` outcome; `Committed` exists only
+  through complete candidate adoption.
 - An indeterminate staging command is reconciled from the durable staging key, source and target
   receipts, head, candidate-session custody transition, and at most its one bounded page effect.
+  Replay and terminal staging-status reads of a valid terminal-before-begin `Conflict` authenticate
+  that immutable head/receipt closure; neither re-evaluates it against later same-session work,
+  another session, publication, or the durable current-draft selector.
   Same-home restart with the exact live session and operation resumes from that custody without
   caller payload. Routine fresh activation still opens from the current-draft selector and never
   discovers or adopts an unpublished old session. Admitted staging stays session-claimed until its
@@ -645,16 +658,20 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   otherwise it settles that transaction as non-adopted `Conflict` and may re-propose the retained
   bounded logical edit only after proving exact position mapping. A durable selector/base mismatch
   instead invalidates the session for publication and is an external conflict.
-- Every valid admitted edit transaction settles exactly once through the closed public outcomes
+- Every valid edit transaction that reaches a durable terminal closure settles exactly once through
+  the closed public outcomes
   `Committed`, `Rejected`, `Conflict`, `Cancelled`, or `Error`, and every replay that passes the
-  target-head and complete-closure check returns its durable settlement proof. `Committed` returns
+  target-head and complete-closure check returns its durable terminal proof. `Committed` returns
   the exact adopted candidate revision, combined root, matching edit-history frontier, extent, and
   successor positions. `Rejected` proves the envelope or a fragment was invalid before edit publication.
-  `Conflict` proves a different newest candidate/history predecessor and absence of this operation's adoption.
+  `Conflict` proves either a terminal-before-begin mismatch between the stale expected and exact
+  observed current/newest pair at the recorded revision in the same session, or a post-build
+  different newest candidate/history predecessor, plus absence of this operation's adoption.
   `Cancelled` proves cancellation won the terminal election before publication. `Error` proves an
-  operational failure and exact noncommit. That sole terminal settlement records `None`-to-`None`
-  for terminal-before-begin or atomically clears the matching existing staging/building custody
-  slot; a missing, different, or prematurely cleared required slot is corruption,
+  operational failure and exact noncommit. That sole terminal settlement or staging closure records
+  `None`-to-`None` for terminal-before-begin, atomically clears matching `Staging` custody only for
+  admitted `Rejected`, `Cancelled`, or `Error`, or clears matching `Building` custody after transfer;
+  a missing, different, or prematurely cleared required slot is corruption,
   not noncommit or replay. The latter four publish none of the proposed
   replacement.
 - `Committed` writes the settlement proof atomically with both successor structures, the combined
@@ -665,8 +682,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   facts, absence of an operation successor, outcome-specific noncommit witness, terminal progress
   receipt, and terminal build state. A terminal election before staging begin instead writes the
   staging terminal closure with `None`-to-`None` custody. One after staging begin but before build
-  transfer writes that closure with `Staging`-to-`None` custody. Neither manufactures a final
-  proposal header or draft-piece build. Terminal
+  transfer may write only `Rejected`, `Cancelled`, or `Error` with `Staging`-to-`None` custody; an
+  admitted `Conflict` election is unreachable and fails closed without mutation. Neither form
+  manufactures a final proposal header or draft-piece build. Terminal
   `Rejected`, `Conflict`, `Cancelled`, and `Error` builds can never resume or commit, and an
   immutable settlement can never change outcome.
 - `Indeterminate` is reconciliation custody, never a public terminal edit outcome. After writer

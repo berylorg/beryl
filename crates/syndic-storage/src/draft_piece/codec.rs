@@ -9,6 +9,18 @@ use crate::codec::{CodecError, ExactCodec, Family, SMALL_MAX, invalid};
 
 use super::*;
 
+mod staging_head;
+mod staging_page;
+mod staging_progress;
+
+pub(crate) use staging_head::{
+    canonical_staging_begin_bytes, canonical_staging_finish_bytes,
+    canonical_staging_head_digest_bytes,
+};
+use staging_head::{dec_staging_identity, enc_staging_identity};
+pub(crate) use staging_page::{canonical_staging_items_bytes, canonical_staging_page_bytes};
+pub(crate) use staging_progress::canonical_staging_progress_bytes;
+
 pub(crate) struct DraftPieceRootsFamily;
 pub(crate) struct DraftPieceNodesFamily;
 pub(crate) struct DraftPieceLeavesFamily;
@@ -18,6 +30,9 @@ pub(crate) struct DraftPieceBuildFragmentsFamily;
 pub(crate) struct DraftPieceBuildProgressFamily;
 pub(crate) struct DraftPieceSettlementsFamily;
 pub(crate) struct DraftEditorCandidateSessionsFamily;
+pub(crate) struct DraftMutationStagingHeadsFamily;
+pub(crate) struct DraftMutationStagingPagesFamily;
+pub(crate) struct DraftMutationStagingProgressFamily;
 
 pub(crate) type DraftPieceRootsCodec = ExactCodec<DraftPieceRootsFamily>;
 pub(crate) type DraftPieceNodesCodec = ExactCodec<DraftPieceNodesFamily>;
@@ -28,6 +43,9 @@ pub(crate) type DraftPieceBuildFragmentsCodec = ExactCodec<DraftPieceBuildFragme
 pub(crate) type DraftPieceBuildProgressCodec = ExactCodec<DraftPieceBuildProgressFamily>;
 pub(crate) type DraftPieceSettlementsCodec = ExactCodec<DraftPieceSettlementsFamily>;
 pub(crate) type DraftEditorCandidateSessionsCodec = ExactCodec<DraftEditorCandidateSessionsFamily>;
+pub(crate) type DraftMutationStagingHeadsCodec = ExactCodec<DraftMutationStagingHeadsFamily>;
+pub(crate) type DraftMutationStagingPagesCodec = ExactCodec<DraftMutationStagingPagesFamily>;
+pub(crate) type DraftMutationStagingProgressCodec = ExactCodec<DraftMutationStagingProgressFamily>;
 
 fn enc_root_key(e: &mut Encoder, key: DraftPieceRootKeyV1) {
     e.fixed16(key.draft_id().as_bytes());
@@ -575,14 +593,39 @@ fn enc_session_head(e: &mut Encoder, value: &DraftEditorCandidateSessionV1) {
     });
     match value.active_operation() {
         None => e.u8(0),
-        Some(operation) => {
+        Some(DraftEditorActiveOperationV1::Staging {
+            operation_id,
+            begin_digest,
+            predecessor_candidate_generation,
+            predecessor_root,
+            predecessor_history,
+            receipt,
+        }) => {
             e.u8(1);
-            e.fixed16(operation.operation_id().as_bytes());
-            enc_digest(e, operation.proposal_digest());
-            e.u64(operation.predecessor_candidate_generation());
-            enc_root_reference(e, operation.predecessor_root());
-            enc_history_reference(e, operation.predecessor_history());
-            enc_progress_reference(e, operation.receipt());
+            e.fixed16(operation_id.as_bytes());
+            enc_digest(e, *begin_digest);
+            e.u64(*predecessor_candidate_generation);
+            enc_root_reference(e, *predecessor_root);
+            enc_history_reference(e, *predecessor_history);
+            enc_staging_identity(e, receipt.identity());
+            e.u64(receipt.transition_ordinal());
+            enc_digest(e, receipt.digest());
+        }
+        Some(DraftEditorActiveOperationV1::Building {
+            operation_id,
+            proposal_digest,
+            predecessor_candidate_generation,
+            predecessor_root,
+            predecessor_history,
+            receipt,
+        }) => {
+            e.u8(2);
+            e.fixed16(operation_id.as_bytes());
+            enc_digest(e, *proposal_digest);
+            e.u64(*predecessor_candidate_generation);
+            enc_root_reference(e, *predecessor_root);
+            enc_history_reference(e, *predecessor_history);
+            enc_progress_reference(e, *receipt);
         }
     }
 }
@@ -619,7 +662,20 @@ fn dec_session_head(d: &mut Decoder<'_>) -> Result<DraftEditorCandidateSessionV1
     };
     let active_operation = match d.u8()? {
         0 => None,
-        1 => Some(DraftEditorActiveOperationV1::new(
+        1 => Some(DraftEditorActiveOperationV1::staging(
+            DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
+            dec_digest(d)?,
+            d.u64()?,
+            dec_root_reference(d)?,
+            dec_history_reference(d)?,
+            DraftMutationStagingProgressReceiptReferenceV1::new(
+                dec_staging_identity(d)?,
+                d.u64()?,
+                dec_digest(d)?,
+            )
+            .ok_or(CodecError::InvalidLength("draft mutation staging receipt"))?,
+        )),
+        2 => Some(DraftEditorActiveOperationV1::building(
             DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
             dec_digest(d)?,
             d.u64()?,
@@ -2107,4 +2163,40 @@ family!(
     decode_session_family_key,
     encode_session_record,
     decode_session_record
+);
+family!(
+    DraftMutationStagingHeadsFamily,
+    DraftMutationStagingIdentityV1,
+    DraftMutationStagingHeadV1,
+    "draft-mutation-staging-heads",
+    48,
+    SMALL_MAX,
+    staging_head::encode_staging_head_key,
+    staging_head::decode_staging_head_key,
+    staging_head::encode_staging_head,
+    staging_head::decode_staging_head
+);
+family!(
+    DraftMutationStagingPagesFamily,
+    DraftMutationStagingPageKeyV1,
+    DraftMutationStagingPageV1,
+    "draft-mutation-staging-pages",
+    57,
+    SMALL_MAX,
+    staging_page::encode_staging_page_key,
+    staging_page::decode_staging_page_key,
+    staging_page::encode_staging_page,
+    staging_page::decode_staging_page
+);
+family!(
+    DraftMutationStagingProgressFamily,
+    DraftMutationStagingProgressReceiptKeyV1,
+    DraftMutationStagingProgressReceiptV1,
+    "draft-mutation-staging-progress",
+    56,
+    4_096,
+    staging_head::encode_staging_progress_key,
+    staging_head::decode_staging_progress_key,
+    staging_progress::encode_staging_progress,
+    staging_progress::decode_staging_progress
 );

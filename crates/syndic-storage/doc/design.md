@@ -350,8 +350,20 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   prior and successor cumulative identities, checked cumulative counts and bytes, canonical page
   bytes, and a domain-separated page digest. Source and proposal lanes therefore cannot collide by
   ordinal, and a cursor or lane mismatch is canonical byte disagreement rather than continuation.
-  The page digest is SHA-256 over the length-prefixed exact ASCII domain
-  `syndic/draft-mutation-staging-page/v1`, canonical key, and every preceding canonical value field.
+  The page digest is SHA-256 over the canonical length-prefixed sequence, in order, of the exact
+  ASCII domain `syndic/draft-mutation-staging-page/v1`; the complete canonical page key; the progress
+  transition ordinal stored separately from that key; input and successor cursors; item and
+  canonical-byte ceilings; prior cumulative identity; checked successor cumulative item and
+  canonical-byte totals; and exact canonical page-item bytes including their item-count framing.
+  Its preimage excludes exactly the
+  successor cumulative identity and the page-digest field itself; neither exclusion is represented
+  by a zero or other placeholder. After fixing the page digest, the successor cumulative identity is
+  SHA-256 over the canonical length-prefixed exact ASCII domain
+  `syndic/draft-mutation-staging-lane/v1/link`, prior cumulative identity, and page digest, in that
+  order. The stored successor cumulative identity must equal that recomputation. Canonical decode,
+  local validation, and storage-backed closure validation recompute and require both the page digest
+  and successor cumulative identity. Digests may reject inequality early, but replay still requires
+  canonical byte equality of the complete page and target closure.
   The family has no mutable value, terminal tag, or alternate page identity.
 - `DraftMutationStagingProgressReceiptV1` is an immutable fixed-size record in
   `draft-mutation-staging-progress`. Its exact 56-byte key is the staging identity followed by an
@@ -362,8 +374,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   build endpoint for the one custody transfer; one closed optional fixed-size terminal-evidence
   union; and its domain-separated receipt digest. `Rejected` evidence contains a closed reason code
   plus the exact rejected begin/page/finish natural anchor and canonical digest. `Conflict`
-  evidence contains the expected predecessor candidate generation/root/history pair and the exact
-  observed current pair and session revision. `Cancelled` evidence contains the cancellation-
+  evidence remains structurally present and contains the expected same-session candidate generation/
+  root/history pair, that same session's exact observed current pair meaning its newest pair, and the
+  observed session revision. The observed pair is neither another session nor the durable current-
+  draft selector.
+  `Cancelled` evidence contains the cancellation-
   request identity, election source lifecycle, and writer-admission disposition. `Error` evidence
   contains either a closed operational code and affected natural anchor or an occupied-identity
   comparison witness with the natural key, stored and requested canonical digests, first differing
@@ -378,12 +393,20 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   from the head-digest preimage makes the head digest computable before this receipt digest, while
   the head's selected key, independently authenticated stored receipt digest, receipt-owned head
   digests, and canonical target-closure comparison preserve the complete closure.
-- A pre-build `Cancelled`, `Rejected`, `Conflict`, or `Error` outcome is proven by the terminal
+- The closed pre-build terminal-evidence union structurally includes `Cancelled`, `Rejected`,
+  `Conflict`, and `Error`; each outcome is proven by the terminal
   staging head, its selected immutable target receipt, the receipt's immediate source closure, and
   that receipt's matching outcome evidence. A terminal-before-begin command has ordinal one, no
   staging source, and an exact `None`-to-`None` candidate-session custody transition. Terminalizing
-  an admitted receiving or finished operation instead requires its selected source receipt and
-  exact `Staging`-to-`None` custody transition. Neither form may claim the other transition. It creates no
+  an admitted receiving or finished operation instead permits only `Rejected`, `Cancelled`, or
+  `Error` with its selected source receipt, exact outcome evidence, and exact `Staging`-to-`None`
+  custody transition. Single-slot invariants make the custody predecessor pair equal the session's
+  newest pair throughout a coherent admitted staging head, so `Conflict` is reachable only as an
+  ordinal-one terminal-before-begin `None`-to-`None` closure when a stale begin's expected same-
+  session pair differs from that same session's exact observed current pair, meaning its newest
+  pair; the evidence also fixes the observed session revision. An attempt to elect admitted
+  `Staging`-to-`None` `Conflict` fails closed without mutation. Neither reachable form may claim the
+  other's transition. It creates no
   `DraftPieceEditHeaderV1`, draft-piece build, candidate root, edit-history transition, or
   `DraftPieceSettlementV1`. After finish-to-build transfer, the existing draft-piece settlement
   family is the sole terminal authority. `DraftPieceTransactionOutcomeV1` accepts exactly one of
@@ -1167,7 +1190,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   declaration differs from its two current lane frontiers, a staging head disagreed with by the
   candidate slot, a building head without the exact atomic `Staging`-to-`Building` transfer receipt,
   or a terminal head whose receipt lacks its lifecycle's exact outcome evidence or required
-  `None`-to-`None`/`Staging`-to-`None` custody shape is corruption.
+  reachable custody shape is corruption. In particular, `Conflict` requires ordinal-one `None`-to-
+  `None`; an admitted `Staging`-to-`None` `Conflict` is invalid.
   The V1 head codec recomputes the acyclic staging-head digest with the selected receipt digest
   omitted and validates only the value's local canonical structure, key/value agreement, field
   bounds, lifecycle shape, selected receipt key/transition ordinal, and stored digest fields; codec
@@ -1686,12 +1710,18 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   staged page and its receipt closure, validate or derive its bounded fragment effects, and persist
   existing build progress. Reconciliation and same-home restart start from the exact session slot
   and staging/build endpoints and require no caller page.
-- Cancellation may win before begin with no mutation, win an ordinal-one durable terminal-before-
-  begin election whose receipt records `None` source and `None`-to-`None` custody, or terminalize a
-  receiving or finished head whose receipt names its exact source and records `Staging`-to-`None`
-  custody. Rejection, base conflict, and operational error use the same two transition shapes and
-  the outcome-specific immutable evidence defined under Logical Records; replay authenticates that
-  evidence and the complete target closure rather than inferring a reason from lifecycle alone. Once
+- Cancellation may win before begin with no mutation. An ordinal-one durable terminal-before-begin
+  election may produce `Rejected`, `Conflict`, `Cancelled`, or `Error`; its receipt records `None`
+  source and `None`-to-`None` custody. `Conflict` is reachable only there, when a stale begin's
+  expected same-session candidate generation/root/history pair differs from that same session's
+  exact observed current pair, meaning its newest pair; the evidence also fixes the observed session
+  revision. A coherent admitted receiving or finished head retains
+  `Staging` custody whose predecessor pair equals the session newest pair, so only `Rejected`,
+  `Cancelled`, or `Error` may terminalize it with exact outcome evidence, its selected source, and
+  `Staging`-to-`None` custody. Attempted admitted `Conflict` fails closed without mutation.
+  Replay and terminal staging-status reads authenticate the immutable evidence and complete target
+  closure; neither re-evaluates a valid old terminal `Conflict` against later same-session work,
+  another session, publication, or the durable current-draft selector. Once
   transfer installs `Building` custody, the draft-piece terminal election applies. Cancellation
   after final adoption admission cannot retract it. Terminal staging pages remain invisible
   immutable future-GC candidates; an admitted nonterminal head remains claimed and prevents clean

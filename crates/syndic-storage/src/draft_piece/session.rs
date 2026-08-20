@@ -310,6 +310,21 @@ fn active_operation_custody_is_exact(
     let Some(custody) = head.active_operation() else {
         return Ok(true);
     };
+    if let Some(staging_receipt) = custody.staging_receipt() {
+        let identity = staging_receipt.identity();
+        let staging = storage.draft_mutation_staging_status(store, identity);
+        return Ok(matches!(
+            staging,
+            Ok(DraftMutationStagingStatusV1::Receiving { head: selected }
+                | DraftMutationStagingStatusV1::Finished { head: selected })
+                if selected == staging_receipt
+                    && custody.begin_digest().is_some()
+                    && custody.predecessor_candidate_generation()
+                        == head.newest_candidate_generation()
+                    && custody.predecessor_root() == head.newest_root()
+                    && custody.predecessor_history() == head.newest_history()
+        ));
+    }
     let key =
         DraftPieceSettlementKeyV1::new(head.draft_id(), head.session_id(), custody.operation_id());
     let build = storage.point::<DraftPieceBuildsFamily>(store, key, point_limit())?;
@@ -368,10 +383,10 @@ fn active_operation_custody_is_exact(
             DraftPieceBuildLifecycleV1::Open | DraftPieceBuildLifecycleV1::Complete
         )
         && custody.operation_id() == build.operation_id()
-        && custody.proposal_digest() == build.proposal_digest()
+        && custody.proposal_digest() == Some(build.proposal_digest())
         && custody.predecessor_candidate_generation() == build.predecessor_candidate_generation()
         && custody.predecessor_root() == build.predecessor_root()
-        && custody.receipt() == build.progress_receipt())
+        && custody.build_receipt() == Some(build.progress_receipt()))
 }
 
 fn progress_receipt_closure_is_exact(

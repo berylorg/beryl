@@ -547,7 +547,7 @@ fn terminal_first_session_closure_is_exact(
         observed.lifecycle(),
         None,
     );
-    let custody = DraftEditorActiveOperationV1::new(
+    let custody = DraftEditorActiveOperationV1::building(
         settlement.key().operation_id(),
         settlement.proposal_digest(),
         settlement.predecessor_candidate_generation(),
@@ -676,12 +676,12 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
                     adoption.predecessor_session().active_operation(),
                     Some(custody)
                         if custody.operation_id() == source.operation_id()
-                            && custody.proposal_digest() == source.proposal_digest()
+                            && custody.proposal_digest() == Some(source.proposal_digest())
                             && custody.predecessor_candidate_generation()
                                 == source.predecessor_candidate_generation()
                             && custody.predecessor_root() == source.predecessor_root()
                             && custody.predecessor_history() == source.predecessor_history()
-                            && custody.receipt() == source.progress_receipt()
+                            && custody.build_receipt() == Some(source.progress_receipt())
                 )
                 && adoption.predecessor_history().reference() == source.predecessor_history()
                 && adoption.predecessor_history().reference()

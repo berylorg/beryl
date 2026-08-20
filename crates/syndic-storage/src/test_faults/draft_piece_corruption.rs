@@ -697,14 +697,16 @@ pub fn inject_draft_piece_custody_endpoint_corruption(
         .active_operation()
         .copied()
         .expect("fixture session has active-operation custody");
-    let corrupted_custody = DraftEditorActiveOperationV1::new(
+    let corrupted_custody = DraftEditorActiveOperationV1::building(
         custody.operation_id(),
-        custody.proposal_digest(),
+        custody
+            .proposal_digest()
+            .expect("fixture custody is building"),
         custody.predecessor_candidate_generation(),
         custody.predecessor_root(),
         custody.predecessor_history(),
         DraftPieceBuildProgressReceiptReferenceV1::new(
-            custody.receipt().key(),
+            custody.build_receipt().unwrap().key(),
             DraftPieceDigestV1::from_bytes([0xE4; 32]),
         ),
     );
@@ -870,9 +872,11 @@ pub fn inject_draft_piece_coordinated_stage_target_replacement(
         session.dirty_generation(),
         session.logical_extent(),
         session.lifecycle(),
-        Some(DraftEditorActiveOperationV1::new(
+        Some(DraftEditorActiveOperationV1::building(
             custody.operation_id(),
-            custody.proposal_digest(),
+            custody
+                .proposal_digest()
+                .expect("fixture custody is building"),
             custody.predecessor_candidate_generation(),
             custody.predecessor_root(),
             custody.predecessor_history(),

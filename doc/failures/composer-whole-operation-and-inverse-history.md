@@ -26,10 +26,18 @@ reconciliation. The accepted app-neutral cursor protocol does not know terminal 
 that builder before finish without accumulating or later resupplying the complete operation. A
 bounded post-finish builder did not provide durable pre-finish page custody.
 
-The first custody schema wording also made the staging-head digest commit the selected progress-
-receipt digest while that receipt committed the successor head digest. Those two outputs could not
-be computed without a digest cycle, so the described codec and replay closure were not
-implementable as written.
+Staging digest authority was self-referential: the head digest committed the selected progress-
+receipt digest while that receipt committed the successor head digest, and the page digest's broad
+field commitment included the successor cumulative identity derived from that page digest while
+failing to authenticate the page ceilings explicitly. A mutable or chained record digest cannot
+commit a downstream value derived from itself; zero-placeholder encoding does not make that cycle
+canonical or implementable.
+
+The custody outcome wording further assumed that `Conflict` could clear an admitted receiving or
+finished operation from `Staging` to `None`. Admission already proves that custody's predecessor is
+the session newest pair, and the single slot prevents another same-session mutation from changing
+that pair while staging remains coherent. Treating the observed pair as another session or the
+durable current selector conflated staging custody with session isolation or publication conflict.
 
 ## Course Correction
 
@@ -51,11 +59,22 @@ natural staging records rather than caller-retained payload. Pre-build cancellat
 terminalizes only staging; no staging page can become a candidate, history transition, current
 draft, `ComposerV1` materialization, submission, or transcript authority.
 
-The staging head continues to store the selected receipt key and digest, but its own digest omits
-only the selected receipt digest and includes the selected key/transition ordinal. Storage then
-point-reads and authenticates that receipt digest independently; the receipt still commits the
-before/after head digests and all receipt fields. This establishes a computable one-way digest
-order while preserving exact selected-receipt closure and canonical byte-equality replay.
+Keep `Conflict` in the closed pre-build evidence and public outcome unions, but permit it before
+begin only: ordinal one, `None`-to-`None`, with the stale expected pair, exact observed current
+pair (that session's newest pair), and observed revision. Admitted staging may terminalize only as
+`Rejected`, `Cancelled`, or `Error` with exact `Staging`-to-`None` evidence; attempted admitted
+`Conflict` fails closed without mutation, and replay of an older valid terminal conflict uses its
+immutable closure rather than later session or publication state.
+
+Give every chained record an explicit acyclic canonical digest preimage. The staging-head digest
+omits only the selected receipt digest while retaining its key and transition ordinal; storage
+authenticates the selected receipt separately, and the receipt still commits the before/after head
+digests. The staging-page digest commits its complete natural key, separate progress transition
+ordinal, cursors, both page ceilings, prior cumulative identity, checked successor totals, and exact
+canonical page-item bytes while excluding only its derived successor cumulative identity and its own
+digest field, with no placeholder. Derive the successor cumulative identity afterward from the prior
+identity and page digest under its separate domain. Decode, local validation, and closure validation
+recompute both digests, while complete canonical byte equality remains replay authority.
 
 Store compact durable same-draft root-transition journal/frontier records in Syndic/Fjall. Ordinary
 candidate adoption appends a transition; undo and redo directly adopt an authenticated retained

@@ -841,7 +841,8 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
         claimed
             .active_operation()
             .unwrap()
-            .receipt()
+            .build_receipt()
+            .unwrap()
             .key()
             .transition_ordinal(),
         1
@@ -866,7 +867,8 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
         staged
             .active_operation()
             .unwrap()
-            .receipt()
+            .build_receipt()
+            .unwrap()
             .key()
             .transition_ordinal(),
         2

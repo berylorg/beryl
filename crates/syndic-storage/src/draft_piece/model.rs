@@ -1,3 +1,4 @@
+use super::staging_model::DraftMutationStagingProgressReceiptReferenceV1;
 use beryl_model::{
     DraftRevision, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
     ThreadRevision,
@@ -89,17 +90,45 @@ pub enum DraftEditorCandidateSessionLifecycleV1 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DraftEditorActiveOperationV1 {
-    operation_id: DraftPieceOperationIdV1,
-    proposal_digest: DraftPieceDigestV1,
-    predecessor_candidate_generation: u64,
-    predecessor_root: DraftPieceRootReferenceV1,
-    predecessor_history: DraftEditHistoryFrontierReferenceV1,
-    receipt: DraftPieceBuildProgressReceiptReferenceV1,
+pub enum DraftEditorActiveOperationV1 {
+    Staging {
+        operation_id: DraftPieceOperationIdV1,
+        begin_digest: DraftPieceDigestV1,
+        predecessor_candidate_generation: u64,
+        predecessor_root: DraftPieceRootReferenceV1,
+        predecessor_history: DraftEditHistoryFrontierReferenceV1,
+        receipt: DraftMutationStagingProgressReceiptReferenceV1,
+    },
+    Building {
+        operation_id: DraftPieceOperationIdV1,
+        proposal_digest: DraftPieceDigestV1,
+        predecessor_candidate_generation: u64,
+        predecessor_root: DraftPieceRootReferenceV1,
+        predecessor_history: DraftEditHistoryFrontierReferenceV1,
+        receipt: DraftPieceBuildProgressReceiptReferenceV1,
+    },
 }
 
 impl DraftEditorActiveOperationV1 {
-    pub const fn new(
+    pub const fn staging(
+        operation_id: DraftPieceOperationIdV1,
+        begin_digest: DraftPieceDigestV1,
+        predecessor_candidate_generation: u64,
+        predecessor_root: DraftPieceRootReferenceV1,
+        predecessor_history: DraftEditHistoryFrontierReferenceV1,
+        receipt: DraftMutationStagingProgressReceiptReferenceV1,
+    ) -> Self {
+        Self::Staging {
+            operation_id,
+            begin_digest,
+            predecessor_candidate_generation,
+            predecessor_root,
+            predecessor_history,
+            receipt,
+        }
+    }
+
+    pub const fn building(
         operation_id: DraftPieceOperationIdV1,
         proposal_digest: DraftPieceDigestV1,
         predecessor_candidate_generation: u64,
@@ -107,7 +136,7 @@ impl DraftEditorActiveOperationV1 {
         predecessor_history: DraftEditHistoryFrontierReferenceV1,
         receipt: DraftPieceBuildProgressReceiptReferenceV1,
     ) -> Self {
-        Self {
+        Self::Building {
             operation_id,
             proposal_digest,
             predecessor_candidate_generation,
@@ -118,35 +147,112 @@ impl DraftEditorActiveOperationV1 {
     }
 
     pub const fn operation_id(self) -> DraftPieceOperationIdV1 {
-        self.operation_id
+        match self {
+            Self::Staging { operation_id, .. } | Self::Building { operation_id, .. } => {
+                operation_id
+            }
+        }
     }
 
-    pub const fn proposal_digest(self) -> DraftPieceDigestV1 {
-        self.proposal_digest
+    pub const fn proposal_digest(self) -> Option<DraftPieceDigestV1> {
+        match self {
+            Self::Staging { .. } => None,
+            Self::Building {
+                proposal_digest, ..
+            } => Some(proposal_digest),
+        }
+    }
+
+    pub const fn begin_digest(self) -> Option<DraftPieceDigestV1> {
+        match self {
+            Self::Staging { begin_digest, .. } => Some(begin_digest),
+            Self::Building { .. } => None,
+        }
     }
 
     pub const fn predecessor_candidate_generation(self) -> u64 {
-        self.predecessor_candidate_generation
+        match self {
+            Self::Staging {
+                predecessor_candidate_generation,
+                ..
+            }
+            | Self::Building {
+                predecessor_candidate_generation,
+                ..
+            } => predecessor_candidate_generation,
+        }
     }
 
     pub const fn predecessor_root(self) -> DraftPieceRootReferenceV1 {
-        self.predecessor_root
+        match self {
+            Self::Staging {
+                predecessor_root, ..
+            }
+            | Self::Building {
+                predecessor_root, ..
+            } => predecessor_root,
+        }
+    }
+
+    pub const fn build_receipt(self) -> Option<DraftPieceBuildProgressReceiptReferenceV1> {
+        match self {
+            Self::Staging { .. } => None,
+            Self::Building { receipt, .. } => Some(receipt),
+        }
     }
 
     pub const fn predecessor_history(self) -> DraftEditHistoryFrontierReferenceV1 {
-        self.predecessor_history
+        match self {
+            Self::Staging {
+                predecessor_history,
+                ..
+            }
+            | Self::Building {
+                predecessor_history,
+                ..
+            } => predecessor_history,
+        }
     }
 
-    pub const fn receipt(self) -> DraftPieceBuildProgressReceiptReferenceV1 {
-        self.receipt
+    pub const fn staging_receipt(self) -> Option<DraftMutationStagingProgressReceiptReferenceV1> {
+        match self {
+            Self::Staging { receipt, .. } => Some(receipt),
+            Self::Building { .. } => None,
+        }
     }
 
     pub fn same_operation(&self, other: &Self) -> bool {
-        self.operation_id == other.operation_id
-            && self.proposal_digest == other.proposal_digest
-            && self.predecessor_candidate_generation == other.predecessor_candidate_generation
-            && self.predecessor_root == other.predecessor_root
-            && self.predecessor_history == other.predecessor_history
+        self.operation_id() == other.operation_id()
+            && self.predecessor_candidate_generation() == other.predecessor_candidate_generation()
+            && self.predecessor_root() == other.predecessor_root()
+            && self.predecessor_history() == other.predecessor_history()
+    }
+
+    pub const fn is_staging(self) -> bool {
+        matches!(self, Self::Staging { .. })
+    }
+
+    pub const fn is_building(self) -> bool {
+        matches!(self, Self::Building { .. })
+    }
+
+    fn endpoint_is_owned(
+        self,
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+    ) -> bool {
+        match self {
+            Self::Staging { receipt, .. } => {
+                receipt.identity().draft_id() == draft_id
+                    && receipt.identity().session_id() == session_id
+                    && receipt.identity().operation_id().as_piece_operation() == self.operation_id()
+            }
+            Self::Building { receipt, .. } => {
+                receipt.key().draft_id() == draft_id
+                    && receipt.key().session_id() == session_id
+                    && receipt.key().operation_id() == self.operation_id()
+            }
+        }
     }
 }
 
@@ -392,7 +498,10 @@ impl DraftEditorCandidateSessionV1 {
         active_operation: DraftEditorActiveOperationV1,
     ) -> Option<Self> {
         if self.lifecycle != DraftEditorCandidateSessionLifecycleV1::Active
-            || self.active_operation.is_some()
+            || self
+                .active_operation
+                .as_ref()
+                .is_some_and(|active| !active.same_operation(&active_operation))
         {
             return None;
         }
@@ -540,9 +649,7 @@ impl DraftEditorCandidateSessionV1 {
                         == self.newest_candidate_generation
                     && operation.predecessor_root() == self.newest_root
                     && operation.predecessor_history() == self.newest_history
-                    && operation.receipt().key().draft_id() == self.draft_id
-                    && operation.receipt().key().session_id() == self.session_id
-                    && operation.receipt().key().operation_id() == operation.operation_id()
+                    && operation.endpoint_is_owned(self.draft_id, self.session_id)
             })
     }
 }

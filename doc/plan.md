@@ -29,20 +29,12 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 146: Establish Composer Edit-History Pairs And Ordinary Append (finished)
+# Phase 147: Add Durable Composer Mutation Page Custody (finished)
 
-Added two final-shape history families, exact root/history pairs, deterministic empty history,
-session frontier forks, and atomic ordinary transition/frontier adoption with explicit policy and
-exact stored-byte accounting. Phase146 passed 13/13 plus 56/56 named regressions, both library
-checks, formatting and diff gates; independent acceptance approved the 74-family boundary.
-
-# Phase 147: Add Durable Composer Mutation Page Custody (pending)
-
-Complete the accepted append-only two-lane Syndic staging boundary already begun in the shared tree:
-exact begin identity, bounded source/proposal pages, immutable receipts, compact head, explicit
-finish, pre-build outcomes with complete root/history evidence, restart reconciliation, and atomic
-`Staging`-to-`Building` custody transfer. Prove more than 257 pages and full durable reconstruction
-with fixed bounds, exact replay/collision, corruption, cancellation, reopen and orphan invisibility.
+Added three final-shape staging families, bounded two-lane page custody, exact terminal evidence,
+restart reconciliation, and atomic `Staging`-to-`Building` transfer. Phase147 passed 20/20 plus
+69/69 named regressions, both library checks, formatting and diff gates; independent acceptance
+approved the 77-family boundary.
 
 # Phase 148: Enforce Composer History Retention (pending)
 

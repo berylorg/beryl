@@ -795,7 +795,7 @@ impl SyndicStorage {
                 ));
             }
             let head = operation_session_head(self, store, &build, limit)?;
-            let expected_custody = DraftEditorActiveOperationV1::new(
+            let expected_custody = DraftEditorActiveOperationV1::building(
                 build.operation_id(),
                 build.proposal_digest(),
                 build.predecessor_candidate_generation(),
