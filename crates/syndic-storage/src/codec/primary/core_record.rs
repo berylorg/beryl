@@ -71,6 +71,7 @@ pub(crate) fn encode_draft_record(value: &DraftRecord) -> Result<Vec<u8>, CodecE
         }
     }
     crate::draft_piece::enc_root_reference(&mut e, value.piece_root());
+    crate::draft_piece::enc_history_reference(&mut e, value.history());
     enc_timestamp(&mut e, value.created_at());
     enc_timestamp(&mut e, value.updated_at());
     Ok(e.finish())
@@ -100,12 +101,17 @@ pub(crate) fn decode_draft_record(bytes: &[u8]) -> Result<DraftRecord, CodecErro
         }
     };
     let piece_root = crate::draft_piece::dec_root_reference(&mut d)?;
+    let history = crate::draft_piece::dec_history_reference(&mut d)?;
+    let root_history = crate::DraftRootHistoryPairV1::new(piece_root, history);
+    if !root_history.is_coherent() {
+        return Err(CodecError::InvalidLength("draft root/history pair"));
+    }
     let value = DraftRecord::new(
         id,
         thread_id,
         revision,
         submission_intent,
-        piece_root,
+        root_history,
         dec_timestamp(&mut d)?,
         dec_timestamp(&mut d)?,
     );

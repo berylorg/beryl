@@ -480,11 +480,13 @@ fn multi_page_utf8_source_reopens_at_every_durable_frontier() {
 #[test]
 fn corrupt_build_mapping_manifest_and_output_are_rejected() {
     let names = syndic_v5_family_names();
-    assert_eq!(names.len(), 72);
+    assert_eq!(names.len(), 74);
     assert_eq!(names[12], "draft-piece-build-progress");
     assert_eq!(names[14], "draft-editor-candidate-sessions");
-    assert_eq!(names[15], "draft-composer-builds");
-    assert_eq!(names[16], "draft-composer-materializations");
+    assert_eq!(names[15], "draft-edit-history-frontiers");
+    assert_eq!(names[16], "draft-edit-history-transitions");
+    assert_eq!(names[17], "draft-composer-builds");
+    assert_eq!(names[18], "draft-composer-materializations");
 
     for (name, corruption) in [
         ("build-cursor", DraftComposerBuildCorruption::Cursor),
@@ -727,6 +729,7 @@ fn indeterminate_writer_custody_resumes_from_each_committed_record() {
                 SyndicDraftId::from_bytes([93; 16]),
                 execution(),
                 SyndicTimestamp::from_unix_millis(1),
+                syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));
@@ -970,6 +973,7 @@ fn advancing_step_has_not_committed_and_indeterminate_custody() {
                 SyndicDraftId::from_bytes([107; 16]),
                 execution(),
                 SyndicTimestamp::from_unix_millis(1),
+                syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));
@@ -1512,6 +1516,7 @@ fn apply_replacement(
     replacement: DraftPieceReplacementV1,
 ) -> syndic_storage::DraftPieceRootReferenceV1 {
     let current = candidate_head(storage, store, thread);
+    let predecessor_positions = fixture_positions(&current);
     let caret = if replacement
         .inserted()
         .iter()
@@ -1527,13 +1532,18 @@ fn apply_replacement(
         current.session_id(),
         current.newest_candidate_generation(),
         current.newest_root(),
+        current.newest_history(),
         DraftPieceOperationIdV1::from_bytes([operation; 16]),
+        predecessor_positions.caret,
+        predecessor_positions.selection,
         caret,
         caret,
         1,
         canonical_draft_piece_fragment_chain_v1(&replacements),
     );
-    let prepared = storage.prepare_draft_piece_edit(header, &current).unwrap();
+    let prepared = storage
+        .prepare_draft_piece_edit(store, header, &current)
+        .unwrap();
     let fragment = storage
         .prepare_draft_piece_fragment(
             &prepared,
@@ -1575,7 +1585,59 @@ fn apply_replacement(
         store,
         storage.settle_draft_piece_edit(storage.revision(store).unwrap(), prepared),
     ));
-    candidate_head(storage, store, thread).newest_root()
+    let adopted = candidate_head(storage, store, thread);
+    if adopted.newest_candidate_generation() == current.newest_candidate_generation() + 1 {
+        remember_fixture_positions(
+            &adopted,
+            FixturePositions {
+                caret,
+                selection: caret,
+            },
+        );
+    }
+    adopted.newest_root()
+}
+
+#[derive(Clone, Copy)]
+struct FixturePositions {
+    caret: DraftCompositePositionV1,
+    selection: DraftCompositePositionV1,
+}
+
+thread_local! {
+    static FIXTURE_POSITIONS: std::cell::RefCell<Vec<(
+        syndic_storage::DraftEditHistoryFrontierReferenceV1,
+        FixturePositions,
+    )>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn fixture_positions(session: &DraftEditorCandidateSessionV1) -> FixturePositions {
+    if session.newest_candidate_generation() == 0 {
+        return FixturePositions {
+            caret: point(0),
+            selection: point(0),
+        };
+    }
+    FIXTURE_POSITIONS.with(|positions| {
+        positions
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(history, _)| *history == session.newest_history())
+            .map(|(_, positions)| *positions)
+            .expect("fixture must remember the exact positions of an adopted candidate head")
+    })
+}
+
+fn remember_fixture_positions(
+    session: &DraftEditorCandidateSessionV1,
+    positions: FixturePositions,
+) {
+    FIXTURE_POSITIONS.with(|known| {
+        known
+            .borrow_mut()
+            .push((session.newest_history(), positions));
+    });
 }
 
 fn candidate_head(
@@ -1601,6 +1663,7 @@ fn candidate_head(
                     durable.draft().id(),
                     durable.draft().revision(),
                     durable.draft().piece_root(),
+                    durable.draft().history(),
                 ),
                 session_id,
                 DraftPieceOperationIdV1::from_bytes([0xE1; 16]),
@@ -1656,6 +1719,7 @@ fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicT
         SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
         execution(),
         SyndicTimestamp::from_unix_millis(1),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
     );
     committed(execute(
         &store,

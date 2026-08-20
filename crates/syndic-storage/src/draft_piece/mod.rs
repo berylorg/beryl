@@ -1,4 +1,5 @@
 mod codec;
+mod history;
 mod materializer;
 mod model;
 mod mutation;
@@ -7,6 +8,7 @@ mod read;
 mod session;
 mod tree;
 
+pub use history::*;
 pub use materializer::*;
 pub use model::*;
 pub use mutation::{PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
@@ -22,6 +24,12 @@ pub use tree::{
 };
 
 pub(crate) use codec::*;
+pub(crate) use history::{
+    DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
+    DraftEditHistoryTransitionsCodec, DraftEditHistoryTransitionsFamily,
+    canonical_history_reference_bytes, dec_history_frontier, dec_history_reference,
+    dec_history_transition, enc_history_frontier, enc_history_reference, enc_history_transition,
+};
 pub(crate) use persistent::*;
 pub(crate) use tree::*;
 

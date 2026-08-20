@@ -62,6 +62,7 @@ fn creation_faults_reconcile_to_whole_old_or_whole_new_state() {
             draft_id(2),
             support::exact_cas::execution_binding(),
             timestamp(1),
+            syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
         );
         let command = create_command(&store, storage, creation.clone());
 
@@ -112,6 +113,7 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
         draft_id(11),
         support::exact_cas::execution_binding(),
         timestamp(1),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
     );
     match store.execute(create_command(&store, storage, creation)) {
         beryl_home_store::CommandOutcome::Committed {

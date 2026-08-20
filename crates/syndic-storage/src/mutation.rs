@@ -84,6 +84,7 @@ pub struct CreateThread {
     draft_id: SyndicDraftId,
     execution: ExecutionBinding,
     created_at: SyndicTimestamp,
+    history_policy: DraftEditHistoryPolicyV1,
     source: Option<SyndicThreadTail>,
 }
 
@@ -95,12 +96,14 @@ impl CreateThread {
         draft_id: SyndicDraftId,
         execution: ExecutionBinding,
         created_at: SyndicTimestamp,
+        history_policy: DraftEditHistoryPolicyV1,
     ) -> Self {
         Self {
             thread_id,
             draft_id,
             execution,
             created_at,
+            history_policy,
             source: None,
         }
     }
@@ -110,6 +113,7 @@ impl CreateThread {
         thread_id: SyndicThreadId,
         draft_id: SyndicDraftId,
         created_at: SyndicTimestamp,
+        history_policy: DraftEditHistoryPolicyV1,
         source: SyndicThreadTail,
     ) -> Result<Self, CreateThreadError> {
         if source.selected_path().tail().is_none() {
@@ -126,6 +130,7 @@ impl CreateThread {
             draft_id,
             execution: source.execution().clone(),
             created_at,
+            history_policy,
             source: Some(source),
         })
     }
@@ -149,6 +154,11 @@ impl CreateThread {
     pub const fn created_at(&self) -> SyndicTimestamp {
         self.created_at
     }
+
+    #[must_use]
+    pub const fn history_policy(&self) -> DraftEditHistoryPolicyV1 {
+        self.history_policy
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -160,6 +170,7 @@ pub(crate) struct InitialThreadRecords {
     pub(crate) catalog_summary: ThreadCatalogSummaryRecord,
     pub(crate) draft: DraftRecord,
     pub(crate) draft_piece_root: DraftPieceRootRecordV1,
+    pub(crate) draft_edit_history: DraftEditHistoryFrontierV1,
     pub(crate) draft_index: DraftByThreadRecord,
     pub(crate) transcript_head: TranscriptViewHeadRecord,
     pub(crate) transcript_build: Option<crate::TranscriptBuildRecord>,
@@ -204,12 +215,19 @@ impl CreateThread {
             draft_revision,
             canonical_empty_draft_root_operation_id_v1(self.draft_id),
         );
+        let draft_edit_history = canonical_empty_draft_edit_history_v1(
+            draft_piece_root.reference(),
+            self.history_policy,
+        );
         let draft = DraftRecord::new(
             self.draft_id,
             self.thread_id,
             draft_revision,
             DraftSubmissionIntent::Ordinary,
-            draft_piece_root.reference(),
+            DraftRootHistoryPairV1::new(
+                draft_piece_root.reference(),
+                draft_edit_history.reference(),
+            ),
             self.created_at,
             self.created_at,
         );
@@ -262,6 +280,7 @@ impl CreateThread {
             catalog_summary,
             draft,
             draft_piece_root,
+            draft_edit_history,
             draft_index: DraftByThreadRecord::new(
                 self.thread_id,
                 self.draft_id,
@@ -425,6 +444,11 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             || point::<DraftsFamily>(reader, &records.draft.id())?.is_some()
             || point::<DraftPieceRootsFamily>(reader, &records.draft_piece_root.reference().key())?
                 .is_some()
+            || point::<DraftEditHistoryFrontiersFamily>(
+                reader,
+                &records.draft_edit_history.reference().key(),
+            )?
+            .is_some()
             || point::<DraftByThreadFamily>(reader, &records.thread.id())?.is_some()
             || point::<TranscriptHeadsFamily>(reader, &records.thread.id())?.is_some()
             || transcript_build_collision
@@ -468,6 +492,7 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
         reservation.reserve_records::<ThreadCatalogSummariesCodec>(1)?;
         reservation.reserve_records::<DraftsCodec>(1)?;
         reservation.reserve_records::<DraftPieceRootsCodec>(1)?;
+        reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;
         reservation.reserve_records::<DraftByThreadCodec>(1)?;
         reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
         if records.transcript_build.is_some() {
@@ -497,6 +522,10 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
         mutations.put::<DraftPieceRootsCodec>(
             &records.draft_piece_root.reference().key(),
             &records.draft_piece_root,
+        )?;
+        mutations.put::<DraftEditHistoryFrontiersCodec>(
+            &records.draft_edit_history.reference().key(),
+            &records.draft_edit_history,
         )?;
         mutations.put::<DraftByThreadCodec>(&records.thread.id(), &records.draft_index)?;
         mutations.put::<TranscriptHeadsCodec>(&records.thread.id(), &records.transcript_head)?;

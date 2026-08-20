@@ -73,7 +73,7 @@ pub struct DraftRecord {
     thread_id: SyndicThreadId,
     revision: DraftRevision,
     submission_intent: DraftSubmissionIntent,
-    piece_root: crate::DraftPieceRootReferenceV1,
+    root_history: crate::DraftRootHistoryPairV1,
     created_at: SyndicTimestamp,
     updated_at: SyndicTimestamp,
 }
@@ -86,7 +86,7 @@ impl DraftRecord {
         thread_id: SyndicThreadId,
         revision: DraftRevision,
         submission_intent: DraftSubmissionIntent,
-        piece_root: crate::DraftPieceRootReferenceV1,
+        root_history: crate::DraftRootHistoryPairV1,
         created_at: SyndicTimestamp,
         updated_at: SyndicTimestamp,
     ) -> Self {
@@ -95,7 +95,7 @@ impl DraftRecord {
             thread_id,
             revision,
             submission_intent,
-            piece_root,
+            root_history,
             created_at,
             updated_at,
         }
@@ -120,7 +120,15 @@ impl DraftRecord {
     }
     #[must_use]
     pub const fn piece_root(&self) -> crate::DraftPieceRootReferenceV1 {
-        self.piece_root
+        self.root_history.root()
+    }
+    #[must_use]
+    pub const fn history(&self) -> crate::DraftEditHistoryFrontierReferenceV1 {
+        self.root_history.history()
+    }
+    #[must_use]
+    pub const fn root_history(&self) -> crate::DraftRootHistoryPairV1 {
+        self.root_history
     }
     #[must_use]
     pub const fn created_at(&self) -> SyndicTimestamp {

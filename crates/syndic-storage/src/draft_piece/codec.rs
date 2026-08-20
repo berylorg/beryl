@@ -476,6 +476,7 @@ pub(crate) fn canonical_session_open_request_bytes(
     e.fixed16(selector.draft_id().as_bytes());
     e.u64(selector.selector_revision().get());
     enc_root_reference(&mut e, selector.root());
+    enc_history_reference(&mut e, selector.history());
     e.fixed16(value.session_id().as_bytes());
     e.fixed16(value.operation_id().as_bytes());
     e.finish()
@@ -500,6 +501,7 @@ fn decode_canonical_session_open_request_bytes(
         DraftRevision::new(d.u64()?)
             .map_err(|error| invalid("draft editor session selector revision", error))?,
         dec_root_reference(&mut d)?,
+        dec_history_reference(&mut d)?,
     );
     let request = DraftEditorCandidateSessionOpenRequestV1::new(
         selector,
@@ -556,11 +558,14 @@ fn enc_session_head(e: &mut Encoder, value: &DraftEditorCandidateSessionV1) {
     e.u64(value.session_generation());
     e.u64(value.durable_base_selector_revision().get());
     enc_root_reference(e, value.durable_base_root());
+    enc_history_reference(e, value.durable_base_history());
     e.u64(value.published_candidate_generation());
     e.u64(value.published_selector_revision().get());
     enc_root_reference(e, value.published_root());
+    enc_history_reference(e, value.published_history());
     e.u64(value.newest_candidate_generation());
     enc_root_reference(e, value.newest_root());
+    enc_history_reference(e, value.newest_history());
     e.u64(value.dirty_generation());
     e.u64(value.logical_extent().logical_utf8_bytes());
     e.u64(value.logical_extent().logical_line_count());
@@ -576,6 +581,7 @@ fn enc_session_head(e: &mut Encoder, value: &DraftEditorCandidateSessionV1) {
             enc_digest(e, operation.proposal_digest());
             e.u64(operation.predecessor_candidate_generation());
             enc_root_reference(e, operation.predecessor_root());
+            enc_history_reference(e, operation.predecessor_history());
             enc_progress_reference(e, operation.receipt());
         }
     }
@@ -590,12 +596,15 @@ fn dec_session_head(d: &mut Decoder<'_>) -> Result<DraftEditorCandidateSessionV1
     let durable_base_selector_revision = DraftRevision::new(d.u64()?)
         .map_err(|error| invalid("draft editor session base selector", error))?;
     let durable_base_root = dec_root_reference(d)?;
+    let durable_base_history = dec_history_reference(d)?;
     let published_candidate_generation = d.u64()?;
     let published_selector_revision = DraftRevision::new(d.u64()?)
         .map_err(|error| invalid("draft editor session published selector", error))?;
     let published_root = dec_root_reference(d)?;
+    let published_history = dec_history_reference(d)?;
     let newest_candidate_generation = d.u64()?;
     let newest_root = dec_root_reference(d)?;
+    let newest_history = dec_history_reference(d)?;
     let dirty_generation = d.u64()?;
     let logical_extent = DraftLogicalExtentV1::new(d.u64()?, d.u64()?);
     let lifecycle = match d.u8()? {
@@ -615,6 +624,7 @@ fn dec_session_head(d: &mut Decoder<'_>) -> Result<DraftEditorCandidateSessionV1
             dec_digest(d)?,
             d.u64()?,
             dec_root_reference(d)?,
+            dec_history_reference(d)?,
             dec_progress_reference(d)?,
         )),
         tag => {
@@ -632,11 +642,14 @@ fn dec_session_head(d: &mut Decoder<'_>) -> Result<DraftEditorCandidateSessionV1
         session_generation,
         durable_base_selector_revision,
         durable_base_root,
+        durable_base_history,
         published_candidate_generation,
         published_selector_revision,
         published_root,
+        published_history,
         newest_candidate_generation,
         newest_root,
+        newest_history,
         dirty_generation,
         logical_extent,
         lifecycle,
@@ -674,7 +687,27 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
             let request_bytes = d.bytes("draft editor session open request")?.to_vec();
             let head = dec_session_head(&mut d)?;
             let request = decode_canonical_session_open_request_bytes(&request_bytes)?;
-            if DraftEditorCandidateSessionV1::opened(request) != head {
+            let selector = request.selector();
+            if head.thread_id() != selector.thread_id()
+                || head.draft_id() != selector.draft_id()
+                || head.session_id() != request.session_id()
+                || head.open_operation_id() != request.operation_id()
+                || head.session_generation() != 1
+                || head.durable_base_selector_revision() != selector.selector_revision()
+                || head.durable_base_root() != selector.root()
+                || head.durable_base_history() != selector.history()
+                || head.published_candidate_generation() != 0
+                || head.published_selector_revision() != selector.selector_revision()
+                || head.published_root() != selector.root()
+                || head.published_history() != selector.history()
+                || head.newest_candidate_generation() != 0
+                || head.newest_root() != selector.root()
+                || head.newest_history().root() != selector.root()
+                || head.newest_history().key().session_id() != Some(request.session_id())
+                || head.logical_extent() != selector.root().summary().logical_extent()
+                || head.lifecycle() != DraftEditorCandidateSessionLifecycleV1::Active
+                || head.active_operation().is_some()
+            {
                 return Err(CodecError::InvalidLength(
                     "draft editor session open receipt",
                 ));
@@ -733,7 +766,7 @@ fn dec_search_key(d: &mut Decoder<'_>) -> Result<DraftCompositeSearchKeyV1, Code
     }
 }
 
-fn enc_position(e: &mut Encoder, position: DraftCompositePositionV1) {
+pub(crate) fn enc_position(e: &mut Encoder, position: DraftCompositePositionV1) {
     e.u64(position.utf8_offset());
     match position.gap() {
         DraftCompositeGapWitnessV1::Unambiguous => e.u8(0),
@@ -760,7 +793,7 @@ pub(crate) fn canonical_position_bytes(position: DraftCompositePositionV1) -> Ve
     e.finish()
 }
 
-fn dec_position(d: &mut Decoder<'_>) -> Result<DraftCompositePositionV1, CodecError> {
+pub(crate) fn dec_position(d: &mut Decoder<'_>) -> Result<DraftCompositePositionV1, CodecError> {
     let offset = d.u64()?;
     let gap = match d.u8()? {
         0 => DraftCompositeGapWitnessV1::Unambiguous,
@@ -1002,7 +1035,10 @@ fn encode_build(value: &DraftPieceBuildRecordV1) -> Result<Vec<u8>, CodecError> 
     e.fixed16(value.session_id().as_bytes());
     e.u64(value.predecessor_candidate_generation());
     enc_root_reference(&mut e, value.predecessor_root());
+    enc_history_reference(&mut e, value.predecessor_history());
     e.fixed16(value.operation_id().as_bytes());
+    enc_position(&mut e, value.predecessor_caret());
+    enc_position(&mut e, value.predecessor_selection());
     enc_position(&mut e, value.caret());
     enc_position(&mut e, value.selection());
     e.u64(value.fragment_count());
@@ -1042,7 +1078,10 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
     let session_id = DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?);
     let predecessor_candidate_generation = d.u64()?;
     let predecessor_root = dec_root_reference(&mut d)?;
+    let predecessor_history = dec_history_reference(&mut d)?;
     let operation_id = DraftPieceOperationIdV1::from_bytes(d.fixed16()?);
+    let predecessor_caret = dec_position(&mut d)?;
+    let predecessor_selection = dec_position(&mut d)?;
     let caret = dec_position(&mut d)?;
     let selection = dec_position(&mut d)?;
     let fragment_count = d.u64()?;
@@ -1098,7 +1137,10 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
         session_id,
         predecessor_candidate_generation,
         predecessor_root,
+        predecessor_history,
         operation_id,
+        predecessor_caret,
+        predecessor_selection,
         caret,
         selection,
         fragment_count,
@@ -1467,8 +1509,11 @@ fn encode_settlement(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, CodecErr
     enc_digest(&mut e, value.proposal_digest());
     e.u64(value.predecessor_candidate_generation());
     enc_root_reference(&mut e, value.predecessor_root());
+    enc_history_reference(&mut e, value.predecessor_history());
     e.u64(value.fragment_count());
     enc_digest(&mut e, value.fragment_chain());
+    enc_position(&mut e, value.predecessor_caret());
+    enc_position(&mut e, value.predecessor_selection());
     enc_position(&mut e, value.caret());
     enc_position(&mut e, value.selection());
     match value.build_digest() {
@@ -1491,12 +1536,14 @@ fn encode_settlement(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, CodecErr
         DraftPieceSettlementOutcomeV1::Committed {
             candidate_generation,
             successor,
+            history,
             caret,
             selection,
         } => {
             e.u8(0);
             e.u64(*candidate_generation);
             enc_root_reference(&mut e, *successor);
+            enc_history_reference(&mut e, *history);
             enc_position(&mut e, *caret);
             enc_position(&mut e, *selection);
         }
@@ -1507,10 +1554,12 @@ fn encode_settlement(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, CodecErr
         DraftPieceSettlementOutcomeV1::Conflict {
             current_candidate_generation,
             current_root,
+            current_history,
         } => {
             e.u8(2);
             e.u64(*current_candidate_generation);
             enc_root_reference(&mut e, *current_root);
+            enc_history_reference(&mut e, *current_history);
         }
         DraftPieceSettlementOutcomeV1::Cancelled => e.u8(3),
         DraftPieceSettlementOutcomeV1::Error(reason) => {
@@ -1524,10 +1573,14 @@ fn encode_settlement(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, CodecErr
             enc_session_head(&mut e, adoption.predecessor_session());
             enc_session_head(&mut e, adoption.adopted_session());
             enc_root_reference(&mut e, adoption.adopted_root().reference());
+            enc_history_frontier(&mut e, adoption.predecessor_history());
+            enc_history_transition(&mut e, adoption.transition());
+            enc_history_frontier(&mut e, adoption.adopted_history());
         }
         DraftPieceSettlementClosureV1::Noncommit(noncommit) => {
             e.u8(1);
             enc_session_head(&mut e, noncommit.observed_session());
+            enc_history_frontier(&mut e, noncommit.observed_history());
             match noncommit.proposed_successor() {
                 Some(successor) => {
                     e.u8(1);
@@ -1553,8 +1606,11 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
     let proposal = dec_digest(&mut d)?;
     let predecessor_candidate_generation = d.u64()?;
     let predecessor_root = dec_root_reference(&mut d)?;
+    let predecessor_history = dec_history_reference(&mut d)?;
     let fragment_count = d.u64()?;
     let fragment_chain = dec_digest(&mut d)?;
+    let predecessor_caret = dec_position(&mut d)?;
+    let predecessor_selection = dec_position(&mut d)?;
     let caret = dec_position(&mut d)?;
     let selection = dec_position(&mut d)?;
     let build_digest = match d.u8()? {
@@ -1585,6 +1641,7 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
         0 => DraftPieceSettlementOutcomeV1::Committed {
             candidate_generation: d.u64()?,
             successor: dec_root_reference(&mut d)?,
+            history: dec_history_reference(&mut d)?,
             caret: dec_position(&mut d)?,
             selection: dec_position(&mut d)?,
         },
@@ -1592,6 +1649,7 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
         2 => DraftPieceSettlementOutcomeV1::Conflict {
             current_candidate_generation: d.u64()?,
             current_root: dec_root_reference(&mut d)?,
+            current_history: dec_history_reference(&mut d)?,
         },
         3 => DraftPieceSettlementOutcomeV1::Cancelled,
         4 => DraftPieceSettlementOutcomeV1::Error(dec_error(&mut d)?),
@@ -1607,9 +1665,13 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
             dec_session_head(&mut d)?,
             dec_session_head(&mut d)?,
             DraftPieceRootRecordV1::new(dec_root_reference(&mut d)?),
+            dec_history_frontier(&mut d)?,
+            dec_history_transition(&mut d)?,
+            dec_history_frontier(&mut d)?,
         )),
         1 => {
             let observed_session = dec_session_head(&mut d)?;
+            let observed_history = dec_history_frontier(&mut d)?;
             let proposed_successor = match d.u8()? {
                 0 => None,
                 1 => Some(dec_root_reference(&mut d)?),
@@ -1634,11 +1696,14 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
                 (Some(successor), Some(proof)) => {
                     DraftPieceNoncommitClosureV1::with_occupied_identity(
                         observed_session,
+                        observed_history,
                         successor,
                         proof,
                     )
                 }
-                (successor, None) => DraftPieceNoncommitClosureV1::new(observed_session, successor),
+                (successor, None) => {
+                    DraftPieceNoncommitClosureV1::new(observed_session, observed_history, successor)
+                }
                 (None, Some(_)) => {
                     return Err(CodecError::InvalidLength(
                         "draft-piece occupied identity successor",
@@ -1659,8 +1724,11 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
         proposal,
         predecessor_candidate_generation,
         predecessor_root,
+        predecessor_history,
         fragment_count,
         fragment_chain,
+        predecessor_caret,
+        predecessor_selection,
         caret,
         selection,
         build_digest,
@@ -2022,7 +2090,7 @@ family!(
     DraftPieceSettlementV1,
     "draft-piece-settlements",
     48,
-    8_192,
+    65_536,
     encode_settlement_family_key,
     decode_settlement_family_key,
     encode_settlement,

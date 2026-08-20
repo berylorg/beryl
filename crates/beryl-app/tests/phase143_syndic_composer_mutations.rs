@@ -415,7 +415,9 @@ fn prepare_text_transaction(
         1,
         canonical_draft_piece_fragment_chain_v1(&replacements),
     );
-    let prepared = storage.prepare_draft_piece_edit(header, &source).unwrap();
+    let prepared = storage
+        .prepare_draft_piece_edit(store, header, &source)
+        .unwrap();
     let fragment = storage
         .prepare_draft_piece_fragment(
             &prepared,

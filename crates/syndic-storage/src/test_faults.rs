@@ -7,6 +7,7 @@ use crate::{
 
 mod content_text;
 mod draft_composer;
+mod draft_edit_history;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 mod draft_piece_current_drift;
@@ -38,6 +39,14 @@ pub use draft_composer::{
     inject_draft_composer_build_corruption, inject_draft_composer_chunk_corruption,
     inject_draft_composer_manifest_corruption, inject_draft_composer_mapping_corruption,
     inject_draft_composer_output_corruption, inject_draft_composer_prepared_chunk,
+};
+pub use draft_edit_history::{
+    DraftEditHistoryRecordDeletion, alternative_ordinary_draft_edit_history,
+    delete_draft_edit_history_frontier, delete_draft_edit_history_record,
+    draft_edit_history_overflow_errors, draft_edit_history_stored_charge_components,
+    inject_draft_edit_history_frontier_digest_corruption,
+    occupy_canonical_empty_draft_edit_history, replace_draft_edit_history_frontier,
+    replace_draft_edit_history_transition,
 };
 pub use draft_piece_candidate_drift::arm_draft_piece_candidate_read_fault;
 pub(crate) use draft_piece_candidate_drift::run_draft_piece_candidate_read_fault;

@@ -219,7 +219,13 @@ fn ordinary_creation_is_atomic_reopenable_and_naturally_reconcilable() {
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (thread_id, draft_id) = ids(1);
-    let creation = CreateThread::ordinary(thread_id, draft_id, execution(), timestamp(10));
+    let creation = CreateThread::ordinary(
+        thread_id,
+        draft_id,
+        execution(),
+        timestamp(10),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+    );
 
     assert_eq!(
         storage
@@ -276,7 +282,13 @@ fn cancellation_before_admission_and_identity_collision_change_nothing() {
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (thread_id, draft_id) = ids(10);
-    let creation = CreateThread::ordinary(thread_id, draft_id, execution(), timestamp(1));
+    let creation = CreateThread::ordinary(
+        thread_id,
+        draft_id,
+        execution(),
+        timestamp(1),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+    );
     let before = storage.revision(&store).unwrap();
     let cancellation = CommandCancellation::new();
     cancellation.cancel();
@@ -348,7 +360,13 @@ fn dirty_only_update_preserves_immutable_draft_facts_and_reconciles_exactly() {
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (thread_id, draft_id) = ids(20);
-    let creation = CreateThread::ordinary(thread_id, draft_id, execution(), timestamp(5));
+    let creation = CreateThread::ordinary(
+        thread_id,
+        draft_id,
+        execution(),
+        timestamp(5),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+    );
     assert_committed(
         &store,
         storage,

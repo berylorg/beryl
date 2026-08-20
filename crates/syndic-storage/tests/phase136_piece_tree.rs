@@ -70,12 +70,56 @@ struct Transaction {
     operation: DraftPieceOperationIdV1,
     prepared: PreparedDraftPieceEditV1,
     fragments: Vec<DraftPieceBuildFragmentV1>,
+    successor_positions: FixturePositions,
+}
+
+#[derive(Clone, Copy)]
+struct FixturePositions {
+    caret: DraftCompositePositionV1,
+    selection: DraftCompositePositionV1,
+}
+
+thread_local! {
+    static FIXTURE_POSITIONS: std::cell::RefCell<Vec<(
+        syndic_storage::DraftEditHistoryFrontierReferenceV1,
+        FixturePositions,
+    )>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn fixture_positions(session: &DraftEditorCandidateSessionV1) -> FixturePositions {
+    if session.newest_history().frontier_revision() == 0 {
+        return FixturePositions {
+            caret: point(0),
+            selection: point(0),
+        };
+    }
+    FIXTURE_POSITIONS.with(|positions| {
+        positions
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(history, _)| *history == session.newest_history())
+            .map(|(_, positions)| *positions)
+            .expect("fixture must remember the exact positions of an adopted candidate head")
+    })
+}
+
+fn remember_fixture_positions(
+    session: &DraftEditorCandidateSessionV1,
+    positions: FixturePositions,
+) {
+    FIXTURE_POSITIONS.with(|known| {
+        known
+            .borrow_mut()
+            .push((session.newest_history(), positions));
+    });
 }
 
 #[derive(Clone)]
 struct CandidateCurrent {
     session: DraftEditorCandidateSessionV1,
     draft: CandidateDraft,
+    positions: FixturePositions,
 }
 
 #[derive(Clone, Copy)]
@@ -127,6 +171,7 @@ fn canonical_empty_text_marker_move_duplicate_and_exact_history_are_preserved() 
     );
     let marker_only = transaction(
         storage,
+        &store,
         &initial,
         4,
         vec![DraftPieceReplacementV1::new(
@@ -172,6 +217,7 @@ fn canonical_empty_text_marker_move_duplicate_and_exact_history_are_preserved() 
 
     let text_before_marker = transaction(
         storage,
+        &store,
         &marker_only_current,
         5,
         vec![DraftPieceReplacementV1::new(
@@ -208,6 +254,7 @@ fn canonical_empty_text_marker_move_duplicate_and_exact_history_are_preserved() 
 
     let move_marker = transaction(
         storage,
+        &store,
         &before_move,
         6,
         vec![
@@ -249,6 +296,7 @@ fn canonical_empty_text_marker_move_duplicate_and_exact_history_are_preserved() 
 
     let duplicate = transaction(
         storage,
+        &store,
         &moved,
         7,
         vec![DraftPieceReplacementV1::new(
@@ -297,6 +345,7 @@ fn canonical_empty_text_marker_move_duplicate_and_exact_history_are_preserved() 
     let moved_after_rejection = current(storage, &store, thread);
     let suffix = transaction(
         storage,
+        &store,
         &moved_after_rejection,
         8,
         vec![DraftPieceReplacementV1::new(
@@ -339,6 +388,7 @@ fn canonical_empty_text_marker_move_duplicate_and_exact_history_are_preserved() 
 
     let text_only = transaction(
         storage,
+        &store,
         &suffix_current,
         9,
         vec![DraftPieceReplacementV1::new(
@@ -368,6 +418,7 @@ fn canonical_empty_text_marker_move_duplicate_and_exact_history_are_preserved() 
 
     let empty = transaction(
         storage,
+        &store,
         &text_only_current,
         10,
         vec![DraftPieceReplacementV1::new(point(0), point(4), Vec::new())],
@@ -394,6 +445,7 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
     let base = current(storage, &store, thread);
     let staged_transaction = transaction(
         storage,
+        &store,
         &base,
         11,
         vec![DraftPieceReplacementV1::new(
@@ -443,6 +495,7 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
 
     let recovered = transaction(
         storage,
+        &reopened,
         &base,
         11,
         vec![DraftPieceReplacementV1::new(
@@ -458,8 +511,12 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
     ));
     committed(execute(
         &reopened,
-        storage.settle_draft_piece_edit(storage.revision(&reopened).unwrap(), recovered.prepared),
+        storage.settle_draft_piece_edit(
+            storage.revision(&reopened).unwrap(),
+            recovered.prepared.clone(),
+        ),
     ));
+    remember_settled_transaction(storage, &reopened, &recovered);
     let root = current(storage, &reopened, thread).draft().piece_root();
     assert_eq!(
         storage
@@ -476,6 +533,7 @@ fn exact_fragment_replay_and_header_collision_are_mutation_free() {
     let base = current(storage, &store, thread);
     let accepted = transaction(
         storage,
+        &store,
         &base,
         31,
         vec![DraftPieceReplacementV1::new(
@@ -502,6 +560,7 @@ fn exact_fragment_replay_and_header_collision_are_mutation_free() {
 
     let colliding = transaction(
         storage,
+        &store,
         &base,
         31,
         vec![DraftPieceReplacementV1::new(
@@ -525,6 +584,7 @@ fn settled_operation_replays_after_a_newer_build_replaces_the_draft_head() {
     let base = current(storage, &store, thread);
     let first = transaction(
         storage,
+        &store,
         &base,
         36,
         vec![DraftPieceReplacementV1::new(
@@ -539,6 +599,7 @@ fn settled_operation_replays_after_a_newer_build_replaces_the_draft_head() {
     let next_base = current(storage, &store, thread);
     let second = transaction(
         storage,
+        &store,
         &next_base,
         37,
         vec![DraftPieceReplacementV1::new(
@@ -563,6 +624,7 @@ fn settlement_replay_requires_its_exact_terminal_build_after_newer_builds() {
     let base = current(storage, &store, thread);
     let first = transaction(
         storage,
+        &store,
         &base,
         39,
         vec![DraftPieceReplacementV1::new(
@@ -576,6 +638,7 @@ fn settlement_replay_requires_its_exact_terminal_build_after_newer_builds() {
     let next_base = current(storage, &store, thread);
     let second = transaction(
         storage,
+        &store,
         &next_base,
         40,
         vec![DraftPieceReplacementV1::new(
@@ -620,6 +683,7 @@ fn no_change_terminals_close_the_five_way_settlement() {
     let base = current(storage, &store, thread);
     let rejected = transaction(
         storage,
+        &store,
         &base,
         51,
         vec![DraftPieceReplacementV1::new(point(0), point(0), Vec::new())],
@@ -650,6 +714,7 @@ fn no_change_terminals_close_the_five_way_settlement() {
     let after_rejection = current(storage, &store, thread);
     let failed = transaction(
         storage,
+        &store,
         &after_rejection,
         52,
         vec![DraftPieceReplacementV1::new(point(0), point(0), Vec::new())],
@@ -715,6 +780,7 @@ fn cursor_reads_skip_long_marker_and_text_only_subtrees_with_fixed_bounds() {
     pieces.push(DraftPieceV1::Text("z".to_owned()));
     let transaction = transaction(
         storage,
+        &store,
         &base,
         71,
         vec![DraftPieceReplacementV1::new(point(0), point(0), pieces)],
@@ -779,6 +845,7 @@ fn composite_position_descent_is_fixed_bounded_at_two_tree_scales() {
             .collect();
         let edit = transaction(
             storage,
+            &store,
             &base,
             73 + case as u8,
             vec![DraftPieceReplacementV1::new(point(0), point(0), pieces)],
@@ -806,6 +873,7 @@ fn deletion_of_more_than_256_markers_advances_in_bounded_commands() {
     let base = current(storage, &store, thread);
     let text = transaction(
         storage,
+        &store,
         &base,
         91,
         vec![DraftPieceReplacementV1::new(
@@ -847,6 +915,7 @@ fn deletion_of_more_than_256_markers_advances_in_bounded_commands() {
     };
     let markers = transaction(
         storage,
+        &store,
         &base,
         92,
         vec![DraftPieceReplacementV1::new(
@@ -860,6 +929,7 @@ fn deletion_of_more_than_256_markers_advances_in_bounded_commands() {
     let base = current(storage, &store, thread);
     let more_markers = transaction(
         storage,
+        &store,
         &base,
         93,
         vec![DraftPieceReplacementV1::new(
@@ -874,6 +944,7 @@ fn deletion_of_more_than_256_markers_advances_in_bounded_commands() {
     assert_eq!(base.draft().piece_root().summary().marker_count(), 301);
     let delete = transaction(
         storage,
+        &store,
         &base,
         94,
         vec![DraftPieceReplacementV1::new(
@@ -896,6 +967,7 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
     let base = current(storage, &store, thread);
     let seed = transaction(
         storage,
+        &store,
         &base,
         98,
         vec![DraftPieceReplacementV1::new(
@@ -911,6 +983,7 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
     let text = "x".repeat(65_536);
     let edit = transaction(
         storage,
+        &store,
         &base,
         99,
         vec![DraftPieceReplacementV1::new(
@@ -952,6 +1025,7 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     ));
+    remember_settled_transaction(storage, &store, &edit);
     let root = current(storage, &store, thread).draft().piece_root();
     assert_eq!(root.summary().logical_utf8_bytes(), 65_665);
     assert_eq!(
@@ -1016,6 +1090,7 @@ fn detached_descendant_replacements_are_rejected_under_unchanged_parent_links() 
                 .collect();
             let transaction = transaction(
                 storage,
+                &store,
                 &base,
                 seed ^ 0x80,
                 vec![DraftPieceReplacementV1::new(point(0), point(0), pieces)],
@@ -1071,6 +1146,7 @@ fn candidate_read_detects_selector_drift_after_exact_traversal() {
     let base = current(storage, &store, thread);
     let initial = transaction(
         storage,
+        &store,
         &base,
         141,
         vec![DraftPieceReplacementV1::new(
@@ -1084,6 +1160,7 @@ fn candidate_read_detects_selector_drift_after_exact_traversal() {
     let base = current(storage, &store, thread);
     let successor = transaction(
         storage,
+        &store,
         &base,
         142,
         vec![DraftPieceReplacementV1::new(
@@ -1119,6 +1196,7 @@ fn candidate_read_detects_selector_drift_after_exact_traversal() {
         ),
         Err(DraftPieceRangeSourceErrorV1::ConcurrentChange)
     ));
+    remember_settled_transaction(storage, &store, &successor);
     assert_eq!(
         storage
             .draft_piece_text_demand(
@@ -1155,12 +1233,14 @@ fn writer_outcomes_reconcile_to_pending_or_exact_terminal_state() {
                 draft,
                 execution(),
                 SyndicTimestamp::from_unix_millis(1),
+                syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));
     let base = current(storage, &store, thread);
     let transaction = transaction(
         storage,
+        &store,
         &base,
         152,
         vec![DraftPieceReplacementV1::new(
@@ -1283,6 +1363,7 @@ fn every_durable_frontier_survives_indeterminate_writer_custody() {
                 draft,
                 execution(),
                 SyndicTimestamp::from_unix_millis(1),
+                syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));
@@ -1294,6 +1375,7 @@ fn every_durable_frontier_survives_indeterminate_writer_custody() {
     );
     let seed = transaction(
         storage,
+        &store,
         &base,
         162,
         vec![DraftPieceReplacementV1::new(
@@ -1311,6 +1393,7 @@ fn every_durable_frontier_survives_indeterminate_writer_custody() {
     let base = current(storage, &store, thread);
     let edit = transaction(
         storage,
+        &store,
         &base,
         163,
         vec![DraftPieceReplacementV1::new(
@@ -1427,6 +1510,7 @@ fn every_durable_frontier_survives_indeterminate_writer_custody() {
 
 fn transaction(
     storage: SyndicStorage,
+    store: &HomeStore,
     current: &CandidateCurrent,
     operation: u8,
     replacements: Vec<DraftPieceReplacementV1>,
@@ -1440,14 +1524,17 @@ fn transaction(
         session,
         current.session.newest_candidate_generation(),
         current.draft().piece_root(),
+        current.session.newest_history(),
         operation,
+        current.positions.caret,
+        current.positions.selection,
         caret,
         caret,
         replacements.len() as u64,
         chain,
     );
     let prepared = storage
-        .prepare_draft_piece_edit(header, &current.session)
+        .prepare_draft_piece_edit(store, header, &current.session)
         .unwrap();
     let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
     let fragments = replacements
@@ -1466,6 +1553,10 @@ fn transaction(
         operation,
         prepared,
         fragments,
+        successor_positions: FixturePositions {
+            caret,
+            selection: caret,
+        },
     }
 }
 
@@ -1539,6 +1630,26 @@ fn run_transaction(
             transaction.prepared.clone(),
         ),
     ));
+    remember_settled_transaction(storage, store, transaction);
+}
+
+fn remember_settled_transaction(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    transaction: &Transaction,
+) {
+    match exact_status(storage, store, transaction) {
+        DraftPieceOperationStatusV1::Settled(settlement) => match settlement.closure() {
+            syndic_storage::DraftPieceSettlementClosureV1::Committed(adoption) => {
+                remember_fixture_positions(
+                    adoption.adopted_session(),
+                    transaction.successor_positions,
+                );
+            }
+            syndic_storage::DraftPieceSettlementClosureV1::Noncommit(_) => {}
+        },
+        other => panic!("settled transaction has unexpected status: {other:?}"),
+    }
 }
 
 fn exact_status(
@@ -1580,6 +1691,7 @@ fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicT
         draft,
         execution(),
         SyndicTimestamp::from_unix_millis(1),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
     );
     committed(execute(
         &store,
@@ -1622,6 +1734,7 @@ fn current(storage: SyndicStorage, store: &HomeStore, thread: SyndicThreadId) ->
                 durable.draft().id(),
                 durable.draft().revision(),
                 durable.draft().piece_root(),
+                durable.draft().history(),
             );
             let request = DraftEditorCandidateSessionOpenRequestV1::new(
                 selector,
@@ -1655,6 +1768,7 @@ fn current(storage: SyndicStorage, store: &HomeStore, thread: SyndicThreadId) ->
             revision: durable.draft().revision(),
             root: session.newest_root(),
         },
+        positions: fixture_positions(&session),
         session,
     }
 }

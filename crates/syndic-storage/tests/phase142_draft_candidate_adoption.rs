@@ -76,6 +76,48 @@ struct Transaction {
     fragments: Vec<DraftPieceBuildFragmentV1>,
 }
 
+#[derive(Clone, Copy)]
+struct FixturePositions {
+    caret: DraftCompositePositionV1,
+    selection: DraftCompositePositionV1,
+}
+
+thread_local! {
+    static FIXTURE_POSITIONS: std::cell::RefCell<Vec<(
+        syndic_storage::DraftEditHistoryFrontierReferenceV1,
+        FixturePositions,
+    )>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn fixture_positions(session: &DraftEditorCandidateSessionV1) -> FixturePositions {
+    if session.newest_history().frontier_revision() == 0 {
+        return FixturePositions {
+            caret: point(0),
+            selection: point(0),
+        };
+    }
+    FIXTURE_POSITIONS.with(|positions| {
+        positions
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(history, _)| *history == session.newest_history())
+            .map(|(_, positions)| *positions)
+            .expect("fixture must remember the exact positions of an adopted candidate head")
+    })
+}
+
+fn remember_fixture_positions(
+    session: &DraftEditorCandidateSessionV1,
+    positions: FixturePositions,
+) {
+    FIXTURE_POSITIONS.with(|known| {
+        known
+            .borrow_mut()
+            .push((session.newest_history(), positions));
+    });
+}
+
 #[cfg(feature = "test-faults")]
 #[test]
 fn fragment_ordinals_are_one_based_in_codec_and_durable_storage() {
@@ -84,6 +126,7 @@ fn fragment_ordinals_are_one_based_in_codec_and_durable_storage() {
     let session = open_session(storage, &store, &durable, 7, 8);
     let edit = transaction(
         storage,
+        &store,
         &session,
         9,
         vec![
@@ -141,7 +184,7 @@ fn large_continued_edit_advances_only_the_named_candidate() {
             vec![DraftPieceV1::Text(second.clone())],
         ),
     ];
-    let edit = transaction(storage, &session, 22, fragments, point(100_000));
+    let edit = transaction(storage, &store, &session, 22, fragments, point(100_000));
     committed(execute(
         &store,
         storage.begin_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
@@ -205,6 +248,13 @@ fn large_continued_edit_advances_only_the_named_candidate() {
 
     let adopted = match settlement.closure() {
         syndic_storage::DraftPieceSettlementClosureV1::Committed(adoption) => {
+            remember_fixture_positions(
+                adoption.adopted_session(),
+                FixturePositions {
+                    caret: adoption.transition().after_caret(),
+                    selection: adoption.transition().after_selection(),
+                },
+            );
             adoption.adopted_session().clone()
         }
         _ => panic!("committed settlement lacked adoption closure"),
@@ -215,6 +265,7 @@ fn large_continued_edit_advances_only_the_named_candidate() {
 
     let deletion = transaction(
         storage,
+        &store,
         &adopted,
         23,
         vec![DraftPieceReplacementV1::new(
@@ -254,6 +305,7 @@ fn same_anchor_move_adjacent_ranges_and_candidate_drift_are_exact() {
     let right = marker(34, 2, 2);
     let seed = transaction(
         storage,
+        &store,
         &session,
         35,
         vec![DraftPieceReplacementV1::new(
@@ -295,6 +347,7 @@ fn same_anchor_move_adjacent_ranges_and_candidate_drift_are_exact() {
 
     let winner = transaction(
         storage,
+        &store,
         &head,
         36,
         vec![
@@ -317,6 +370,7 @@ fn same_anchor_move_adjacent_ranges_and_candidate_drift_are_exact() {
     );
     let loser = transaction(
         storage,
+        &store,
         &head,
         37,
         vec![
@@ -367,6 +421,7 @@ fn marker_order_slots_and_declared_move_pairing_are_exact() {
     let original = marker(43, 1, 7);
     let seed = transaction(
         storage,
+        &store,
         &session,
         44,
         vec![DraftPieceReplacementV1::new(
@@ -390,6 +445,7 @@ fn marker_order_slots_and_declared_move_pairing_are_exact() {
     let successor = marker(43, 3, 7);
     let same_anchor = transaction(
         storage,
+        &store,
         &seeded,
         45,
         vec![
@@ -427,6 +483,7 @@ fn marker_order_slots_and_declared_move_pairing_are_exact() {
 
     let same_slot = transaction(
         storage,
+        &store,
         &head,
         46,
         vec![DraftPieceReplacementV1::new(
@@ -445,6 +502,7 @@ fn marker_order_slots_and_declared_move_pairing_are_exact() {
     let relabeled = marker(43, 4, 8);
     let relabel = transaction(
         storage,
+        &store,
         &head,
         48,
         vec![
@@ -469,6 +527,7 @@ fn marker_order_slots_and_declared_move_pairing_are_exact() {
 
     let no_matching_removal = transaction(
         storage,
+        &store,
         &head,
         49,
         vec![
@@ -489,6 +548,7 @@ fn marker_order_slots_and_declared_move_pairing_are_exact() {
 
     let no_matching_insertion = transaction(
         storage,
+        &store,
         &head,
         50,
         vec![
@@ -513,6 +573,7 @@ fn marker_order_slots_and_declared_move_pairing_are_exact() {
 
     let undeclared = transaction(
         storage,
+        &store,
         &head,
         51,
         vec![DraftPieceReplacementV1::new(
@@ -530,6 +591,7 @@ fn marker_order_slots_and_declared_move_pairing_are_exact() {
 
     let duplicate_declarations = transaction(
         storage,
+        &store,
         &head,
         52,
         vec![
@@ -574,6 +636,7 @@ fn multi_range_delete_reinsert_requires_exact_predecessor_declared_move() {
         let original = marker(147, 1, 9);
         let seed = transaction(
             storage,
+            &store,
             &session,
             148,
             vec![DraftPieceReplacementV1::new(
@@ -616,7 +679,14 @@ fn multi_range_delete_reinsert_requires_exact_predecessor_declared_move() {
         } else {
             DraftCompositePositionV1::new(4, DraftCompositeGapWitnessV1::AfterAll)
         };
-        let undeclared = transaction(storage, &seeded, 149, undeclared_replacements, final_caret);
+        let undeclared = transaction(
+            storage,
+            &store,
+            &seeded,
+            149,
+            undeclared_replacements,
+            final_caret,
+        );
         assert_eq!(
             build_and_reject(storage, &store, &undeclared),
             DraftPieceRejectedReasonV1::DuplicateMarkerIdentity
@@ -638,6 +708,7 @@ fn multi_range_delete_reinsert_requires_exact_predecessor_declared_move() {
         let session_after_rejection = active_session(storage, &store, &seeded);
         let declared = transaction(
             storage,
+            &store,
             &session_after_rejection,
             151,
             declared_replacements,
@@ -709,6 +780,7 @@ fn text_bearing_child_boundary_preserves_marker_order_slot_uniqueness() {
         }));
     let seed = transaction(
         storage,
+        &store,
         &session,
         56,
         vec![DraftPieceReplacementV1::new(point(0), point(0), pieces)],
@@ -722,6 +794,7 @@ fn text_bearing_child_boundary_preserves_marker_order_slot_uniqueness() {
     let mut head = adopted_head(storage, &store, &seed);
     let collision = transaction(
         storage,
+        &store,
         &head,
         57,
         vec![DraftPieceReplacementV1::new(
@@ -746,6 +819,7 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
     let session = open_session(storage, &store, &durable, 51, 52);
     let cancelled = transaction(
         storage,
+        &store,
         &session,
         53,
         vec![DraftPieceReplacementV1::new(
@@ -833,6 +907,7 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
     let session_after_cancel = active_session(storage, &store, &session);
     let accepted = transaction(
         storage,
+        &store,
         &session_after_cancel,
         54,
         vec![DraftPieceReplacementV1::new(
@@ -855,6 +930,7 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
     let accepted_session = adopted_head(storage, &store, &accepted);
     let colliding = transaction(
         storage,
+        &store,
         &accepted_session,
         54,
         vec![DraftPieceReplacementV1::new(
@@ -872,6 +948,7 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
     let isolated = open_session(storage, &store, &durable, 55, 56);
     let isolated_edit = transaction(
         storage,
+        &store,
         &isolated,
         57,
         vec![DraftPieceReplacementV1::new(
@@ -911,6 +988,7 @@ fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
     let session = open_session(storage, &store, &durable, 59, 60);
     let partial = transaction(
         storage,
+        &store,
         &session,
         61,
         vec![
@@ -1012,6 +1090,7 @@ fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
     let terminal_first_source = active_session(storage, &store, &session);
     let terminal_first = transaction(
         storage,
+        &store,
         &terminal_first_source,
         62,
         vec![
@@ -1104,6 +1183,7 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
     let source = open_session(storage, &store, &durable, 64, 65);
     let stale = transaction(
         storage,
+        &store,
         &source,
         66,
         vec![DraftPieceReplacementV1::new(
@@ -1115,6 +1195,7 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
     );
     let intervening = transaction(
         storage,
+        &store,
         &source,
         67,
         vec![DraftPieceReplacementV1::new(
@@ -1161,6 +1242,7 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
 
     let fresh = transaction(
         storage,
+        &store,
         &advanced,
         66,
         vec![DraftPieceReplacementV1::new(
@@ -1203,7 +1285,10 @@ fn rejected_error_duplicate_empty_and_marker_only_paths_are_exact() {
         session.session_id(),
         session.newest_candidate_generation(),
         session.newest_root(),
+        session.newest_history(),
         DraftPieceOperationIdV1::from_bytes([60; 16]),
+        point(0),
+        point(0),
         point(0),
         point(0),
         0,
@@ -1211,7 +1296,7 @@ fn rejected_error_duplicate_empty_and_marker_only_paths_are_exact() {
     );
     let empty = Transaction {
         prepared: storage
-            .prepare_draft_piece_edit(empty_header, &session)
+            .prepare_draft_piece_edit(&store, empty_header, &session)
             .unwrap(),
         fragments: Vec::new(),
     };
@@ -1273,6 +1358,7 @@ fn rejected_error_duplicate_empty_and_marker_only_paths_are_exact() {
     let session_after_empty = active_session(storage, &store, &session);
     let duplicate = transaction(
         storage,
+        &store,
         &session_after_empty,
         63,
         vec![
@@ -1339,6 +1425,7 @@ fn rejected_error_duplicate_empty_and_marker_only_paths_are_exact() {
     let session_after_duplicate = active_session(storage, &store, &session);
     let failed = transaction(
         storage,
+        &store,
         &session_after_duplicate,
         64,
         vec![DraftPieceReplacementV1::new(point(0), point(0), Vec::new())],
@@ -1373,6 +1460,7 @@ fn rejected_error_duplicate_empty_and_marker_only_paths_are_exact() {
     let session_after_error = active_session(storage, &store, &session);
     let marker_only = transaction(
         storage,
+        &store,
         &session_after_error,
         66,
         vec![DraftPieceReplacementV1::new(
@@ -1420,6 +1508,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
     let session = open_session(storage, &store, &durable, 71, 72);
     let edit = transaction(
         storage,
+        &store,
         &session,
         73,
         vec![DraftPieceReplacementV1::new(
@@ -1491,6 +1580,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
     let disposable = open_session(storage, &store, &durable, 74, 75);
     let stale_completion = transaction(
         storage,
+        &store,
         &disposable,
         76,
         vec![DraftPieceReplacementV1::new(
@@ -1531,6 +1621,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
 
     let after_disposal = transaction(
         storage,
+        &store,
         &disposable,
         77,
         vec![DraftPieceReplacementV1::new(
@@ -1571,6 +1662,7 @@ fn occupied_roots_and_impossible_session_or_build_records_fail_closed() {
         let session = open_session(storage, &store, &durable, 81, 82);
         let edit = transaction(
             storage,
+            &store,
             &session,
             83,
             vec![DraftPieceReplacementV1::new(
@@ -1655,6 +1747,7 @@ fn occupied_roots_and_impossible_session_or_build_records_fail_closed() {
         let session = open_session(storage, &store, &durable, 88, 89);
         let edit = transaction(
             storage,
+            &store,
             &session,
             90,
             vec![DraftPieceReplacementV1::new(
@@ -1710,6 +1803,7 @@ fn move_frontier_reopens_and_duplicate_marker_order_corruption_fails_closed() {
     let right = marker(94, 2, 2);
     let seed = transaction(
         storage,
+        &store,
         &session,
         95,
         vec![DraftPieceReplacementV1::new(
@@ -1732,6 +1826,7 @@ fn move_frontier_reopens_and_duplicate_marker_order_corruption_fails_closed() {
     let seeded = adopted_head(storage, &store, &seed);
     let moved = transaction(
         storage,
+        &store,
         &seeded,
         96,
         vec![
@@ -1817,6 +1912,7 @@ fn move_frontier_reopens_and_duplicate_marker_order_corruption_fails_closed() {
         .collect();
     let many_markers = transaction(
         reopened_storage,
+        &reopened,
         &corruption_session,
         99,
         vec![DraftPieceReplacementV1::new(point(0), point(0), pieces)],
@@ -1878,6 +1974,7 @@ fn fragment_authentication_phase_cursors_and_text_marker_boundaries_fail_closed(
         let session = open_session(storage, &store, &durable, 102, 103);
         let edit = transaction(
             storage,
+            &store,
             &session,
             104,
             vec![DraftPieceReplacementV1::new(
@@ -1944,6 +2041,7 @@ fn fragment_authentication_phase_cursors_and_text_marker_boundaries_fail_closed(
         let session = open_session(storage, &store, &durable, 106, 107);
         let edit = transaction(
             storage,
+            &store,
             &session,
             108,
             vec![DraftPieceReplacementV1::new(
@@ -2024,6 +2122,7 @@ fn fragment_authentication_phase_cursors_and_text_marker_boundaries_fail_closed(
     let session = open_session(storage, &store, &durable, 110, 111);
     let seed = transaction(
         storage,
+        &store,
         &session,
         112,
         vec![DraftPieceReplacementV1::new(
@@ -2041,6 +2140,7 @@ fn fragment_authentication_phase_cursors_and_text_marker_boundaries_fail_closed(
     let seeded = adopted_head(storage, &store, &seed);
     let deletion = transaction(
         storage,
+        &store,
         &seeded,
         113,
         vec![DraftPieceReplacementV1::new(point(0), point(9), Vec::new())],
@@ -2114,6 +2214,7 @@ fn fragment_authentication_phase_cursors_and_text_marker_boundaries_fail_closed(
         }));
     let edit = transaction(
         storage,
+        &store,
         &session,
         117,
         vec![DraftPieceReplacementV1::new(point(0), point(0), pieces)],
@@ -2160,6 +2261,7 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
         let session = open_session(storage, &store, &durable, 121, 122);
         let first = transaction(
             storage,
+            &store,
             &session,
             123,
             vec![DraftPieceReplacementV1::new(
@@ -2178,6 +2280,7 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
         let first_head = adopted_head(storage, &store, &first);
         let second = transaction(
             storage,
+            &store,
             &first_head,
             124,
             vec![DraftPieceReplacementV1::new(
@@ -2198,6 +2301,7 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
         let head = adopted_head(storage, &store, &second);
         let pending = transaction(
             storage,
+            &store,
             &head,
             125,
             vec![DraftPieceReplacementV1::new(
@@ -2368,6 +2472,7 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
         let session = open_session(storage, &store, &durable, 131, 132);
         let seed = transaction(
             storage,
+            &store,
             &session,
             133,
             vec![DraftPieceReplacementV1::new(
@@ -2386,6 +2491,7 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
         let seeded = adopted_head(storage, &store, &seed);
         let edit = transaction(
             storage,
+            &store,
             &seeded,
             134,
             vec![
@@ -2531,6 +2637,7 @@ fn immutable_progress_receipt_endpoint_closes_advance_status_and_settlement() {
         let session = open_session(storage, &store, &durable, 139, 140);
         let edit = transaction(
             storage,
+            &store,
             &session,
             141,
             vec![
@@ -2620,6 +2727,7 @@ fn immutable_progress_receipt_endpoint_closes_advance_status_and_settlement() {
     let session = open_session(storage, &store, &durable, 153, 154);
     let edit = transaction(
         storage,
+        &store,
         &session,
         155,
         vec![DraftPieceReplacementV1::new(
@@ -2687,6 +2795,7 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
     let session = open_session(storage, &store, &durable, 157, 158);
     let edit = transaction(
         storage,
+        &store,
         &session,
         159,
         vec![DraftPieceReplacementV1::new(
@@ -2744,6 +2853,7 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
     let session = open_session(storage, &store, &durable, 161, 162);
     let edit = transaction(
         storage,
+        &store,
         &session,
         163,
         vec![DraftPieceReplacementV1::new(
@@ -2796,6 +2906,7 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
     let session = open_session(storage, &store, &durable, 165, 166);
     let edit = transaction(
         storage,
+        &store,
         &session,
         167,
         vec![DraftPieceReplacementV1::new(
@@ -2865,6 +2976,7 @@ fn begin_replay_rejects_codec_valid_session_generation_inflation() {
     let session = open_session(storage, &store, &durable, 181, 182);
     let edit = transaction(
         storage,
+        &store,
         &session,
         183,
         vec![DraftPieceReplacementV1::new(
@@ -2901,6 +3013,7 @@ fn stage_replay_rejects_codec_valid_session_generation_inflation() {
     let session = open_session(storage, &store, &durable, 185, 186);
     let edit = transaction(
         storage,
+        &store,
         &session,
         187,
         vec![DraftPieceReplacementV1::new(
@@ -2949,6 +3062,7 @@ fn advance_replay_rejects_codec_valid_session_generation_inflation() {
     let session = open_session(storage, &store, &durable, 189, 190);
     let edit = transaction(
         storage,
+        &store,
         &session,
         191,
         vec![DraftPieceReplacementV1::new(
@@ -3006,6 +3120,7 @@ fn stage_replay_rejects_coordinated_codec_valid_target_replacement() {
     let session = open_session(storage, &store, &durable, 193, 194);
     let edit = transaction(
         storage,
+        &store,
         &session,
         195,
         vec![DraftPieceReplacementV1::new(
@@ -3048,11 +3163,13 @@ fn stage_replay_rejects_coordinated_codec_valid_target_replacement() {
 
 fn transaction(
     storage: SyndicStorage,
+    store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,
     replacements: Vec<DraftPieceReplacementV1>,
     caret: DraftCompositePositionV1,
 ) -> Transaction {
+    let predecessor_positions = fixture_positions(session);
     let operation = DraftPieceOperationIdV1::from_bytes([operation; 16]);
     let chain = canonical_draft_piece_fragment_chain_v1(&replacements);
     let header = DraftPieceEditHeaderV1::new(
@@ -3060,13 +3177,18 @@ fn transaction(
         session.session_id(),
         session.newest_candidate_generation(),
         session.newest_root(),
+        session.newest_history(),
         operation,
+        predecessor_positions.caret,
+        predecessor_positions.selection,
         caret,
         caret,
         replacements.len() as u64,
         chain,
     );
-    let prepared = storage.prepare_draft_piece_edit(header, session).unwrap();
+    let prepared = storage
+        .prepare_draft_piece_edit(store, header, session)
+        .unwrap();
     let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
     let fragments = replacements
         .into_iter()
@@ -3204,6 +3326,13 @@ fn adopted_head(
 ) -> DraftEditorCandidateSessionV1 {
     match settled(storage, store, transaction).closure() {
         syndic_storage::DraftPieceSettlementClosureV1::Committed(adoption) => {
+            remember_fixture_positions(
+                adoption.adopted_session(),
+                FixturePositions {
+                    caret: adoption.transition().after_caret(),
+                    selection: adoption.transition().after_selection(),
+                },
+            );
             adoption.adopted_session().clone()
         }
         _ => panic!("operation was not adopted"),
@@ -3231,6 +3360,13 @@ fn settled_head(
 ) -> DraftEditorCandidateSessionV1 {
     match settled(storage, store, transaction).closure() {
         syndic_storage::DraftPieceSettlementClosureV1::Committed(adoption) => {
+            remember_fixture_positions(
+                adoption.adopted_session(),
+                FixturePositions {
+                    caret: adoption.transition().after_caret(),
+                    selection: adoption.transition().after_selection(),
+                },
+            );
             adoption.adopted_session().clone()
         }
         syndic_storage::DraftPieceSettlementClosureV1::Noncommit(noncommit) => {
@@ -3330,6 +3466,7 @@ fn create_thread(storage: SyndicStorage, store: &HomeStore, seed: u8) -> SyndicT
                     .unwrap(),
                 ),
                 SyndicTimestamp::from_unix_millis(1),
+                syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));
@@ -3388,6 +3525,7 @@ fn selector(current: &syndic_storage::SyndicCurrentDraft) -> DraftEditorCurrentS
         current.draft().id(),
         current.draft().revision(),
         current.draft().piece_root(),
+        current.draft().history(),
     )
 }
 

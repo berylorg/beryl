@@ -179,7 +179,9 @@ pub fn transaction_for_session(
         replacements.len() as u64,
         chain,
     );
-    let prepared = storage.prepare_draft_piece_edit(header, &session).unwrap();
+    let prepared = storage
+        .prepare_draft_piece_edit(store, header, &session)
+        .unwrap();
     let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
     let fragments = replacements
         .into_iter()

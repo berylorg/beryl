@@ -21,6 +21,16 @@ pub(super) fn translate_request(
         return Err(ComposerHostError::MutationMalformed);
     }
     validate_object_changes(request.proposal, &request.fragments)?;
+    let predecessor_positions = request.predecessor_positions();
+    if predecessor_positions.caret() != predecessor_positions.selection_head() {
+        return Err(ComposerHostError::MutationMalformed);
+    }
+    for position in [
+        predecessor_positions.caret(),
+        predecessor_positions.selection_anchor(),
+    ] {
+        proven_position(storage, store, root, position)?;
+    }
     let start = request.proposal.replacement().start();
     let end = request.proposal.replacement().end();
     let predecessor_start = proven_position(storage, store, root, start)?;

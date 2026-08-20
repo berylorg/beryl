@@ -204,15 +204,15 @@ impl SyndicComposerHost {
                         seed.restoration().caret(),
                         seed.restoration().selection(),
                         seed.restoration().scroll(),
-                        seed.restoration().undo_frontier(),
                     )?
                     .ok_or(ComposerHostError::MissingCurrentDraft)?;
-                if restored.root() != seed.root() {
+                if restored.root() != seed.root() || restored.history() != seed.history() {
                     return Err(ComposerHostError::RestorationBindingMismatch);
                 }
             }
             ComposerHostReadTarget::Candidate => {
                 if seed.root() != active.binding.root()
+                    || seed.history() != active.binding.history()
                     || seed.logical_extent() != active.binding.logical_extent()
                 {
                     return Err(ComposerHostError::RestorationBindingMismatch);

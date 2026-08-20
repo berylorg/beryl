@@ -1,7 +1,7 @@
 use beryl_home_store::HomeStore;
 use beryl_model::{DomainRevision, ExecutionBinding, SyndicThreadId, SyndicTurnId};
 
-use crate::draft_piece::DraftPieceRootsFamily;
+use crate::draft_piece::{DraftEditHistoryFrontiersFamily, DraftPieceRootsFamily};
 use crate::{
     CreateThread, DraftByThreadRecord, DraftRecord, HistorySummaryRecord, SelectedPathProof,
     SyndicReadError, SyndicTimestamp, ThreadCatalogTitle, ThreadCreationStatus, ThreadRecord,
@@ -199,6 +199,11 @@ impl SyndicStorage {
             expected.draft_piece_root.reference().key(),
             limit,
         )?;
+        let draft_edit_history = self.point::<DraftEditHistoryFrontiersFamily>(
+            store,
+            expected.draft_edit_history.reference().key(),
+            limit,
+        )?;
         let index = self.point::<DraftByThreadFamily>(store, creation.thread_id(), limit)?;
         let head = self.point::<TranscriptHeadsFamily>(store, creation.thread_id(), limit)?;
         let transcript_build = match &expected.transcript_build {
@@ -246,6 +251,7 @@ impl SyndicStorage {
             && catalog_summary.is_none()
             && draft.is_none()
             && root.is_none()
+            && draft_edit_history.is_none()
             && index.is_none()
             && head.is_none()
             && transcript_build.is_none()
@@ -266,6 +272,7 @@ impl SyndicStorage {
             && matches_record(catalog_summary, &expected.catalog_summary)
             && matches_record(draft, &expected.draft)
             && matches_record(root, &expected.draft_piece_root)
+            && matches_record(draft_edit_history, &expected.draft_edit_history)
             && matches_record(index, &expected.draft_index)
             && matches_record(head, &expected.transcript_head)
             && match (&expected.transcript_build, transcript_build) {

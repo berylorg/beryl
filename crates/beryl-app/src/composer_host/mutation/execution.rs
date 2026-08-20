@@ -72,13 +72,18 @@ impl SyndicComposerHost {
             source.session_id(),
             source.newest_candidate_generation(),
             source.newest_root(),
+            source.newest_history(),
             request.operation_id,
+            canonical_position(request.predecessor_positions().caret())?,
+            canonical_position(request.predecessor_positions().selection_anchor())?,
             canonical_position(positions.caret())?,
             canonical_position(positions.selection_anchor())?,
             u64::try_from(replacements.len()).map_err(|_| ComposerHostError::MutationMalformed)?,
             canonical_draft_piece_fragment_chain_v1(&replacements),
         );
-        let prepared = self.storage.prepare_draft_piece_edit(header, &source)?;
+        let prepared = self
+            .storage
+            .prepare_draft_piece_edit(store, header, &source)?;
         let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
         let mut staged = Vec::with_capacity(replacements.len());
         for (index, replacement) in replacements.into_iter().enumerate() {

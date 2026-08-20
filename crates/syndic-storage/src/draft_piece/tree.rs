@@ -534,11 +534,14 @@ fn terminal_first_session_closure_is_exact(
         source_generation,
         observed.durable_base_selector_revision(),
         observed.durable_base_root(),
+        observed.durable_base_history(),
         observed.published_candidate_generation(),
         observed.published_selector_revision(),
         observed.published_root(),
+        observed.published_history(),
         observed.newest_candidate_generation(),
         observed.newest_root(),
+        observed.newest_history(),
         observed.dirty_generation(),
         observed.logical_extent(),
         observed.lifecycle(),
@@ -549,6 +552,7 @@ fn terminal_first_session_closure_is_exact(
         settlement.proposal_digest(),
         settlement.predecessor_candidate_generation(),
         settlement.predecessor_root(),
+        settlement.predecessor_history(),
         settlement.terminal_receipt(),
     );
     let Some(claimed) = source.with_active_operation(custody) else {
@@ -562,6 +566,8 @@ fn terminal_first_session_closure_is_exact(
         && source.active_operation().is_none()
         && source.newest_candidate_generation() == settlement.predecessor_candidate_generation()
         && source.newest_root() == settlement.predecessor_root()
+        && source.newest_history() == settlement.predecessor_history()
+        && noncommit.observed_history().reference() == source.newest_history()
         && claimed.session_generation() == source_generation.checked_add(1).unwrap_or(0)
         && claimed.active_operation() == Some(&custody)
         && cleared.session_generation() == source_generation.checked_add(2).unwrap_or(0)
@@ -574,7 +580,10 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
         settlement.key().session_id(),
         settlement.predecessor_candidate_generation(),
         settlement.predecessor_root(),
+        settlement.predecessor_history(),
         settlement.key().operation_id(),
+        settlement.predecessor_caret(),
+        settlement.predecessor_selection(),
         settlement.caret(),
         settlement.selection(),
         settlement.fragment_count(),
@@ -614,8 +623,11 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
         || source.predecessor_candidate_generation()
             != settlement.predecessor_candidate_generation()
         || source.predecessor_root() != settlement.predecessor_root()
+        || source.predecessor_history() != settlement.predecessor_history()
         || source.fragment_count() != settlement.fragment_count()
         || source.fragment_chain() != settlement.fragment_chain()
+        || source.predecessor_caret() != settlement.predecessor_caret()
+        || source.predecessor_selection() != settlement.predecessor_selection()
         || source.caret() != settlement.caret()
         || source.selection() != settlement.selection()
         || source.build_digest() != settlement.build_digest()
@@ -642,6 +654,7 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
             DraftPieceSettlementOutcomeV1::Committed {
                 candidate_generation,
                 successor,
+                history,
                 caret,
                 selection,
             },
@@ -667,9 +680,32 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
                             && custody.predecessor_candidate_generation()
                                 == source.predecessor_candidate_generation()
                             && custody.predecessor_root() == source.predecessor_root()
+                            && custody.predecessor_history() == source.predecessor_history()
                             && custody.receipt() == source.progress_receipt()
                 )
-                && adoption.predecessor_session().adopted(*successor).as_ref()
+                && adoption.predecessor_history().reference() == source.predecessor_history()
+                && adoption.predecessor_history().reference()
+                    == adoption.predecessor_session().newest_history()
+                && append_ordinary_draft_edit_history_v1(
+                    adoption.predecessor_history(),
+                    *candidate_generation,
+                    *successor,
+                    settlement.predecessor_caret(),
+                    settlement.predecessor_selection(),
+                    settlement.caret(),
+                    settlement.selection(),
+                    settlement.key().operation_id(),
+                )
+                .ok()
+                .as_ref()
+                    == Some(&(
+                        adoption.transition().clone(),
+                        adoption.adopted_history().clone(),
+                    ))
+                && adoption
+                    .predecessor_session()
+                    .adopted(*successor, *history)
+                    .as_ref()
                     == Some(adoption.adopted_session())
                 && adoption.adopted_session().active_operation().is_none()
                 && adoption.adopted_session().newest_candidate_generation() == *candidate_generation
@@ -679,6 +715,7 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
                         .checked_add(1)
                         .unwrap_or(0)
                 && adoption.adopted_session().newest_root() == *successor
+                && adoption.adopted_session().newest_history() == *history
                 && adoption.adopted_session().session_generation()
                     == adoption
                         .predecessor_session()
@@ -692,11 +729,13 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
                         .checked_add(1)
                         .unwrap_or(0)
                 && adoption.adopted_root().reference() == *successor
+                && adoption.adopted_history().reference() == *history
         }
         (
             DraftPieceSettlementOutcomeV1::Conflict {
                 current_candidate_generation,
                 current_root,
+                current_history,
             },
             DraftPieceSettlementClosureV1::Noncommit(noncommit),
         ) => {
@@ -707,6 +746,8 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
                 && noncommit.observed_session().newest_candidate_generation()
                     == *current_candidate_generation
                 && noncommit.observed_session().newest_root() == *current_root
+                && noncommit.observed_session().newest_history() == *current_history
+                && noncommit.observed_history().reference() == *current_history
                 && noncommit.observed_session().active_operation().is_none()
                 && noncommit.proposed_successor() == source.successor()
                 && noncommit.occupied_identity().is_none()
@@ -813,7 +854,10 @@ pub(crate) fn settlement_terminal_build_is_exact(
         source.session_id(),
         source.predecessor_candidate_generation(),
         source.predecessor_root(),
+        source.predecessor_history(),
         source.operation_id(),
+        source.predecessor_caret(),
+        source.predecessor_selection(),
         source.caret(),
         source.selection(),
         source.fragment_count(),
@@ -851,8 +895,16 @@ pub(crate) fn canonical_edit_header_bytes(header: DraftPieceEditHeaderV1) -> Vec
     let root = super::codec::canonical_root_reference_bytes(header.predecessor_root());
     bytes.extend_from_slice(&(root.len() as u64).to_be_bytes());
     bytes.extend_from_slice(&root);
+    let history = super::canonical_history_reference_bytes(header.predecessor_history());
+    bytes.extend_from_slice(&(history.len() as u64).to_be_bytes());
+    bytes.extend_from_slice(&history);
     bytes.extend_from_slice(header.operation_id().as_bytes());
-    for position in [header.caret(), header.selection()] {
+    for position in [
+        header.predecessor_caret(),
+        header.predecessor_selection(),
+        header.caret(),
+        header.selection(),
+    ] {
         let position = super::codec::canonical_position_bytes(position);
         bytes.extend_from_slice(&(position.len() as u64).to_be_bytes());
         bytes.extend_from_slice(&position);
@@ -901,7 +953,10 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         build.session_id(),
         build.predecessor_candidate_generation(),
         build.predecessor_root(),
+        build.predecessor_history(),
         build.operation_id(),
+        build.predecessor_caret(),
+        build.predecessor_selection(),
         build.caret(),
         build.selection(),
         build.fragment_count(),
@@ -921,6 +976,11 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         );
     if (build.fragment_count() == 0 && !terminal_receiving)
         || build.predecessor_root().key().draft_id() != build.draft_id()
+        || build.predecessor_history().root() != build.predecessor_root()
+        || build.predecessor_history().candidate_generation()
+            != build.predecessor_candidate_generation()
+        || build.predecessor_history().key().draft_id() != build.draft_id()
+        || build.predecessor_history().key().session_id() != Some(build.session_id())
         || (build.predecessor_candidate_generation() > 0
             && build.predecessor_root().key().session_id() != Some(build.session_id()))
         || !canonical_edit_command_is_exact(build.canonical_header(), header)
@@ -1191,47 +1251,74 @@ fn progress_receipt_digest_from_value(
     receipt: &DraftPieceBuildProgressReceiptV1,
 ) -> DraftPieceDigestV1 {
     let key = receipt.key();
-    let build = DraftPieceBuildRecordV1::new(
-        key.draft_id(),
-        key.session_id(),
-        0,
-        receipt.successor().unwrap_or_else(|| {
-            canonical_empty_draft_piece_root_v1(
-                key.draft_id(),
-                DraftRevision::new(1).expect("initial draft revision is nonzero"),
-                key.operation_id(),
-            )
-            .reference()
-        }),
-        key.operation_id(),
-        DraftCompositePositionV1::new(0, DraftCompositeGapWitnessV1::Unambiguous),
-        DraftCompositePositionV1::new(0, DraftCompositeGapWitnessV1::Unambiguous),
-        1,
-        DraftPieceDigestV1::from_bytes([0; 32]),
-        Vec::new(),
-        receipt.fragment_endpoint().map_or(0, |_| 1),
-        receipt.fragment_endpoint().map_or(
-            canonical_empty_draft_piece_fragment_chain_v1(),
-            DraftPieceCanonicalFragmentEndpointV1::chain,
-        ),
-        DraftPieceDigestV1::from_bytes([0; 32]),
-        receipt.working_roots(),
-        receipt.base_frontier(),
-        receipt.successor_frontier(),
-        receipt.next_record_ordinal(),
-        receipt.frontier(),
-        receipt.state_digest(),
-        receipt.reference(),
-        receipt.successor(),
-        receipt.build_digest(),
-        receipt.lifecycle(),
-    );
-    draft_piece_build_progress_receipt_digest_v1(
-        &build,
-        receipt.previous(),
-        receipt.fragment_endpoint(),
-        key,
-    )
+    let mut digest = Sha256::new();
+    digest.update(b"syndic/draft-piece-build-progress-receipt/v1");
+    digest.update(key.draft_id().as_bytes());
+    digest.update(key.session_id().as_bytes());
+    digest.update(key.operation_id().as_bytes());
+    digest.update(key.transition_ordinal().to_be_bytes());
+    match receipt.previous() {
+        Some(previous) => {
+            digest.update([1]);
+            let key = previous.key();
+            digest.update(key.draft_id().as_bytes());
+            digest.update(key.session_id().as_bytes());
+            digest.update(key.operation_id().as_bytes());
+            digest.update(key.transition_ordinal().to_be_bytes());
+            digest.update(previous.digest().as_bytes());
+        }
+        None => digest.update([0]),
+    }
+    match receipt.fragment_endpoint() {
+        Some(endpoint) => {
+            digest.update([1]);
+            let key = endpoint.key();
+            digest.update(key.draft_id().as_bytes());
+            digest.update(key.session_id().as_bytes());
+            digest.update(key.operation_id().as_bytes());
+            digest.update(key.ordinal().to_be_bytes());
+            digest.update(endpoint.digest().as_bytes());
+            digest.update(endpoint.chain().as_bytes());
+        }
+        None => digest.update([0]),
+    }
+    digest.update(receipt.state_digest().as_bytes());
+    let roots = receipt.working_roots();
+    hash_optional_record_id(&mut digest, roots.sequence_root());
+    let summary = roots.sequence_summary();
+    digest.update(summary.logical_utf8_bytes().to_be_bytes());
+    digest.update(summary.newline_count().to_be_bytes());
+    digest.update(summary.logical_line_count().to_be_bytes());
+    digest.update(summary.piece_count().to_be_bytes());
+    digest.update(summary.marker_count().to_be_bytes());
+    digest.update(summary.marker_digest().as_bytes());
+    digest.update([summary.height()]);
+    digest.update(summary.root_digest().as_bytes());
+    hash_optional_record_id(&mut digest, roots.marker_index_root());
+    let index = roots.marker_index_summary();
+    digest.update(index.record_count().to_be_bytes());
+    digest.update([index.height()]);
+    digest.update(index.root_digest().as_bytes());
+    hash_build_boundary(&mut digest, receipt.base_frontier());
+    hash_build_boundary(&mut digest, receipt.successor_frontier());
+    digest.update(receipt.next_record_ordinal().to_be_bytes());
+    hash_build_frontier(&mut digest, receipt.frontier());
+    match receipt.successor() {
+        Some(root) => {
+            digest.update([1]);
+            digest.update(root.combined_digest().as_bytes());
+        }
+        None => digest.update([0]),
+    }
+    match receipt.build_digest() {
+        Some(value) => {
+            digest.update([1]);
+            digest.update(value.as_bytes());
+        }
+        None => digest.update([0]),
+    }
+    digest.update([receipt.lifecycle() as u8]);
+    DraftPieceDigestV1::from_bytes(digest.finalize().into())
 }
 
 #[cfg(feature = "test-faults")]

@@ -3,10 +3,10 @@ use std::num::NonZeroU64;
 use beryl_home_store::HomeGeneration;
 use beryl_model::{BerylHomeId, SyndicThreadId};
 use syndic_storage::{
-    DraftCompositePositionV1, DraftEditorCandidateActivationBindingV1,
-    DraftEditorCandidateSessionCollisionProofV1, DraftEditorCandidateSessionIdV1,
-    DraftEditorCandidateSessionV1, DraftEditorCurrentSelectorV1, DraftLogicalExtentV1,
-    DraftPieceCandidateRangeResultV1, DraftPieceCurrentRangeResultV1,
+    DraftCompositePositionV1, DraftEditHistoryFrontierReferenceV1,
+    DraftEditorCandidateActivationBindingV1, DraftEditorCandidateSessionCollisionProofV1,
+    DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionV1, DraftEditorCurrentSelectorV1,
+    DraftLogicalExtentV1, DraftPieceCandidateRangeResultV1, DraftPieceCurrentRangeResultV1,
     DraftPieceMarkerDemandResultV1, DraftPieceMarkerDemandV1, DraftPieceMarkerEdgeProofRequestV1,
     DraftPieceMarkerEdgeProofV1, DraftPieceOperationIdV1, DraftPieceRestorationV1,
     DraftPieceRootReferenceV1, DraftPieceTextDemandResultV1, DraftPieceTextDemandV1,
@@ -104,6 +104,10 @@ impl ComposerHostBinding {
         self.candidate.root()
     }
 
+    pub const fn history(self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.candidate.history()
+    }
+
     pub const fn logical_extent(self) -> DraftLogicalExtentV1 {
         self.candidate.logical_extent()
     }
@@ -194,34 +198,38 @@ impl ComposerHostPendingRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ComposerHostRestorationSeed {
     root: DraftPieceRootReferenceV1,
+    history: DraftEditHistoryFrontierReferenceV1,
     logical_extent: DraftLogicalExtentV1,
     caret: DraftCompositePositionV1,
     selection: DraftCompositePositionV1,
     scroll: DraftCompositePositionV1,
-    undo_frontier: Option<[u8; 32]>,
 }
 
 impl ComposerHostRestorationSeed {
     pub const fn new(
         root: DraftPieceRootReferenceV1,
+        history: DraftEditHistoryFrontierReferenceV1,
         logical_extent: DraftLogicalExtentV1,
         caret: DraftCompositePositionV1,
         selection: DraftCompositePositionV1,
         scroll: DraftCompositePositionV1,
-        undo_frontier: Option<[u8; 32]>,
     ) -> Self {
         Self {
             root,
+            history,
             logical_extent,
             caret,
             selection,
             scroll,
-            undo_frontier,
         }
     }
 
     pub const fn root(&self) -> DraftPieceRootReferenceV1 {
         self.root
+    }
+
+    pub const fn history(&self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.history
     }
 
     pub const fn logical_extent(&self) -> DraftLogicalExtentV1 {
@@ -231,10 +239,10 @@ impl ComposerHostRestorationSeed {
     pub const fn restoration(&self) -> DraftPieceRestorationV1 {
         DraftPieceRestorationV1::new(
             self.root,
+            self.history,
             self.caret,
             self.selection,
             self.scroll,
-            self.undo_frontier,
         )
     }
 }

@@ -165,10 +165,23 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        CreateThread::from_tail(id(4), draft_id(5), timestamp(0), tail.clone()),
+        CreateThread::from_tail(
+            id(4),
+            draft_id(5),
+            timestamp(0),
+            syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+            tail.clone(),
+        ),
         Err(CreateThreadError::TimestampPrecedesSourceActivity)
     );
-    let creation = CreateThread::from_tail(id(4), draft_id(5), timestamp(5), tail).unwrap();
+    let creation = CreateThread::from_tail(
+        id(4),
+        draft_id(5),
+        timestamp(5),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+        tail,
+    )
+    .unwrap();
     assert_committed(execute(
         &store,
         storage,
@@ -242,8 +255,22 @@ fn shared_tail_creation_conflicts_then_retries_without_copying_history() {
         .thread_tail(&store, source_thread, limit())
         .unwrap()
         .unwrap();
-    let first = CreateThread::from_tail(id(13), draft_id(14), timestamp(2), tail.clone()).unwrap();
-    let second = CreateThread::from_tail(id(15), draft_id(16), timestamp(2), tail).unwrap();
+    let first = CreateThread::from_tail(
+        id(13),
+        draft_id(14),
+        timestamp(2),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+        tail.clone(),
+    )
+    .unwrap();
+    let second = CreateThread::from_tail(
+        id(15),
+        draft_id(16),
+        timestamp(2),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+        tail,
+    )
+    .unwrap();
     let shared_revision = storage.revision(&store).unwrap();
     assert_committed(execute(&store, storage, shared_revision, first));
     let conflict = assert_not_committed(execute(&store, storage, shared_revision, second.clone()));
@@ -290,7 +317,14 @@ fn from_tail_ordinary_submission_parents_to_the_current_tail() {
         &store,
         storage,
         storage.revision(&store).unwrap(),
-        CreateThread::from_tail(child_thread, child_draft, timestamp(5), tail).unwrap(),
+        CreateThread::from_tail(
+            child_thread,
+            child_draft,
+            timestamp(5),
+            syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+            tail,
+        )
+        .unwrap(),
     ));
 
     let content = PreparedContent::composer(&payload("submitted from shared tail")).unwrap();
@@ -358,7 +392,14 @@ fn source_activity_change_invalidates_a_captured_creation_proof() {
         .thread_tail(&store, source_thread, limit())
         .unwrap()
         .unwrap();
-    let creation = CreateThread::from_tail(id(23), draft_id(24), timestamp(30), tail).unwrap();
+    let creation = CreateThread::from_tail(
+        id(23),
+        draft_id(24),
+        timestamp(30),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+        tail,
+    )
+    .unwrap();
     let current = storage
         .current_draft(&store, source_thread, limit())
         .unwrap()
@@ -400,6 +441,7 @@ fn draft_update_survives_a_same_draft_thread_revision_advance() {
         draft_id,
         exact_cas::execution_binding(),
         timestamp(1),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
     );
     assert_committed(execute(
         &store,
@@ -520,6 +562,7 @@ fn surfaced_post_persist_failure_recovers_the_durable_new_draft() {
         draft_id(41),
         exact_cas::execution_binding(),
         timestamp(1),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
     );
     assert_committed(execute(
         &store,

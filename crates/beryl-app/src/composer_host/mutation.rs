@@ -51,6 +51,7 @@ pub struct ComposerHostMutationRequest {
     binding: ComposerHostBinding,
     proposal: MutationProposal,
     operation_id: syndic_storage::DraftPieceOperationIdV1,
+    predecessor_positions: MutationPositions,
     fragments: Box<[MutationFragment]>,
     marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
 }
@@ -77,6 +78,7 @@ impl ComposerHostMutationRequest {
         binding: ComposerHostBinding,
         proposal: MutationProposal,
         operation_id: syndic_storage::DraftPieceOperationIdV1,
+        predecessor_positions: MutationPositions,
         fragments: Box<[MutationFragment]>,
         marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
     ) -> Self {
@@ -84,6 +86,7 @@ impl ComposerHostMutationRequest {
             binding,
             proposal,
             operation_id,
+            predecessor_positions,
             fragments,
             marker_metadata,
         }
@@ -99,6 +102,10 @@ impl ComposerHostMutationRequest {
 
     pub const fn operation_id(&self) -> syndic_storage::DraftPieceOperationIdV1 {
         self.operation_id
+    }
+
+    pub const fn predecessor_positions(&self) -> MutationPositions {
+        self.predecessor_positions
     }
 
     pub fn fragments(&self) -> &[MutationFragment] {

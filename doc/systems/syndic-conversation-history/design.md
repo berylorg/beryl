@@ -364,7 +364,74 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   or the after-all edge in the selected root, so positions before, between, and after any number of
   same-anchor markers remain exact without assigning source bytes to markers. A bare byte offset is
   valid only when no gap choice is ambiguous. This contract carries no GPUI or widget type.
-- One draft edit transaction names the exact draft, editor-candidate session, predecessor candidate
+- Durable edit intake and candidate construction are distinct phases under one transaction identity.
+  The stable staging identity is the exact `(draft, editor-candidate session, caller-owned mutation
+  identity)` tuple. The app assigns that opaque mutation identity one-to-one to the active app-
+  neutral edit transaction and preserves it across command and reconciliation calls.
+  `MutationBegin` binds that identity to the session generation, predecessor candidate generation/
+  combined-root/history pair, logical extent, predecessor caret and directed selection, composite
+  replacement envelope, and Syndic's app-neutral `DraftMutationStagingEncodingVersionV1`. The first admitted transition validates that
+  complete binding against the active candidate-session head and moves its single custody slot from
+  absent to `Staging` before any page can be accepted. It creates no draft-piece build, candidate
+  root, history transition, current-draft publication, or materialization.
+- Pre-finish custody has independent `SourcePage` and `ProposalPage` lanes. Each lane advances only
+  its next exact cursor and one-based ordinal and retains checked cumulative item and canonical-byte
+  totals plus its canonical cumulative identity. One accepted page is an immutable bounded durable
+  effect; after the target receipt and head closure authenticate, the widget and app release that
+  page payload and retain only fixed command/reconciliation state. Neither lane declares a final
+  page count before finish. No smaller or hardcoded cumulative cap applies below any representable
+  checked-`u64` total, and checked overflow rejects atomically. Commands are serialized through one fixed in-flight slot, so source and proposal
+  backpressure cannot create a resident page queue.
+- Every begin, lane-page, finish, cancellation, and custody-transfer command names an exact source
+  progress receipt and target receipt. `None` is valid only for transition ordinal one. A source-
+  selecting head requires the target receipt and all target effects to be absent before one atomic
+  append and head advance; any occupied target in that state is a corrupt split even when its bytes
+  agree. Exact replay requires a target-selecting head and byte equality of the complete target
+  closure. A different begin, page, cursor, ordinal, lane, cumulative identity, finish, or target
+  effect at an occupied natural key is collision/noncommit authority for the mismatching request
+  and never changes the operation already in custody. Digests reject inequality early but never
+  replace canonical byte comparison.
+- The mutable staging head stores its selected progress-receipt key and digest. Its canonical head
+  digest commits every canonical head field except that selected receipt digest, while still
+  committing the selected receipt key and therefore its transition ordinal. The selected receipt
+  is independently point-read, canonically decoded, and authenticated against the digest stored in
+  the head; its own digest continues to commit its before/after head digests and every other receipt
+  field. This one-way computation removes the head-digest/receipt-digest cycle without weakening
+  closure: the head digest fixes which receipt is selected, the stored receipt digest fixes that
+  receipt's bytes, and canonical target-closure byte equality remains replay authority.
+- `FinishInput` is the first authority for final source- and proposal-lane endpoints, checked totals,
+  cumulative identities, and intended successor positions. It is accepted only when both current
+  lane heads equal those declarations and atomically freezes the staging head. Only then may Syndic
+  derive `DraftPieceEditHeaderV1` and the canonical proposal identity, validate the staged stream in
+  bounded pages, and transfer the one session custody slot from the finished staging endpoint to
+  the existing draft-piece build endpoint. The transfer neither duplicates custody nor asks the
+  caller to resupply a released page. The post-finish builder reads at most the next authenticated
+  source or proposal page from Syndic custody, fixes its bounded fragment or validation effect, and
+  advances the existing copy-on-write construction through its own immutable receipts. The atomic
+  transfer has exactly one staging-transfer receipt, one ordinal-one build receipt, one staging-head
+  successor, one build-head successor, and one candidate-session `Staging`-to-`Building` custody
+  transition under the package's fixed encoded-command bound; it writes no page or candidate root.
+- Cancellation before the first staging command is admitted changes no durable state. Cancellation
+  may instead win an ordinal-one terminal-before-begin election whose custody transition is exactly
+  `None` to `None`, or may terminalize an admitted receiving or finished staging head through an
+  exact `Staging`-to-`None` custody clear, as `Cancelled`. `Rejected`, `Conflict`, and `Error` use the
+  same no-adoption terminal closure. Its immutable receipt carries closed fixed-size outcome
+  evidence: rejected reason and anchor; expected and observed candidate pair for conflict;
+  cancellation election facts; or operational/occupied-identity error evidence. After custody transfers to the draft-piece
+  builder, its existing terminal election owns cancellation and settlement, and cancellation after
+  final candidate-adoption admission cannot retract the result. Every admitted transaction still
+  returns exactly one public `Committed`, `Rejected`, `Conflict`, `Cancelled`, or `Error` outcome;
+  `Committed` exists only through complete candidate adoption.
+- An indeterminate staging command is reconciled from the durable staging key, source and target
+  receipts, head, candidate-session custody transition, and at most its one bounded page effect.
+  Same-home restart with the exact live session and operation resumes from that custody without
+  caller payload. Routine fresh activation still opens from the current-draft selector and never
+  discovers or adopts an unpublished old session. Admitted staging stays session-claimed until its
+  terminal closure; immutable pages from a terminal old session and any never-claimed staging are
+  unreachable future-garbage-collection candidates. They are absent from current-root and
+  candidate-root reads, edit history, `ComposerV1` materialization, submission, and transcript
+  authority.
+- After authenticated finish, one draft edit transaction names the exact draft, editor-candidate session, predecessor candidate
   revision and combined root, operation identity, exact predecessor caret and directed selection,
   and a sequence of half-open composite replacement ranges. Ranges are strictly ordered and
   non-overlapping in the predecessor composite order; adjacency is permitted, every endpoint witness is
@@ -389,7 +456,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   index leaf. Text insertion before any unchanged marker suffix changes no identity-index record.
   These checks and copy-on-write updates take work proportional to the two bounded structure
   heights and never scan the complete sequence tree.
-- Building a successor walks only the affected predecessor ranges and bounded paths in both structures,
+- Building a successor begins only from the authenticated finished staging endpoint, walks only the affected predecessor ranges and bounded paths in both structures,
   writes new leaves and path-copied nodes in bounded steps, and reuses every unaffected subtree.
   The compact mutable build head retains counts, proposal commitments, progress frontiers, and the
   exact latest progress-receipt key and digest only; it is not authenticated by a mutable self-hash.
@@ -399,13 +466,15 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   complete draft merely because one range changed.
 - Source and canonical-proposal pages carry positive per-page item and retained-byte ceilings,
   exact cursors and ordinals, the prior cumulative identity, and canonical page bytes. Accepted
-  pages release their payload after their durable effect and cumulative identity are fixed. Exact
+  pages release their caller-owned payload after their append-only staging record, target receipt,
+  head advance, and cumulative identity are fixed. Post-finish build and reconciliation read those
+  durable records through bounded pages and never request released bytes from the caller. Exact
   replay requires canonical byte and chain equality; conflicting cursor or operation reuse is a
   collision. Small keystrokes take a one-page fast path through these same begin, finish, adoption,
   and settlement rules. Total edit size may require any representable number of bounded commands
   and is not limited by a resident collection, viewport dimensions, or an arbitrary 256/257-page
   cap.
-- Every bounded begin, canonical-fragment stage, successor-construction advance, and terminal
+- Every post-finish build begin, canonical-fragment stage, successor-construction advance, and terminal
   election names one exact expected source receipt, with `None` valid exactly when the target has
   transition ordinal one, and one
   exact immutable target receipt plus the complete bounded effects of that command. A newly
@@ -424,9 +493,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   head selects the source receipt and equals its authenticated state, the command point-reads and
   authenticates that source receipt plus every root or record referenced by the bounded transition,
   and the target receipt key must be absent.
-  An ordinal-one target, whether an ordinary begin or a terminal-before-begin election, requires a
-  `None` source, an absent build head, an absent target receipt, and an absent custody slot; that
-  first admitted transition atomically claims the exact operation and canonical proposal identity.
+  An ordinal-one build target requires a `None` build source, an absent build head and target
+  receipt, and the exact finished-staging custody endpoint; that custody-transfer transition
+  atomically claims the final canonical proposal identity for the builder.
   Every target ordinal greater than one requires the exact immediately preceding source receipt and
   an already claimed byte-equal custody slot.
   Any occupied target receipt in that state, including canonically byte-identical bytes, is a
@@ -467,11 +536,13 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   durable head. It retains only its immutable durable-base selector revision and root/history pair;
   distinct latest published candidate root/history and newest adopted candidate root/history
   references with their exact candidate and frontier revisions; monotonic candidate/session and
-  dirty generations; active/disposed lifecycle facts; and one fixed-size optional active-operation
-  custody slot. Each history reference selects the root and generation beside it. The slot retains
-  the exact operation id, canonical proposal identity, predecessor
-  candidate generation/root, and admitted build/receipt endpoint needed for point-readable
-  recovery; it contains no proposal payload or receipt chain. Candidate settlements are exact predecessor-
+  dirty generations; active/disposed lifecycle facts; and one fixed-size optional tagged active-
+  operation custody slot. Each history reference selects the root and generation beside it.
+  `Staging` custody retains the operation id, begin identity, predecessor candidate generation/root/
+  history pair, and staging-head/receipt endpoint. `Building` custody retains the operation id,
+  final canonical proposal identity, predecessor pair, and admitted build/receipt endpoint. The one
+  atomic finish-to-build transfer replaces the first tag with the second and never makes both live.
+  Neither form contains proposal payload or a receipt chain. Candidate settlements are exact predecessor-
   linked immutable operations validated by the package. The head contains no text, marker
   collection, whole edit, undo payload, or root graph and is not current-draft authority,
   transcript state, or routine reopen authority.
@@ -508,13 +579,32 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   closed without advancing either candidate or history authority. One user undo or redo remains
   one logical transaction and one terminal settlement even when validation and reconciliation take
   multiple bounded commands.
-- The journal uses an explicit configurable durable encoded-byte budget and retention policy.
-  Transition records carry cumulative encoded-byte positions so bounded indexed seeks can advance
-  the oldest eligible floor without loading or walking complete history. Exhaustion evicts the
-  oldest eligible transitions, clears only undo or redo reachability that crosses the new floor,
-  and never blocks ordinary editing. The frontier reports exact undo and redo availability after
-  every adoption, eviction, publication, restart, rebind, and release. There is no document-size
-  rule or hardcoded entry-count limit.
+- The journal uses an explicit configurable durable encoded-byte budget and retention policy. Its
+  charged retained set for one editor-candidate session is exactly its one current mutable live
+  frontier head plus every transition and link record retained through that head. Each record's
+  charge is the checked sum of its exact
+  stored family-key bytes plus exact canonical value bytes. A canonical key repeated inside its
+  value is charged again because both copies are actual stored bytes. Immutable publication and
+  baseline snapshots and operation receipts are outside this edit-history retention budget; their
+  separate bounded lifecycle and storage ownership does not contribute to this counter. The charge
+  also excludes allocator state, Fjall framing or metadata, caches, and other non-record storage
+  overhead.
+- Initial or forked live history authority charges its exact stored mutable frontier head plus every
+  transition or link retained through that head. Each append subtracts the prior live-head key and
+  value charge, adds the successor live-head key and value charge, adds every newly retained
+  transition/link charge, and subtracts every eligible transition/link charge evicted in that same
+  atomic adoption. Checked conversion, addition, or subtraction overflow fails closed before
+  mutation. Transition records retain monotonic cumulative positions over exact appended immutable
+  transition/link charges so a bounded indexed seek can advance the oldest eligible floor without
+  loading complete history.
+- Ordinary adoption atomically evicts the oldest eligible transition/link records needed to keep
+  the exact successor retained set within budget, clears only undo or redo reachability that crosses
+  the new floor, and does not block editing when eligible eviction suffices. It returns a typed
+  history-capacity-unavailable result only when the final authority cannot retain the required non-
+  evictable live-head and transition/link closure within its configured budget. It never allows
+  retained authority above budget. The frontier reports
+  exact undo and redo availability after every adoption, eviction, publication, restart, rebind,
+  and release. There is no document-size rule or hardcoded entry-count limit.
 - Every retained undo or redo transition pins both referenced immutable combined roots and their
   authenticated node closure against later garbage collection. Eviction removes the history pin
   and availability only; physical root and journal reclamation belongs to the later explicit
@@ -531,17 +621,20 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   `Error` proof defined below.
 - Every edit operation owns one natural settlement identity derived from its exact draft, editor
   session, and operation identity, one same-tuple build and candidate-root identity, one canonical
-  proposal digest, and exactly one immutable terminal settlement proof. New admission requires those
-  per-session natural identities and the session custody slot to be absent. The first admitted
-  transition claims that slot for this exact operation/proposal. A different operation or proposal
+  proposal digest after authenticated finish, and exactly one immutable terminal settlement proof.
+  New staging admission requires the staging, settlement, build, candidate-root, and session-slot
+  natural identities to be absent. The first staging transition claims that slot for the exact
+  operation and begin identity; finish-to-build transfer binds the final proposal. A different operation or proposal
   while the slot is occupied is a typed same-session concurrent-operation conflict and performs no
   mutation. Continuation requires the stored build head to select
   the command's exact source receipt; replay requires it to select the exact target receipt and the
   complete same-command closure, including the slot's exact before/after bytes, to match canonically
   byte for byte. No unsettled operation in
-  another session can block it. Continuation or replay also requires equality of canonical header bytes and,
-  for a multi-fragment proposal, ordinal-by-ordinal canonical fragment bytes through a bounded
-  fragment-chain comparison. Digests may reject inequality early but never prove equality. A
+  another session can block it. Continuation or replay also requires equality of the staging-
+  derived canonical header bytes and, for a multi-fragment proposal, ordinal-by-ordinal canonical
+  fragment bytes read from durable staging and derived fragment records through a bounded
+  comparison. Caller-resupplied page payload is never reconciliation authority. Digests may reject
+  inequality early but never prove equality. A
   different canonical byte at any occupied settlement, build, fragment, progress receipt, or
   candidate-root natural key proves the
   attempted proposal was not admitted and yields only
@@ -559,20 +652,21 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   successor positions. `Rejected` proves the envelope or a fragment was invalid before edit publication.
   `Conflict` proves a different newest candidate/history predecessor and absence of this operation's adoption.
   `Cancelled` proves cancellation won the terminal election before publication. `Error` proves an
-  operational failure and exact noncommit. That sole terminal settlement atomically clears the
-  session's matching custody slot; a missing, different, or prematurely cleared slot is corruption,
+  operational failure and exact noncommit. That sole terminal settlement records `None`-to-`None`
+  for terminal-before-begin or atomically clears the matching existing staging/building custody
+  slot; a missing, different, or prematurely cleared required slot is corruption,
   not noncommit or replay. The latter four publish none of the proposed
   replacement.
 - `Committed` writes the settlement proof atomically with both successor structures, the combined
   root, history transition/frontier, session/candidate revision and newest-pair advance, terminal
   progress receipt, and committed build state, and clears the matching active-operation custody slot.
   It does not publish the current draft. Each no-change
-  outcome atomically writes its settlement proof with the exact base/proposal facts, absence of an
-  operation successor, outcome-
-  specific noncommit witness, terminal progress receipt, and terminal build state. A terminal
-  election before ordinary begin uses a `None` source, atomically claims the previously absent slot,
-  and creates the ordinal-one terminal receipt, build, settlement, and cleared target slot in that
-  same command. Terminal
+  outcome after build admission atomically writes its settlement proof with the exact base/proposal
+  facts, absence of an operation successor, outcome-specific noncommit witness, terminal progress
+  receipt, and terminal build state. A terminal election before staging begin instead writes the
+  staging terminal closure with `None`-to-`None` custody. One after staging begin but before build
+  transfer writes that closure with `Staging`-to-`None` custody. Neither manufactures a final
+  proposal header or draft-piece build. Terminal
   `Rejected`, `Conflict`, `Cancelled`, and `Error` builds can never resume or commit, and an
   immutable settlement can never change outcome.
 - `Indeterminate` is reconciliation custody, never a public terminal edit outcome. After writer

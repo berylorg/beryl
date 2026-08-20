@@ -61,6 +61,49 @@ struct Transaction {
     operation: DraftPieceOperationIdV1,
     prepared: PreparedDraftPieceEditV1,
     fragments: Vec<DraftPieceBuildFragmentV1>,
+    successor_positions: FixturePositions,
+}
+
+#[derive(Clone, Copy)]
+struct FixturePositions {
+    caret: DraftCompositePositionV1,
+    selection: DraftCompositePositionV1,
+}
+
+thread_local! {
+    static FIXTURE_POSITIONS: std::cell::RefCell<Vec<(
+        syndic_storage::DraftEditHistoryFrontierReferenceV1,
+        FixturePositions,
+    )>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn fixture_positions(session: &DraftEditorCandidateSessionV1) -> FixturePositions {
+    if session.newest_candidate_generation() == 0 {
+        return FixturePositions {
+            caret: point(0),
+            selection: point(0),
+        };
+    }
+    FIXTURE_POSITIONS.with(|positions| {
+        positions
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(history, _)| *history == session.newest_history())
+            .map(|(_, positions)| *positions)
+            .expect("fixture must remember the exact positions of an adopted candidate head")
+    })
+}
+
+fn remember_fixture_positions(
+    session: &DraftEditorCandidateSessionV1,
+    positions: FixturePositions,
+) {
+    FIXTURE_POSITIONS.with(|known| {
+        known
+            .borrow_mut()
+            .push((session.newest_history(), positions));
+    });
 }
 
 #[derive(Clone)]
@@ -68,6 +111,7 @@ struct CandidateCurrent {
     durable: syndic_storage::SyndicCurrentDraft,
     session: DraftEditorCandidateSessionV1,
     draft: CandidateDraft,
+    positions: FixturePositions,
 }
 
 #[derive(Clone, Copy)]
@@ -104,6 +148,7 @@ fn logical_lines_utf8_directional_ranges_sessions_and_edge_proofs_are_exact() {
     let right = marker(12, 2);
     let transaction = transaction(
         storage,
+        &store,
         &empty,
         20,
         21,
@@ -504,6 +549,7 @@ fn deep_same_anchor_pages_historical_roots_and_durable_selector_stay_bounded() {
         .collect();
     let first = transaction(
         storage,
+        &store,
         &initial,
         31,
         32,
@@ -600,6 +646,7 @@ fn newline_and_logical_line_corruption_fail_closed_independently() {
             .collect();
         let transaction = transaction(
             storage,
+            &store,
             &initial,
             61,
             62,
@@ -651,6 +698,7 @@ fn missing_root_and_non_root_records_are_absent_through_all_selectors() {
             .collect();
         let transaction = transaction(
             storage,
+            &store,
             &initial,
             72 + case as u8,
             74 + case as u8,
@@ -737,6 +785,7 @@ fn durable_marker_reads_stay_stable_and_candidate_disposal_is_detected() {
         let object = marker(105, 1);
         let populated = transaction(
             storage,
+            &store,
             &initial,
             106,
             107,
@@ -776,6 +825,7 @@ fn durable_marker_reads_stay_stable_and_candidate_disposal_is_detected() {
         let binding = DraftEditorCandidateActivationBindingV1::from_head(&head);
         let successor = transaction(
             storage,
+            &store,
             &before,
             110,
             111,
@@ -897,6 +947,7 @@ fn stale_session_candidate_and_disposed_open_are_typed() {
         head.session_generation() + 1,
         head.newest_candidate_generation(),
         head.newest_root(),
+        head.newest_history(),
         head.logical_extent(),
     );
     assert!(matches!(
@@ -914,6 +965,7 @@ fn stale_session_candidate_and_disposed_open_are_typed() {
         head.session_generation(),
         head.newest_candidate_generation() + 1,
         head.newest_root(),
+        head.newest_history(),
         head.logical_extent(),
     );
     assert!(matches!(
@@ -977,6 +1029,7 @@ fn marker(seed: u8, order: u64) -> DraftPieceMarkerV1 {
 
 fn transaction(
     storage: SyndicStorage,
+    store: &HomeStore,
     current: &CandidateCurrent,
     _session_seed: u8,
     operation_seed: u8,
@@ -991,14 +1044,17 @@ fn transaction(
         session,
         current.session.newest_candidate_generation(),
         current.draft().piece_root(),
+        current.session.newest_history(),
         operation,
+        current.positions.caret,
+        current.positions.selection,
         caret,
         caret,
         replacements.len() as u64,
         chain,
     );
     let prepared = storage
-        .prepare_draft_piece_edit(header, &current.session)
+        .prepare_draft_piece_edit(store, header, &current.session)
         .unwrap();
     let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
     let fragments = replacements
@@ -1017,6 +1073,10 @@ fn transaction(
         operation,
         prepared,
         fragments,
+        successor_positions: FixturePositions {
+            caret,
+            selection: caret,
+        },
     }
 }
 
@@ -1034,6 +1094,23 @@ fn run_transaction(
             transaction.prepared.clone(),
         ),
     ));
+    match storage
+        .draft_piece_operation_status_page(store, &transaction.prepared, 1, &transaction.fragments)
+        .unwrap()
+    {
+        syndic_storage::DraftPieceOperationVerificationV1::Status(
+            syndic_storage::DraftPieceOperationStatusV1::Settled(settlement),
+        ) => match settlement.closure() {
+            syndic_storage::DraftPieceSettlementClosureV1::Committed(adoption) => {
+                remember_fixture_positions(
+                    adoption.adopted_session(),
+                    transaction.successor_positions,
+                );
+            }
+            syndic_storage::DraftPieceSettlementClosureV1::Noncommit(_) => {}
+        },
+        other => panic!("settled transaction has unexpected status: {other:?}"),
+    }
 }
 
 fn stage_and_build(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) {
@@ -1104,6 +1181,7 @@ fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicT
                 draft,
                 execution(),
                 SyndicTimestamp::from_unix_millis(1),
+                syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));
@@ -1145,6 +1223,7 @@ fn current(storage: SyndicStorage, store: &HomeStore, thread: SyndicThreadId) ->
                     durable.draft().id(),
                     durable.draft().revision(),
                     durable.draft().piece_root(),
+                    durable.draft().history(),
                 ),
                 session_id,
                 DraftPieceOperationIdV1::from_bytes([0xD1; 16]),
@@ -1176,6 +1255,7 @@ fn current(storage: SyndicStorage, store: &HomeStore, thread: SyndicThreadId) ->
             root: session.newest_root(),
         },
         durable,
+        positions: fixture_positions(&session),
         session,
     }
 }
@@ -1187,6 +1267,7 @@ fn selector(current: &CandidateCurrent) -> DraftEditorCurrentSelectorV1 {
         current.durable.draft().id(),
         current.durable.draft().revision(),
         current.durable.draft().piece_root(),
+        current.durable.draft().history(),
     )
 }
 

@@ -17,6 +17,7 @@ pub struct PreparedDraftPieceEditV1 {
     canonical_header: Vec<u8>,
     proposal_digest: DraftPieceDigestV1,
     prebuild_rejection: Option<DraftPieceRejectedReasonV1>,
+    predecessor_positions_authenticated: bool,
 }
 
 impl PreparedDraftPieceEditV1 {
@@ -105,6 +106,7 @@ struct TerminalMutation {
 impl SyndicStorage {
     pub fn prepare_draft_piece_edit(
         &self,
+        store: &HomeStore,
         header: DraftPieceEditHeaderV1,
         source_session: &DraftEditorCandidateSessionV1,
     ) -> Result<PreparedDraftPieceEditV1, DraftPiecePrepareErrorV1> {
@@ -116,10 +118,26 @@ impl SyndicStorage {
             || source_session.newest_candidate_generation()
                 != header.predecessor_candidate_generation()
             || source_session.newest_root() != header.predecessor_root()
+            || source_session.newest_history() != header.predecessor_history()
+            || header.predecessor_history().root() != header.predecessor_root()
+            || header.predecessor_history().candidate_generation()
+                != header.predecessor_candidate_generation()
             || !source_session.is_coherent()
         {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
+        validate_position(
+            self,
+            store,
+            header.predecessor_root(),
+            header.predecessor_caret(),
+        )?;
+        validate_position(
+            self,
+            store,
+            header.predecessor_root(),
+            header.predecessor_selection(),
+        )?;
         let canonical_header =
             canonical_edit_command_bytes(header, source_session.session_generation());
         let proposal_digest = canonical_proposal_digest(&canonical_header);
@@ -131,6 +149,7 @@ impl SyndicStorage {
             canonical_header,
             proposal_digest,
             prebuild_rejection,
+            predecessor_positions_authenticated: true,
         })
     }
 
@@ -457,7 +476,10 @@ fn build_record(
             header.session_id(),
             header.predecessor_candidate_generation(),
             header.predecessor_root(),
+            header.predecessor_history(),
             header.operation_id(),
+            header.predecessor_caret(),
+            header.predecessor_selection(),
             header.caret(),
             header.selection(),
             header.fragment_count(),
@@ -508,7 +530,10 @@ fn terminal_first_build(
             header.session_id(),
             header.predecessor_candidate_generation(),
             header.predecessor_root(),
+            header.predecessor_history(),
             header.operation_id(),
+            header.predecessor_caret(),
+            header.predecessor_selection(),
             header.caret(),
             header.selection(),
             header.fragment_count(),
@@ -558,7 +583,10 @@ fn build_from_progress_receipt(
         template.session_id(),
         template.predecessor_candidate_generation(),
         template.predecessor_root(),
+        template.predecessor_history(),
         template.operation_id(),
+        template.predecessor_caret(),
+        template.predecessor_selection(),
         template.caret(),
         template.selection(),
         template.fragment_count(),
@@ -624,7 +652,10 @@ fn stage_transition(
             build.session_id(),
             build.predecessor_candidate_generation(),
             build.predecessor_root(),
+            build.predecessor_history(),
             build.operation_id(),
+            build.predecessor_caret(),
+            build.predecessor_selection(),
             build.caret(),
             build.selection(),
             build.fragment_count(),
@@ -670,7 +701,10 @@ fn next_build_record(
             build.session_id(),
             build.predecessor_candidate_generation(),
             build.predecessor_root(),
+            build.predecessor_history(),
             build.operation_id(),
+            build.predecessor_caret(),
+            build.predecessor_selection(),
             build.caret(),
             build.selection(),
             build.fragment_count(),
@@ -1015,6 +1049,7 @@ fn custody_for(build: &DraftPieceBuildRecordV1) -> DraftEditorActiveOperationV1 
         build.proposal_digest(),
         build.predecessor_candidate_generation(),
         build.predecessor_root(),
+        build.predecessor_history(),
         build.progress_receipt(),
     )
 }
@@ -1046,6 +1081,17 @@ fn put_session_head(
     Ok(())
 }
 
+fn authenticated_history_frontier(
+    reader: &DomainReader<'_, SyndicDomain>,
+    reference: DraftEditHistoryFrontierReferenceV1,
+) -> Result<DraftEditHistoryFrontierV1, SyndicMutationError> {
+    let frontier = required::<DraftEditHistoryFrontiersFamily>(reader, &reference.key())?;
+    if frontier.reference() != reference || !frontier.is_locally_valid() {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    Ok(frontier)
+}
+
 fn build_matches(build: &DraftPieceBuildRecordV1, prepared: &PreparedDraftPieceEditV1) -> bool {
     build.canonical_header() == prepared.canonical_header()
         && build.proposal_digest() == prepared.proposal_digest()
@@ -1057,13 +1103,17 @@ fn settlement_matches(
     prepared: &PreparedDraftPieceEditV1,
 ) -> Result<bool, SyndicMutationError> {
     let header = prepared.header;
-    let header_matches = settlement.key() == settlement_key(prepared)
+    let header_matches = prepared.predecessor_positions_authenticated
+        && settlement.key() == settlement_key(prepared)
         && settlement.proposal_digest() == prepared.proposal_digest()
         && settlement.predecessor_candidate_generation()
             == header.predecessor_candidate_generation()
         && settlement.predecessor_root() == header.predecessor_root()
+        && settlement.predecessor_history() == header.predecessor_history()
         && settlement.fragment_count() == header.fragment_count()
         && settlement.fragment_chain() == header.fragment_chain()
+        && settlement.predecessor_caret() == header.predecessor_caret()
+        && settlement.predecessor_selection() == header.predecessor_selection()
         && settlement.caret() == header.caret()
         && settlement.selection() == header.selection()
         && settlement.canonical_header() == prepared.canonical_header()
@@ -1101,17 +1151,32 @@ fn settlement_matches(
             &adoption.adopted_root().reference().key(),
         )?
         .as_ref()
-            == Some(adoption.adopted_root())),
+            == Some(adoption.adopted_root())
+            && point::<DraftEditHistoryTransitionsFamily>(reader, &adoption.transition().key())?
+                .as_ref()
+                == Some(adoption.transition())
+            && point::<DraftEditHistoryFrontiersFamily>(
+                reader,
+                &adoption.adopted_history().reference().key(),
+            )?
+            .as_ref()
+                == Some(adoption.adopted_history())),
         DraftPieceSettlementClosureV1::Noncommit(noncommit) => {
             if noncommit.occupied_identity().is_some() {
                 return Ok(false);
             }
-            Ok(match noncommit.proposed_successor() {
-                Some(successor) => {
-                    point::<DraftPieceRootsFamily>(reader, &successor.key())?.is_none()
-                }
-                None => true,
-            })
+            Ok(point::<DraftEditHistoryFrontiersFamily>(
+                reader,
+                &noncommit.observed_history().reference().key(),
+            )?
+            .as_ref()
+                == Some(noncommit.observed_history())
+                && match noncommit.proposed_successor() {
+                    Some(successor) => {
+                        point::<DraftPieceRootsFamily>(reader, &successor.key())?.is_none()
+                    }
+                    None => true,
+                })
         }
     }
 }
@@ -1141,6 +1206,9 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
     type Error = SyndicMutationError;
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+        if !self.prepared.predecessor_positions_authenticated {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         if let Some(settlement) =
             point::<DraftPieceSettlementsFamily>(reader, &settlement_key(&self.prepared))?
         {
@@ -1479,6 +1547,8 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
         reservation.reserve_records::<DraftPieceSettlementsCodec>(1)?;
         reservation.reserve_records::<DraftPieceRootsCodec>(1)?;
         reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        reservation.reserve_records::<DraftEditHistoryTransitionsCodec>(1)?;
+        reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;
         Ok(())
     }
 
@@ -1503,30 +1573,80 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
             .successor()
             .ok_or(SyndicMutationError::IdentityCollision)?;
         let root = DraftPieceRootRecordV1::new(successor);
+        let observed_history = authenticated_history_frontier(reader, current.newest_history())?;
         let (outcome, closure, lifecycle, target_session) = if current.lifecycle()
             == DraftEditorCandidateSessionLifecycleV1::Active
             && current.newest_candidate_generation() == build.predecessor_candidate_generation()
             && current.newest_root() == build.predecessor_root()
+            && current.newest_history() == build.predecessor_history()
         {
-            let next = current
-                .adopted(successor)
-                .ok_or(SyndicMutationError::IdentityCollision)?;
-            mutations.put::<DraftPieceRootsCodec>(&successor.key(), &root)?;
-            (
-                DraftPieceSettlementOutcomeV1::Committed {
-                    candidate_generation: next.newest_candidate_generation(),
-                    successor,
-                    caret: build.caret(),
-                    selection: build.selection(),
-                },
-                DraftPieceSettlementClosureV1::Committed(DraftPieceCommittedAdoptionV1::new(
-                    current.clone(),
-                    next.clone(),
-                    root,
-                )),
-                DraftPieceBuildLifecycleV1::Committed,
-                next,
-            )
+            match append_ordinary_draft_edit_history_v1(
+                &observed_history,
+                current
+                    .newest_candidate_generation()
+                    .checked_add(1)
+                    .ok_or(SyndicMutationError::IdentityCollision)?,
+                successor,
+                build.predecessor_caret(),
+                build.predecessor_selection(),
+                build.caret(),
+                build.selection(),
+                build.operation_id(),
+            ) {
+                Ok((transition, adopted_history)) => {
+                    let next = current
+                        .adopted(successor, adopted_history.reference())
+                        .ok_or(SyndicMutationError::IdentityCollision)?;
+                    mutations.put::<DraftPieceRootsCodec>(&successor.key(), &root)?;
+                    mutations
+                        .put::<DraftEditHistoryTransitionsCodec>(&transition.key(), &transition)?;
+                    mutations.put::<DraftEditHistoryFrontiersCodec>(
+                        &adopted_history.reference().key(),
+                        &adopted_history,
+                    )?;
+                    (
+                        DraftPieceSettlementOutcomeV1::Committed {
+                            candidate_generation: next.newest_candidate_generation(),
+                            successor,
+                            history: adopted_history.reference(),
+                            caret: build.caret(),
+                            selection: build.selection(),
+                        },
+                        DraftPieceSettlementClosureV1::Committed(
+                            DraftPieceCommittedAdoptionV1::new(
+                                current.clone(),
+                                next.clone(),
+                                root,
+                                observed_history,
+                                transition,
+                                adopted_history,
+                            ),
+                        ),
+                        DraftPieceBuildLifecycleV1::Committed,
+                        next,
+                    )
+                }
+                Err(DraftEditHistoryAppendErrorV1::BudgetExhausted) => {
+                    let cleared = current
+                        .clear_active_operation(&custody_for(&build))
+                        .ok_or(SyndicMutationError::IdentityCollision)?;
+                    (
+                        DraftPieceSettlementOutcomeV1::Error(
+                            DraftPieceErrorReasonV1::ResourceLimit,
+                        ),
+                        DraftPieceSettlementClosureV1::Noncommit(
+                            DraftPieceNoncommitClosureV1::new(
+                                cleared.clone(),
+                                observed_history,
+                                build.successor(),
+                            ),
+                        ),
+                        DraftPieceBuildLifecycleV1::Error,
+                        cleared,
+                    )
+                }
+                Err(_) => return Err(SyndicMutationError::IdentityCollision),
+            }
         } else {
             let cleared = current
                 .clear_active_operation(&custody_for(&build))
@@ -1535,9 +1655,11 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
                 DraftPieceSettlementOutcomeV1::Conflict {
                     current_candidate_generation: current.newest_candidate_generation(),
                     current_root: current.newest_root(),
+                    current_history: current.newest_history(),
                 },
                 DraftPieceSettlementClosureV1::Noncommit(DraftPieceNoncommitClosureV1::new(
                     cleared.clone(),
+                    observed_history,
                     build.successor(),
                 )),
                 DraftPieceBuildLifecycleV1::Conflict,
@@ -1551,8 +1673,11 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
             build.proposal_digest(),
             build.predecessor_candidate_generation(),
             build.predecessor_root(),
+            build.predecessor_history(),
             build.fragment_count(),
             build.fragment_chain(),
+            build.predecessor_caret(),
+            build.predecessor_selection(),
             build.caret(),
             build.selection(),
             build.build_digest(),
@@ -1690,8 +1815,11 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
                 self.prepared.proposal_digest(),
                 header.predecessor_candidate_generation(),
                 header.predecessor_root(),
+                header.predecessor_history(),
                 header.fragment_count(),
                 header.fragment_chain(),
+                header.predecessor_caret(),
+                header.predecessor_selection(),
                 header.caret(),
                 header.selection(),
                 None,
@@ -1701,6 +1829,7 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
                 outcome,
                 DraftPieceSettlementClosureV1::Noncommit(DraftPieceNoncommitClosureV1::new(
                     cleared.clone(),
+                    authenticated_history_frontier(reader, cleared.newest_history())?,
                     None,
                 )),
             );
@@ -1745,8 +1874,11 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             build.proposal_digest(),
             build.predecessor_candidate_generation(),
             build.predecessor_root(),
+            build.predecessor_history(),
             build.fragment_count(),
             build.fragment_chain(),
+            build.predecessor_caret(),
+            build.predecessor_selection(),
             build.caret(),
             build.selection(),
             build.build_digest(),
@@ -1756,6 +1888,7 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             outcome,
             DraftPieceSettlementClosureV1::Noncommit(DraftPieceNoncommitClosureV1::new(
                 cleared.clone(),
+                authenticated_history_frontier(reader, cleared.newest_history())?,
                 build.successor(),
             )),
         );

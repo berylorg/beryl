@@ -87,15 +87,30 @@ fn selector_matches(
     let draft = current_draft(reader, expected.thread_id())?;
     let reverse = required::<DraftByThreadFamily>(reader, &expected.thread_id())?;
     let root = required::<DraftPieceRootsFamily>(reader, &draft.piece_root().key())?;
+    let history = required::<DraftEditHistoryFrontiersFamily>(reader, &draft.history().key())?;
     Ok(thread.id() == expected.thread_id()
         && thread.revision() == expected.thread_revision()
         && draft.id() == expected.draft_id()
         && draft.revision() == expected.selector_revision()
         && draft.piece_root() == expected.root()
+        && draft.history() == expected.history()
         && reverse.draft_id() == draft.id()
         && reverse.draft_revision() == draft.revision()
         && reverse.thread_revision() == thread.revision()
-        && root.reference() == expected.root())
+        && root.reference() == expected.root()
+        && history.reference() == expected.history())
+}
+
+fn selected_history(
+    reader: &DomainReader<'_, SyndicDomain>,
+    request: DraftEditorCandidateSessionOpenRequestV1,
+) -> Result<DraftEditHistoryFrontierV1, SyndicMutationError> {
+    let history =
+        required::<DraftEditHistoryFrontiersFamily>(reader, &request.selector().history().key())?;
+    if history.reference() != request.selector().history() {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    Ok(history)
 }
 
 fn occupied_records(
@@ -160,8 +175,14 @@ pub(super) fn adopted_head_matches_current(
         && adopted.open_operation_id() == current.open_operation_id()
         && adopted.durable_base_selector_revision() == current.durable_base_selector_revision()
         && adopted.durable_base_root() == current.durable_base_root()
+        && adopted.durable_base_history() == current.durable_base_history()
+        && adopted.published_candidate_generation() == current.published_candidate_generation()
+        && adopted.published_selector_revision() == current.published_selector_revision()
+        && adopted.published_root() == current.published_root()
+        && adopted.published_history() == current.published_history()
         && adopted.newest_candidate_generation() == current.newest_candidate_generation()
         && adopted.newest_root() == current.newest_root()
+        && adopted.newest_history() == current.newest_history()
         && adopted.logical_extent() == current.logical_extent()
         && adopted.session_generation() <= current.session_generation()
         && adopted.dirty_generation() <= current.dirty_generation()
@@ -175,16 +196,43 @@ fn candidate_session_adoption_is_exact(
     if !active_operation_custody_is_exact(storage, store, head)? {
         return Ok(false);
     }
-    if head.newest_candidate_generation() == 0 {
-        return Ok(head.newest_root() == head.durable_base_root());
-    }
     let root = head.newest_root();
+    let history_reference = head.newest_history();
+    let stored_root = storage.point::<DraftPieceRootsFamily>(store, root.key(), point_limit())?;
+    let stored_history = storage.point::<DraftEditHistoryFrontiersFamily>(
+        store,
+        history_reference.key(),
+        point_limit(),
+    )?;
+    let (Some(stored_root), Some(stored_history)) = (stored_root.as_ref(), stored_history.as_ref())
+    else {
+        return Ok(false);
+    };
+    if stored_root.reference() != root
+        || stored_history.reference() != history_reference
+        || history_reference.root() != root
+        || history_reference.candidate_generation() != head.newest_candidate_generation()
+    {
+        return Ok(false);
+    }
+    if head.newest_candidate_generation() == 0 {
+        let durable_history = storage.point::<DraftEditHistoryFrontiersFamily>(
+            store,
+            head.durable_base_history().key(),
+            point_limit(),
+        )?;
+        return Ok(root == head.durable_base_root()
+            && history_reference.key().session_id() == Some(head.session_id())
+            && durable_history.as_ref().is_some_and(|frontier| {
+                frontier.reference() == head.durable_base_history()
+                    && frontier.fork_session(head.session_id()).as_ref() == Some(stored_history)
+            }));
+    }
     let key = DraftPieceSettlementKeyV1::new(
         head.draft_id(),
         head.session_id(),
         root.key().operation_id(),
     );
-    let stored_root = storage.point::<DraftPieceRootsFamily>(store, root.key(), point_limit())?;
     let settlement = storage.point::<DraftPieceSettlementsFamily>(store, key, point_limit())?;
     let build = storage.point::<DraftPieceBuildsFamily>(store, key, point_limit())?;
     if let Some(build) = build.as_ref() {
@@ -232,12 +280,17 @@ fn candidate_session_adoption_is_exact(
     let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
         return Ok(false);
     };
-    Ok(stored_root
-        .as_ref()
-        .is_some_and(|stored| stored.reference() == root)
-        && settlement_closure_is_exact(&settlement)
+    let stored_transition = storage.point::<DraftEditHistoryTransitionsFamily>(
+        store,
+        adoption.transition().key(),
+        point_limit(),
+    )?;
+    Ok(settlement_closure_is_exact(&settlement)
         && settlement_terminal_build_is_exact(&settlement, build.as_ref())
         && adopted_head_matches_current(adoption.adopted_session(), head)
+        && adoption.adopted_root() == stored_root
+        && adoption.adopted_history() == stored_history
+        && stored_transition.as_ref() == Some(adoption.transition())
         && matches!(
             settlement.outcome(),
             DraftPieceSettlementOutcomeV1::Committed {
@@ -406,6 +459,11 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
         let (head, receipt) = occupied_records(reader, self.prepared.request)?;
         if let Some(DraftEditorCandidateSessionRecordV1::Head(head)) = head {
             let _ = occupied_open_receipt(reader, &head)?;
+            let frontier =
+                required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
+            if frontier.reference() != head.newest_history() {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
             return if receipt.is_none()
                 || matches!(
                     receipt,
@@ -419,6 +477,18 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
             return Err(SyndicMutationError::IdentityCollision);
         }
         let _ = selector_matches(reader, self.prepared.request)?;
+        let source = selected_history(reader, self.prepared.request)?;
+        let target_key = DraftEditHistoryFrontierKeyV1::session(
+            self.prepared.request.selector().draft_id(),
+            self.prepared.request.session_id(),
+        );
+        if source
+            .fork_session(self.prepared.request.session_id())
+            .is_none()
+            || point::<DraftEditHistoryFrontiersFamily>(reader, &target_key)?.is_some()
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         Ok(())
     }
 
@@ -427,6 +497,7 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
         reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
         reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(2)?;
+        reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;
         Ok(())
     }
 
@@ -442,7 +513,14 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
         if !selector_matches(reader, self.prepared.request)? {
             return Ok(());
         }
-        let head = DraftEditorCandidateSessionV1::opened(self.prepared.request);
+        let source_history = selected_history(reader, self.prepared.request)?;
+        let forked_history = source_history
+            .fork_session(self.prepared.request.session_id())
+            .ok_or(SyndicMutationError::IdentityCollision)?;
+        let head = DraftEditorCandidateSessionV1::opened(
+            self.prepared.request,
+            forked_history.reference(),
+        );
         let receipt = DraftEditorCandidateSessionOpenReceiptV1::new(
             self.prepared.canonical_request.clone(),
             head.clone(),
@@ -450,6 +528,10 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
         mutations.put::<DraftEditorCandidateSessionsCodec>(
             &head_key(self.prepared.request),
             &DraftEditorCandidateSessionRecordV1::Head(head),
+        )?;
+        mutations.put::<DraftEditHistoryFrontiersCodec>(
+            &forked_history.reference().key(),
+            &forked_history,
         )?;
         mutations.put::<DraftEditorCandidateSessionsCodec>(
             &receipt_key(self.prepared.request),
@@ -467,6 +549,8 @@ impl SyndicStorage {
     ) -> Result<PreparedDraftEditorCandidateSessionOpenV1, DraftEditorCandidateSessionCommandErrorV1>
     {
         if request.selector().draft_id() != request.selector().root().key().draft_id()
+            || request.selector().draft_id() != request.selector().history().key().draft_id()
+            || request.selector().root() != request.selector().history().root()
             || !request
                 .selector()
                 .root()
@@ -540,6 +624,31 @@ impl SyndicStorage {
             self.point::<DraftEditorCandidateSessionsFamily>(store, head_key(request), limit)?;
         match head {
             Some(DraftEditorCandidateSessionRecordV1::Head(head)) => {
+                for (root_reference, history_reference) in [
+                    (head.durable_base_root(), head.durable_base_history()),
+                    (head.published_root(), head.published_history()),
+                    (head.newest_root(), head.newest_history()),
+                ] {
+                    let Some(root) =
+                        self.point::<DraftPieceRootsFamily>(store, root_reference.key(), limit)?
+                    else {
+                        return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
+                    };
+                    let Some(history) = self.point::<DraftEditHistoryFrontiersFamily>(
+                        store,
+                        history_reference.key(),
+                        limit,
+                    )?
+                    else {
+                        return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
+                    };
+                    if root.reference() != root_reference
+                        || history.reference() != history_reference
+                        || !history.is_locally_valid()
+                    {
+                        return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
+                    }
+                }
                 let occupied_key = DraftEditorCandidateSessionRecordKeyV1::open_receipt(
                     head.draft_id(),
                     head.session_id(),
@@ -586,6 +695,7 @@ impl SyndicStorage {
                     current.draft().id(),
                     current.draft().revision(),
                     current.draft().piece_root(),
+                    current.draft().history(),
                 );
                 if current_selector == request.selector() {
                     Err(DraftEditorCandidateSessionCommandErrorV1::Invariant)
@@ -713,11 +823,14 @@ impl DomainMutation<SyndicDomain> for DisposeSessionFixtureMutation {
                 .ok_or(SyndicMutationError::IdentityCollision)?,
             head.durable_base_selector_revision(),
             head.durable_base_root(),
-            head.newest_candidate_generation(),
+            head.durable_base_history(),
+            head.published_candidate_generation(),
             head.published_selector_revision(),
-            head.newest_root(),
+            head.published_root(),
+            head.published_history(),
             head.newest_candidate_generation(),
             head.newest_root(),
+            head.newest_history(),
             head.dirty_generation(),
             head.logical_extent(),
             DraftEditorCandidateSessionLifecycleV1::Disposed,

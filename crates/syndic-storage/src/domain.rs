@@ -24,6 +24,8 @@ const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<DraftPieceBuildProgressCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftPieceSettlementsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftEditorCandidateSessionsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftEditHistoryFrontiersCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftEditHistoryTransitionsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftComposerBuildsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftComposerMaterializationsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ContentManifestsCodec>(KeyspaceSchemaVersion::new(1)),
@@ -82,7 +84,7 @@ const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<CasTurnIndexCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ProviderObservationChunksCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 72] = [(); V5_FAMILIES.len()];
+const _: [(); 74] = [(); V5_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
 pub(crate) fn v5_family_names() -> impl Iterator<Item = &'static str> {

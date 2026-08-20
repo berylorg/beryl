@@ -103,6 +103,7 @@ impl SyndicStorage {
             draft.id(),
             draft.revision(),
             draft.piece_root(),
+            draft.history(),
         )))
     }
 
@@ -154,6 +155,7 @@ impl SyndicStorage {
         }
         if head.newest_candidate_generation() != expected.candidate_generation()
             || head.newest_root() != expected.root()
+            || head.newest_history() != expected.history()
             || head.logical_extent() != expected.logical_extent()
         {
             return Err(DraftPieceRangeSourceErrorV1::StaleCandidate);
@@ -363,13 +365,13 @@ impl SyndicStorage {
         &self,
         store: &HomeStore,
         thread_id: SyndicThreadId,
-        read: impl FnOnce(DraftPieceRootReferenceV1) -> Result<T, DraftPiecePrepareErrorV1>,
+        read: impl FnOnce(DraftRootHistoryPairV1) -> Result<T, DraftPiecePrepareErrorV1>,
     ) -> Result<Option<T>, DraftPiecePrepareErrorV1> {
         let limit = point_limit();
         let Some(before) = self.current_draft(store, thread_id, limit)? else {
             return Ok(None);
         };
-        let value = read(before.draft().piece_root())?;
+        let value = read(before.draft().root_history())?;
         #[cfg(feature = "test-faults")]
         crate::test_faults::run_draft_piece_current_read_fault(store, *self);
         let after = self.current_draft(store, thread_id, limit)?;
@@ -385,8 +387,8 @@ impl SyndicStorage {
         thread_id: SyndicThreadId,
         position: DraftCompositePositionV1,
     ) -> Result<Option<()>, DraftPiecePrepareErrorV1> {
-        self.stabilized_current_draft_piece(store, thread_id, |root| {
-            validate_position(self, store, root, position)
+        self.stabilized_current_draft_piece(store, thread_id, |pair| {
+            validate_position(self, store, pair.root(), position)
         })
     }
 
@@ -397,12 +399,11 @@ impl SyndicStorage {
         caret: DraftCompositePositionV1,
         selection: DraftCompositePositionV1,
         scroll: DraftCompositePositionV1,
-        undo_frontier: Option<[u8; 32]>,
     ) -> Result<Option<DraftPieceRestorationV1>, DraftPiecePrepareErrorV1> {
-        self.stabilized_current_draft_piece(store, thread_id, |root| {
+        self.stabilized_current_draft_piece(store, thread_id, |pair| {
             self.validate_draft_piece_restoration(
                 store,
-                DraftPieceRestorationV1::new(root, caret, selection, scroll, undo_frontier),
+                DraftPieceRestorationV1::new(pair.root(), pair.history(), caret, selection, scroll),
             )
         })
     }
@@ -431,6 +432,20 @@ impl SyndicStorage {
         store: &HomeStore,
         restoration: DraftPieceRestorationV1,
     ) -> Result<DraftPieceRestorationV1, DraftPiecePrepareErrorV1> {
+        if restoration.history().root() != restoration.root()
+            || self
+                .point::<DraftEditHistoryFrontiersFamily>(
+                    store,
+                    restoration.history().key(),
+                    point_limit(),
+                )?
+                .as_ref()
+                .is_none_or(|frontier| {
+                    frontier.reference() != restoration.history() || !frontier.is_locally_valid()
+                })
+        {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
         validate_position(self, store, restoration.root(), restoration.caret())?;
         validate_position(self, store, restoration.root(), restoration.selection())?;
         validate_position(self, store, restoration.root(), restoration.scroll())?;
@@ -718,7 +733,20 @@ impl SyndicStorage {
                         adoption.adopted_root().reference().key(),
                         limit,
                     )?;
-                    if published.as_ref() != Some(adoption.adopted_root()) {
+                    let transition = self.point::<DraftEditHistoryTransitionsFamily>(
+                        store,
+                        adoption.transition().key(),
+                        limit,
+                    )?;
+                    let history = self.point::<DraftEditHistoryFrontiersFamily>(
+                        store,
+                        adoption.adopted_history().reference().key(),
+                        limit,
+                    )?;
+                    if published.as_ref() != Some(adoption.adopted_root())
+                        || transition.as_ref() != Some(adoption.transition())
+                        || history.as_ref() != Some(adoption.adopted_history())
+                    {
                         return Err(SyndicReadError::Invariant(
                             "draft-piece committed publication closure is missing",
                         ));
@@ -772,6 +800,7 @@ impl SyndicStorage {
                 build.proposal_digest(),
                 build.predecessor_candidate_generation(),
                 build.predecessor_root(),
+                build.predecessor_history(),
                 build.progress_receipt(),
             );
             if head.active_operation() != Some(&expected_custody) {

@@ -67,7 +67,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - This package implements the storage boundary consumed by `doc/systems/syndic-conversation-history/design.md` and `doc/systems/cas-live-syndic-transcript/design.md`.
 - The package exposes operations for constructing its opaque domain handle, creating threads and
   current drafts, opening, reading, publishing, and disposing bounded editor-candidate sessions,
-  revisioned predecessor-linked combined sequence/index candidate transactions, bounded draft text
+  durable two-lane pre-finish mutation staging and reconciliation, authenticated finish-to-builder
+  custody transfer, revisioned predecessor-linked combined sequence/index candidate transactions, bounded draft text
   and marker reads, compact restoration validation, durable edit-history frontier reads and
   retention, exactly-once ordinary transition append, direct authenticated historical-root
   adoption for undo/redo, and exactly-once durable candidate settlement and replay,
@@ -307,14 +308,87 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   candidate generation/root and matching exact live edit-history frontier revision reference,
   monotonic session and dirty generations, and its active or disposed lifecycle. Each published or
   newest root is valid only with its named history reference selecting that same root and candidate
-  generation. It also has one fixed-size optional active-operation custody slot
-  containing the exact operation id, canonical proposal identity, predecessor candidate generation/
-  root, and admitted build/progress endpoint required for point-readable recovery. It contains no
-  proposal payload or receipt chain. The head contains no text, marker collection, whole edit, undo payload,
+  generation. It also has one fixed-size optional tagged active-operation custody slot. `Staging`
+  contains the exact operation id, canonical begin identity, predecessor candidate generation/root/
+  history pair, and staging head/progress endpoint. `Building` contains the exact operation id,
+  finish-derived canonical proposal identity, predecessor pair, and admitted build/progress
+  endpoint. The exact finish-to-build command replaces `Staging` with `Building`; both tags can
+  never coexist. The slot contains no proposal payload or receipt chain. The head contains no text, marker collection, whole edit, undo payload,
   root graph, transcript fact, or current-draft authority. The tagged
   `draft-editor-candidate-sessions` family also holds bounded immutable open, publication, and
   disposal receipts keyed by their natural session/operation identities; these make exact replay
   and byte-disagreeing identity collision point-readable without growing the head.
+- `DraftMutationOperationIdV1` is an opaque caller-owned 16-byte mutation identity. A valid caller
+  assigns it one-to-one to one app-neutral edit transaction and reuses it for that transaction's begin,
+  pages, finish, terminal election, and reconciliation; storage never derives it from GUI types.
+  `DraftMutationStagingEncodingVersionV1` is the exact one-byte value `1` and selects the canonical
+  app-neutral `MutationBeginV1`, lane-page, and `FinishInputV1` encodings owned by this package.
+  `DraftMutationStagingIdentityV1` is the exact 48-byte concatenation of draft id, editor-candidate
+  session id, and `DraftMutationOperationIdV1`. It is the natural key of the mutable
+  `DraftMutationStagingHeadV1` in `draft-mutation-staging-heads`. The V1 head repeats that identity
+  and retains one bounded canonical `MutationBeginV1` plus its digest; exact session generation,
+  predecessor candidate generation/root/history pair and logical extent; predecessor caret and
+  directed selection; exact staging encoding version; independent source- and proposal-lane frontiers;
+  latest staging-progress receipt key/digest; and exactly `Receiving`, `Finished(finish)`,
+  `Building(build endpoint)`, `Cancelled`, `Rejected`, `Conflict`, or `Error` lifecycle. Each lane
+  frontier contains only its next cursor and one-based ordinal, checked cumulative `u64` item and
+  canonical-byte totals, and cumulative identity. `Finished` stores the bounded canonical
+  `FinishInputV1`, which repeats both exact final lane frontiers and intended successor positions.
+  No head field contains page payload, a page collection, a receipt chain, a candidate root, or
+  current-draft authority. The head still stores both the selected staging-progress receipt key and
+  its digest. Its canonical head digest is SHA-256 over the length-prefixed exact ASCII domain
+  `syndic/draft-mutation-staging-head/v1`, canonical key, and every canonical head field except the
+  selected receipt digest; it includes the complete selected receipt key and thus its transition
+  ordinal. The package point-reads that key, canonically decodes the receipt, recomputes its digest,
+  and requires it to equal the independently stored selected receipt digest. Canonical byte
+  equality, not either digest alone, proves replay. The four
+  terminal lifecycles are immutable and accept no later page, finish, transfer, or outcome change.
+- `draft-mutation-staging-pages` contains immutable tagged `DraftMutationStagingPageV1` records.
+  The exact 57-byte key is the 48-byte staging identity, one canonical lane tag (`SourcePage = 0`,
+  `ProposalPage = 1`), and an unsigned big-endian one-based `u64` lane ordinal. The value repeats
+  that key, exact input and successor cursors, positive item and retained-canonical-byte ceilings,
+  prior and successor cumulative identities, checked cumulative counts and bytes, canonical page
+  bytes, and a domain-separated page digest. Source and proposal lanes therefore cannot collide by
+  ordinal, and a cursor or lane mismatch is canonical byte disagreement rather than continuation.
+  The page digest is SHA-256 over the length-prefixed exact ASCII domain
+  `syndic/draft-mutation-staging-page/v1`, canonical key, and every preceding canonical value field.
+  The family has no mutable value, terminal tag, or alternate page identity.
+- `DraftMutationStagingProgressReceiptV1` is an immutable fixed-size record in
+  `draft-mutation-staging-progress`. Its exact 56-byte key is the staging identity followed by an
+  unsigned big-endian one-based `u64` transition ordinal. Its value repeats the key; exact prior
+  receipt key/digest, absent only at ordinal one; command kind; optional affected page key/digest or
+  finish digest; complete before/after source and proposal lane frontiers; before/after staging-head
+  digests and lifecycle; exact candidate-session custody before/after tags and endpoints; optional
+  build endpoint for the one custody transfer; one closed optional fixed-size terminal-evidence
+  union; and its domain-separated receipt digest. `Rejected` evidence contains a closed reason code
+  plus the exact rejected begin/page/finish natural anchor and canonical digest. `Conflict`
+  evidence contains the expected predecessor candidate generation/root/history pair and the exact
+  observed current pair and session revision. `Cancelled` evidence contains the cancellation-
+  request identity, election source lifecycle, and writer-admission disposition. `Error` evidence
+  contains either a closed operational code and affected natural anchor or an occupied-identity
+  comparison witness with the natural key, stored and requested canonical digests, first differing
+  byte offset, and stored/requested byte-or-end values. Every form states exact absence of candidate
+  adoption. The receipt
+  contains no page bytes. Begin, each page, finish, pre-build terminal election, and finish-to-build
+  transfer each append exactly one such receipt and atomically advance the staging head and session
+  custody as applicable. The receipt digest is SHA-256 over the length-prefixed exact ASCII domain
+  `syndic/draft-mutation-staging-progress-receipt/v1`, canonical key, and every preceding canonical
+  receipt field, including its before/after head digests; it is a commitment and never substitutes
+  for byte comparison of a point-read target closure. Excluding only the selected receipt digest
+  from the head-digest preimage makes the head digest computable before this receipt digest, while
+  the head's selected key, independently authenticated stored receipt digest, receipt-owned head
+  digests, and canonical target-closure comparison preserve the complete closure.
+- A pre-build `Cancelled`, `Rejected`, `Conflict`, or `Error` outcome is proven by the terminal
+  staging head, its selected immutable target receipt, the receipt's immediate source closure, and
+  that receipt's matching outcome evidence. A terminal-before-begin command has ordinal one, no
+  staging source, and an exact `None`-to-`None` candidate-session custody transition. Terminalizing
+  an admitted receiving or finished operation instead requires its selected source receipt and
+  exact `Staging`-to-`None` custody transition. Neither form may claim the other transition. It creates no
+  `DraftPieceEditHeaderV1`, draft-piece build, candidate root, edit-history transition, or
+  `DraftPieceSettlementV1`. After finish-to-build transfer, the existing draft-piece settlement
+  family is the sole terminal authority. `DraftPieceTransactionOutcomeV1` accepts exactly one of
+  those mutually exclusive terminal closures and still exposes only `Committed`, `Rejected`,
+  `Conflict`, `Cancelled`, or `Error`; only the draft-piece closure may produce `Committed`.
 - `DraftEditHistoryTransitionV1` is one immutable compact same-draft root transition. It stores the
   exact predecessor and successor combined-root references, before/after caret and directed
   selection, ordinary-edit or history-action kind, predecessor journal link, undo/redo stack links,
@@ -339,17 +413,51 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   authenticated retained transition described below. Any other root-only selection is invalid.
 - `DraftEditHistoryFrontierV1` is one bounded mutable record selected by an editor-candidate session.
   It stores the exact current candidate root and generation, journal head, undo and redo heads,
-  oldest eligible transition, cumulative retained encoded bytes, configured budget and retention-
+  oldest eligible transition, monotonic immutable-record cumulative encoded-byte position, exact
+  retained encoded bytes, configured budget and retention-
   policy revision, monotonic frontier revision, and exact undo/redo availability. Its immutable
   receipts make exact replay and byte-disagreeing frontier-operation collision point-readable.
   Opening a fresh session forks its mutable head from the current draft's exact immutable published
   reference; it never discovers or adopts an unpublished head from an earlier session.
+- `DraftEditHistoryStoredChargeV1(record)` is the checked `u64` sum of the exact bytes emitted by
+  that record family's key codec and the exact bytes emitted by its canonical value codec. The
+  value charge includes every field actually encoded, including a canonical key repeated inside
+  the value; the family key and repeated value key are therefore both charged. The charge includes
+  no family name, domain-registration bytes, Fjall journal or table framing, allocator metadata,
+  cache residency, compression estimate, or filesystem allocation.
+- The charged retained set is exactly one editor-candidate session's current mutable live frontier
+  head plus every transition and link record retained through that head. Immutable publication or
+  fresh-baseline snapshots and immutable operation receipts are excluded from this edit-history
+  retention budget and remain under their separate bounded lifecycle and storage ownership. A
+  newly opened canonical-empty or fresh-baseline session initializes `retained_encoded_bytes` to
+  the exact charge of its newly stored live head. A forked session initializes it to the exact
+  charge of its new stored live head plus every immutable transition and link record retained
+  through its imported frontier links; shared physical records are charged once in that frontier's
+  logical retained set, never once per reference field. Its immutable-transition
+  `cumulative_encoded_bytes` starts at the imported cumulative position, or zero when it retains no
+  transition/link record; the mutable frontier charge is not an indexed transition position.
 - An ordinary `Committed` candidate adoption writes the new transition and advances the candidate
   session and history frontier in the same command. It clears redo and may advance the oldest-
-  eligible floor according to the configured durable byte budget. A no-change settlement changes
-  neither history record. The transition's cumulative encoded-byte position supports a bounded
-  indexed seek to the oldest eligible retained transition, so eviction does not scan history and
-  editing never waits for document-sized cleanup.
+  eligible floor according to the configured durable byte budget. For source frontier `F`,
+  successor frontier `F'`, newly retained immutable transition/link record set `A`, and evicted
+  immutable transition/link record set `E`, the exact successor charge is
+  `F.retained_encoded_bytes - charge(F) + charge(F') + sum(charge(A)) - sum(charge(E))`, with every
+  conversion and operation checked as `u64`. `charge(F')` uses the final canonical successor shape
+  after its optional links and tags are selected; its counters, revisions, and digest are fixed-
+  width, so their numeric values do not create a sizing iteration. The new transition's cumulative
+  position is the prior immutable cumulative position plus the exact charges of the transition/link
+  members of `A`; live-frontier replacement and eviction do not change that
+  monotonic append position. A no-change settlement changes neither history record nor either
+  counter.
+- Candidate adoption selects the oldest authenticated eligible transition/link prefix needed for
+  `E`, subtracts only those exact charges while advancing the floor, and applies the eviction in the
+  same atomic command as the successor. Ordinary editing does not become unavailable when that
+  eligible eviction suffices. A typed history-capacity-unavailable result is permitted only when the
+  final authority cannot retain the required non-evictable live-head and transition/link closure
+  within the configured budget. Overflow, underflow, an encoded length not representable as `u64`,
+  or disagreement between stored counters and recomputed exact charges fails closed. No command
+  writes a transition/frontier/candidate-history successor above budget. The transition cumulative-
+  byte position supports the bounded indexed eviction seek without loading complete history.
 - `DraftHistoricalRootAdoptionV1` is a dedicated immutable settlement keyed by draft, editor
   session, and operation. It authenticates the source frontier, selected retained transition,
   direction, same-draft target root, target caret and directed selection, and exact successor
@@ -363,7 +471,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   every current-draft, candidate-session, materialization, submission, and history reference.
 - Each candidate edit or sealed-composer import has one `draft-piece-builds` record keyed by exact
   draft, session, and caller-owned operation identity, with a closed edit-successor or sealed-
-  composer-import kind. An edit build retains the exact predecessor candidate generation and
+  composer-import kind. An edit build is created only by the authenticated finish-to-build custody
+  transfer. It retains the exact staging identity and finish receipt, predecessor candidate generation and
   combined root, predecessor caret and directed selection, canonical proposal-header bytes and
   digest, cumulative checked replacement, move, item, and byte counts, next bounded source and
   proposal cursors, explicit finish-input identity, sequence-path, identity-removal, identity-insertion, move-
@@ -376,7 +485,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `Cancelled(settlement)`, or `Error(settlement)`. The last five are terminal and can never return
   to open/complete or adopt another root. The build record never embeds or retains the resident
   whole edit, replacement vector, or inserted payload. It names its latest immutable progress-
-  receipt key and digest rather than authenticating mutable progress with a self-hash. Bounded
+  receipt key and digest rather than authenticating mutable progress with a self-hash. The header's
+  declared counts, final chains, and successor positions are derived from `FinishInputV1`; build
+  validation and reconciliation point-read the durable staged pages and never accept caller-
+  resupplied fragments as authority. Bounded
   immutable fragment records contain only ordered canonical replacement envelopes, inserted
   pieces, removed-marker facts, and move pairings; their canonical bytes and one-based ordinal
   chain authenticate the proposal endpoint and are never overloaded with progress records. Digests
@@ -949,10 +1061,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2;
   every other V5 family uses record V1. V5 is a clean replacement
   schema: no prior-record decoder, migration path, or compatibility adapter exists.
-- The 56 primary V5 families are `threads`, `thread-executions`, `thread-attributes`,
+- The 59 primary V5 families are `threads`, `thread-executions`, `thread-attributes`,
   `thread-usage`, `thread-catalog-summaries`, `drafts`, `draft-piece-roots`,
   `draft-piece-nodes`, `draft-piece-leaves`, `draft-marker-identity-index`,
   `draft-editor-candidate-sessions`, `draft-piece-builds`,
+  `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
+  `draft-mutation-staging-progress`,
   `draft-piece-build-fragments`, `draft-piece-build-progress`, `draft-piece-settlements`,
   `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
   `draft-historical-root-adoptions`,
@@ -971,6 +1085,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `item-projection-builds`, `transcript-view-heads`, `transcript-builds`, `projections`,
   `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`.
 - `draft-marker-identity-index`, `draft-editor-candidate-sessions`,
+  `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
+  `draft-mutation-staging-progress`,
   `draft-piece-build-progress`, `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
   and `draft-historical-root-adoptions` are distinct V5 primary families. The marker index uses tagged
   internal-node and leaf records, and the candidate-session family uses tagged head and immutable
@@ -983,7 +1099,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V5 inventory is exactly 56 primary plus 23 index families, or 79 total. A release
+- The complete V5 inventory is exactly 59 primary plus 23 index families, or 82 total. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
 - `draft-piece-roots`, `draft-piece-nodes`, `draft-piece-leaves`, and
@@ -1041,6 +1157,25 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   publication, or disposed head that later advances is corruption. A newly opened head has no
   custody; a cleanly disposed head must have no custody and must have byte-equal published and newest
   root/history pairs.
+- `draft-mutation-staging-heads` uses the exact 48-byte `DraftMutationStagingIdentityV1` key and
+  mutable V1 head described under Logical Records. `draft-mutation-staging-pages` uses the exact
+  57-byte identity/lane/ordinal key and immutable V1 page value. `draft-mutation-staging-progress`
+  uses the exact 56-byte identity/transition-ordinal key and immutable V1 receipt value. These three
+  primary families have no secondary index family: recovery begins from the candidate-session
+  custody slot and point-reads its exact staging identity and selected receipt. A head whose lane
+  frontier is ahead of its selected receipt, a page ahead of either, a finished head whose final
+  declaration differs from its two current lane frontiers, a staging head disagreed with by the
+  candidate slot, a building head without the exact atomic `Staging`-to-`Building` transfer receipt,
+  or a terminal head whose receipt lacks its lifecycle's exact outcome evidence or required
+  `None`-to-`None`/`Staging`-to-`None` custody shape is corruption.
+  The V1 head codec recomputes the acyclic staging-head digest with the selected receipt digest
+  omitted and validates only the value's local canonical structure, key/value agreement, field
+  bounds, lifecycle shape, selected receipt key/transition ordinal, and stored digest fields; codec
+  decode performs no storage read. Bounded natural-closure reads, explicit schema validation, scrub,
+  and corruption investigation point-read the selected receipt key and separately require its
+  canonical receipt digest, receipt-owned after-head digest, and complete head/receipt closure to
+  agree. Neither local decode nor a storage-backed closure check hashes the receipt digest back into
+  the head-digest preimage.
 - `draft-edit-history-frontiers` stores one bounded mutable V1 head per exact draft/editor session
   plus deterministic canonical-empty references, immutable session-publication and sealed-import
   fresh-baseline snapshots, and immutable operation receipts under tagged keys. Every immutable
@@ -1062,8 +1197,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   adoption schema. A missing transition, root outside the same-draft retained lineage, stale
   frontier, disagreeing replay, collision, or no-change result that names a successor is invalid.
 - `draft-piece-builds` is keyed by the exact 48-byte draft/session/operation identity. Its V1
-  value repeats the closed edit-successor or sealed-composer-import kind, canonical proposal-header
-  bytes and digest, predecessor candidate generation and exact combined root, optional exact sealed
+  value repeats the closed edit-successor or sealed-composer-import kind. An edit-successor repeats
+  the exact staging identity and authenticated finish receipt, finish-derived canonical proposal-
+  header bytes and digest, predecessor candidate generation and exact combined root; an import has
+  no staging identity. The record also retains any optional exact sealed
   content source,
   compact declared counts and digests, ordered fragment, sequence-path, identity-index, move-
   reconciliation, and cross-
@@ -1075,7 +1212,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `draft-piece-build-fragments` is keyed by that build plus one-based fragment ordinal and stores
   one bounded exact replacement, inserted-piece, removed-marker, or move-pair fragment with its
   preceding chain digest. Continuation or replay requires canonical build-header bytes and every
-  occupied fragment's canonical bytes to match ordinal by ordinal through bounded comparison;
+  occupied fragment's canonical bytes to match ordinal by ordinal through bounded comparison
+  against the authenticated staged proposal pages, never caller-resupplied bytes;
   equal header, fragment, or chain digests alone are insufficient.
   Fragment gaps, overlaps, reorderings, duplicate empty ranges at one composite position, unknown
   position-witness tags, and a terminal declaration that disagrees with the accumulated counts or
@@ -1263,7 +1401,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   fixed bounded chunk count. Content manifests use `u64` counts and lengths; no smaller whole-draft,
   whole-submitted-input, or whole-provider-item byte ceiling is encoded in V5.
 - Every draft combined-root, sequence node/leaf, tagged marker-identity-index internal/leaf, build,
-  canonical fragment, immutable build-progress receipt, settlement, candidate-session head or
+  mutation-staging head, canonical staging page, immutable staging-progress receipt, canonical
+  fragment, immutable build-progress receipt, settlement, candidate-session head or
   receipt, and materialization record fits the 65,536-byte value ceiling. Internal
   nodes in either structure have from 2 through 128 children, except that a selected root node may
   have from 1 through 128; every leaf in one nonempty structure has the same depth, and each height
@@ -1275,15 +1414,33 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   marker, identity-index-root, and combined-root digests. A text leaf contains at least one complete UTF-8 scalar and no
   more payload than its codec-derived record ceiling; a sequence marker leaf contains exactly one
   bounded marker identity, order key, and label.
-- One draft edit staging command admits at most 256 fragment records and 65,536 inserted UTF-8
+- One pre-finish mutation-page command admits exactly one source or proposal page with at most 256
+  canonical entries and a complete encoded page value of at most 65,536 bytes. It writes that one
+  immutable page, one fixed-size staging-progress receipt, the compact staging-head successor, and
+  the candidate-session custody successor in one atomic command. Begin, finish, and pre-build
+  terminal commands carry no page value and write only their bounded head/receipt/session closure.
+  Preparation and reconciliation retain at most one caller page, one stored page value, and one
+  fixed head/receipt/session command closure at a time; the app serializes one in-flight command and
+  retains no accepted payload. Source and proposal lane ordinals, item totals, and canonical-byte
+  totals are checked `u64`; there is no smaller or hardcoded cumulative cap below any representable
+  checked-`u64` total, and checked overflow rejects without partial acceptance.
+- The finish-to-builder command contributes exactly five Syndic record effects: one immutable
+  staging-transfer receipt, one immutable ordinal-one `DraftPieceBuildProgressReceiptV1`, one
+  staging-head successor selecting `Building`, one initial draft-piece build-head successor, and
+  one candidate-session successor whose sole custody transition is `Staging` to `Building`. It
+  carries no staging page, build fragment, tree node, candidate root, history transition, or
+  settlement. The complete encoded key-plus-value sum of those five effects is bounded by and must
+  fit the existing 4,194,304-byte draft-piece command ceiling; excess rejects before mutation.
+- One post-finish draft-piece fragment command admits at most 256 fragment records and 65,536 inserted UTF-8
   payload bytes. One path-copy command reads or emits at most 256 records across both structures and
   at most
   4,194,304 encoded key-plus-value bytes. Larger replacements and tree repairs continue through
-  revision-bound build frontiers. Every begin, stage, path-copy or other advance, and terminal
-  command targets exactly one fixed-size immutable progress receipt and one compact build-head
-  successor plus one fixed-size session-custody before/after state. The first admitted command
-  claims the slot; each later nonterminal command advances its endpoint; the sole terminal command
-  clears it. A new commit creates the receipt and effects and updates both heads in the same atomic
+  revision-bound build frontiers. After the five-effect finish-to-builder transfer above, every
+  fragment-stage, path-copy, other build-advance, and terminal build command targets exactly one
+  fixed-size immutable build-progress receipt and one compact build-head successor plus one fixed-
+  size candidate-session custody before/after state. Each post-transfer nonterminal command
+  advances the `Building` endpoint; the sole terminal build command clears it. A new post-transfer
+  commit creates the receipt and effects and updates the build and candidate-session heads in the same atomic
   command; exact replay creates nothing and requires the stored build head, session slot, and
   complete target closure already to match. It authenticates only the endpoint receipt and its immediate
   predecessor plus the bounded roots, canonical fragments, and path records referenced by that
@@ -1293,17 +1450,26 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   Candidate adoption never reads or writes the current-draft selector, reverse index, or history
   summary. One publication command point-reads one captured candidate settlement/root, the session
   head, current draft and reverse index, and history summary; it never traverses the candidate chain.
-- Those 256 records are one-command page capacity, never a cumulative operation limit. Source and
+- Those 256 records are one-command build capacity, never a cumulative operation limit. Source and
   proposal pages use checked `u64` cursors, counts, lengths, and cumulative canonical identities;
-  explicit finish-input fixes the final totals. One logical edit may consume any representable
-  number of pages without a whole-operation collection or a special 256/257 boundary. Accepted page
-  payloads are released after their progress receipt and cumulative identity are durable.
+  explicit finish-input fixes the final totals in the staging head before any build exists. One
+  logical edit may consume any representable number of pages without a whole-operation collection
+  or a special 256/257 boundary. Accepted caller payloads are released after the immutable staging
+  page, target receipt, head, session custody, and cumulative identity are durable. Later build and
+  reconciliation read those staged records in bounded pages rather than asking the caller to
+  retain or resupply them.
 - Edit-history transition, frontier, stack-link, and historical-root-adoption values each fit the
   65,536-byte value ceiling and contain only compact roots, positions, links, counters, policy, and
   replay facts. The configured durable history byte budget is a nonzero checked `u64`, not an entry
-  count and not a function of document length. A bounded indexed seek over cumulative encoded-byte
-  positions selects the new oldest eligible floor; one adoption may evict any older prefix from
-  availability without reading, copying, or deleting that prefix.
+  count and not a function of document length. Within those families its charged set is only the
+  current mutable live-frontier record and the retained transition/link records; publication or
+  baseline snapshots and historical-root-adoption or other operation receipts are excluded. Each
+  charged record includes exact family-key bytes plus canonical value bytes, repeated keys inside
+  values count again, and Fjall and allocator metadata do not count. One bounded indexed seek over cumulative immutable-record byte
+  positions selects the oldest eligible prefix whose exact charge lets the successor fit, and the
+  adoption atomically evicts that prefix from availability without reading, copying, or deleting
+  it. A typed history-capacity-unavailable result occurs only when the required non-evictable
+  closure itself cannot fit.
 - Draft text, marker, composite-piece, and materialization input pages return at most 256 records
   and 65,536 payload bytes. One lookup binary-searches at most 128 authenticated child envelopes per
   level and performs at most 64 sequence-node reads. Exact adjacent-gap validation performs at most
@@ -1502,20 +1668,45 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `DraftEditorCandidateSessionReadOutcomeV1` is `Active(head)`,
   `Disposed(head)`, `Absent`, `ConcurrentChange`, or `InvariantFailure`; it is an explicit
   session-id read and never a routine current-draft or reopen scan.
+- `MutationBeginV1` is admitted only against the exact active session generation and predecessor
+  candidate/root/history pair with an absent custody slot and absent staging/build/settlement/root
+  natural keys. It atomically writes ordinal-one staging receipt and receiving head and installs
+  `Staging` custody. A page command must name the head-selected source receipt, exact lane frontier,
+  next cursor and ordinal, prior cumulative identity, and absent target page/receipt. It atomically
+  appends the page and receipt and advances the head and slot endpoint. A source-selecting head with
+  any occupied target is corruption. A target-selecting head proves exact replay only when head,
+  receipt, page when any, and custody bytes equal the complete proposed target closure; any
+  disagreement is collision/noncommit for that mismatching request and changes nothing.
+- `FinishInputV1` names the exact current endpoints, checked totals, cumulative identities, and
+  successor positions for both lanes. Finish atomically freezes only a byte-equal receiving head;
+  it neither walks pages nor creates a build. One later bounded transfer authenticates the finish
+  target and immediate source closure, derives `DraftPieceEditHeaderV1`, creates the ordinal-one
+  build receipt/head, changes the staging head to `Building`, and replaces the candidate slot's
+  `Staging` tag with `Building` in the same command. Build advances read at most one next durable
+  staged page and its receipt closure, validate or derive its bounded fragment effects, and persist
+  existing build progress. Reconciliation and same-home restart start from the exact session slot
+  and staging/build endpoints and require no caller page.
+- Cancellation may win before begin with no mutation, win an ordinal-one durable terminal-before-
+  begin election whose receipt records `None` source and `None`-to-`None` custody, or terminalize a
+  receiving or finished head whose receipt names its exact source and records `Staging`-to-`None`
+  custody. Rejection, base conflict, and operational error use the same two transition shapes and
+  the outcome-specific immutable evidence defined under Logical Records; replay authenticates that
+  evidence and the complete target closure rather than inferring a reason from lifecycle alone. Once
+  transfer installs `Building` custody, the draft-piece terminal election applies. Cancellation
+  after final adoption admission cannot retract it. Terminal staging pages remain invisible
+  immutable future-GC candidates; an admitted nonterminal head remains claimed and prevents clean
+  session disposal, while a distinct fresh session remains unblocked by all session-qualified keys.
 - A draft-piece transaction derives its natural settlement key, canonical proposal-header bytes,
-  and proposal digest from one exact draft/session/predecessor candidate revision, combined root,
-  and edit-history frontier, unique caller-owned operation identity, declared ranges and fragments, terminal frontier, and
-  intended successor positions. The first admitted transition, whether an ordinary begin or a
-  terminal-before-begin election, names a `None` source and the exact ordinal-one receipt, initial
-  or terminal build head, custody-slot transition, and bounded effects as its target; admission
-  requires the per-session settlement, build, ordinal-one progress-receipt, and same-tuple
-  candidate-root keys and the session's custody slot absent. It atomically claims the exact
-  operation/proposal identity in that slot; a terminal-first command clears the same claim within
-  its atomic target closure. An
+  and proposal digest from the authenticated finished staging identity and receipt, exact draft/
+  session/predecessor candidate revision, combined root and edit-history frontier, caller-owned
+  operation identity, declared ranges and fragments, terminal frontier, and intended successor
+  positions. The first build transition names a `None` build source and the exact ordinal-one build
+  receipt/head plus custody transfer as its target; admission requires the build, settlement,
+  receipt, and candidate-root keys absent and the byte-equal `Staging` slot present. An
   existing operation is continuation or replay only through the explicit source-versus-target head
   classification below. A
-  terminal settlement is replay, and an open/complete build is continuation, only when
-  canonical header bytes and every bounded fragment's canonical bytes agree ordinal by ordinal.
+  terminal settlement is replay, and an open/complete build is continuation, only when the staged
+  canonical header bytes and every durable bounded fragment's canonical bytes agree ordinal by ordinal.
   Digests may reject inequality early but never prove equality. A different canonical byte in an
   unsettled build or preexisting settlement, build, fragment, progress receipt, or candidate root at this operation's natural
   identities proves this proposal was not admitted and returns
@@ -1525,14 +1716,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   candidate/history frontier or durable draft-selector revision or makes staged leaves readable
   through either selected boundary; only its custody endpoint in the session head advances.
 - Source-receipt presence is determined only by transition ordinal, never by command kind. Ordinal
-  one names `None`, including a terminal-before-ordinary-begin election; every ordinal greater than
-  one names the exact immediately preceding receipt. Each canonical-fragment stage, successor-
+  one names `None` for the finish-to-build transfer; every ordinal greater than one names the exact
+  immediately preceding build receipt. Each canonical-fragment stage, successor-
   construction advance, and terminal election names its checked target receipt, build head, slot
   transition, and effects. Before mutation each command point-reads the session head and custody
   slot, the stored build head, its named source receipt when present, and the roots, canonical-
   fragment endpoint, and path records referenced by that bounded quantum.
-- An ordinal-one `None` source requires the build head, target receipt, and custody slot to be
-  absent. The command atomically claims the exact operation/proposal identity. For a target ordinal
+- An ordinal-one `None` build source requires the build head and target receipt absent and the exact
+  finished `Staging` custody present. The command atomically transfers that custody to the exact
+  operation/final-proposal `Building` identity. For a target ordinal
   greater than one, if the stored head selects the command's source receipt and equals its
   authenticated state, the target receipt key must be absent. Any occupied
   target in that state, including a canonically byte-identical value, is a corrupt predecessor-head/
@@ -1590,14 +1782,20 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Final candidate adoption requires the settlement absent, an active session with the exact
   predecessor root/history pair as its newest checkpoint and the exact matching active-operation custody, a
   complete matching build, the exact matching edit-history frontier, and the exact per-session
-  candidate-root and history-transition natural keys absent. One command authenticates the current progress endpoint and
-  immediate-predecessor/root closure; creates the next terminal progress receipt and immutable
+  candidate-root and history-transition natural keys absent. After the exact successor-charge
+  preflight admits successor construction, one command authenticates the current progress endpoint
+  and immediate-predecessor/root closure; creates the next terminal progress receipt and immutable
   paired-root record; advances only that session by exactly one candidate generation; marks the new
-  generation dirty; appends the compact before/after root, caret, and directed-selection transition,
-  advances the durable history frontier and the session head's newest root/history pair, clears
-  redo, applies oldest-eligible byte-budget eviction;
-  writes the immutable `Committed` settlement bound to that terminal receipt and
+  generation dirty; appends the compact before/after root, caret, and directed-selection transition;
+  advances the durable history frontier and the session head's newest root/history pair; clears
+  redo; applies oldest-eligible exact-charge byte-budget eviction; writes the immutable `Committed`
+  settlement bound to that terminal receipt and
   predecessor/root closure; terminalizes the build to that settlement; and clears the custody slot.
+  Eligible eviction that makes the successor fit never blocks ordinary editing. Only a required
+  non-evictable closure that cannot fit produces the typed history-capacity-unavailable terminal
+  error without writing a transition, successor frontier, paired candidate/history root, or
+  `Committed` settlement; that bounded terminal election then terminalizes the build and clears
+  custody.
   It does not read or
   advance the current draft, reverse index, published root/history pair, history activity, or asset
   owner. A changed newest candidate/history pair instead admits one no-change command that verifies absence of
@@ -1645,14 +1843,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   absent, authenticates the matching custody slot and current endpoint and immediate-predecessor/root closure when a build
   exists, writes the next immutable progress receipt and outcome-specific settlement, and advances
   the matching build to its corresponding terminal lifecycle and clears the custody slot in one
-  command. A terminal election before ordinary begin uses a `None` source, claims the absent slot,
-  and creates the ordinal-one terminal receipt, terminal build, settlement, and cleared target slot in that same
-  command; it never writes an admitted settlement without progress closure. A terminal build cannot accept another
-  fragment, construction step, final adoption, cancellation, or outcome change. A rejection
-  settled before ordinary begin is replayed only when the stored build head already equals that
-  ordinal-one terminal target and its receipt/build/settlement closure is byte-equal. A later begin
-  or final command returns that settlement only from this exact target closure rather than
-  interpreting proposal equality or absent candidate adoption as replay authority.
+  command. A pre-build terminal election instead uses the staging head/receipt closure defined
+  above and creates no draft-piece build or settlement. A terminal build cannot accept another
+  fragment, construction step, final adoption, cancellation, or outcome change. A later build or
+  final command returns a terminal result only from its exact staging or build target closure rather
+  than interpreting proposal equality or absent candidate adoption as replay authority.
 - An intermediate begin, fragment, or path-copy `HomeCommand::Indeterminate` reconciles only its
   named source receipt, target receipt/head, exact fragment, sequence-path, identity-index, move,
   cross-validation effects, and claimed session custody and returns no public terminal outcome. A terminal-election
@@ -2050,11 +2245,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 - Write commits implement the durability and projection-revision requirements of the owning systems at the storage boundary.
 - Candidate construction and draft autosave accept no complete composer payload and never rebuild a
-  full `ComposerV1`. Candidate construction stages only bounded edit fragments and path-copied
+  full `ComposerV1`. Before finish, append-only source and proposal pages, staging receipts, and one
+  compact head hold sole durable page custody under the candidate-session slot. The caller releases
+  each accepted payload and later reconciliation reads the natural staging records. Authenticated
+  finish transfers that one custody slot to the existing builder; only then does candidate construction stage bounded edit fragments and path-copied
   sequence and marker-identity-index records, then adopts one compact combined-root reference into
   the exact editor session. Autosave separately publishes an already adopted captured frontier into
   the current-draft selector. The compact build and session records contain no resident whole edit,
-  replacement collection, or payload. Canonical proposal fragments remain one-based immutable
+  replacement collection, or page payload. Canonical proposal fragments remain one-based immutable
   records in `draft-piece-build-fragments`; each bounded work quantum appends one fixed-size
   immutable `draft-piece-build-progress` receipt and atomically advances the compact build head to
   that receipt. The receipt endpoint, its immediate predecessor/root closure, and the sequence,
@@ -2066,16 +2264,17 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   durable history frontier. Undo and redo instead use the dedicated direct historical-root adoption
   command. Neither path copies inverse content or scans unchanged root/history state; both publish
   candidate and history authority atomically or publish neither.
-- Draft-piece staging, successor construction, candidate adoption, autosave publication, and
+- Mutation intake, draft-piece construction, candidate adoption, autosave publication, and
   Composer materialization publish no partial result. A crash between bounded steps exposes only
   the prior or new current-draft selector atomically; candidate adoption alone never changes reopen
   authority. Candidate-predecessor conflict terminalizes that exact edit through its immutable
   `Conflict` settlement. Durable-base conflict rejects publication without reclassifying adopted
   candidates. Cancellation, rejection, and operational failure likewise preserve their exact
-  noncommit proofs. Staging records that were never admitted and never claimed their session slot,
-  plus their unreachable nodes and leaves, may remain orphan candidates after clean session
-  disposal until future garbage collection. Admitted work retains the exact session custody slot
-  until one terminal settlement and cannot be disposed or reclassified as orphan staging.
+  noncommit proofs. Pre-finish pages never enter candidate, current-draft, history, materialization,
+  submission, or transcript reads. Staging records that were never admitted and never claimed their
+  session slot, plus terminal staging pages and unreachable nodes and leaves, may remain future-GC
+  candidates. Admitted nonterminal work retains the exact session custody slot until one terminal
+  settlement and cannot be disposed or reclassified as unclaimed orphan staging.
 - A materialization remains attached to its immutable exact combined root across later autosaves and crashes.
   Recovery resumes from its durable cursor; only cancellation, an operational failure, explicit
   same-root build supersession, or seal ends it. Cancelled, failed, or explicitly superseded

@@ -3,6 +3,10 @@ use beryl_model::{
     ThreadRevision,
 };
 
+use super::history::{
+    DraftEditHistoryFrontierReferenceV1, DraftEditHistoryFrontierV1, DraftEditHistoryTransitionV1,
+};
+
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DraftPieceOperationIdV1([u8; 16]);
 
@@ -90,6 +94,7 @@ pub struct DraftEditorActiveOperationV1 {
     proposal_digest: DraftPieceDigestV1,
     predecessor_candidate_generation: u64,
     predecessor_root: DraftPieceRootReferenceV1,
+    predecessor_history: DraftEditHistoryFrontierReferenceV1,
     receipt: DraftPieceBuildProgressReceiptReferenceV1,
 }
 
@@ -99,6 +104,7 @@ impl DraftEditorActiveOperationV1 {
         proposal_digest: DraftPieceDigestV1,
         predecessor_candidate_generation: u64,
         predecessor_root: DraftPieceRootReferenceV1,
+        predecessor_history: DraftEditHistoryFrontierReferenceV1,
         receipt: DraftPieceBuildProgressReceiptReferenceV1,
     ) -> Self {
         Self {
@@ -106,6 +112,7 @@ impl DraftEditorActiveOperationV1 {
             proposal_digest,
             predecessor_candidate_generation,
             predecessor_root,
+            predecessor_history,
             receipt,
         }
     }
@@ -126,6 +133,10 @@ impl DraftEditorActiveOperationV1 {
         self.predecessor_root
     }
 
+    pub const fn predecessor_history(self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.predecessor_history
+    }
+
     pub const fn receipt(self) -> DraftPieceBuildProgressReceiptReferenceV1 {
         self.receipt
     }
@@ -135,6 +146,7 @@ impl DraftEditorActiveOperationV1 {
             && self.proposal_digest == other.proposal_digest
             && self.predecessor_candidate_generation == other.predecessor_candidate_generation
             && self.predecessor_root == other.predecessor_root
+            && self.predecessor_history == other.predecessor_history
     }
 }
 
@@ -145,6 +157,7 @@ pub struct DraftEditorCurrentSelectorV1 {
     draft_id: SyndicDraftId,
     selector_revision: DraftRevision,
     root: DraftPieceRootReferenceV1,
+    history: DraftEditHistoryFrontierReferenceV1,
 }
 
 impl DraftEditorCurrentSelectorV1 {
@@ -154,6 +167,7 @@ impl DraftEditorCurrentSelectorV1 {
         draft_id: SyndicDraftId,
         selector_revision: DraftRevision,
         root: DraftPieceRootReferenceV1,
+        history: DraftEditHistoryFrontierReferenceV1,
     ) -> Self {
         Self {
             thread_id,
@@ -161,6 +175,7 @@ impl DraftEditorCurrentSelectorV1 {
             draft_id,
             selector_revision,
             root,
+            history,
         }
     }
 
@@ -178,6 +193,9 @@ impl DraftEditorCurrentSelectorV1 {
     }
     pub const fn root(self) -> DraftPieceRootReferenceV1 {
         self.root
+    }
+    pub const fn history(self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.history
     }
 }
 
@@ -221,11 +239,14 @@ pub struct DraftEditorCandidateSessionV1 {
     session_generation: u64,
     durable_base_selector_revision: DraftRevision,
     durable_base_root: DraftPieceRootReferenceV1,
+    durable_base_history: DraftEditHistoryFrontierReferenceV1,
     published_candidate_generation: u64,
     published_selector_revision: DraftRevision,
     published_root: DraftPieceRootReferenceV1,
+    published_history: DraftEditHistoryFrontierReferenceV1,
     newest_candidate_generation: u64,
     newest_root: DraftPieceRootReferenceV1,
+    newest_history: DraftEditHistoryFrontierReferenceV1,
     dirty_generation: u64,
     logical_extent: DraftLogicalExtentV1,
     lifecycle: DraftEditorCandidateSessionLifecycleV1,
@@ -233,7 +254,10 @@ pub struct DraftEditorCandidateSessionV1 {
 }
 
 impl DraftEditorCandidateSessionV1 {
-    pub const fn opened(request: DraftEditorCandidateSessionOpenRequestV1) -> Self {
+    pub const fn opened(
+        request: DraftEditorCandidateSessionOpenRequestV1,
+        forked_history: DraftEditHistoryFrontierReferenceV1,
+    ) -> Self {
         let selector = request.selector();
         let root = selector.root();
         Self {
@@ -244,11 +268,14 @@ impl DraftEditorCandidateSessionV1 {
             session_generation: 1,
             durable_base_selector_revision: selector.selector_revision(),
             durable_base_root: root,
+            durable_base_history: selector.history(),
             published_candidate_generation: 0,
             published_selector_revision: selector.selector_revision(),
             published_root: root,
+            published_history: selector.history(),
             newest_candidate_generation: 0,
             newest_root: root,
+            newest_history: forked_history,
             dirty_generation: 0,
             logical_extent: root.summary().logical_extent(),
             lifecycle: DraftEditorCandidateSessionLifecycleV1::Active,
@@ -265,11 +292,14 @@ impl DraftEditorCandidateSessionV1 {
         session_generation: u64,
         durable_base_selector_revision: DraftRevision,
         durable_base_root: DraftPieceRootReferenceV1,
+        durable_base_history: DraftEditHistoryFrontierReferenceV1,
         published_candidate_generation: u64,
         published_selector_revision: DraftRevision,
         published_root: DraftPieceRootReferenceV1,
+        published_history: DraftEditHistoryFrontierReferenceV1,
         newest_candidate_generation: u64,
         newest_root: DraftPieceRootReferenceV1,
+        newest_history: DraftEditHistoryFrontierReferenceV1,
         dirty_generation: u64,
         logical_extent: DraftLogicalExtentV1,
         lifecycle: DraftEditorCandidateSessionLifecycleV1,
@@ -283,11 +313,14 @@ impl DraftEditorCandidateSessionV1 {
             session_generation,
             durable_base_selector_revision,
             durable_base_root,
+            durable_base_history,
             published_candidate_generation,
             published_selector_revision,
             published_root,
+            published_history,
             newest_candidate_generation,
             newest_root,
+            newest_history,
             dirty_generation,
             logical_extent,
             lifecycle,
@@ -316,6 +349,9 @@ impl DraftEditorCandidateSessionV1 {
     pub const fn durable_base_root(&self) -> DraftPieceRootReferenceV1 {
         self.durable_base_root
     }
+    pub const fn durable_base_history(&self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.durable_base_history
+    }
     pub const fn published_candidate_generation(&self) -> u64 {
         self.published_candidate_generation
     }
@@ -325,11 +361,17 @@ impl DraftEditorCandidateSessionV1 {
     pub const fn published_root(&self) -> DraftPieceRootReferenceV1 {
         self.published_root
     }
+    pub const fn published_history(&self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.published_history
+    }
     pub const fn newest_candidate_generation(&self) -> u64 {
         self.newest_candidate_generation
     }
     pub const fn newest_root(&self) -> DraftPieceRootReferenceV1 {
         self.newest_root
+    }
+    pub const fn newest_history(&self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.newest_history
     }
     pub const fn dirty_generation(&self) -> u64 {
         self.dirty_generation
@@ -409,7 +451,11 @@ impl DraftEditorCandidateSessionV1 {
         Some(next)
     }
 
-    pub(crate) fn adopted(&self, successor: DraftPieceRootReferenceV1) -> Option<Self> {
+    pub(crate) fn adopted(
+        &self,
+        successor: DraftPieceRootReferenceV1,
+        successor_history: DraftEditHistoryFrontierReferenceV1,
+    ) -> Option<Self> {
         if self.active_operation.is_none() {
             return None;
         }
@@ -421,11 +467,14 @@ impl DraftEditorCandidateSessionV1 {
             session_generation: self.session_generation.checked_add(1)?,
             durable_base_selector_revision: self.durable_base_selector_revision,
             durable_base_root: self.durable_base_root,
+            durable_base_history: self.durable_base_history,
             published_candidate_generation: self.published_candidate_generation,
             published_selector_revision: self.published_selector_revision,
             published_root: self.published_root,
+            published_history: self.published_history,
             newest_candidate_generation: self.newest_candidate_generation.checked_add(1)?,
             newest_root: successor,
+            newest_history: successor_history,
             dirty_generation: self.dirty_generation.checked_add(1)?,
             logical_extent: successor.summary().logical_extent(),
             lifecycle: self.lifecycle,
@@ -440,21 +489,36 @@ impl DraftEditorCandidateSessionV1 {
         let roots_are_owned = self.durable_base_root.key().draft_id() == self.draft_id
             && self.published_root.key().draft_id() == self.draft_id
             && self.newest_root.key().draft_id() == self.draft_id;
+        let history_is_owned = self.durable_base_history.key().draft_id() == self.draft_id
+            && self.published_history.key().draft_id() == self.draft_id
+            && self.newest_history.key().draft_id() == self.draft_id;
         let published_is_coherent = if self.published_candidate_generation == 0 {
             self.published_selector_revision == self.durable_base_selector_revision
                 && self.published_root == self.durable_base_root
+                && self.published_history == self.durable_base_history
         } else {
             self.published_selector_revision > self.durable_base_selector_revision
                 && self.published_root.key().session_id() == Some(self.session_id)
+                && self.published_history.key().session_id() == Some(self.session_id)
         };
         let newest_is_coherent = if self.newest_candidate_generation == 0 {
             self.newest_root == self.durable_base_root
+                && self.newest_history.root() == self.durable_base_root
         } else {
             self.newest_root.key().session_id() == Some(self.session_id)
+                && self.newest_history.key().session_id() == Some(self.session_id)
         };
         let shared_frontier_is_coherent = self.published_candidate_generation
             != self.newest_candidate_generation
-            || self.published_root == self.newest_root;
+            || (self.published_root == self.newest_root
+                && (self.published_candidate_generation == 0
+                    || self.published_history == self.newest_history));
+        let pairs_are_coherent = self.durable_base_history.root() == self.durable_base_root
+            && self.durable_base_history.candidate_generation() == 0
+            && self.published_history.root() == self.published_root
+            && self.published_history.candidate_generation() == self.published_candidate_generation
+            && self.newest_history.root() == self.newest_root
+            && self.newest_history.candidate_generation() == self.newest_candidate_generation;
         let lifecycle_is_coherent = self.lifecycle
             != DraftEditorCandidateSessionLifecycleV1::Disposed
             || (self.published_candidate_generation == self.newest_candidate_generation
@@ -463,6 +527,8 @@ impl DraftEditorCandidateSessionV1 {
         self.session_generation != 0
             && generations_are_ordered
             && roots_are_owned
+            && history_is_owned
+            && pairs_are_coherent
             && published_is_coherent
             && newest_is_coherent
             && shared_frontier_is_coherent
@@ -473,6 +539,7 @@ impl DraftEditorCandidateSessionV1 {
                     && operation.predecessor_candidate_generation()
                         == self.newest_candidate_generation
                     && operation.predecessor_root() == self.newest_root
+                    && operation.predecessor_history() == self.newest_history
                     && operation.receipt().key().draft_id() == self.draft_id
                     && operation.receipt().key().session_id() == self.session_id
                     && operation.receipt().key().operation_id() == operation.operation_id()
@@ -556,6 +623,7 @@ pub struct DraftEditorCandidateActivationBindingV1 {
     session_generation: u64,
     candidate_generation: u64,
     root: DraftPieceRootReferenceV1,
+    history: DraftEditHistoryFrontierReferenceV1,
     logical_extent: DraftLogicalExtentV1,
 }
 
@@ -566,6 +634,7 @@ impl DraftEditorCandidateActivationBindingV1 {
         session_generation: u64,
         candidate_generation: u64,
         root: DraftPieceRootReferenceV1,
+        history: DraftEditHistoryFrontierReferenceV1,
         logical_extent: DraftLogicalExtentV1,
     ) -> Self {
         Self {
@@ -574,6 +643,7 @@ impl DraftEditorCandidateActivationBindingV1 {
             session_generation,
             candidate_generation,
             root,
+            history,
             logical_extent,
         }
     }
@@ -585,6 +655,7 @@ impl DraftEditorCandidateActivationBindingV1 {
             head.session_generation(),
             head.newest_candidate_generation(),
             head.newest_root(),
+            head.newest_history(),
             head.logical_extent(),
         )
     }
@@ -602,6 +673,9 @@ impl DraftEditorCandidateActivationBindingV1 {
     }
     pub const fn root(self) -> DraftPieceRootReferenceV1 {
         self.root
+    }
+    pub const fn history(self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.history
     }
     pub const fn logical_extent(self) -> DraftLogicalExtentV1 {
         self.logical_extent
@@ -1633,7 +1707,10 @@ pub struct DraftPieceEditHeaderV1 {
     session_id: DraftEditorCandidateSessionIdV1,
     predecessor_candidate_generation: u64,
     predecessor_root: DraftPieceRootReferenceV1,
+    predecessor_history: DraftEditHistoryFrontierReferenceV1,
     operation_id: DraftPieceOperationIdV1,
+    predecessor_caret: DraftCompositePositionV1,
+    predecessor_selection: DraftCompositePositionV1,
     caret: DraftCompositePositionV1,
     selection: DraftCompositePositionV1,
     fragment_count: u64,
@@ -1646,7 +1723,10 @@ impl DraftPieceEditHeaderV1 {
         session_id: DraftEditorCandidateSessionIdV1,
         predecessor_candidate_generation: u64,
         predecessor_root: DraftPieceRootReferenceV1,
+        predecessor_history: DraftEditHistoryFrontierReferenceV1,
         operation_id: DraftPieceOperationIdV1,
+        predecessor_caret: DraftCompositePositionV1,
+        predecessor_selection: DraftCompositePositionV1,
         caret: DraftCompositePositionV1,
         selection: DraftCompositePositionV1,
         fragment_count: u64,
@@ -1657,7 +1737,10 @@ impl DraftPieceEditHeaderV1 {
             session_id,
             predecessor_candidate_generation,
             predecessor_root,
+            predecessor_history,
             operation_id,
+            predecessor_caret,
+            predecessor_selection,
             caret,
             selection,
             fragment_count,
@@ -1677,8 +1760,17 @@ impl DraftPieceEditHeaderV1 {
     pub const fn predecessor_root(self) -> DraftPieceRootReferenceV1 {
         self.predecessor_root
     }
+    pub const fn predecessor_history(self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.predecessor_history
+    }
     pub const fn operation_id(self) -> DraftPieceOperationIdV1 {
         self.operation_id
+    }
+    pub const fn predecessor_caret(self) -> DraftCompositePositionV1 {
+        self.predecessor_caret
+    }
+    pub const fn predecessor_selection(self) -> DraftCompositePositionV1 {
+        self.predecessor_selection
     }
     pub const fn caret(self) -> DraftCompositePositionV1 {
         self.caret
@@ -1824,7 +1916,10 @@ pub struct DraftPieceBuildRecordV1 {
     session_id: DraftEditorCandidateSessionIdV1,
     predecessor_candidate_generation: u64,
     predecessor_root: DraftPieceRootReferenceV1,
+    predecessor_history: DraftEditHistoryFrontierReferenceV1,
     operation_id: DraftPieceOperationIdV1,
+    predecessor_caret: DraftCompositePositionV1,
+    predecessor_selection: DraftCompositePositionV1,
     caret: DraftCompositePositionV1,
     selection: DraftCompositePositionV1,
     fragment_count: u64,
@@ -1851,7 +1946,10 @@ impl DraftPieceBuildRecordV1 {
         session_id: DraftEditorCandidateSessionIdV1,
         predecessor_candidate_generation: u64,
         predecessor_root: DraftPieceRootReferenceV1,
+        predecessor_history: DraftEditHistoryFrontierReferenceV1,
         operation_id: DraftPieceOperationIdV1,
+        predecessor_caret: DraftCompositePositionV1,
+        predecessor_selection: DraftCompositePositionV1,
         caret: DraftCompositePositionV1,
         selection: DraftCompositePositionV1,
         fragment_count: u64,
@@ -1876,7 +1974,10 @@ impl DraftPieceBuildRecordV1 {
             session_id,
             predecessor_candidate_generation,
             predecessor_root,
+            predecessor_history,
             operation_id,
+            predecessor_caret,
+            predecessor_selection,
             caret,
             selection,
             fragment_count,
@@ -1910,8 +2011,17 @@ impl DraftPieceBuildRecordV1 {
     pub const fn predecessor_root(&self) -> DraftPieceRootReferenceV1 {
         self.predecessor_root
     }
+    pub const fn predecessor_history(&self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.predecessor_history
+    }
     pub const fn operation_id(&self) -> DraftPieceOperationIdV1 {
         self.operation_id
+    }
+    pub const fn predecessor_caret(&self) -> DraftCompositePositionV1 {
+        self.predecessor_caret
+    }
+    pub const fn predecessor_selection(&self) -> DraftCompositePositionV1 {
+        self.predecessor_selection
     }
     pub const fn caret(&self) -> DraftCompositePositionV1 {
         self.caret
@@ -2208,6 +2318,7 @@ pub enum DraftPieceSettlementOutcomeV1 {
     Committed {
         candidate_generation: u64,
         successor: DraftPieceRootReferenceV1,
+        history: DraftEditHistoryFrontierReferenceV1,
         caret: DraftCompositePositionV1,
         selection: DraftCompositePositionV1,
     },
@@ -2215,6 +2326,7 @@ pub enum DraftPieceSettlementOutcomeV1 {
     Conflict {
         current_candidate_generation: u64,
         current_root: DraftPieceRootReferenceV1,
+        current_history: DraftEditHistoryFrontierReferenceV1,
     },
     Cancelled,
     Error(DraftPieceErrorReasonV1),
@@ -2225,6 +2337,9 @@ pub struct DraftPieceCommittedAdoptionV1 {
     predecessor_session: DraftEditorCandidateSessionV1,
     adopted_session: DraftEditorCandidateSessionV1,
     adopted_root: DraftPieceRootRecordV1,
+    predecessor_history: DraftEditHistoryFrontierV1,
+    transition: DraftEditHistoryTransitionV1,
+    adopted_history: DraftEditHistoryFrontierV1,
 }
 
 impl DraftPieceCommittedAdoptionV1 {
@@ -2232,11 +2347,17 @@ impl DraftPieceCommittedAdoptionV1 {
         predecessor_session: DraftEditorCandidateSessionV1,
         adopted_session: DraftEditorCandidateSessionV1,
         adopted_root: DraftPieceRootRecordV1,
+        predecessor_history: DraftEditHistoryFrontierV1,
+        transition: DraftEditHistoryTransitionV1,
+        adopted_history: DraftEditHistoryFrontierV1,
     ) -> Self {
         Self {
             predecessor_session,
             adopted_session,
             adopted_root,
+            predecessor_history,
+            transition,
+            adopted_history,
         }
     }
 
@@ -2251,11 +2372,21 @@ impl DraftPieceCommittedAdoptionV1 {
     pub const fn adopted_root(&self) -> &DraftPieceRootRecordV1 {
         &self.adopted_root
     }
+    pub const fn predecessor_history(&self) -> &DraftEditHistoryFrontierV1 {
+        &self.predecessor_history
+    }
+    pub const fn transition(&self) -> &DraftEditHistoryTransitionV1 {
+        &self.transition
+    }
+    pub const fn adopted_history(&self) -> &DraftEditHistoryFrontierV1 {
+        &self.adopted_history
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftPieceNoncommitClosureV1 {
     observed_session: DraftEditorCandidateSessionV1,
+    observed_history: DraftEditHistoryFrontierV1,
     proposed_successor: Option<DraftPieceRootReferenceV1>,
     occupied_identity: Option<OccupiedIdentityNoncommitProofV1>,
 }
@@ -2263,10 +2394,12 @@ pub struct DraftPieceNoncommitClosureV1 {
 impl DraftPieceNoncommitClosureV1 {
     pub const fn new(
         observed_session: DraftEditorCandidateSessionV1,
+        observed_history: DraftEditHistoryFrontierV1,
         proposed_successor: Option<DraftPieceRootReferenceV1>,
     ) -> Self {
         Self {
             observed_session,
+            observed_history,
             proposed_successor,
             occupied_identity: None,
         }
@@ -2274,11 +2407,13 @@ impl DraftPieceNoncommitClosureV1 {
 
     pub const fn with_occupied_identity(
         observed_session: DraftEditorCandidateSessionV1,
+        observed_history: DraftEditHistoryFrontierV1,
         proposed_successor: DraftPieceRootReferenceV1,
         occupied_identity: OccupiedIdentityNoncommitProofV1,
     ) -> Self {
         Self {
             observed_session,
+            observed_history,
             proposed_successor: Some(proposed_successor),
             occupied_identity: Some(occupied_identity),
         }
@@ -2286,6 +2421,9 @@ impl DraftPieceNoncommitClosureV1 {
 
     pub const fn observed_session(&self) -> &DraftEditorCandidateSessionV1 {
         &self.observed_session
+    }
+    pub const fn observed_history(&self) -> &DraftEditHistoryFrontierV1 {
+        &self.observed_history
     }
 
     pub const fn proposed_successor(&self) -> Option<DraftPieceRootReferenceV1> {
@@ -2309,8 +2447,11 @@ pub struct DraftPieceSettlementV1 {
     proposal_digest: DraftPieceDigestV1,
     predecessor_candidate_generation: u64,
     predecessor_root: DraftPieceRootReferenceV1,
+    predecessor_history: DraftEditHistoryFrontierReferenceV1,
     fragment_count: u64,
     fragment_chain: DraftPieceDigestV1,
+    predecessor_caret: DraftCompositePositionV1,
+    predecessor_selection: DraftCompositePositionV1,
     caret: DraftCompositePositionV1,
     selection: DraftCompositePositionV1,
     build_digest: Option<DraftPieceDigestV1>,
@@ -2327,8 +2468,11 @@ impl DraftPieceSettlementV1 {
         proposal_digest: DraftPieceDigestV1,
         predecessor_candidate_generation: u64,
         predecessor_root: DraftPieceRootReferenceV1,
+        predecessor_history: DraftEditHistoryFrontierReferenceV1,
         fragment_count: u64,
         fragment_chain: DraftPieceDigestV1,
+        predecessor_caret: DraftCompositePositionV1,
+        predecessor_selection: DraftCompositePositionV1,
         caret: DraftCompositePositionV1,
         selection: DraftCompositePositionV1,
         build_digest: Option<DraftPieceDigestV1>,
@@ -2343,8 +2487,11 @@ impl DraftPieceSettlementV1 {
             proposal_digest,
             predecessor_candidate_generation,
             predecessor_root,
+            predecessor_history,
             fragment_count,
             fragment_chain,
+            predecessor_caret,
+            predecessor_selection,
             caret,
             selection,
             build_digest,
@@ -2368,11 +2515,20 @@ impl DraftPieceSettlementV1 {
     pub const fn predecessor_root(&self) -> DraftPieceRootReferenceV1 {
         self.predecessor_root
     }
+    pub const fn predecessor_history(&self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.predecessor_history
+    }
     pub const fn fragment_count(&self) -> u64 {
         self.fragment_count
     }
     pub const fn fragment_chain(&self) -> DraftPieceDigestV1 {
         self.fragment_chain
+    }
+    pub const fn predecessor_caret(&self) -> DraftCompositePositionV1 {
+        self.predecessor_caret
+    }
+    pub const fn predecessor_selection(&self) -> DraftCompositePositionV1 {
+        self.predecessor_selection
     }
     pub const fn caret(&self) -> DraftCompositePositionV1 {
         self.caret
@@ -2854,30 +3010,33 @@ impl DraftPieceMarkerAtV1 {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftPieceRestorationV1 {
     root: DraftPieceRootReferenceV1,
+    history: DraftEditHistoryFrontierReferenceV1,
     caret: DraftCompositePositionV1,
     selection: DraftCompositePositionV1,
     scroll: DraftCompositePositionV1,
-    undo_frontier: Option<[u8; 32]>,
 }
 
 impl DraftPieceRestorationV1 {
     pub const fn new(
         root: DraftPieceRootReferenceV1,
+        history: DraftEditHistoryFrontierReferenceV1,
         caret: DraftCompositePositionV1,
         selection: DraftCompositePositionV1,
         scroll: DraftCompositePositionV1,
-        undo_frontier: Option<[u8; 32]>,
     ) -> Self {
         Self {
             root,
+            history,
             caret,
             selection,
             scroll,
-            undo_frontier,
         }
     }
     pub const fn root(&self) -> DraftPieceRootReferenceV1 {
         self.root
+    }
+    pub const fn history(&self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.history
     }
     pub const fn caret(&self) -> DraftCompositePositionV1 {
         self.caret
@@ -2887,8 +3046,5 @@ impl DraftPieceRestorationV1 {
     }
     pub const fn scroll(&self) -> DraftCompositePositionV1 {
         self.scroll
-    }
-    pub const fn undo_frontier(&self) -> Option<[u8; 32]> {
-        self.undo_frontier
     }
 }
