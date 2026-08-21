@@ -3,13 +3,19 @@ use beryl_home_store::{
     ReconciliationReservation, RecordCodec,
 };
 
+use crate::mutation::required;
 use crate::{
-    SyndicMutationError, SyndicStorage,
+    DraftByThreadRecord, DraftRecord, SyndicMutationError, SyndicStorage,
+    codec::{DraftByThreadCodec, DraftsCodec, ThreadsFamily},
     domain::SyndicDomain,
     draft_piece::{
         DraftEditHistoryFrontierKeyV1, DraftEditHistoryFrontierV1, DraftEditHistoryFrontiersCodec,
         DraftEditHistoryFrontiersFamily, DraftEditHistoryTransitionKeyV1,
         DraftEditHistoryTransitionV1, DraftEditHistoryTransitionsCodec,
+        DraftEditHistoryTransitionsFamily, DraftEditorCandidateSessionRecordKeyV1,
+        DraftEditorCandidateSessionRecordV1, DraftEditorCandidateSessionV1,
+        DraftEditorCandidateSessionsCodec, DraftPieceRootReferenceV1, DraftPieceRootsFamily,
+        DraftRootHistoryPairV1, point_limit,
     },
 };
 
@@ -27,6 +33,42 @@ pub fn draft_edit_history_stored_charge_components(
     transition: &crate::DraftEditHistoryTransitionV1,
 ) -> Result<[u64; 6], crate::DraftEditHistoryAppendErrorV1> {
     crate::draft_edit_history_stored_charge_components_for_test(frontier, transition)
+}
+
+pub fn draft_edit_history_accounting_corruption(
+    frontier: &crate::DraftEditHistoryFrontierV1,
+) -> crate::DraftEditHistoryFrontierV1 {
+    crate::draft_edit_history_accounting_corruption_for_test(frontier)
+}
+
+pub fn draft_edit_history_availability_corruption(
+    frontier: &crate::DraftEditHistoryFrontierV1,
+    undo_head: crate::DraftEditHistoryTransitionReferenceV1,
+) -> crate::DraftEditHistoryFrontierV1 {
+    crate::draft_edit_history_availability_corruption_for_test(frontier, undo_head)
+}
+
+pub fn draft_edit_history_no_head_gap(
+    frontier: &crate::DraftEditHistoryFrontierV1,
+) -> crate::DraftEditHistoryFrontierV1 {
+    crate::draft_edit_history_no_head_gap_for_test(frontier)
+}
+
+pub fn draft_edit_history_first_transition_gap(
+    frontier: &crate::DraftEditHistoryFrontierV1,
+    transition: &crate::DraftEditHistoryTransitionV1,
+) -> (
+    crate::DraftEditHistoryFrontierV1,
+    crate::DraftEditHistoryTransitionV1,
+) {
+    crate::draft_edit_history_first_transition_gap_for_test(frontier, transition)
+}
+
+pub fn draft_edit_history_wrong_head_root(
+    frontier: &crate::DraftEditHistoryFrontierV1,
+    head: &crate::DraftEditHistoryTransitionV1,
+) -> crate::DraftEditHistoryFrontierV1 {
+    crate::draft_edit_history_wrong_head_root_for_test(frontier, head)
 }
 
 pub fn occupy_canonical_empty_draft_edit_history(
@@ -113,6 +155,40 @@ pub fn replace_draft_edit_history_frontier(
     )
 }
 
+pub fn replace_draft_edit_history_frontier_and_session(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    session: DraftEditorCandidateSessionV1,
+    replacement: DraftEditHistoryFrontierV1,
+    replacement_transition: Option<DraftEditHistoryTransitionV1>,
+) -> MutationContribution {
+    storage.handle.contribution(
+        storage.revision(store).expect("fixture revision reads"),
+        ReplaceDraftEditHistoryFrontierAndSession {
+            session,
+            replacement,
+            replacement_transition,
+        },
+    )
+}
+
+pub fn publish_draft_edit_history_pair(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    draft: DraftRecord,
+    root: DraftPieceRootReferenceV1,
+    history: crate::DraftEditHistoryFrontierReferenceV1,
+) -> MutationContribution {
+    storage.handle.contribution(
+        storage.revision(store).expect("fixture revision reads"),
+        PublishDraftEditHistoryPair {
+            draft,
+            root,
+            history,
+        },
+    )
+}
+
 pub fn replace_draft_edit_history_transition(
     store: &HomeStore,
     storage: SyndicStorage,
@@ -126,6 +202,28 @@ pub fn replace_draft_edit_history_transition(
             replacement,
         },
     )
+}
+
+pub fn draft_edit_history_transition_exists(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    key: DraftEditHistoryTransitionKeyV1,
+) -> bool {
+    storage
+        .point::<DraftEditHistoryTransitionsFamily>(store, key, point_limit())
+        .expect("draft edit-history transition existence read must succeed")
+        .is_some()
+}
+
+pub fn draft_edit_history_root_exists(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    root: DraftPieceRootReferenceV1,
+) -> bool {
+    storage
+        .point::<DraftPieceRootsFamily>(store, root.key(), point_limit())
+        .expect("draft edit-history root existence read must succeed")
+        .is_some_and(|stored| stored.reference() == root)
 }
 
 pub fn inject_draft_edit_history_frontier_digest_corruption(
@@ -174,6 +272,20 @@ struct ReplaceDraftEditHistoryFrontier {
 struct ReplaceDraftEditHistoryTransition {
     stored_key: DraftEditHistoryTransitionKeyV1,
     replacement: DraftEditHistoryTransitionV1,
+}
+
+#[derive(Clone)]
+struct ReplaceDraftEditHistoryFrontierAndSession {
+    session: DraftEditorCandidateSessionV1,
+    replacement: DraftEditHistoryFrontierV1,
+    replacement_transition: Option<DraftEditHistoryTransitionV1>,
+}
+
+#[derive(Clone)]
+struct PublishDraftEditHistoryPair {
+    draft: DraftRecord,
+    root: DraftPieceRootReferenceV1,
+    history: crate::DraftEditHistoryFrontierReferenceV1,
 }
 
 impl DomainMutation<SyndicDomain> for DeleteDraftEditHistoryFrontier {
@@ -261,6 +373,115 @@ impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryFrontier {
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
         mutations.put::<DraftEditHistoryFrontiersCodec>(&self.stored_key, &self.replacement)?;
+        Ok(())
+    }
+}
+
+impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryFrontierAndSession {
+    type Error = SyndicMutationError;
+
+    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;
+        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        reservation.reserve_records::<DraftEditHistoryTransitionsCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        &self,
+        _reader: &DomainReader<'_, SyndicDomain>,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        let source = &self.session;
+        let replacement_session = DraftEditorCandidateSessionV1::from_parts(
+            source.thread_id(),
+            source.draft_id(),
+            source.session_id(),
+            source.open_operation_id(),
+            source.session_generation(),
+            source.durable_base_selector_revision(),
+            source.durable_base_root(),
+            source.durable_base_history(),
+            source.published_candidate_generation(),
+            source.published_selector_revision(),
+            source.published_root(),
+            source.published_history(),
+            source.newest_candidate_generation(),
+            self.replacement.reference().root(),
+            self.replacement.reference(),
+            source.dirty_generation(),
+            source.logical_extent(),
+            source.lifecycle(),
+            source.active_operation().cloned(),
+        );
+        mutations.put::<DraftEditHistoryFrontiersCodec>(
+            &self.replacement.reference().key(),
+            &self.replacement,
+        )?;
+        if let Some(transition) = &self.replacement_transition {
+            mutations.put::<DraftEditHistoryTransitionsCodec>(&transition.key(), transition)?;
+        }
+        mutations.put::<DraftEditorCandidateSessionsCodec>(
+            &DraftEditorCandidateSessionRecordKeyV1::head(source.draft_id(), source.session_id()),
+            &DraftEditorCandidateSessionRecordV1::Head(replacement_session),
+        )?;
+        Ok(())
+    }
+}
+
+impl DomainMutation<SyndicDomain> for PublishDraftEditHistoryPair {
+    type Error = SyndicMutationError;
+
+    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftsCodec>(1)?;
+        reservation.reserve_records::<DraftByThreadCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        &self,
+        reader: &DomainReader<'_, SyndicDomain>,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        let revision = self
+            .draft
+            .revision()
+            .checked_next()
+            .map_err(|_| SyndicMutationError::IdentityCollision)?;
+        let thread = required::<ThreadsFamily>(reader, &self.draft.thread_id())?;
+        let replacement = DraftRecord::new(
+            self.draft.id(),
+            self.draft.thread_id(),
+            revision,
+            self.draft.submission_intent(),
+            DraftRootHistoryPairV1::new(self.root, self.history),
+            self.draft.created_at(),
+            self.draft.updated_at(),
+        );
+        mutations.put::<DraftsCodec>(&replacement.id(), &replacement)?;
+        mutations.put::<DraftByThreadCodec>(
+            &replacement.thread_id(),
+            &DraftByThreadRecord::new(
+                replacement.thread_id(),
+                replacement.id(),
+                revision,
+                thread.revision(),
+            ),
+        )?;
         Ok(())
     }
 }

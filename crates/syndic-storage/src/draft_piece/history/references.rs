@@ -103,19 +103,19 @@ impl DraftEditHistoryAvailabilityV1 {
 pub struct DraftEditHistoryTransitionKeyV1 {
     draft_id: SyndicDraftId,
     session_id: DraftEditorCandidateSessionIdV1,
-    journal_revision: u64,
+    cumulative_encoded_bytes: u64,
 }
 
 impl DraftEditHistoryTransitionKeyV1 {
     pub const fn new(
         draft_id: SyndicDraftId,
         session_id: DraftEditorCandidateSessionIdV1,
-        journal_revision: u64,
+        cumulative_encoded_bytes: u64,
     ) -> Self {
         Self {
             draft_id,
             session_id,
-            journal_revision,
+            cumulative_encoded_bytes,
         }
     }
 
@@ -127,8 +127,8 @@ impl DraftEditHistoryTransitionKeyV1 {
         self.session_id
     }
 
-    pub const fn journal_revision(self) -> u64 {
-        self.journal_revision
+    pub const fn cumulative_encoded_bytes(self) -> u64 {
+        self.cumulative_encoded_bytes
     }
 }
 
@@ -136,6 +136,7 @@ impl DraftEditHistoryTransitionKeyV1 {
 pub struct DraftEditHistoryTransitionReferenceV1 {
     key: DraftEditHistoryTransitionKeyV1,
     cumulative_encoded_bytes: u64,
+    journal_depth: u64,
     digest: DraftPieceDigestV1,
 }
 
@@ -143,11 +144,13 @@ impl DraftEditHistoryTransitionReferenceV1 {
     pub const fn new(
         key: DraftEditHistoryTransitionKeyV1,
         cumulative_encoded_bytes: u64,
+        journal_depth: u64,
         digest: DraftPieceDigestV1,
     ) -> Self {
         Self {
             key,
             cumulative_encoded_bytes,
+            journal_depth,
             digest,
         }
     }
@@ -158,6 +161,10 @@ impl DraftEditHistoryTransitionReferenceV1 {
 
     pub const fn cumulative_encoded_bytes(self) -> u64 {
         self.cumulative_encoded_bytes
+    }
+
+    pub const fn journal_depth(self) -> u64 {
+        self.journal_depth
     }
 
     pub const fn digest(self) -> DraftPieceDigestV1 {

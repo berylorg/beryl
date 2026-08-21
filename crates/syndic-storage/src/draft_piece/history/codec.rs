@@ -9,7 +9,7 @@ use super::super::{
     DraftEditorCandidateSessionIdV1, DraftPieceDigestV1, DraftPieceOperationIdV1, dec_position,
     dec_root_reference, enc_position, enc_root_reference,
 };
-use super::{records::*, references::*};
+use super::{records::*, references::*, witness::*};
 
 pub(crate) struct DraftEditHistoryFrontiersFamily;
 pub(crate) struct DraftEditHistoryTransitionsFamily;
@@ -58,7 +58,7 @@ impl Family for DraftEditHistoryTransitionsFamily {
     const MAX_VALUE_BYTES: usize = 65_536;
 
     fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
-        if key.journal_revision() == 0 {
+        if key.cumulative_encoded_bytes() == 0 {
             return Err(CodecError::InvalidLength(
                 "draft edit-history transition key",
             ));
@@ -72,7 +72,7 @@ impl Family for DraftEditHistoryTransitionsFamily {
         let mut d = Decoder::new(bytes);
         let key = dec_transition_key(&mut d)?;
         d.finish()?;
-        if key.journal_revision() == 0 {
+        if key.cumulative_encoded_bytes() == 0 {
             return Err(CodecError::InvalidLength(
                 "draft edit-history transition key",
             ));
@@ -155,21 +155,25 @@ fn dec_frontier_key(d: &mut Decoder<'_>) -> Result<DraftEditHistoryFrontierKeyV1
 
 pub(super) fn enc_transition_key(e: &mut Encoder, key: DraftEditHistoryTransitionKeyV1) {
     e.fixed16(key.draft_id().as_bytes());
+    e.u64(key.cumulative_encoded_bytes());
     e.fixed16(key.session_id().as_bytes());
-    e.u64(key.journal_revision());
 }
 
 fn dec_transition_key(d: &mut Decoder<'_>) -> Result<DraftEditHistoryTransitionKeyV1, CodecError> {
+    let draft_id = SyndicDraftId::from_bytes(d.fixed16()?);
+    let cumulative_encoded_bytes = d.u64()?;
+    let session_id = DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?);
     Ok(DraftEditHistoryTransitionKeyV1::new(
-        SyndicDraftId::from_bytes(d.fixed16()?),
-        DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?),
-        d.u64()?,
+        draft_id,
+        session_id,
+        cumulative_encoded_bytes,
     ))
 }
 
 fn enc_transition_reference(e: &mut Encoder, reference: DraftEditHistoryTransitionReferenceV1) {
     enc_transition_key(e, reference.key());
     e.u64(reference.cumulative_encoded_bytes());
+    e.u64(reference.journal_depth());
     e.fixed32(reference.digest().as_bytes());
 }
 fn dec_transition_reference(
@@ -177,6 +181,7 @@ fn dec_transition_reference(
 ) -> Result<DraftEditHistoryTransitionReferenceV1, CodecError> {
     Ok(DraftEditHistoryTransitionReferenceV1::new(
         dec_transition_key(d)?,
+        d.u64()?,
         d.u64()?,
         DraftPieceDigestV1::from_bytes(d.fixed32()?),
     ))
@@ -356,11 +361,16 @@ fn enc_transition_fields(e: &mut Encoder, transition: &DraftEditHistoryTransitio
         DraftEditHistoryTransitionKindV1::Undo => 1,
         DraftEditHistoryTransitionKindV1::Redo => 2,
     });
+    e.u64(transition.journal_depth());
     enc_optional_transition_reference(e, transition.prior_journal());
     enc_optional_transition_reference(e, transition.prior_undo());
     enc_optional_transition_reference(e, transition.prior_redo());
-    e.fixed16(transition.operation_id().as_bytes());
     e.u64(transition.cumulative_encoded_bytes());
+    e.fixed16(transition.operation_id().as_bytes());
+    e.u64(transition.ancestor_witness().bitmap());
+    for ancestor in transition.ancestor_witness().slots() {
+        enc_optional_transition_reference(e, *ancestor);
+    }
 }
 
 fn encode_transition_preimage(transition: &DraftEditHistoryTransitionV1) -> Vec<u8> {
@@ -396,11 +406,19 @@ fn decode_transition(bytes: &[u8]) -> Result<DraftEditHistoryTransitionV1, Codec
             });
         }
     };
+    let journal_depth = d.u64()?;
     let prior_journal = dec_optional_transition_reference(&mut d)?;
     let prior_undo = dec_optional_transition_reference(&mut d)?;
     let prior_redo = dec_optional_transition_reference(&mut d)?;
-    let operation_id = DraftPieceOperationIdV1::from_bytes(d.fixed16()?);
     let cumulative_encoded_bytes = d.u64()?;
+    let operation_id = DraftPieceOperationIdV1::from_bytes(d.fixed16()?);
+    let ancestor_bitmap = d.u64()?;
+    let mut ancestor_slots = [None; DRAFT_EDIT_HISTORY_ANCESTOR_LEVELS];
+    for slot in &mut ancestor_slots {
+        *slot = dec_optional_transition_reference(&mut d)?;
+    }
+    let ancestor_witness =
+        DraftEditHistoryAncestorWitnessV1::from_parts(ancestor_bitmap, ancestor_slots);
     let digest = DraftPieceDigestV1::from_bytes(d.fixed32()?);
     d.finish()?;
     let transition = DraftEditHistoryTransitionV1::from_parts(
@@ -412,11 +430,13 @@ fn decode_transition(bytes: &[u8]) -> Result<DraftEditHistoryTransitionV1, Codec
         after_caret,
         after_selection,
         kind,
+        journal_depth,
         prior_journal,
         prior_undo,
         prior_redo,
         operation_id,
         cumulative_encoded_bytes,
+        ancestor_witness,
         digest,
     );
     if !transition.is_locally_valid() {
@@ -442,3 +462,6 @@ fn dec_bool(d: &mut Decoder<'_>, kind: &'static str) -> Result<bool, CodecError>
         tag => Err(CodecError::InvalidTag { kind, tag }),
     }
 }
+
+#[cfg(test)]
+mod tests;

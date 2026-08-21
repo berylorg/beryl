@@ -764,7 +764,7 @@ fn missing_root_and_non_root_records_are_absent_through_all_selectors() {
             65_536,
         );
         assert!(match deletion {
-            DraftPieceImmutableDeletion::Root => {
+            DraftPieceImmutableDeletion::Root | DraftPieceImmutableDeletion::RootNode => {
                 matches!(candidate, Err(DraftPieceRangeSourceErrorV1::Invariant))
             }
             DraftPieceImmutableDeletion::SequenceDescendant => {

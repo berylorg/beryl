@@ -110,6 +110,7 @@ fn selected_history(
     if history.reference() != request.selector().history() {
         return Err(SyndicMutationError::IdentityCollision);
     }
+    authenticate_draft_edit_history_frontier_v1(reader, &history)?;
     Ok(history)
 }
 
@@ -215,6 +216,9 @@ fn candidate_session_adoption_is_exact(
     {
         return Ok(false);
     }
+    if !draft_edit_history_frontier_is_authenticated_v1(storage, store, stored_history)? {
+        return Ok(false);
+    }
     if head.newest_candidate_generation() == 0 {
         let durable_history = storage.point::<DraftEditHistoryFrontiersFamily>(
             store,
@@ -227,6 +231,19 @@ fn candidate_session_adoption_is_exact(
                 frontier.reference() == head.durable_base_history()
                     && frontier.fork_session(head.session_id()).as_ref() == Some(stored_history)
             }));
+    }
+    if head.newest_candidate_generation() == head.published_candidate_generation()
+        && head.newest_root() == head.published_root()
+    {
+        let published = storage.point::<DraftEditHistoryFrontiersFamily>(
+            store,
+            head.published_history().key(),
+            point_limit(),
+        )?;
+        return Ok(published.as_ref().is_some_and(|frontier| {
+            frontier.reference() == head.published_history()
+                && frontier.fork_session(head.session_id()).as_ref() == Some(stored_history)
+        }));
     }
     let key = DraftPieceSettlementKeyV1::new(
         head.draft_id(),
@@ -479,6 +496,7 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
             if frontier.reference() != head.newest_history() {
                 return Err(SyndicMutationError::IdentityCollision);
             }
+            authenticate_draft_edit_history_frontier_v1(reader, &frontier)?;
             return if receipt.is_none()
                 || matches!(
                     receipt,

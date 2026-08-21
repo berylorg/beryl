@@ -1287,7 +1287,20 @@ pub(super) fn session_head(
             }
         }
     }
-    if head.newest_candidate_generation() != 0 {
+    if head.newest_candidate_generation() == head.published_candidate_generation()
+        && head.newest_candidate_generation() != 0
+    {
+        let published =
+            required::<DraftEditHistoryFrontiersFamily>(reader, &head.published_history().key())?;
+        let newest =
+            required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
+        if published.reference() != head.published_history()
+            || newest.reference() != head.newest_history()
+            || published.fork_session(head.session_id()).as_ref() != Some(&newest)
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+    } else if head.newest_candidate_generation() != head.published_candidate_generation() {
         let root = head.newest_root();
         let key = DraftPieceSettlementKeyV1::new(
             head.draft_id(),
@@ -1366,6 +1379,7 @@ fn authenticated_history_frontier(
     if frontier.reference() != reference || !frontier.is_locally_valid() {
         return Err(SyndicMutationError::IdentityCollision);
     }
+    authenticate_draft_edit_history_frontier_v1(reader, &frontier)?;
     Ok(frontier)
 }
 
@@ -1423,25 +1437,31 @@ fn settlement_matches(
         target_session,
     )?;
     match settlement.closure() {
-        DraftPieceSettlementClosureV1::Committed(adoption) => Ok(point::<DraftPieceRootsFamily>(
-            reader,
-            &adoption.adopted_root().reference().key(),
-        )?
-        .as_ref()
-            == Some(adoption.adopted_root())
-            && point::<DraftEditHistoryTransitionsFamily>(reader, &adoption.transition().key())?
-                .as_ref()
-                == Some(adoption.transition())
-            && point::<DraftEditHistoryFrontiersFamily>(
-                reader,
-                &adoption.adopted_history().reference().key(),
-            )?
-            .as_ref()
-                == Some(adoption.adopted_history())),
+        DraftPieceSettlementClosureV1::Committed(adoption) => {
+            authenticate_draft_edit_history_frontier_v1(reader, adoption.adopted_history())?;
+            Ok(
+                point::<DraftPieceRootsFamily>(reader, &adoption.adopted_root().reference().key())?
+                    .as_ref()
+                    == Some(adoption.adopted_root())
+                    && point::<DraftEditHistoryTransitionsFamily>(
+                        reader,
+                        &adoption.transition().key(),
+                    )?
+                    .as_ref()
+                        == Some(adoption.transition())
+                    && point::<DraftEditHistoryFrontiersFamily>(
+                        reader,
+                        &adoption.adopted_history().reference().key(),
+                    )?
+                    .as_ref()
+                        == Some(adoption.adopted_history()),
+            )
+        }
         DraftPieceSettlementClosureV1::Noncommit(noncommit) => {
             if noncommit.occupied_identity().is_some() {
                 return Ok(false);
             }
+            authenticate_draft_edit_history_frontier_v1(reader, noncommit.observed_history())?;
             Ok(point::<DraftEditHistoryFrontiersFamily>(
                 reader,
                 &noncommit.observed_history().reference().key(),
@@ -1857,7 +1877,8 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
             && current.newest_root() == build.predecessor_root()
             && current.newest_history() == build.predecessor_history()
         {
-            match append_ordinary_draft_edit_history_v1(
+            match append_ordinary_draft_edit_history_with_retention_v1(
+                reader,
                 &observed_history,
                 current
                     .newest_candidate_generation()
@@ -1903,13 +1924,13 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
                         next,
                     )
                 }
-                Err(DraftEditHistoryAppendErrorV1::BudgetExhausted) => {
+                Err(DraftEditHistoryRetentionErrorV1::CapacityUnavailable) => {
                     let cleared = current
                         .clear_active_operation(&custody_for(&build))
                         .ok_or(SyndicMutationError::IdentityCollision)?;
                     (
                         DraftPieceSettlementOutcomeV1::Error(
-                            DraftPieceErrorReasonV1::ResourceLimit,
+                            DraftPieceErrorReasonV1::HistoryCapacityUnavailable,
                         ),
                         DraftPieceSettlementClosureV1::Noncommit(
                             DraftPieceNoncommitClosureV1::new(
@@ -1922,7 +1943,9 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
                         cleared,
                     )
                 }
-                Err(_) => return Err(SyndicMutationError::IdentityCollision),
+                Err(DraftEditHistoryRetentionErrorV1::Invalid) => {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
             }
         } else {
             let cleared = current

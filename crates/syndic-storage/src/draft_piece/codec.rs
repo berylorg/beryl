@@ -744,19 +744,21 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
             let head = dec_session_head(&mut d)?;
             let request = decode_canonical_session_open_request_bytes(&request_bytes)?;
             let selector = request.selector();
+            let candidate_generation = selector.history().candidate_generation();
+            let expected_session_generation = candidate_generation.checked_add(1).unwrap_or(0);
             if head.thread_id() != selector.thread_id()
                 || head.draft_id() != selector.draft_id()
                 || head.session_id() != request.session_id()
                 || head.open_operation_id() != request.operation_id()
-                || head.session_generation() != 1
+                || head.session_generation() != expected_session_generation
                 || head.durable_base_selector_revision() != selector.selector_revision()
                 || head.durable_base_root() != selector.root()
                 || head.durable_base_history() != selector.history()
-                || head.published_candidate_generation() != 0
+                || head.published_candidate_generation() != candidate_generation
                 || head.published_selector_revision() != selector.selector_revision()
                 || head.published_root() != selector.root()
                 || head.published_history() != selector.history()
-                || head.newest_candidate_generation() != 0
+                || head.newest_candidate_generation() != candidate_generation
                 || head.newest_root() != selector.root()
                 || head.newest_history().root() != selector.root()
                 || head.newest_history().key().session_id() != Some(request.session_id())
@@ -1420,6 +1422,7 @@ fn dec_error(d: &mut Decoder<'_>) -> Result<DraftPieceErrorReasonV1, CodecError>
         3 => Ok(DraftPieceErrorReasonV1::CorruptRecord),
         4 => Ok(DraftPieceErrorReasonV1::ResourceLimit),
         5 => Ok(DraftPieceErrorReasonV1::OccupiedIdentityNoncommit),
+        6 => Ok(DraftPieceErrorReasonV1::HistoryCapacityUnavailable),
         tag => Err(CodecError::InvalidTag {
             kind: "draft-piece error reason",
             tag,

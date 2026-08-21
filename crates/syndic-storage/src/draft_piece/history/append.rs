@@ -2,14 +2,17 @@ use crate::codec::parts::Encoder;
 
 #[cfg(feature = "test-faults")]
 use super::super::DraftEditorCandidateSessionIdV1;
-use super::super::{
-    DraftCompositePositionV1, DraftPieceDigestV1, DraftPieceOperationIdV1,
-    DraftPieceRootReferenceV1,
-};
+#[cfg(feature = "test-faults")]
+use super::super::{DraftCompositePositionV1, DraftPieceOperationIdV1};
+use super::super::{DraftPieceDigestV1, DraftPieceRootReferenceV1};
+#[cfg(feature = "test-faults")]
+use super::codec::authenticated_transition;
+#[cfg(feature = "test-faults")]
+use super::witness::{DRAFT_EDIT_HISTORY_ANCESTOR_LEVELS, DraftEditHistoryAncestorWitnessV1};
 use super::{
     codec::{
-        authenticated_frontier, authenticated_transition, enc_frontier_key, enc_transition_key,
-        encode_frontier_unchecked, encode_transition_unchecked,
+        authenticated_frontier, enc_frontier_key, enc_transition_key, encode_frontier_unchecked,
+        encode_transition_unchecked,
     },
     records::*,
     references::*,
@@ -55,6 +58,7 @@ pub fn canonical_empty_draft_edit_history_v1(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(feature = "test-faults")]
 pub(crate) fn append_ordinary_draft_edit_history_v1(
     source: &DraftEditHistoryFrontierV1,
     successor_generation: u64,
@@ -77,17 +81,27 @@ pub(crate) fn append_ordinary_draft_edit_history_v1(
         .frontier_revision()
         .checked_add(1)
         .ok_or(DraftEditHistoryAppendErrorV1::FrontierRevisionOverflow)?;
-    let key = DraftEditHistoryTransitionKeyV1::new(
+    let journal_depth = source
+        .journal_head()
+        .map_or(Some(1), |head| head.journal_depth().checked_add(1))
+        .ok_or(DraftEditHistoryAppendErrorV1::InvalidFrontier)?;
+    let mut ancestor_slots = [None; DRAFT_EDIT_HISTORY_ANCESTOR_LEVELS];
+    ancestor_slots[0] = source.journal_head();
+    let ancestor_witness = DraftEditHistoryAncestorWitnessV1::from_parts(
+        super::witness::ancestor_bitmap_for_depth(journal_depth),
+        ancestor_slots,
+    );
+    let provisional_key = DraftEditHistoryTransitionKeyV1::new(
         source.reference.key().draft_id(),
         source
             .reference
             .key()
             .session_id()
             .ok_or(DraftEditHistoryAppendErrorV1::InvalidFrontier)?,
-        frontier_revision,
+        1,
     );
     let provisional = DraftEditHistoryTransitionV1::from_parts(
-        key,
+        provisional_key,
         source.reference.root(),
         successor_root,
         before_caret,
@@ -95,11 +109,13 @@ pub(crate) fn append_ordinary_draft_edit_history_v1(
         after_caret,
         after_selection,
         DraftEditHistoryTransitionKindV1::OrdinaryEdit,
+        journal_depth,
         source.journal_head,
         source.undo_head,
         source.redo_head,
         operation_id,
         1,
+        ancestor_witness.clone(),
         DraftPieceDigestV1::from_bytes([0; 32]),
     );
     let encoded_size = stored_transition_charge(&provisional)?;
@@ -107,6 +123,15 @@ pub(crate) fn append_ordinary_draft_edit_history_v1(
         .cumulative_encoded_bytes
         .checked_add(encoded_size)
         .ok_or(DraftEditHistoryAppendErrorV1::CumulativePositionOverflow)?;
+    let key = DraftEditHistoryTransitionKeyV1::new(
+        source.reference.key().draft_id(),
+        source
+            .reference
+            .key()
+            .session_id()
+            .ok_or(DraftEditHistoryAppendErrorV1::InvalidFrontier)?,
+        cumulative_encoded_bytes,
+    );
     let transition = authenticated_transition(DraftEditHistoryTransitionV1::from_parts(
         key,
         source.reference.root(),
@@ -116,11 +141,13 @@ pub(crate) fn append_ordinary_draft_edit_history_v1(
         after_caret,
         after_selection,
         DraftEditHistoryTransitionKindV1::OrdinaryEdit,
+        journal_depth,
         source.journal_head,
         source.undo_head,
         source.redo_head,
         operation_id,
         cumulative_encoded_bytes,
+        ancestor_witness,
         DraftPieceDigestV1::from_bytes([0; 32]),
     ));
     let transition_reference = transition.reference();
@@ -191,7 +218,7 @@ pub(super) fn stored_frontier_charge(
     )
 }
 
-fn stored_transition_charge(
+pub(super) fn stored_transition_charge(
     transition: &DraftEditHistoryTransitionV1,
 ) -> Result<u64, DraftEditHistoryAppendErrorV1> {
     let mut key = Encoder::new();
@@ -253,6 +280,18 @@ pub(crate) fn draft_edit_history_overflow_errors_for_test(
         frontier_revision: u64,
         cumulative_encoded_bytes: u64,
     ) -> DraftEditHistoryFrontierV1 {
+        let head = (cumulative_encoded_bytes != 0).then(|| {
+            DraftEditHistoryTransitionReferenceV1::new(
+                DraftEditHistoryTransitionKeyV1::new(
+                    root.key().draft_id(),
+                    session_id,
+                    cumulative_encoded_bytes,
+                ),
+                cumulative_encoded_bytes,
+                1,
+                DraftPieceDigestV1::from_bytes([1; 32]),
+            )
+        });
         authenticated_frontier(DraftEditHistoryFrontierV1::from_parts(
             DraftEditHistoryFrontierReferenceV1::new(
                 DraftEditHistoryFrontierKeyV1::session(root.key().draft_id(), session_id),
@@ -261,13 +300,13 @@ pub(crate) fn draft_edit_history_overflow_errors_for_test(
                 frontier_revision,
                 u64::MAX,
                 1,
-                DraftEditHistoryAvailabilityV1::NONE,
+                DraftEditHistoryAvailabilityV1::new(head.is_some(), false),
                 DraftPieceDigestV1::from_bytes([0; 32]),
             ),
+            head,
+            head,
             None,
-            None,
-            None,
-            None,
+            head,
             cumulative_encoded_bytes,
             0,
             u64::MAX,

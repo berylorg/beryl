@@ -16,6 +16,7 @@ pub enum DraftPieceDescendantTarget {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DraftPieceImmutableDeletion {
     Root,
+    RootNode,
     SequenceDescendant,
     Settlement,
 }
@@ -1083,6 +1084,12 @@ pub fn delete_draft_piece_immutable_record(
 ) -> MutationContribution {
     let key = match deletion {
         DraftPieceImmutableDeletion::Root => DeletedImmutable::Root(root.key()),
+        DraftPieceImmutableDeletion::RootNode => {
+            DeletedImmutable::Sequence(DraftPieceRecordKeyV1::new(
+                root.key().draft_id(),
+                root.root_node().expect("fixture sequence root exists"),
+            ))
+        }
         DraftPieceImmutableDeletion::SequenceDescendant => {
             let root_id = root.root_node().expect("fixture sequence root exists");
             let root_record = storage

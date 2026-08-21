@@ -414,10 +414,20 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `Conflict`, `Cancelled`, or `Error`; only the draft-piece closure may produce `Committed`.
 - `DraftEditHistoryTransitionV1` is one immutable compact same-draft root transition. It stores the
   exact predecessor and successor combined-root references, before/after caret and directed
-  selection, ordinary-edit or history-action kind, predecessor journal link, undo/redo stack links,
-  canonical operation identity, cumulative encoded-byte position, and digest. It stores no inverse
-  text, marker registry, root graph, proposal payload, or copied root content. Both roots must
-  authenticate to the same draft and to the transition's retained lineage.
+  selection, ordinary-edit or history-action kind, checked one-based `u64` journal depth/ordinal,
+  predecessor journal link, undo/redo stack links, canonical operation identity, cumulative encoded-
+  byte position, fixed `u64` ancestor-presence bitmap, exactly 64 closed authenticated ancestor-
+  reference slots, and digest. At depth `d`, bit and slot `k` are present exactly when `2^k < d`:
+  level zero is the exact prior journal transition, and level `k > 0` is the exact `2^k` ancestor
+  obtained byte-for-byte from the level-`k - 1` ancestor's own level-`k - 1` slot. Every other slot
+  uses the one canonical absent encoding. The digest commits the complete value including depth,
+  bitmap, present references, and absent slots. Local decode and ordinary point reads reject a
+  duplicate, missing, extra, wrong-depth, locally inconsistent, digest-invalid, or noncanonical
+  reference. Append admission separately proves every present reference was constructed from the
+  authenticated exact predecessor and belongs to that selected journal lineage before commit.
+  It stores no inverse text, marker registry, root graph, proposal payload, or copied root content.
+  Both roots and every present ancestor must authenticate to the same draft and exact journal
+  lineage.
 - `DraftEditHistoryFrontierReferenceV1` is either the deterministic canonical-empty history for a
   newly created empty draft or one exact immutable snapshot produced by a named editor-session
   frontier publication or atomic sealed-content direct-root selection. The snapshot repeats its
@@ -435,13 +445,16 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   root selectors that preserve and move existing transition history, and they require the
   authenticated retained transition described below. Any other root-only selection is invalid.
 - `DraftEditHistoryFrontierV1` is one bounded mutable record selected by an editor-candidate session.
-  It stores the exact current candidate root and generation, journal head, undo and redo heads,
-  oldest eligible transition, monotonic immutable-record cumulative encoded-byte position, exact
-  retained encoded bytes, configured budget and retention-
+  It stores the exact current candidate root and generation; journal head, undo and redo heads, and
+  oldest eligible transition; the exact head and floor journal depths and cumulative positions;
+  monotonic immutable-record cumulative encoded-byte position; exact retained encoded bytes;
+  configured budget and retention-
   policy revision, monotonic frontier revision, and exact undo/redo availability. Its immutable
   receipts make exact replay and byte-disagreeing frontier-operation collision point-readable.
   Opening a fresh session forks its mutable head from the current draft's exact immutable published
-  reference; it never discovers or adopts an unpublished head from an earlier session.
+  reference, preserving every immutable ancestor reference byte-for-byte; it never discovers or
+  adopts an unpublished head from an earlier session. Independently appended siblings remain valid
+  only in their own frontiers and never gain membership through cumulative order or digest equality.
 - `DraftEditHistoryStoredChargeV1(record)` is the checked `u64` sum of the exact bytes emitted by
   that record family's key codec and the exact bytes emitted by its canonical value codec. The
   value charge includes every field actually encoded, including a canonical key repeated inside
@@ -473,14 +486,32 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   monotonic append position. A no-change settlement changes neither history record nor either
   counter.
 - Candidate adoption selects the oldest authenticated eligible transition/link prefix needed for
-  `E`, subtracts only those exact charges while advancing the floor, and applies the eviction in the
-  same atomic command as the successor. Ordinary editing does not become unavailable when that
-  eligible eviction suffices. A typed history-capacity-unavailable result is permitted only when the
+  `E` directly from the selected journal head. It derives the exact checked eviction amount from
+  the pre-eviction successor charge, checked-adds that amount to the authenticated cumulative
+  boundary at the source floor, and uses the result as the threshold. From the already authenticated
+  head it examines skip levels highest-to-lowest, following a reference only when the referenced
+  same-lineage ancestor's authenticated cumulative position remains at or above that threshold and
+  the ancestor is eligible. It follows at most one committed target reference per level, so at most
+  64 transition point reads and fixed state select the unique oldest eligible ancestor that reaches
+  the threshold while its exact prior-lineage boundary does not. Each target must pass local key/
+  value, codec, shape, digest, depth, and cumulative-position agreement. Ordinary selection trusts
+  its correctly committed witness lineage rather than recursively re-proving derivation or root
+  adjacency, then validates exact floor/head references, retained accounting, root pins, and
+  availability. A digest-valid sibling at an
+  overlapping cumulative position is never visited and remains immutable and independently
+  branchable. The ordered draft/cumulative-position/session-tie-break key may support a non-
+  authoritative seek hint, but that hint never selects the floor and a sibling result cannot cause
+  failure or redirect adoption. Adoption subtracts only the selected-lineage charges while
+  advancing the logical floor and applies that availability change in the same atomic command as the
+  successor without historical-root adoption. Ordinary editing commits whenever eligible eviction
+  suffices. A typed history-
+  capacity-unavailable result is permitted only when the
   final authority cannot retain the required non-evictable live-head and transition/link closure
   within the configured budget. Overflow, underflow, an encoded length not representable as `u64`,
   or disagreement between stored counters and recomputed exact charges fails closed. No command
   writes a transition/frontier/candidate-history successor above budget. The transition cumulative-
-  byte position supports the bounded indexed eviction seek without loading complete history.
+  byte positions drive the bounded head-origin threshold comparison without loading complete
+  history.
 - `DraftHistoricalRootAdoptionV1` is a dedicated immutable settlement keyed by draft, editor
   session, and operation. It authenticates the source frontier, selected retained transition,
   direction, same-draft target root, target caret and directed selection, and exact successor
@@ -489,7 +520,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `Cancelled`, and `Error` prove exact noncommit. The command never constructs a root, accepts
   detached digest membership, streams inverse bytes, or expands one undo into multiple edits.
 - Retained transitions are durable root pins. Advancing the eligibility floor removes undo/redo
-  reachability and the history pin but deletes no root, transition, node, or leaf; physical
+  reachability and the logical history pin but deletes no root, transition, stack link, node, leaf,
+  or content and performs no root or content copy; physical
   reclamation remains unavailable until the future explicit garbage-collection design accounts for
   every current-draft, candidate-session, materialization, submission, and history reference.
 - Each candidate edit or sealed-composer import has one `draft-piece-builds` record keyed by exact
@@ -1204,16 +1236,38 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   plus deterministic canonical-empty references, immutable session-publication and sealed-import
   fresh-baseline snapshots, and immutable operation receipts under tagged keys. Every immutable
   reference repeats its selected root and exact availability. The head repeats the current candidate root
-  and generation, journal/undo/redo heads, oldest eligible cumulative-byte floor, retained encoded-
-  byte total, nonzero configured byte budget, retention-policy revision, frontier revision, and
-  exact availability. Unknown links, a current root that disagrees with the session, a retained
-  total above policy, or availability across the floor is invalid.
+  and generation; exact journal/undo/redo heads and retention floor; their required journal depths
+  and cumulative positions; retained encoded-byte total; nonzero configured byte budget; retention-
+  policy revision; frontier revision; root-pin closure; and exact availability. Unknown links, a
+  current root that disagrees with the session, a retained total above policy, locally malformed
+  head/floor references, or availability across the floor is invalid. Writer admission rejects any
+  source or successor whose exact ancestry, cumulative/root adjacency, accounting, or pins disagree
+  before atomic publication.
 - `draft-edit-history-transitions` stores immutable V1 compact transition and stack-link records
-  keyed by draft, editor session, and monotonic journal identity. Each transition repeats its exact
+  in the existing family. Transition keys are ordered by exact draft, checked cumulative encoded-
+  byte position, and editor-session tie-break; no session-major traversal or secondary index is
+  used. Each transition repeats its exact
   predecessor/successor same-draft root references, before/after caret and directed selection,
-  transition kind, prior journal and stack links, cumulative encoded-byte position, operation
-  identity, and digest. Cumulative positions are checked and strictly increasing. The family has no
-  codec field for inverse text, marker collections, root graphs, or document payloads.
+  transition kind, one-based checked `u64` journal depth/ordinal, prior journal and stack links,
+  cumulative encoded-byte position, operation identity, fixed `u64` ancestor bitmap, its exact 64-
+  slot closed ancestor array, and digest. Cumulative positions are checked and strictly increasing
+  within the committed lineage. The V1 codec requires bit/slot `k` present exactly when `2^k` is
+  less than the transition depth, level zero equal to the prior journal reference, every higher
+  level byte-equal to the lower ancestor's corresponding level, and every unused slot canonically
+  absent. Local decode recomputes the digest over the entire canonical witness but performs no
+  storage read. Append admission fully validates the source frontier and head, exact immediate
+  predecessor, roots, positions, cumulative and retained-byte accounting, and derives all present
+  witness slots correctly before one atomic transition/frontier/session/settlement commit. After
+  that commit, ordinary reads trust each referenced immutable transition after its local key/value,
+  codec, shape, and digest agreement and do not recursively re-prove skip derivation or root
+  adjacency. Digests remain identity, canonical-replay, accidental-local-mismatch, and cheap fail-
+  closed decode commitments. This package does not claim to detect a fully self-consistent
+  coordinated digest-valid rewrite of transition/frontier/session/receipt authority, hostile
+  storage, cosmic bit flips, arbitrary I/O or media corruption, or other post-commit replacement
+  when the same database supplies every anchor. The
+  family has no codec field for inverse text, marker collections, root graphs, or document payloads.
+  This trust boundary adds no proof field, record, family, pin record, or index: the frontier and
+  transition families remain the complete edit-history family inventory.
 - `draft-historical-root-adoptions` stores one immutable V1 settlement per exact draft/session/
   operation. It repeats the source history frontier, selected retained transition and direction,
   target historical root, restored caret and directed selection, terminal result, and exact
@@ -1484,16 +1538,26 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   retain or resupply them.
 - Edit-history transition, frontier, stack-link, and historical-root-adoption values each fit the
   65,536-byte value ceiling and contain only compact roots, positions, links, counters, policy, and
-  replay facts. The configured durable history byte budget is a nonzero checked `u64`, not an entry
-  count and not a function of document length. Within those families its charged set is only the
+  replay facts. Each transition carries exactly one fixed 64-slot authenticated ancestor array and
+  bitmap sufficient for every checked-`u64` journal depth. Append derives that witness from the
+  authenticated predecessor using at most 64 point reads and fixed retained state. The configured
+  durable history byte budget is a nonzero checked `u64`, not an entry count and not a function of
+  document length. Within those families its charged set is only the
   current mutable live-frontier record and the retained transition/link records; publication or
   baseline snapshots and historical-root-adoption or other operation receipts are excluded. Each
   charged record includes exact family-key bytes plus canonical value bytes, repeated keys inside
-  values count again, and Fjall and allocator metadata do not count. One bounded indexed seek over cumulative immutable-record byte
-  positions selects the oldest eligible prefix whose exact charge lets the successor fit, and the
-  adoption atomically evicts that prefix from availability without reading, copying, or deleting
-  it. A typed history-capacity-unavailable result occurs only when the required non-evictable
-  closure itself cannot fit.
+  values count again, and Fjall and allocator metadata do not count. Checked successor accounting
+  derives the exact required eviction amount and cumulative threshold. Starting from the selected
+  head, highest-to-lowest binary lifting compares only authenticated same-lineage ancestor cumulative
+  positions and selects the unique oldest eligible floor crossing that threshold in at most 64
+  transition point reads and fixed state, one locally validated committed target per followed level.
+  Admission already established witness derivation and root adjacency; ordinary selection validates
+  local target agreement plus floor/head references, accounting, pins, and availability without a
+  recursive corruption scrub. No draft-global seek result or valid sibling
+  digest establishes membership, failure, or a cutoff. Adoption atomically removes only the selected
+  prefix from logical availability without reading or copying content and without physically
+  deleting any transition, link, root, node, leaf, or content. A typed history-capacity-unavailable
+  result occurs only when the required non-evictable closure itself cannot fit.
 - Draft text, marker, composite-piece, and materialization input pages return at most 256 records
   and 65,536 payload bytes. One lookup binary-searches at most 128 authenticated child envelopes per
   level and performs at most 64 sequence-node reads. Exact adjacent-gap validation performs at most
@@ -1540,7 +1604,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   ordinals also use checked `u64`; one fixed-size receipt per bounded work quantum keeps retained
   state and command work fixed without imposing a smaller whole-edit bound.
 - Ordinary candidate adoption, undo, and redo use bounded or logarithmic path and index work and
-  never scan the full root or journal. An undo or redo may require multiple bounded validation and
+  never scan the full root or journal. Transition-witness construction from an already authenticated
+  predecessor and direct threshold-to-floor selection each perform at most 64 transition point
+  reads, but only append admission constructs and fully validates witness derivation. Ordinary
+  retained-history selection trusts correctly committed immutable references after local validation.
+  An undo or redo may
+  require multiple bounded validation and
   reconciliation commands, but its direct historical-root adoption remains one logical operation,
   one candidate generation, and one terminal settlement with no history-sized resident state.
 - Provider structured values accept at most 128 nested list/object containers, matching the pinned
@@ -1816,9 +1885,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   preflight admits successor construction, one command authenticates the current progress endpoint
   and immediate-predecessor/root closure; creates the next terminal progress receipt and immutable
   paired-root record; advances only that session by exactly one candidate generation; marks the new
-  generation dirty; appends the compact before/after root, caret, and directed-selection transition;
-  advances the durable history frontier and the session head's newest root/history pair; clears
-  redo; applies oldest-eligible exact-charge byte-budget eviction; writes the immutable `Committed`
+  generation dirty; appends the compact before/after root, caret, and directed-selection transition
+  with its canonical one-based journal depth and complete 64-slot ancestor witness derived from the
+  authenticated predecessor in at most 64 point reads; advances the durable history frontier and the
+  session head's newest root/history pair; clears redo; applies oldest-eligible exact-charge byte-
+  budget floor advancement by deriving the checked cumulative threshold and directly binary-lifting
+  the selected head through locally validated committed targets to the unique oldest eligible same-
+  lineage floor in at most 64 transition point reads;
+  writes the immutable `Committed`
   settlement bound to that terminal receipt and
   predecessor/root closure; terminalizes the build to that settlement; and clears the custody slot.
   Eligible eviction that makes the successor fit never blocks ordinary editing. Only a required
@@ -1826,6 +1900,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   error without writing a transition, successor frontier, paired candidate/history root, or
   `Committed` settlement; that bounded terminal election then terminalizes the build and clears
   custody.
+  Replay and indeterminate reconciliation recompute the exact eviction amount and threshold from
+  the recorded source/successor accounting, prove the canonical source-versus-target command closure
+  and every atomic publication effect byte-for-byte, repeat the at-most-64-transition-read selected-
+  head lifting, and require its unique floor plus complete frontier/session/settlement closure to
+  equal the committed result. They do not recursively re-prove witness derivation for already
+  committed immutable ancestors. A
+  global-order hint or sibling record cannot change that classification.
   It does not read or
   advance the current draft, reverse index, published root/history pair, history activity, or asset
   owner. A changed newest candidate/history pair instead admits one no-change command that verifies absence of
@@ -1835,7 +1916,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   terminal command is admitted first fixes the outcome.
 - Historical-root adoption requires no piece build or candidate-root creation. The command
   authenticates the active session, exact current candidate/history frontier, retained transition
-  and stack link, same-draft target root and node closure, operation identity, and target caret and
+  and stack link, the transition's membership in the selected head ancestry through the same fixed
+  skip commitment, same-draft target root and node closure, operation identity, and target caret and
   directed selection. A committed undo or redo directly advances the session to that existing root
   under one new candidate generation, marks it dirty, appends the compact history action and
   immutable adoption settlement, and atomically moves undo/redo heads. An ordinary edit after undo
@@ -1910,7 +1992,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   pair)`, `ExactReplay(receipt)`, `Superseded(captured generation, current published root/history pair)`,
   `DurableBaseConflict(current selector)`, `SessionDisposed`, or
   `OccupiedIdentityCollision(proof)`. Publication snapshots one candidate generation/root and its
-  exact immutable edit-history frontier snapshot and uses
+  exact immutable edit-history frontier snapshot, including head/floor references, depths,
+  cumulative positions, retained accounting, root-pin closure, and availability, and uses
   one atomic command to require the active-operation custody slot absent and validate its immutable
   adopted settlement, bound terminal progress receipt
   and immediate-predecessor/root closure, the session's base and published root/history pair, and
@@ -1922,8 +2005,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   history reference from the current mutable frontier. A newer newest candidate/history pair is
   allowed and remains dirty. A generation at or behind the published pair is exact replay or
   supersession, never a second publication. Validation point-reads the captured settlement/root/
-  history snapshot, receipt endpoint and immediate predecessor, and compact head and never walks
-  predecessor settlements or progress receipts.
+  history snapshot, locally canonical head/floor references, accounting and availability, recorded
+  direct-threshold result when the captured adoption advanced the floor, receipt endpoint and
+  immediate predecessor, and compact head and never walks predecessor settlements, progress
+  receipts, or the journal.
 - Publication cancellation is effective only before writer admission. `HomeCommand::NotCommitted`
   preserves the exact prior selector and head. `HomeCommand::Indeterminate` returns sole
   reconciliation custody; only the exact immutable publication receipt plus a coherent selector
@@ -1933,7 +2018,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `DraftEditorCandidateSessionDisposeOutcomeV1` is `Disposed(head)`, `ExactReplay(receipt)`,
   `DirtyConflict(head)`, `AlreadyDisposed(head)`, or `OccupiedIdentityCollision(proof)`. Clean
   disposal and safe session-ownership release require byte-equal published and newest candidate
-  root/history pairs and the active-operation custody slot absent, then atomically mark the head
+  root/history pairs, the active-operation custody slot absent, and locally canonical frontier head/
+  floor references, accounting, pins, and availability, then atomically mark the head
   disposed and record that equality in its receipt. An
   admitted operation must be reconciled and terminally settled before clean disposal; neither a
   crash nor an external conflict permits clearing its slot or abandoning it as inert staging.
@@ -2547,15 +2633,19 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   selectors and creates or exactly replays the session-qualified head and open receipt. The initial
   head repeats the complete durable-base root including its closed root-build identity and sets its
   published root/history pair to the current-draft pair and its newest root/history pair to the
-  canonically forked live frontier selecting that same root and exact availability. It sets the
+  canonically forked live frontier selecting that same root and exact availability, preserving all
+  immutable ancestor-skip references byte-for-byte while giving later sibling appends independent
+  frontier authority. It sets the
   logical byte/line extent to that root. The identical
   canonical request against the identical active session returns `ExactReplay(head)`; after that
   identical session is disposed, the same request returns `StaleDisposed(head)` and cannot reopen
   it. An occupied session identity with different canonical request or durable-base bytes returns
   `OccupiedIdentityCollision(proof)`, never stale. Only an absent fresh session whose expected
   selector drifted returns `SelectorConflict(current selector)`. Opening authenticates the retained
-  history links, policy revision, root membership, and exact undo/redo availability through bounded
-  point reads and indexed seeks; it loads no transition collection. The returned activation binding
+  history policy revision and locally validates the selected head/floor references, depths and
+  cumulative positions, retained-byte accounting, root-pin references, and exact undo/redo
+  availability. It does not recursively re-prove immutable skip derivation or root adjacency, load a
+  transition collection, or perform a corruption scrub. The returned activation binding
   names the exact draft, session, session generation, candidate generation, complete root reference,
   and checked logical byte/line extent. No detached digest, draft id, or selector revision is an
   activation binding.
@@ -2635,7 +2725,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   data, clamping, truncation, or a whole-root fallback.
 - Compact restoration validation accepts the exact combined root, logical extent, caret and selection
   positions, scroll anchor/continuation, durable edit-history frontier identity, and exact undo/redo
-  availability. It validates every
+  availability. It authenticates the selected frontier's exact head/floor references, depths,
+  cumulative positions, retained accounting, root-pin references, and availability through local
+  canonical record agreement without recursively re-proving skip derivation or root adjacency, then validates every
   distinct offset and gap through bounded text and marker reads and returns only exact validated
   positions. It does not translate an older root, clamp an invalid boundary, or return text,
   marker collections, resident pages, layout state, or undo payloads. A frontier that is stale,

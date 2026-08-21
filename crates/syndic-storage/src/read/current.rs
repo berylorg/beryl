@@ -1,7 +1,10 @@
 use beryl_home_store::HomeStore;
 use beryl_model::{DomainRevision, ExecutionBinding, SyndicThreadId, SyndicTurnId};
 
-use crate::draft_piece::{DraftEditHistoryFrontiersFamily, DraftPieceRootsFamily};
+use crate::draft_piece::{
+    DraftEditHistoryFrontiersFamily, DraftPieceRootsFamily,
+    draft_edit_history_frontier_is_authenticated_v1,
+};
 use crate::{
     CreateThread, DraftByThreadRecord, DraftRecord, HistorySummaryRecord, SelectedPathProof,
     SyndicReadError, SyndicTimestamp, ThreadCatalogTitle, ThreadCreationStatus, ThreadRecord,
@@ -110,6 +113,10 @@ impl SyndicStorage {
             self.point::<DraftPieceRootsFamily>(store, draft.piece_root().key(), limit)?,
             "current draft piece root is missing",
         )?;
+        let history = required(
+            self.point::<DraftEditHistoryFrontiersFamily>(store, draft.history().key(), limit)?,
+            "current draft edit history is missing",
+        )?;
         let second = required(
             self.point::<DraftByThreadFamily>(store, thread_id, limit)?,
             "current draft changed during stabilized read",
@@ -118,6 +125,13 @@ impl SyndicStorage {
             return Err(concurrent("current-draft read"));
         }
         validate_current(&thread, &draft, &root, &index)?;
+        if history.reference() != draft.history()
+            || !draft_edit_history_frontier_is_authenticated_v1(self, store, &history)?
+        {
+            return Err(SyndicReadError::Invariant(
+                "current draft edit history closure is invalid",
+            ));
+        }
         Ok(Some(SyndicCurrentDraft {
             thread,
             draft,

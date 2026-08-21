@@ -6,6 +6,7 @@ use super::{
     append::stored_frontier_charge,
     codec::{authenticated_frontier, frontier_digest, transition_digest},
     references::*,
+    witness::DraftEditHistoryAncestorWitnessV1,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -141,6 +142,10 @@ impl DraftEditHistoryFrontierV1 {
             || reference.availability().undo_available() != self.undo_head.is_some()
             || reference.availability().redo_available() != self.redo_head.is_some()
             || self.journal_head.is_some() != self.oldest_eligible.is_some()
+            || self.journal_head.is_none() && self.cumulative_encoded_bytes != 0
+            || self.journal_head.is_some_and(|head| {
+                head.cumulative_encoded_bytes() != self.cumulative_encoded_bytes
+            })
             || frontier_digest(self) != reference.digest()
         {
             return false;
@@ -153,8 +158,8 @@ impl DraftEditHistoryFrontierV1 {
         ];
         if links.into_iter().flatten().any(|link| {
             link.key().draft_id() != key.draft_id()
-                || Some(link.key().session_id()) != key.session_id()
-                || link.key().journal_revision() == 0
+                || link.key().cumulative_encoded_bytes() == 0
+                || link.key().cumulative_encoded_bytes() != link.cumulative_encoded_bytes()
                 || link.cumulative_encoded_bytes() == 0
                 || link.cumulative_encoded_bytes() > self.cumulative_encoded_bytes
         }) {
@@ -191,11 +196,13 @@ pub struct DraftEditHistoryTransitionV1 {
     after_caret: DraftCompositePositionV1,
     after_selection: DraftCompositePositionV1,
     kind: DraftEditHistoryTransitionKindV1,
+    journal_depth: u64,
     prior_journal: Option<DraftEditHistoryTransitionReferenceV1>,
     prior_undo: Option<DraftEditHistoryTransitionReferenceV1>,
     prior_redo: Option<DraftEditHistoryTransitionReferenceV1>,
     operation_id: DraftPieceOperationIdV1,
     cumulative_encoded_bytes: u64,
+    ancestor_witness: DraftEditHistoryAncestorWitnessV1,
     pub(super) digest: DraftPieceDigestV1,
 }
 
@@ -210,11 +217,13 @@ impl DraftEditHistoryTransitionV1 {
         after_caret: DraftCompositePositionV1,
         after_selection: DraftCompositePositionV1,
         kind: DraftEditHistoryTransitionKindV1,
+        journal_depth: u64,
         prior_journal: Option<DraftEditHistoryTransitionReferenceV1>,
         prior_undo: Option<DraftEditHistoryTransitionReferenceV1>,
         prior_redo: Option<DraftEditHistoryTransitionReferenceV1>,
         operation_id: DraftPieceOperationIdV1,
         cumulative_encoded_bytes: u64,
+        ancestor_witness: DraftEditHistoryAncestorWitnessV1,
         digest: DraftPieceDigestV1,
     ) -> Self {
         Self {
@@ -226,11 +235,13 @@ impl DraftEditHistoryTransitionV1 {
             after_caret,
             after_selection,
             kind,
+            journal_depth,
             prior_journal,
             prior_undo,
             prior_redo,
             operation_id,
             cumulative_encoded_bytes,
+            ancestor_witness,
             digest,
         }
     }
@@ -259,6 +270,9 @@ impl DraftEditHistoryTransitionV1 {
     pub const fn kind(&self) -> DraftEditHistoryTransitionKindV1 {
         self.kind
     }
+    pub const fn journal_depth(&self) -> u64 {
+        self.journal_depth
+    }
     pub const fn prior_journal(&self) -> Option<DraftEditHistoryTransitionReferenceV1> {
         self.prior_journal
     }
@@ -274,6 +288,9 @@ impl DraftEditHistoryTransitionV1 {
     pub const fn cumulative_encoded_bytes(&self) -> u64 {
         self.cumulative_encoded_bytes
     }
+    pub const fn ancestor_witness(&self) -> &DraftEditHistoryAncestorWitnessV1 {
+        &self.ancestor_witness
+    }
     pub const fn digest(&self) -> DraftPieceDigestV1 {
         self.digest
     }
@@ -282,22 +299,45 @@ impl DraftEditHistoryTransitionV1 {
         DraftEditHistoryTransitionReferenceV1::new(
             self.key,
             self.cumulative_encoded_bytes,
+            self.journal_depth,
             self.digest,
         )
     }
 
     pub(crate) fn is_locally_valid(&self) -> bool {
         let links = [self.prior_journal, self.prior_undo, self.prior_redo];
-        self.key.journal_revision() != 0
+        self.journal_depth != 0
+            && self
+                .ancestor_witness
+                .is_canonical_for_depth(self.journal_depth)
+            && self.ancestor_witness.ancestor(0) == self.prior_journal
+            && self.key.cumulative_encoded_bytes() != 0
+            && self.key.cumulative_encoded_bytes() == self.cumulative_encoded_bytes
             && self.cumulative_encoded_bytes != 0
             && self.predecessor_root.key().draft_id() == self.key.draft_id()
             && self.successor_root.key().draft_id() == self.key.draft_id()
             && links.into_iter().flatten().all(|link| {
                 link.key().draft_id() == self.key.draft_id()
-                    && link.key().session_id() == self.key.session_id()
-                    && link.key().journal_revision() < self.key.journal_revision()
+                    && link.journal_depth() != 0
+                    && link.journal_depth() < self.journal_depth
+                    && link.key().cumulative_encoded_bytes() < self.key.cumulative_encoded_bytes()
+                    && link.key().cumulative_encoded_bytes() == link.cumulative_encoded_bytes()
                     && link.cumulative_encoded_bytes() < self.cumulative_encoded_bytes
             })
+            && self
+                .ancestor_witness
+                .slots()
+                .iter()
+                .enumerate()
+                .filter_map(|(level, value)| value.map(|value| (level, value)))
+                .all(|(level, ancestor)| {
+                    ancestor.key().draft_id() == self.key.draft_id()
+                        && ancestor.key().cumulative_encoded_bytes()
+                            == ancestor.cumulative_encoded_bytes()
+                        && ancestor.cumulative_encoded_bytes() < self.cumulative_encoded_bytes
+                        && (1_u64 << level) < self.journal_depth
+                        && ancestor.journal_depth() == self.journal_depth - (1_u64 << level)
+                })
             && transition_digest(self) == self.digest
     }
 }

@@ -29,18 +29,13 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 147: Add Durable Composer Mutation Page Custody (finished)
+# Phase 148: Enforce Durable Draft Edit-History Retention (finished)
 
-Added three final-shape staging families, bounded two-lane page custody, exact terminal evidence,
-restart reconciliation, and atomic `Staging`-to-`Building` transfer. Phase147 passed 20/20 plus
-69/69 named regressions, both library checks, formatting and diff gates; independent acceptance
-approved the 77-family boundary.
-
-# Phase 148: Enforce Composer History Retention (pending)
-
-Add configurable durable encoded-byte accounting, oldest-eligible transition eviction, exact
-availability and retained-root pin closure. Prove budget saturation, branching, restart, pinning,
-eviction order and fail-closed corrupt or missing links without copying draft content.
+Added exact encoded-byte retention, canonical 64-level history witnesses, bounded selected-head
+floor lifting, logical oldest-eligible eviction, typed capacity failure, and exact atomic adoption,
+restart and replay closure without copying or deleting draft content. Phase148 passed 13/13 focused,
+4/4 witness/codec, 89/89 prior accepted tests, both library checks and static gates; independent
+acceptance approved the unchanged 77-family boundary and narrowed post-commit trust contract.
 
 # Phase 149: Integrate Durable Bounded Composer Mutation Staging (pending)
 
@@ -54,15 +49,16 @@ cancellation, reconciliation, restart, conflict, rebind/release/late results and
 
 Add direct authenticated same-draft historical-root adoption under a new candidate generation,
 preserving transition history and restoring exact directed selection. Prove undo/redo frontier
-movement, five settlements, replay, collision, restart, stale or evicted roots and no content copy.
+movement, the first reachable undo-created branch and redo clearing, five settlements, replay,
+collision, restart, stale or evicted roots and no content copy.
 
 # Phase 151: Route Host Undo And Redo Through Durable Root History (pending)
 
 Route widget history intent and Beryl host coordination through exact durable availability and
-direct root adoption. Prove sequential undo/redo, branching and redo clearing, retention eviction,
-restart, all five settlements, cancellation and indeterminate outcomes, candidate drift, corrupt or
-missing roots, rebind, release, late completion, and atomic live-view rebind without inverse text or
-marker-registry residency.
+direct root adoption. Prove sequential undo/redo, repeated branching and redo clearing, retention
+eviction, restart, all five settlements, cancellation and indeterminate outcomes, candidate drift,
+corrupt or missing roots, rebind, release, late completion, and atomic live-view rebind without
+inverse text or marker-registry residency.
 
 # Phase 152: Enforce Credit-Gated Composer Realization (pending)
 

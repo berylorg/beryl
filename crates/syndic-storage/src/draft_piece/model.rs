@@ -366,20 +366,25 @@ impl DraftEditorCandidateSessionV1 {
     ) -> Self {
         let selector = request.selector();
         let root = selector.root();
+        let candidate_generation = selector.history().candidate_generation();
+        let session_generation = match candidate_generation.checked_add(1) {
+            Some(value) => value,
+            None => 0,
+        };
         Self {
             thread_id: selector.thread_id(),
             draft_id: selector.draft_id(),
             session_id: request.session_id(),
             open_operation_id: request.operation_id(),
-            session_generation: 1,
+            session_generation,
             durable_base_selector_revision: selector.selector_revision(),
             durable_base_root: root,
             durable_base_history: selector.history(),
-            published_candidate_generation: 0,
+            published_candidate_generation: candidate_generation,
             published_selector_revision: selector.selector_revision(),
             published_root: root,
             published_history: selector.history(),
-            newest_candidate_generation: 0,
+            newest_candidate_generation: candidate_generation,
             newest_root: root,
             newest_history: forked_history,
             dirty_generation: 0,
@@ -601,29 +606,24 @@ impl DraftEditorCandidateSessionV1 {
         let history_is_owned = self.durable_base_history.key().draft_id() == self.draft_id
             && self.published_history.key().draft_id() == self.draft_id
             && self.newest_history.key().draft_id() == self.draft_id;
-        let published_is_coherent = if self.published_candidate_generation == 0 {
+        let published_is_coherent = if self.published_root == self.durable_base_root
+            && self.published_history == self.durable_base_history
+        {
             self.published_selector_revision == self.durable_base_selector_revision
-                && self.published_root == self.durable_base_root
-                && self.published_history == self.durable_base_history
         } else {
             self.published_selector_revision > self.durable_base_selector_revision
-                && self.published_root.key().session_id() == Some(self.session_id)
-                && self.published_history.key().session_id() == Some(self.session_id)
         };
         let newest_is_coherent = if self.newest_candidate_generation == 0 {
             self.newest_root == self.durable_base_root
                 && self.newest_history.root() == self.durable_base_root
         } else {
-            self.newest_root.key().session_id() == Some(self.session_id)
-                && self.newest_history.key().session_id() == Some(self.session_id)
+            true
         };
         let shared_frontier_is_coherent = self.published_candidate_generation
             != self.newest_candidate_generation
             || (self.published_root == self.newest_root
-                && (self.published_candidate_generation == 0
-                    || self.published_history == self.newest_history));
+                && self.published_history.root() == self.newest_history.root());
         let pairs_are_coherent = self.durable_base_history.root() == self.durable_base_root
-            && self.durable_base_history.candidate_generation() == 0
             && self.published_history.root() == self.published_root
             && self.published_history.candidate_generation() == self.published_candidate_generation
             && self.newest_history.root() == self.newest_root
@@ -2418,6 +2418,7 @@ pub enum DraftPieceErrorReasonV1 {
     CorruptRecord,
     ResourceLimit,
     OccupiedIdentityNoncommit,
+    HistoryCapacityUnavailable,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

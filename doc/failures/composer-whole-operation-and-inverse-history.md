@@ -1,93 +1,70 @@
-# Composer Whole-Operation And Inverse-History Assumption
+# Composer Whole-Operation And History-Lineage Assumptions
 
 ## Invalidated Approach
 
-The planned large-composer undo path expected `gpui-text-input` to retain every fragment of one
-logical mutation behind a finite cumulative ceiling, then expected the Beryl host to stream copied
-inverse text and marker witnesses from historical roots through ordinary multi-edit reconstruction.
+The large-composer design initially retained a complete logical mutation behind a finite fragment
+ceiling and reconstructed undo from copied inverse text and marker witnesses. Its first durable
+builder correction still required terminal totals and caller-resupplied fragments before the app-
+neutral cursor protocol could know them.
 
-## Why It Failed
+The first retention design then treated a draft-global cumulative seek plus immediate predecessor
+links as sufficient lineage authority. After sibling forks disproved that, the correction selected
+the floor directly from a 64-slot ancestor witness but overextended ordinary reads into recursively
+re-proving every committed skip derivation and root adjacency so they could detect coordinated
+digest-valid post-commit rewrites.
 
-That combination makes logical edit and undo size depend on a whole-operation resident collection
-and an arbitrary fragment count. It also loses the clean identity of the historical immutable root,
-cannot place restored inline objects at successor-relative positions in newly inserted text, and
-turns one undo into reconstruction work whose partial progress, cancellation, replay, collision,
-and exact directed-selection result cannot share one terminal settlement.
+## Decisive Evidence
 
-Viewport-proportional realization was the same category of mistake: a nominal drawable area can
-exceed the configured retained projection even though the logical document and paged scroll extent
-remain valid.
+A whole-operation collection makes edit and undo capacity depend on arbitrary fragment count and
+resident payload, while reconstruction loses immutable historical-root identity and cannot give one
+large undo a single exact settlement. The cursor protocol learns terminal totals only at
+authenticated finish, so pre-finish custody must be durable and independent of caller replay.
 
-The first Syndic correction still encoded the final fragment count and terminal fragment-chain in
-`DraftPieceEditHeaderV1` before `prepare_draft_piece_fragment` would admit fragment one, constrained
-every fragment ordinal by that declared final count, and required caller fragments again during
-reconciliation. The accepted app-neutral cursor protocol does not know terminal totals until authenticated
-`finish-input` and releases each page after durable acceptance. The app therefore could not drive
-that builder before finish without accumulating or later resupplying the complete operation. A
-bounded post-finish builder did not provide durable pre-finish page custody.
+Independent editor sessions can fork one published frontier and append siblings at overlapping
+cumulative positions, so global order cannot select the chosen lineage. Head-origin binary lifting
+does select it when append admission constructed the canonical witness correctly.
 
-Staging digest authority was self-referential: the head digest committed the selected progress-
-receipt digest while that receipt committed the successor head digest, and the page digest's broad
-field commitment included the successor cumulative identity derived from that page digest while
-failing to authenticate the page ceilings explicitly. A mutable or chained record digest cannot
-commit a downstream value derived from itself; zero-placeholder encoding does not make that cycle
-canonical or implementable.
+Recursive post-commit proof was not a sound bounded contract. A coordinated rewrite can replace the
+derivation source and its own lower derivation while recomputing every digest, so adding three reads
+per level merely moves the same question downward. When transition, frontier, session, and receipt
+anchors all come from the same database, they cannot promise detection of hostile replacement,
+cosmic bit flips, arbitrary I/O/media corruption, or another fully self-consistent digest-valid
+rewrite. That machinery complicated normal logic without strengthening the stated trust boundary.
 
-The custody outcome wording further assumed that `Conflict` could clear an admitted receiving or
-finished operation from `Staging` to `None`. Admission already proves that custody's predecessor is
-the session newest pair, and the single slot prevents another same-session mutation from changing
-that pair while staging remains coherent. Treating the observed pair as another session or the
-durable current selector conflated staging custody with session isolation or publication conflict.
+## Accepted Correction
 
-## Course Correction
+Use the app-neutral cursor/session protocol with bounded source and proposal pages, durable two-lane
+staging custody, explicit finish, immediate caller-payload release, and one terminal settlement.
+Finish atomically transfers custody to the copy-on-write builder, whose acyclic canonical digests,
+immutable progress receipts, and exact source/target closure support bounded replay and
+reconciliation.
 
-Use one app-neutral cursor/session protocol with bounded source and proposal pages, canonical
-cumulative identity, explicit finish-input, immediate payload release, and one terminal settlement.
-Small edits use its one-page fast path; large edits make bounded progress without a cumulative
-fragment cap.
+Append admission fully validates the source frontier and head, exact immediate predecessor, same-
+draft roots and positions, cumulative and retained-byte accounting, and every derived slot in the
+canonical fixed 64-level witness before one atomic transition/frontier/session/settlement commit.
+Witness construction uses at most 64 transition point reads and fixed state. Replay and
+reconciliation prove the complete source-versus-target atomic publication and canonical bytes;
+missing, partial, stale, or colliding effects fail closed.
 
-Place an append-only Syndic intake boundary before candidate construction. One exact
-`(draft, candidate session, operation)` staging head owns independent source and proposal lane
-frontiers; immutable bounded pages and fixed progress receipts advance it under the candidate
-session's single tagged custody slot. Authenticated finish fixes the two final lane endpoints and
-atomically transfers that custody to the existing copy-on-write builder, which derives its final
-header and replays durable pages in bounded work. The transfer has five fixed bounded record
-effects, while pre-build terminal receipts retain outcome-specific noncommit evidence and
-distinguish `None`-to-`None` terminal-before-begin from `Staging`-to-`None` terminalization.
-Reconciliation and same-home restart use the
-natural staging records rather than caller-retained payload. Pre-build cancellation or failure
-terminalizes only staging; no staging page can become a candidate, history transition, current
-draft, `ComposerV1` materialization, submission, or transcript authority.
+After correct commit, ordinary retained-history reads trust immutable witness references that pass
+local key/value, codec, shape, and digest agreement. Direct selected-head lifting follows at most one
+target per level and chooses the cumulative-threshold floor in at most 64 transition point reads and
+fixed state. It does not recursively re-prove witness derivation or root adjacency. Siblings remain
+independent and cannot be selected; a global seek is at most a non-authoritative hint.
 
-Keep `Conflict` in the closed pre-build evidence and public outcome unions, but permit it before
-begin only: ordinal one, `None`-to-`None`, with the stale expected pair, exact observed current
-pair (that session's newest pair), and observed revision. Admitted staging may terminalize only as
-`Rejected`, `Cancelled`, or `Error` with exact `Staging`-to-`None` evidence; attempted admitted
-`Conflict` fails closed without mutation, and replay of an older valid terminal conflict uses its
-immutable closure rather than later session or publication state.
+Digests retain identity, canonical replay, accidental-local-mismatch, and cheap fail-closed decode
+roles. Floor advancement remains logical-only and copies or physically deletes no transition, root,
+node, leaf, or content. No proof field, record, family, index, pin family, single-lineage restriction,
+or compatibility path is added.
 
-Give every chained record an explicit acyclic canonical digest preimage. The staging-head digest
-omits only the selected receipt digest while retaining its key and transition ordinal; storage
-authenticates the selected receipt separately, and the receipt still commits the before/after head
-digests. The staging-page digest commits its complete natural key, separate progress transition
-ordinal, cursors, both page ceilings, prior cumulative identity, checked successor totals, and exact
-canonical page-item bytes while excluding only its derived successor cumulative identity and its own
-digest field, with no placeholder. Derive the successor cumulative identity afterward from the prior
-identity and page digest under its separate domain. Decode, local validation, and closure validation
-recompute both digests, while complete canonical byte equality remains replay authority.
+## Affected Authority And Plan
 
-Store compact durable same-draft root-transition journal/frontier records in Syndic/Fjall. Ordinary
-candidate adoption appends a transition; undo and redo directly adopt an authenticated retained
-historical root under a new candidate generation and restore exact caret and directed selection.
-Retention uses a configurable durable byte budget and pins eligible roots until later garbage
-collection; no copied inverse text or whole marker registry is authoritative.
+The correction is authoritative in `doc/systems/syndic-conversation-history/design.md` and
+`crates/syndic-storage/doc/design.md`. The composer feature behavior remains unchanged. Root
+`doc/plan.md` Phase 148 must implement the write-admission trust boundary, at-most-64-read direct
+selection, local ordinary-read validation, exact atomic replay/reconciliation, and unchanged live
+family inventory.
 
-Editor realization uses configured retained-memory and per-frame work budgets, priority credits,
-bounded filler, and explicit capacity saturation. The shell and renderer retain responsibility for
-an unrepresentable drawable surface or framebuffer.
-
-## Affected Authority
-
-The correction is owned by the composer feature and GUI docs, the bounded-resource and Syndic
-conversation-history systems, the `beryl-app` and `syndic-storage` package boundaries, and the
-external `gpui-text-input` design and widget specification.
+The remaining normal-logic risks are malformed witness construction at admission, partial atomic-
+closure classification, cumulative threshold/floor off-by-one errors, and allowing a global-order
+hint or sibling to influence selected-head lifting.

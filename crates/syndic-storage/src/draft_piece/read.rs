@@ -97,6 +97,19 @@ impl SyndicStorage {
         {
             return Err(DraftPieceRangeSourceErrorV1::Invariant);
         }
+        let history =
+            self.point::<DraftEditHistoryFrontiersFamily>(store, draft.history().key(), limit)?;
+        if history
+            .as_ref()
+            .is_none_or(|history| history.reference() != draft.history())
+            || !draft_edit_history_frontier_is_authenticated_v1(
+                self,
+                store,
+                history.as_ref().expect("history presence checked"),
+            )?
+        {
+            return Err(DraftPieceRangeSourceErrorV1::Invariant);
+        }
         Ok(Some(DraftEditorCurrentSelectorV1::new(
             thread.id(),
             thread.revision(),
@@ -432,17 +445,20 @@ impl SyndicStorage {
         store: &HomeStore,
         restoration: DraftPieceRestorationV1,
     ) -> Result<DraftPieceRestorationV1, DraftPiecePrepareErrorV1> {
+        let history = self.point::<DraftEditHistoryFrontiersFamily>(
+            store,
+            restoration.history().key(),
+            point_limit(),
+        )?;
         if restoration.history().root() != restoration.root()
-            || self
-                .point::<DraftEditHistoryFrontiersFamily>(
-                    store,
-                    restoration.history().key(),
-                    point_limit(),
-                )?
-                .as_ref()
-                .is_none_or(|frontier| {
-                    frontier.reference() != restoration.history() || !frontier.is_locally_valid()
-                })
+            || history.as_ref().is_none_or(|frontier| {
+                frontier.reference() != restoration.history() || !frontier.is_locally_valid()
+            })
+            || !draft_edit_history_frontier_is_authenticated_v1(
+                self,
+                store,
+                history.as_ref().expect("history presence checked"),
+            )?
         {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
@@ -493,6 +509,27 @@ impl SyndicStorage {
         );
         let settlement = self.point::<DraftPieceSettlementsFamily>(store, key, limit)?;
         let build = self.point::<DraftPieceBuildsFamily>(store, key, limit)?;
+        if settlement.is_none() {
+            let predecessor_history = prepared.header().predecessor_history();
+            let history = self.point::<DraftEditHistoryFrontiersFamily>(
+                store,
+                predecessor_history.key(),
+                limit,
+            )?;
+            if history
+                .as_ref()
+                .is_none_or(|frontier| frontier.reference() != predecessor_history)
+                || !draft_edit_history_frontier_is_authenticated_v1(
+                    self,
+                    store,
+                    history.as_ref().expect("history presence checked"),
+                )?
+            {
+                return Err(SyndicReadError::Invariant(
+                    "draft-piece predecessor history is not authenticated",
+                ));
+            }
+        }
         if let Some(build) = build.as_ref() {
             let receipt = self
                 .point::<DraftPieceBuildProgressFamily>(

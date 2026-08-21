@@ -562,21 +562,47 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Each current draft selects an immutable published edit-history reference: the deterministic
   canonical-empty reference, a named session/frontier publication snapshot, or a fresh-baseline
   snapshot created with an atomic sealed-content import. Every form binds one exact selected root,
-  policy revision, and availability; a fresh baseline has no transition or stack heads and reports
-  undo and redo unavailable. Opening a fresh editor-candidate
+  policy revision, exact journal head and retention floor references with their journal depths and
+  cumulative positions when present, retained-byte accounting, and availability; a fresh baseline
+  has no transition or stack heads and reports undo and redo unavailable. Opening a fresh editor-candidate
   session forks one compact durable edit-history frontier from that reference and never discovers
   an unpublished frontier from an earlier session. Immutable
   root-transition journal records contain only exact same-draft predecessor and successor combined
   roots, before/after caret and directed selection, transition kind, compact lineage and replay
-  identity, and immutable stack links. They contain no copied inverse text, marker registry, root
-  graph, or document-sized payload. The frontier contains only current root, undo and redo heads,
-  retention floor and cumulative retained-byte facts, policy revision, and exact availability.
+  identity, a checked one-based `u64` journal depth/ordinal, immutable stack links, cumulative
+  position, and one fixed authenticated ancestor-skip witness. They contain no copied inverse text,
+  marker registry, root graph, or document-sized payload. The frontier contains only current root,
+  exact journal, undo, redo, and retention-floor references, their required depth and cumulative
+  facts, retained-byte accounting, policy revision, and exact availability.
+- A transition's ancestor-skip witness is a fixed closed 64-slot array plus a `u64` presence bitmap.
+  For a transition at one-based depth `d`, slot `k` is present exactly when `2^k < d`; slot zero is
+  the exact authenticated prior-journal transition, and each higher slot is the exact `2^k`
+  ancestor obtained byte-for-byte from the lower ancestor's corresponding skip slot. Every other
+  slot has the one canonical absent encoding. The transition digest commits the complete depth,
+  bitmap, all present references, all canonical absent slots, roots, cumulative position, stack
+  links, and replay facts. Local key/value, codec, canonical-shape, and digest validation rejects a
+  missing required slot, present forbidden slot, duplicate, wrong-depth, locally inconsistent, or
+  noncanonical reference. This commitment is part of the existing transition record and creates no
+  family, pin record, secondary index, or additional proof field or record.
 - Every newly adopted ordinary candidate edit atomically appends its authenticated transition to
-  that journal, advances the history frontier to the successor root, and clears redo. Rejection,
-  conflict, cancellation, error, and indeterminate custody append nothing and preserve the exact
-  frontier. Autosave may publish the candidate and matching history frontier with the durable
-  current-draft selector, but it never derives history by scanning candidate roots or copying
-  inverse content.
+  that journal, advances the history frontier to the successor root, and clears redo. Append derives
+  slot zero from the authenticated predecessor and each higher present slot from the exact lower
+  ancestor named by the partially built witness, using at most 64 authenticated point reads and
+  fixed retained state. Before one atomic commit, admission fully validates the source frontier and
+  selected head, exact immediate predecessor, same-draft predecessor/successor roots and positions,
+  cumulative and retained-byte accounting, every derived witness slot, and the complete successor
+  frontier/session/settlement closure; it scans neither content nor history. Rejection, conflict,
+  cancellation, error, and indeterminate custody append nothing and preserve the exact frontier. Autosave may
+  publish the candidate and matching history frontier with the durable current-draft selector, but
+  it never derives history by scanning candidate roots or copying inverse content.
+- Once that immutable transition and its complete atomic closure were correctly committed, ordinary
+  retained-history reads trust its canonical witness references after bounded point read plus local
+  key/value, codec, shape, and digest agreement. They do not recursively re-prove how every skip
+  reference was derived or re-walk root adjacency on each later read. Digests retain identity,
+  canonical replay, cheap fail-closed decode, and accidental local-mismatch roles; they do not
+  promise detection of a fully self-consistent coordinated digest-valid rewrite of transition,
+  frontier, session, and receipt authority, hostile storage, cosmic bit flips, arbitrary I/O/media
+  corruption, or another post-commit rewrite for which the same database supplies every anchor.
 - Undo and redo authenticate the current frontier, selected immutable transition, same-draft root
   ownership, and root membership in that frontier's retained lineage, then use one dedicated
   historical-root adoption operation. It creates a new candidate generation that directly selects
@@ -608,19 +634,38 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   transition/link charge, and subtracts every eligible transition/link charge evicted in that same
   atomic adoption. Checked conversion, addition, or subtraction overflow fails closed before
   mutation. Transition records retain monotonic cumulative positions over exact appended immutable
-  transition/link charges so a bounded indexed seek can advance the oldest eligible floor without
-  loading complete history.
-- Ordinary adoption atomically evicts the oldest eligible transition/link records needed to keep
-  the exact successor retained set within budget, clears only undo or redo reachability that crosses
-  the new floor, and does not block editing when eligible eviction suffices. It returns a typed
+  transition/link charges. For a successor that would exceed budget, storage derives the exact
+  immutable-byte amount that must leave the retained set, then checked-adds it to the authenticated
+  cumulative boundary at the source floor to form the eviction threshold.
+- Storage selects the new floor directly from the chosen journal lineage. Starting at the
+  authenticated selected head, it examines ancestor levels from highest to lowest and follows an
+  exact skip reference only while that same-lineage ancestor's authenticated cumulative position is
+  at or above the eviction threshold and remains eligible. Binary lifting follows at most one
+  committed target reference per level and therefore uses at most 64 transition point reads and
+  fixed state. Each followed target must pass local key/value, codec, shape, digest, depth, and
+  cumulative-position agreement; ordinary selection trusts its correctly committed witness lineage
+  rather than recursively re-proving derivation or root adjacency. It yields the unique oldest
+  eligible ancestor whose cumulative position reaches the threshold while its exact prior-lineage
+  boundary does not, then validates the selected floor/head references, retained accounting, pins,
+  and availability. Independent sessions may append digest-valid
+  siblings at overlapping cumulative positions, but head-origin lifting never visits them and they
+  cannot determine success, failure, or the selected floor. A draft-global cumulative seek, if used
+  as a storage optimization hint, is non-authoritative and its result may be ignored only; a sibling
+  result cannot fail or redirect adoption.
+- Ordinary adoption atomically advances the logical retention floor past the oldest eligible
+  transition/link records needed to keep the exact successor retained set within budget, clears only
+  undo or redo reachability that crosses the new floor, and does not block editing when eligible
+  lineage eviction suffices. It commits whenever that bounded selection finds sufficient eligible
+  charge and performs no historical-root adoption. It returns a typed
   history-capacity-unavailable result only when the final authority cannot retain the required non-
   evictable live-head and transition/link closure within its configured budget. It never allows
   retained authority above budget. The frontier reports
   exact undo and redo availability after every adoption, eviction, publication, restart, rebind,
   and release. There is no document-size rule or hardcoded entry-count limit.
 - Every retained undo or redo transition pins both referenced immutable combined roots and their
-  authenticated node closure against later garbage collection. Eviction removes the history pin
-  and availability only; physical root and journal reclamation belongs to the later explicit
+  authenticated node closure against later garbage collection. Floor advancement removes the
+  logical history pin and availability only; it physically deletes no root, node, leaf, transition,
+  stack link, or content and copies no root or content. Physical reclamation belongs to the later explicit
   garbage-collection design and must still honor current-draft, candidate-session, materialization,
   submission, and other durable references.
 - Candidate-head conflict supersedes only an edit build whose named predecessor root/history pair is
@@ -629,7 +674,12 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   cancellation after admission cannot retract the result. Crash or an indeterminate final command
   remains nonterminal while it is reconciled from the operation identity, base and successor
   combined-root/history pairs, candidate revision, and complete paired-root summary. An exact retry returns the
-  already classified result only through the target-head and complete-closure check above; a
+  already classified result only through the target-head and complete-closure check above. For a
+  committed floor advance, replay and reconciliation recompute the exact eviction threshold from the
+  recorded source/successor accounting, validate the canonical source-versus-target atomic command
+  closure byte-for-byte, and repeat the same at-most-64-transition-read selected-head lifting. They
+  do not recursively re-prove already committed ancestor derivation; the recorded floor must be the
+  unique result, and no global-order hint or sibling can alter classification. A
   disagreeing identity reuse can return only the occupied-identity
   `Error` proof defined below.
 - Every edit operation owns one natural settlement identity derived from its exact draft, editor
@@ -720,7 +770,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   complete selector pair still matches. The resulting exact session head repeats the durable-base
   selector revision and complete root-build/history identities, initializes its published pair to
   that immutable current-draft pair, and canonically forks its distinct newest live history frontier
-  at the same root and exact availability. The active range source binds the exact draft, session,
+  at the same root and exact availability. Forking preserves every immutable transition's ancestor-
+  skip references unchanged; later siblings extend only their own frontier and neither invalidate
+  nor become ancestors of one another. The active range source binds the exact draft, session,
   session generation, candidate generation, complete root/history pair, and logical byte/line extent
   returned by that open; a digest,
   draft id, or selector revision alone cannot activate it. An identical canonical open against the
@@ -765,6 +817,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   package-authenticated session lineage still match and the active-operation custody slot is
   absent. Its immutable receipt owns the captured pair and complete current-draft and session
   before/after pairs; replay validates that closure rather than deriving history from the mutable
+  frontier. The snapshot commits the exact head and floor references, depths, cumulative positions,
+  retained-byte accounting, availability, and root-pin closure already authenticated by that live
   frontier. Later edits may advance the newest candidate/history pair
   during publication. Completion clears only its captured dirty generation; a newer pair
   stays dirty. Validation point-reads the captured immutable settlement/frontier and the compact
@@ -791,7 +845,10 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   eligible dirty pair until the session's published and newest candidate root/history pairs agree.
 - Fresh activation creates a new editor-candidate session from the durable current-draft selector
   and its matching published edit-history frontier. It authenticates retained transitions and
-  exact availability without loading history or root graphs. A crash may therefore lose all edits
+  locally validates the canonical selected head/floor references, retained accounting, root-pin
+  references, and availability without recursively scrubbing skip derivation, journal history, or
+  root adjacency. A crash may
+  therefore lose all edits
   and journal actions after the last successful autosave while preserving the last published draft
   and matching history frontier exactly. Staging for a disposed old session may be an
   unreachable orphan only when no transition ever admitted it or claimed that session's slot; an
@@ -823,7 +880,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Submission validates that the active candidate session is clean at the same published root used
   by its materialization, that its published and newest root/history pairs are equal, and that it has
   no active-operation custody. Only the atomic accepted send-and-clear transition disposes that session
-  and atomically closes its durable edit-history frontier while authorizing the app to clear its
+  and atomically closes its durable edit-history frontier only after the same local canonical head/
+  floor, accounting, pin-reference, and availability closure succeeds, while authorizing the app to clear its
   editor. Rejection, conflict,
   cancellation, error, or ambiguous writer custody preserves the coherent session/frontier until
   exact reconciliation.

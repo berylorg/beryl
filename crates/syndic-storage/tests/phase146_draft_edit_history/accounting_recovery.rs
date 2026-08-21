@@ -50,7 +50,7 @@ fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
             transition_embedded_key,
             transition_value,
         ],
-        [33, 33, 620, 40, 40, 594],
+        [33, 33, 644, 40, 40, 674],
     );
     let exact_budget = frontier_outer_key
         .checked_add(frontier_value)
@@ -108,7 +108,7 @@ fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
     let settlement = settled(storage, &store, &edit);
     assert!(matches!(
         settlement.outcome(),
-        DraftPieceSettlementOutcomeV1::Error(DraftPieceErrorReasonV1::ResourceLimit)
+        DraftPieceSettlementOutcomeV1::Error(DraftPieceErrorReasonV1::HistoryCapacityUnavailable)
     ));
     let DraftPieceSettlementClosureV1::Noncommit(noncommit) = settlement.closure() else {
         panic!("budget exhaustion wrote a commit closure");

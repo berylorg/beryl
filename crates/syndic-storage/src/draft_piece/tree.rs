@@ -686,22 +686,16 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
                 && adoption.predecessor_history().reference() == source.predecessor_history()
                 && adoption.predecessor_history().reference()
                     == adoption.predecessor_session().newest_history()
-                && append_ordinary_draft_edit_history_v1(
+                && ordinary_draft_edit_history_adoption_is_locally_exact(
                     adoption.predecessor_history(),
-                    *candidate_generation,
-                    *successor,
+                    adoption.transition(),
+                    adoption.adopted_history(),
                     settlement.predecessor_caret(),
                     settlement.predecessor_selection(),
                     settlement.caret(),
                     settlement.selection(),
                     settlement.key().operation_id(),
                 )
-                .ok()
-                .as_ref()
-                    == Some(&(
-                        adoption.transition().clone(),
-                        adoption.adopted_history().clone(),
-                    ))
                 && adoption
                     .predecessor_session()
                     .adopted(*successor, *history)
@@ -760,7 +754,8 @@ pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -
                 | DraftPieceErrorReasonV1::UnsettledOperation
                 | DraftPieceErrorReasonV1::MissingRecord
                 | DraftPieceErrorReasonV1::CorruptRecord
-                | DraftPieceErrorReasonV1::ResourceLimit,
+                | DraftPieceErrorReasonV1::ResourceLimit
+                | DraftPieceErrorReasonV1::HistoryCapacityUnavailable,
             ),
             DraftPieceSettlementClosureV1::Noncommit(noncommit),
         ) => {
@@ -980,9 +975,6 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         || build.predecessor_history().candidate_generation()
             != build.predecessor_candidate_generation()
         || build.predecessor_history().key().draft_id() != build.draft_id()
-        || build.predecessor_history().key().session_id() != Some(build.session_id())
-        || (build.predecessor_candidate_generation() > 0
-            && build.predecessor_root().key().session_id() != Some(build.session_id()))
         || !canonical_edit_command_is_exact(build.canonical_header(), header)
         || build.proposal_digest() != canonical_proposal_digest(build.canonical_header())
         || build.staged_fragment_count() > build.fragment_count()
