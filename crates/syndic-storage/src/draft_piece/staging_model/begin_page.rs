@@ -98,6 +98,58 @@ pub enum DraftMutationStagingPageItemV1 {
     Proposal(DraftPieceReplacementV1),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DraftMutationStagingPageInputV1 {
+    lane: DraftMutationStagingLaneV1,
+    input_cursor: u64,
+    successor_cursor: u64,
+    item_ceiling: u16,
+    byte_ceiling: u32,
+    items: Box<[DraftMutationStagingPageItemV1]>,
+}
+
+impl DraftMutationStagingPageInputV1 {
+    pub fn new(
+        lane: DraftMutationStagingLaneV1,
+        input_cursor: u64,
+        successor_cursor: u64,
+        item_ceiling: u16,
+        byte_ceiling: u32,
+        items: Box<[DraftMutationStagingPageItemV1]>,
+    ) -> Self {
+        Self {
+            lane,
+            input_cursor,
+            successor_cursor,
+            item_ceiling,
+            byte_ceiling,
+            items,
+        }
+    }
+
+    pub const fn lane(&self) -> DraftMutationStagingLaneV1 {
+        self.lane
+    }
+    pub const fn input_cursor(&self) -> u64 {
+        self.input_cursor
+    }
+    pub const fn successor_cursor(&self) -> u64 {
+        self.successor_cursor
+    }
+    pub const fn item_ceiling(&self) -> u16 {
+        self.item_ceiling
+    }
+    pub const fn byte_ceiling(&self) -> u32 {
+        self.byte_ceiling
+    }
+    pub fn items(&self) -> &[DraftMutationStagingPageItemV1] {
+        &self.items
+    }
+    pub(crate) fn into_items(self) -> Box<[DraftMutationStagingPageItemV1]> {
+        self.items
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DraftMutationStagingPageKeyV1 {
     identity: DraftMutationStagingIdentityV1,

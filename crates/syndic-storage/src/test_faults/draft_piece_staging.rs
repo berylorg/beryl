@@ -3,7 +3,9 @@ use beryl_home_store::{
     ReconciliationReservation,
 };
 
-use crate::{SyndicPointReadLimit, SyndicStorage, domain::SyndicDomain, draft_piece::*};
+use crate::{
+    SyndicPointReadLimit, SyndicReadError, SyndicStorage, domain::SyndicDomain, draft_piece::*,
+};
 
 #[derive(Clone)]
 enum StagingCorruption {
@@ -20,6 +22,106 @@ enum StagingCorruption {
         DraftEditorCandidateSessionRecordKeyV1,
         DraftEditorCandidateSessionRecordV1,
     ),
+    PutBatchPrefix {
+        targets: Box<
+            [(
+                DraftMutationStagingPageV1,
+                DraftMutationStagingProgressReceiptV1,
+            )],
+        >,
+        page_count: usize,
+        receipt_count: usize,
+    },
+}
+
+pub fn draft_mutation_staging_batch_target(
+    prepared: &PreparedDraftMutationStagingBatchV1,
+    index: usize,
+) -> Option<(
+    DraftMutationStagingPageV1,
+    DraftMutationStagingProgressReceiptV1,
+)> {
+    prepared
+        .targets()
+        .nth(index)
+        .map(|(page, receipt)| (page.clone(), receipt.clone()))
+}
+
+pub fn draft_mutation_staging_batch_target_records(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    prepared: &PreparedDraftMutationStagingBatchV1,
+    index: usize,
+) -> Result<
+    (
+        Option<DraftMutationStagingPageV1>,
+        Option<DraftMutationStagingProgressReceiptV1>,
+    ),
+    SyndicReadError,
+> {
+    let (page, receipt) = prepared
+        .targets()
+        .nth(index)
+        .expect("fixture batch target index is in range");
+    Ok((
+        storage.point::<DraftMutationStagingPagesFamily>(store, page.key(), limit())?,
+        storage.point::<DraftMutationStagingProgressFamily>(store, receipt.key(), limit())?,
+    ))
+}
+
+pub fn draft_mutation_staging_locally_exact_source_head(
+    head: &DraftMutationStagingHeadV1,
+    next_cursor: u64,
+    next_ordinal: u64,
+    item_total: u64,
+    canonical_byte_total: u64,
+) -> DraftMutationStagingHeadV1 {
+    let source = DraftMutationStagingLaneFrontierV1::new(
+        next_cursor,
+        next_ordinal,
+        item_total,
+        canonical_byte_total,
+        head.source().cumulative_identity(),
+    )
+    .expect("fixture source frontier is nonzero");
+    locally_exact_head(
+        DraftMutationStagingHeadV1::from_parts(
+            head.identity(),
+            head.begin(),
+            head.begin_digest(),
+            source,
+            head.proposal(),
+            head.receipt(),
+            head.lifecycle(),
+            DraftPieceDigestV1::from_bytes([0; 32]),
+        ),
+        head.receipt(),
+    )
+}
+
+pub fn inject_draft_mutation_staging_batch_prefix(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    prepared: &PreparedDraftMutationStagingBatchV1,
+    page_count: usize,
+    receipt_count: usize,
+) -> MutationContribution {
+    assert!(page_count <= prepared.page_count());
+    assert!(receipt_count <= prepared.page_count());
+    let targets = prepared
+        .targets()
+        .map(|(page, receipt)| (page.clone(), receipt.clone()))
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    contribution(
+        store,
+        storage,
+        StagingCorruption::PutBatchPrefix {
+            targets,
+            page_count,
+            receipt_count,
+        },
+    )
 }
 
 pub fn delete_draft_mutation_staging_head(
@@ -329,6 +431,19 @@ impl DomainMutation<SyndicDomain> for StagingCorruption {
             Self::PutSession(..) => {
                 reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?
             }
+            Self::PutBatchPrefix {
+                targets: _,
+                page_count,
+                receipt_count,
+            } => {
+                if *page_count > 0 {
+                    reservation.reserve_records::<DraftMutationStagingPagesCodec>(*page_count)?;
+                }
+                if *receipt_count > 0 {
+                    reservation
+                        .reserve_records::<DraftMutationStagingProgressCodec>(*receipt_count)?;
+                }
+            }
         }
         Ok(())
     }
@@ -353,6 +468,18 @@ impl DomainMutation<SyndicDomain> for StagingCorruption {
             }
             Self::PutSession(key, value) => {
                 builder.put::<DraftEditorCandidateSessionsCodec>(key, value)?
+            }
+            Self::PutBatchPrefix {
+                targets,
+                page_count,
+                receipt_count,
+            } => {
+                for (page, _) in targets.iter().take(*page_count) {
+                    builder.put::<DraftMutationStagingPagesCodec>(&page.key(), page)?;
+                }
+                for (_, receipt) in targets.iter().take(*receipt_count) {
+                    builder.put::<DraftMutationStagingProgressCodec>(&receipt.key(), receipt)?;
+                }
             }
         }
         Ok(())

@@ -238,27 +238,13 @@ impl SyndicStorage {
         let target_receipt =
             self.point::<DraftMutationStagingProgressFamily>(store, prepared.receipt.key(), limit)?;
         if stored.as_ref() == prepared.source_head.as_ref() {
-            if target_receipt.is_some()
-                || prepared.page.as_ref().is_some_and(|page| {
-                    self.point::<DraftMutationStagingPagesFamily>(store, page.key(), limit)
-                        .ok()
-                        .flatten()
-                        .is_some()
-                })
-            {
+            if target_receipt.is_some() {
                 return Err(DraftMutationStagingErrorV1::Invariant);
             }
             return Ok(DraftMutationStagingReconcileV1::SourceSelected);
         }
         if stored.as_ref() != Some(&prepared.target_head)
             || target_receipt.as_ref() != Some(&prepared.receipt)
-            || prepared.page.as_ref().is_some_and(|page| {
-                self.point::<DraftMutationStagingPagesFamily>(store, page.key(), limit)
-                    .ok()
-                    .flatten()
-                    .as_ref()
-                    != Some(page)
-            })
         {
             return Err(DraftMutationStagingErrorV1::Invariant);
         }
@@ -274,5 +260,83 @@ impl SyndicStorage {
         } else {
             Ok(DraftMutationStagingReconcileV1::TargetSelected)
         }
+    }
+
+    pub fn reconcile_draft_mutation_staging_page_batch(
+        &self,
+        store: &beryl_home_store::HomeStore,
+        prepared: &PreparedDraftMutationStagingBatchV1,
+    ) -> Result<DraftMutationStagingReconcileV1, DraftMutationStagingErrorV1> {
+        let identity = prepared.source_head.identity();
+        let stored_head = self.draft_mutation_staging_head(store, identity)?;
+        let limit =
+            crate::SyndicPointReadLimit::new(65_536).expect("staging point limit is nonzero");
+        let session_key = DraftEditorCandidateSessionRecordKeyV1::head(
+            prepared.source_session.draft_id(),
+            prepared.source_session.session_id(),
+        );
+        let stored_session =
+            match self.point::<DraftEditorCandidateSessionsFamily>(store, session_key, limit)? {
+                Some(DraftEditorCandidateSessionRecordV1::Head(head)) => head,
+                _ => return Err(DraftMutationStagingErrorV1::Invariant),
+            };
+
+        if stored_head.as_ref() == Some(&prepared.source_head) {
+            if stored_session != prepared.source_session {
+                return Err(DraftMutationStagingErrorV1::Invariant);
+            }
+            for target in prepared.targets.iter() {
+                if self
+                    .point::<DraftMutationStagingPagesFamily>(store, target.page.key(), limit)?
+                    .is_some()
+                    || self
+                        .point::<DraftMutationStagingProgressFamily>(
+                            store,
+                            target.receipt.key(),
+                            limit,
+                        )?
+                        .is_some()
+                {
+                    return Err(DraftMutationStagingErrorV1::Invariant);
+                }
+            }
+            if !matches!(
+                self.draft_mutation_staging_status(store, identity)?,
+                DraftMutationStagingStatusV1::Receiving { .. }
+            ) {
+                return Err(DraftMutationStagingErrorV1::Invariant);
+            }
+            return Ok(DraftMutationStagingReconcileV1::SourceSelected);
+        }
+
+        if stored_head.as_ref() != Some(&prepared.target_head)
+            || stored_session != prepared.target_session
+        {
+            return Err(DraftMutationStagingErrorV1::Invariant);
+        }
+        for target in prepared.targets.iter() {
+            if self
+                .point::<DraftMutationStagingPagesFamily>(store, target.page.key(), limit)?
+                .as_ref()
+                != Some(&target.page)
+                || self
+                    .point::<DraftMutationStagingProgressFamily>(
+                        store,
+                        target.receipt.key(),
+                        limit,
+                    )?
+                    .as_ref()
+                    != Some(&target.receipt)
+            {
+                return Err(DraftMutationStagingErrorV1::Invariant);
+            }
+        }
+        if !matches!(
+            self.draft_mutation_staging_status(store, identity)?,
+            DraftMutationStagingStatusV1::Receiving { .. }
+        ) {
+            return Err(DraftMutationStagingErrorV1::Invariant);
+        }
+        Ok(DraftMutationStagingReconcileV1::TargetSelected)
     }
 }

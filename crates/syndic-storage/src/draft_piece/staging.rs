@@ -45,8 +45,24 @@ pub struct PreparedDraftMutationStagingCommandV1 {
     target_head: DraftMutationStagingHeadV1,
     source_session: DraftEditorCandidateSessionV1,
     target_session: Option<DraftEditorCandidateSessionV1>,
-    page: Option<DraftMutationStagingPageV1>,
     receipt: DraftMutationStagingProgressReceiptV1,
+}
+
+#[derive(Clone)]
+struct PreparedDraftMutationStagingBatchTargetV1 {
+    page: DraftMutationStagingPageV1,
+    receipt: DraftMutationStagingProgressReceiptV1,
+}
+
+#[derive(Clone)]
+pub struct PreparedDraftMutationStagingBatchV1 {
+    source_head: DraftMutationStagingHeadV1,
+    target_head: DraftMutationStagingHeadV1,
+    source_session: DraftEditorCandidateSessionV1,
+    target_session: DraftEditorCandidateSessionV1,
+    targets: Box<[PreparedDraftMutationStagingBatchTargetV1]>,
+    item_count: usize,
+    encoded_page_bytes: usize,
 }
 
 #[derive(Clone)]
@@ -107,14 +123,47 @@ impl PreparedDraftMutationStagingCommandV1 {
     pub const fn receipt(&self) -> &DraftMutationStagingProgressReceiptV1 {
         &self.receipt
     }
-    pub const fn page(&self) -> Option<&DraftMutationStagingPageV1> {
-        self.page.as_ref()
+}
+
+impl PreparedDraftMutationStagingBatchV1 {
+    pub fn target_head(&self) -> &DraftMutationStagingHeadV1 {
+        &self.target_head
+    }
+    pub const fn target_session(&self) -> Option<&DraftEditorCandidateSessionV1> {
+        Some(&self.target_session)
+    }
+    pub fn page_count(&self) -> usize {
+        self.targets.len()
+    }
+    pub const fn item_count(&self) -> usize {
+        self.item_count
+    }
+    pub const fn encoded_page_bytes(&self) -> usize {
+        self.encoded_page_bytes
+    }
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn targets(
+        &self,
+    ) -> impl Iterator<
+        Item = (
+            &DraftMutationStagingPageV1,
+            &DraftMutationStagingProgressReceiptV1,
+        ),
+    > {
+        self.targets
+            .iter()
+            .map(|target| (&target.page, &target.receipt))
     }
 }
 
 #[derive(Clone)]
 struct StagingMutation {
     prepared: PreparedDraftMutationStagingCommandV1,
+}
+
+#[derive(Clone)]
+struct StagingBatchMutation {
+    prepared: PreparedDraftMutationStagingBatchV1,
 }
 
 #[derive(Clone)]
@@ -130,6 +179,7 @@ struct StageDurablePageMutation {
 mod digest;
 mod integrity;
 mod mutations;
+mod prepare_batch;
 mod prepare_begin_page;
 mod prepare_finish;
 mod prepare_terminal;

@@ -229,29 +229,6 @@ pub(super) fn compared_byte(bytes: &[u8], offset: usize) -> DraftMutationStaging
     )
 }
 
-pub(super) fn canonical_difference(
-    stored: &[u8],
-    requested: &[u8],
-) -> Option<(
-    u64,
-    DraftMutationStagingComparedByteV1,
-    DraftMutationStagingComparedByteV1,
-)> {
-    let offset = stored
-        .iter()
-        .zip(requested)
-        .position(|(a, b)| a != b)
-        .unwrap_or_else(|| stored.len().min(requested.len()));
-    if offset == stored.len() && offset == requested.len() {
-        return None;
-    }
-    Some((
-        u64::try_from(offset).ok()?,
-        compared_byte(stored, offset),
-        compared_byte(requested, offset),
-    ))
-}
-
 fn stored_anchor_matches(
     begin: DraftMutationBeginV1,
     receipt: &DraftMutationStagingProgressReceiptV1,

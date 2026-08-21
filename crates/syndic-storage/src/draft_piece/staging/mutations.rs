@@ -23,11 +23,6 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             if stored_receipt.is_some() {
                 return Err(SyndicMutationError::IdentityCollision);
             }
-            if let Some(page) = &p.page {
-                if point::<DraftMutationStagingPagesFamily>(reader, &page.key())?.is_some() {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
             if p.source_head.is_none() {
                 let identity = p.target_head.identity();
                 let operation = identity.operation_id().as_piece_operation();
@@ -76,13 +71,6 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
         }
         if stored_head.as_ref() == Some(&p.target_head)
             && stored_receipt.as_ref() == Some(&p.receipt)
-            && p.page.as_ref().is_none_or(|page| {
-                point::<DraftMutationStagingPagesFamily>(reader, &page.key())
-                    .ok()
-                    .flatten()
-                    .as_ref()
-                    == Some(page)
-            })
             && (matches!(
                 p.target_head.lifecycle(),
                 DraftMutationStagingLifecycleV1::Cancelled
@@ -116,9 +104,6 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
     ) -> Result<(), Self::Error> {
         reservation.reserve_records::<DraftMutationStagingHeadsCodec>(1)?;
         reservation.reserve_records::<DraftMutationStagingProgressCodec>(1)?;
-        if self.prepared.page.is_some() {
-            reservation.reserve_records::<DraftMutationStagingPagesCodec>(1)?;
-        }
         if self.prepared.target_session.is_some() {
             reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
         }
@@ -133,9 +118,6 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             .as_ref()
             != Some(&self.prepared.target_head)
         {
-            if let Some(page) = &self.prepared.page {
-                mutations.put::<DraftMutationStagingPagesCodec>(&page.key(), page)?;
-            }
             mutations.put::<DraftMutationStagingProgressCodec>(
                 &self.prepared.receipt.key(),
                 &self.prepared.receipt,
@@ -153,6 +135,105 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
                     &DraftEditorCandidateSessionRecordV1::Head(session.clone()),
                 )?;
             }
+        }
+        Ok(())
+    }
+}
+
+impl DomainMutation<SyndicDomain> for StagingBatchMutation {
+    type Error = SyndicMutationError;
+
+    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+        let prepared = &self.prepared;
+        let identity = prepared.source_head.identity();
+        let stored_head = point::<DraftMutationStagingHeadsFamily>(reader, &identity)?;
+        let session_key = DraftEditorCandidateSessionRecordKeyV1::head(
+            prepared.source_session.draft_id(),
+            prepared.source_session.session_id(),
+        );
+        let stored_session =
+            match point::<DraftEditorCandidateSessionsFamily>(reader, &session_key)? {
+                Some(DraftEditorCandidateSessionRecordV1::Head(head)) => head,
+                _ => return Err(SyndicMutationError::IdentityCollision),
+            };
+
+        if stored_head.as_ref() == Some(&prepared.source_head) {
+            authenticate_staging_head_reader(reader, &prepared.source_head)?;
+            if stored_session != prepared.source_session {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
+            for target in prepared.targets.iter() {
+                if point::<DraftMutationStagingPagesFamily>(reader, &target.page.key())?.is_some()
+                    || point::<DraftMutationStagingProgressFamily>(reader, &target.receipt.key())?
+                        .is_some()
+                {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
+            }
+            return Ok(());
+        }
+
+        if stored_head.as_ref() != Some(&prepared.target_head)
+            || stored_session != prepared.target_session
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        for target in prepared.targets.iter() {
+            if point::<DraftMutationStagingPagesFamily>(reader, &target.page.key())?.as_ref()
+                != Some(&target.page)
+                || point::<DraftMutationStagingProgressFamily>(reader, &target.receipt.key())?
+                    .as_ref()
+                    != Some(&target.receipt)
+            {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
+        }
+        authenticate_staging_head_reader(reader, &prepared.target_head)?;
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation
+            .reserve_records::<DraftMutationStagingPagesCodec>(self.prepared.targets.len())?;
+        reservation
+            .reserve_records::<DraftMutationStagingProgressCodec>(self.prepared.targets.len())?;
+        reservation.reserve_records::<DraftMutationStagingHeadsCodec>(1)?;
+        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        &self,
+        reader: &DomainReader<'_, SyndicDomain>,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        let prepared = &self.prepared;
+        if point::<DraftMutationStagingHeadsFamily>(reader, &prepared.source_head.identity())?
+            .as_ref()
+            == Some(&prepared.source_head)
+        {
+            for target in prepared.targets.iter() {
+                mutations
+                    .put::<DraftMutationStagingPagesCodec>(&target.page.key(), &target.page)?;
+                mutations.put::<DraftMutationStagingProgressCodec>(
+                    &target.receipt.key(),
+                    &target.receipt,
+                )?;
+            }
+            mutations.put::<DraftMutationStagingHeadsCodec>(
+                &prepared.target_head.identity(),
+                &prepared.target_head,
+            )?;
+            mutations.put::<DraftEditorCandidateSessionsCodec>(
+                &DraftEditorCandidateSessionRecordKeyV1::head(
+                    prepared.target_session.draft_id(),
+                    prepared.target_session.session_id(),
+                ),
+                &DraftEditorCandidateSessionRecordV1::Head(prepared.target_session.clone()),
+            )?;
         }
         Ok(())
     }

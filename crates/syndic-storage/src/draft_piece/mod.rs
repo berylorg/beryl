@@ -19,8 +19,9 @@ pub use session::{
     DraftEditorCandidateSessionCommandErrorV1, PreparedDraftEditorCandidateSessionOpenV1,
 };
 pub use staging::{
-    DraftMutationStagingErrorV1, PreparedDraftMutationStagingCommandV1,
-    PreparedDraftMutationTransferV1, PreparedDraftPieceStagingPageV1,
+    DraftMutationStagingErrorV1, PreparedDraftMutationStagingBatchV1,
+    PreparedDraftMutationStagingCommandV1, PreparedDraftMutationTransferV1,
+    PreparedDraftPieceStagingPageV1,
 };
 pub use staging_model::*;
 pub use tree::{
@@ -46,5 +47,8 @@ pub const DRAFT_PIECE_MAX_CHILDREN: usize = 128;
 pub const DRAFT_PIECE_MAX_HEIGHT: u8 = 64;
 pub const DRAFT_PIECE_PAGE_MAX_RECORDS: usize = 256;
 pub const DRAFT_PIECE_PAGE_MAX_BYTES: usize = 65_536;
+pub const DRAFT_MUTATION_STAGING_BATCH_MAX_PAGES: usize = 257;
+pub const DRAFT_MUTATION_STAGING_BATCH_MAX_ITEMS: usize = 65_792;
+pub const DRAFT_MUTATION_STAGING_BATCH_MAX_BYTES: usize = 16_842_752;
 pub const DRAFT_PIECE_STAGE_MAX_RECORDS: usize = 256;
 pub const DRAFT_PIECE_TEXT_LEAF_MAX_BYTES: usize = 32_768;

@@ -84,7 +84,6 @@ impl SyndicStorage {
             target_head: target,
             source_session: session.clone(),
             target_session: Some(target_session),
-            page: None,
             receipt,
         })
     }
@@ -189,7 +188,6 @@ impl SyndicStorage {
             target_head: target,
             source_session: session.clone(),
             target_session: None,
-            page: None,
             receipt,
         })
     }

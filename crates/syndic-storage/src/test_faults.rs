@@ -75,7 +75,9 @@ pub use draft_piece_current_drift::arm_draft_piece_current_read_fault;
 pub(crate) use draft_piece_current_drift::run_draft_piece_current_read_fault;
 pub use draft_piece_staging::{
     delete_draft_mutation_staging_head, delete_draft_mutation_staging_page,
-    delete_draft_mutation_staging_receipt, inject_draft_mutation_staging_head_ahead,
+    delete_draft_mutation_staging_receipt, draft_mutation_staging_batch_target,
+    draft_mutation_staging_batch_target_records, draft_mutation_staging_locally_exact_source_head,
+    inject_draft_mutation_staging_batch_prefix, inject_draft_mutation_staging_head_ahead,
     inject_draft_mutation_staging_head_digest_corruption, inject_draft_mutation_staging_head_fork,
     inject_draft_mutation_staging_occupied_page,
     inject_draft_mutation_staging_page_ceiling_corruption,

@@ -17,8 +17,9 @@ use beryl_model::{
 use syndic_storage::test_faults::{
     DraftPieceCandidateRootCollision, delete_draft_mutation_staging_head,
     delete_draft_mutation_staging_page, delete_draft_mutation_staging_receipt,
-    inject_draft_mutation_staging_head_ahead, inject_draft_mutation_staging_head_digest_corruption,
-    inject_draft_mutation_staging_head_fork, inject_draft_mutation_staging_occupied_page,
+    draft_mutation_staging_batch_target, inject_draft_mutation_staging_head_ahead,
+    inject_draft_mutation_staging_head_digest_corruption, inject_draft_mutation_staging_head_fork,
+    inject_draft_mutation_staging_occupied_page,
     inject_draft_mutation_staging_page_ceiling_corruption,
     inject_draft_mutation_staging_page_digest_corruption,
     inject_draft_mutation_staging_receipt_digest_corruption,
@@ -36,18 +37,18 @@ use syndic_storage::{
     DraftMutationFinishInputV1, DraftMutationOperationIdV1, DraftMutationStagingErrorEvidenceV1,
     DraftMutationStagingErrorReasonV1, DraftMutationStagingErrorV1, DraftMutationStagingHeadV1,
     DraftMutationStagingIdentityV1, DraftMutationStagingLaneFrontierV1, DraftMutationStagingLaneV1,
-    DraftMutationStagingLifecycleV1, DraftMutationStagingPageItemV1,
-    DraftMutationStagingReconcileV1, DraftMutationStagingRejectedReasonV1,
-    DraftMutationStagingStatusV1, DraftMutationStagingTerminalAnchorV1,
-    DraftMutationStagingTerminalEvidenceV1, DraftPieceEditHeaderV1, DraftPieceErrorReasonV1,
-    DraftPieceOperationIdV1, DraftPieceRejectedReasonV1, DraftPieceReplacementV1,
-    DraftPieceTextDemandV1, DraftPieceV1, PreparedDraftPieceEditV1, SyndicPointReadLimit,
+    DraftMutationStagingLifecycleV1, DraftMutationStagingPageInputV1,
+    DraftMutationStagingPageItemV1, DraftMutationStagingReconcileV1,
+    DraftMutationStagingRejectedReasonV1, DraftMutationStagingStatusV1,
+    DraftMutationStagingTerminalAnchorV1, DraftMutationStagingTerminalEvidenceV1,
+    DraftPieceEditHeaderV1, DraftPieceErrorReasonV1, DraftPieceOperationIdV1,
+    DraftPieceRejectedReasonV1, DraftPieceReplacementV1, DraftPieceTextDemandV1, DraftPieceV1,
+    PreparedDraftMutationStagingBatchV1, PreparedDraftPieceEditV1, SyndicPointReadLimit,
     SyndicStorage, SyndicTimestamp, canonical_draft_piece_fragment_chain_v1,
     canonical_empty_draft_piece_fragment_chain_v1, draft_piece_fragment_chain_link_v1,
 };
 #[cfg(feature = "test-faults")]
 use syndic_storage::{
-    DraftMutationStagingComparedByteV1, DraftMutationStagingOccupiedKeyV1,
     DraftMutationStagingPageKeyV1, DraftMutationStagingProgressReceiptKeyV1, DraftPieceRootKeyV1,
     DraftPieceRootReferenceV1,
 };
@@ -119,21 +120,21 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
         .draft_mutation_staging_head(&store, identity)
         .unwrap()
         .unwrap();
-    let prepared = storage
-        .prepare_draft_mutation_staging_page(
-            &head,
-            &session,
-            DraftMutationStagingLaneV1::Proposal,
-            1,
-            256,
-            65_536,
-            Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
-        )
-        .unwrap();
+    let prepared = prepare_phase147_one_page_batch(
+        storage,
+        &head,
+        &session,
+        DraftMutationStagingLaneV1::Proposal,
+        1,
+        256,
+        65_536,
+        Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
+    )
+    .unwrap();
     session = prepared.target_session().unwrap().clone();
     committed(execute(
         &store,
-        storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), prepared),
+        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), prepared),
     ));
     let durable_root = before.draft().piece_root();
     assert!(
@@ -428,21 +429,21 @@ fn lanes_advance_independently_and_commands_reconcile_exactly() {
         .draft_mutation_staging_head(&store, identity)
         .unwrap()
         .unwrap();
-    let source = storage
-        .prepare_draft_mutation_staging_page(
-            &head,
-            &session,
-            DraftMutationStagingLaneV1::Source,
-            1,
-            1,
-            1024,
-            Box::new([DraftMutationStagingPageItemV1::SourcePosition(point(0))]),
-        )
-        .unwrap();
+    let source = prepare_phase147_one_page_batch(
+        storage,
+        &head,
+        &session,
+        DraftMutationStagingLaneV1::Source,
+        1,
+        1,
+        1024,
+        Box::new([DraftMutationStagingPageItemV1::SourcePosition(point(0))]),
+    )
+    .unwrap();
     session = source.target_session().unwrap().clone();
     committed(execute(
         &store,
-        storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), source),
+        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), source),
     ));
     let after_source = storage
         .draft_mutation_staging_head(&store, identity)
@@ -455,20 +456,20 @@ fn lanes_advance_independently_and_commands_reconcile_exactly() {
 
     let proposal =
         DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Text("p".to_owned())]);
-    let prepared = storage
-        .prepare_draft_mutation_staging_page(
-            &after_source,
-            &session,
-            DraftMutationStagingLaneV1::Proposal,
-            1,
-            1,
-            1024,
-            Box::new([DraftMutationStagingPageItemV1::Proposal(proposal)]),
-        )
-        .unwrap();
+    let prepared = prepare_phase147_one_page_batch(
+        storage,
+        &after_source,
+        &session,
+        DraftMutationStagingLaneV1::Proposal,
+        1,
+        1,
+        1024,
+        Box::new([DraftMutationStagingPageItemV1::Proposal(proposal)]),
+    )
+    .unwrap();
     committed(execute(
         &store,
-        storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), prepared),
+        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), prepared),
     ));
     let final_head = storage
         .draft_mutation_staging_head(&store, identity)
@@ -674,7 +675,8 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         .unwrap()
         .unwrap();
     assert!(matches!(
-        storage.prepare_draft_mutation_staging_page(
+        prepare_phase147_one_page_batch(
+            storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -696,24 +698,25 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         .collect::<Vec<_>>()
         .into_boxed_slice();
     assert!(
-        storage
-            .prepare_draft_mutation_staging_page(
-                &source_head,
-                &session,
-                DraftMutationStagingLaneV1::Source,
-                256,
-                256,
-                65_536,
-                max_items,
-            )
-            .is_ok()
+        prepare_phase147_one_page_batch(
+            storage,
+            &source_head,
+            &session,
+            DraftMutationStagingLaneV1::Source,
+            256,
+            256,
+            65_536,
+            max_items,
+        )
+        .is_ok()
     );
     let too_many_items = (0..257)
         .map(|offset| DraftMutationStagingPageItemV1::SourcePosition(point(offset)))
         .collect::<Vec<_>>()
         .into_boxed_slice();
     assert!(matches!(
-        storage.prepare_draft_mutation_staging_page(
+        prepare_phase147_one_page_batch(
+            storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Source,
@@ -725,7 +728,8 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         Err(DraftMutationStagingErrorV1::Invalid)
     ));
     assert!(matches!(
-        storage.prepare_draft_mutation_staging_page(
+        prepare_phase147_one_page_batch(
+            storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Source,
@@ -737,7 +741,8 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         Err(DraftMutationStagingErrorV1::Invalid)
     ));
     assert!(matches!(
-        storage.prepare_draft_mutation_staging_page(
+        prepare_phase147_one_page_batch(
+            storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Source,
@@ -749,7 +754,8 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         Err(DraftMutationStagingErrorV1::Invalid)
     ));
     assert!(matches!(
-        storage.prepare_draft_mutation_staging_page(
+        prepare_phase147_one_page_batch(
+            storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -769,54 +775,49 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
 
     let first_replacement =
         DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Text("a".to_owned())]);
-    let accepted = storage
-        .prepare_draft_mutation_staging_page(
-            &source_head,
-            &session,
-            DraftMutationStagingLaneV1::Proposal,
-            1,
-            1,
-            1024,
-            Box::new([DraftMutationStagingPageItemV1::Proposal(first_replacement)]),
-        )
-        .unwrap();
-    let collision = storage
-        .prepare_draft_mutation_staging_page(
-            &source_head,
-            &session,
-            DraftMutationStagingLaneV1::Proposal,
-            1,
-            1,
-            1024,
-            Box::new([DraftMutationStagingPageItemV1::Proposal(
-                DraftPieceReplacementV1::new(
-                    point(0),
-                    point(0),
-                    vec![DraftPieceV1::Text("b".to_owned())],
-                ),
-            )]),
-        )
-        .unwrap();
-    let page = accepted.page().unwrap();
-    assert_eq!(page.key().ordinal(), 1);
-    assert_eq!(page.transition_ordinal(), 2);
-    assert_eq!(page.input_cursor(), 0);
-    assert_eq!(page.successor_cursor(), 1);
-    assert_eq!(
-        page.prior_cumulative_identity(),
-        source_head.proposal().cumulative_identity()
-    );
-    assert_eq!(page.cumulative_item_total(), 1);
-    assert!(page.cumulative_byte_total() > 0);
+    let accepted = prepare_phase147_one_page_batch(
+        storage,
+        &source_head,
+        &session,
+        DraftMutationStagingLaneV1::Proposal,
+        1,
+        1,
+        1024,
+        Box::new([DraftMutationStagingPageItemV1::Proposal(first_replacement)]),
+    )
+    .unwrap();
+    let collision = prepare_phase147_one_page_batch(
+        storage,
+        &source_head,
+        &session,
+        DraftMutationStagingLaneV1::Proposal,
+        1,
+        1,
+        1024,
+        Box::new([DraftMutationStagingPageItemV1::Proposal(
+            DraftPieceReplacementV1::new(
+                point(0),
+                point(0),
+                vec![DraftPieceV1::Text("b".to_owned())],
+            ),
+        )]),
+    )
+    .unwrap();
+    assert_eq!(accepted.page_count(), 1);
+    assert_eq!(accepted.target_head().receipt().transition_ordinal(), 2);
+    assert_eq!(accepted.target_head().proposal().next_cursor(), 1);
+    assert_eq!(accepted.target_head().proposal().next_ordinal(), 2);
+    assert_eq!(accepted.target_head().proposal().item_total(), 1);
+    assert!(accepted.target_head().proposal().canonical_byte_total() > 0);
     session = accepted.target_session().unwrap().clone();
     committed(execute(
         &store,
-        storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), accepted),
+        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), accepted),
     ));
     assert!(matches!(
         execute(
             &store,
-            storage.draft_mutation_staging_command(
+            storage.draft_mutation_staging_page_batch(
                 storage.revision(&store).unwrap(),
                 collision.clone(),
             ),
@@ -825,7 +826,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     ));
     assert!(
         storage
-            .reconcile_draft_mutation_staging_command(&store, &collision)
+            .reconcile_draft_mutation_staging_page_batch(&store, &collision)
             .is_err()
     );
 
@@ -848,7 +849,8 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         source_head.digest(),
     );
     assert!(matches!(
-        storage.prepare_draft_mutation_staging_page(
+        prepare_phase147_one_page_batch(
+            storage,
             &overflow_head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -863,7 +865,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
                 ),
             )]),
         ),
-        Err(DraftMutationStagingErrorV1::Overflow)
+        Err(DraftMutationStagingErrorV1::Invalid)
     ));
     let byte_overflow_frontier = DraftMutationStagingLaneFrontierV1::new(
         source_head.proposal().next_cursor(),
@@ -884,7 +886,8 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         source_head.digest(),
     );
     assert!(matches!(
-        storage.prepare_draft_mutation_staging_page(
+        prepare_phase147_one_page_batch(
+            storage,
             &byte_overflow_head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -899,7 +902,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
                 ),
             )]),
         ),
-        Err(DraftMutationStagingErrorV1::Overflow)
+        Err(DraftMutationStagingErrorV1::Invalid)
     ));
 }
 
@@ -923,74 +926,56 @@ fn occupied_next_error_is_derived_from_durable_canonical_bytes() {
         .unwrap()
         .unwrap();
     let page = |text: &str| {
-        storage
-            .prepare_draft_mutation_staging_page(
-                &head,
-                &session,
-                DraftMutationStagingLaneV1::Proposal,
-                1,
-                1,
-                1024,
-                Box::new([DraftMutationStagingPageItemV1::Proposal(
-                    DraftPieceReplacementV1::new(
-                        point(0),
-                        point(0),
-                        vec![DraftPieceV1::Text(text.to_owned())],
-                    ),
-                )]),
-            )
-            .unwrap()
+        prepare_phase147_one_page_batch(
+            storage,
+            &head,
+            &session,
+            DraftMutationStagingLaneV1::Proposal,
+            1,
+            1,
+            1024,
+            Box::new([DraftMutationStagingPageItemV1::Proposal(
+                DraftPieceReplacementV1::new(
+                    point(0),
+                    point(0),
+                    vec![DraftPieceV1::Text(text.to_owned())],
+                ),
+            )]),
+        )
+        .unwrap()
     };
     let stored = page("stored");
     let requested = page("requested");
+    let (stored_page, _) = draft_mutation_staging_batch_target(&stored, 0).unwrap();
     committed(execute(
         &store,
-        inject_draft_mutation_staging_occupied_page(
+        inject_draft_mutation_staging_occupied_page(&store, storage, stored_page),
+    ));
+    assert!(matches!(
+        execute(
             &store,
-            storage,
-            stored.page().unwrap().clone(),
+            storage.draft_mutation_staging_page_batch(
+                storage.revision(&store).unwrap(),
+                requested.clone(),
+            ),
         ),
+        CommandOutcome::NotCommitted { .. }
     ));
-    let terminal = storage
-        .prepare_draft_mutation_staging_occupied_page_error(&store, &head, &session, &requested)
-        .unwrap();
-    let evidence = terminal.receipt().terminal_evidence().unwrap();
-    let DraftMutationStagingTerminalEvidenceV1::Error {
-        error:
-            DraftMutationStagingErrorEvidenceV1::OccupiedIdentity {
-                key: DraftMutationStagingOccupiedKeyV1::Page(key),
-                stored_digest,
-                requested_digest,
-                first_difference,
-                stored: stored_byte,
-                requested: requested_byte,
-            },
-        ..
-    } = evidence
-    else {
-        panic!("occupied page did not produce typed occupied evidence: {evidence:?}");
-    };
-    assert_eq!(key, stored.page().unwrap().key());
-    assert_eq!(stored_digest, stored.page().unwrap().digest());
-    assert_eq!(requested_digest, requested.page().unwrap().digest());
-    assert_ne!(stored_digest, requested_digest);
-    assert!(first_difference > 0);
-    assert!(matches!(
-        stored_byte,
-        DraftMutationStagingComparedByteV1::Byte(_) | DraftMutationStagingComparedByteV1::End
-    ));
-    assert!(matches!(
-        requested_byte,
-        DraftMutationStagingComparedByteV1::Byte(_) | DraftMutationStagingComparedByteV1::End
-    ));
-    committed(execute(
-        &store,
-        storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), terminal),
-    ));
-    assert!(matches!(
-        storage.draft_mutation_staging_status(&store, identity).unwrap(),
-        DraftMutationStagingStatusV1::Error { evidence: stored, .. } if stored == evidence
-    ));
+    assert!(
+        storage
+            .reconcile_draft_mutation_staging_page_batch(&store, &requested)
+            .is_err()
+    );
+    assert_eq!(
+        storage
+            .draft_mutation_staging_head(&store, identity)
+            .unwrap(),
+        Some(head)
+    );
+    assert_eq!(
+        active_session(&storage, &store, session.draft_id(), session.session_id()),
+        session
+    );
     assert_eq!(current(storage, &store, thread), durable);
 }
 
@@ -1013,35 +998,26 @@ fn admitted_rejected_and_operational_error_are_derived_and_exact() {
             .draft_mutation_staging_head(&store, identity)
             .unwrap()
             .unwrap();
-        let requested = storage
-            .prepare_draft_mutation_staging_page(
+        let terminal = storage
+            .prepare_draft_mutation_staging_terminal(
                 &head,
                 &session,
-                DraftMutationStagingLaneV1::Proposal,
-                1,
-                1,
-                1024,
-                Box::new([DraftMutationStagingPageItemV1::Proposal(
-                    DraftPieceReplacementV1::new(
-                        point(0),
-                        point(0),
-                        vec![DraftPieceV1::Text("rejected".to_owned())],
-                    ),
-                )]),
+                DraftMutationStagingTerminalEvidenceV1::Cancelled {
+                    request_id: identity.operation_id(),
+                    source_lifecycle: DraftMutationStagingLifecycleV1::Receiving,
+                    writer_admitted: true,
+                    candidate_generation: session.newest_candidate_generation(),
+                    root: session.newest_root(),
+                    history: session.newest_history(),
+                    session_revision: session.session_generation(),
+                },
             )
-            .unwrap();
-        let terminal = storage
-            .prepare_draft_mutation_staging_rejected_page(&head, &session, &requested)
             .unwrap();
         let evidence = terminal.receipt().terminal_evidence().unwrap();
         assert!(matches!(
             evidence,
-            DraftMutationStagingTerminalEvidenceV1::Rejected {
-                reason: DraftMutationStagingRejectedReasonV1::InvalidPage,
-                anchor: DraftMutationStagingTerminalAnchorV1::Page(key),
-                digest,
-                ..
-            } if key == requested.page().unwrap().key() && digest == requested.page().unwrap().digest()
+            DraftMutationStagingTerminalEvidenceV1::Cancelled { request_id, .. }
+                if request_id == identity.operation_id()
         ));
         committed(execute(
             &store,
@@ -1049,7 +1025,7 @@ fn admitted_rejected_and_operational_error_are_derived_and_exact() {
         ));
         assert!(matches!(
             storage.draft_mutation_staging_status(&store, identity).unwrap(),
-            DraftMutationStagingStatusV1::Rejected { evidence: stored, .. } if stored == evidence
+            DraftMutationStagingStatusV1::Cancelled { evidence: stored, .. } if stored == evidence
         ));
     }
     {
@@ -1231,23 +1207,26 @@ fn more_than_257_pages_keep_one_page_per_command_and_reopen_exactly() {
             .draft_mutation_staging_head(&store, identity)
             .unwrap()
             .unwrap();
-        let prepared = storage
-            .prepare_draft_mutation_staging_page(
-                &head,
-                &session,
-                DraftMutationStagingLaneV1::Proposal,
-                page_ordinal,
-                1,
-                1024,
-                Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
-            )
-            .unwrap();
-        assert_eq!(prepared.page().unwrap().items().len(), 1);
-        assert_eq!(prepared.page().unwrap().key().ordinal(), page_ordinal);
+        let prepared = prepare_phase147_one_page_batch(
+            storage,
+            &head,
+            &session,
+            DraftMutationStagingLaneV1::Proposal,
+            page_ordinal,
+            1,
+            1024,
+            Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
+        )
+        .unwrap();
+        assert_eq!(prepared.page_count(), 1);
+        assert_eq!(
+            prepared.target_head().proposal().next_ordinal(),
+            page_ordinal + 1
+        );
         session = prepared.target_session().unwrap().clone();
         committed(execute(
             &store,
-            storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), prepared),
+            storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), prepared),
         ));
     }
     let head = storage
@@ -1448,23 +1427,23 @@ fn every_staging_command_class_reconciles_after_an_indeterminate_commit() {
         .draft_mutation_staging_head(&store, identity)
         .unwrap()
         .unwrap();
-    let page = storage
-        .prepare_draft_mutation_staging_page(
-            &head,
-            &session,
-            DraftMutationStagingLaneV1::Proposal,
-            1,
-            1,
-            1024,
-            Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
-        )
-        .unwrap();
+    let page = prepare_phase147_one_page_batch(
+        storage,
+        &head,
+        &session,
+        DraftMutationStagingLaneV1::Proposal,
+        1,
+        1,
+        1024,
+        Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
+    )
+    .unwrap();
     session = page.target_session().unwrap().clone();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     assert!(matches!(
         execute(
             &store,
-            storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), page),
+            storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), page),
         ),
         CommandOutcome::Indeterminate { .. }
     ));
@@ -1799,22 +1778,25 @@ fn page_ceiling_commitment_fails_decode_status_and_reconstruction() {
         .draft_mutation_staging_head(&store, identity)
         .unwrap()
         .unwrap();
-    let page = storage
-        .prepare_draft_mutation_staging_page(
-            &head,
-            &session,
-            DraftMutationStagingLaneV1::Proposal,
-            1,
-            1,
-            1024,
-            Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
-        )
-        .unwrap();
-    let page_key = page.page().unwrap().key();
+    let page = prepare_phase147_one_page_batch(
+        storage,
+        &head,
+        &session,
+        DraftMutationStagingLaneV1::Proposal,
+        1,
+        1,
+        1024,
+        Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
+    )
+    .unwrap();
+    let page_key = draft_mutation_staging_batch_target(&page, 0)
+        .unwrap()
+        .0
+        .key();
     session = page.target_session().unwrap().clone();
     committed(execute(
         &store,
-        storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), page),
+        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), page),
     ));
     let head = storage
         .draft_mutation_staging_head(&store, identity)
@@ -1986,28 +1968,29 @@ fn staged_page_fixture(
         .draft_mutation_staging_head(&store, identity)
         .unwrap()
         .unwrap();
-    let page = storage
-        .prepare_draft_mutation_staging_page(
-            &head,
-            &session,
-            DraftMutationStagingLaneV1::Proposal,
-            1,
-            1,
-            1024,
-            Box::new([DraftMutationStagingPageItemV1::Proposal(
-                DraftPieceReplacementV1::new(
-                    point(0),
-                    point(0),
-                    vec![DraftPieceV1::Text("f".to_owned())],
-                ),
-            )]),
-        )
-        .unwrap();
-    let page_key = page.page().unwrap().key();
-    let receipt_key = page.receipt().key();
+    let page = prepare_phase147_one_page_batch(
+        storage,
+        &head,
+        &session,
+        DraftMutationStagingLaneV1::Proposal,
+        1,
+        1,
+        1024,
+        Box::new([DraftMutationStagingPageItemV1::Proposal(
+            DraftPieceReplacementV1::new(
+                point(0),
+                point(0),
+                vec![DraftPieceV1::Text("f".to_owned())],
+            ),
+        )]),
+    )
+    .unwrap();
+    let (target_page, target_receipt) = draft_mutation_staging_batch_target(&page, 0).unwrap();
+    let page_key = target_page.key();
+    let receipt_key = target_receipt.key();
     committed(execute(
         &store,
-        storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), page),
+        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), page),
     ));
     (home, store, storage, identity, page_key, receipt_key)
 }
@@ -2146,21 +2129,21 @@ fn transfer_single_staged_piece(
         .draft_mutation_staging_head(store, identity)
         .unwrap()
         .unwrap();
-    let page = storage
-        .prepare_draft_mutation_staging_page(
-            &head,
-            &active,
-            DraftMutationStagingLaneV1::Proposal,
-            1,
-            256,
-            65_536,
-            Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
-        )
-        .unwrap();
+    let page = prepare_phase147_one_page_batch(
+        *storage,
+        &head,
+        &active,
+        DraftMutationStagingLaneV1::Proposal,
+        1,
+        256,
+        65_536,
+        Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
+    )
+    .unwrap();
     active = page.target_session().unwrap().clone();
     committed(execute(
         store,
-        storage.draft_mutation_staging_command(storage.revision(store).unwrap(), page),
+        storage.draft_mutation_staging_page_batch(storage.revision(store).unwrap(), page),
     ));
     let head = storage
         .draft_mutation_staging_head(store, identity)
@@ -2300,4 +2283,33 @@ fn begin_input(
 
 fn point(offset: u64) -> DraftCompositePositionV1 {
     DraftCompositePositionV1::new(offset, DraftCompositeGapWitnessV1::Unambiguous)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_phase147_one_page_batch(
+    storage: SyndicStorage,
+    head: &DraftMutationStagingHeadV1,
+    session: &DraftEditorCandidateSessionV1,
+    lane: DraftMutationStagingLaneV1,
+    successor_cursor: u64,
+    item_ceiling: u16,
+    byte_ceiling: u32,
+    items: Box<[DraftMutationStagingPageItemV1]>,
+) -> Result<PreparedDraftMutationStagingBatchV1, DraftMutationStagingErrorV1> {
+    let input_cursor = match lane {
+        DraftMutationStagingLaneV1::Source => head.source().next_cursor(),
+        DraftMutationStagingLaneV1::Proposal => head.proposal().next_cursor(),
+    };
+    storage.prepare_draft_mutation_staging_page_batch(
+        head,
+        session,
+        Box::new([DraftMutationStagingPageInputV1::new(
+            lane,
+            input_cursor,
+            successor_cursor,
+            item_ceiling,
+            byte_ceiling,
+            items,
+        )]),
+    )
 }

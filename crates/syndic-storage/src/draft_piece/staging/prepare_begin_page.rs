@@ -95,21 +95,29 @@ impl SyndicStorage {
             target_head,
             source_session: session.clone(),
             target_session: Some(target_session),
-            page: None,
             receipt,
         })
     }
 
-    pub fn prepare_draft_mutation_staging_page(
+    pub(super) fn prepare_draft_mutation_staging_page_step(
         &self,
         head: &DraftMutationStagingHeadV1,
         session: &DraftEditorCandidateSessionV1,
         lane: DraftMutationStagingLaneV1,
+        input_cursor: u64,
         successor_cursor: u64,
         item_ceiling: u16,
         byte_ceiling: u32,
         items: Box<[DraftMutationStagingPageItemV1]>,
-    ) -> Result<PreparedDraftMutationStagingCommandV1, DraftMutationStagingErrorV1> {
+    ) -> Result<
+        (
+            DraftMutationStagingHeadV1,
+            DraftEditorCandidateSessionV1,
+            PreparedDraftMutationStagingBatchTargetV1,
+            usize,
+        ),
+        DraftMutationStagingErrorV1,
+    > {
         if head.lifecycle() != DraftMutationStagingLifecycleV1::Receiving
             || items.is_empty()
             || items.len() > DRAFT_PIECE_PAGE_MAX_RECORDS
@@ -146,7 +154,7 @@ impl SyndicStorage {
             DraftMutationStagingLaneV1::Source => head.source(),
             DraftMutationStagingLaneV1::Proposal => head.proposal(),
         };
-        if successor_cursor <= before.next_cursor() {
+        if input_cursor != before.next_cursor() || successor_cursor <= input_cursor {
             return Err(DraftMutationStagingErrorV1::Invalid);
         }
         let item_bytes = canonical_staging_items_bytes(&items)
@@ -201,11 +209,10 @@ impl SyndicStorage {
             items,
             digest,
         );
-        if canonical_staging_page_bytes(&page)
+        let encoded_page_bytes = canonical_staging_page_bytes(&page)
             .map_err(|_| DraftMutationStagingErrorV1::Invalid)?
-            .len()
-            > DRAFT_PIECE_PAGE_MAX_BYTES
-        {
+            .len();
+        if encoded_page_bytes > DRAFT_PIECE_PAGE_MAX_BYTES {
             return Err(DraftMutationStagingErrorV1::Invalid);
         }
         let after = DraftMutationStagingLaneFrontierV1::new(
@@ -286,13 +293,11 @@ impl SyndicStorage {
         let target_session = session
             .advance_active_operation(&expected, next_custody)
             .ok_or(DraftMutationStagingErrorV1::Invalid)?;
-        Ok(PreparedDraftMutationStagingCommandV1 {
-            source_head: Some(head.clone()),
-            target_head: target,
-            source_session: session.clone(),
-            target_session: Some(target_session),
-            page: Some(page),
-            receipt,
-        })
+        Ok((
+            target,
+            target_session,
+            PreparedDraftMutationStagingBatchTargetV1 { page, receipt },
+            encoded_page_bytes,
+        ))
     }
 }
