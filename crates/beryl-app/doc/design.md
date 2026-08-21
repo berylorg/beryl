@@ -146,13 +146,24 @@ Keep independent main-window presentation responsive while process-wide services
   composite range replacements through the app-neutral text-input transaction-session protocol.
   Begin captures exact predecessor caret and directed selection. Bounded source and proposal pages
   carry canonical cumulative identity and explicit finish-input; inserted and moved markers use
-  successor-relative coordinates and order. No partial replacement is exposed to the widget,
+  successor-relative coordinates and order. Each marker insert, remove, move, or same-id replacement
+  is emitted as one complete proposal item on its natural widget/proposal page. It carries only the
+  widget's accepted successor anchor, stable id, final label, same-anchor order key, checked charges,
+  and complete predecessor occurrence proof when removal applies. It carries no caller-selected gap
+  or immediate-neighbor witness; storage derives those facts from its current working roots after
+  any removal. The host does not force marker effects
+  into the first page, pre-scan or reorder the widget stream, or retain earlier pages to complete a
+  later effect. No partial replacement is exposed to the widget,
   session head, history frontier, or current-draft selector, and no whole-operation fragment vector
   or hardcoded cumulative page cap exists.
 - Before translation or durable admission, the host validates one widget page against its exact
   binding, operation and lane frontier: expected cursor, ordinal and prior cumulative identity;
   canonical page and cumulative identities; checked page and cumulative totals; a nonempty set of
-  at most 256 items; and at most 65,536 retained bytes. Each lane retains only fixed next-frontier
+  at most 256 items; and at most 65,536 retained bytes. The operation high-water and lane frontier are
+  qualified by the exact activation binding, candidate-session identity/generation, and predecessor
+  base candidate/root/history revision. Any change to that tuple resets the high-water with the new
+  operation; a completion from the old tuple is a stale terminal conflict even when operation,
+  ordinal, or cursor bytes repeat after an ABA change. Each lane retains only fixed next-frontier
   state and the immediate-last `PageReceipt` identity. Exact byte-equal reuse of that immediate page
   returns replay without translation or storage work. Differing immediate reuse collides, and any
   older ordinal is obsolete and rejected. Invalid cursor, ordinal, prior identity, totals, item
@@ -167,23 +178,35 @@ Keep independent main-window presentation responsive while process-wide services
   page's 65,536-byte aggregate ceiling. Across no more than 256 input items there can therefore be
   only one additional chunk in total beyond the one base chunk or page produced by each item, while
   every other supported item translates once; the exact maximum is 257 physical pages. The host
-  retains only this current widget-page translation and never a prior-page or whole-operation
-  payload collection.
+  retains exactly one current validated widget-page request and, while storage admission is in
+  flight, one prepared atomic physical-page batch derived from that same request. It retains no
+  earlier widget page, prior prepared command, proposal prefix, or whole-operation payload
+  collection.
 - The host passes that complete translation to `syndic-storage`'s single atomic physical-page batch
-  preparation, contribution, and reconciliation boundary. It advances the widget frontier and
-  releases the widget-page payload only after the whole batch is durably accepted or exact target
-  reconciliation proves every page, progress receipt, final staging head, and final candidate-
-  session endpoint. Source selection preserves the prepared payload for the same command unless
-  cancellation terminally discards an unadmitted attempt. Partial occupancy, target disagreement,
-  or collision makes the operation fail closed and cannot be treated as page replay. The one-
+  preparation, contribution, and reconciliation boundary. `SourceSelected`, including the source
+  classification after an indeterminate call, retains that exact validated request and the same
+  prepared command byte for byte; it neither retranslates, advances the widget frontier, releases
+  payload, nor accepts another page. `TargetSelected` advances the fixed widget frontier exactly
+  once, installs the immediate-last receipt, and releases both the page payload and prepared batch
+  only after every page, progress receipt, final staging head, and final candidate-session endpoint
+  is proven. Partial occupancy, target disagreement, or collision makes the operation fail closed
+  and cannot be treated as page replay. The one-
   physical-page small-keystroke path calls this same batch boundary with one element.
-- Cancellation observed before batch admission produces no batch effect and releases the
-  unadmitted request only through the widget's terminal cancellation path. Cancellation after an
-  indeterminate command waits for exact source/target/partial batch reconciliation before terminal
+- Cancellation may discard the retained page and prepared command only while the exact command is
+  still unadmitted and reconciliation selects its source closure with every target key absent. It
+  produces no batch effect and releases that exact request only through the widget's terminal pre-
+  admission cancellation path. Cancellation after an indeterminate command waits for exact source/
+  target/partial batch reconciliation before terminal
   handling and cannot retract a selected target. `Indeterminate` remains custody, not a sixth
-  widget outcome. After authenticated finish, the host completes both copy-on-write piece-tree and
-  marker-identity-index successors under the exact `(draft, session, operation)` build/root identity
-  and submits one atomic candidate-adoption command.
+  widget outcome. After authenticated finish, the host supplies no prior widget page, proposal
+  prefix, fragment bytes, or app-built reconstruction. It drives `syndic-storage` only by the exact
+  `(draft, session, operation)` build endpoint while storage derives each next bounded staging
+  window from durable custody. Each command consumes at most 256 physical pages/items under storage's
+  520-read and 34,078,720-byte acquisition ceilings, independently admits at most 256 fragments and
+  65,536 inserted UTF-8 bytes, and advances a nonempty source-only window even when it produces no
+  fragment. Storage completes both copy-on-write piece-tree and marker-identity-index successors and
+  exposes one atomic candidate-adoption command. The app retains only the current
+  endpoint and terminal intent while that durable builder runs.
 - Every admitted draft edit reaches exactly one durable `Committed`, `Rejected`, `Conflict`,
   `Cancelled`, or `Error` settlement. An indeterminate command remains reconciliation custody rather
   than a sixth result; the host preserves the last coherent projection and exact operation intent,
@@ -191,7 +214,9 @@ Keep independent main-window presentation responsive while process-wide services
   replay. Only `Committed` means the host durably and exactly adopted the immutable successor into
   that editor candidate session and may return its root, extent, caret, and selection facts to the
   widget. It does not publish the current-draft selector. Every other settlement adopts none of that
-  edit, and the widget releases all staged fragments at terminal settlement.
+  edit. Widget-page payloads were already released at their individual `TargetSelected` frontiers;
+  terminal settlement releases only the fixed endpoint, intent, and settlement custody retained for
+  the operation.
 - Build, root, settlement, and indeterminate custody are all session-qualified. Abandoning a
   crashed session releases its app custody and cannot occupy or block the natural identities of the
   fresh session opened from the durable selector.
