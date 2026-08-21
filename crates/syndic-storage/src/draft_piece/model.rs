@@ -533,6 +533,27 @@ impl DraftEditorCandidateSessionV1 {
         Some(next)
     }
 
+    pub(crate) fn staging_to_building_at_transition(
+        &self,
+        expected_staging: &DraftEditorActiveOperationV1,
+        target_building: DraftEditorActiveOperationV1,
+        transition_ordinal: u64,
+    ) -> Option<Self> {
+        if transition_ordinal == 0
+            || self.lifecycle != DraftEditorCandidateSessionLifecycleV1::Active
+            || self.active_operation.as_ref() != Some(expected_staging)
+            || !expected_staging.is_staging()
+            || !target_building.is_building()
+            || !expected_staging.same_operation(&target_building)
+        {
+            return None;
+        }
+        let mut next = self.clone();
+        next.session_generation = next.session_generation.checked_add(transition_ordinal)?;
+        next.active_operation = Some(target_building);
+        Some(next)
+    }
+
     pub(crate) fn advance_active_operation(
         &self,
         expected: &DraftEditorActiveOperationV1,

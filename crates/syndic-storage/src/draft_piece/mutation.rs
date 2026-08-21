@@ -1095,13 +1095,24 @@ fn expected_active_session(
     prepared: &PreparedDraftPieceEditV1,
     build: &DraftPieceBuildRecordV1,
 ) -> Result<DraftEditorCandidateSessionV1, SyndicMutationError> {
-    prepared
-        .source_session()
-        .with_active_operation_at_transition(
-            build.progress_receipt().key().transition_ordinal(),
-            custody_for(build),
-        )
-        .ok_or(SyndicMutationError::IdentityCollision)
+    let source = prepared.source_session();
+    let transition_ordinal = build.progress_receipt().key().transition_ordinal();
+    let target = custody_for(build);
+    match source.active_operation() {
+        None => source
+            .with_active_operation_at_transition(transition_ordinal, target)
+            .ok_or(SyndicMutationError::IdentityCollision),
+        Some(staging)
+            if source.draft_id() == build.draft_id()
+                && source.session_id() == build.session_id()
+                && staging.same_operation(&target) =>
+        {
+            source
+                .staging_to_building_at_transition(staging, target, transition_ordinal)
+                .ok_or(SyndicMutationError::IdentityCollision)
+        }
+        Some(_) => Err(SyndicMutationError::IdentityCollision),
+    }
 }
 
 fn authenticate_progress_receipt(

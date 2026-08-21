@@ -106,8 +106,6 @@
   because the target slice is absent, and admits no media-less fallback.
 - Large drafts and marker collections remain logically unbounded. Their final editor, storage, and
   presentation paths must be range-backed and paged; no whole-value compatibility path is allowed.
-- Until composer-history retention eviction is implemented, ordinary candidate adoption remains
-  unavailable at the configured encoded-byte budget instead of exceeding it or dropping a link.
 - During the active cutover, Syndic V5 registers only implemented families; deferred materializer
   and repair families join in their owning phases rather than existing as empty placeholders.
 

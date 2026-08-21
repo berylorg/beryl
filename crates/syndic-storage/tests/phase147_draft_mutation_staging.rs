@@ -23,7 +23,8 @@ use syndic_storage::test_faults::{
     inject_draft_mutation_staging_page_digest_corruption,
     inject_draft_mutation_staging_receipt_digest_corruption,
     inject_draft_mutation_terminal_same_operation_custody,
-    inject_draft_piece_candidate_root_collision, inject_draft_piece_session_generation_inflation,
+    inject_draft_piece_candidate_root_collision, inject_draft_piece_custody_endpoint_corruption,
+    inject_draft_piece_session_generation_inflation,
 };
 use syndic_storage::{
     CreateThread, DraftComposerBuildKeyV1, DraftComposerFormatV1,
@@ -38,8 +39,9 @@ use syndic_storage::{
     DraftMutationStagingLifecycleV1, DraftMutationStagingPageItemV1,
     DraftMutationStagingReconcileV1, DraftMutationStagingRejectedReasonV1,
     DraftMutationStagingStatusV1, DraftMutationStagingTerminalAnchorV1,
-    DraftMutationStagingTerminalEvidenceV1, DraftPieceEditHeaderV1, DraftPieceOperationIdV1,
-    DraftPieceReplacementV1, DraftPieceTextDemandV1, DraftPieceV1, SyndicPointReadLimit,
+    DraftMutationStagingTerminalEvidenceV1, DraftPieceEditHeaderV1, DraftPieceErrorReasonV1,
+    DraftPieceOperationIdV1, DraftPieceRejectedReasonV1, DraftPieceReplacementV1,
+    DraftPieceTextDemandV1, DraftPieceV1, PreparedDraftPieceEditV1, SyndicPointReadLimit,
     SyndicStorage, SyndicTimestamp, canonical_draft_piece_fragment_chain_v1,
     canonical_empty_draft_piece_fragment_chain_v1, draft_piece_fragment_chain_link_v1,
 };
@@ -187,6 +189,8 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
     let transfer = storage
         .prepare_draft_mutation_staging_transfer(&head, &session)
         .unwrap();
+    let settlement = transfer.prepared_edit().clone();
+    let settlement_replay = settlement.clone();
     let transfer_replay = transfer.clone();
     assert!(matches!(
         storage
@@ -239,7 +243,152 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
             .unwrap()
             .is_none()
     );
+    while let Some(advance) = storage
+        .prepare_draft_piece_build_advance(
+            &store,
+            identity.draft_id(),
+            identity.session_id(),
+            identity.operation_id().as_piece_operation(),
+        )
+        .unwrap()
+    {
+        committed(execute(
+            &store,
+            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+        ));
+    }
+    committed(execute(
+        &store,
+        storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), settlement),
+    ));
+    replay_succeeded(execute(
+        &store,
+        storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), settlement_replay),
+    ));
+    let DraftEditorCandidateSessionReadOutcomeV1::Active(settled_session) = storage
+        .draft_editor_candidate_session(&store, identity.draft_id(), identity.session_id())
+        .unwrap()
+    else {
+        panic!("candidate session was not active after settlement");
+    };
+    assert!(settled_session.active_operation().is_none());
+    assert_eq!(
+        settled_session.newest_candidate_generation(),
+        session.newest_candidate_generation() + 1
+    );
+    assert_ne!(settled_session.newest_root(), session.newest_root());
+    assert_ne!(settled_session.newest_history(), session.newest_history());
     assert_eq!(current(storage, &store, thread), before);
+    drop(store);
+    let mut reopened =
+        HomeStore::open(HomeOpenOptions::new(&_home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    assert_eq!(
+        active_session(
+            &reopened_storage,
+            &reopened,
+            settled_session.draft_id(),
+            settled_session.session_id(),
+        ),
+        settled_session
+    );
+    assert_eq!(current(reopened_storage, &reopened, thread), before);
+}
+
+#[test]
+fn transferred_terminal_settlements_clear_building_custody_and_replay() {
+    let (_home, store, storage, thread) = fixture("transferred-terminals", 7);
+    let before = current(storage, &store, thread);
+    let mut session = open_session(storage, &store, &before, 8, 9);
+
+    let cancelled = transfer_single_staged_piece(&storage, &store, &session, 10);
+    let cancelled_replay = cancelled.clone();
+    committed(execute(
+        &store,
+        storage.cancel_draft_piece_edit(storage.revision(&store).unwrap(), cancelled),
+    ));
+    replay_succeeded(execute(
+        &store,
+        storage.cancel_draft_piece_edit(storage.revision(&store).unwrap(), cancelled_replay),
+    ));
+    session = active_session(&storage, &store, session.draft_id(), session.session_id());
+    assert!(session.active_operation().is_none());
+
+    let rejected = transfer_single_staged_piece(&storage, &store, &session, 11);
+    let rejected_replay = rejected.clone();
+    committed(execute(
+        &store,
+        storage.reject_draft_piece_edit(
+            storage.revision(&store).unwrap(),
+            rejected,
+            DraftPieceRejectedReasonV1::InvalidGapWitness,
+        ),
+    ));
+    replay_succeeded(execute(
+        &store,
+        storage.reject_draft_piece_edit(
+            storage.revision(&store).unwrap(),
+            rejected_replay,
+            DraftPieceRejectedReasonV1::InvalidGapWitness,
+        ),
+    ));
+    session = active_session(&storage, &store, session.draft_id(), session.session_id());
+    assert!(session.active_operation().is_none());
+
+    let errored = transfer_single_staged_piece(&storage, &store, &session, 12);
+    let errored_replay = errored.clone();
+    committed(execute(
+        &store,
+        storage.error_draft_piece_edit(
+            storage.revision(&store).unwrap(),
+            errored,
+            DraftPieceErrorReasonV1::ResourceLimit,
+        ),
+    ));
+    replay_succeeded(execute(
+        &store,
+        storage.error_draft_piece_edit(
+            storage.revision(&store).unwrap(),
+            errored_replay,
+            DraftPieceErrorReasonV1::ResourceLimit,
+        ),
+    ));
+    session = active_session(&storage, &store, session.draft_id(), session.session_id());
+    assert!(session.active_operation().is_none());
+    assert_eq!(session.newest_candidate_generation(), 0);
+    assert_eq!(current(storage, &store, thread), before);
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn transferred_settlement_rejects_corrupt_building_custody_and_generation() {
+    let corruptions: [fn(
+        &HomeStore,
+        SyndicStorage,
+        SyndicDraftId,
+        DraftEditorCandidateSessionIdV1,
+    ) -> MutationContribution; 2] = [
+        inject_draft_piece_custody_endpoint_corruption,
+        inject_draft_piece_session_generation_inflation,
+    ];
+    for (index, corrupt) in corruptions.into_iter().enumerate() {
+        let (_home, store, storage, thread) = fixture("transferred-corruption", 13 + index as u8);
+        let before = current(storage, &store, thread);
+        let session = open_session(storage, &store, &before, 16 + index as u8, 17 + index as u8);
+        let settlement = transfer_single_staged_piece(&storage, &store, &session, 18 + index as u8);
+        committed(execute(
+            &store,
+            corrupt(&store, storage, session.draft_id(), session.session_id()),
+        ));
+        assert!(matches!(
+            execute(
+                &store,
+                storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), settlement),
+            ),
+            CommandOutcome::NotCommitted { .. }
+        ));
+        assert_eq!(current(storage, &store, thread), before);
+    }
 }
 
 #[test]
@@ -1968,6 +2117,103 @@ fn advance_candidate(
     {
         DraftEditorCandidateSessionReadOutcomeV1::Active(head) => head,
         other => panic!("candidate did not advance: {other:?}"),
+    }
+}
+
+fn transfer_single_staged_piece(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    session: &DraftEditorCandidateSessionV1,
+    operation: u8,
+) -> PreparedDraftPieceEditV1 {
+    let identity = staging_identity(session, operation);
+    let begin = storage
+        .prepare_draft_mutation_staging_begin(begin_input(identity, session), session)
+        .unwrap();
+    let mut active = begin.target_session().unwrap().clone();
+    committed(execute(
+        store,
+        storage.draft_mutation_staging_command(storage.revision(store).unwrap(), begin),
+    ));
+    let replacement =
+        DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Text("x".to_owned())]);
+    let chain = draft_piece_fragment_chain_link_v1(
+        canonical_empty_draft_piece_fragment_chain_v1(),
+        1,
+        &replacement,
+    );
+    let head = storage
+        .draft_mutation_staging_head(store, identity)
+        .unwrap()
+        .unwrap();
+    let page = storage
+        .prepare_draft_mutation_staging_page(
+            &head,
+            &active,
+            DraftMutationStagingLaneV1::Proposal,
+            1,
+            256,
+            65_536,
+            Box::new([DraftMutationStagingPageItemV1::Proposal(replacement)]),
+        )
+        .unwrap();
+    active = page.target_session().unwrap().clone();
+    committed(execute(
+        store,
+        storage.draft_mutation_staging_command(storage.revision(store).unwrap(), page),
+    ));
+    let head = storage
+        .draft_mutation_staging_head(store, identity)
+        .unwrap()
+        .unwrap();
+    let finish = storage
+        .prepare_draft_mutation_staging_finish(
+            &head,
+            &active,
+            DraftMutationFinishInputV1::new(
+                head.source(),
+                head.proposal(),
+                DraftLogicalExtentV1::new(1, 1),
+                point(1),
+                point(1),
+                point(1),
+                chain,
+            ),
+        )
+        .unwrap();
+    active = finish.target_session().unwrap().clone();
+    committed(execute(
+        store,
+        storage.draft_mutation_staging_command(storage.revision(store).unwrap(), finish),
+    ));
+    let head = storage
+        .draft_mutation_staging_head(store, identity)
+        .unwrap()
+        .unwrap();
+    let transfer = storage
+        .prepare_draft_mutation_staging_transfer(&head, &active)
+        .unwrap();
+    let prepared = transfer.prepared_edit().clone();
+    committed(execute(
+        store,
+        storage
+            .transfer_draft_mutation_staging_to_builder(storage.revision(store).unwrap(), transfer),
+    ));
+    prepared
+}
+
+fn active_session(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    draft_id: SyndicDraftId,
+    session_id: DraftEditorCandidateSessionIdV1,
+) -> DraftEditorCandidateSessionV1 {
+    match storage
+        .draft_editor_candidate_session(store, draft_id, session_id)
+        .unwrap()
+    {
+        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
+        other => panic!("candidate session was not active: {other:?}"),
     }
 }
 
