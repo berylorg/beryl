@@ -1719,6 +1719,36 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
             });
         }
     };
+    let closure = decode_settlement_closure(&mut d)?;
+    let value = DraftPieceSettlementV1::new_boxed(
+        key,
+        proposal,
+        predecessor_candidate_generation,
+        predecessor_root,
+        predecessor_history,
+        fragment_count,
+        fragment_chain,
+        predecessor_caret,
+        predecessor_selection,
+        caret,
+        selection,
+        build_digest,
+        canonical_header,
+        terminal_source,
+        terminal_receipt,
+        outcome,
+        closure,
+    );
+    d.finish()?;
+    if !settlement_closure_is_exact(&value) {
+        return Err(CodecError::InvalidLength("draft-piece settlement closure"));
+    }
+    Ok(value)
+}
+
+fn decode_settlement_closure(
+    mut d: &mut Decoder<'_>,
+) -> Result<Box<DraftPieceSettlementClosureV1>, CodecError> {
     let closure = match d.u8()? {
         0 => DraftPieceSettlementClosureV1::Committed(DraftPieceCommittedAdoptionV1::new(
             dec_session_head(&mut d)?,
@@ -1778,30 +1808,7 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
             });
         }
     };
-    let value = DraftPieceSettlementV1::new(
-        key,
-        proposal,
-        predecessor_candidate_generation,
-        predecessor_root,
-        predecessor_history,
-        fragment_count,
-        fragment_chain,
-        predecessor_caret,
-        predecessor_selection,
-        caret,
-        selection,
-        build_digest,
-        canonical_header,
-        terminal_source,
-        terminal_receipt,
-        outcome,
-        closure,
-    );
-    d.finish()?;
-    if !settlement_closure_is_exact(&value) {
-        return Err(CodecError::InvalidLength("draft-piece settlement closure"));
-    }
-    Ok(value)
+    Ok(Box::new(closure))
 }
 
 fn encode_marker_identity_record(

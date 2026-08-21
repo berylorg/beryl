@@ -1199,7 +1199,7 @@ pub fn inject_draft_piece_settlement_closure_corruption(
             ))
         }
     };
-    let corrupted = DraftPieceSettlementV1::new(
+    let corrupted = DraftPieceSettlementV1::new_boxed(
         settlement.key(),
         settlement.proposal_digest(),
         settlement.predecessor_candidate_generation(),
@@ -1216,7 +1216,7 @@ pub fn inject_draft_piece_settlement_closure_corruption(
         settlement.terminal_source().cloned(),
         settlement.terminal_receipt(),
         settlement.outcome().clone(),
-        closure,
+        Box::new(closure),
     );
     storage.handle.contribution(
         storage

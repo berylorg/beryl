@@ -13,6 +13,11 @@ the floor directly from a 64-slot ancestor witness but overextended ordinary rea
 re-proving every committed skip derivation and root adjacency so they could detect coordinated
 digest-valid post-commit rewrites.
 
+The first app integration translated one bounded widget page into separate physical storage-page
+commands and accepted older widget ordinals as replay without exact comparison. It also passed the
+large by-value settlement closure through branch-heavy app and storage call chains, assuming the
+ordinary worker stack was sufficient.
+
 ## Decisive Evidence
 
 A whole-operation collection makes edit and undo capacity depend on arbitrary fragment count and
@@ -30,6 +35,13 @@ per level merely moves the same question downward. When transition, frontier, se
 anchors all come from the same database, they cannot promise detection of hostile replacement,
 cosmic bit flips, arbitrary I/O/media corruption, or another fully self-consistent digest-valid
 rewrite. That machinery complicated normal logic without strengthening the stated trust boundary.
+
+A widget page can split into as many as 257 physical storage pages. Separate commands can publish a
+durable prefix before local widget-frontier rejection, while released payload leaves the app unable
+to reconcile that prefix as one widget-page effect. Native first-chance debugging of the first
+one-fragment edit separately proved no recursion: oversized production frames exhausted the 2 MiB
+worker stack, led by app execution, storage status, and settlement decode frames of roughly 604 KiB,
+434 KiB, and 203 KiB. The test payload was not causal.
 
 ## Accepted Correction
 
@@ -57,6 +69,16 @@ roles. Floor advancement remains logical-only and copies or physically deletes n
 node, leaf, or content. No proof field, record, family, index, pin family, single-lineage restriction,
 or compatibility path is added.
 
+One widget page is prevalidated before translation and admitted through one bounded atomic storage
+batch over the existing staging page, progress, head, and session families. Immediate exact replay
+uses the widget protocol's fixed last-page receipt; older pages are obsolete and differing reuse is
+a collision. Caller payload is released only after complete batch acceptance or reconciliation.
+
+Large settlement closure state is heap-indirected without changing canonical durable bytes, and
+mutually exclusive execution or status branches are split only when measured frames still require
+it. Default-stack verification is required; increasing `RUST_MIN_STACK` or moving only fixture data
+is not an accepted correction.
+
 ## Affected Authority And Plan
 
 The correction is authoritative in `doc/systems/syndic-conversation-history/design.md` and
@@ -65,6 +87,10 @@ The correction is authoritative in `doc/systems/syndic-conversation-history/desi
 selection, local ordinary-read validation, exact atomic replay/reconciliation, and unchanged live
 family inventory.
 
+Root `doc/plan.md` Phases 150-153 separately own stack-residency correction, atomic widget-page
+storage authority, storage implementation, and resumed app integration.
+
 The remaining normal-logic risks are malformed witness construction at admission, partial atomic-
-closure classification, cumulative threshold/floor off-by-one errors, and allowing a global-order
-hint or sibling to influence selected-head lifting.
+closure classification, cumulative threshold/floor off-by-one errors, allowing a global-order hint
+or sibling to influence selected-head lifting, partial physical-page batch publication, and future
+by-value expansion of large settlement closures.

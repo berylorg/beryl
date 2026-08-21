@@ -1600,7 +1600,7 @@ pub struct DraftPieceReplacementV1 {
 }
 
 impl DraftPieceReplacementV1 {
-    pub fn new(
+    pub const fn new(
         start: DraftCompositePositionV1,
         end: DraftCompositePositionV1,
         inserted: Vec<DraftPieceV1>,
@@ -2588,11 +2588,11 @@ pub struct DraftPieceSettlementV1 {
     terminal_source: Option<DraftPieceBuildRecordV1>,
     terminal_receipt: DraftPieceBuildProgressReceiptReferenceV1,
     outcome: DraftPieceSettlementOutcomeV1,
-    closure: DraftPieceSettlementClosureV1,
+    closure: Box<DraftPieceSettlementClosureV1>,
 }
 
 impl DraftPieceSettlementV1 {
-    pub const fn new(
+    pub fn new(
         key: DraftPieceSettlementKeyV1,
         proposal_digest: DraftPieceDigestV1,
         predecessor_candidate_generation: u64,
@@ -2610,6 +2610,46 @@ impl DraftPieceSettlementV1 {
         terminal_receipt: DraftPieceBuildProgressReceiptReferenceV1,
         outcome: DraftPieceSettlementOutcomeV1,
         closure: DraftPieceSettlementClosureV1,
+    ) -> Self {
+        Self {
+            key,
+            proposal_digest,
+            predecessor_candidate_generation,
+            predecessor_root,
+            predecessor_history,
+            fragment_count,
+            fragment_chain,
+            predecessor_caret,
+            predecessor_selection,
+            caret,
+            selection,
+            build_digest,
+            canonical_header,
+            terminal_source,
+            terminal_receipt,
+            outcome,
+            closure: Box::new(closure),
+        }
+    }
+
+    pub(crate) fn new_boxed(
+        key: DraftPieceSettlementKeyV1,
+        proposal_digest: DraftPieceDigestV1,
+        predecessor_candidate_generation: u64,
+        predecessor_root: DraftPieceRootReferenceV1,
+        predecessor_history: DraftEditHistoryFrontierReferenceV1,
+        fragment_count: u64,
+        fragment_chain: DraftPieceDigestV1,
+        predecessor_caret: DraftCompositePositionV1,
+        predecessor_selection: DraftCompositePositionV1,
+        caret: DraftCompositePositionV1,
+        selection: DraftCompositePositionV1,
+        build_digest: Option<DraftPieceDigestV1>,
+        canonical_header: Vec<u8>,
+        terminal_source: Option<DraftPieceBuildRecordV1>,
+        terminal_receipt: DraftPieceBuildProgressReceiptReferenceV1,
+        outcome: DraftPieceSettlementOutcomeV1,
+        closure: Box<DraftPieceSettlementClosureV1>,
     ) -> Self {
         Self {
             key,

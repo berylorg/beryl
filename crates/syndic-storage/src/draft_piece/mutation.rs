@@ -1921,7 +1921,7 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
                             caret: build.caret(),
                             selection: build.selection(),
                         },
-                        DraftPieceSettlementClosureV1::Committed(
+                        Box::new(DraftPieceSettlementClosureV1::Committed(
                             DraftPieceCommittedAdoptionV1::new(
                                 current.clone(),
                                 next.clone(),
@@ -1930,7 +1930,7 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
                                 transition,
                                 adopted_history,
                             ),
-                        ),
+                        )),
                         DraftPieceBuildLifecycleV1::Committed,
                         next,
                     )
@@ -1943,13 +1943,13 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
                         DraftPieceSettlementOutcomeV1::Error(
                             DraftPieceErrorReasonV1::HistoryCapacityUnavailable,
                         ),
-                        DraftPieceSettlementClosureV1::Noncommit(
+                        Box::new(DraftPieceSettlementClosureV1::Noncommit(
                             DraftPieceNoncommitClosureV1::new(
                                 cleared.clone(),
                                 observed_history,
                                 build.successor(),
                             ),
-                        ),
+                        )),
                         DraftPieceBuildLifecycleV1::Error,
                         cleared,
                     )
@@ -1968,10 +1968,12 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
                     current_root: current.newest_root(),
                     current_history: current.newest_history(),
                 },
-                DraftPieceSettlementClosureV1::Noncommit(DraftPieceNoncommitClosureV1::new(
-                    cleared.clone(),
-                    observed_history,
-                    build.successor(),
+                Box::new(DraftPieceSettlementClosureV1::Noncommit(
+                    DraftPieceNoncommitClosureV1::new(
+                        cleared.clone(),
+                        observed_history,
+                        build.successor(),
+                    ),
                 )),
                 DraftPieceBuildLifecycleV1::Conflict,
                 cleared,
@@ -1979,7 +1981,7 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
         };
         let (terminal, receipt) =
             terminal_build(&build, lifecycle, source_receipt.fragment_endpoint())?;
-        let settlement = DraftPieceSettlementV1::new(
+        let settlement = DraftPieceSettlementV1::new_boxed(
             key,
             build.proposal_digest(),
             build.predecessor_candidate_generation(),
@@ -2121,7 +2123,7 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             let cleared = claimed
                 .clear_active_operation(&custody_for(&build))
                 .ok_or(SyndicMutationError::IdentityCollision)?;
-            let settlement = DraftPieceSettlementV1::new(
+            let settlement = DraftPieceSettlementV1::new_boxed(
                 settlement_key(&self.prepared),
                 self.prepared.proposal_digest(),
                 header.predecessor_candidate_generation(),
@@ -2138,10 +2140,12 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
                 None,
                 receipt.reference(),
                 outcome,
-                DraftPieceSettlementClosureV1::Noncommit(DraftPieceNoncommitClosureV1::new(
-                    cleared.clone(),
-                    authenticated_history_frontier(reader, cleared.newest_history())?,
-                    None,
+                Box::new(DraftPieceSettlementClosureV1::Noncommit(
+                    DraftPieceNoncommitClosureV1::new(
+                        cleared.clone(),
+                        authenticated_history_frontier(reader, cleared.newest_history())?,
+                        None,
+                    ),
                 )),
             );
             put_build_transition(mutations, &build, &receipt)?;
@@ -2180,7 +2184,7 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             .ok_or(SyndicMutationError::IdentityCollision)?;
         let (terminal, receipt) =
             terminal_build(&build, lifecycle, source_receipt.fragment_endpoint())?;
-        let settlement = DraftPieceSettlementV1::new(
+        let settlement = DraftPieceSettlementV1::new_boxed(
             settlement_key(&self.prepared),
             build.proposal_digest(),
             build.predecessor_candidate_generation(),
@@ -2197,10 +2201,12 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             Some(build.clone()),
             receipt.reference(),
             outcome,
-            DraftPieceSettlementClosureV1::Noncommit(DraftPieceNoncommitClosureV1::new(
-                cleared.clone(),
-                authenticated_history_frontier(reader, cleared.newest_history())?,
-                build.successor(),
+            Box::new(DraftPieceSettlementClosureV1::Noncommit(
+                DraftPieceNoncommitClosureV1::new(
+                    cleared.clone(),
+                    authenticated_history_frontier(reader, cleared.newest_history())?,
+                    build.successor(),
+                ),
             )),
         );
         put_session_head(mutations, &cleared)?;
