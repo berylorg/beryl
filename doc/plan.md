@@ -29,23 +29,12 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 150: Reduce Composer Mutation Stack Residency (finished)
+# Phase 151: Define Atomic Widget-Page Storage Admission (finished)
 
-Heap-indirected the private settlement closure without changing canonical durable bytes, retained
-the value-based public constructor except for its Operator-approved unused `const` qualifier, and
-reduced the measured dominant frames enough for the exact and full Phase 143 targets to pass on the
-default stack. Storage settlement regressions and both library checks passed; independent acceptance
-approved the source, codec and API boundary.
-
-# Phase 151: Define Atomic Widget-Page Storage Admission (pending)
-
-Reconcile system, storage-package and app authority around one bounded widget page that translates
-to a nonempty batch of at most 257 existing physical staging pages. Define one atomic Syndic
-prepare/mutation/reconciliation closure over every page and progress receipt plus the final head and
-session, exact source/target/partial/collision classification, checked aggregate bounds, immediate
-exact replay and older-page obsolescence, and payload release only after complete acceptance. Reuse
-the existing staging families and durable codecs; add no new family, compatibility path or
-operation-wide history.
+Reconciled the system, storage-package and app authority around one atomic bounded widget-page
+admission using only existing staging families and codecs. Exact chunking proves the 257-page cap;
+source/target reconciliation, replay, cancellation and payload-custody contracts are closed, and
+independent completion review approved the authority.
 
 # Phase 152: Implement Atomic Bounded Staging Page Batches (pending)
 

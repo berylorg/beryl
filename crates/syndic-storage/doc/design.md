@@ -89,6 +89,21 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   reading transcript-view pages, reading projection records, reading resource metadata, and reading
   resource byte ranges, plus reading bounded logical UTF-8 pages from one exact sealed content
   reference.
+- The public pre-finish page boundary is one storage-neutral batch preparation, mutation-
+  contribution, and reconciliation family. Preparation consumes one authenticated source staging
+  head, its matching editor-candidate session, and one nonempty boxed slice of physical-page inputs;
+  it returns one opaque prepared batch owning the exact source closure, every canonical target page
+  and matching progress receipt, the final head and session, and checked aggregate counts. The
+  mutation operation uses that prepared value for one Syndic `DomainMutation` contribution without
+  materializing another page collection. Reconciliation uses the same bounded prepared closure and returns only
+  `SourceSelected` or `TargetSelected`; invalid, overflow, occupied-identity, partial, or corrupt
+  closures return typed errors and no successor authority. These APIs contain no GPUI or widget
+  type.
+- The batch boundary reuses `DraftMutationStagingHeadV1`, `DraftMutationStagingPageV1`,
+  `DraftMutationStagingProgressReceiptV1`, `DraftEditorCandidateSessionV1`, their existing canonical
+  codecs, and their existing three staging families plus the candidate-session family. It adds no
+  persisted family, record tag, command kind, schema version, widget-page identity, compatibility
+  adapter, or operation-wide durable history.
 - The package exposes checked maximum mutation-footprint descriptors for exactly two public durable-
   start operations: idle draft submission and accepted-input promotion. Each descriptor derives
   its maximum record count and encoded key-plus-value bytes from the operation's package-owned V5
@@ -384,9 +399,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   comparison witness with the natural key, stored and requested canonical digests, first differing
   byte offset, and stored/requested byte-or-end values. Every form states exact absence of candidate
   adoption. The receipt
-  contains no page bytes. Begin, each page, finish, pre-build terminal election, and finish-to-build
-  transfer each append exactly one such receipt and atomically advance the staging head and session
-  custody as applicable. The receipt digest is SHA-256 over the length-prefixed exact ASCII domain
+  contains no page bytes. Begin, finish, pre-build terminal election, and finish-to-build transfer
+  each append exactly one such receipt. A physical-page batch appends exactly one existing
+  source- or proposal-page receipt for each page, chains those receipts consecutively, and
+  atomically publishes only the final staging-head and candidate-session custody endpoints. No
+  intermediate mutable head or session endpoint is written or observable. The receipt digest is
+  SHA-256 over the length-prefixed exact ASCII domain
   `syndic/draft-mutation-staging-progress-receipt/v1`, canonical key, and every preceding canonical
   receipt field, including its before/after head digests; it is a commitment and never substitutes
   for byte comparison of a point-read target closure. Excluding only the selected receipt digest
@@ -1492,16 +1510,55 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   marker, identity-index-root, and combined-root digests. A text leaf contains at least one complete UTF-8 scalar and no
   more payload than its codec-derived record ceiling; a sequence marker leaf contains exactly one
   bounded marker identity, order key, and label.
-- One pre-finish mutation-page command admits exactly one source or proposal page with at most 256
-  canonical entries and a complete encoded page value of at most 65,536 bytes. It writes that one
-  immutable page, one fixed-size staging-progress receipt, the compact staging-head successor, and
-  the candidate-session custody successor in one atomic command. Begin, finish, and pre-build
-  terminal commands carry no page value and write only their bounded head/receipt/session closure.
-  Preparation and reconciliation retain at most one caller page, one stored page value, and one
-  fixed head/receipt/session command closure at a time; the app serializes one in-flight command and
-  retains no accepted payload. Source and proposal lane ordinals, item totals, and canonical-byte
-  totals are checked `u64`; there is no smaller or hardcoded cumulative cap below any representable
-  checked-`u64` total, and checked overflow rejects without partial acceptance.
+- One pre-finish mutation-page batch admits from one through 257 existing source or proposal pages.
+  Every page belongs to the source head's operation and one common lane, is nonempty, has a positive
+  item ceiling no greater than 256, contains no more items than that ceiling, and has a positive byte
+  ceiling and complete encoded page value no greater than 65,536 bytes. Page keys, one-based lane
+  ordinals and transition ordinals, input and successor cursors, prior and successor cumulative
+  identities, and checked cumulative totals must be consecutive from the source head. The batch's
+  checked maxima are 257 pages, 65,792 canonical entries, and 16,842,752 complete encoded page
+  bytes; any page or aggregate overflow or excess rejects before mutation.
+- Batch preparation locally validates the supplied source staging head, its selected receipt
+  reference, and matching candidate-session `Staging` custody, then derives each page and matching
+  progress receipt in order from the prior derived frontier and derives one final head and
+  candidate-session endpoint. The prepared value retains only this one bounded batch in boxed or
+  slice-owned pages and receipts plus fixed source/final closure; it never retains an operation-wide
+  collection. Begin, finish, and pre-build terminal commands carry no page value and continue to
+  write only their bounded head/receipt/session closure.
+- One Syndic domain mutation contribution reserves and writes every page and progress receipt in
+  the prepared batch and replaces the mutable staging head and candidate-session head only with
+  their final endpoints. On the one writer snapshot it authenticates the stored source head and
+  selected receipt closure and validates the matching source session exactly once, then requires
+  every target page and receipt key to be absent. Home-store assembles that single participant on
+  the same snapshot. A maximum batch contributes 516 Syndic record mutations: 257 pages, 257
+  receipts, one final staging head, and one final candidate-session head. Home-store recomputes the
+  exact aggregate record, encoded-key, and encoded-value counts with checked arithmetic before
+  admitting its atomic Fjall batch, so the command commits the complete batch or none of it. The
+  production profile's existing 16,384-record, 32-MiB encoded-key, and 64-MiB encoded-value ceilings
+  accommodate this fixed maximum without widening that dependency contract. No committed prefix,
+  intermediate head, or intermediate session endpoint can be observed after success, failure,
+  cancellation, crash, or any persistence cut. The one-page fast path uses this same batch
+  preparation and contribution with a one-element slice.
+- Source and proposal lane ordinals, item totals, canonical-byte totals, batch page totals, and
+  aggregate encoded bytes use checked arithmetic. There is no smaller cumulative operation cap
+  below any representable checked-`u64` lane total and no operation-wide 256/257 limit. Preparation
+  custody retains caller payload until complete batch acceptance or exact target reconciliation;
+  neither a source-selected retry state nor an indeterminate or fail-closed closure authorizes
+  payload release.
+- Batch reconciliation returns `SourceSelected` only when the stored head and candidate session are
+  byte-equal to the complete prepared source closure and every target page and receipt key is
+  absent. It returns `TargetSelected` only when the stored head and candidate session are byte-equal
+  to the prepared final endpoints and every page and receipt in the batch is canonically byte-equal
+  to its prepared target. A byte-equal prefix is still partial occupancy. Any partial occupancy,
+  replaced, missing, forked, or ahead page, receipt, head, or session, source/target disagreement,
+  or occupied natural target identity while the source is selected is collision or corruption and
+  fails closed without mutation. Digests may reject inequality early but never replace complete
+  canonical byte comparison.
+- Cancellation before home-store admits the batch command produces no batch effect. Once a command
+  is admitted, cancellation cannot classify or retract it. `Indeterminate` carries sole command
+  custody rather than a third reconciliation result or sixth public edit outcome; exact batch
+  reconciliation must establish source selection, target selection, or fail-closed partial state
+  before the caller performs cancellation or any other terminal handling.
 - The finish-to-builder command contributes exactly five Syndic record effects: one immutable
   staging-transfer receipt, one immutable ordinal-one `DraftPieceBuildProgressReceiptV1`, one
   staging-head successor selecting `Building`, one initial draft-piece build-head successor, and
@@ -1532,9 +1589,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   proposal pages use checked `u64` cursors, counts, lengths, and cumulative canonical identities;
   explicit finish-input fixes the final totals in the staging head before any build exists. One
   logical edit may consume any representable number of pages without a whole-operation collection
-  or a special 256/257 boundary. Accepted caller payloads are released after the immutable staging
-  page, target receipt, head, session custody, and cumulative identity are durable. Later build and
-  reconciliation read those staged records in bounded pages rather than asking the caller to
+  or a special cumulative 256/257 boundary. One widget-page payload is released only after its
+  complete physical-page batch, every target receipt, final head, final session custody, and
+  cumulative identity are durable or exact target reconciliation proves that closure. Later build
+  and reconciliation read those staged records in bounded pages rather than asking the caller to
   retain or resupply them.
 - Edit-history transition, frontier, stack-link, and historical-root-adoption values each fit the
   65,536-byte value ceiling and contain only compact roots, positions, links, counters, policy, and
@@ -1764,12 +1822,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `MutationBeginV1` is admitted only against the exact active session generation and predecessor
   candidate/root/history pair with an absent custody slot and absent staging/build/settlement/root
   natural keys. It atomically writes ordinal-one staging receipt and receiving head and installs
-  `Staging` custody. A page command must name the head-selected source receipt, exact lane frontier,
-  next cursor and ordinal, prior cumulative identity, and absent target page/receipt. It atomically
-  appends the page and receipt and advances the head and slot endpoint. A source-selecting head with
-  any occupied target is corruption. A target-selecting head proves exact replay only when head,
-  receipt, page when any, and custody bytes equal the complete proposed target closure; any
-  disagreement is collision/noncommit for that mismatching request and changes nothing.
+  `Staging` custody. A page-batch command names the head-selected source receipt, exact lane
+  frontier, and one through 257 consecutive page inputs. Preparation derives every next cursor,
+  ordinal, prior cumulative identity, page, and matching receipt and requires every target page and
+  receipt absent. The one domain contribution atomically appends every page and receipt and advances
+  only the final head and slot endpoint. A source-selecting head with any occupied target is
+  corruption. A target-selecting head proves exact replay only when the final head, every receipt
+  and page, and final custody bytes equal the complete proposed target closure; any disagreement is
+  collision/noncommit for that mismatching request and changes nothing.
 - `FinishInputV1` names the exact current endpoints, checked totals, cumulative identities, and
   successor positions for both lanes. Finish atomically freezes only a byte-equal receiving head;
   it neither walks pages nor creates a build. One later bounded transfer authenticates the finish
@@ -2363,7 +2423,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Candidate construction and draft autosave accept no complete composer payload and never rebuild a
   full `ComposerV1`. Before finish, append-only source and proposal pages, staging receipts, and one
   compact head hold sole durable page custody under the candidate-session slot. The caller releases
-  each accepted payload and later reconciliation reads the natural staging records. Authenticated
+  each accepted widget-page payload only after its complete atomic physical-page batch is accepted
+  or exact target reconciliation proves every batch effect. Later reconciliation reads the natural
+  staging records. Authenticated
   finish transfers that one custody slot to the existing builder; only then does candidate construction stage bounded edit fragments and path-copied
   sequence and marker-identity-index records, then adopts one compact combined-root reference into
   the exact editor session. Autosave separately publishes an already adopted captured frontier into

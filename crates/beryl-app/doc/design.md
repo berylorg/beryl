@@ -146,13 +146,44 @@ Keep independent main-window presentation responsive while process-wide services
   composite range replacements through the app-neutral text-input transaction-session protocol.
   Begin captures exact predecessor caret and directed selection. Bounded source and proposal pages
   carry canonical cumulative identity and explicit finish-input; inserted and moved markers use
-  successor-relative coordinates and order. The host releases consumed payload pages after their
-  durable effect is fixed, completes both copy-on-write piece-tree and marker-identity-index
-  successors under the exact `(draft, session, operation)` build/root identity, and submits one
-  atomic candidate-adoption command. Small keystrokes use the one-page fast path through the same
-  protocol. No partial replacement is exposed to the widget, session head, history frontier, or
-  current-draft selector, and no whole-operation fragment vector or hardcoded cumulative page cap
-  exists.
+  successor-relative coordinates and order. No partial replacement is exposed to the widget,
+  session head, history frontier, or current-draft selector, and no whole-operation fragment vector
+  or hardcoded cumulative page cap exists.
+- Before translation or durable admission, the host validates one widget page against its exact
+  binding, operation and lane frontier: expected cursor, ordinal and prior cumulative identity;
+  canonical page and cumulative identities; checked page and cumulative totals; a nonempty set of
+  at most 256 items; and at most 65,536 retained bytes. Each lane retains only fixed next-frontier
+  state and the immediate-last `PageReceipt` identity. Exact byte-equal reuse of that immediate page
+  returns replay without translation or storage work. Differing immediate reuse collides, and any
+  older ordinal is obsolete and rejected. Invalid cursor, ordinal, prior identity, totals, item
+  bytes, or canonical identity can therefore cause no staging effect.
+- One newly accepted widget page is translated in isolation to one nonempty bounded boxed or slice-
+  owned batch of existing Syndic staging pages. The mapping places each translated staging
+  item in its own one-item physical page. Source items translate one-for-one. Proposal UTF-8 items
+  use the minimum number of scalar-safe chunks under a 49,152-byte cap, one page per chunk: every
+  non-final chunk ends at the greatest UTF-8 scalar boundary no later than 49,152 bytes from its
+  start. A UTF-8 scalar occupies at most four bytes, so every non-final chunk contains at least
+  49,149 bytes. Two non-final chunks would require at least 98,298 retained bytes, above the widget
+  page's 65,536-byte aggregate ceiling. Across no more than 256 input items there can therefore be
+  only one additional chunk in total beyond the one base chunk or page produced by each item, while
+  every other supported item translates once; the exact maximum is 257 physical pages. The host
+  retains only this current widget-page translation and never a prior-page or whole-operation
+  payload collection.
+- The host passes that complete translation to `syndic-storage`'s single atomic physical-page batch
+  preparation, contribution, and reconciliation boundary. It advances the widget frontier and
+  releases the widget-page payload only after the whole batch is durably accepted or exact target
+  reconciliation proves every page, progress receipt, final staging head, and final candidate-
+  session endpoint. Source selection preserves the prepared payload for the same command unless
+  cancellation terminally discards an unadmitted attempt. Partial occupancy, target disagreement,
+  or collision makes the operation fail closed and cannot be treated as page replay. The one-
+  physical-page small-keystroke path calls this same batch boundary with one element.
+- Cancellation observed before batch admission produces no batch effect and releases the
+  unadmitted request only through the widget's terminal cancellation path. Cancellation after an
+  indeterminate command waits for exact source/target/partial batch reconciliation before terminal
+  handling and cannot retract a selected target. `Indeterminate` remains custody, not a sixth
+  widget outcome. After authenticated finish, the host completes both copy-on-write piece-tree and
+  marker-identity-index successors under the exact `(draft, session, operation)` build/root identity
+  and submits one atomic candidate-adoption command.
 - Every admitted draft edit reaches exactly one durable `Committed`, `Rejected`, `Conflict`,
   `Cancelled`, or `Error` settlement. An indeterminate command remains reconciliation custody rather
   than a sixth result; the host preserves the last coherent projection and exact operation intent,

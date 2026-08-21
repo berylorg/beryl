@@ -374,23 +374,47 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   complete binding against the active candidate-session head and moves its single custody slot from
   absent to `Staging` before any page can be accepted. It creates no draft-piece build, candidate
   root, history transition, current-draft publication, or materialization.
+- Before translating or admitting a widget mutation page, `beryl-app` validates the complete
+  app-neutral widget frontier: binding and operation, lane, exact cursor, ordinal, prior cumulative
+  identity, canonical page and cumulative identities, checked totals, nonempty item set, at most
+  256 items, and at most 65,536 retained bytes. Each lane retains only its fixed immediate-last
+  `PageReceipt` identity. Byte-equal reuse of that immediate page returns replay without translation
+  or storage work; differing reuse is a collision, and any older page is obsolete and rejected.
+  Malformed cursor, ordinal, prior-identity, total, or canonical-identity input therefore causes no
+  Syndic effect. Syndic stores no widget-page family or operation-wide widget-page history.
+- One newly accepted widget page translates to one nonempty bounded batch of existing physical
+  staging pages in the same operation and lane. The translation places each resulting
+  staging item in one one-item physical page. A source item produces one such page. A proposal item
+  produces one such page except that UTF-8 is split into the minimum number of scalar-safe chunks
+  under a 49,152-byte cap, one page per chunk: each non-final chunk ends at the greatest UTF-8 scalar
+  boundary no later than 49,152 bytes from its start. Because one UTF-8 scalar occupies at most four
+  bytes, every non-final chunk contains at least 49,149 bytes. Two non-final chunks would therefore
+  require at least 98,298 retained bytes, more than the widget page's 65,536-byte aggregate ceiling.
+  Across at most 256 input items there can be only one additional chunk in total beyond the one base
+  chunk or page produced by each item, so one widget page produces at most 257 physical staging
+  pages. This is a per-widget-page batch bound, not a total-operation page bound.
 - Pre-finish custody has independent `SourcePage` and `ProposalPage` lanes. Each lane advances only
   its next exact cursor and one-based ordinal and retains checked cumulative item and canonical-byte
-  totals plus its canonical cumulative identity. One accepted page is an immutable bounded durable
-  effect; after the target receipt and head closure authenticate, the widget and app release that
-  page payload and retain only fixed command/reconciliation state. Neither lane declares a final
-  page count before finish. No smaller or hardcoded cumulative cap applies below any representable
-  checked-`u64` total, and checked overflow rejects atomically. Commands are serialized through one fixed in-flight slot, so source and proposal
-  backpressure cannot create a resident page queue.
-- Every begin, lane-page, finish, cancellation, and custody-transfer command names an exact source
-  progress receipt and target receipt. `None` is valid only for transition ordinal one. A source-
-  selecting head requires the target receipt and all target effects to be absent before one atomic
-  append and head advance; any occupied target in that state is a corrupt split even when its bytes
-  agree. Exact replay requires a target-selecting head and byte equality of the complete target
-  closure. A different begin, page, cursor, ordinal, lane, cumulative identity, finish, or target
-  effect at an occupied natural key is collision/noncommit authority for the mismatching request
-  and never changes the operation already in custody. Digests reject inequality early but never
-  replace canonical byte comparison.
+  totals plus its canonical cumulative identity. `syndic-storage` validates the source head and
+  candidate-session custody once, then validates every physical page consecutively against the
+  preceding derived frontier. One Syndic domain contribution atomically creates every page and its
+  matching immutable progress receipt, then publishes only the final staging head and final
+  candidate-session custody endpoint. No committed prefix or intermediate mutable head or session
+  endpoint is observable after any command cut. The widget and app release the widget-page payload
+  only after complete target acceptance or exact target reconciliation. Neither lane declares a
+  final page count before finish. No smaller cumulative cap applies below any representable
+  checked-`u64` total, and checked overflow rejects the whole batch. Commands are serialized through
+  one fixed in-flight slot, so source and proposal backpressure cannot create a resident page queue.
+- Every begin, finish, cancellation, and custody-transfer command names one exact source and target
+  progress receipt. A physical-page batch names one exact source receipt and final target receipt
+  and derives one consecutive immutable receipt for each page between them. `None` is valid only
+  for transition ordinal one. A source-selecting head requires every target receipt and page to be
+  absent before the atomic batch append and final head advance; any occupied target in that state is
+  a corrupt split even when its bytes agree. Exact replay requires a target-selecting head and byte
+  equality of the complete target closure. A different begin, page, cursor, ordinal, lane,
+  cumulative identity, finish, or target effect at an occupied natural key is collision/noncommit
+  authority for the mismatching request and never changes the operation already in custody. Digests
+  reject inequality early but never replace canonical byte comparison.
 - The mutable staging head stores its selected progress-receipt key and digest. Its canonical head
   digest commits every canonical head field except that selected receipt digest, while still
   committing the selected receipt key and therefore its transition ordinal. The selected receipt
@@ -411,7 +435,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   transfer has exactly one staging-transfer receipt, one ordinal-one build receipt, one staging-head
   successor, one build-head successor, and one candidate-session `Staging`-to-`Building` custody
   transition under the package's fixed encoded-command bound; it writes no page or candidate root.
-- Cancellation before the first staging command is admitted changes no durable state. A pre-build
+- Cancellation before a physical-page batch is admitted creates none of that batch's pages,
+  receipts, head advance, or session advance. Cancellation before the first staging command is
+  admitted changes no durable state. A pre-build
   outcome may instead win an ordinal-one terminal-before-begin election whose custody transition is
   exactly `None` to `None`. `Conflict` remains structurally present in that closed terminal-evidence
   union but is reachable only in this shape, when a stale `MutationBegin` expects a same-session
@@ -433,7 +459,15 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   `Committed`, `Rejected`, `Conflict`, `Cancelled`, or `Error` outcome; `Committed` exists only
   through complete candidate adoption.
 - An indeterminate staging command is reconciled from the durable staging key, source and target
-  receipts, head, candidate-session custody transition, and at most its one bounded page effect.
+  receipts, head, candidate-session custody transition, and the one bounded physical-page batch.
+  `SourceSelected` requires the exact source head and session with every target page and progress
+  receipt absent. `TargetSelected` requires the exact final head and session with every proposed
+  page and receipt byte-equal. A byte-equal prefix, partial occupancy, replaced, missing, forked, or
+  ahead record, source/target disagreement, or any occupied natural target identity in source state
+  is collision or corruption and fails closed without mutation. Cancellation observed after an
+  indeterminate command cannot override this classification: reconciliation establishes exact
+  source, exact target, or fail-closed partial state before terminal handling. `Indeterminate`
+  remains custody and never becomes a sixth public edit outcome.
   Replay and terminal staging-status reads of a valid terminal-before-begin `Conflict` authenticate
   that immutable head/receipt closure; neither re-evaluates it against later same-session work,
   another session, publication, or the durable current-draft selector.
@@ -478,15 +512,18 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   retains the whole edit or payload. Construction never reconstructs, decodes, or writes the
   complete draft merely because one range changed.
 - Source and canonical-proposal pages carry positive per-page item and retained-byte ceilings,
-  exact cursors and ordinals, the prior cumulative identity, and canonical page bytes. Accepted
-  pages release their caller-owned payload after their append-only staging record, target receipt,
-  head advance, and cumulative identity are fixed. Post-finish build and reconciliation read those
-  durable records through bounded pages and never request released bytes from the caller. Exact
-  replay requires canonical byte and chain equality; conflicting cursor or operation reuse is a
-  collision. Small keystrokes take a one-page fast path through these same begin, finish, adoption,
-  and settlement rules. Total edit size may require any representable number of bounded commands
-  and is not limited by a resident collection, viewport dimensions, or an arbitrary 256/257-page
-  cap.
+  exact cursors and one-based ordinals and transitions, the prior cumulative identity, and canonical
+  page bytes. Each physical page has a positive item ceiling no greater than 256, is nonempty, and
+  has a complete encoded value no greater than 65,536 bytes. A batch has from one through 257 pages,
+  checked aggregate page, item, and encoded-byte counts, one operation and lane, exact consecutive
+  cursors and prior identities, and absent target page and receipt keys before commit. Preparation
+  retains only one widget-page translation as bounded boxed or slice-owned physical pages. Post-
+  finish build and reconciliation read the durable records through bounded pages and never request
+  released bytes from the caller. Exact replay requires canonical byte and chain equality;
+  conflicting cursor or operation reuse is a collision. Small keystrokes and every one-physical-
+  page translation use the same batch boundary rather than a separate command. Total edit size may
+  require any representable number of bounded widget-page batches and is not limited by a resident
+  collection, viewport dimensions, or an arbitrary cumulative 256/257-page cap.
 - Every post-finish build begin, canonical-fragment stage, successor-construction advance, and terminal
   election names one exact expected source receipt, with `None` valid exactly when the target has
   transition ordinal one, and one
