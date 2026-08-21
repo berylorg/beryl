@@ -1,43 +1,38 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
 
-use beryl_home_store::{CommandCancellation, CommandError, CommandOutcome, HomeCommand, HomeStore};
-use beryl_model::{ImageLabelOrdinal, SyndicDraftMarkerId};
+use beryl_home_store::{CommandCancellation, CommandOutcome, HomeCommand, HomeStore};
+use beryl_model::ImageLabelOrdinal;
 use gpui_text_input::{
-    BindingId, InlineObjectGap, InlineObjectId, MutationFragment, MutationFragmentPayload,
-    MutationKind, MutationPositions, MutationProposal, ObjectChange, SourcePosition,
+    BindingId, MutationBeginRequest, MutationCommitRequest, MutationCursor, MutationFinishInput,
+    MutationIdentity, MutationKind, MutationLane, MutationPage, MutationPageAcceptance,
+    MutationPageKey, MutationPageRequest, MutationPositions, MutationTotals, SourceRange,
     SourceRevision,
 };
 use syndic_storage::{
-    DRAFT_PIECE_PAGE_MAX_BYTES, DRAFT_PIECE_PAGE_MAX_RECORDS, DraftCompositeGapWitnessV1,
     DraftCompositePositionV1, DraftEditorCandidateActivationBindingV1,
-    DraftEditorCandidateSessionReadOutcomeV1, DraftPieceBuildFragmentV1, DraftPieceEditHeaderV1,
-    DraftPieceMarkerAtV1, DraftPieceMarkerDemandV1, DraftPieceMarkerDirectionV1,
-    DraftPieceMarkerEdgeProofRequestV1, DraftPieceMarkerEdgeProofV1, DraftPieceMarkerMoveV1,
-    DraftPieceMarkerScopeV1, DraftPieceMarkerV1, DraftPieceOperationStatusV1,
-    DraftPiecePrepareErrorV1, DraftPieceReplacementV1, DraftPieceRootReferenceV1,
-    DraftPieceSettlementClosureV1, DraftPieceSettlementProofV1, DraftPieceTransactionOutcomeV1,
-    DraftPieceV1, PreparedDraftPieceEditV1, canonical_draft_piece_fragment_chain_v1,
-    canonical_empty_draft_piece_fragment_chain_v1,
+    DraftEditorCandidateSessionV1, DraftMutationBeginV1, DraftMutationFinishInputV1,
+    DraftMutationOperationIdV1, DraftMutationStagingHeadV1, DraftMutationStagingIdentityV1,
+    DraftMutationStagingLaneV1, DraftPieceBuildProgressReceiptReferenceV1, DraftPieceDigestV1,
+    DraftPieceTransactionOutcomeV1, PreparedDraftMutationStagingBatchV1, PreparedDraftPieceEditV1,
 };
 
-use super::request::{candidate_head, validate_store};
+use super::request::validate_store;
 use super::{ComposerHostBinding, ComposerHostError, SyndicComposerHost};
 
 pub(super) const COMPOSER_HOST_MAX_MUTATION_TRANSITIONS: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ComposerHostImageMarkerMetadata {
-    object_id: InlineObjectId,
+    object_id: gpui_text_input::InlineObjectId,
     label: ImageLabelOrdinal,
 }
 
 impl ComposerHostImageMarkerMetadata {
-    pub const fn new(object_id: InlineObjectId, label: ImageLabelOrdinal) -> Self {
+    pub const fn new(object_id: gpui_text_input::InlineObjectId, label: ImageLabelOrdinal) -> Self {
         Self { object_id, label }
     }
 
-    pub const fn object_id(self) -> InlineObjectId {
+    pub const fn object_id(self) -> gpui_text_input::InlineObjectId {
         self.object_id
     }
 
@@ -47,73 +42,17 @@ impl ComposerHostImageMarkerMetadata {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ComposerHostMutationRequest {
-    binding: ComposerHostBinding,
-    proposal: MutationProposal,
-    operation_id: syndic_storage::DraftPieceOperationIdV1,
-    predecessor_positions: MutationPositions,
-    fragments: Box<[MutationFragment]>,
-    marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ComposerHostMutationIdentity {
-    request: ComposerHostMutationRequest,
+    begin: MutationBeginRequest,
 }
 
 impl ComposerHostMutationIdentity {
-    fn new(request: &ComposerHostMutationRequest) -> Self {
-        Self {
-            request: request.clone(),
-        }
+    fn new(begin: MutationBeginRequest) -> Self {
+        Self { begin }
     }
 
     fn operation(&self) -> u64 {
-        self.request.proposal.key().operation().get()
-    }
-}
-
-impl ComposerHostMutationRequest {
-    pub fn new(
-        binding: ComposerHostBinding,
-        proposal: MutationProposal,
-        operation_id: syndic_storage::DraftPieceOperationIdV1,
-        predecessor_positions: MutationPositions,
-        fragments: Box<[MutationFragment]>,
-        marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
-    ) -> Self {
-        Self {
-            binding,
-            proposal,
-            operation_id,
-            predecessor_positions,
-            fragments,
-            marker_metadata,
-        }
-    }
-
-    pub const fn binding(&self) -> ComposerHostBinding {
-        self.binding
-    }
-
-    pub const fn proposal(&self) -> MutationProposal {
-        self.proposal
-    }
-
-    pub const fn operation_id(&self) -> syndic_storage::DraftPieceOperationIdV1 {
-        self.operation_id
-    }
-
-    pub const fn predecessor_positions(&self) -> MutationPositions {
-        self.predecessor_positions
-    }
-
-    pub fn fragments(&self) -> &[MutationFragment] {
-        &self.fragments
-    }
-
-    pub fn marker_metadata(&self) -> &[ComposerHostImageMarkerMetadata] {
-        &self.marker_metadata
+        self.begin.proposal().key().operation().get()
     }
 }
 
@@ -131,7 +70,6 @@ pub enum ComposerHostMutationOutcome {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComposerHostMutationStatus {
-    Staged,
     Admitted,
     Unavailable,
 }
@@ -139,11 +77,8 @@ pub enum ComposerHostMutationStatus {
 #[derive(Clone, Debug)]
 pub struct ComposerHostRetainedMutationIntent {
     binding: ComposerHostBinding,
-    operation_id: syndic_storage::DraftPieceOperationIdV1,
-    proposal: MutationProposal,
-    replacements: Box<[DraftPieceReplacementV1]>,
-    positions: MutationPositions,
-    targets: Box<[DraftPieceMarkerAtV1]>,
+    begin: MutationBeginRequest,
+    identity: DraftMutationStagingIdentityV1,
 }
 
 impl ComposerHostRetainedMutationIntent {
@@ -151,56 +86,310 @@ impl ComposerHostRetainedMutationIntent {
         self.binding
     }
 
-    pub const fn operation_id(&self) -> syndic_storage::DraftPieceOperationIdV1 {
-        self.operation_id
+    pub const fn begin(&self) -> MutationBeginRequest {
+        self.begin
     }
 
-    pub const fn proposal(&self) -> MutationProposal {
-        self.proposal
-    }
-
-    pub fn replacements(&self) -> &[DraftPieceReplacementV1] {
-        &self.replacements
-    }
-
-    pub const fn positions(&self) -> MutationPositions {
-        self.positions
-    }
-
-    pub fn targets(&self) -> &[DraftPieceMarkerAtV1] {
-        &self.targets
+    pub const fn identity(&self) -> DraftMutationStagingIdentityV1 {
+        self.identity
     }
 }
 
-pub(super) struct ComposerHostMutationTransaction {
+#[derive(Clone, Copy)]
+struct WidgetLaneFrontier {
+    next_cursor: MutationCursor,
+    next_ordinal: u64,
+    cumulative_identity: MutationIdentity,
+    totals: MutationTotals,
+    last_page: Option<WidgetPageReceipt>,
+}
+
+#[derive(Clone, Copy)]
+struct WidgetPageReceipt {
+    key: MutationPageKey,
+    page_identity: MutationIdentity,
+    cumulative_identity: MutationIdentity,
+}
+
+impl WidgetLaneFrontier {
+    const fn initial(cursor: MutationCursor) -> Self {
+        Self {
+            next_cursor: cursor,
+            next_ordinal: 0,
+            cumulative_identity: MutationIdentity::ROOT,
+            totals: MutationTotals {
+                pages: 0,
+                items: 0,
+                retained_bytes: 0,
+                inserted_bytes: 0,
+                inserted_line_breaks: 0,
+                objects: 0,
+                object_bytes: 0,
+                presentation_bytes: 0,
+            },
+            last_page: None,
+        }
+    }
+
+    fn prevalidate(self, page: &MutationPage) -> Result<WidgetPageDisposition, ComposerHostError> {
+        let key = page.key();
+        if key.ordinal() < self.next_ordinal {
+            let Some(last) = self.last_page else {
+                return Err(ComposerHostError::StaleRequestIdentity);
+            };
+            if key != last.key {
+                return Err(ComposerHostError::StaleRequestIdentity);
+            }
+            return if page.page_identity() == last.page_identity
+                && page.cumulative_identity() == last.cumulative_identity
+            {
+                Ok(WidgetPageDisposition::Replay)
+            } else {
+                Err(ComposerHostError::MutationIdentityCollision)
+            };
+        }
+        if key.cursor() != self.next_cursor
+            || key.ordinal() != self.next_ordinal
+            || key.prior() != self.cumulative_identity
+            || page.items().is_empty()
+            || page.items().len() > 256
+            || page.totals().retained_bytes > 65_536
+        {
+            return Err(ComposerHostError::MutationMalformed);
+        }
+        let canonical = MutationPage::new(key, page.next_cursor(), page.items().to_vec())
+            .map_err(|_| ComposerHostError::MutationMalformed)?;
+        if canonical != *page {
+            return Err(ComposerHostError::MutationMalformed);
+        }
+        let next_ordinal = self
+            .next_ordinal
+            .checked_add(1)
+            .ok_or(ComposerHostError::MutationMalformed)?;
+        let totals = checked_add_totals(self.totals, page.totals())
+            .ok_or(ComposerHostError::MutationMalformed)?;
+        Ok(WidgetPageDisposition::Accepted {
+            frontier: Self {
+                next_cursor: page.next_cursor(),
+                next_ordinal,
+                cumulative_identity: page.cumulative_identity(),
+                totals,
+                last_page: Some(WidgetPageReceipt {
+                    key,
+                    page_identity: page.page_identity(),
+                    cumulative_identity: page.cumulative_identity(),
+                }),
+            },
+            acceptance: MutationPageAcceptance::Accepted {
+                next_cursor: page.next_cursor(),
+                next_ordinal,
+                cumulative_identity: page.cumulative_identity(),
+                totals,
+            },
+        })
+    }
+
+    fn matches_finish(self, finish: gpui_text_input::MutationStreamFinish) -> bool {
+        self.next_cursor.get() == finish.next_cursor.get()
+            && self.next_ordinal == finish.next_ordinal
+            && self.cumulative_identity.words() == finish.cumulative_identity.words()
+            && self.totals.pages == finish.totals.pages
+            && self.totals.items == finish.totals.items
+            && self.totals.retained_bytes == finish.totals.retained_bytes
+            && self.totals.inserted_bytes == finish.totals.inserted_bytes
+            && self.totals.inserted_line_breaks == finish.totals.inserted_line_breaks
+            && self.totals.objects == finish.totals.objects
+            && self.totals.object_bytes == finish.totals.object_bytes
+            && self.totals.presentation_bytes == finish.totals.presentation_bytes
+    }
+}
+
+enum WidgetPageDisposition {
+    Replay,
+    Accepted {
+        frontier: WidgetLaneFrontier,
+        acceptance: MutationPageAcceptance,
+    },
+}
+
+enum ComposerHostMutationPhase {
+    Receiving,
+    Finished,
+    Building {
+        prepared: PreparedDraftPieceEditV1,
+        endpoint: DraftPieceBuildProgressReceiptReferenceV1,
+    },
+}
+
+struct ComposerHostInFlightPage {
+    prepared: PreparedDraftMutationStagingBatchV1,
+    kind: ComposerHostInFlightPageKind,
+    #[cfg(feature = "test-faults")]
+    custody_serial: u64,
+    fragment_count: u64,
+    fragment_chain: DraftPieceDigestV1,
+    proposal_envelope_applied: bool,
+    last_proposal_range: Option<(DraftCompositePositionV1, DraftCompositePositionV1)>,
+    remaining_proposal_range: SourceRange,
+}
+
+enum ComposerHostInFlightPageKind {
+    Widget {
+        request: MutationPageRequest,
+        lane: MutationLane,
+        frontier: WidgetLaneFrontier,
+        acceptance: MutationPageAcceptance,
+    },
+    Internal {
+        finish: MutationFinishInput,
+    },
+}
+
+pub(super) struct ComposerHostMutationCoordinator {
     binding: ComposerHostBinding,
-    prepared: PreparedDraftPieceEditV1,
-    fragments: Box<[DraftPieceBuildFragmentV1]>,
-    positions: MutationPositions,
-    successors: Box<[DraftPieceMarkerAtV1]>,
-    identity: ComposerHostMutationIdentity,
-    intent: ComposerHostRetainedMutationIntent,
+    begin: MutationBeginRequest,
+    identity: DraftMutationStagingIdentityV1,
+    session: DraftEditorCandidateSessionV1,
+    head: DraftMutationStagingHeadV1,
+    source: WidgetLaneFrontier,
+    proposal: WidgetLaneFrontier,
+    phase: ComposerHostMutationPhase,
+    fragment_count: u64,
+    fragment_chain: DraftPieceDigestV1,
+    proposal_envelope_applied: bool,
+    last_proposal_range: Option<(DraftCompositePositionV1, DraftCompositePositionV1)>,
+    remaining_proposal_range: SourceRange,
+    in_flight_page: Option<ComposerHostInFlightPage>,
+    finish_input: Option<MutationFinishInput>,
+    intended: Option<MutationPositions>,
+    pub(super) detached: bool,
+}
+
+impl ComposerHostMutationCoordinator {
+    fn intent(&self) -> ComposerHostRetainedMutationIntent {
+        ComposerHostRetainedMutationIntent {
+            binding: self.binding,
+            begin: self.begin,
+            identity: self.identity,
+        }
+    }
+
+    const fn lane(&self, lane: MutationLane) -> WidgetLaneFrontier {
+        match lane {
+            MutationLane::Source => self.source,
+            MutationLane::Proposal => self.proposal,
+        }
+    }
+
+    fn lane_mut(&mut self, lane: MutationLane) -> &mut WidgetLaneFrontier {
+        match lane {
+            MutationLane::Source => &mut self.source,
+            MutationLane::Proposal => &mut self.proposal,
+        }
+    }
+
+    fn retain_finish_input(
+        &mut self,
+        finish: MutationFinishInput,
+    ) -> Result<MutationFinishInput, ComposerHostError> {
+        if let Some(retained) = self.finish_input {
+            if retained != finish {
+                return Err(ComposerHostError::MutationIdentityCollision);
+            }
+            return Ok(retained);
+        }
+        self.finish_input = Some(finish);
+        Ok(finish)
+    }
+}
+
+#[cfg(feature = "test-faults")]
+impl SyndicComposerHost {
+    pub fn test_mutation_in_flight_custody(&self) -> Option<(u64, bool)> {
+        let Some(ComposerHostPendingMutation::Active(pending)) = &self.pending_mutation else {
+            return None;
+        };
+        let page = pending.in_flight_page.as_ref()?;
+        Some((
+            page.custody_serial,
+            matches!(&page.kind, ComposerHostInFlightPageKind::Internal { .. }),
+        ))
+    }
+
+    pub fn test_mutation_in_flight_finish(&self) -> Option<MutationFinishInput> {
+        let Some(ComposerHostPendingMutation::Active(pending)) = &self.pending_mutation else {
+            return None;
+        };
+        let page = pending.in_flight_page.as_ref()?;
+        match &page.kind {
+            ComposerHostInFlightPageKind::Internal { finish } => Some(*finish),
+            ComposerHostInFlightPageKind::Widget { .. } => None,
+        }
+    }
 }
 
 pub(super) enum ComposerHostPendingMutation {
-    Staged(ComposerHostMutationTransaction),
-    Admitted(ComposerHostMutationTransaction),
+    Active(Box<ComposerHostMutationCoordinator>),
+    Terminal(ComposerHostTerminalMutation),
     Unavailable(ComposerHostRetainedMutationIntent),
 }
 
-enum MutationCommandResult {
-    Pending,
-    Terminal(DraftPieceTransactionOutcomeV1),
-    CancelledBeforeAdmission,
+impl ComposerHostPendingMutation {
+    pub(super) fn key(&self) -> gpui_text_input::MutationKey {
+        match self {
+            Self::Active(pending) => pending.begin.proposal().key(),
+            Self::Terminal(terminal) => terminal.key,
+            Self::Unavailable(intent) => intent.begin.proposal().key(),
+        }
+    }
+
+    pub(super) fn detach(&mut self) {
+        match self {
+            Self::Active(pending) => pending.detached = true,
+            Self::Terminal(terminal) => terminal.detached = true,
+            Self::Unavailable(_) => {}
+        }
+    }
 }
 
+pub(super) struct ComposerHostTerminalMutation {
+    binding: ComposerHostBinding,
+    key: gpui_text_input::MutationKey,
+    outcome: ComposerHostMutationOutcome,
+    pub(super) detached: bool,
+}
+
+enum StagingCommandResult {
+    Target,
+    Source,
+    Terminal,
+}
+
+enum BuildCommandResult {
+    Pending(DraftPieceBuildProgressReceiptReferenceV1),
+    Terminal(DraftPieceTransactionOutcomeV1),
+}
+
+mod drive;
 mod execution;
 mod settlement;
-mod terminal_gap;
-mod terminal_transform;
-
 mod translation;
-mod validation;
 
-use translation::{canonical_position, translate_request};
-use validation::{validate_committed_successor, validate_request_key};
+use translation::canonical_position;
+
+fn checked_add_totals(left: MutationTotals, right: MutationTotals) -> Option<MutationTotals> {
+    Some(MutationTotals {
+        pages: left.pages.checked_add(right.pages)?,
+        items: left.items.checked_add(right.items)?,
+        retained_bytes: left.retained_bytes.checked_add(right.retained_bytes)?,
+        inserted_bytes: left.inserted_bytes.checked_add(right.inserted_bytes)?,
+        inserted_line_breaks: left
+            .inserted_line_breaks
+            .checked_add(right.inserted_line_breaks)?,
+        objects: left.objects.checked_add(right.objects)?,
+        object_bytes: left.object_bytes.checked_add(right.object_bytes)?,
+        presentation_bytes: left
+            .presentation_bytes
+            .checked_add(right.presentation_bytes)?,
+    })
+}

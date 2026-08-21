@@ -29,41 +29,13 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 154: Implement Bounded Durable Builder Continuation And Later-Page Marker Effects (finished)
+# Phase 155: Integrate Durable Bounded Composer Mutation Staging (finished)
 
-Implemented and independently accepted direct persisted builder windows with measured 256-page
-read bounds, complete replay authentication, source-only progress, and restartable later-page marker
-effects whose working roots publish atomically. Existing families remain unchanged; focused Phase
-154 and representative storage regressions, locked checks, formatting, and static audits passed.
-
-# Phase 155: Integrate Durable Bounded Composer Mutation Staging (pending)
-
-Publish and canonically pin accepted `gpui-text-input` commit `2828b789…`, then replace Beryl's
-whole-request composer mutation path with one fixed-state ordinary-edit coordinator over begin,
-independent source/proposal pages, finish, transfer, bounded durable build, settlement and cancel.
-Prevalidate the widget frontier before translation, atomically admit every translated physical-page
-batch, retain only the widget protocol's fixed immediate-page receipt, release caller payload after
-durable acceptance or exact reconciliation, and keep the one-page editing fast path on the same
-protocol.
-
-Prove typing/newlines, large paste beyond 256 pages, deletion/cut, marker insert/edit/move/remove,
-lane order/replay/collision, all cancellation cuts and five terminal outcomes, every indeterminate
-command cut, restart from the durable current selector, candidate/history retention, stale binding,
-operation ABA, backpressure, rebind/release/detached and late results, exact payload release and
-constant coordinator residency. Remove the whole-request fragment/replacement path and its tests;
-add no compatibility adapter or operation-wide collection.
-
-This phase executes only ordinary edits. It preserves Phase 148 ordinary history append and
-retention but does not route widget undo/redo, call historical-root adoption, publish autosave/current
-draft state, materialize `ComposerV1`, mount GUI dispatch, implement realization credits, or adopt an
-unpublished old session after restart. If marker-move facts cannot be emitted in the first bounded
-storage fragment without retaining earlier pages, stop on a storage/API gap rather than buffering
-the operation. Preserved milestone: the dependency is published and canonically pinned; the
-fixed-state app coordinator compiles, dead whole-request modules are removed, focused runtime
-commits through corrected staging-derived settlement, and the current four app protocol tests pass
-on the default stack. Resume after Phase 154 is independently accepted. The preserved app cutover
-must additionally retain exact source-selected page-batch custody and qualify operation high-water
-by the exact binding before completion review.
+Published and canonically pinned the accepted widget boundary, replaced whole-request mutation
+residency with independently accepted fixed-state page-batch custody and durable builder windows,
+and proved binding-qualified replay, cancellation, restart, five outcomes, later-page markers, ABA,
+detached late results, and bounded metadata. Canonical locked checks, 20 default and 28 fault-enabled
+composer tests, restoration, representative storage regressions, formatting, and static audits passed.
 
 # Phase 156: Adopt Historical Composer Roots Durably (pending)
 

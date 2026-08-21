@@ -1,8 +1,11 @@
-use beryl_home_store::{CommandBuildError, HomeGeneration, HomeHealthState, ReadError};
+use beryl_home_store::{
+    CommandBuildError, HomeGeneration, HomeHealthState, ReadError, ReconciliationFailure,
+};
 use beryl_model::BerylHomeId;
 use syndic_storage::{
-    DraftEditorCandidateSessionCommandErrorV1, DraftPieceCommandReconciliationErrorV1,
-    DraftPiecePrepareErrorV1, DraftPieceRangeSourceErrorV1, SyndicMutationError, SyndicReadError,
+    DraftEditorCandidateSessionCommandErrorV1, DraftMutationStagingErrorV1,
+    DraftPieceCommandReconciliationErrorV1, DraftPiecePrepareErrorV1, DraftPieceRangeSourceErrorV1,
+    SyndicMutationError, SyndicReadError,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -41,8 +44,6 @@ pub enum ComposerHostError {
     RequestMismatch,
     #[error("a composer mutation is already pending")]
     MutationPending,
-    #[error("an admitted composer mutation still owns reconciliation custody")]
-    MutationCustodyPending,
     #[error("the bounded composer mutation work quantum is exhausted")]
     MutationWorkPending,
     #[error("the mutation is not pending for this active binding")]
@@ -57,6 +58,8 @@ pub enum ComposerHostError {
     HomeRead(#[from] ReadError),
     #[error("home command construction failed: {0}")]
     CommandBuild(#[from] CommandBuildError),
+    #[error("home command reconciliation failed: {0}")]
+    HomeReconciliation(#[from] ReconciliationFailure),
     #[error("Syndic read failed: {0}")]
     SyndicRead(#[from] SyndicReadError),
     #[error("Syndic mutation failed: {0}")]
@@ -69,4 +72,6 @@ pub enum ComposerHostError {
     Restoration(#[from] DraftPiecePrepareErrorV1),
     #[error("draft-piece command reconciliation failed: {0}")]
     Reconciliation(#[from] DraftPieceCommandReconciliationErrorV1),
+    #[error("draft mutation staging failed: {0}")]
+    MutationStaging(#[from] DraftMutationStagingErrorV1),
 }

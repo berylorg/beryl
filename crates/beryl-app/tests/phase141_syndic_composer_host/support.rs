@@ -12,16 +12,21 @@ use beryl_model::{
     RuntimeNativePath, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
 };
 use syndic_storage::{
-    CreateThread, DraftCompositeGapWitnessV1, DraftCompositePositionV1,
+    CreateThread, DraftCompositeGapWitnessV1, DraftCompositePositionV1, DraftEditHistoryPolicyV1,
     DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionOpenOutcomeV1,
     DraftEditorCandidateSessionOpenRequestV1, DraftEditorCandidateSessionV1,
     DraftEditorCurrentSelectorV1, DraftPieceBuildFragmentV1, DraftPieceEditHeaderV1,
-    DraftPieceMarkerV1, DraftPieceOperationIdV1, DraftPieceReplacementV1, DraftPieceV1,
-    PreparedDraftPieceEditV1, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    canonical_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_fragment_chain_v1,
+    DraftPieceMarkerV1, DraftPieceOperationIdV1, DraftPieceReplacementV1, PreparedDraftPieceEditV1,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, canonical_draft_piece_fragment_chain_v1,
+    canonical_empty_draft_piece_fragment_chain_v1,
 };
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
+
+#[path = "support/populate.rs"]
+mod populate;
+
+pub use populate::populate;
 
 pub struct TestHome(PathBuf);
 
@@ -52,6 +57,14 @@ pub struct Transaction {
 }
 
 pub fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
+    fixture_with_history_budget(name, seed, 65_536)
+}
+
+pub fn fixture_with_history_budget(
+    name: &str,
+    seed: u8,
+    history_byte_budget: u64,
+) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
     let mut store =
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
@@ -67,10 +80,18 @@ pub fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, Syn
                 draft,
                 execution(),
                 SyndicTimestamp::from_unix_millis(1),
+                DraftEditHistoryPolicyV1::new(history_byte_budget, 1).unwrap(),
             ),
         ),
     ));
     (home, store, storage, thread)
+}
+
+pub fn reopen(home: &TestHome) -> (HomeStore, SyndicStorage) {
+    let mut store =
+        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    (store, storage)
 }
 
 #[cfg(feature = "test-faults")]
@@ -103,41 +124,11 @@ pub fn fault_fixture(
                 draft,
                 execution(),
                 SyndicTimestamp::from_unix_millis(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));
     (home, store, storage, thread, faults)
-}
-
-pub fn populate(
-    storage: SyndicStorage,
-    store: &HomeStore,
-    thread: SyndicThreadId,
-    session_seed: u8,
-) -> (DraftPieceMarkerV1, DraftPieceMarkerV1) {
-    let current = current(storage, store, thread);
-    let left = marker(session_seed.wrapping_add(1), 1);
-    let right = marker(session_seed.wrapping_add(2), 2);
-    let transaction = transaction(
-        storage,
-        store,
-        &current,
-        session_seed,
-        session_seed.wrapping_add(10),
-        vec![DraftPieceReplacementV1::new(
-            point(0),
-            point(0),
-            vec![
-                DraftPieceV1::Text("\u{03b1}\n".to_owned()),
-                DraftPieceV1::Marker(left),
-                DraftPieceV1::Marker(right),
-                DraftPieceV1::Text("\u{03b2}\n".to_owned()),
-            ],
-        )],
-        point(0),
-    );
-    run_transaction(storage, store, &transaction, 2);
-    (left, right)
 }
 
 pub fn transaction(
@@ -152,6 +143,7 @@ pub fn transaction(
     let session = open_session(storage, store, current, session_seed, operation_seed);
     transaction_for_session(
         storage,
+        store,
         session,
         operation_seed.wrapping_add(1),
         replacements,
@@ -161,10 +153,31 @@ pub fn transaction(
 
 pub fn transaction_for_session(
     storage: SyndicStorage,
+    store: &HomeStore,
     session: DraftEditorCandidateSessionV1,
     operation_seed: u8,
     replacements: Vec<DraftPieceReplacementV1>,
     caret: DraftCompositePositionV1,
+) -> Transaction {
+    transaction_for_session_positions(
+        storage,
+        store,
+        session,
+        operation_seed,
+        replacements,
+        point(0),
+        caret,
+    )
+}
+
+fn transaction_for_session_positions(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    session: DraftEditorCandidateSessionV1,
+    operation_seed: u8,
+    replacements: Vec<DraftPieceReplacementV1>,
+    predecessor_caret: DraftCompositePositionV1,
+    successor_caret: DraftCompositePositionV1,
 ) -> Transaction {
     let operation = DraftPieceOperationIdV1::from_bytes([operation_seed; 16]);
     let chain = canonical_draft_piece_fragment_chain_v1(&replacements);
@@ -173,9 +186,12 @@ pub fn transaction_for_session(
         session.session_id(),
         session.newest_candidate_generation(),
         session.newest_root(),
+        session.newest_history(),
         operation,
-        caret,
-        caret,
+        predecessor_caret,
+        predecessor_caret,
+        successor_caret,
+        successor_caret,
         replacements.len() as u64,
         chain,
     );
@@ -233,7 +249,12 @@ pub fn run_transaction(
                 transaction.session.session_id(),
                 transaction.operation,
             )
-            .unwrap()
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to prepare build advance for {:?}: {error:?}",
+                    transaction.operation
+                )
+            })
         else {
             break;
         };
@@ -265,6 +286,7 @@ fn open_session(
             current.draft().id(),
             current.draft().revision(),
             current.draft().piece_root(),
+            current.draft().history(),
         ),
         DraftEditorCandidateSessionIdV1::from_bytes([session_seed; 16]),
         DraftPieceOperationIdV1::from_bytes([operation_seed; 16]),
@@ -298,6 +320,24 @@ pub fn current(
         .current_draft(store, thread, SyndicPointReadLimit::new(65_536).unwrap())
         .unwrap()
         .unwrap()
+}
+
+pub fn bump_home_revision(storage: SyndicStorage, store: &HomeStore, seed: u8) {
+    let thread = SyndicThreadId::from_bytes([seed; 16]);
+    let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
+    committed(execute(
+        store,
+        storage.create_thread(
+            storage.revision(store).unwrap(),
+            CreateThread::ordinary(
+                thread,
+                draft,
+                execution(),
+                SyndicTimestamp::from_unix_millis(u64::from(seed)),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+            ),
+        ),
+    ));
 }
 
 pub fn point(offset: u64) -> DraftCompositePositionV1 {

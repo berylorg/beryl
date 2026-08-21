@@ -1,12 +1,25 @@
+use syndic_storage::{
+    DraftEditorCandidateSessionReadOutcomeV1, DraftLogicalExtentV1, DraftMutationStagingPageItemV1,
+    DraftMutationStagingTerminalEvidenceV1, canonical_draft_piece_fragment_chain_v1,
+    canonical_empty_draft_piece_fragment_chain_v1,
+};
+
+use super::translation::{
+    TranslatedWidgetPage, translate_widget_page, validate_marker_metadata_intake,
+};
 use super::*;
 
 impl SyndicComposerHost {
     pub const fn mutation_status(&self) -> Option<ComposerHostMutationStatus> {
         match self.pending_mutation {
-            Some(ComposerHostPendingMutation::Staged(_)) => {
-                Some(ComposerHostMutationStatus::Staged)
-            }
-            Some(ComposerHostPendingMutation::Admitted(_)) => {
+            Some(ComposerHostPendingMutation::Active(ref pending)) => match pending.phase {
+                ComposerHostMutationPhase::Receiving => Some(ComposerHostMutationStatus::Admitted),
+                ComposerHostMutationPhase::Finished => Some(ComposerHostMutationStatus::Admitted),
+                ComposerHostMutationPhase::Building { .. } => {
+                    Some(ComposerHostMutationStatus::Admitted)
+                }
+            },
+            Some(ComposerHostPendingMutation::Terminal(_)) => {
                 Some(ComposerHostMutationStatus::Admitted)
             }
             Some(ComposerHostPendingMutation::Unavailable(_)) => {
@@ -26,398 +39,417 @@ impl SyndicComposerHost {
     pub fn begin_mutation(
         &mut self,
         store: &HomeStore,
-        request: ComposerHostMutationRequest,
+        binding: ComposerHostBinding,
+        request: MutationBeginRequest,
     ) -> Result<(), ComposerHostError> {
-        if let Some(pending) = &self.pending_mutation {
-            return Err(match pending {
-                ComposerHostPendingMutation::Unavailable(_) => {
+        if self.pending_mutation.is_some() {
+            return Err(match self.pending_mutation {
+                Some(ComposerHostPendingMutation::Unavailable(_)) => {
                     ComposerHostError::MutationUnavailable
                 }
-                ComposerHostPendingMutation::Staged(_)
-                | ComposerHostPendingMutation::Admitted(_) => ComposerHostError::MutationPending,
+                _ => ComposerHostError::MutationPending,
             });
         }
         let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
-        if active.binding != request.binding {
+        if active.binding != binding {
             return Err(ComposerHostError::OldBinding);
         }
-        validate_store(active.binding, store)?;
-        validate_request_key(active.binding, &request)?;
-        if request.proposal.kind() != MutationKind::Edit {
+        validate_store(binding, store)?;
+        validate_begin_key(binding, request)?;
+        if request.proposal().kind() != MutationKind::Edit {
             return Err(ComposerHostError::MutationUnavailable);
         }
-        let identity = ComposerHostMutationIdentity::new(&request);
-        if let Some(last) = &self.last_mutation_identity {
+        let identity = ComposerHostMutationIdentity::new(request);
+        let session = match self.storage.draft_editor_candidate_session(
+            store,
+            binding.candidate().draft_id(),
+            binding.candidate().session_id(),
+        )? {
+            DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
+            _ => return Err(ComposerHostError::MutationMalformed),
+        };
+        let proposal = request.proposal();
+        let predecessor = proposal.predecessor();
+        let storage_identity = DraftMutationStagingIdentityV1::new(
+            session.draft_id(),
+            session.session_id(),
+            operation_id(proposal.key().operation().get()),
+        );
+        let candidate = binding.candidate();
+        let storage_begin = DraftMutationBeginV1::new(
+            storage_identity,
+            candidate.session_generation(),
+            candidate.candidate_generation(),
+            candidate.root(),
+            candidate.history(),
+            candidate.logical_extent(),
+            canonical_position(predecessor.caret())?,
+            canonical_position(predecessor.selection_anchor())?,
+            canonical_position(predecessor.selection_head())?,
+            canonical_position(proposal.replacement().start())?,
+            canonical_position(proposal.replacement().end())?,
+            request.source_cursor().get(),
+            request.proposal_cursor().get(),
+        );
+        if DraftEditorCandidateActivationBindingV1::from_head(&session) != candidate {
+            let evidence = DraftMutationStagingTerminalEvidenceV1::Conflict {
+                expected_generation: candidate.candidate_generation(),
+                expected_root: candidate.root(),
+                expected_history: candidate.history(),
+                observed_generation: session.newest_candidate_generation(),
+                observed_root: session.newest_root(),
+                observed_history: session.newest_history(),
+                session_revision: session.session_generation(),
+            };
+            let prepared = self.storage.prepare_draft_mutation_terminal_before_begin(
+                storage_begin,
+                &session,
+                evidence,
+            )?;
+            if !matches!(
+                self.run_staging_command(store, &prepared, None)?,
+                StagingCommandResult::Target | StagingCommandResult::Terminal
+            ) {
+                return Err(ComposerHostError::MutationWorkPending);
+            }
+            self.last_mutation_identity = Some((binding, identity));
+            self.pending_mutation = Some(ComposerHostPendingMutation::Terminal(
+                ComposerHostTerminalMutation {
+                    binding,
+                    key: proposal.key(),
+                    outcome: ComposerHostMutationOutcome::Conflict,
+                    detached: false,
+                },
+            ));
+            return Ok(());
+        }
+        if let Some((last_binding, last)) = &self.last_mutation_identity
+            && *last_binding == binding
+        {
             match identity.operation().cmp(&last.operation()) {
                 Ordering::Less => return Err(ComposerHostError::StaleRequestIdentity),
-                Ordering::Equal if &identity != last => {
+                Ordering::Equal if last != &identity => {
                     return Err(ComposerHostError::MutationIdentityCollision);
                 }
                 Ordering::Equal | Ordering::Greater => {}
             }
         }
-        let source = candidate_head(&self.storage, store, active.storage_candidate)?;
-        let (replacements, positions, targets, successors) =
-            translate_request(&self.storage, store, source.newest_root(), &request)?;
-        let intent = ComposerHostRetainedMutationIntent {
-            binding: active.binding,
-            operation_id: request.operation_id,
-            proposal: request.proposal,
-            replacements: replacements.clone().into_boxed_slice(),
-            positions,
-            targets: targets.into_boxed_slice(),
-        };
-        let header = DraftPieceEditHeaderV1::new(
-            source.draft_id(),
-            source.session_id(),
-            source.newest_candidate_generation(),
-            source.newest_root(),
-            source.newest_history(),
-            request.operation_id,
-            canonical_position(request.predecessor_positions().caret())?,
-            canonical_position(request.predecessor_positions().selection_anchor())?,
-            canonical_position(positions.caret())?,
-            canonical_position(positions.selection_anchor())?,
-            u64::try_from(replacements.len()).map_err(|_| ComposerHostError::MutationMalformed)?,
-            canonical_draft_piece_fragment_chain_v1(&replacements),
-        );
         let prepared = self
             .storage
-            .prepare_draft_piece_edit(store, header, &source)?;
-        let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
-        let mut staged = Vec::with_capacity(replacements.len());
-        for (index, replacement) in replacements.into_iter().enumerate() {
-            let ordinal = u64::try_from(index)
-                .ok()
-                .and_then(|value| value.checked_add(1))
-                .ok_or(ComposerHostError::MutationMalformed)?;
-            let fragment = self.storage.prepare_draft_piece_fragment(
-                &prepared,
-                ordinal,
-                preceding,
-                replacement,
-            )?;
-            preceding = fragment.chain_digest();
-            staged.push(fragment);
+            .prepare_draft_mutation_staging_begin(storage_begin, &session)?;
+        let command_result = self.run_staging_command(store, &prepared, None)?;
+        if !matches!(command_result, StagingCommandResult::Target) {
+            return Err(ComposerHostError::MutationMalformed);
         }
-        self.pending_mutation = Some(ComposerHostPendingMutation::Staged(
-            ComposerHostMutationTransaction {
-                binding: active.binding,
-                prepared,
-                fragments: staged.into_boxed_slice(),
-                positions,
-                successors: successors.into_boxed_slice(),
-                identity,
-                intent,
+        let target_session = prepared
+            .target_session()
+            .cloned()
+            .ok_or(ComposerHostError::MutationMalformed)?;
+        let head = prepared.target_head().clone();
+        self.last_mutation_identity = Some((binding, identity));
+        self.pending_mutation = Some(ComposerHostPendingMutation::Active(Box::new(
+            ComposerHostMutationCoordinator {
+                binding,
+                begin: request,
+                identity: storage_identity,
+                session: target_session,
+                head,
+                source: WidgetLaneFrontier::initial(request.source_cursor()),
+                proposal: WidgetLaneFrontier::initial(request.proposal_cursor()),
+                phase: ComposerHostMutationPhase::Receiving,
+                fragment_count: 0,
+                fragment_chain: canonical_empty_draft_piece_fragment_chain_v1(),
+                proposal_envelope_applied: false,
+                last_proposal_range: None,
+                remaining_proposal_range: request.proposal().replacement(),
+                in_flight_page: None,
+                finish_input: None,
+                intended: None,
+                detached: false,
             },
-        ));
+        )));
         Ok(())
+    }
+
+    pub fn stage_mutation_page(
+        &mut self,
+        store: &HomeStore,
+        request: MutationPageRequest,
+        marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
+    ) -> Result<MutationPageAcceptance, ComposerHostError> {
+        let mut pending = self.take_active_mutation()?;
+        let result = (|| {
+            self.validate_mutation_store(pending.binding, store)?;
+            if !matches!(pending.phase, ComposerHostMutationPhase::Receiving)
+                || request.page().key().key() != pending.begin.proposal().key()
+            {
+                return Err(ComposerHostError::MutationMalformed);
+            }
+            if let Some(in_flight) = &pending.in_flight_page {
+                let ComposerHostInFlightPageKind::Widget {
+                    request: retained, ..
+                } = &in_flight.kind
+                else {
+                    return Err(ComposerHostError::MutationPending);
+                };
+                if *retained != request {
+                    return Err(ComposerHostError::MutationPending);
+                }
+                return self
+                    .drive_in_flight_page(store, &mut pending)?
+                    .ok_or(ComposerHostError::MutationMalformed);
+            }
+            validate_marker_metadata_intake(request.page(), &marker_metadata)?;
+            let lane = request.page().key().lane();
+            let frontier = pending.lane(lane);
+            let (next_frontier, acceptance) = match frontier.prevalidate(request.page())? {
+                WidgetPageDisposition::Replay => return Ok(MutationPageAcceptance::Replay),
+                WidgetPageDisposition::Accepted {
+                    frontier,
+                    acceptance,
+                } => (frontier, acceptance),
+            };
+            let translated = translate_widget_page(
+                &self.storage,
+                store,
+                &pending,
+                request.page(),
+                &marker_metadata,
+            )?;
+            pending.in_flight_page = Some(self.prepare_translated_page(
+                &pending,
+                request,
+                next_frontier,
+                acceptance,
+                translated,
+            )?);
+            self.drive_in_flight_page(store, &mut pending)?
+                .ok_or(ComposerHostError::MutationMalformed)
+        })();
+        self.restore_active_mutation(pending);
+        result
+    }
+
+    pub fn finish_mutation_input(
+        &mut self,
+        store: &HomeStore,
+        finish: MutationFinishInput,
+    ) -> Result<(), ComposerHostError> {
+        let mut pending = self.take_active_mutation()?;
+        let result = (|| {
+            self.validate_mutation_store(pending.binding, store)?;
+            if !matches!(pending.phase, ComposerHostMutationPhase::Receiving)
+                || finish.key() != pending.begin.proposal().key()
+                || !pending.source.matches_finish(finish.source())
+                || !pending.proposal.matches_finish(finish.proposal())
+            {
+                return Err(ComposerHostError::MutationMalformed);
+            }
+            let finish = pending.retain_finish_input(finish)?;
+            if let Some(in_flight) = &pending.in_flight_page {
+                if !matches!(
+                    &in_flight.kind,
+                    ComposerHostInFlightPageKind::Internal { finish: retained } if *retained == finish
+                ) {
+                    return Err(ComposerHostError::MutationMalformed);
+                }
+                if self.drive_in_flight_page(store, &mut pending)?.is_some() {
+                    return Err(ComposerHostError::MutationMalformed);
+                }
+            }
+            if pending.fragment_count == 0 {
+                let replacement = syndic_storage::DraftPieceReplacementV1::new(
+                    canonical_position(pending.begin.proposal().replacement().start())?,
+                    canonical_position(pending.begin.proposal().replacement().end())?,
+                    Vec::new(),
+                );
+                let chain =
+                    canonical_draft_piece_fragment_chain_v1(std::slice::from_ref(&replacement));
+                let translated = TranslatedWidgetPage::proposal(
+                    vec![DraftMutationStagingPageItemV1::Proposal(replacement)],
+                    1,
+                    chain,
+                    true,
+                    Some((
+                        canonical_position(pending.begin.proposal().replacement().start())?,
+                        canonical_position(pending.begin.proposal().replacement().end())?,
+                    )),
+                    pending.remaining_proposal_range,
+                );
+                self.stage_internal_translated_page(store, &mut pending, finish, translated)?;
+            }
+            let intended_extent = DraftLogicalExtentV1::new(
+                finish.intended_extent().byte_len(),
+                finish.intended_extent().line_count(),
+            );
+            let intended = finish.intended();
+            let storage_finish = DraftMutationFinishInputV1::new(
+                pending.head.source(),
+                pending.head.proposal(),
+                intended_extent,
+                canonical_position(intended.caret())?,
+                canonical_position(intended.selection_anchor())?,
+                canonical_position(intended.selection_head())?,
+                pending.fragment_chain,
+            );
+            let prepared = self.storage.prepare_draft_mutation_staging_finish(
+                &pending.head,
+                &pending.session,
+                storage_finish,
+            )?;
+            if !matches!(
+                self.run_staging_command(store, &prepared, None)?,
+                StagingCommandResult::Target
+            ) {
+                return Err(ComposerHostError::MutationMalformed);
+            }
+            pending.head = prepared.target_head().clone();
+            pending.session = prepared
+                .target_session()
+                .cloned()
+                .ok_or(ComposerHostError::MutationMalformed)?;
+            pending.intended = Some(intended);
+            pending.finish_input = None;
+            pending.phase = ComposerHostMutationPhase::Finished;
+            Ok(())
+        })();
+        self.restore_active_mutation(pending);
+        result
     }
 
     pub fn execute_mutation(
         &mut self,
         store: &HomeStore,
+        request: MutationCommitRequest,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
-        let pending = match self
-            .pending_mutation
+        if self
+            .detached_mutation
             .as_ref()
-            .ok_or(ComposerHostError::MutationNotPending)?
+            .is_some_and(|pending| pending.key() == request.key())
         {
-            ComposerHostPendingMutation::Staged(pending)
-            | ComposerHostPendingMutation::Admitted(pending) => pending,
-            ComposerHostPendingMutation::Unavailable(_) => {
-                return Err(ComposerHostError::MutationUnavailable);
-            }
-        };
-        self.validate_mutation_store(pending.binding, store)?;
-        if cancellation.is_cancelled() {
-            return match self.pending_mutation {
-                Some(ComposerHostPendingMutation::Staged(_)) => {
-                    self.pending_mutation = None;
-                    Ok(ComposerHostMutationOutcome::Cancelled)
-                }
-                Some(ComposerHostPendingMutation::Admitted(_)) => {
-                    let prepared = pending.prepared.clone();
-                    let fragments = pending.fragments.clone();
-                    let positions = pending.positions;
-                    self.cancel_mutation(store, &prepared, &fragments, positions)
-                }
-                Some(ComposerHostPendingMutation::Unavailable(_)) => {
-                    Err(ComposerHostError::MutationUnavailable)
-                }
-                None => Err(ComposerHostError::MutationNotPending),
-            };
+            return self.execute_detached_mutation(store, request, cancellation);
         }
-        let prepared = pending.prepared.clone();
-        let fragments = pending.fragments.clone();
-        let position_facts = pending.positions;
-        if !self.synchronize_mutation_candidate(store)? {
-            self.retain_conflicted_mutation()?;
-            return Ok(ComposerHostMutationOutcome::Conflict);
-        }
-        let begin = self
-            .storage
-            .begin_draft_piece_edit(self.storage.revision(store)?, prepared.clone());
-        match self.run_mutation_command(store, &prepared, &fragments, begin, Some(cancellation))? {
-            MutationCommandResult::Pending => {}
-            MutationCommandResult::Terminal(outcome) => {
-                return self.finish_mutation(store, outcome, position_facts);
-            }
-            MutationCommandResult::CancelledBeforeAdmission => {
-                self.pending_mutation = None;
-                return Ok(ComposerHostMutationOutcome::Cancelled);
-            }
-        }
-        for fragment in fragments.iter().cloned() {
-            if cancellation.is_cancelled() {
-                return self.cancel_mutation(store, &prepared, &fragments, position_facts);
-            }
-            let stage = self.storage.stage_draft_piece_fragment(
-                self.storage.revision(store)?,
-                prepared.clone(),
-                fragment,
-            );
-            match self.run_mutation_command(
-                store,
-                &prepared,
-                &fragments,
-                stage,
-                Some(cancellation),
-            )? {
-                MutationCommandResult::Pending => {}
-                MutationCommandResult::Terminal(outcome) => {
-                    return self.finish_mutation(store, outcome, position_facts);
-                }
-                MutationCommandResult::CancelledBeforeAdmission => {
-                    return self.cancel_mutation(store, &prepared, &fragments, position_facts);
-                }
-            }
-        }
-        let transition_limit = self.mutation_transition_limit();
-        for _ in 0..transition_limit {
-            if cancellation.is_cancelled() {
-                return self.cancel_mutation(store, &prepared, &fragments, position_facts);
-            }
-            match self.storage.prepare_draft_piece_build_advance(
-                store,
-                prepared.header().draft_id(),
-                prepared.header().session_id(),
-                prepared.header().operation_id(),
-            ) {
-                Ok(Some(advance)) => {
-                    let contribution = self
-                        .storage
-                        .advance_draft_piece_edit(self.storage.revision(store)?, advance);
-                    match self.run_mutation_command(
-                        store,
-                        &prepared,
-                        &fragments,
-                        contribution,
-                        Some(cancellation),
-                    )? {
-                        MutationCommandResult::Pending => {}
-                        MutationCommandResult::Terminal(outcome) => {
-                            return self.finish_mutation(store, outcome, position_facts);
-                        }
-                        MutationCommandResult::CancelledBeforeAdmission => {
-                            return self.cancel_mutation(
-                                store,
-                                &prepared,
-                                &fragments,
-                                position_facts,
-                            );
-                        }
-                    }
-                }
-                Ok(None) => {
-                    let contribution = self
-                        .storage
-                        .settle_draft_piece_edit(self.storage.revision(store)?, prepared.clone());
-                    match self.run_mutation_command(
-                        store,
-                        &prepared,
-                        &fragments,
-                        contribution,
-                        Some(cancellation),
-                    )? {
-                        MutationCommandResult::Pending => {}
-                        MutationCommandResult::Terminal(outcome) => {
-                            return self.finish_mutation(store, outcome, position_facts);
-                        }
-                        MutationCommandResult::CancelledBeforeAdmission => {
-                            return self.cancel_mutation(
-                                store,
-                                &prepared,
-                                &fragments,
-                                position_facts,
-                            );
-                        }
-                    }
-                }
-                Err(DraftPiecePrepareErrorV1::Rejected(reason)) => {
-                    let contribution = self.storage.reject_draft_piece_edit(
-                        self.storage.revision(store)?,
-                        prepared.clone(),
-                        reason,
-                    );
-                    match self.run_mutation_command(
-                        store,
-                        &prepared,
-                        &fragments,
-                        contribution,
-                        None,
-                    )? {
-                        MutationCommandResult::Pending
-                        | MutationCommandResult::CancelledBeforeAdmission => {}
-                        MutationCommandResult::Terminal(outcome) => {
-                            return self.finish_mutation(store, outcome, position_facts);
-                        }
-                    }
-                }
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Err(ComposerHostError::MutationWorkPending)
+        self.execute_current_mutation(store, request, cancellation)
     }
 
-    fn cancel_mutation(
+    fn execute_current_mutation(
         &mut self,
         store: &HomeStore,
-        prepared: &PreparedDraftPieceEditV1,
-        fragments: &[DraftPieceBuildFragmentV1],
-        positions: MutationPositions,
+        request: MutationCommitRequest,
+        cancellation: &CommandCancellation,
     ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
-        let contribution = self
-            .storage
-            .cancel_draft_piece_edit(self.storage.revision(store)?, prepared.clone());
-        match self.run_mutation_command(store, prepared, fragments, contribution, None)? {
-            MutationCommandResult::Terminal(outcome) => {
-                self.finish_mutation(store, outcome, positions)
+        if matches!(
+            self.pending_mutation,
+            Some(ComposerHostPendingMutation::Terminal(_))
+        ) {
+            let Some(ComposerHostPendingMutation::Terminal(terminal)) =
+                self.pending_mutation.take()
+            else {
+                unreachable!();
+            };
+            if (!terminal.detached
+                && terminal.binding != self.binding().ok_or(ComposerHostError::OldBinding)?)
+                || request.key() != terminal.key
+            {
+                self.pending_mutation = Some(ComposerHostPendingMutation::Terminal(terminal));
+                return Err(ComposerHostError::RequestMismatch);
             }
-            MutationCommandResult::Pending | MutationCommandResult::CancelledBeforeAdmission => {
-                Err(ComposerHostError::MutationMalformed)
-            }
+            return Ok(terminal.outcome);
         }
+        let mut pending = self.take_active_mutation()?;
+        let result = self.execute_active_mutation(store, request, cancellation, &mut pending);
+        match &result {
+            Ok(ComposerHostMutationOutcome::Committed { .. })
+            | Ok(ComposerHostMutationOutcome::Rejected)
+            | Ok(ComposerHostMutationOutcome::Cancelled)
+            | Ok(ComposerHostMutationOutcome::Error) => {}
+            Ok(ComposerHostMutationOutcome::Conflict)
+            | Err(ComposerHostError::MutationUnavailable) => {
+                self.pending_mutation =
+                    Some(ComposerHostPendingMutation::Unavailable(pending.intent()));
+            }
+            Err(_) => self.restore_active_mutation(pending),
+        }
+        result
     }
 
-    fn run_mutation_command(
+    fn execute_detached_mutation(
         &mut self,
         store: &HomeStore,
-        prepared: &PreparedDraftPieceEditV1,
-        fragments: &[DraftPieceBuildFragmentV1],
-        contribution: beryl_home_store::MutationContribution,
-        cancellation: Option<&CommandCancellation>,
-    ) -> Result<MutationCommandResult, ComposerHostError> {
-        let mut command = HomeCommand::new(store.home_revision()?);
-        if let Some(cancellation) = cancellation {
-            command = command.with_cancellation(cancellation.clone());
-        }
-        command.add(contribution)?;
-        #[cfg(feature = "test-faults")]
-        if let Some(fault) = self.mutation_before_execute_fault.take() {
-            fault(store, self.storage);
-        }
-        let outcome = store.execute(command);
-        if matches!(
-            &outcome,
-            CommandOutcome::NotCommitted {
-                evidence: CommandError::CancelledBeforeAdmission
-            }
-        ) {
-            return Ok(MutationCommandResult::CancelledBeforeAdmission);
-        }
-        match self.storage.reconcile_draft_piece_command_outcome(
-            store,
-            prepared,
-            outcome,
-            |ordinal| {
-                usize::try_from(ordinal.saturating_sub(1))
-                    .ok()
-                    .and_then(|start| fragments.get(start..))
-                    .unwrap_or_default()
-                    .to_vec()
-            },
-        )? {
-            syndic_storage::DraftPieceReconciledCommandV1::Pending(
-                DraftPieceOperationStatusV1::Absent,
-            ) => Ok(MutationCommandResult::Pending),
-            syndic_storage::DraftPieceReconciledCommandV1::Pending(
-                DraftPieceOperationStatusV1::Open(_) | DraftPieceOperationStatusV1::Complete(_),
-            ) => {
-                self.mark_mutation_admitted()?;
-                Ok(MutationCommandResult::Pending)
-            }
-            syndic_storage::DraftPieceReconciledCommandV1::Pending(
-                DraftPieceOperationStatusV1::Settled(_) | DraftPieceOperationStatusV1::Collision(_),
-            ) => Err(ComposerHostError::MutationMalformed),
-            syndic_storage::DraftPieceReconciledCommandV1::Terminal(outcome) => {
-                self.record_terminal_mutation_identity()?;
-                Ok(MutationCommandResult::Terminal(outcome))
-            }
-        }
-    }
-
-    fn mark_mutation_admitted(&mut self) -> Result<(), ComposerHostError> {
+        request: MutationCommitRequest,
+        cancellation: &CommandCancellation,
+    ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
         let pending = self
-            .pending_mutation
+            .detached_mutation
             .take()
             .ok_or(ComposerHostError::MutationNotPending)?;
-        self.pending_mutation = Some(match pending {
-            ComposerHostPendingMutation::Staged(pending) => {
-                let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
-                if active.binding != pending.binding {
-                    return Err(ComposerHostError::OldBinding);
+        match pending {
+            ComposerHostPendingMutation::Terminal(terminal) => {
+                if request.key() != terminal.key {
+                    self.detached_mutation = Some(ComposerHostPendingMutation::Terminal(terminal));
+                    return Err(ComposerHostError::RequestMismatch);
                 }
-                self.last_mutation_identity = Some(pending.identity.clone());
-                ComposerHostPendingMutation::Admitted(pending)
+                Ok(ComposerHostMutationOutcome::Conflict)
             }
-            ComposerHostPendingMutation::Admitted(pending) => {
-                ComposerHostPendingMutation::Admitted(pending)
+            ComposerHostPendingMutation::Unavailable(_) => {
+                Ok(ComposerHostMutationOutcome::Conflict)
+            }
+            ComposerHostPendingMutation::Active(mut pending) => {
+                if request.key() != pending.begin.proposal().key() {
+                    self.detached_mutation = Some(ComposerHostPendingMutation::Active(pending));
+                    return Err(ComposerHostError::RequestMismatch);
+                }
+                let result =
+                    self.execute_active_mutation(store, request, cancellation, &mut pending);
+                match result {
+                    Ok(_) | Err(ComposerHostError::MutationUnavailable) => {
+                        Ok(ComposerHostMutationOutcome::Conflict)
+                    }
+                    Err(error) => {
+                        self.detached_mutation = Some(ComposerHostPendingMutation::Active(pending));
+                        Err(error)
+                    }
+                }
+            }
+        }
+    }
+
+    fn take_active_mutation(
+        &mut self,
+    ) -> Result<Box<ComposerHostMutationCoordinator>, ComposerHostError> {
+        match self
+            .pending_mutation
+            .take()
+            .ok_or(ComposerHostError::MutationNotPending)?
+        {
+            ComposerHostPendingMutation::Active(pending) => Ok(pending),
+            ComposerHostPendingMutation::Terminal(terminal) => {
+                self.pending_mutation = Some(ComposerHostPendingMutation::Terminal(terminal));
+                Err(ComposerHostError::MutationUnavailable)
             }
             ComposerHostPendingMutation::Unavailable(intent) => {
                 self.pending_mutation = Some(ComposerHostPendingMutation::Unavailable(intent));
-                return Err(ComposerHostError::MutationUnavailable);
+                Err(ComposerHostError::MutationUnavailable)
             }
-        });
-        Ok(())
-    }
-
-    fn record_terminal_mutation_identity(&mut self) -> Result<(), ComposerHostError> {
-        let pending = self
-            .pending_mutation
-            .as_ref()
-            .ok_or(ComposerHostError::MutationNotPending)?;
-        let pending = match pending {
-            ComposerHostPendingMutation::Staged(pending)
-            | ComposerHostPendingMutation::Admitted(pending) => pending,
-            ComposerHostPendingMutation::Unavailable(_) => {
-                return Err(ComposerHostError::MutationUnavailable);
-            }
-        };
-        let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
-        if active.binding != pending.binding {
-            return Err(ComposerHostError::OldBinding);
         }
-        self.last_mutation_identity = Some(pending.identity.clone());
-        Ok(())
     }
 
-    fn retain_conflicted_mutation(&mut self) -> Result<(), ComposerHostError> {
-        let pending = self
-            .pending_mutation
-            .take()
-            .ok_or(ComposerHostError::MutationNotPending)?;
-        let intent = match pending {
-            ComposerHostPendingMutation::Staged(pending)
-            | ComposerHostPendingMutation::Admitted(pending) => pending.intent,
-            ComposerHostPendingMutation::Unavailable(intent) => intent,
-        };
-        self.pending_mutation = Some(ComposerHostPendingMutation::Unavailable(intent));
-        Ok(())
+    fn restore_active_mutation(&mut self, pending: Box<ComposerHostMutationCoordinator>) {
+        if self.pending_mutation.is_none() {
+            self.pending_mutation = Some(ComposerHostPendingMutation::Active(pending));
+        }
     }
 
-    const fn mutation_transition_limit(&self) -> usize {
+    pub(super) fn validate_mutation_store(
+        &self,
+        binding: ComposerHostBinding,
+        store: &HomeStore,
+    ) -> Result<(), ComposerHostError> {
+        validate_store(binding, store)
+    }
+
+    pub(super) const fn mutation_transition_limit(&self) -> usize {
         #[cfg(feature = "test-faults")]
         {
             self.mutation_transition_limit
@@ -427,15 +459,40 @@ impl SyndicComposerHost {
             COMPOSER_HOST_MAX_MUTATION_TRANSITIONS
         }
     }
+}
 
-    fn validate_mutation_store(
-        &self,
-        binding: ComposerHostBinding,
-        store: &HomeStore,
-    ) -> Result<(), ComposerHostError> {
-        if self.binding() != Some(binding) {
-            return Err(ComposerHostError::OldBinding);
-        }
-        validate_store(binding, store)
+fn validate_begin_key(
+    binding: ComposerHostBinding,
+    request: MutationBeginRequest,
+) -> Result<(), ComposerHostError> {
+    let key = request.proposal().key();
+    if key.binding() != BindingId::new(binding.host_generation().get())
+        || key.base_revision() != SourceRevision::new(binding.candidate().candidate_generation())
+        || request.proposal().predecessor().caret()
+            != request.proposal().predecessor().selection_head()
+    {
+        return Err(ComposerHostError::MutationMalformed);
+    }
+    Ok(())
+}
+
+fn operation_id(operation: u64) -> DraftMutationOperationIdV1 {
+    let mut bytes = [0; 16];
+    bytes[8..].copy_from_slice(&operation.to_be_bytes());
+    DraftMutationOperationIdV1::from_bytes(bytes)
+}
+
+pub(super) fn active_session(
+    storage: &syndic_storage::SyndicStorage,
+    store: &HomeStore,
+    binding: ComposerHostBinding,
+) -> Result<DraftEditorCandidateSessionV1, ComposerHostError> {
+    match storage.draft_editor_candidate_session(
+        store,
+        binding.candidate().draft_id(),
+        binding.candidate().session_id(),
+    )? {
+        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => Ok(session),
+        _ => Err(ComposerHostError::MutationMalformed),
     }
 }

@@ -12,8 +12,8 @@ pub use error::ComposerHostError;
 pub use model::*;
 use mutation::ComposerHostPendingMutation;
 pub use mutation::{
-    ComposerHostImageMarkerMetadata, ComposerHostMutationOutcome, ComposerHostMutationRequest,
-    ComposerHostMutationStatus, ComposerHostRetainedMutationIntent,
+    ComposerHostImageMarkerMetadata, ComposerHostMutationOutcome, ComposerHostMutationStatus,
+    ComposerHostRetainedMutationIntent,
 };
 
 struct ActiveComposerHost {
@@ -30,7 +30,8 @@ pub struct SyndicComposerHost {
     last_request_id: u64,
     pending: BTreeMap<u64, ComposerHostPendingRequest>,
     pending_mutation: Option<ComposerHostPendingMutation>,
-    last_mutation_identity: Option<mutation::ComposerHostMutationIdentity>,
+    detached_mutation: Option<ComposerHostPendingMutation>,
+    last_mutation_identity: Option<(ComposerHostBinding, mutation::ComposerHostMutationIdentity)>,
     #[cfg(feature = "test-faults")]
     activation_after_selector_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
@@ -39,6 +40,8 @@ pub struct SyndicComposerHost {
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
     mutation_transition_limit: usize,
+    #[cfg(feature = "test-faults")]
+    next_mutation_custody_serial: u64,
 }
 
 impl SyndicComposerHost {
@@ -50,6 +53,7 @@ impl SyndicComposerHost {
             last_request_id: 0,
             pending: BTreeMap::new(),
             pending_mutation: None,
+            detached_mutation: None,
             last_mutation_identity: None,
             #[cfg(feature = "test-faults")]
             activation_after_selector_fault: None,
@@ -57,6 +61,8 @@ impl SyndicComposerHost {
             mutation_before_execute_fault: None,
             #[cfg(feature = "test-faults")]
             mutation_transition_limit: mutation::COMPOSER_HOST_MAX_MUTATION_TRANSITIONS,
+            #[cfg(feature = "test-faults")]
+            next_mutation_custody_serial: 1,
         }
     }
 
@@ -86,24 +92,31 @@ impl SyndicComposerHost {
     }
 
     pub fn release(&mut self) -> Result<bool, ComposerHostError> {
-        if matches!(
-            self.pending_mutation,
-            Some(ComposerHostPendingMutation::Admitted(_))
-        ) {
-            return Err(ComposerHostError::MutationCustodyPending);
-        }
+        self.detach_pending_mutation()?;
+        let released = self.active.take().is_some();
+        self.pending.clear();
+        self.last_request_id = 0;
+        Ok(released)
+    }
+
+    fn detach_pending_mutation(&mut self) -> Result<(), ComposerHostError> {
         if matches!(
             self.pending_mutation,
             Some(ComposerHostPendingMutation::Unavailable(_))
         ) {
-            return Err(ComposerHostError::MutationUnavailable);
+            self.pending_mutation = None;
+            return Ok(());
         }
-        let released = self.active.take().is_some();
-        self.pending.clear();
-        self.pending_mutation = None;
-        self.last_mutation_identity = None;
-        self.last_request_id = 0;
-        Ok(released)
+        if self.pending_mutation.is_none() {
+            return Ok(());
+        }
+        if self.detached_mutation.is_some() {
+            return Err(ComposerHostError::MutationPending);
+        }
+        let mut pending = self.pending_mutation.take().unwrap();
+        pending.detach();
+        self.detached_mutation = Some(pending);
+        Ok(())
     }
 
     #[cfg(feature = "test-faults")]
