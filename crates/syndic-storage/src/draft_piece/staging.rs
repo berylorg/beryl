@@ -77,27 +77,99 @@ pub struct PreparedDraftMutationTransferV1 {
     build_receipt: DraftPieceBuildProgressReceiptV1,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DraftPieceDurableBuildWindowLimitsV1 {
+    page_limit: u16,
+    fragment_limit: u16,
+    inserted_utf8_byte_limit: u32,
+}
+
+impl DraftPieceDurableBuildWindowLimitsV1 {
+    pub const fn new(
+        page_limit: u16,
+        fragment_limit: u16,
+        inserted_utf8_byte_limit: u32,
+    ) -> Option<Self> {
+        if page_limit == 0
+            || page_limit as usize > DRAFT_PIECE_BUILD_WINDOW_MAX_PAGES
+            || fragment_limit == 0
+            || fragment_limit as usize > DRAFT_PIECE_BUILD_WINDOW_MAX_FRAGMENTS
+            || inserted_utf8_byte_limit == 0
+            || inserted_utf8_byte_limit as usize > DRAFT_PIECE_BUILD_WINDOW_MAX_INSERTED_UTF8_BYTES
+        {
+            return None;
+        }
+        Some(Self {
+            page_limit,
+            fragment_limit,
+            inserted_utf8_byte_limit,
+        })
+    }
+
+    pub const fn maximum() -> Self {
+        Self {
+            page_limit: DRAFT_PIECE_BUILD_WINDOW_MAX_PAGES as u16,
+            fragment_limit: DRAFT_PIECE_BUILD_WINDOW_MAX_FRAGMENTS as u16,
+            inserted_utf8_byte_limit: DRAFT_PIECE_BUILD_WINDOW_MAX_INSERTED_UTF8_BYTES as u32,
+        }
+    }
+
+    pub const fn page_limit(self) -> usize {
+        self.page_limit as usize
+    }
+
+    pub const fn fragment_limit(self) -> usize {
+        self.fragment_limit as usize
+    }
+
+    pub const fn inserted_utf8_byte_limit(self) -> usize {
+        self.inserted_utf8_byte_limit as usize
+    }
+}
+
 #[derive(Clone)]
-pub struct PreparedDraftPieceStagingPageV1 {
+pub struct PreparedDraftPieceStagingWindowV1 {
     staging_head: DraftMutationStagingHeadV1,
-    staging_page: DraftMutationStagingPageV1,
+    staging_pages: Box<[DraftMutationStagingPageV1]>,
     expected_build: DraftPieceBuildRecordV1,
     expected_session: DraftEditorCandidateSessionV1,
     target_build: DraftPieceBuildRecordV1,
     target_receipt: DraftPieceBuildProgressReceiptV1,
     target_session: DraftEditorCandidateSessionV1,
     fragments: Box<[DraftPieceBuildFragmentV1]>,
+    inserted_utf8_bytes: usize,
+    acquisition_read_count: usize,
 }
 
-impl PreparedDraftPieceStagingPageV1 {
+impl PreparedDraftPieceStagingWindowV1 {
     pub const fn lane(&self) -> DraftMutationStagingLaneV1 {
-        self.staging_page.key().lane()
+        self.staging_pages[0].key().lane()
     }
-    pub const fn page_ordinal(&self) -> u64 {
-        self.staging_page.key().ordinal()
+    pub fn first_page_ordinal(&self) -> u64 {
+        self.staging_pages[0].key().ordinal()
+    }
+    pub fn last_page_ordinal(&self) -> u64 {
+        self.staging_pages[self.staging_pages.len() - 1]
+            .key()
+            .ordinal()
+    }
+    pub fn page_count(&self) -> usize {
+        self.staging_pages.len()
     }
     pub fn fragment_count(&self) -> usize {
         self.fragments.len()
+    }
+    pub const fn inserted_utf8_bytes(&self) -> usize {
+        self.inserted_utf8_bytes
+    }
+    pub fn acquisition_read_count(&self) -> usize {
+        self.acquisition_read_count
+    }
+    pub fn acquisition_encoded_value_byte_budget(&self) -> usize {
+        self.acquisition_read_count() * 65_536
+    }
+    pub const fn target_endpoint(&self) -> DraftPieceBuildProgressReceiptReferenceV1 {
+        self.target_build.progress_receipt()
     }
 }
 
@@ -172,8 +244,8 @@ struct TransferMutation {
 }
 
 #[derive(Clone)]
-struct StageDurablePageMutation {
-    prepared: PreparedDraftPieceStagingPageV1,
+struct StageDurableWindowMutation {
+    prepared: PreparedDraftPieceStagingWindowV1,
 }
 
 mod digest;

@@ -23,6 +23,7 @@ pub enum DraftPieceImmutableDeletion {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DraftPieceBuildCorruption {
+    DropDurableContinuation,
     OpenWithCompleteFrontier,
     CompleteWithoutSuccessor,
     TerminalLifecycle,
@@ -137,6 +138,17 @@ pub fn delete_draft_piece_terminal_build(
     )
 }
 
+pub fn delete_draft_piece_build_progress_receipt(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    key: DraftPieceBuildProgressReceiptKeyV1,
+) -> MutationContribution {
+    storage.handle.contribution(
+        storage.revision(store).expect("fixture revision reads"),
+        DeleteImmutable(DeletedImmutable::Progress(key)),
+    )
+}
+
 pub fn inject_draft_piece_candidate_root_collision(
     store: &HomeStore,
     storage: SyndicStorage,
@@ -180,6 +192,12 @@ pub fn inject_draft_piece_build_corruption(
         .expect("fixture build reads")
         .expect("fixture build exists");
     let (frontier, successor, build_digest, lifecycle) = match corruption {
+        DraftPieceBuildCorruption::DropDurableContinuation => (
+            build.frontier(),
+            build.successor(),
+            build.build_digest(),
+            build.lifecycle(),
+        ),
         DraftPieceBuildCorruption::OpenWithCompleteFrontier => (
             DraftPieceBuildFrontierV1::Complete,
             build.successor(),
@@ -449,8 +467,17 @@ pub fn inject_draft_piece_build_corruption(
         successor,
         build_digest,
         lifecycle,
+    )
+    .with_durable_continuation(
+        (corruption != DraftPieceBuildCorruption::DropDurableContinuation)
+            .then(|| build.durable_continuation())
+            .flatten(),
     );
-    let corrupted = if corruption == DraftPieceBuildCorruption::StagedToCrossValidating {
+    let corrupted = if matches!(
+        corruption,
+        DraftPieceBuildCorruption::StagedToCrossValidating
+            | DraftPieceBuildCorruption::DropDurableContinuation
+    ) {
         authenticated_build_record(corrupted)
     } else {
         corrupted
@@ -952,12 +979,15 @@ pub fn inject_draft_piece_fragment_corruption(
         DraftPieceFragmentCorruption::ReplacementBytes => {
             let mut inserted = fragment.replacement().inserted().to_vec();
             inserted.push(DraftPieceV1::Text("changed".to_owned()));
-            DraftPieceReplacementV1::new(
+            let replacement = DraftPieceReplacementV1::new(
                 fragment.replacement().start(),
                 fragment.replacement().end(),
                 inserted,
-            )
-            .with_moves(fragment.replacement().moves().to_vec())
+            );
+            match fragment.replacement().marker_effect() {
+                Some(effect) => replacement.with_marker_effect(effect),
+                None => replacement,
+            }
         }
         DraftPieceFragmentCorruption::ChainDigest => {
             chain = DraftPieceDigestV1::from_bytes([0xC1; 32]);
@@ -986,13 +1016,11 @@ pub fn inject_draft_piece_fragment_corruption(
                 1,
                 beryl_model::ImageLabelOrdinal::new(1).expect("fixture label is nonzero"),
             );
-            let movement =
-                DraftPieceMarkerMoveV1::new(DraftPieceMarkerAtV1::new(0, marker), marker, 1);
-            let moves = if corruption == DraftPieceFragmentCorruption::DuplicateMoveDeclarations {
-                vec![movement, movement]
-            } else {
-                vec![movement]
-            };
+            let insertion = DraftPieceMarkerInsertionV1::new(
+                0,
+                marker,
+                DraftPieceMarkerEffectChargesV1::new(0, 1, 1),
+            );
             let replacement = if corruption == DraftPieceFragmentCorruption::ContinuationMoves {
                 DraftPieceReplacementV1::continuation(
                     fragment.replacement().start(),
@@ -1006,7 +1034,22 @@ pub fn inject_draft_piece_fragment_corruption(
                     vec![DraftPieceV1::Marker(marker)],
                 )
             };
-            replacement.with_moves(moves)
+            if corruption == DraftPieceFragmentCorruption::DuplicateMoveDeclarations {
+                let different = DraftPieceMarkerV1::new(
+                    beryl_model::SyndicDraftMarkerId::from_bytes([0xC4; 16]),
+                    1,
+                    marker.label(),
+                );
+                replacement.with_marker_effect(DraftPieceMarkerEffectV1::Insert(
+                    DraftPieceMarkerInsertionV1::new(
+                        0,
+                        different,
+                        DraftPieceMarkerEffectChargesV1::new(0, 1, 1),
+                    ),
+                ))
+            } else {
+                replacement.with_marker_effect(DraftPieceMarkerEffectV1::Insert(insertion))
+            }
         }
     };
     let corrupted = DraftPieceBuildFragmentV1::new(key, replacement, preceding, chain);

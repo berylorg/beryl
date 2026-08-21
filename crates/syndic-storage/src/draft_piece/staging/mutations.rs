@@ -362,17 +362,23 @@ impl DomainMutation<SyndicDomain> for TransferMutation {
     }
 }
 
-impl DomainMutation<SyndicDomain> for StageDurablePageMutation {
+impl DomainMutation<SyndicDomain> for StageDurableWindowMutation {
     type Error = SyndicMutationError;
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
         let p = &self.prepared;
         if point::<DraftMutationStagingHeadsFamily>(reader, &p.staging_head.identity())?.as_ref()
             != Some(&p.staging_head)
-            || point::<DraftMutationStagingPagesFamily>(reader, &p.staging_page.key())?.as_ref()
-                != Some(&p.staging_page)
         {
             return Err(SyndicMutationError::IdentityCollision);
+        }
+        authenticate_staging_head_reader(reader, &p.staging_head)?;
+        for page in p.staging_pages.iter() {
+            if point::<DraftMutationStagingPagesFamily>(reader, &page.key())?.as_ref() != Some(page)
+            {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
+            authenticate_staging_page_reader(reader, &p.staging_head, page)?;
         }
         let build_key = DraftPieceSettlementKeyV1::new(
             p.expected_build.draft_id(),
@@ -393,30 +399,29 @@ impl DomainMutation<SyndicDomain> for StageDurablePageMutation {
             })
             .ok_or(SyndicMutationError::CurrentDraftConflict)?;
         if stored_build.as_ref() == Some(&p.expected_build) {
-            if stored_target_receipt.is_some()
-                || stored_session != p.expected_session
-                || p.fragments.iter().any(|fragment| {
-                    point::<DraftPieceBuildFragmentsFamily>(reader, &fragment.key())
-                        .ok()
-                        .flatten()
-                        .is_some()
-                })
-            {
+            super::mutation::authenticate_build(reader, &p.expected_build)?;
+            if stored_target_receipt.is_some() || stored_session != p.expected_session {
                 return Err(SyndicMutationError::IdentityCollision);
+            }
+            for fragment in p.fragments.iter() {
+                if point::<DraftPieceBuildFragmentsFamily>(reader, &fragment.key())?.is_some() {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
             }
             return Ok(());
         }
         if stored_build.as_ref() == Some(&p.target_build)
             && stored_target_receipt.as_ref() == Some(&p.target_receipt)
             && stored_session == p.target_session
-            && p.fragments.iter().all(|fragment| {
-                point::<DraftPieceBuildFragmentsFamily>(reader, &fragment.key())
-                    .ok()
-                    .flatten()
-                    .as_ref()
-                    == Some(fragment)
-            })
         {
+            super::mutation::authenticate_build(reader, &p.target_build)?;
+            for fragment in p.fragments.iter() {
+                if point::<DraftPieceBuildFragmentsFamily>(reader, &fragment.key())?.as_ref()
+                    != Some(fragment)
+                {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
+            }
             return Ok(());
         }
         Err(SyndicMutationError::IdentityCollision)
@@ -426,8 +431,10 @@ impl DomainMutation<SyndicDomain> for StageDurablePageMutation {
         &self,
         reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        reservation
-            .reserve_records::<DraftPieceBuildFragmentsCodec>(self.prepared.fragments.len())?;
+        if !self.prepared.fragments.is_empty() {
+            reservation
+                .reserve_records::<DraftPieceBuildFragmentsCodec>(self.prepared.fragments.len())?;
+        }
         reservation.reserve_records::<DraftPieceBuildProgressCodec>(1)?;
         reservation.reserve_records::<DraftPieceBuildsCodec>(1)?;
         reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;

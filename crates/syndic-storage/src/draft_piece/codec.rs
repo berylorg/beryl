@@ -9,6 +9,10 @@ use crate::codec::{CodecError, ExactCodec, Family, SMALL_MAX, invalid};
 
 use super::*;
 
+mod builder_continuation;
+
+use builder_continuation::*;
+
 mod staging_head;
 mod staging_page;
 mod staging_progress;
@@ -919,12 +923,12 @@ fn enc_replacement(e: &mut Encoder, replacement: &DraftPieceReplacementV1) {
     for piece in replacement.inserted() {
         enc_piece(e, piece);
     }
-    e.u64(replacement.moves().len() as u64);
-    for movement in replacement.moves() {
-        e.u64(movement.predecessor().anchor());
-        enc_marker(e, movement.predecessor().marker());
-        enc_marker(e, movement.successor());
-        e.u64(movement.removal_fragment_ordinal());
+    match replacement.marker_effect() {
+        None => e.u8(0),
+        Some(effect) => {
+            e.u8(1);
+            enc_effect(e, effect);
+        }
     }
 }
 
@@ -950,25 +954,25 @@ fn dec_replacement(d: &mut Decoder<'_>) -> Result<DraftPieceReplacementV1, Codec
     for _ in 0..piece_count {
         inserted.push(dec_piece(d)?);
     }
-    let move_count =
-        usize::try_from(d.u64()?).map_err(|error| invalid("draft-piece move count", error))?;
-    if move_count > DRAFT_PIECE_STAGE_MAX_RECORDS {
-        return Err(CodecError::InvalidLength("draft-piece move count"));
-    }
-    let mut moves = Vec::with_capacity(move_count);
-    for _ in 0..move_count {
-        moves.push(DraftPieceMarkerMoveV1::new(
-            DraftPieceMarkerAtV1::new(d.u64()?, dec_marker(d)?),
-            dec_marker(d)?,
-            d.u64()?,
-        ));
-    }
-    Ok(if continuation {
+    let marker_effect = match d.u8()? {
+        0 => None,
+        1 => Some(dec_effect(d)?),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "draft-piece marker effect option",
+                tag,
+            });
+        }
+    };
+    let replacement = if continuation {
         DraftPieceReplacementV1::continuation(start, end, inserted)
     } else {
         DraftPieceReplacementV1::new(start, end, inserted)
-    }
-    .with_moves(moves))
+    };
+    Ok(match marker_effect {
+        Some(effect) => replacement.with_marker_effect(effect),
+        None => replacement,
+    })
 }
 
 fn encode_root(value: &DraftPieceRootRecordV1) -> Result<Vec<u8>, CodecError> {
@@ -1000,6 +1004,13 @@ fn encode_leaf(value: &DraftPieceLeafRecordV1) -> Result<Vec<u8>, CodecError> {
     enc_text_summary(&mut e, value.text_summary());
     enc_digest(&mut e, value.digest());
     Ok(e.finish())
+}
+
+pub(crate) fn canonical_draft_piece_leaf_encoded_bytes(
+    value: &DraftPieceLeafRecordV1,
+) -> Result<u64, CodecError> {
+    u64::try_from(encode_leaf(value)?.len())
+        .map_err(|_| CodecError::InvalidLength("draft-piece leaf encoded bytes"))
 }
 
 fn decode_leaf(bytes: &[u8]) -> Result<DraftPieceLeafRecordV1, CodecError> {
@@ -1110,6 +1121,7 @@ fn encode_build(value: &DraftPieceBuildRecordV1) -> Result<Vec<u8>, CodecError> 
     enc_build_boundary(&mut e, value.successor_frontier());
     e.u64(value.next_record_ordinal());
     enc_build_frontier(&mut e, value.frontier());
+    enc_durable_continuation(&mut e, value.durable_continuation());
     enc_digest(&mut e, value.progress_digest());
     enc_progress_reference(&mut e, value.progress_receipt());
     match value.successor() {
@@ -1153,6 +1165,7 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
     let successor_frontier = dec_build_boundary(&mut d)?;
     let next_record_ordinal = d.u64()?;
     let frontier = dec_build_frontier(&mut d)?;
+    let durable_continuation = dec_durable_continuation(&mut d)?;
     let progress_digest = dec_digest(&mut d)?;
     let progress_receipt = dec_progress_reference(&mut d)?;
     let successor = match d.u8()? {
@@ -1217,7 +1230,8 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
         successor,
         build_digest,
         lifecycle,
-    );
+    )
+    .with_durable_continuation(durable_continuation);
     d.finish()?;
     if !build_record_is_exact(&value) {
         return Err(CodecError::InvalidLength("draft-piece build record"));
@@ -1277,6 +1291,7 @@ fn encode_progress_receipt(
     enc_build_boundary(&mut e, receipt.successor_frontier());
     e.u64(receipt.next_record_ordinal());
     enc_build_frontier(&mut e, receipt.frontier());
+    enc_durable_continuation(&mut e, receipt.durable_continuation());
     match receipt.successor() {
         Some(successor) => {
             e.u8(1);
@@ -1328,6 +1343,7 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
     let successor_frontier = dec_build_boundary(&mut d)?;
     let next_record_ordinal = d.u64()?;
     let frontier = dec_build_frontier(&mut d)?;
+    let durable_continuation = dec_durable_continuation(&mut d)?;
     let successor = match d.u8()? {
         0 => None,
         1 => Some(dec_root_reference(&mut d)?),
@@ -1377,7 +1393,8 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
         successor,
         build_digest,
         lifecycle,
-    );
+    )
+    .with_durable_continuation(durable_continuation);
     if !progress_receipt_is_exact(&receipt) {
         return Err(CodecError::InvalidLength("draft-piece progress receipt"));
     }
@@ -2144,7 +2161,7 @@ family!(
     DraftPieceBuildProgressReceiptV1,
     "draft-piece-build-progress",
     56,
-    1_024,
+    8_192,
     encode_progress_family_key,
     decode_progress_family_key,
     encode_progress_receipt,

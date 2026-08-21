@@ -23,11 +23,29 @@ use syndic_storage::{
     DraftEditorCandidateSessionReadOutcomeV1, DraftLogicalExtentV1, DraftMutationFinishInputV1,
     DraftMutationStagingErrorV1, DraftMutationStagingLaneV1, DraftMutationStagingPageInputV1,
     DraftMutationStagingPageItemV1, DraftMutationStagingReconcileV1, DraftMutationStagingStatusV1,
-    SyndicStorage, canonical_empty_draft_piece_fragment_chain_v1,
-    draft_piece_fragment_chain_link_v1,
+    DraftPieceDurableBuildWindowLimitsV1, PreparedDraftPieceStagingWindowV1, SyndicStorage,
+    canonical_empty_draft_piece_fragment_chain_v1, draft_piece_fragment_chain_link_v1,
 };
 
 use support::*;
+
+fn prepare_durable_page_window(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    identity: syndic_storage::DraftMutationStagingIdentityV1,
+) -> Result<Option<PreparedDraftPieceStagingWindowV1>, DraftMutationStagingErrorV1> {
+    let DraftMutationStagingStatusV1::Building { build, .. } =
+        storage.draft_mutation_staging_status(store, identity)?
+    else {
+        return Err(DraftMutationStagingErrorV1::Invalid);
+    };
+    storage.prepare_next_durable_draft_piece_window(
+        store,
+        identity,
+        build,
+        DraftPieceDurableBuildWindowLimitsV1::new(1, 1, 65_536).unwrap(),
+    )
+}
 
 #[test]
 fn two_page_commit_one_page_fast_path_replay_and_pre_admission_cancellation_are_exact() {
@@ -362,19 +380,18 @@ fn reopen_preserves_complete_target_and_finish_transfer_and_builder_drain() {
         ),
     ));
     for ordinal in 1..=2 {
-        let page = storage
-            .prepare_next_durable_draft_piece_page(&reopened, identity)
+        let page = prepare_durable_page_window(&storage, &reopened, identity)
             .unwrap()
             .unwrap();
-        assert_eq!(page.page_ordinal(), ordinal);
+        assert_eq!(page.first_page_ordinal(), ordinal);
         committed(execute(
             &reopened,
-            storage.stage_next_durable_draft_piece_page(storage.revision(&reopened).unwrap(), page),
+            storage
+                .stage_next_durable_draft_piece_window(storage.revision(&reopened).unwrap(), page),
         ));
     }
     assert!(
-        storage
-            .prepare_next_durable_draft_piece_page(&reopened, identity)
+        prepare_durable_page_window(&storage, &reopened, identity)
             .unwrap()
             .is_none()
     );

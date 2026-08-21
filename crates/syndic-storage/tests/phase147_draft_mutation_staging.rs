@@ -25,7 +25,8 @@ use syndic_storage::test_faults::{
     inject_draft_mutation_staging_receipt_digest_corruption,
     inject_draft_mutation_terminal_same_operation_custody,
     inject_draft_piece_candidate_root_collision, inject_draft_piece_custody_endpoint_corruption,
-    inject_draft_piece_session_generation_inflation,
+    inject_draft_piece_session_generation_inflation, reset_syndic_point_read_count,
+    syndic_point_read_count,
 };
 use syndic_storage::{
     CreateThread, DraftComposerBuildKeyV1, DraftComposerFormatV1,
@@ -41,9 +42,10 @@ use syndic_storage::{
     DraftMutationStagingPageItemV1, DraftMutationStagingReconcileV1,
     DraftMutationStagingRejectedReasonV1, DraftMutationStagingStatusV1,
     DraftMutationStagingTerminalAnchorV1, DraftMutationStagingTerminalEvidenceV1,
-    DraftPieceEditHeaderV1, DraftPieceErrorReasonV1, DraftPieceOperationIdV1,
-    DraftPieceRejectedReasonV1, DraftPieceReplacementV1, DraftPieceTextDemandV1, DraftPieceV1,
-    PreparedDraftMutationStagingBatchV1, PreparedDraftPieceEditV1, SyndicPointReadLimit,
+    DraftPieceDurableBuildWindowLimitsV1, DraftPieceEditHeaderV1, DraftPieceErrorReasonV1,
+    DraftPieceOperationIdV1, DraftPieceRejectedReasonV1, DraftPieceReplacementV1,
+    DraftPieceTextDemandV1, DraftPieceV1, PreparedDraftMutationStagingBatchV1,
+    PreparedDraftPieceEditV1, PreparedDraftPieceStagingWindowV1, SyndicPointReadLimit,
     SyndicStorage, SyndicTimestamp, canonical_draft_piece_fragment_chain_v1,
     canonical_empty_draft_piece_fragment_chain_v1, draft_piece_fragment_chain_link_v1,
 };
@@ -54,6 +56,24 @@ use syndic_storage::{
 };
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
+
+fn prepare_durable_page_window(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    identity: DraftMutationStagingIdentityV1,
+) -> Result<Option<PreparedDraftPieceStagingWindowV1>, DraftMutationStagingErrorV1> {
+    let DraftMutationStagingStatusV1::Building { build, .. } =
+        storage.draft_mutation_staging_status(store, identity)?
+    else {
+        return Err(DraftMutationStagingErrorV1::Invalid);
+    };
+    storage.prepare_next_durable_draft_piece_window(
+        store,
+        identity,
+        build,
+        DraftPieceDurableBuildWindowLimitsV1::new(1, 1, 65_536).unwrap(),
+    )
+}
 
 struct TestHome(PathBuf);
 
@@ -220,16 +240,15 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
         DraftMutationStagingStatusV1::Building { .. }
     ));
 
-    let page = storage
-        .prepare_next_durable_draft_piece_page(&store, identity)
+    let page = prepare_durable_page_window(&storage, &store, identity)
         .unwrap()
         .unwrap();
     assert_eq!(page.lane(), DraftMutationStagingLaneV1::Proposal);
-    assert_eq!(page.page_ordinal(), 1);
+    assert_eq!(page.first_page_ordinal(), 1);
     assert_eq!(page.fragment_count(), 1);
     committed(execute(
         &store,
-        storage.stage_next_durable_draft_piece_page(storage.revision(&store).unwrap(), page),
+        storage.stage_next_durable_draft_piece_window(storage.revision(&store).unwrap(), page),
     ));
     let DraftMutationStagingStatusV1::Building { build, .. } = storage
         .draft_mutation_staging_status(&store, identity)
@@ -239,8 +258,7 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
     };
     assert_eq!(build.key().transition_ordinal(), 2);
     assert!(
-        storage
-            .prepare_next_durable_draft_piece_page(&store, identity)
+        prepare_durable_page_window(&storage, &store, identity)
             .unwrap()
             .is_none()
     );
@@ -266,11 +284,11 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), settlement_replay),
     ));
-    let DraftEditorCandidateSessionReadOutcomeV1::Active(settled_session) = storage
+    let settled_outcome = storage
         .draft_editor_candidate_session(&store, identity.draft_id(), identity.session_id())
-        .unwrap()
-    else {
-        panic!("candidate session was not active after settlement");
+        .unwrap();
+    let DraftEditorCandidateSessionReadOutcomeV1::Active(settled_session) = settled_outcome else {
+        panic!("candidate session was not active after settlement: {settled_outcome:?}");
     };
     assert!(settled_session.active_operation().is_none());
     assert_eq!(
@@ -1174,7 +1192,7 @@ fn begin_rejects_occupied_build_and_settlement_natural_identity() {
 }
 
 #[test]
-fn more_than_257_pages_keep_one_page_per_command_and_reopen_exactly() {
+fn maximum_window_and_direct_late_continuation_reopen_exactly() {
     let (home, store, storage, thread) = fixture("many-pages", 51);
     let current = current(storage, &store, thread);
     let mut session = open_session(storage, &store, &current, 52, 53);
@@ -1186,6 +1204,26 @@ fn more_than_257_pages_keep_one_page_per_command_and_reopen_exactly() {
     committed(execute(
         &store,
         storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), begin),
+    ));
+    let head = storage
+        .draft_mutation_staging_head(&store, identity)
+        .unwrap()
+        .unwrap();
+    let source = prepare_phase147_one_page_batch(
+        storage,
+        &head,
+        &session,
+        DraftMutationStagingLaneV1::Source,
+        1,
+        1,
+        1024,
+        Box::new([DraftMutationStagingPageItemV1::SourcePosition(point(0))]),
+    )
+    .unwrap();
+    session = source.target_session().unwrap().clone();
+    committed(execute(
+        &store,
+        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), source),
     ));
     let mut chain = syndic_storage::canonical_empty_draft_piece_fragment_chain_v1();
     for page_ordinal in 1..=258_u64 {
@@ -1235,7 +1273,7 @@ fn more_than_257_pages_keep_one_page_per_command_and_reopen_exactly() {
         .unwrap();
     assert_eq!(head.proposal().next_ordinal(), 259);
     assert_eq!(head.proposal().item_total(), 258);
-    assert_eq!(head.receipt().transition_ordinal(), 259);
+    assert_eq!(head.receipt().transition_ordinal(), 260);
     let finish = DraftMutationFinishInputV1::new(
         head.source(),
         head.proposal(),
@@ -1257,7 +1295,7 @@ fn more_than_257_pages_keep_one_page_per_command_and_reopen_exactly() {
         .draft_mutation_staging_head(&store, identity)
         .unwrap()
         .unwrap();
-    assert_eq!(finished.receipt().transition_ordinal(), 260);
+    assert_eq!(finished.receipt().transition_ordinal(), 261);
     let transfer = storage
         .prepare_draft_mutation_staging_transfer(&finished, &session)
         .unwrap();
@@ -1268,23 +1306,93 @@ fn more_than_257_pages_keep_one_page_per_command_and_reopen_exactly() {
             transfer,
         ),
     ));
-    for page_ordinal in 1..=258_u64 {
-        let prepared = storage
-            .prepare_next_durable_draft_piece_page(&store, identity)
-            .unwrap()
-            .unwrap();
-        assert_eq!(prepared.lane(), DraftMutationStagingLaneV1::Proposal);
-        assert_eq!(prepared.page_ordinal(), page_ordinal);
-        assert_eq!(prepared.fragment_count(), 1);
-        committed(execute(
+    let DraftMutationStagingStatusV1::Building { build, .. } = storage
+        .draft_mutation_staging_status(&store, identity)
+        .unwrap()
+    else {
+        panic!("transferred staging did not enter builder custody");
+    };
+    let source = storage
+        .prepare_next_durable_draft_piece_window(
             &store,
-            storage
-                .stage_next_durable_draft_piece_page(storage.revision(&store).unwrap(), prepared),
-        ));
-    }
+            identity,
+            build,
+            DraftPieceDurableBuildWindowLimitsV1::maximum(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(source.lane(), DraftMutationStagingLaneV1::Source);
+    assert_eq!(source.first_page_ordinal(), 1);
+    assert_eq!(source.last_page_ordinal(), 1);
+    assert_eq!(source.page_count(), 1);
+    assert_eq!(source.fragment_count(), 0);
+    committed(execute(
+        &store,
+        storage.stage_next_durable_draft_piece_window(storage.revision(&store).unwrap(), source),
+    ));
+    let DraftMutationStagingStatusV1::Building { build, .. } = storage
+        .draft_mutation_staging_status(&store, identity)
+        .unwrap()
+    else {
+        panic!("source-only durable window lost builder custody");
+    };
+    #[cfg(feature = "test-faults")]
+    reset_syndic_point_read_count();
+    let prepared = storage
+        .prepare_next_durable_draft_piece_window(
+            &store,
+            identity,
+            build,
+            DraftPieceDurableBuildWindowLimitsV1::maximum(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(prepared.lane(), DraftMutationStagingLaneV1::Proposal);
+    assert_eq!(prepared.first_page_ordinal(), 1);
+    assert_eq!(prepared.last_page_ordinal(), 256);
+    assert_eq!(prepared.page_count(), 256);
+    assert_eq!(prepared.fragment_count(), 256);
+    assert_eq!(prepared.inserted_utf8_bytes(), 256);
+    assert_eq!(prepared.acquisition_read_count(), 520);
+    assert_eq!(prepared.acquisition_encoded_value_byte_budget(), 34_078_720);
+    #[cfg(feature = "test-faults")]
+    assert_eq!(syndic_point_read_count(), 518);
+    assert!(syndic_point_read_count() <= prepared.acquisition_read_count());
+    committed(execute(
+        &store,
+        storage.stage_next_durable_draft_piece_window(storage.revision(&store).unwrap(), prepared),
+    ));
+    let DraftMutationStagingStatusV1::Building { build, .. } = storage
+        .draft_mutation_staging_status(&store, identity)
+        .unwrap()
+    else {
+        panic!("first durable window lost builder custody");
+    };
+    #[cfg(feature = "test-faults")]
+    reset_syndic_point_read_count();
+    let prepared = storage
+        .prepare_next_durable_draft_piece_window(
+            &store,
+            identity,
+            build,
+            DraftPieceDurableBuildWindowLimitsV1::maximum(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(prepared.first_page_ordinal(), 257);
+    assert_eq!(prepared.last_page_ordinal(), 258);
+    assert_eq!(prepared.page_count(), 2);
+    assert_eq!(prepared.fragment_count(), 2);
+    assert_eq!(prepared.acquisition_read_count(), 12);
+    #[cfg(feature = "test-faults")]
+    assert_eq!(syndic_point_read_count(), 11);
+    assert!(syndic_point_read_count() <= prepared.acquisition_read_count());
+    committed(execute(
+        &store,
+        storage.stage_next_durable_draft_piece_window(storage.revision(&store).unwrap(), prepared),
+    ));
     assert!(
-        storage
-            .prepare_next_durable_draft_piece_page(&store, identity)
+        prepare_durable_page_window(&storage, &store, identity)
             .unwrap()
             .is_none()
     );
@@ -1292,14 +1400,14 @@ fn more_than_257_pages_keep_one_page_per_command_and_reopen_exactly() {
         .draft_mutation_staging_head(&store, identity)
         .unwrap()
         .unwrap();
-    assert_eq!(before_reopen.receipt().transition_ordinal(), 261);
+    assert_eq!(before_reopen.receipt().transition_ordinal(), 262);
     let DraftMutationStagingStatusV1::Building { build, .. } = storage
         .draft_mutation_staging_status(&store, identity)
         .unwrap()
     else {
         panic!("fully drained staging did not retain builder custody");
     };
-    assert_eq!(build.key().transition_ordinal(), 259);
+    assert_eq!(build.key().transition_ordinal(), 4);
     drop(store);
     let mut reopened =
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
@@ -1318,8 +1426,7 @@ fn more_than_257_pages_keep_one_page_per_command_and_reopen_exactly() {
         DraftMutationStagingStatusV1::Building { .. }
     ));
     assert!(
-        reopened_storage
-            .prepare_next_durable_draft_piece_page(&reopened, identity)
+        prepare_durable_page_window(&reopened_storage, &reopened, identity)
             .unwrap()
             .is_none()
     );
@@ -1503,15 +1610,14 @@ fn every_staging_command_class_reconciles_after_an_indeterminate_commit() {
     };
     assert_eq!(build.key().transition_ordinal(), 1);
 
-    let page = storage
-        .prepare_next_durable_draft_piece_page(&store, identity)
+    let page = prepare_durable_page_window(&storage, &store, identity)
         .unwrap()
         .unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     assert!(matches!(
         execute(
             &store,
-            storage.stage_next_durable_draft_piece_page(storage.revision(&store).unwrap(), page),
+            storage.stage_next_durable_draft_piece_window(storage.revision(&store).unwrap(), page),
         ),
         CommandOutcome::Indeterminate { .. }
     ));
@@ -1837,11 +1943,7 @@ fn page_ceiling_commitment_fails_decode_status_and_reconstruction() {
         &store,
         inject_draft_mutation_staging_page_ceiling_corruption(&store, storage, page_key),
     ));
-    assert!(
-        storage
-            .prepare_next_durable_draft_piece_page(&store, identity)
-            .is_err()
-    );
+    assert!(prepare_durable_page_window(&storage, &store, identity).is_err());
 }
 
 #[cfg(feature = "test-faults")]
@@ -2229,13 +2331,16 @@ fn execute(store: &HomeStore, contribution: MutationContribution) -> CommandOutc
 }
 
 fn committed(outcome: CommandOutcome) {
-    assert!(matches!(
-        outcome,
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        }
-    ));
+    assert!(
+        matches!(
+            &outcome,
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ),
+        "unexpected command outcome: {outcome:?}"
+    );
 }
 
 fn replay_succeeded(outcome: CommandOutcome) {

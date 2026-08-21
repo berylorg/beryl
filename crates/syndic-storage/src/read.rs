@@ -572,6 +572,8 @@ impl SyndicStorage {
         key: F::Key,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<F::Value>, SyndicReadError> {
+        #[cfg(feature = "test-faults")]
+        crate::test_faults::metrics::record_syndic_point_read();
         store
             .read_point::<crate::domain::SyndicDomain, ExactCodec<F>>(
                 self.handle,

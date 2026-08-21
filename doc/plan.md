@@ -29,21 +29,12 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 153: Define Bounded Builder Continuation And Streamed Marker Staging (finished)
+# Phase 154: Implement Bounded Durable Builder Continuation And Later-Page Marker Effects (finished)
 
-Defined storage-owned direct continuation with independent page/read/byte ceilings and self-contained
-later-page marker effects whose placement neighbors derive from working roots. Existing families are
-sufficient; cross-package authority and the compact failure record passed independent review.
-
-# Phase 154: Implement Bounded Durable Builder Continuation And Later-Page Marker Effects (pending)
-
-Implement the final-shape storage model, codecs, digests, authenticated progress receipts and public
-bounded builder API needed to derive only the next durable source/proposal window from persisted
-custody. Allow complete marker move and same-id replacement effects to arrive on later proposal
-pages without buffering prior pages. Prove bounded restart and reconciliation at late ordinals,
-marker edits across page boundaries, collision and corruption closure, cancellation and all command
-cuts, unchanged family inventory unless corrected authority explicitly requires otherwise, and no
-prefix scan or whole-operation state.
+Implemented and independently accepted direct persisted builder windows with measured 256-page
+read bounds, complete replay authentication, source-only progress, and restartable later-page marker
+effects whose working roots publish atomically. Existing families remain unchanged; focused Phase
+154 and representative storage regressions, locked checks, formatting, and static audits passed.
 
 # Phase 155: Integrate Durable Bounded Composer Mutation Staging (pending)
 

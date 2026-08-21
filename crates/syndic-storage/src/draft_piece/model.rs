@@ -1,4 +1,7 @@
-use super::staging_model::DraftMutationStagingProgressReceiptReferenceV1;
+use super::{
+    builder_model::DraftPieceDurableBuildContinuationV1,
+    staging_model::DraftMutationStagingProgressReceiptReferenceV1,
+};
 use beryl_model::{
     DraftRevision, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
     ThreadRevision,
@@ -1559,43 +1562,12 @@ pub enum DraftPieceV1 {
     Marker(DraftPieceMarkerV1),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DraftPieceMarkerMoveV1 {
-    predecessor: DraftPieceMarkerAtV1,
-    successor: DraftPieceMarkerV1,
-    removal_fragment_ordinal: u64,
-}
-
-impl DraftPieceMarkerMoveV1 {
-    pub const fn new(
-        predecessor: DraftPieceMarkerAtV1,
-        successor: DraftPieceMarkerV1,
-        removal_fragment_ordinal: u64,
-    ) -> Self {
-        Self {
-            predecessor,
-            successor,
-            removal_fragment_ordinal,
-        }
-    }
-
-    pub const fn predecessor(self) -> DraftPieceMarkerAtV1 {
-        self.predecessor
-    }
-    pub const fn successor(self) -> DraftPieceMarkerV1 {
-        self.successor
-    }
-    pub const fn removal_fragment_ordinal(self) -> u64 {
-        self.removal_fragment_ordinal
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftPieceReplacementV1 {
     start: DraftCompositePositionV1,
     end: DraftCompositePositionV1,
     inserted: Vec<DraftPieceV1>,
-    moves: Vec<DraftPieceMarkerMoveV1>,
+    marker_effect: Option<super::DraftPieceMarkerEffectV1>,
     continuation: bool,
 }
 
@@ -1609,7 +1581,7 @@ impl DraftPieceReplacementV1 {
             start,
             end,
             inserted,
-            moves: Vec::new(),
+            marker_effect: None,
             continuation: false,
         }
     }
@@ -1623,7 +1595,7 @@ impl DraftPieceReplacementV1 {
             start,
             end,
             inserted,
-            moves: Vec::new(),
+            marker_effect: None,
             continuation: true,
         }
     }
@@ -1640,13 +1612,13 @@ impl DraftPieceReplacementV1 {
         &self.inserted
     }
 
-    pub fn with_moves(mut self, moves: Vec<DraftPieceMarkerMoveV1>) -> Self {
-        self.moves = moves;
+    pub fn with_marker_effect(mut self, marker_effect: super::DraftPieceMarkerEffectV1) -> Self {
+        self.marker_effect = Some(marker_effect);
         self
     }
 
-    pub fn moves(&self) -> &[DraftPieceMarkerMoveV1] {
-        &self.moves
+    pub const fn marker_effect(&self) -> Option<super::DraftPieceMarkerEffectV1> {
+        self.marker_effect
     }
 
     pub const fn is_continuation(&self) -> bool {
@@ -2063,6 +2035,7 @@ pub struct DraftPieceBuildRecordV1 {
     frontier: DraftPieceBuildFrontierV1,
     progress_digest: DraftPieceDigestV1,
     progress_receipt: DraftPieceBuildProgressReceiptReferenceV1,
+    durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
     successor: Option<DraftPieceRootReferenceV1>,
     build_digest: Option<DraftPieceDigestV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
@@ -2121,6 +2094,7 @@ impl DraftPieceBuildRecordV1 {
             frontier,
             progress_digest,
             progress_receipt,
+            durable_continuation: None,
             successor,
             build_digest,
             lifecycle,
@@ -2207,6 +2181,16 @@ impl DraftPieceBuildRecordV1 {
         self.progress_receipt = progress_receipt;
         self
     }
+    pub const fn durable_continuation(&self) -> Option<DraftPieceDurableBuildContinuationV1> {
+        self.durable_continuation
+    }
+    pub(crate) fn with_durable_continuation(
+        mut self,
+        durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
+    ) -> Self {
+        self.durable_continuation = durable_continuation;
+        self
+    }
     pub const fn successor(&self) -> Option<DraftPieceRootReferenceV1> {
         self.successor
     }
@@ -2258,6 +2242,7 @@ pub struct DraftPieceBuildProgressReceiptV1 {
     successor_frontier: DraftPieceBuildBoundaryV1,
     next_record_ordinal: u64,
     frontier: DraftPieceBuildFrontierV1,
+    durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
     successor: Option<DraftPieceRootReferenceV1>,
     build_digest: Option<DraftPieceDigestV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
@@ -2289,6 +2274,7 @@ impl DraftPieceBuildProgressReceiptV1 {
             successor_frontier,
             next_record_ordinal,
             frontier,
+            durable_continuation: None,
             successor,
             build_digest,
             lifecycle,
@@ -2324,6 +2310,16 @@ impl DraftPieceBuildProgressReceiptV1 {
     }
     pub const fn frontier(&self) -> DraftPieceBuildFrontierV1 {
         self.frontier
+    }
+    pub const fn durable_continuation(&self) -> Option<DraftPieceDurableBuildContinuationV1> {
+        self.durable_continuation
+    }
+    pub(crate) fn with_durable_continuation(
+        mut self,
+        durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
+    ) -> Self {
+        self.durable_continuation = durable_continuation;
+        self
     }
     pub const fn successor(&self) -> Option<DraftPieceRootReferenceV1> {
         self.successor

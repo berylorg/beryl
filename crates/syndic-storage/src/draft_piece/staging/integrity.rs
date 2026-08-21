@@ -181,11 +181,10 @@ pub(super) fn make_receipt(
     Ok(receipt)
 }
 
-pub(super) fn authenticate_staging_page_closure(
-    storage: &SyndicStorage,
-    store: &beryl_home_store::HomeStore,
+fn authenticate_staging_page_receipt_values(
     head: &DraftMutationStagingHeadV1,
     page: &DraftMutationStagingPageV1,
+    receipt: &DraftMutationStagingProgressReceiptV1,
 ) -> Result<(), DraftMutationStagingErrorV1> {
     if page.key().identity() != head.identity()
         || !draft_mutation_staging_page_is_locally_exact(page)
@@ -197,18 +196,14 @@ pub(super) fn authenticate_staging_page_closure(
     {
         return Err(DraftMutationStagingErrorV1::Invariant);
     }
-    let limit = crate::SyndicPointReadLimit::new(65_536).expect("staging point limit is nonzero");
-    let key =
-        DraftMutationStagingProgressReceiptKeyV1::new(head.identity(), page.transition_ordinal())
-            .ok_or(DraftMutationStagingErrorV1::Invariant)?;
-    let receipt = storage
-        .point::<DraftMutationStagingProgressFamily>(store, key, limit)?
-        .ok_or(DraftMutationStagingErrorV1::Invariant)?;
     let command = match page.key().lane() {
         DraftMutationStagingLaneV1::Source => DraftMutationStagingCommandKindV1::SourcePage,
         DraftMutationStagingLaneV1::Proposal => DraftMutationStagingCommandKindV1::ProposalPage,
     };
-    if receipt.digest() != receipt_digest(receipt.clone())?
+    if receipt.key()
+        != DraftMutationStagingProgressReceiptKeyV1::new(head.identity(), page.transition_ordinal())
+            .ok_or(DraftMutationStagingErrorV1::Invariant)?
+        || receipt.digest() != receipt_digest(receipt.clone())?
         || receipt.command() != command
         || receipt.page() != Some((page.key(), page.digest()))
         || receipt.after_lifecycle() != DraftMutationStagingLifecycleV1::Receiving
@@ -245,6 +240,26 @@ pub(super) fn authenticate_staging_page_closure(
     if prior.transition_ordinal().checked_add(1) != Some(page.transition_ordinal()) {
         return Err(DraftMutationStagingErrorV1::Invariant);
     }
+    Ok(())
+}
+
+pub(super) fn authenticate_staging_page_closure(
+    storage: &SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    head: &DraftMutationStagingHeadV1,
+    page: &DraftMutationStagingPageV1,
+) -> Result<(), DraftMutationStagingErrorV1> {
+    let limit = crate::SyndicPointReadLimit::new(65_536).expect("staging point limit is nonzero");
+    let key =
+        DraftMutationStagingProgressReceiptKeyV1::new(head.identity(), page.transition_ordinal())
+            .ok_or(DraftMutationStagingErrorV1::Invariant)?;
+    let receipt = storage
+        .point::<DraftMutationStagingProgressFamily>(store, key, limit)?
+        .ok_or(DraftMutationStagingErrorV1::Invariant)?;
+    authenticate_staging_page_receipt_values(head, page, &receipt)?;
+    let prior = receipt
+        .prior()
+        .ok_or(DraftMutationStagingErrorV1::Invariant)?;
     let prior_key =
         DraftMutationStagingProgressReceiptKeyV1::new(head.identity(), prior.transition_ordinal())
             .ok_or(DraftMutationStagingErrorV1::Invariant)?;
@@ -255,6 +270,43 @@ pub(super) fn authenticate_staging_page_closure(
         || receipt.before_head_digest() != Some(prior_receipt.after_head_digest())
     {
         return Err(DraftMutationStagingErrorV1::Invariant);
+    }
+    Ok(())
+}
+
+pub(super) fn authenticate_staging_page_receipt_for_window(
+    head: &DraftMutationStagingHeadV1,
+    page: &DraftMutationStagingPageV1,
+    receipt: &DraftMutationStagingProgressReceiptV1,
+) -> Result<(), DraftMutationStagingErrorV1> {
+    authenticate_staging_page_receipt_values(head, page, receipt)
+}
+
+pub(super) fn authenticate_staging_page_reader(
+    reader: &DomainReader<'_, SyndicDomain>,
+    head: &DraftMutationStagingHeadV1,
+    page: &DraftMutationStagingPageV1,
+) -> Result<(), SyndicMutationError> {
+    let key =
+        DraftMutationStagingProgressReceiptKeyV1::new(head.identity(), page.transition_ordinal())
+            .ok_or(SyndicMutationError::IdentityCollision)?;
+    let receipt = point::<DraftMutationStagingProgressFamily>(reader, &key)?
+        .ok_or(SyndicMutationError::IdentityCollision)?;
+    authenticate_staging_page_receipt_values(head, page, &receipt)
+        .map_err(|_| SyndicMutationError::IdentityCollision)?;
+    let prior = receipt
+        .prior()
+        .ok_or(SyndicMutationError::IdentityCollision)?;
+    let prior_key =
+        DraftMutationStagingProgressReceiptKeyV1::new(head.identity(), prior.transition_ordinal())
+            .ok_or(SyndicMutationError::IdentityCollision)?;
+    let prior_receipt = point::<DraftMutationStagingProgressFamily>(reader, &prior_key)?
+        .ok_or(SyndicMutationError::IdentityCollision)?;
+    if prior_receipt.digest() != prior.digest()
+        || !draft_mutation_staging_receipt_is_locally_exact(&prior_receipt)
+        || receipt.before_head_digest() != Some(prior_receipt.after_head_digest())
+    {
+        return Err(SyndicMutationError::IdentityCollision);
     }
     Ok(())
 }

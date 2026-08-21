@@ -827,6 +827,63 @@ fn locate_search_key(
     }))
 }
 
+fn locate_marker_insertion_target(
+    context: &mut BuildContext<'_>,
+    tree: SequenceRef,
+    target: DraftCompositeSearchKeyV1,
+) -> Result<Option<LocatedLeaf>, DraftPiecePrepareErrorV1> {
+    let target_anchor = target.anchor();
+    let mut current = tree;
+    let mut anchor = 0_u64;
+    let mut rank = 0_u64;
+    while current.height != 0 {
+        let node =
+            context.load_sequence_node(current.link, current.height, current.selected_root)?;
+        let mut child_anchor = anchor;
+        let mut child_rank = rank;
+        let mut text_candidate = None;
+        let mut marker_candidate = None;
+        for child in node.children().iter().copied() {
+            let last = checked_offset_key(child.last(), child_anchor)
+                .map_err(DraftPiecePrepareErrorV1::Rejected)?;
+            if child.marker_count() != 0 && target <= last {
+                marker_candidate = Some((child, child_anchor, child_rank));
+                break;
+            }
+            let child_end = child_anchor.checked_add(child.logical_utf8_bytes()).ok_or(
+                DraftPiecePrepareErrorV1::Rejected(DraftPieceRejectedReasonV1::AggregateOverflow),
+            )?;
+            if child.logical_utf8_bytes() != 0
+                && child_anchor <= target_anchor
+                && target_anchor <= child_end
+                && text_candidate.is_none()
+            {
+                text_candidate = Some((child, child_anchor, child_rank));
+            }
+            child_anchor = child_end;
+            child_rank = child_rank.checked_add(child.piece_count()).ok_or(
+                DraftPiecePrepareErrorV1::Rejected(DraftPieceRejectedReasonV1::AggregateOverflow),
+            )?;
+        }
+        let Some((child, selected_anchor, selected_rank)) = marker_candidate.or(text_candidate)
+        else {
+            return Ok(None);
+        };
+        current = SequenceRef {
+            link: child,
+            height: current.height - 1,
+            selected_root: false,
+        };
+        anchor = selected_anchor;
+        rank = selected_rank;
+    }
+    Ok(Some(LocatedLeaf {
+        rank,
+        anchor,
+        link: current.link,
+    }))
+}
+
 fn resolve_position(
     context: &mut BuildContext<'_>,
     tree: Option<SequenceRef>,
@@ -1887,6 +1944,103 @@ fn mapped_boundary(
     })
 }
 
+fn derived_marker_insertion_boundary(
+    context: &mut BuildContext<'_>,
+    sequence: Option<SequenceRef>,
+    insertion: DraftPieceMarkerInsertionV1,
+) -> Result<Boundary, DraftPiecePrepareErrorV1> {
+    let Some(sequence) = sequence else {
+        return if insertion.anchor() == 0 {
+            Ok(Boundary { rank: 0, inner: 0 })
+        } else {
+            Err(DraftPiecePrepareErrorV1::Rejected(
+                DraftPieceRejectedReasonV1::OutOfOrder,
+            ))
+        };
+    };
+    if insertion.anchor() > sequence.link.logical_utf8_bytes() {
+        return Err(DraftPiecePrepareErrorV1::Rejected(
+            DraftPieceRejectedReasonV1::OutOfOrder,
+        ));
+    }
+    let marker = insertion.marker();
+    let target = DraftCompositeSearchKeyV1::Marker {
+        anchor: insertion.anchor(),
+        order_key: marker.order_key(),
+        marker_id: beryl_model::SyndicDraftMarkerId::from_bytes([0; 16]),
+    };
+    let Some(located) = locate_marker_insertion_target(context, sequence, target)? else {
+        return Ok(Boundary {
+            rank: sequence.link.piece_count(),
+            inner: 0,
+        });
+    };
+    let leaf = context.load_sequence_leaf(located.link)?;
+    match leaf.value() {
+        DraftPieceLeafValueV1::Marker(existing) if existing.order_key() == marker.order_key() => {
+            Err(DraftPiecePrepareErrorV1::Rejected(
+                DraftPieceRejectedReasonV1::DuplicateMarkerOrder,
+            ))
+        }
+        DraftPieceLeafValueV1::Text(text) => {
+            let inner = usize::try_from(
+                insertion
+                    .anchor()
+                    .checked_sub(located.anchor)
+                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
+            )
+            .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
+            if inner > text.len() {
+                return Err(DraftPiecePrepareErrorV1::Rejected(
+                    DraftPieceRejectedReasonV1::InvalidUtf8Boundary,
+                ));
+            }
+            if !text.is_char_boundary(inner) {
+                return Err(DraftPiecePrepareErrorV1::Rejected(
+                    DraftPieceRejectedReasonV1::InvalidUtf8Boundary,
+                ));
+            }
+            if inner == text.len() {
+                return Ok(Boundary {
+                    rank: located
+                        .rank
+                        .checked_add(1)
+                        .ok_or(DraftPiecePrepareErrorV1::Rejected(
+                            DraftPieceRejectedReasonV1::AggregateOverflow,
+                        ))?,
+                    inner: 0,
+                });
+            }
+            Ok(Boundary {
+                rank: located.rank,
+                inner,
+            })
+        }
+        DraftPieceLeafValueV1::Marker(_) => Ok(Boundary {
+            rank: located.rank,
+            inner: 0,
+        }),
+    }
+}
+
+fn validate_marker_effect_charge(
+    effect: DraftPieceMarkerEffectV1,
+    leaf: &DraftPieceLeafRecordV1,
+) -> Result<(), DraftPiecePrepareErrorV1> {
+    let charges = match effect {
+        DraftPieceMarkerEffectV1::Insert(insertion)
+        | DraftPieceMarkerEffectV1::Move { insertion, .. }
+        | DraftPieceMarkerEffectV1::SameIdReplacement { insertion, .. } => insertion.charges(),
+        DraftPieceMarkerEffectV1::Remove { charges, .. } => charges,
+    };
+    let encoded_bytes = super::codec::canonical_draft_piece_leaf_encoded_bytes(leaf)
+        .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
+    if charges != DraftPieceMarkerEffectChargesV1::new(0, 1, encoded_bytes) {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    Ok(())
+}
+
 fn finish_quantum(
     context: BuildContext<'_>,
     roots: DraftPieceBuildRootsV1,
@@ -2014,7 +2168,7 @@ fn validate_build_phase_cursor(
     let replacement = fragment.replacement();
     match build.frontier() {
         DraftPieceBuildFrontierV1::ReconcilingMoves { next_move, .. } => {
-            if next_move > replacement.moves().len() as u64 {
+            if next_move > u64::from(replacement.marker_effect().is_some()) {
                 return Err(DraftPiecePrepareErrorV1::InvalidRoot);
             }
         }
@@ -2072,7 +2226,13 @@ fn validate_build_phase_cursor(
             let pieces = replacement.inserted();
             if next_piece > pieces.len() as u64
                 || (next_piece == pieces.len() as u64 && next_byte != 0)
-                || successor_end.rank() > build.working_roots().sequence_summary().piece_count()
+                || successor_end.rank()
+                    > build
+                        .durable_continuation()
+                        .and_then(DraftPieceDurableBuildContinuationV1::pending_marker_effect)
+                        .map_or(build.working_roots(), |pending| pending.working_roots())
+                        .sequence_summary()
+                        .piece_count()
             {
                 return Err(DraftPiecePrepareErrorV1::InvalidRoot);
             }
@@ -2144,7 +2304,10 @@ pub(crate) fn advance_persistent_tree_build(
         build.operation_id(),
         build.next_record_ordinal(),
     );
-    let mut roots = build.working_roots();
+    let continuation = build.durable_continuation();
+    let mut roots = continuation
+        .and_then(DraftPieceDurableBuildContinuationV1::pending_marker_effect)
+        .map_or(build.working_roots(), |pending| pending.working_roots());
     let mut base_frontier = build.base_frontier();
     let mut successor_frontier = build.successor_frontier();
     let mut successor = None;
@@ -2158,107 +2321,97 @@ pub(crate) fn advance_persistent_tree_build(
             if fragment.key().ordinal() != fragment_ordinal {
                 return Err(DraftPiecePrepareErrorV1::InvalidRoot);
             }
-            let movements = fragment.replacement().moves();
-            if next_move < movements.len() as u64 {
-                let movement = movements[next_move as usize];
-                let predecessor = movement.predecessor();
-                let successor = movement.successor();
-                if predecessor.marker().marker_id() != successor.marker_id()
-                    || predecessor.marker().label() != successor.label()
-                {
-                    return Err(DraftPiecePrepareErrorV1::Rejected(
-                        DraftPieceRejectedReasonV1::DuplicateMarkerIdentity,
-                    ));
-                }
-                if fragment
-                        .replacement()
-                        .inserted()
-                        .iter()
-                        .filter(|piece| matches!(piece, DraftPieceV1::Marker(marker) if marker.marker_id() == successor.marker_id() && *marker == successor))
-                        .count()
-                        != 1
-                {
-                    return Err(DraftPiecePrepareErrorV1::Rejected(
-                        DraftPieceRejectedReasonV1::TooManyReplacements,
-                    ));
-                }
-                if movement.removal_fragment_ordinal() == 0
-                    || movement.removal_fragment_ordinal() > build.fragment_count()
-                {
-                    return Err(DraftPiecePrepareErrorV1::Rejected(
-                        DraftPieceRejectedReasonV1::OutOfOrder,
-                    ));
-                }
-                let removal = load_authenticated_build_fragment(
-                    storage,
-                    store,
-                    build,
-                    movement.removal_fragment_ordinal(),
-                )?;
-                if removal.replacement().is_continuation() {
-                    return Err(DraftPiecePrepareErrorV1::Rejected(
-                        DraftPieceRejectedReasonV1::OutOfOrder,
-                    ));
-                }
-                let mut base_context = BuildContext::with_ordinal(
-                    storage,
-                    store,
-                    build.draft_id(),
-                    build.predecessor_root().key().session_id(),
-                    build.predecessor_root().key().operation_id(),
-                    context.ordinal,
-                );
-                let base_sequence = load_root(&mut base_context, build.predecessor_root())?
-                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-                resolve_position(
-                    &mut base_context,
-                    Some(base_sequence),
-                    removal.replacement().start(),
-                )?;
-                resolve_position(
-                    &mut base_context,
-                    Some(base_sequence),
-                    removal.replacement().end(),
-                )?;
-                let target = DraftCompositeSearchKeyV1::Marker {
-                    anchor: predecessor.anchor(),
-                    order_key: predecessor.marker().order_key(),
-                    marker_id: predecessor.marker().marker_id(),
+            let effect = fragment.replacement().marker_effect();
+            if next_move == 0 && effect.is_some() {
+                let effect = effect.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                let removal = match effect {
+                    DraftPieceMarkerEffectV1::Remove { removal, .. }
+                    | DraftPieceMarkerEffectV1::Move { removal, .. }
+                    | DraftPieceMarkerEffectV1::SameIdReplacement { removal, .. } => Some(removal),
+                    DraftPieceMarkerEffectV1::Insert(_) => None,
                 };
-                let base_index = validate_index_root(&mut base_context, build.predecessor_root())?;
-                let occurrence = index_lookup(
-                    &mut base_context,
-                    base_index,
-                    predecessor.marker().marker_id(),
-                )?
-                .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-                if occurrence.label() != predecessor.marker().label()
-                    || occurrence.order_key() != predecessor.marker().order_key()
-                    || !validate_marker_location(
+                let (mut sequence, mut index) = load_working_roots(&mut context, roots)?;
+                if let Some(removal) = removal {
+                    let occurrence = removal.occurrence();
+                    let marker = DraftPieceMarkerV1::new(
+                        occurrence.marker_id(),
+                        occurrence.order_key(),
+                        occurrence.label(),
+                    );
+                    let witness =
+                        DraftPieceMarkerAtV1::new(removal.position().utf8_offset(), marker);
+                    let mut base_context = BuildContext::with_ordinal(
                         storage,
                         store,
-                        build.predecessor_root(),
-                        predecessor,
-                    )?
-                    || target < position_boundary_key(removal.replacement().start())
-                    || target >= position_boundary_key(removal.replacement().end())
-                {
-                    return Err(DraftPiecePrepareErrorV1::Rejected(
-                        DraftPieceRejectedReasonV1::Overlap,
-                    ));
+                        build.draft_id(),
+                        build.predecessor_root().key().session_id(),
+                        build.predecessor_root().key().operation_id(),
+                        context.ordinal,
+                    );
+                    let base_sequence = load_root(&mut base_context, build.predecessor_root())?
+                        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                    resolve_position(&mut base_context, Some(base_sequence), removal.position())?;
+                    let base_index =
+                        validate_index_root(&mut base_context, build.predecessor_root())?;
+                    let (_, leaf) =
+                        marker_location_by_witness(&mut base_context, base_sequence, &witness)?
+                            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                    validate_marker_effect_charge(effect, &leaf)?;
+                    if index_lookup(&mut base_context, base_index, occurrence.marker_id())?
+                        != Some(occurrence)
+                        || leaf.key().id() != occurrence.sequence_leaf_id()
+                        || leaf.digest() != occurrence.sequence_leaf_digest()
+                    {
+                        return Err(DraftPiecePrepareErrorV1::Rejected(
+                            DraftPieceRejectedReasonV1::Overlap,
+                        ));
+                    }
+                    if index_lookup(&mut context, index, occurrence.marker_id())?
+                        != Some(occurrence)
+                    {
+                        return Err(DraftPiecePrepareErrorV1::Rejected(
+                            DraftPieceRejectedReasonV1::DuplicateMarkerIdentity,
+                        ));
+                    }
+                    let current_sequence = sequence.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                    let (located, _) =
+                        marker_location_by_witness(&mut context, current_sequence, &witness)?
+                            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                    if located.link.id() != occurrence.sequence_leaf_id()
+                        || located.link.digest() != occurrence.sequence_leaf_digest()
+                    {
+                        return Err(DraftPiecePrepareErrorV1::Rejected(
+                            DraftPieceRejectedReasonV1::Overlap,
+                        ));
+                    }
+                    let (prefix, tail) = split_sequence(
+                        &mut context,
+                        current_sequence,
+                        Boundary {
+                            rank: located.rank,
+                            inner: 0,
+                        },
+                    )?;
+                    let tail = tail.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                    let (_, suffix) =
+                        split_sequence(&mut context, tail, Boundary { rank: 1, inner: 0 })?;
+                    sequence = join_sequence(&mut context, prefix, suffix)?;
+                    index = index_delete(&mut context, index, occurrence)?;
+                } else if let DraftPieceMarkerEffectV1::Insert(insertion) = effect {
+                    if index_lookup(&mut context, index, insertion.marker().marker_id())?.is_some()
+                    {
+                        return Err(DraftPiecePrepareErrorV1::Rejected(
+                            DraftPieceRejectedReasonV1::DuplicateMarkerIdentity,
+                        ));
+                    }
                 }
-                let (sequence, index) = load_working_roots(&mut context, roots)?;
-                if index_lookup(&mut context, index, occurrence.marker_id())? != Some(occurrence) {
-                    return Err(DraftPiecePrepareErrorV1::Rejected(
-                        DraftPieceRejectedReasonV1::DuplicateMarkerIdentity,
-                    ));
-                }
-                let index = index_delete(&mut context, index, occurrence)?;
                 roots = build_roots(&mut context, sequence, index)?;
                 DraftPieceBuildFrontierV1::ReconcilingMoves {
                     fragment_ordinal,
-                    next_move: next_move + 1,
+                    next_move: 1,
                 }
+            } else if next_move > u64::from(effect.is_some()) {
+                return Err(DraftPiecePrepareErrorV1::InvalidRoot);
             } else if fragment_ordinal < build.fragment_count() {
                 DraftPieceBuildFrontierV1::ReconcilingMoves {
                     fragment_ordinal: fragment_ordinal + 1,
@@ -2524,57 +2677,49 @@ pub(crate) fn advance_persistent_tree_build(
                         if next_byte != 0 {
                             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
                         }
-                        let declarations: Vec<_> = fragment
+                        let insertion = match fragment
                             .replacement()
-                            .moves()
-                            .iter()
-                            .filter(|movement| {
-                                movement.successor().marker_id() == marker.marker_id()
-                            })
-                            .collect();
-                        let mut predecessor_context = BuildContext::with_ordinal(
-                            storage,
-                            store,
-                            build.draft_id(),
-                            build.predecessor_root().key().session_id(),
-                            build.predecessor_root().key().operation_id(),
-                            context.ordinal,
-                        );
-                        let predecessor_index = validate_index_root(
-                            &mut predecessor_context,
-                            build.predecessor_root(),
-                        )?;
-                        let predecessor_occurrence = index_lookup(
-                            &mut predecessor_context,
-                            predecessor_index,
-                            marker.marker_id(),
-                        )?;
-                        match predecessor_occurrence {
-                            Some(occurrence) => {
-                                if declarations.len() != 1
-                                    || declarations[0].successor() != *marker
-                                    || declarations[0].predecessor().marker().marker_id()
-                                        != marker.marker_id()
-                                    || declarations[0].predecessor().marker().label()
-                                        != marker.label()
-                                    || occurrence.label() != marker.label()
-                                    || occurrence.order_key()
-                                        != declarations[0].predecessor().marker().order_key()
-                                {
-                                    return Err(DraftPiecePrepareErrorV1::Rejected(
-                                        DraftPieceRejectedReasonV1::DuplicateMarkerIdentity,
-                                    ));
-                                }
+                            .marker_effect()
+                            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
+                        {
+                            DraftPieceMarkerEffectV1::Insert(insertion)
+                            | DraftPieceMarkerEffectV1::Move { insertion, .. }
+                            | DraftPieceMarkerEffectV1::SameIdReplacement { insertion, .. } => {
+                                insertion
                             }
-                            None if !declarations.is_empty() => {
-                                return Err(DraftPiecePrepareErrorV1::Rejected(
-                                    DraftPieceRejectedReasonV1::DuplicateMarkerIdentity,
-                                ));
+                            DraftPieceMarkerEffectV1::Remove { .. } => {
+                                return Err(DraftPiecePrepareErrorV1::InvalidRoot);
                             }
-                            None => {}
+                        };
+                        if insertion.marker() != *marker
+                            || index_lookup(&mut context, index, marker.marker_id())?.is_some()
+                        {
+                            return Err(DraftPiecePrepareErrorV1::Rejected(
+                                DraftPieceRejectedReasonV1::DuplicateMarkerIdentity,
+                            ));
                         }
+                        let boundary =
+                            derived_marker_insertion_boundary(&mut context, sequence, insertion)?;
+                        let marker_end = boundary
+                            .rank
+                            .checked_add(u64::from(boundary.inner != 0))
+                            .and_then(|rank| rank.checked_add(1))
+                            .ok_or(DraftPiecePrepareErrorV1::Rejected(
+                                DraftPieceRejectedReasonV1::AggregateOverflow,
+                            ))?;
                         let leaf =
                             context.new_sequence_leaf(DraftPieceLeafValueV1::Marker(*marker))?;
+                        let leaf_record = context
+                            .sequence_leaves
+                            .get(&leaf.link.id())
+                            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                        validate_marker_effect_charge(
+                            fragment
+                                .replacement()
+                                .marker_effect()
+                                .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
+                            leaf_record,
+                        )?;
                         let occurrence = DraftMarkerIdentityOccurrenceV1::new(
                             marker.marker_id(),
                             marker.label(),
@@ -2589,12 +2734,7 @@ pub(crate) fn advance_persistent_tree_build(
                             leaf,
                         )?);
                         index = index_insert(&mut context, index, occurrence)?;
-                        next_end =
-                            next_end
-                                .checked_add(1)
-                                .ok_or(DraftPiecePrepareErrorV1::Rejected(
-                                    DraftPieceRejectedReasonV1::AggregateOverflow,
-                                ))?;
+                        next_end = marker_end;
                     }
                 }
                 roots = build_roots(&mut context, sequence, index)?;
@@ -2673,26 +2813,6 @@ pub(crate) fn advance_persistent_tree_build(
         successor,
         build_digest,
     ))
-}
-
-fn position_boundary_key(position: DraftCompositePositionV1) -> DraftCompositeSearchKeyV1 {
-    match position.gap() {
-        DraftCompositeGapWitnessV1::Unambiguous | DraftCompositeGapWitnessV1::BeforeAll => {
-            DraftCompositeSearchKeyV1::BeforeMarkers(position.utf8_offset())
-        }
-        DraftCompositeGapWitnessV1::Between {
-            right_order_key,
-            right_marker_id,
-            ..
-        } => DraftCompositeSearchKeyV1::Marker {
-            anchor: position.utf8_offset(),
-            order_key: right_order_key,
-            marker_id: right_marker_id,
-        },
-        DraftCompositeGapWitnessV1::AfterAll => {
-            DraftCompositeSearchKeyV1::AfterMarkers(position.utf8_offset())
-        }
-    }
 }
 
 fn read_context<'a>(
@@ -3878,20 +3998,22 @@ pub(crate) fn marker_identity_lookup(
     index_lookup(&mut context, index, marker_id)
 }
 
-fn marker_leaf_by_witness(
+fn marker_location_by_witness(
     context: &mut BuildContext<'_>,
     mut tree: SequenceRef,
     witness: &DraftPieceMarkerAtV1,
-) -> Result<Option<DraftPieceLeafRecordV1>, DraftPiecePrepareErrorV1> {
+) -> Result<Option<(LocatedLeaf, DraftPieceLeafRecordV1)>, DraftPiecePrepareErrorV1> {
     let target = DraftCompositeSearchKeyV1::Marker {
         anchor: witness.anchor(),
         order_key: witness.marker().order_key(),
         marker_id: witness.marker().marker_id(),
     };
     let mut base = 0_u64;
+    let mut rank = 0_u64;
     while tree.height != 0 {
         let node = context.load_sequence_node(tree.link, tree.height, tree.selected_root)?;
         let mut prefix = base;
+        let mut prefix_rank = rank;
         let mut selected = None;
         for child in node.children() {
             let first = checked_offset_key(child.first(), prefix)
@@ -3899,17 +4021,21 @@ fn marker_leaf_by_witness(
             let last = checked_offset_key(child.last(), prefix)
                 .map_err(DraftPiecePrepareErrorV1::Rejected)?;
             if child.marker_count() != 0 && first <= target && target <= last {
-                selected = Some(*child);
+                selected = Some((*child, prefix_rank));
                 base = prefix;
                 break;
             }
             prefix = prefix.checked_add(child.logical_utf8_bytes()).ok_or(
                 DraftPiecePrepareErrorV1::Rejected(DraftPieceRejectedReasonV1::AggregateOverflow),
             )?;
+            prefix_rank = prefix_rank.checked_add(child.piece_count()).ok_or(
+                DraftPiecePrepareErrorV1::Rejected(DraftPieceRejectedReasonV1::AggregateOverflow),
+            )?;
         }
-        let Some(link) = selected else {
+        let Some((link, selected_rank)) = selected else {
             return Ok(None);
         };
+        rank = selected_rank;
         tree = SequenceRef {
             link,
             height: tree.height - 1,
@@ -3917,7 +4043,24 @@ fn marker_leaf_by_witness(
         };
     }
     let leaf = context.load_sequence_leaf(tree.link)?;
-    Ok((leaf.value() == &DraftPieceLeafValueV1::Marker(witness.marker())).then_some(leaf))
+    Ok(
+        (leaf.value() == &DraftPieceLeafValueV1::Marker(witness.marker())).then_some((
+            LocatedLeaf {
+                rank,
+                anchor: base,
+                link: tree.link,
+            },
+            leaf,
+        )),
+    )
+}
+
+fn marker_leaf_by_witness(
+    context: &mut BuildContext<'_>,
+    tree: SequenceRef,
+    witness: &DraftPieceMarkerAtV1,
+) -> Result<Option<DraftPieceLeafRecordV1>, DraftPiecePrepareErrorV1> {
+    Ok(marker_location_by_witness(context, tree, witness)?.map(|(_, leaf)| leaf))
 }
 
 pub(crate) fn validate_marker_location(

@@ -9,6 +9,7 @@ static CURRENT_BINDING_RECORD_READS: AtomicUsize = AtomicUsize::new(0);
 static CURRENT_BINDING_SECOND_HEAD_READS: AtomicUsize = AtomicUsize::new(0);
 static DELIVERING_STEERING_POINT_READS: AtomicUsize = AtomicUsize::new(0);
 static READY_STEERING_POINT_READS: AtomicUsize = AtomicUsize::new(0);
+static SYNDIC_POINT_READS: AtomicUsize = AtomicUsize::new(0);
 static RECOVERY_MAX_RESIDENT_TURNS: AtomicUsize = AtomicUsize::new(0);
 static RECOVERY_MAX_RESIDENT_ITEMS: AtomicUsize = AtomicUsize::new(0);
 static RECOVERY_TURN_ITEM_READ_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
@@ -215,6 +216,15 @@ pub fn ready_steering_read_metrics() -> ReadySteeringReadMetrics {
     }
 }
 
+pub fn reset_syndic_point_read_count() {
+    SYNDIC_POINT_READS.store(0, Ordering::Relaxed);
+}
+
+#[must_use]
+pub fn syndic_point_read_count() -> usize {
+    SYNDIC_POINT_READS.load(Ordering::Relaxed)
+}
+
 /// Clears the test-only recovery replay observations.
 pub fn reset_recovery_residency_metrics() {
     RECOVERY_MAX_RESIDENT_TURNS.store(0, Ordering::Relaxed);
@@ -271,4 +281,8 @@ pub(crate) fn record_delivering_steering_point_read() {
 
 pub(crate) fn record_ready_steering_point_read() {
     READY_STEERING_POINT_READS.fetch_add(1, Ordering::Relaxed);
+}
+
+pub(crate) fn record_syndic_point_read() {
+    SYNDIC_POINT_READS.fetch_add(1, Ordering::Relaxed);
 }

@@ -178,8 +178,48 @@ impl SyndicStorage {
             finish.proposal().item_total(),
             finish.proposal_fragment_chain(),
         );
+        let source = DraftMutationStagingLaneFrontierV1::new(
+            head.begin().source_initial_cursor(),
+            1,
+            0,
+            0,
+            empty_lane_identity(DraftMutationStagingLaneV1::Source),
+        )
+        .unwrap();
+        let proposal = DraftMutationStagingLaneFrontierV1::new(
+            head.begin().proposal_initial_cursor(),
+            1,
+            0,
+            0,
+            empty_lane_identity(DraftMutationStagingLaneV1::Proposal),
+        )
+        .unwrap();
+        let phase = if source != finish.source() {
+            DraftPieceBuildStagingPhaseV1::Source
+        } else if proposal != finish.proposal() {
+            DraftPieceBuildStagingPhaseV1::Proposal
+        } else {
+            DraftPieceBuildStagingPhaseV1::Structure
+        };
+        let continuation = DraftPieceDurableBuildContinuationV1::new(
+            DraftPieceFinishedStagingReferenceV1::new(
+                head.identity(),
+                head.digest(),
+                head.receipt(),
+                finish.source(),
+                finish.proposal(),
+            ),
+            source,
+            proposal,
+            phase,
+            DraftPieceChangedOccurrenceFrontierV1::new(
+                0,
+                canonical_empty_changed_occurrence_digest_v1(),
+            ),
+            None,
+        );
         let (prepared_edit, build, build_receipt, target_session) =
-            super::mutation::initial_build_for_staging(header, session, expected)
+            super::mutation::initial_build_for_staging(header, session, expected, continuation)
                 .map_err(|_| DraftMutationStagingErrorV1::Invalid)?;
         let build_endpoint = build.progress_receipt();
         let transition = head

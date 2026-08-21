@@ -262,9 +262,15 @@ impl SyndicStorage {
                 DraftPieceRejectedReasonV1::TreeLimit,
             ));
         }
+        let (published_roots, target_continuation) = marker_continuation_transition(
+            &build,
+            fragment.as_ref(),
+            quantum.roots,
+            quantum.frontier,
+        )?;
         let (next, next_receipt) = next_build_record(
             &build,
-            quantum.roots,
+            published_roots,
             quantum.base_frontier,
             quantum.successor_frontier,
             quantum.next_record_ordinal,
@@ -277,6 +283,7 @@ impl SyndicStorage {
                 DraftPieceBuildLifecycleV1::Open
             },
             fragment_endpoint,
+            target_continuation,
         )
         .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
         let next_session = expected_session
@@ -402,6 +409,47 @@ pub(super) fn authenticated_staging_build_from_store(
     DraftPiecePrepareErrorV1,
 > {
     authenticated_build_from_store(storage, store, key)
+}
+
+pub(super) fn authenticated_staging_window_build_from_store(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    key: DraftPieceSettlementKeyV1,
+) -> Result<
+    Option<(DraftPieceBuildRecordV1, DraftEditorCandidateSessionV1)>,
+    DraftPiecePrepareErrorV1,
+> {
+    let build = storage.point::<DraftPieceBuildsFamily>(store, key, point_limit())?;
+    let Some(build) = build else { return Ok(None) };
+    let receipt = storage
+        .point::<DraftPieceBuildProgressFamily>(
+            store,
+            build.progress_receipt().key(),
+            point_limit(),
+        )?
+        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    if !progress_receipt_matches_build(&receipt, &build) || !progress_receipt_is_exact(&receipt) {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    authenticate_progress_receipt_from_store(storage, store, &receipt)?;
+    let session_key =
+        DraftEditorCandidateSessionRecordKeyV1::head(build.draft_id(), build.session_id());
+    let session = match storage.point::<DraftEditorCandidateSessionsFamily>(
+        store,
+        session_key,
+        point_limit(),
+    )? {
+        Some(DraftEditorCandidateSessionRecordV1::Head(head)) => head,
+        Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(_)) | None => {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+    };
+    if session.active_operation() != Some(&custody_for(&build))
+        || !active_session_generation_matches_build(&session, &build)
+    {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    Ok(Some((build, session)))
 }
 
 fn authenticate_progress_receipt_from_store(
@@ -533,6 +581,7 @@ pub(super) fn initial_build_for_staging(
     header: DraftPieceEditHeaderV1,
     source_session: &DraftEditorCandidateSessionV1,
     expected_staging: DraftEditorActiveOperationV1,
+    continuation: DraftPieceDurableBuildContinuationV1,
 ) -> Result<
     (
         PreparedDraftPieceEditV1,
@@ -565,6 +614,19 @@ pub(super) fn initial_build_for_staging(
         predecessor_positions_authenticated: true,
     };
     let origin = DraftPieceBuildBoundaryV1::new(0, 0);
+    let initial_frontier = if continuation.phase() == DraftPieceBuildStagingPhaseV1::Structure {
+        if header.fragment_count() != 0
+            || header.fragment_chain() != canonical_empty_draft_piece_fragment_chain_v1()
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        DraftPieceBuildFrontierV1::CrossValidating
+    } else {
+        DraftPieceBuildFrontierV1::Receiving {
+            next_ordinal: 1,
+            chain: canonical_empty_draft_piece_fragment_chain_v1(),
+        }
+    };
     let (build, receipt) = authenticated_build_transition(
         DraftPieceBuildRecordV1::new(
             header.draft_id(),
@@ -587,10 +649,7 @@ pub(super) fn initial_build_for_staging(
             origin,
             origin,
             1,
-            DraftPieceBuildFrontierV1::Receiving {
-                next_ordinal: 1,
-                chain: canonical_empty_draft_piece_fragment_chain_v1(),
-            },
+            initial_frontier,
             DraftPieceDigestV1::from_bytes([0; 32]),
             DraftPieceBuildProgressReceiptReferenceV1::new(
                 DraftPieceBuildProgressReceiptKeyV1::new(
@@ -604,7 +663,8 @@ pub(super) fn initial_build_for_staging(
             None,
             None,
             DraftPieceBuildLifecycleV1::Open,
-        ),
+        )
+        .with_durable_continuation(Some(continuation)),
         None,
         None,
     )
@@ -702,7 +762,8 @@ fn build_from_progress_receipt(
         receipt.successor(),
         receipt.build_digest(),
         receipt.lifecycle(),
-    );
+    )
+    .with_durable_continuation(receipt.durable_continuation());
     if progress_receipt_matches_build(receipt, &build) && build_record_is_exact(&build) {
         Ok(build)
     } else {
@@ -731,9 +792,13 @@ fn stage_transition(
         if chain != build.fragment_chain() {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        DraftPieceBuildFrontierV1::ReconcilingMoves {
-            fragment_ordinal: 1,
-            next_move: 0,
+        if staged == 0 {
+            DraftPieceBuildFrontierV1::CrossValidating
+        } else {
+            DraftPieceBuildFrontierV1::ReconcilingMoves {
+                fragment_ordinal: 1,
+                next_move: 0,
+            }
         }
     } else {
         DraftPieceBuildFrontierV1::Receiving {
@@ -771,7 +836,8 @@ fn stage_transition(
             None,
             None,
             DraftPieceBuildLifecycleV1::Open,
-        ),
+        )
+        .with_durable_continuation(build.durable_continuation()),
         Some(build.progress_receipt()),
         Some(canonical_fragment_endpoint(fragment)),
     )
@@ -785,6 +851,7 @@ pub(super) fn staged_page_transition(
     build: &DraftPieceBuildRecordV1,
     source_session: &DraftEditorCandidateSessionV1,
     replacements: &[DraftPieceReplacementV1],
+    target_continuation: DraftPieceDurableBuildContinuationV1,
 ) -> Result<
     (
         DraftPieceBuildRecordV1,
@@ -846,7 +913,9 @@ pub(super) fn staged_page_transition(
     if staged > build.fragment_count() {
         return Err(SyndicMutationError::IdentityCollision);
     }
-    let frontier = if staged == build.fragment_count() {
+    let frontier = if staged == build.fragment_count()
+        && target_continuation.phase() == DraftPieceBuildStagingPhaseV1::Structure
+    {
         if chain != build.fragment_chain() {
             return Err(SyndicMutationError::IdentityCollision);
         }
@@ -891,7 +960,8 @@ pub(super) fn staged_page_transition(
             None,
             None,
             DraftPieceBuildLifecycleV1::Open,
-        ),
+        )
+        .with_durable_continuation(Some(target_continuation)),
         Some(build.progress_receipt()),
         endpoint,
     )
@@ -943,6 +1013,112 @@ pub(super) fn prepared_edit_from_staging_build(
     })
 }
 
+fn marker_continuation_transition(
+    build: &DraftPieceBuildRecordV1,
+    fragment: Option<&DraftPieceBuildFragmentV1>,
+    active_roots: DraftPieceBuildRootsV1,
+    next_frontier: DraftPieceBuildFrontierV1,
+) -> Result<
+    (
+        DraftPieceBuildRootsV1,
+        Option<DraftPieceDurableBuildContinuationV1>,
+    ),
+    DraftPiecePrepareErrorV1,
+> {
+    let Some(continuation) = build.durable_continuation() else {
+        if fragment.is_some_and(|fragment| fragment.replacement().marker_effect().is_some()) {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+        return Ok((active_roots, None));
+    };
+    let effect = fragment.and_then(|fragment| fragment.replacement().marker_effect());
+    let starting = matches!(
+        build.frontier(),
+        DraftPieceBuildFrontierV1::ReconcilingMoves { next_move: 0, .. }
+    ) && effect.is_some();
+    let completing = matches!(
+        build.frontier(),
+        DraftPieceBuildFrontierV1::Inserting { .. }
+    ) && effect.is_some()
+        && !matches!(next_frontier, DraftPieceBuildFrontierV1::Inserting { .. });
+    let existing = continuation.pending_marker_effect();
+    if existing.is_some_and(|pending| effect.is_some_and(|effect| effect != pending.effect()))
+        || existing.is_some()
+            && effect.is_some()
+            && matches!(
+                build.frontier(),
+                DraftPieceBuildFrontierV1::ReconcilingMoves { next_move: 0, .. }
+            )
+    {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    let (published_roots, pending, changed_occurrences) = if completing {
+        let pending = existing.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        let count = continuation
+            .changed_occurrences()
+            .count()
+            .checked_add(1)
+            .ok_or(DraftPiecePrepareErrorV1::Rejected(
+                DraftPieceRejectedReasonV1::AggregateOverflow,
+            ))?;
+        let digest = draft_piece_changed_occurrence_chain_link_v1(
+            continuation.changed_occurrences().digest(),
+            count,
+            pending.effect(),
+            active_roots,
+        );
+        (
+            active_roots,
+            None,
+            DraftPieceChangedOccurrenceFrontierV1::new(count, digest),
+        )
+    } else if starting || existing.is_some() {
+        let effect = existing
+            .map(DraftPiecePendingMarkerEffectV1::effect)
+            .or(effect)
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        let source_roots = existing.map_or(build.working_roots(), |pending| pending.source_roots());
+        let phase = match next_frontier {
+            DraftPieceBuildFrontierV1::ReconcilingMoves { .. }
+            | DraftPieceBuildFrontierV1::Planning { .. }
+            | DraftPieceBuildFrontierV1::Removing { .. } => {
+                DraftPiecePendingMarkerPhaseV1::Removing
+            }
+            DraftPieceBuildFrontierV1::Applying { .. } => {
+                DraftPiecePendingMarkerPhaseV1::DerivingInsertionGap
+            }
+            DraftPieceBuildFrontierV1::Inserting { .. } => {
+                DraftPiecePendingMarkerPhaseV1::Inserting
+            }
+            _ => DraftPiecePendingMarkerPhaseV1::Publishing,
+        };
+        (
+            source_roots,
+            Some(DraftPiecePendingMarkerEffectV1::new(
+                effect,
+                source_roots,
+                active_roots,
+                phase,
+            )),
+            continuation.changed_occurrences(),
+        )
+    } else {
+        (active_roots, None, continuation.changed_occurrences())
+    };
+    let target = DraftPieceDurableBuildContinuationV1::new(
+        continuation.finished(),
+        continuation.source(),
+        continuation.proposal(),
+        continuation.phase(),
+        changed_occurrences,
+        pending,
+    );
+    if !target.is_locally_exact() {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    Ok((published_roots, Some(target)))
+}
+
 fn next_build_record(
     build: &DraftPieceBuildRecordV1,
     roots: DraftPieceBuildRootsV1,
@@ -954,6 +1130,7 @@ fn next_build_record(
     build_digest: Option<DraftPieceDigestV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
+    durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
 ) -> Result<(DraftPieceBuildRecordV1, DraftPieceBuildProgressReceiptV1), SyndicMutationError> {
     authenticated_build_transition(
         DraftPieceBuildRecordV1::new(
@@ -983,7 +1160,8 @@ fn next_build_record(
             successor,
             build_digest,
             lifecycle,
-        ),
+        )
+        .with_durable_continuation(durable_continuation),
         Some(build.progress_receipt()),
         fragment_endpoint,
     )
@@ -1006,6 +1184,7 @@ fn terminal_build(
         build.build_digest(),
         lifecycle,
         fragment_endpoint,
+        build.durable_continuation(),
     )
 }
 
@@ -1027,7 +1206,7 @@ fn progress_key(
     reference.key()
 }
 
-fn authenticate_build(
+pub(super) fn authenticate_build(
     reader: &DomainReader<'_, SyndicDomain>,
     build: &DraftPieceBuildRecordV1,
 ) -> Result<(), SyndicMutationError> {

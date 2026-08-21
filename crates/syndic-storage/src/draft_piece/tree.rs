@@ -450,7 +450,7 @@ pub(crate) fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(75_000).expect("draft-piece point limit is nonzero")
 }
 
-fn hash_position(digest: &mut Sha256, position: DraftCompositePositionV1) {
+fn hash_marker_position(digest: &mut Sha256, position: DraftCompositePositionV1) {
     digest.update(position.utf8_offset().to_be_bytes());
     match position.gap() {
         DraftCompositeGapWitnessV1::Unambiguous => digest.update([0]),
@@ -499,15 +499,12 @@ pub fn draft_piece_fragment_chain_link_v1(
             }
         }
     }
-    digest.update((replacement.moves().len() as u64).to_be_bytes());
-    for movement in replacement.moves() {
-        digest.update(movement.predecessor().anchor().to_be_bytes());
-        for marker in [movement.predecessor().marker(), movement.successor()] {
-            digest.update(marker.marker_id().as_bytes());
-            digest.update(marker.order_key().to_be_bytes());
-            digest.update(marker.label().get().to_be_bytes());
+    match replacement.marker_effect() {
+        None => digest.update([0]),
+        Some(effect) => {
+            digest.update([1]);
+            hash_marker_effect(&mut digest, effect);
         }
-        digest.update(movement.removal_fragment_ordinal().to_be_bytes());
     }
     DraftPieceDigestV1::from_bytes(digest.finalize().into())
 }
@@ -844,34 +841,37 @@ pub(crate) fn settlement_terminal_build_is_exact(
             && stored.lifecycle() == lifecycle;
     };
     let Some(stored) = stored else { return false };
-    let expected = authenticated_build_record(DraftPieceBuildRecordV1::new(
-        source.draft_id(),
-        source.session_id(),
-        source.predecessor_candidate_generation(),
-        source.predecessor_root(),
-        source.predecessor_history(),
-        source.operation_id(),
-        source.predecessor_caret(),
-        source.predecessor_selection(),
-        source.caret(),
-        source.selection(),
-        source.fragment_count(),
-        source.fragment_chain(),
-        source.canonical_header().to_vec(),
-        source.staged_fragment_count(),
-        source.staged_fragment_chain(),
-        source.proposal_digest(),
-        source.working_roots(),
-        source.base_frontier(),
-        source.successor_frontier(),
-        source.next_record_ordinal(),
-        source.frontier(),
-        DraftPieceDigestV1::from_bytes([0; 32]),
-        stored.progress_receipt(),
-        source.successor(),
-        source.build_digest(),
-        lifecycle,
-    ));
+    let expected = authenticated_build_record(
+        DraftPieceBuildRecordV1::new(
+            source.draft_id(),
+            source.session_id(),
+            source.predecessor_candidate_generation(),
+            source.predecessor_root(),
+            source.predecessor_history(),
+            source.operation_id(),
+            source.predecessor_caret(),
+            source.predecessor_selection(),
+            source.caret(),
+            source.selection(),
+            source.fragment_count(),
+            source.fragment_chain(),
+            source.canonical_header().to_vec(),
+            source.staged_fragment_count(),
+            source.staged_fragment_chain(),
+            source.proposal_digest(),
+            source.working_roots(),
+            source.base_frontier(),
+            source.successor_frontier(),
+            source.next_record_ordinal(),
+            source.frontier(),
+            DraftPieceDigestV1::from_bytes([0; 32]),
+            stored.progress_receipt(),
+            source.successor(),
+            source.build_digest(),
+            lifecycle,
+        )
+        .with_durable_continuation(source.durable_continuation()),
+    );
     stored == &expected
         && stored.progress_receipt() == settlement.terminal_receipt()
         && source
@@ -987,6 +987,13 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         || build.progress_receipt().key().session_id() != build.session_id()
         || build.progress_receipt().key().operation_id() != build.operation_id()
         || build.progress_receipt().key().transition_ordinal() == 0
+        || build.durable_continuation().is_some_and(|continuation| {
+            let identity = continuation.finished().identity();
+            !continuation.is_locally_exact()
+                || identity.draft_id() != build.draft_id()
+                || identity.session_id() != build.session_id()
+                || identity.operation_id().as_piece_operation() != build.operation_id()
+        })
     {
         return false;
     }
@@ -1111,7 +1118,8 @@ pub(crate) fn authenticated_build_transition(
         build.successor(),
         build.build_digest(),
         build.lifecycle(),
-    );
+    )
+    .with_durable_continuation(build.durable_continuation());
     Ok((build, receipt))
 }
 
@@ -1173,6 +1181,7 @@ pub(crate) fn draft_piece_build_progress_receipt_digest_v1(
     hash_build_boundary(&mut digest, build.successor_frontier());
     digest.update(build.next_record_ordinal().to_be_bytes());
     hash_build_frontier(&mut digest, build.frontier());
+    hash_durable_continuation(&mut digest, build.durable_continuation());
     match build.successor() {
         Some(root) => {
             digest.update([1]);
@@ -1231,6 +1240,13 @@ pub(crate) fn progress_receipt_is_exact(receipt: &DraftPieceBuildProgressReceipt
                 || fragment.draft_id() != key.draft_id()
                 || fragment.session_id() != key.session_id()
                 || fragment.operation_id() != key.operation_id()
+        })
+        || receipt.durable_continuation().is_some_and(|continuation| {
+            let identity = continuation.finished().identity();
+            !continuation.is_locally_exact()
+                || identity.draft_id() != key.draft_id()
+                || identity.session_id() != key.session_id()
+                || identity.operation_id().as_piece_operation() != key.operation_id()
         })
         || receipt.successor().is_some() != receipt.build_digest().is_some()
     {
@@ -1295,6 +1311,7 @@ fn progress_receipt_digest_from_value(
     hash_build_boundary(&mut digest, receipt.successor_frontier());
     digest.update(receipt.next_record_ordinal().to_be_bytes());
     hash_build_frontier(&mut digest, receipt.frontier());
+    hash_durable_continuation(&mut digest, receipt.durable_continuation());
     match receipt.successor() {
         Some(root) => {
             digest.update([1]);
@@ -1351,6 +1368,7 @@ pub(crate) fn progress_receipt_matches_build(
         && receipt.successor_frontier() == build.successor_frontier()
         && receipt.next_record_ordinal() == build.next_record_ordinal()
         && receipt.frontier() == build.frontier()
+        && receipt.durable_continuation() == build.durable_continuation()
         && receipt.successor() == build.successor()
         && receipt.build_digest() == build.build_digest()
         && receipt.lifecycle() == build.lifecycle()
@@ -1414,6 +1432,7 @@ pub(crate) fn draft_piece_build_progress_digest_v1(
     }
     digest.update(build.next_record_ordinal().to_be_bytes());
     hash_build_frontier(&mut digest, build.frontier());
+    hash_durable_continuation(&mut digest, build.durable_continuation());
     match build.successor() {
         Some(root) => {
             digest.update([1]);
@@ -1516,6 +1535,167 @@ fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
     }
 }
 
+fn hash_lane(digest: &mut Sha256, lane: DraftMutationStagingLaneFrontierV1) {
+    digest.update(lane.next_cursor().to_be_bytes());
+    digest.update(lane.next_ordinal().to_be_bytes());
+    digest.update(lane.item_total().to_be_bytes());
+    digest.update(lane.canonical_byte_total().to_be_bytes());
+    digest.update(lane.cumulative_identity().as_bytes());
+}
+
+fn hash_build_roots(digest: &mut Sha256, roots: DraftPieceBuildRootsV1) {
+    hash_optional_record_id(digest, roots.sequence_root());
+    let summary = roots.sequence_summary();
+    digest.update(summary.logical_utf8_bytes().to_be_bytes());
+    digest.update(summary.newline_count().to_be_bytes());
+    digest.update(summary.logical_line_count().to_be_bytes());
+    digest.update(summary.piece_count().to_be_bytes());
+    digest.update(summary.marker_count().to_be_bytes());
+    digest.update(summary.marker_digest().as_bytes());
+    digest.update([summary.height()]);
+    digest.update(summary.root_digest().as_bytes());
+    hash_optional_record_id(digest, roots.marker_index_root());
+    let index = roots.marker_index_summary();
+    digest.update(index.record_count().to_be_bytes());
+    digest.update([index.height()]);
+    digest.update(index.root_digest().as_bytes());
+}
+
+fn hash_position(digest: &mut Sha256, position: DraftCompositePositionV1) {
+    digest.update(position.utf8_offset().to_be_bytes());
+    match position.gap() {
+        DraftCompositeGapWitnessV1::Unambiguous => digest.update([0]),
+        DraftCompositeGapWitnessV1::BeforeAll => digest.update([1]),
+        DraftCompositeGapWitnessV1::Between {
+            left_order_key,
+            left_marker_id,
+            right_order_key,
+            right_marker_id,
+        } => {
+            digest.update([2]);
+            digest.update(left_order_key.to_be_bytes());
+            digest.update(left_marker_id.as_bytes());
+            digest.update(right_order_key.to_be_bytes());
+            digest.update(right_marker_id.as_bytes());
+        }
+        DraftCompositeGapWitnessV1::AfterAll => digest.update([3]),
+    }
+}
+
+fn hash_charges(digest: &mut Sha256, charges: DraftPieceMarkerEffectChargesV1) {
+    digest.update(charges.logical_utf8_bytes().to_be_bytes());
+    digest.update(charges.marker_count().to_be_bytes());
+    digest.update(charges.encoded_bytes().to_be_bytes());
+}
+
+fn hash_occurrence(digest: &mut Sha256, occurrence: DraftMarkerIdentityOccurrenceV1) {
+    digest.update(occurrence.marker_id().as_bytes());
+    digest.update(occurrence.label().get().to_be_bytes());
+    digest.update(occurrence.order_key().to_be_bytes());
+    digest.update(occurrence.sequence_leaf_id().as_bytes());
+    digest.update(occurrence.sequence_leaf_digest().as_bytes());
+}
+
+fn hash_removal(digest: &mut Sha256, removal: DraftPieceMarkerRemovalProofV1) {
+    hash_marker_position(digest, removal.position());
+    hash_occurrence(digest, removal.occurrence());
+}
+
+fn hash_insertion(digest: &mut Sha256, insertion: DraftPieceMarkerInsertionV1) {
+    digest.update(insertion.anchor().to_be_bytes());
+    let marker = insertion.marker();
+    digest.update(marker.marker_id().as_bytes());
+    digest.update(marker.order_key().to_be_bytes());
+    digest.update(marker.label().get().to_be_bytes());
+    hash_charges(digest, insertion.charges());
+}
+
+fn hash_marker_effect(digest: &mut Sha256, effect: DraftPieceMarkerEffectV1) {
+    match effect {
+        DraftPieceMarkerEffectV1::Insert(insertion) => {
+            digest.update([0]);
+            hash_insertion(digest, insertion);
+        }
+        DraftPieceMarkerEffectV1::Remove { removal, charges } => {
+            digest.update([1]);
+            hash_removal(digest, removal);
+            hash_charges(digest, charges);
+        }
+        DraftPieceMarkerEffectV1::Move { removal, insertion } => {
+            digest.update([2]);
+            hash_removal(digest, removal);
+            hash_insertion(digest, insertion);
+        }
+        DraftPieceMarkerEffectV1::SameIdReplacement { removal, insertion } => {
+            digest.update([3]);
+            hash_removal(digest, removal);
+            hash_insertion(digest, insertion);
+        }
+    }
+}
+
+pub(crate) fn draft_piece_changed_occurrence_chain_link_v1(
+    prior: DraftPieceDigestV1,
+    count: u64,
+    effect: DraftPieceMarkerEffectV1,
+    roots: DraftPieceBuildRootsV1,
+) -> DraftPieceDigestV1 {
+    let mut digest = Sha256::new();
+    digest.update(b"syndic/draft-piece-changed-occurrence/v1");
+    digest.update(prior.as_bytes());
+    digest.update(count.to_be_bytes());
+    hash_marker_effect(&mut digest, effect);
+    hash_build_roots(&mut digest, roots);
+    DraftPieceDigestV1::from_bytes(digest.finalize().into())
+}
+
+fn hash_durable_continuation(
+    digest: &mut Sha256,
+    continuation: Option<DraftPieceDurableBuildContinuationV1>,
+) {
+    let Some(continuation) = continuation else {
+        digest.update([0]);
+        return;
+    };
+    digest.update([1]);
+    let finished = continuation.finished();
+    let identity = finished.identity();
+    digest.update(identity.draft_id().as_bytes());
+    digest.update(identity.session_id().as_bytes());
+    digest.update(identity.operation_id().as_bytes());
+    digest.update(finished.head_digest().as_bytes());
+    let receipt = finished.receipt();
+    digest.update(receipt.transition_ordinal().to_be_bytes());
+    digest.update(receipt.digest().as_bytes());
+    hash_lane(digest, finished.source());
+    hash_lane(digest, finished.proposal());
+    hash_lane(digest, continuation.source());
+    hash_lane(digest, continuation.proposal());
+    digest.update([match continuation.phase() {
+        DraftPieceBuildStagingPhaseV1::Source => 0,
+        DraftPieceBuildStagingPhaseV1::Proposal => 1,
+        DraftPieceBuildStagingPhaseV1::Structure => 2,
+    }]);
+    let changed = continuation.changed_occurrences();
+    digest.update(changed.count().to_be_bytes());
+    digest.update(changed.digest().as_bytes());
+    match continuation.pending_marker_effect() {
+        Some(pending) => {
+            digest.update([1]);
+            hash_marker_effect(digest, pending.effect());
+            hash_build_roots(digest, pending.source_roots());
+            hash_build_roots(digest, pending.working_roots());
+            digest.update([match pending.phase() {
+                DraftPiecePendingMarkerPhaseV1::Removing => 0,
+                DraftPiecePendingMarkerPhaseV1::DerivingInsertionGap => 1,
+                DraftPiecePendingMarkerPhaseV1::Inserting => 2,
+                DraftPiecePendingMarkerPhaseV1::Publishing => 3,
+            }]);
+        }
+        None => digest.update([0]),
+    }
+}
+
 pub(crate) fn draft_piece_build_digest_v1(
     proposal_digest: DraftPieceDigestV1,
     successor: DraftPieceRootReferenceV1,
@@ -1551,18 +1731,36 @@ pub(crate) fn validate_fragment(
     if replacement.inserted().len() > DRAFT_PIECE_PAGE_MAX_RECORDS {
         return Err(DraftPieceRejectedReasonV1::TooManyReplacements);
     }
-    if replacement.moves().len() > DRAFT_PIECE_PAGE_MAX_RECORDS
-        || (replacement.is_continuation() && !replacement.moves().is_empty())
-    {
+    if replacement.is_continuation() && replacement.marker_effect().is_some() {
         return Err(DraftPieceRejectedReasonV1::TooManyReplacements);
     }
-    for (ordinal, movement) in replacement.moves().iter().enumerate() {
-        if replacement.moves()[..ordinal]
-            .iter()
-            .any(|prior| prior.successor().marker_id() == movement.successor().marker_id())
-        {
-            return Err(DraftPieceRejectedReasonV1::DuplicateMarkerIdentity);
+    let inserted_markers: Vec<_> = replacement
+        .inserted()
+        .iter()
+        .filter_map(|piece| match piece {
+            DraftPieceV1::Marker(marker) => Some(*marker),
+            DraftPieceV1::Text(_) => None,
+        })
+        .collect();
+    let expected_insertion = match replacement.marker_effect() {
+        Some(DraftPieceMarkerEffectV1::Insert(insertion))
+        | Some(DraftPieceMarkerEffectV1::Move { insertion, .. })
+        | Some(DraftPieceMarkerEffectV1::SameIdReplacement { insertion, .. }) => {
+            Some(insertion.marker())
         }
+        Some(DraftPieceMarkerEffectV1::Remove { .. }) | None => None,
+    };
+    if match expected_insertion {
+        Some(marker) => inserted_markers.as_slice() != [marker],
+        None => !inserted_markers.is_empty(),
+    } || (replacement.marker_effect().is_some()
+        && (replacement.start() != replacement.end()
+            || replacement
+                .inserted()
+                .iter()
+                .any(|piece| matches!(piece, DraftPieceV1::Text(_)))))
+    {
+        return Err(DraftPieceRejectedReasonV1::DuplicateMarkerIdentity);
     }
     let mut bytes = 0_usize;
     for piece in replacement.inserted() {
