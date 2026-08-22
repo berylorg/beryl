@@ -117,3 +117,9 @@ Show bounded live and recent backend activity for the selected conversation with
   identity is not presented as a model, and missing values are never inferred.
 - Metadata decoration never resumes a thread or changes its backend lifecycle merely to improve an
   activity label.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none

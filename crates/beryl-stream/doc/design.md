@@ -79,3 +79,11 @@ unrelated services or limiting the logical size of streamed content.
 - This package depends only on the Rust standard library and the workspace error-derivation crate.
 - It does not depend on `beryl-model`, storage packages, `beryl-backend`, `beryl-app`, GPUI, Tokio,
   Fjall, or app-server protocol types.
+
+# Engineering Rigor
+
+Profile: `trusted-internal-tool/v1`
+
+Modifiers:
+
+- `shared-resource-protection/v1`

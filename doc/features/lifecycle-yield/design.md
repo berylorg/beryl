@@ -89,3 +89,11 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 - Lifecycle yield outcomes do not mutate Syndic conversation history, Beryl-home durable state, settings, or backend-owned Codex configuration by themselves.
 - Lifecycle notifications are GUI-local side effects and are governed by the notifications feature.
 - Yield handling must not depend on ordinary end-turn sound eligibility.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

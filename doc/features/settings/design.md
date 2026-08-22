@@ -130,3 +130,9 @@ Give users a durable, validated settings window for Beryl-owned application pref
 - The Notifications section includes `End-turn sound`; notification playback semantics are owned by `doc/features/notifications/design.md`.
 - The Themes section and theme editor are owned by `doc/features/theming/design.md`.
 - Feature-owned rows must keep controls reachable and labels readable at supported minimum settings-window width.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none

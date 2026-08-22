@@ -489,3 +489,11 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   storage-engine implementation.
 - It must not depend on `gpui`, `beryl-app`, `beryl-backend`, or CAS protocol types.
 - `syndic-storage` and Beryl metadata packages consume or register through this boundary without depending on one another's private records.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`

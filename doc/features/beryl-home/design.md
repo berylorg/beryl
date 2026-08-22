@@ -101,3 +101,15 @@ Preserve the user's current window layout and last coherent work surfaces when d
 - After validation succeeds, Beryl resolves every affected turn as repaired or explicitly incomplete
   before it reenables successor work for that thread.
 - Each affected main window uses the established error notice when failure begins and an informational recovery notice after the same home validates successfully. No separate recovery window replaces a running conversation shell.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `availability-required/v1`
+
+Full persistence guarantees apply to native local NTFS homes. Other accepted locations retain the
+documented best-effort envelope, and an unreadable home at startup remains outside restoration
+guarantees.

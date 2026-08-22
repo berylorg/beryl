@@ -375,3 +375,11 @@ confusing current drafts with submitted transcript history or image identity.
 - Developer instructions must not become transcript-visible user messages, current drafts, queued
   input fragments, accepted history, or backend-owned configuration.
 - Developer instructions are not sent to subagent requests, active-turn steering, title-generation maintenance, inventory refreshes, lazy metadata reads, context-compaction requests themselves, or other background/status-only work.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

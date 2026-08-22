@@ -167,3 +167,12 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 
 - Windows is the primary product-quality and developer-attention target.
 - The architecture preserves operation on other GPUI-supported platforms when the backend and windowing boundaries permit it.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `shared-resource-protection/v1`

@@ -154,3 +154,11 @@ Expose compact, exact conversation status and selected-thread controls without m
 - Exact soft stop is the only stop command. No hard-stop row, escalation, child/subagent
   termination, command-process termination, or background-cleanup fallback is exposed.
 - User input fragments queued before or during stop remain visible and ordered. If they cannot be delivered to the interrupted turn, they remain queued for the next eligible turn.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

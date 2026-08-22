@@ -168,3 +168,11 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
   attempt.
 - Any non-collision unrecoverable post-admission failure is reported explicitly, ends the attempt
   without archive, and never counts as a successful handoff.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

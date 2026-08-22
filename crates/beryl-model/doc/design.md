@@ -95,3 +95,11 @@ Provide shared pure-data identities and values used across Beryl packages withou
 - Asset identity exposes only its version, digest, and length as pure identity fields; it encodes no
   consumer-specific presentation, persistence, or sidecar policy.
 - The type owns no filesystem path, media metadata, reference record, sidecar operation, or garbage-collection policy.
+
+# Engineering Rigor
+
+Profile: `trusted-internal-tool/v1`
+
+Modifiers:
+
+- `untrusted-input/v1`

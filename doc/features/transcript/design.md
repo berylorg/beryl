@@ -117,3 +117,9 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
   items, loading or fallback text, cross-record selections without one exact source owner, live,
   unknown-terminal, incomplete, or no-longer-current assistant output, or stale geometry.
 - Branch-discussion product behavior is defined in `doc/features/branch-discussions/design.md`.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none

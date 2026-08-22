@@ -182,3 +182,11 @@ Report user-visible errors, recovery states, and completion attention signals wi
   requested sound remain unchanged.
 - Outcomes that stop for operator attention or report plan completion may use event-specific sounds chosen by Beryl policy.
 - The model never supplies a sound path, sound identity, volume, resume prompt, or compaction strategy.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

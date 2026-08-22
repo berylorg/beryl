@@ -1432,3 +1432,11 @@ Keep independent main-window presentation responsive while process-wide services
 - Renderer-facing modules must not depend directly on `syndic-storage`, `beryl-home-store`, `beryl-backend`, Fjall, or raw app-server protocol types.
 - Storage, backend, and provider workers return typed bounded results that contain no GPUI entities.
 - Cycles are prevented by keeping pure identities in `beryl-model`, physical-store ownership in `beryl-home-store`, Syndic records in `syndic-storage`, backend protocol integration in `beryl-backend`, and shell composition in this crate.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

@@ -60,3 +60,9 @@ Provide the Beryl executable entry point and composition root.
 - For diagnostic-target startup, this crate selects the mode and forwards the normalized bootstrap
   configuration and bounded control channel into `beryl-app`; it does not execute live GUI commands
   itself.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none

@@ -386,3 +386,11 @@ absorbing Syndic thread ownership.
 - This package may depend on `beryl-model`, `beryl-home-store`, serialization/validation support, Unicode normalization, and cryptographic digest primitives required by its owned schemas.
 - It must not depend on `gpui`, `beryl-app`, `beryl-backend`, CAS protocol types, or `syndic-storage` private record types.
 - Cross-domain coordination uses stable public Syndic identities and typed `beryl-home-store` participants rather than one package reaching into another package's records.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`

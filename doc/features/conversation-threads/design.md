@@ -349,3 +349,11 @@ Keep thread selection responsive across a large Beryl home while preserving exac
   focus to its trigger; collection changes preserve a coherent focused row or return focus to search
   without committing a selection.
 - Keyboard focus and selected-row state are distinct. Moving focus does not commit a thread or root selection unless the user activates the focused row.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

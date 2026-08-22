@@ -150,3 +150,15 @@ Let users understand which backend-dependent actions are unavailable, which runt
 - An active or unknown-terminal CAS turn is not eligible for this recovery choice. Beryl first
   converges that turn through its interrupted, incomplete, failed, or unknown-terminal lifecycle;
   it never abandons and replays potentially activated input from this prompt.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`
+- `availability-required/v1`
+
+Availability protects unaffected local workflows and recovery of the same durable binding; it does
+not promise uninterrupted backend service.

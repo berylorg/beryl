@@ -154,3 +154,12 @@ an admitted asset-backed result or a terminal unavailable result.
   editable draft.
 - Accepted, queued, retryable, delivery-unknown, submitted, and historical markers keep their exact
   visible identity and label across restart and later delivery-state changes.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`
+- `irreversible-operation/v1`

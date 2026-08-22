@@ -267,3 +267,11 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 - Accepted theme tool writes have the same validation and complete visible outcomes as the matching
   settings-window operation.
 - Tool calls that target unknown roles, unsupported properties, invalid values, unavailable sections, stale theme ids, or unsafe draft conflicts reject with bounded structured errors and must not partially apply.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

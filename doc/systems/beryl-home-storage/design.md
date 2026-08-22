@@ -611,3 +611,13 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   descriptor-bearing gate. Seal-specific proofs additionally show the guard retains the inert old
   stager until installation, installs home custody before dropping that stager, and exposes no
   process-local continuation.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none
+
+The Operator-selected home is trusted storage. Same-user out-of-band replacement, rollback, or
+tampering is outside the supported envelope; malformed records and supported external theme edits
+remain validated inputs.

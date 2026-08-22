@@ -290,3 +290,9 @@ of every allocation made by Beryl or its dependencies.
 - No subsystem budget is durable authority, and no diagnostic observation authorizes mutation.
 - Exact dependency memory accounting is unnecessary unless later evidence identifies a concrete
   dependency allocation as a material product problem.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none

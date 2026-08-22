@@ -169,3 +169,11 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   ready-job capacities, are keyed by exact job id, release their slot and queue ownership on every
   terminal, cancellation, or supersession path, and wake only for relevant durable, explicit-retry,
   or runtime state changes.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

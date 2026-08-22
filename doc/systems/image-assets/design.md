@@ -284,3 +284,12 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   before deriving a new Host or WSL request path.
 - Missing or corrupt authoritative sidecars produce typed asset-unavailable failures and keep their durable references for diagnosis or later recovery.
 - Reference removal updates metadata only. No durable image-sidecar bytes are deleted before a future reachability-aware Collect Garbage system is accepted.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none
+
+Asset bytes, media metadata, and generated paths are untrusted at admission. Arbitrary same-user
+mutation of final sidecars after admission remains outside the correctness contract.

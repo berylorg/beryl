@@ -3055,3 +3055,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Secret-like fields must be rejected or redacted before durable commit.
 - Hidden developer instructions and policy-private control payloads are not transcript content and must not be stored as user or assistant projection records.
 - Diagnostic payloads stored durably must be bounded and must not include raw auth headers, tokens, cookies, environment secrets, or capability tokens.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`

@@ -684,3 +684,12 @@ Own Beryl's integration boundary with `codex app-server`.
 - The backend must not fork, wrap, or supplement `bounded-json` with a second JSON recognizer for
   the streamed provider path. Compact statically bounded control decoding may continue to use Serde,
   but it is not a fallback for an observation that entered streamed decoding.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `privileged-access/v1`
+- `external-side-effects/v1`

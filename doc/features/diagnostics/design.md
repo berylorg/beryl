@@ -87,3 +87,16 @@ Support bounded operator debugging, live testing, and resource investigation thr
 - Diagnostic child GUI-control commands must not edit history directly, apply settings, mutate
   Beryl-home records directly, mutate the supervisor instance, or bypass ordinary validation and
   availability behavior.
+
+# Engineering Rigor
+
+Profile: `trusted-internal-tool/v1`
+
+Modifiers:
+
+- `untrusted-input/v1`
+- `privileged-access/v1`
+- `external-side-effects/v1`
+
+Human operators are trusted. Dynamic-tool requests and caller-supplied executable paths are
+untrusted, and the supported operating envelope contains one isolated diagnostic child.

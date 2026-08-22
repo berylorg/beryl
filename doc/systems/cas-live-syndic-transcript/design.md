@@ -352,3 +352,12 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 - Repair authorization is derived only from exact durable correlation and the pinned adapter. User-supplied ids, filesystem paths, diagnostic text, or visible transcript content cannot authorize a repair read.
 - Stored errors and repair provenance are bounded and redact secret-like values before durable commit.
 - Syndic capture and repair do not broaden CAS permissions or bypass policy decisions.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `privileged-access/v1`
+- `external-side-effects/v1`

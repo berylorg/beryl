@@ -160,3 +160,9 @@ Preserve each window's visible identity and placement without requiring auxiliar
 - No special loading window is displayed during bootstrap.
 - The first visible surface of every restored or replacement window is its ordinary main conversation shell.
 - Catalog loading, selected-transcript loading, and runtime warm-up continue progressively after the shell exists according to their owning feature contracts.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none

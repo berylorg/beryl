@@ -312,3 +312,11 @@ authority.
   outcomes, preview source kind and sequence, appearance generation, window-set epoch, adapter
   counts, stale-result rejection counts, and publication failure class. They never expose theme
   names, document text, concrete user values, paths, tool arguments, or editor drafts.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `external-side-effects/v1`

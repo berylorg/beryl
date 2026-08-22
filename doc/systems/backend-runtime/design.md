@@ -174,3 +174,15 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 - Captured and repaired conversation history becomes Syndic-owned only through the CAS-live publication boundary.
 - Turn-stream inactivity is not backend failure. Active streams may remain quiet until terminal evidence, protocol failure, transport disconnect, or backend exit.
 - Timeouts apply to bounded requests. They never infer that a quiet turn is complete or that a non-idempotent request did not dispatch.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers:
+
+- `privileged-access/v1`
+- `external-side-effects/v1`
+
+The Operator-selected Codex executable and OS account are trusted. Detached endpoints, tokens,
+reports, and malformed protocol inputs cannot establish authority.

@@ -161,3 +161,9 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
   Decoded and uploaded media additionally consume the shared coarse media and GPU cache budgets.
 - Synthetic context bytes remain bounded by the accepted branch-context limit, and their rendered chunk count remains bounded by the realized frame rather than total passage height.
 - Visual fallbacks are required when content cannot be admitted or rendered within Beryl resource policy.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none

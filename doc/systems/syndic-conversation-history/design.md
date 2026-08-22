@@ -1360,3 +1360,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Syndic storage must never persist access tokens, refresh tokens, API keys, bearer headers, cookies, or app-server loopback capability tokens.
 - Durable source events and projections must redact or reject protocol fields that are secrets or policy-private control data.
 - Unfinished or stale derived projections can be rebuilt or invalidated from canonical history plus resource metadata. Finalized projections remain durable exact history.
+
+# Engineering Rigor
+
+Profile: `production-application/v1`
+
+Modifiers: none
