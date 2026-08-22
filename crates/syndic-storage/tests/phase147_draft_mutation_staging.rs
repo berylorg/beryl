@@ -1356,8 +1356,10 @@ fn maximum_window_and_direct_late_continuation_reopen_exactly() {
     assert_eq!(prepared.acquisition_read_count(), 520);
     assert_eq!(prepared.acquisition_encoded_value_byte_budget(), 34_078_720);
     #[cfg(feature = "test-faults")]
-    assert_eq!(syndic_point_read_count(), 518);
-    assert!(syndic_point_read_count() <= prepared.acquisition_read_count());
+    {
+        assert_eq!(syndic_point_read_count(), 518);
+        assert!(syndic_point_read_count() <= prepared.acquisition_read_count());
+    }
     committed(execute(
         &store,
         storage.stage_next_durable_draft_piece_window(storage.revision(&store).unwrap(), prepared),
@@ -1385,8 +1387,10 @@ fn maximum_window_and_direct_late_continuation_reopen_exactly() {
     assert_eq!(prepared.fragment_count(), 2);
     assert_eq!(prepared.acquisition_read_count(), 12);
     #[cfg(feature = "test-faults")]
-    assert_eq!(syndic_point_read_count(), 11);
-    assert!(syndic_point_read_count() <= prepared.acquisition_read_count());
+    {
+        assert_eq!(syndic_point_read_count(), 11);
+        assert!(syndic_point_read_count() <= prepared.acquisition_read_count());
+    }
     committed(execute(
         &store,
         storage.stage_next_durable_draft_piece_window(storage.revision(&store).unwrap(), prepared),

@@ -1,3 +1,4 @@
+#![cfg(feature = "test-faults")]
 #![allow(dead_code, unused_imports)]
 
 #[path = "phase146_draft_edit_history/support.rs"]

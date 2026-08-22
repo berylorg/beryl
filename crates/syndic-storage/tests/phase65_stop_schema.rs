@@ -169,7 +169,10 @@ fn record_rejects_identity_admission_and_attempt_inconsistency() {
         StopOperationState::DispatchClaimed,
     )
     .unwrap();
+    #[cfg(feature = "test-faults")]
     assert!(syndic_storage::test_faults::stop_dispatch_claimed_first_codec_rejection(&claimed));
+    #[cfg(not(feature = "test-faults"))]
+    let _ = claimed;
 
     let invalid_admission = StopAdmissionWitness::new(
         InputGateRevision::new(3).unwrap(),
@@ -368,6 +371,7 @@ fn each_consumed_disposition_retains_a_bounded_exact_successor() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn direct_v1_codec_roundtrips_provenance_and_rejects_the_aggregate_predecessor() {
     use syndic_storage::test_faults::{
         StopProvenanceCodecCorruption, old_aggregate_stop_encoding_rejection,
