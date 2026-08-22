@@ -1,105 +1,119 @@
 use super::*;
 
+fn publish_live_event(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    source: Option<CasTurnSource>,
+    payload: SourceEventPayload,
+    observed_at: SyndicTimestamp,
+) {
+    let state = storage
+        .turn_state(store, turn, point_limit())
+        .unwrap()
+        .unwrap();
+    let gate = storage
+        .input_gate(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let event = LiveSourceEvent::new(
+        thread,
+        turn,
+        state.revision(),
+        gate.revision(),
+        SourceEventSequence::new(state.source_event_count() + 1).unwrap(),
+        source,
+        payload,
+        observed_at,
+    )
+    .unwrap();
+    execute(
+        store,
+        storage.admit_live_source_event(storage.revision(store).unwrap(), event),
+    );
+}
+
 #[test]
-fn pending_root_rejects_a_binding_that_claims_the_undelivered_turn() {
+fn pending_root_cannot_authenticate_the_undelivered_turn_as_represented_history() {
     let home = TestHome::new("phase9-pending-root-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn, selected) = root_pending(&store, storage);
+    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 190, false) else {
+        unreachable!()
+    };
     let represented =
         CasRepresentedPrefixProof::new(Some(turn), selected.thread_revision(), selected.digest());
-    let request = valid_request(
+    let request = valid_request_with_count(
         &store,
         storage,
         thread,
         selected,
         CasThreadId::new("claims-pending-root").unwrap(),
         represented,
+        CasNativeTurnCount::ZERO,
         CasLineageProof::native(NativeCasLineage::Continuation, represented).unwrap(),
     );
-
-    let error = execute_outcome(
+    let before = storage
+        .current_binding(&store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let outcome = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), request),
     );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::BindingPathConflict
     ));
     assert_eq!(
-        current_binding_revision(&store, storage, thread),
-        BindingRevision::new(2).unwrap()
+        storage
+            .current_binding(&store, thread, point_limit())
+            .unwrap()
+            .unwrap(),
+        before
     );
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
     store.close().unwrap();
 }
 
 #[test]
-fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
+fn pending_non_root_accepts_only_its_exact_authenticated_parent_prefix() {
     let home = TestHome::new("phase9-pending-child-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, parent, _, selected) = non_root_pending(&store, storage);
-
+    let (thread, Some(parent), _, selected) = fault_pending_path(&store, storage, 210, true) else {
+        unreachable!()
+    };
+    let parent_record = storage
+        .turn(&store, parent, point_limit())
+        .unwrap()
+        .unwrap()
+        .clone();
     let empty = CasRepresentedPrefixProof::new(
         None,
         selected.thread_revision(),
         empty_selected_path_digest(),
     );
-    let non_parent = valid_request(
+    let empty_request = valid_request_with_count(
         &store,
         storage,
         thread,
         selected,
         CasThreadId::new("non-parent-prefix").unwrap(),
         empty,
+        CasNativeTurnCount::ZERO,
         CasLineageProof::native(NativeCasLineage::Fresh, empty).unwrap(),
     );
-    let error = execute_outcome(
+    let outcome = execute_outcome(
         &store,
-        storage.publish_valid_binding(storage.revision(&store).unwrap(), non_parent),
+        storage.publish_valid_binding(storage.revision(&store).unwrap(), empty_request),
     );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::BindingPathConflict
     ));
 
-    let parent_record = storage
-        .turn(&store, parent, point_limit())
-        .unwrap()
-        .unwrap()
-        .clone();
-    let parent_prefix = CasRepresentedPrefixProof::new(
-        Some(parent),
-        selected.thread_revision(),
-        parent_record.chain_digest(),
-    );
-    let empty_establishment = CasRepresentedPrefixProof::new(
-        None,
-        selected.thread_revision(),
-        empty_selected_path_digest(),
-    );
-    let fresh_mismatch = valid_request(
-        &store,
-        storage,
-        thread,
-        selected,
-        CasThreadId::new("fresh-cannot-claim-parent").unwrap(),
-        parent_prefix,
-        CasLineageProof::native(NativeCasLineage::Fresh, empty_establishment).unwrap(),
-    );
-    let error = execute_outcome(
-        &store,
-        storage.publish_valid_binding(storage.revision(&store).unwrap(), fresh_mismatch),
-    );
-    assert!(matches!(
-        typed_error(&error),
-        SyndicMutationError::BindingPathConflict
-    ));
-
-    let sibling = SyndicTurnId::from_bytes([7; 16]);
+    let sibling = SyndicTurnId::from_bytes([213; 16]);
     let sibling_digest = child_turn_chain_digest(sibling, parent, parent_record.chain_digest());
     commit(
         &store,
@@ -119,21 +133,10 @@ fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
                 sibling,
                 TurnStateRevision::FIRST,
                 TurnLifecycle::Interrupted,
-                1,
+                0,
                 0,
                 timestamp(6),
             )),
-            FixtureRecord::SourceEvent(
-                SourceEventRecord::new(
-                    sibling,
-                    SourceEventSequence::FIRST,
-                    None,
-                    SourceEventPayload::TurnEnded(
-                        TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
-                    ),
-                )
-                .unwrap(),
-            ),
             FixtureRecord::TurnChild(TurnChildIndexRecord::new(
                 parent,
                 sibling,
@@ -142,46 +145,143 @@ fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
             )),
         ]),
     );
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
-
     let off_path =
         CasRepresentedPrefixProof::new(Some(sibling), selected.thread_revision(), sibling_digest);
-    let request = valid_request(
+    let off_path_request = valid_request_with_count(
         &store,
         storage,
         thread,
         selected,
         CasThreadId::new("off-path-prefix").unwrap(),
         off_path,
+        CasNativeTurnCount::ZERO,
         CasLineageProof::native(NativeCasLineage::Continuation, off_path).unwrap(),
     );
-    let error = execute_outcome(
+    let outcome = execute_outcome(
         &store,
-        storage.publish_valid_binding(storage.revision(&store).unwrap(), request),
+        storage.publish_valid_binding(storage.revision(&store).unwrap(), off_path_request),
     );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::BindingPathConflict
     ));
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
+
+    let parent_prefix = CasRepresentedPrefixProof::new(
+        Some(parent),
+        selected.thread_revision(),
+        parent_record.chain_digest(),
+    );
+    publish_valid(
+        &store,
+        storage,
+        valid_request_with_count(
+            &store,
+            storage,
+            thread,
+            selected,
+            CasThreadId::new("exact-parent-prefix").unwrap(),
+            parent_prefix,
+            CasNativeTurnCount::ZERO,
+            CasLineageProof::native(NativeCasLineage::Continuation, parent_prefix).unwrap(),
+        ),
+    );
+    assert!(matches!(
+        storage
+            .current_binding(&store, thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .binding()
+            .state(),
+        BindingState::Valid(_)
+    ));
     store.close().unwrap();
 }
 
 #[test]
-fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
-    let home = TestHome::new("phase9-live-tail-valid-binding");
+fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
+    let home = TestHome::new("phase9-live-and-unknown-tail-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn, selected) = root_pending(&store, storage);
+    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 214, false) else {
+        unreachable!()
+    };
+    let activity_source = ActivityQuerySource::new(thread, turn);
+    commit(
+        &store,
+        storage,
+        batch([
+            FixtureRecord::ActivityQueryHead(
+                ActivityQueryHeadRecord::new(
+                    thread,
+                    ActivityWorkPeriod::FIRST,
+                    Some(activity_source),
+                    true,
+                    0,
+                    ActivityQueryRevision::FIRST,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    None,
+                    ProjectionLifecycle::Current,
+                )
+                .unwrap(),
+            ),
+            FixtureRecord::ActivityQuerySource(ActivityQuerySourceRecord::new(
+                thread,
+                ActivityWorkPeriod::FIRST,
+                activity_source,
+                None,
+                0,
+                true,
+                None,
+            )),
+        ]),
+    );
     let full =
         CasRepresentedPrefixProof::new(Some(turn), selected.thread_revision(), selected.digest());
-
-    let source = activate_exact_turn(&store, storage, thread, turn);
-    admit_event(
+    let cas_thread = CasThreadId::new("live-tail-active-cas").unwrap();
+    publish_valid(
+        &store,
+        storage,
+        valid_request(&store, storage, thread, selected, cas_thread.clone()),
+    );
+    let snapshot = SyndicExecutionSnapshotId::from_bytes([217; 16]);
+    execute(
+        &store,
+        storage.activate_binding(
+            storage.revision(&store).unwrap(),
+            ActivateBinding::new(
+                thread,
+                current_binding_revision(&store, storage, thread),
+                current_gate_revision(&store, storage, thread),
+                selected,
+                snapshot,
+                turn,
+                loaded_generation(31, 32),
+                timestamp(4),
+            ),
+        ),
+    );
+    let cas_turn = CasTurnId::new("live-tail-active-turn").unwrap();
+    execute(
+        &store,
+        storage.publish_active_cas_turn(
+            storage.revision(&store).unwrap(),
+            PublishActiveCasTurn::new(
+                thread,
+                current_binding_revision(&store, storage, thread),
+                current_gate_revision(&store, storage, thread),
+                snapshot,
+                cas_thread.clone(),
+                cas_turn.clone(),
+                timestamp(4),
+            ),
+        ),
+    );
+    let source = CasTurnSource::new(cas_thread.clone(), cas_turn.clone());
+    publish_live_event(
         &store,
         storage,
         thread,
@@ -190,25 +290,27 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    let active_claim = valid_request(
+
+    let active_claim = valid_request_with_count(
         &store,
         storage,
         thread,
         selected,
-        CasThreadId::new("source-less-active-claim").unwrap(),
+        CasThreadId::new("live-full-prefix-claim").unwrap(),
         full,
+        CasNativeTurnCount::ZERO,
         CasLineageProof::native(NativeCasLineage::Continuation, full).unwrap(),
     );
-    let error = execute_outcome(
+    let outcome = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), active_claim),
     );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::BindingStateConflict
     ));
 
-    admit_event(
+    publish_live_event(
         &store,
         storage,
         thread,
@@ -228,9 +330,9 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
         .unwrap()
         .unwrap();
     let BindingState::Active(active) = binding.binding().state() else {
-        panic!("fixture binding is not active");
+        panic!("unknown-terminal fixture binding is not active")
     };
-    let snapshot = storage
+    let persisted_snapshot = storage
         .execution_snapshot(&store, active.snapshot_id(), point_limit())
         .unwrap()
         .unwrap();
@@ -258,7 +360,7 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
         Some(active.usable().represented_prefix()),
         Some(active.usable().lineage()),
         Some(active.usable().native_turn_count()),
-        Some(snapshot.loaded_generation()),
+        Some(persisted_snapshot.loaded_generation()),
         "unknown active projection abandoned",
         timestamp(6),
     )
@@ -290,21 +392,23 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
             .unwrap(),
         ),
     );
-    let unknown_claim = valid_request(
+
+    let unknown_claim = valid_request_with_count(
         &store,
         storage,
         thread,
         selected,
-        CasThreadId::new("terminal-unknown-claim").unwrap(),
+        CasThreadId::new("terminal-unknown-full-prefix-claim").unwrap(),
         full,
+        CasNativeTurnCount::ZERO,
         CasLineageProof::native(NativeCasLineage::Continuation, full).unwrap(),
     );
-    let error = execute_outcome(
+    let outcome = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), unknown_claim),
     );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::TurnLifecycleConflict
     ));
     store

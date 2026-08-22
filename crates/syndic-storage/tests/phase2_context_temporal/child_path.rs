@@ -61,6 +61,8 @@ fn submitted_context_owner_need_not_remain_on_child_selected_path() {
         );
         let transcript_digest =
             fixture_advance_transcript_digest(fixture_transcript_digest_seed(), &transcript_entry);
+        let new_root_history =
+            seed_detached_canonical_draft_backing(store, storage, id(238), new_draft);
 
         let mut mutation = batch([
             FixtureRecord::Thread(ThreadRecord::new(
@@ -85,7 +87,7 @@ fn submitted_context_owner_need_not_remain_on_child_selected_path() {
                 child_thread,
                 draft_revision,
                 DraftSubmissionIntent::Ordinary,
-                empty_composer_content(),
+                new_root_history,
                 timestamp(8),
                 timestamp(8),
             )),

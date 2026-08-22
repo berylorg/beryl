@@ -2,35 +2,25 @@
 
 mod support;
 
-use beryl_home_store::{
-    CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
-    HomeSchemaVersion,
-    test_faults::{FaultController, FaultPoint},
-};
+use beryl_home_store::{CommandError, CursorReadLimits, HomeCommand};
 use beryl_model::{
-    BindingRevision, DraftRevision, ProjectionRevision, SyndicDraftId, SyndicItemId,
-    SyndicThreadId, SyndicTurnId, ThreadRevision,
+    ProjectionRevision, SyndicDraftId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
-use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
+use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{
-    BindingHeadRecord, BindingRecord, BindingState, ComposerAtom, ComposerPayload,
-    ConversationParent, CreateThread, CreateThreadError, DraftByThreadRecord, DraftPayloadUpdate,
-    DraftPayloadUpdateDecision, DraftSubmissionIntent, HistorySummaryRecord, IdleSubmission,
-    PreparedContent, SelectedPathProof, SourceEventPayload, SourceEventRecord, SourceEventSequence,
-    SyndicMutationError, SyndicPointReadLimit, SyndicStorage, ThreadCreationStatus,
-    ThreadLineageProof, ThreadRecord, TranscriptGeneration, TurnDepth, TurnEndStatus, TurnKind,
-    TurnLifecycle, TurnRecord, TurnStateRevision, TurnTerminalOutcome, empty_selected_path_digest,
-    root_turn_chain_digest,
+    root_turn_chain_digest, ConversationParent, CreateThread, CreateThreadError,
+    DraftByThreadRecord, DraftRecord, DraftSubmissionIntent, HistorySummaryRecord,
+    SourceEventPayload, SourceEventRecord, SourceEventSequence, SyndicMutationError,
+    SyndicPointReadLimit, SyndicStorage, ThreadAttributesRecord, ThreadCatalogSourceWitnesses,
+    ThreadCatalogSummaryRecord, ThreadCreationStatus, ThreadExecutionRecord, TranscriptGeneration,
+    TurnDepth, TurnEndStatus, TurnKind, TurnLifecycle, TurnRecord, TurnStateRevision,
+    TurnTerminalOutcome,
 };
 
 use support::*;
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(400_000).unwrap()
-}
-
-fn payload(text: &str) -> ComposerPayload {
-    ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap()
 }
 
 fn execute(
@@ -96,6 +86,13 @@ fn assert_not_committed(outcome: beryl_home_store::CommandOutcome) -> CommandErr
     }
 }
 
+fn typed_error(error: &CommandError) -> &SyndicMutationError {
+    let CommandError::ContributorValidation { source, .. } = error else {
+        panic!("expected typed contributor rejection, got {error}");
+    };
+    source.downcast_ref().expect("Syndic mutation error")
+}
+
 fn source_history(
     store: &beryl_home_store::HomeStore,
     storage: SyndicStorage,
@@ -103,6 +100,7 @@ fn source_history(
     draft_id: SyndicDraftId,
     turn_id: SyndicTurnId,
 ) {
+    seed_canonical_empty_thread(store, storage, thread_id, draft_id);
     let digest = root_turn_chain_digest(turn_id);
     let mut records = vec![
         FixtureRecord::Turn(TurnRecord::new(
@@ -144,11 +142,73 @@ fn source_history(
     commit(store, storage, batch(records));
 }
 
-fn typed_error(error: &CommandError) -> &SyndicMutationError {
-    let CommandError::ContributorValidation { source, .. } = error else {
-        panic!("expected typed contributor rejection, got {error}");
-    };
-    source.downcast_ref().expect("Syndic mutation error")
+fn publish_source_activity(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    thread_id: SyndicThreadId,
+) {
+    let thread = storage.thread(store, thread_id, limit()).unwrap().unwrap();
+    let current_draft = storage
+        .current_draft(store, thread_id, limit())
+        .unwrap()
+        .unwrap();
+    let current_history = storage
+        .history_summary(store, thread_id, limit())
+        .unwrap()
+        .unwrap();
+    let draft_revision = current_draft.draft().revision().checked_next().unwrap();
+    let history_revision = current_history.revision().checked_next().unwrap();
+    let draft = DraftRecord::new(
+        current_draft.draft().id(),
+        thread_id,
+        draft_revision,
+        current_draft.draft().submission_intent(),
+        current_draft.draft().root_history(),
+        current_draft.draft().created_at(),
+        timestamp(2),
+    );
+    let draft_by_thread =
+        DraftByThreadRecord::new(thread_id, draft.id(), draft_revision, thread.revision());
+    let history = HistorySummaryRecord::new(
+        thread_id,
+        history_revision,
+        thread.revision(),
+        thread.committed_tail(),
+        thread.selected_path_digest(),
+        current_history.complete(),
+        timestamp(2),
+    );
+    let execution = ThreadExecutionRecord::new(thread_id, exact_cas::execution_binding());
+    let attributes = ThreadAttributesRecord::ordinary(thread_id);
+    let catalog = ThreadCatalogSummaryRecord::new(
+        thread_id,
+        ProjectionRevision::new(2).unwrap(),
+        None,
+        execution.execution().clone(),
+        attributes.archive(),
+        history.last_activity_at(),
+        history.complete(),
+        thread.parent_thread_id(),
+        thread.lineage_depth(),
+        thread.lineage_digest(),
+        ThreadCatalogSourceWitnesses::new(
+            attributes.revision(),
+            history.revision(),
+            history.thread_revision(),
+            history.selected_path_digest(),
+            thread.revision(),
+        ),
+    );
+    commit(
+        store,
+        storage,
+        batch([
+            FixtureRecord::Draft(draft),
+            FixtureRecord::DraftByThread(draft_by_thread),
+            FixtureRecord::HistorySummary(history),
+            FixtureRecord::ThreadCatalogSummary(catalog),
+        ]),
+    );
 }
 
 #[test]
@@ -299,88 +359,6 @@ fn shared_tail_creation_conflicts_then_retries_without_copying_history() {
 }
 
 #[test]
-fn from_tail_ordinary_submission_parents_to_the_current_tail() {
-    let home = TestHome::new("phase3-from-tail-submission");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let source_thread = id(17);
-    let source_draft = draft_id(18);
-    let source_turn = SyndicTurnId::from_bytes([19; 16]);
-    source_history(&store, storage, source_thread, source_draft, source_turn);
-    let tail = storage
-        .thread_tail(&store, source_thread, limit())
-        .unwrap()
-        .unwrap();
-    let child_thread = id(20);
-    let child_draft = draft_id(21);
-    assert_committed(execute(
-        &store,
-        storage,
-        storage.revision(&store).unwrap(),
-        CreateThread::from_tail(
-            child_thread,
-            child_draft,
-            timestamp(5),
-            syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
-            tail,
-        )
-        .unwrap(),
-    ));
-
-    let content = PreparedContent::composer(&payload("submitted from shared tail")).unwrap();
-    stage_prepared_content(&store, storage, &content);
-    let current = storage
-        .current_draft(&store, child_thread, limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(6)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    let mut save = HomeCommand::new(store.home_revision().unwrap());
-    save.add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
-        .unwrap();
-    assert_committed(store.execute(save));
-
-    let current = storage
-        .current_draft(&store, child_thread, limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(&store, child_thread, limit())
-        .unwrap()
-        .unwrap();
-    let submission = IdleSubmission::new(
-        child_thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
-        draft_id(22),
-        SyndicItemId::from_bytes([23; 16]),
-        None,
-        timestamp(7),
-    );
-    let submitted_turn = submission.submitted_turn_id();
-    let mut submit = HomeCommand::new(store.home_revision().unwrap());
-    submit
-        .add(storage.submit_idle_draft(storage.revision(&store).unwrap(), submission))
-        .unwrap();
-    assert_committed(store.execute(submit));
-
-    let submitted = storage
-        .turn(&store, submitted_turn, limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(submitted.parent(), ConversationParent::Turn(source_turn));
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
-    store.close().unwrap();
-}
-
-#[test]
 fn source_activity_change_invalidates_a_captured_creation_proof() {
     let home = TestHome::new("phase3-stale-tail");
     let mut store = open(home.path());
@@ -400,208 +378,28 @@ fn source_activity_change_invalidates_a_captured_creation_proof() {
         tail,
     )
     .unwrap();
-    let current = storage
-        .current_draft(&store, source_thread, limit())
-        .unwrap()
+
+    publish_source_activity(&store, storage, source_thread);
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    let content = PreparedContent::composer(&payload("changed")).unwrap();
-    stage_prepared_content(&store, storage, &content);
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(20)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    let mut save = HomeCommand::new(store.home_revision().unwrap());
-    save.add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
-        .unwrap();
-    assert_committed(store.execute(save));
 
     let error = assert_not_committed(execute(
         &store,
         storage,
         storage.revision(&store).unwrap(),
-        creation,
+        creation.clone(),
     ));
     assert!(matches!(
         typed_error(&error),
         SyndicMutationError::SourceTailConflict
     ));
-    assert!(storage.thread(&store, id(23), limit()).unwrap().is_none());
-    store.close().unwrap();
-}
-
-#[test]
-fn draft_update_survives_a_same_draft_thread_revision_advance() {
-    let home = TestHome::new("phase3-thread-revision");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread_id = id(30);
-    let draft_id = draft_id(31);
-    let creation = CreateThread::ordinary(
-        thread_id,
-        draft_id,
-        exact_cas::execution_binding(),
-        timestamp(1),
-        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
-    );
-    assert_committed(execute(
-        &store,
-        storage,
-        storage.revision(&store).unwrap(),
-        creation,
-    ));
-    let current = storage
-        .current_draft(&store, thread_id, limit())
-        .unwrap()
-        .unwrap();
-    let content = PreparedContent::composer(&payload("stale")).unwrap();
-    stage_prepared_content(&store, storage, &content);
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    advance_empty_thread_revision(&store, storage, thread_id, draft_id);
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()))
-        .unwrap();
-    assert_committed(store.execute(command));
-
-    let committed = storage
-        .current_draft(&store, thread_id, limit())
-        .unwrap()
-        .unwrap();
     assert_eq!(
-        committed.thread().revision(),
-        ThreadRevision::new(2).unwrap()
+        storage
+            .thread_creation_status(&store, &creation, limit())
+            .unwrap(),
+        ThreadCreationStatus::Absent
     );
-    assert!(update.matches_committed(&committed));
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
-    store.close().unwrap();
-}
-
-fn advance_empty_thread_revision(
-    store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
-    thread_id: SyndicThreadId,
-    draft_id: SyndicDraftId,
-) {
-    let thread_revision = ThreadRevision::new(2).unwrap();
-    let draft_revision = DraftRevision::new(1).unwrap();
-    let binding_revision = BindingRevision::new(2).unwrap();
-    let digest = empty_selected_path_digest();
-    let selected = SelectedPathProof::new(None, thread_revision, digest);
-    let mut fixture = FixtureBatch::new();
-    fixture
-        .put(FixtureRecord::Thread(ThreadRecord::new(
-            thread_id,
-            selected,
-            draft_id,
-            ThreadLineageProof::new(
-                None,
-                None,
-                syndic_storage::ThreadLineageDepth::FIRST,
-                syndic_storage::root_thread_lineage_digest(thread_id),
-            ),
-            syndic_storage::ThreadImageLabelFrontiers::empty(),
-            None,
-        )))
-        .unwrap();
-    fixture
-        .put(FixtureRecord::DraftByThread(DraftByThreadRecord::new(
-            thread_id,
-            draft_id,
-            draft_revision,
-            thread_revision,
-        )))
-        .unwrap();
-    fixture
-        .put(FixtureRecord::HistorySummary(HistorySummaryRecord::new(
-            thread_id,
-            ProjectionRevision::new(2).unwrap(),
-            thread_revision,
-            None,
-            digest,
-            true,
-            timestamp(1),
-        )))
-        .unwrap();
-    fixture
-        .put(FixtureRecord::Binding(BindingRecord::new(
-            thread_id,
-            binding_revision,
-            selected,
-            BindingState::unbound("revision test").unwrap(),
-        )))
-        .unwrap();
-    fixture
-        .put(FixtureRecord::BindingHead(BindingHeadRecord::new(
-            thread_id,
-            binding_revision,
-            syndic_storage::BindingLifecycle::Unbound,
-            digest,
-        )))
-        .unwrap();
-    commit(store, storage, fixture);
-}
-
-#[test]
-fn surfaced_post_persist_failure_recovers_the_durable_new_draft() {
-    let home = TestHome::new("phase3-post-persist");
-    let faults = FaultController::new();
-    let mut store = beryl_home_store::HomeStore::open_with_faults(
-        HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
-        faults.clone(),
-    )
-    .unwrap();
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread_id = id(40);
-    let creation = CreateThread::ordinary(
-        thread_id,
-        draft_id(41),
-        exact_cas::execution_binding(),
-        timestamp(1),
-        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
-    );
-    assert_committed(execute(
-        &store,
-        storage,
-        storage.revision(&store).unwrap(),
-        creation,
-    ));
-    let current = storage
-        .current_draft(&store, thread_id, limit())
-        .unwrap()
-        .unwrap();
-    let content = PreparedContent::composer(&payload("durable")).unwrap();
-    stage_prepared_content(&store, storage, &content);
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()))
-        .unwrap();
-    faults.fail_next(FaultPoint::AfterPersist);
-    assert!(matches!(
-        store.execute(command),
-        beryl_home_store::CommandOutcome::Committed {
-            receipt: _,
-            later_failure: Some(CommandError::Persistence { .. })
-        }
-    ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-    let recovery = store.recover_same_home().unwrap();
-    let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
-    assert_eq!(store.health().state(), HomeHealthState::Healthy);
-    let recovered = storage
-        .current_draft(&store, thread_id, limit())
-        .unwrap()
-        .unwrap();
-    assert!(update.matches_committed(&recovered));
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

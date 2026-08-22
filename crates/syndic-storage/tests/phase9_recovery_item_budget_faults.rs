@@ -1,80 +1,77 @@
 #![cfg(feature = "test-faults")]
 
-#[path = "phase9_recovery_projection/support.rs"]
+#[path = "support/mod.rs"]
 mod support;
 
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeHealthState, HomeStore};
+use beryl_home_store::{HomeHealthState, HomeStore};
+use beryl_model::{SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
+    test_faults::{recovery_residency_metrics, reset_recovery_residency_metrics, FixtureRecord},
     RecoveryBudgetKind, RecoveryItemCount, RecoveryProjectionError, RecoveryProjectionRequest,
-    SyndicStorage, TurnItemOrdinal, TurnStateRecord, TurnTerminalOutcome,
-    test_faults::{
-        FixtureBatch, FixtureDelete, FixtureRecord, recovery_residency_metrics,
-        reset_recovery_residency_metrics,
-    },
+    SelectedPathProof, SyndicPointReadLimit, SyndicStorage, TurnStateRecord,
 };
 
-use support::{Builder, TestHome, open, point_limit};
+use support::{batch, commit, id, open, seed_populated, TestHome};
 
 struct BudgetFixture {
     _home: TestHome,
     store: HomeStore,
     storage: SyndicStorage,
-    thread: beryl_model::SyndicThreadId,
-    selected: syndic_storage::SelectedPathProof,
+    thread: SyndicThreadId,
+    selected: SelectedPathProof,
+}
+
+fn point_limit() -> SyndicPointReadLimit {
+    SyndicPointReadLimit::new(1_000_000).unwrap()
+}
+
+fn selected_path(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+) -> SelectedPathProof {
+    let thread = storage
+        .thread(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    SelectedPathProof::new(
+        thread.committed_tail(),
+        thread.revision(),
+        thread.selected_path_digest(),
+    )
+}
+
+fn with_item_count(state: &TurnStateRecord, item_count: u64) -> TurnStateRecord {
+    TurnStateRecord::with_finalization_frontier(
+        state.turn_id(),
+        state.revision(),
+        state.lifecycle(),
+        state.source_event_count(),
+        item_count,
+        item_count,
+        state.end_status(),
+        state.updated_at(),
+    )
+    .unwrap()
 }
 
 fn build_budget_fixture(name: &str, root_item_count: u64) -> BudgetFixture {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut builder = Builder::new(&store, storage, 31);
-    let root = builder.submit_text("root item");
-    builder.complete_without_assistant(root, TurnTerminalOutcome::Complete);
-    let child = builder.submit_text("child item");
-    builder.complete_without_assistant(child, TurnTerminalOutcome::Complete);
-    builder.submit_text("pending tail");
-    let thread = builder.thread();
-    let selected = builder.selected_path();
-
+    seed_populated(&store, storage);
+    let thread = id(30);
+    let root = SyndicTurnId::from_bytes([29; 16]);
     let root_state = storage
-        .turn_state(&store, root.turn, point_limit())
+        .turn_state(&store, root, point_limit())
         .unwrap()
         .unwrap();
-    let root_state = root_state;
-    let mut fault = FixtureBatch::new();
-    fault
-        .put(FixtureRecord::TurnState(
-            TurnStateRecord::with_finalization_frontier(
-                root_state.turn_id(),
-                root_state.revision(),
-                root_state.lifecycle(),
-                root_state.source_event_count(),
-                root_item_count,
-                root_item_count,
-                root_state.end_status(),
-                root_state.updated_at(),
-            )
-            .unwrap(),
-        ))
-        .unwrap();
-    fault
-        .delete(FixtureDelete::TurnItem {
-            turn: root.turn,
-            ordinal: TurnItemOrdinal::FIRST,
-        })
-        .unwrap();
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(storage.fixture_contribution(storage.revision(&store).unwrap(), fault))
-        .unwrap();
-    match store.execute(command) {
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected committed recovery-budget fixture command, got {outcome:?}"),
-    }
-
+    let fault = batch([FixtureRecord::TurnState(with_item_count(
+        &root_state,
+        root_item_count,
+    ))]);
+    commit(&store, storage, fault);
+    let selected = selected_path(&store, storage, thread);
     BudgetFixture {
         _home: home,
         store,
@@ -104,7 +101,7 @@ fn exact_item_budget_reaches_index_scan_without_a_proportional_frontier() {
         .storage
         .prepare_recovery_projection(
             &exact.store,
-            RecoveryProjectionRequest::for_pending_selected_turn_parent(
+            RecoveryProjectionRequest::for_current_selected_path(
                 exact.thread,
                 exact.selected,
                 Some(u64::MAX),
@@ -135,7 +132,7 @@ fn exact_item_budget_reaches_index_scan_without_a_proportional_frontier() {
         .storage
         .prepare_recovery_projection(
             &overflow.store,
-            RecoveryProjectionRequest::for_pending_selected_turn_parent(
+            RecoveryProjectionRequest::for_current_selected_path(
                 overflow.thread,
                 overflow.selected,
                 Some(u64::MAX),

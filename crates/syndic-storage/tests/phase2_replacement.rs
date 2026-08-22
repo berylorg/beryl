@@ -2,12 +2,15 @@
 
 mod support;
 
-use beryl_model::{SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId};
-use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
+use beryl_model::{SyndicDraftId, SyndicThreadId, SyndicTurnId, ThreadRevision};
+use syndic_storage::test_faults::{
+    fixture_advance_item_projection_digest, fixture_advance_transcript_digest,
+    fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
+    fixture_transcript_digest_seed, FixtureBatch, FixtureRecord,
+};
 use syndic_storage::*;
 
-use support::exact_cas::{admit_event, correlate_user_item, establish_turn, submit_current_draft};
-use support::populated::source_turn;
+use support::populated::{source_item, source_turn};
 use support::semantic::exercise_seeded_populated_case;
 use support::*;
 
@@ -34,7 +37,7 @@ fn replacement_mutation(
             current.thread().id(),
             revision,
             DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(target, selected, entry)),
-            current.draft().content(),
+            current.draft().root_history(),
             current.draft().created_at(),
             summary.last_activity_at(),
         )),
@@ -62,6 +65,7 @@ fn seed_empty_replacement_thread(
                 draft,
                 support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ))
         .unwrap();
@@ -78,40 +82,8 @@ fn seed_real_replacement_target(
     store: &beryl_home_store::HomeStore,
     storage: SyndicStorage,
 ) -> (SyndicTurnId, SelectedPathProof, CurrentTranscriptEntryProof) {
-    converge_and_release_terminal_history(store, storage, id(30), source_turn());
-    let item = SyndicItemId::from_bytes([27; 16]);
-    let turn = submit_current_draft(
-        store,
-        storage,
-        id(30),
-        draft_id(70),
-        item,
-        "replacement target",
-        timestamp(10),
-    );
-    let source = establish_turn(store, storage, id(30), turn, timestamp(11));
-    admit_event(
-        store,
-        storage,
-        id(30),
-        turn,
-        &source,
-        SourceEventPayload::TurnActivated,
-        timestamp(11),
-    );
-    correlate_user_item(store, storage, id(30), turn, item, &source, timestamp(12));
-    admit_event(
-        store,
-        storage,
-        id(30),
-        turn,
-        &source,
-        SourceEventPayload::TurnEnded(
-            TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
-        ),
-        timestamp(13),
-    );
-    converge_and_release_terminal_history(store, storage, id(30), turn);
+    let turn = source_turn();
+    let item = source_item();
     let current = storage
         .current_draft(store, id(30), SyndicPointReadLimit::new(1_000_000).unwrap())
         .unwrap()
@@ -141,26 +113,264 @@ fn seed_real_replacement_target(
     )
 }
 
+fn seed_local_user_replacement_target(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    draft: SyndicDraftId,
+) -> (SyndicTurnId, SelectedPathProof, CurrentTranscriptEntryProof) {
+    seed_empty_replacement_thread(store, storage, thread, draft);
+    let turn = SyndicTurnId::from_bytes([92; 16]);
+    let item = beryl_model::SyndicItemId::from_bytes([93; 16]);
+    let digest = root_turn_chain_digest(turn);
+    let projection = fixture_inline_paragraph_projection(item, turn, "replacement");
+    let revision = projection.revision();
+    let (content, mut records) = composer_content_records(
+        &ComposerPayload::new(vec![ComposerAtom::text("replacement").unwrap()]).unwrap(),
+    );
+    let item_digest = fixture_advance_item_projection_digest(
+        fixture_item_projection_digest_seed(),
+        projection.id(),
+        revision,
+    );
+    let entry = TranscriptViewEntryRecord::new(
+        thread,
+        TranscriptGeneration::FIRST,
+        TranscriptPosition::FIRST,
+        item,
+        revision,
+        ItemProjectionGeneration::FIRST,
+        projection.id(),
+        revision,
+    );
+    let transcript_digest =
+        fixture_advance_transcript_digest(fixture_transcript_digest_seed(), &entry);
+    let thread_revision = ThreadRevision::new(1).unwrap();
+    let selected = SelectedPathProof::new(Some(turn), thread_revision, digest);
+    let thread_record = ThreadRecord::new(
+        thread,
+        selected,
+        draft,
+        ThreadLineageProof::new(
+            None,
+            None,
+            ThreadLineageDepth::FIRST,
+            root_thread_lineage_digest(thread),
+        ),
+        ThreadImageLabelFrontiers::empty(),
+        None,
+    );
+    let execution = ThreadExecutionRecord::new(thread, support::exact_cas::execution_binding());
+    let attributes = ThreadAttributesRecord::ordinary(thread);
+    let history = HistorySummaryRecord::new(
+        thread,
+        revision,
+        thread_revision,
+        Some(turn),
+        digest,
+        false,
+        timestamp(2),
+    );
+    let catalog = ThreadCatalogSummaryRecord::new(
+        thread,
+        revision,
+        Some(
+            ThreadCatalogTitle::new("replacement", ThreadCatalogTitleSource::HistoryDerived)
+                .unwrap(),
+        ),
+        execution.execution().clone(),
+        attributes.archive(),
+        history.last_activity_at(),
+        history.complete(),
+        thread_record.parent_thread_id(),
+        thread_record.lineage_depth(),
+        thread_record.lineage_digest(),
+        ThreadCatalogSourceWitnesses::new(
+            attributes.revision(),
+            history.revision(),
+            history.thread_revision(),
+            history.selected_path_digest(),
+            thread_record.revision(),
+        ),
+    );
+    let mut thread_fixture = thread_records(thread, draft, Some(turn), digest);
+    thread_fixture.retain(|record| {
+        !matches!(
+            record,
+            FixtureRecord::TranscriptViewHead(_)
+                | FixtureRecord::HistorySummary(_)
+                | FixtureRecord::ThreadCatalogSummary(_)
+        )
+    });
+    records.extend(thread_fixture);
+    records.extend([
+        FixtureRecord::HistorySummary(history),
+        FixtureRecord::ThreadCatalogSummary(catalog),
+        FixtureRecord::Turn(TurnRecord::new(
+            turn,
+            thread,
+            TurnKind::OrdinaryUser,
+            ConversationParent::Root,
+            None,
+            TurnDepth::FIRST,
+            digest,
+            timestamp(2),
+        )),
+        FixtureRecord::TurnState(fixture_turn_state_with_capture(
+            turn,
+            TurnStateRevision::FIRST,
+            TurnLifecycle::Incomplete,
+            1,
+            1,
+            1,
+            1,
+            0,
+            timestamp(2),
+        )),
+        FixtureRecord::SourceEvent(
+            SourceEventRecord::new(
+                turn,
+                SourceEventSequence::FIRST,
+                None,
+                SourceEventPayload::TurnEnded(TurnEndStatus::incomplete(
+                    TurnIncompleteReason::ItemAuditFailed,
+                )),
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::CanonicalItem(CanonicalItemRecord::local_user_input(
+            item,
+            turn,
+            TurnItemOrdinal::FIRST,
+            revision,
+            content,
+            None,
+        )),
+        FixtureRecord::TurnItem(TurnItemIndexRecord::new(
+            turn,
+            TurnItemOrdinal::FIRST,
+            item,
+            revision,
+        )),
+        FixtureRecord::Projection(projection.clone()),
+        FixtureRecord::StableItemProjection(StableItemProjectionIndexRecord::new(
+            item,
+            ProjectionOrdinal::FIRST,
+            projection.id(),
+            revision,
+        )),
+        FixtureRecord::ItemProjectionSet(ItemProjectionSetRecord::new(
+            item,
+            ItemProjectionGeneration::FIRST,
+            ProjectionFormatVersion::V1,
+            revision,
+            ProjectionTextSource::composer(content),
+            11,
+            1,
+            0,
+            item_digest,
+            1,
+            0,
+            item_digest,
+            MarkdownParserCheckpoint::new(
+                11,
+                11,
+                ProjectionTextSourceCursor::Composer(ContentPieceOrdinal::new(2).unwrap()),
+                11,
+                Box::<str>::default(),
+                false,
+                None,
+            ),
+            true,
+        )),
+        FixtureRecord::ItemProjectionHead(ItemProjectionHeadRecord::new(
+            item,
+            revision,
+            revision,
+            ItemProjectionGeneration::FIRST,
+            ProjectionLifecycle::Current,
+        )),
+        FixtureRecord::TranscriptViewEntry(entry),
+        FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
+            thread,
+            TranscriptGeneration::FIRST,
+            TurnDepth::FIRST,
+            turn,
+            digest,
+            TurnStateRevision::FIRST,
+            TurnLifecycle::Incomplete,
+            1,
+            1,
+            1,
+            timestamp(2),
+        )),
+        FixtureRecord::TranscriptBuild(TranscriptBuildRecord::new(
+            thread,
+            TranscriptGeneration::FIRST,
+            revision,
+            thread_revision,
+            Some(turn),
+            digest,
+            1,
+            1,
+            transcript_digest,
+            false,
+            TranscriptBuildPhase::Complete,
+        )),
+        FixtureRecord::TranscriptViewHead(TranscriptViewHeadRecord::new(
+            thread,
+            TranscriptGeneration::FIRST,
+            revision,
+            1,
+            Some(turn),
+            digest,
+            ProjectionLifecycle::Current,
+        )),
+    ]);
+    commit(store, storage, batch(records));
+    (
+        turn,
+        selected,
+        CurrentTranscriptEntryProof::new(TranscriptGeneration::FIRST, TranscriptPosition::FIRST),
+    )
+}
+
+fn assert_exact_replacement_intent(
+    draft: &DraftRecord,
+    turn: SyndicTurnId,
+    selected: SelectedPathProof,
+    entry: CurrentTranscriptEntryProof,
+) {
+    let DraftSubmissionIntent::Replacement(intent) = draft.submission_intent() else {
+        panic!("replacement intent did not roundtrip");
+    };
+    assert_eq!(intent.target_turn_id(), turn);
+    assert_eq!(intent.selected_path(), selected);
+    assert_eq!(intent.transcript_entry(), entry);
+}
+
 #[test]
 fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
     let home = TestHome::new("replacement-roundtrip");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
-    let (turn, selected, entry) = seed_real_replacement_target(&store, storage);
-    let current = storage
+    let thread = id(90);
+    let (turn, selected, entry) =
+        seed_local_user_replacement_target(&store, storage, thread, draft_id(91));
+    let current_draft = storage
         .current_draft(
             &store,
-            id(30),
+            thread,
             SyndicPointReadLimit::new(1_000_000).unwrap(),
         )
         .unwrap()
-        .unwrap();
-    let current_draft = current.draft().id();
+        .unwrap()
+        .draft()
+        .id();
     commit(
         &store,
         storage,
-        replacement_mutation(&store, storage, id(30), turn, selected, entry),
+        replacement_mutation(&store, storage, thread, turn, selected, entry),
     );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -173,16 +383,20 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
         )
         .unwrap()
         .unwrap();
-    let DraftSubmissionIntent::Replacement(intent) = draft.submission_intent() else {
-        panic!("replacement intent did not roundtrip");
-    };
-    assert_eq!(intent.target_turn_id(), turn);
-    assert_eq!(intent.selected_path(), selected);
-    assert_eq!(intent.transcript_entry(), entry);
+    assert_exact_replacement_intent(&draft, turn, selected, entry);
     store.close().unwrap();
 
     let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let storage = SyndicStorage::register_with_schema_validation(&mut reopened).unwrap();
+    let draft = storage
+        .draft(
+            &reopened,
+            current_draft,
+            SyndicPointReadLimit::new(65_536).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_exact_replacement_intent(&draft, turn, selected, entry);
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

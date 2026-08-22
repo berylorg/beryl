@@ -13,10 +13,15 @@ struct RecoveredFixture {
 fn establish_recovered_valid(
     store: &HomeStore,
     storage: SyndicStorage,
+    thread_byte: u8,
     cas_thread_name: &str,
     snapshot: SyndicExecutionSnapshotId,
 ) -> RecoveredFixture {
-    let (thread, parent, turn, selected) = non_root_pending(store, storage);
+    let (thread, Some(parent), turn, selected) =
+        fault_pending_path(store, storage, thread_byte, true)
+    else {
+        unreachable!()
+    };
     let parent = storage.turn(store, parent, point_limit()).unwrap().unwrap();
     let represented = CasRepresentedPrefixProof::new(
         Some(parent.id()),
@@ -28,7 +33,7 @@ fn establish_recovered_valid(
     let proof = RecoveredInjectionProof::new(
         RecoveryProjectionVersion::V1,
         represented,
-        RecoveryItemSequenceDigest::from_bytes([67; 32]),
+        beryl_model::RecoveryItemSequenceDigest::from_bytes([67; 32]),
         RecoveryItemCount::new(1).unwrap(),
         RecoveryUtf8ByteCount::new(5).unwrap(),
         timestamp(6),
@@ -38,13 +43,14 @@ fn establish_recovered_valid(
     publish_valid(
         store,
         storage,
-        valid_request(
+        valid_request_with_count(
             store,
             storage,
             thread,
             selected,
             CasThreadId::new(cas_thread_name).unwrap(),
             represented,
+            CasNativeTurnCount::ZERO,
             CasLineageProof::recovered(proof),
         ),
     );
@@ -98,13 +104,14 @@ fn stale_from_usable(
 
 #[test]
 fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
-    let home = TestHome::new("phase13-recovered-stale-process");
+    let home = TestHome::new("phase9-recovered-stale-process");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let fixture = establish_recovered_valid(
         &store,
         storage,
-        "phase13-recovered-stale-cas",
+        190,
+        "phase9-recovered-stale-cas",
         SyndicExecutionSnapshotId::from_bytes([68; 16]),
     );
     let binding = storage
@@ -195,35 +202,28 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
             BindingState::stale(corrupt),
         ))]),
     );
+    let error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("stale recovered lineage process generation disagrees"),
+        "unexpected stale-generation scrub error: {error}"
+    );
     reopened.close().unwrap();
-
-    let mut invalid = open(home.path());
-    let error = match SyndicStorage::register(&mut invalid) {
-        Ok(_) => panic!("different-process stale recovery registered successfully"),
-        Err(error) => error,
-    };
-    match error {
-        DomainRegistrationError::Validation { domain, source } => {
-            assert_eq!(domain, "syndic");
-            assert_eq!(
-                source.to_string(),
-                "stale recovered lineage process generation disagrees"
-            );
-        }
-        other => panic!("expected stale recovered-process rejection, got {other:?}"),
-    }
-    invalid.close().unwrap();
 }
 
 #[test]
 fn recovered_abandonment_retains_exact_active_snapshot_generation() {
-    let home = TestHome::new("phase13-recovered-abandonment-generation");
+    let home = TestHome::new("phase9-recovered-abandonment-generation");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let fixture = establish_recovered_valid(
         &store,
         storage,
-        "phase13-recovered-abandonment-cas",
+        200,
+        "phase9-recovered-abandonment-cas",
         SyndicExecutionSnapshotId::from_bytes([69; 16]),
     );
     activate_recovered(&store, storage, &fixture);

@@ -1,21 +1,18 @@
 #![cfg(feature = "test-faults")]
 
-#[path = "phase9_recovery_projection/support.rs"]
+#[path = "support/mod.rs"]
 mod support;
 
-use std::{sync::Arc, thread, time::Duration};
-
 use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
+    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
 use syndic_storage::{
-    ComposerAtom, ComposerPayload, DraftPayloadUpdate, DraftPayloadUpdateDecision, PreparedContent,
-    RecoveryProjectionError, RecoveryProjectionRequest, SyndicStorage, SyndicTimestamp,
-    TurnTerminalOutcome,
+    RecoveryProjectionError, RecoveryProjectionRequest, SelectedPathProof, SyndicPointReadLimit,
+    SyndicStorage,
 };
 
-use support::{Builder, TestHome, point_limit, stage_prepared_content};
+use support::{id, seed_populated, TestHome};
 
 fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
     HomeStore::open_with_faults(
@@ -25,73 +22,66 @@ fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStor
     .unwrap()
 }
 
+fn point_limit() -> SyndicPointReadLimit {
+    SyndicPointReadLimit::new(1_000_000).unwrap()
+}
+
 #[test]
-fn revision_change_during_recovery_assembly_rejects_the_whole_result() {
-    let home = TestHome::new("phase9-recovery-revision-race");
+fn recovery_assembly_read_fault_preserves_state_for_same_home_recovery() {
+    let home = TestHome::new("phase9-recovery-read-fault");
     let faults = FaultController::new();
     let mut store = open_with_faults(home.path(), faults.clone());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut builder = Builder::new(&store, storage, 9);
-    let completed = builder.submit_text("stable recovery history");
-    builder.complete_without_assistant(completed, TurnTerminalOutcome::Complete);
-    builder.submit_text("pending input");
-    let thread_id = builder.thread();
-    let selected_path = builder.selected_path();
-
-    let current = storage
-        .current_draft(&store, thread_id, point_limit())
+    seed_populated(&store, storage);
+    let thread_id = id(30);
+    let before = storage
+        .thread(&store, thread_id, point_limit())
         .unwrap()
         .unwrap();
-    let payload =
-        ComposerPayload::new(vec![ComposerAtom::text("concurrent draft").unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(&store, storage, &content);
-    let update = match DraftPayloadUpdate::prepare(
-        &current,
-        &content,
-        SyndicTimestamp::from_unix_millis(100),
-    )
-    .unwrap()
-    {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
+    let selected_path = SelectedPathProof::new(
+        before.committed_tail(),
+        before.revision(),
+        before.selected_path_digest(),
+    );
 
-    let block = faults.block_next(FaultPoint::BeforeReadConfirmation);
-    let store = Arc::new(store);
-    let reader_store = Arc::clone(&store);
-    let reader = thread::spawn(move || {
-        storage.prepare_recovery_projection(
-            &reader_store,
-            RecoveryProjectionRequest::for_pending_selected_turn_parent(
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(storage
+        .prepare_recovery_projection(
+            &store,
+            RecoveryProjectionRequest::for_current_selected_path(
                 thread_id,
                 selected_path,
                 Some(100_000),
             ),
         )
-    });
-    assert!(block.wait_until_reached(Duration::from_secs(10)));
+        .is_err());
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
 
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
-        .unwrap();
-    match store.execute(command) {
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected committed recovery-race update, got {outcome:?}"),
-    }
-    block.release();
-
+    let candidate = store.recover_same_home().unwrap();
+    let _candidate_storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let recovered = candidate.publish();
+    let storage = SyndicStorage::reacquire(&recovered).unwrap();
+    assert_eq!(
+        storage
+            .thread(&recovered, thread_id, point_limit())
+            .unwrap()
+            .as_ref(),
+        Some(&before)
+    );
     assert!(matches!(
-        reader.join().unwrap(),
-        Err(RecoveryProjectionError::ConcurrentChange)
+        storage
+            .prepare_recovery_projection(
+                &recovered,
+                RecoveryProjectionRequest::for_current_selected_path(
+                    thread_id,
+                    selected_path,
+                    Some(100_000),
+                ),
+            )
+            .unwrap_err(),
+        RecoveryProjectionError::IncompleteHistory {
+            reason: "included turn has no canonical items"
+        }
     ));
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
-    let store = Arc::try_unwrap(store).unwrap_or_else(|_| panic!("reader retained the home"));
-    store.close().unwrap();
+    recovered.close().unwrap();
 }

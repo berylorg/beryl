@@ -8,16 +8,17 @@ use beryl_model::{
     ProjectionRevision, SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{
-    FixtureBatch, FixtureDelete, FixtureRecord, fixture_advance_item_projection_digest,
-    fixture_advance_transcript_digest, fixture_inline_paragraph_projection,
-    fixture_item_projection_digest_seed, fixture_transcript_digest_seed,
+    fixture_advance_item_projection_digest, fixture_advance_transcript_digest,
+    fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
+    fixture_transcript_digest_seed, FixtureBatch, FixtureDelete, FixtureRecord,
 };
 use syndic_storage::*;
 
 use support::populated::{source_item, source_projection, source_resource_projection, source_turn};
 use support::{
-    TestHome, batch, commit, composer_content_records, draft_id, empty_composer_content,
-    fixture_turn_state, fixture_turn_state_with_capture, id, open, seed_populated, timestamp,
+    batch, commit, composer_content_records, draft_id, fixture_turn_state,
+    fixture_turn_state_with_capture, id, open, seed_detached_canonical_draft_backing,
+    seed_populated, timestamp, TestHome,
 };
 
 fn point_limit() -> SyndicPointReadLimit {

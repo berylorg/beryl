@@ -11,13 +11,13 @@ use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord, Ph
 use syndic_storage::*;
 
 use support::{
-    TestHome, commit, draft_id, id, open,
+    commit, draft_id, id, open,
     populated::{
         active_item, active_snapshot, active_turn, activity_item, build_item, cas_item, cas_thread,
         cas_turn, next_input, populated_records, source_item, source_projection, source_turn,
         steering_input, suffix_item,
     },
-    seed_populated,
+    seed_populated, TestHome,
 };
 
 struct DeletionCase {
@@ -32,9 +32,6 @@ fn deletion_batch(delete: FixtureDelete) -> FixtureBatch {
     batch
 }
 
-/// Resolves collection rows from the seeded current transcript head. Those records are produced
-/// by the command lifecycle, so their generation must not be copied from the former synthetic
-/// aggregate.
 fn seeded_delete(
     store: &beryl_home_store::HomeStore,
     storage: SyndicStorage,
@@ -323,14 +320,8 @@ fn reverse_index_getters_expose_every_stored_correlation() {
     store.close().unwrap();
 }
 
-#[test]
-fn every_family_has_an_exact_deletion_case_with_explicit_semantic_outcome() {
-    let cases = deletion_cases();
-    // Provider staging, stop-operation, and compaction families have dedicated semantic coverage
-    // and no row in this legacy populated aggregate. Resource families are also unrepresented:
-    // plain provider text creates no typed code or table resources, so there is no deletion row to
-    // accept. Strict physical corruption still covers every registered codec.
-    let rejection_families: Vec<_> = PhysicalFamily::ALL
+fn rejection_families() -> Vec<PhysicalFamily> {
+    PhysicalFamily::ALL
         .into_iter()
         .filter(|family| {
             !matches!(
@@ -346,7 +337,13 @@ fn every_family_has_an_exact_deletion_case_with_explicit_semantic_outcome() {
                     | PhysicalFamily::CompactionSettlementReceipts
             )
         })
-        .collect();
+        .collect()
+}
+
+fn exercise_deletion_partition(modulus: usize, remainder: usize) {
+    let cases = deletion_cases();
+    let rejection_families = rejection_families();
+    assert_eq!(cases.len(), 52);
     assert_eq!(cases.len(), rejection_families.len());
     for family in rejection_families {
         assert_eq!(
@@ -356,12 +353,43 @@ fn every_family_has_an_exact_deletion_case_with_explicit_semantic_outcome() {
             family.name()
         );
     }
-    for case in cases {
+    for case in cases.into_iter().skip(remainder).step_by(modulus) {
         exercise_deletion(case);
     }
+}
 
-    // An unselected resumable build is not authority. Losing it is a valid restart point,
-    // while its exact physical family remains covered by strict codec-corruption fixtures.
+macro_rules! deletion_partition_tests {
+    ($($name:ident => $partition:expr),+ $(,)?) => {
+        $(
+            #[test]
+            fn $name() {
+                exercise_deletion_partition(16, $partition);
+            }
+        )+
+    };
+}
+
+deletion_partition_tests!(
+    every_family_has_an_exact_deletion_case_partition_00 => 0,
+    every_family_has_an_exact_deletion_case_partition_01 => 1,
+    every_family_has_an_exact_deletion_case_partition_02 => 2,
+    every_family_has_an_exact_deletion_case_partition_03 => 3,
+    every_family_has_an_exact_deletion_case_partition_04 => 4,
+    every_family_has_an_exact_deletion_case_partition_05 => 5,
+    every_family_has_an_exact_deletion_case_partition_06 => 6,
+    every_family_has_an_exact_deletion_case_partition_07 => 7,
+    every_family_has_an_exact_deletion_case_partition_08 => 8,
+    every_family_has_an_exact_deletion_case_partition_09 => 9,
+    every_family_has_an_exact_deletion_case_partition_10 => 10,
+    every_family_has_an_exact_deletion_case_partition_11 => 11,
+    every_family_has_an_exact_deletion_case_partition_12 => 12,
+    every_family_has_an_exact_deletion_case_partition_13 => 13,
+    every_family_has_an_exact_deletion_case_partition_14 => 14,
+    every_family_has_an_exact_deletion_case_partition_15 => 15,
+);
+
+#[test]
+fn an_independent_family_deletion_can_be_semantically_accepted() {
     exercise_accepted_deletion(
         PhysicalFamily::ItemProjectionBuilds,
         FixtureDelete::ItemProjectionBuild {

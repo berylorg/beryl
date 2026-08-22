@@ -172,7 +172,10 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
             )])
         },
     );
+}
 
+#[test]
+fn reopen_rejects_malformed_tool_profile_and_cas_turn_correlations() {
     exercise_seeded_populated_case(
         "phase10-snapshot-tool-profile",
         "active binding and execution snapshot disagree",
@@ -236,7 +239,10 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
             ))])
         },
     );
+}
 
+#[test]
+fn reopen_rejects_malformed_native_count_and_predecessor_correlations() {
     exercise_seeded_populated_case(
         "phase10-cas-turn-native-count",
         "active CAS-turn primary and index disagree",
@@ -313,7 +319,10 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
             ))])
         },
     );
+}
 
+#[test]
+fn reopen_rejects_malformed_membership_and_source_correlations() {
     exercise_seeded_populated_case(
         "phase9-cas-thread-latest-rewind",
         "CAS thread reservation owner or revision range disagrees",

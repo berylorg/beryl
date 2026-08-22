@@ -4,7 +4,7 @@ mod support;
 
 use beryl_model::{BindingRevision, CasThreadId, ProjectionRevision, SyndicTurnId, ThreadRevision};
 use syndic_storage::test_faults::{
-    FixtureBatch, FixtureDelete, FixtureRecord, fixture_transcript_digest_seed,
+    fixture_transcript_digest_seed, FixtureBatch, FixtureDelete, FixtureRecord,
 };
 use syndic_storage::*;
 
@@ -17,6 +17,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
     exercise_case(
         "transcript-frontier",
         "current transcript head is not a complete visible projection",
+        &[(id(1), draft_id(2))],
         seed_selected_turn,
         || {
             let turn = SyndicTurnId::from_bytes([3; 16]);
@@ -51,6 +52,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
     exercise_case(
         "binding-head-gap",
         "binding head record is missing",
+        &[(id(1), draft_id(2))],
         base,
         || {
             batch([FixtureRecord::BindingHead(BindingHeadRecord::new(
@@ -65,6 +67,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
     exercise_case(
         "history-completeness",
         "history summary completeness derivation disagrees",
+        &[(id(1), draft_id(2))],
         seed_selected_turn,
         || {
             let turn = SyndicTurnId::from_bytes([3; 16]);
@@ -82,6 +85,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
     exercise_case(
         "history-last-activity",
         "history summary last-activity derivation disagrees",
+        &[(id(1), draft_id(2))],
         seed_selected_turn,
         || {
             let turn = SyndicTurnId::from_bytes([3; 16]);
@@ -100,6 +104,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
     exercise_case(
         "cas-thread-owner-collision",
         "CAS thread reservation owner or revision range disagrees",
+        &[(id(1), draft_id(2)), (id(10), draft_id(11))],
         two_threads,
         duplicate_cas_binding,
     );

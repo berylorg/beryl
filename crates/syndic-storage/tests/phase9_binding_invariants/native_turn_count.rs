@@ -1,13 +1,24 @@
 use super::*;
 
 fn provider_operation_seed(
+    store: &HomeStore,
+    storage: SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
     turn: SyndicTurnId,
 ) -> FixtureBatch {
     let thread_revision = beryl_model::ThreadRevision::new(1).unwrap();
     let digest = root_turn_chain_digest(turn);
-    let mut records = thread_records_with_activity(thread, draft, Some(turn), digest, timestamp(2));
+    let mut records = same_home_path_records(
+        store,
+        storage,
+        thread,
+        draft,
+        turn,
+        digest,
+        true,
+        timestamp(2),
+    );
     records.extend([
         FixtureRecord::Turn(TurnRecord::new(
             turn,
@@ -55,10 +66,11 @@ fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
     let thread = id(110);
     let draft = draft_id(111);
     let turn = SyndicTurnId::from_bytes([112; 16]);
+    seed_canonical_empty_thread(&store, storage, thread, draft);
     commit(
         &store,
         storage,
-        provider_operation_seed(thread, draft, turn),
+        provider_operation_seed(&store, storage, thread, draft, turn),
     );
 
     let selected = storage

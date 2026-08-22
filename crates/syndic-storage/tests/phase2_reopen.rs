@@ -6,12 +6,12 @@ use std::sync::Mutex;
 
 use beryl_model::{SyndicTurnId, ThreadRevision};
 use syndic_storage::test_faults::{
-    FixtureRecord, reset_validation_page_metrics, validation_page_metrics,
+    reset_validation_page_metrics, validation_page_metrics, FixtureRecord,
 };
 use syndic_storage::{
-    ConversationParent, SourceEventPayload, SourceEventRecord, SourceEventSequence, SyndicStorage,
-    TurnChildIndexRecord, TurnDepth, TurnEndStatus, TurnKind, TurnLifecycle, TurnRecord,
-    TurnStateRevision, TurnTerminalOutcome, child_turn_chain_digest, root_turn_chain_digest,
+    child_turn_chain_digest, root_turn_chain_digest, ConversationParent, SourceEventPayload,
+    SourceEventRecord, SourceEventSequence, SyndicStorage, TurnChildIndexRecord, TurnDepth,
+    TurnEndStatus, TurnKind, TurnLifecycle, TurnRecord, TurnStateRevision, TurnTerminalOutcome,
 };
 
 use support::*;
@@ -31,6 +31,7 @@ fn empty_and_populated_domains_reopen_authoritatively() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    seed_canonical_empty_thread(&reopened, storage, id(1), draft_id(2));
     commit(
         &reopened,
         storage,
@@ -39,11 +40,12 @@ fn empty_and_populated_domains_reopen_authoritatively() {
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
+    let expected_revision = storage.revision(&reopened).unwrap();
     reopened.close().unwrap();
 
     let mut final_open = open(home.path());
     let storage = SyndicStorage::register(&mut final_open).unwrap();
-    assert_eq!(storage.revision(&final_open).unwrap().get(), 1);
+    assert_eq!(storage.revision(&final_open).unwrap(), expected_revision);
     final_open
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -60,6 +62,8 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
 
     let thread_a = id(10);
     let thread_b = id(11);
+    seed_canonical_empty_thread(&store, storage, thread_a, draft_id(20));
+    seed_canonical_empty_thread(&store, storage, thread_b, draft_id(21));
     let mut history_delta = Vec::new();
     let mut parent = None;
     let mut parent_digest = None;

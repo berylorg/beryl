@@ -19,6 +19,7 @@ fn stale_binding_roundtrips_with_its_required_cas_thread_reservation() {
     let revision = BindingRevision::new(2).unwrap();
     let digest = empty_selected_path_digest();
     let selected = SelectedPathProof::new(None, ThreadRevision::new(1).unwrap(), digest);
+    seed_canonical_empty_thread(&store, storage, thread, draft);
     commit(&store, storage, batch(empty_thread_records(thread, draft)));
     commit(
         &store,

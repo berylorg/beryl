@@ -19,14 +19,12 @@ mod route_allocator;
 #[path = "phase9_binding_invariants/selected_prefix.rs"]
 mod selected_prefix;
 
-use beryl_home_store::{
-    CommandOutcome, CursorReadLimits, DomainRegistrationError, HomeCommand, HomeStore,
-};
+use beryl_home_store::{CommandOutcome, CursorReadLimits, HomeCommand, HomeStore};
 use beryl_model::{
     BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasNativeTurnCount,
     CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding, InputGateRevision, PathFlavor,
-    RecoveryItemSequenceDigest, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
-    SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId, SyndicTurnId,
+    ProjectionRevision, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
+    SyndicExecutionSnapshotId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::*;
@@ -80,13 +78,6 @@ fn execution_binding() -> ExecutionBinding {
     )
 }
 
-fn loaded_generation(process: u64, thread: u64) -> CasLoadedSessionGeneration {
-    CasLoadedSessionGeneration::new(
-        CasProcessGeneration::new(process).unwrap(),
-        CasLoadedThreadGeneration::new(thread).unwrap(),
-    )
-}
-
 fn create_thread(
     store: &HomeStore,
     storage: SyndicStorage,
@@ -97,307 +88,15 @@ fn create_thread(
         store,
         storage.create_thread(
             storage.revision(store).unwrap(),
-            CreateThread::ordinary(thread, draft, execution_binding(), timestamp(1)),
-        ),
-    );
-}
-
-fn save_text(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    thread: SyndicThreadId,
-    text: &str,
-    updated_at: SyndicTimestamp,
-) {
-    let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(store, storage, &content);
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, updated_at).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => panic!("test payload must change"),
-    };
-    execute(
-        store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
-}
-
-fn submit_current(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    thread: SyndicThreadId,
-    replacement: SyndicDraftId,
-    item: SyndicItemId,
-    submitted_at: SyndicTimestamp,
-) -> (SyndicTurnId, SelectedPathProof) {
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let submission = IdleSubmission::new(
-        thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
-        replacement,
-        item,
-        None,
-        submitted_at,
-    );
-    let turn = submission.submitted_turn_id();
-    execute(
-        store,
-        storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
-    );
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    (
-        turn,
-        SelectedPathProof::new(
-            Some(turn),
-            current.thread().revision(),
-            current.thread().selected_path_digest(),
-        ),
-    )
-}
-
-fn admit_event(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    thread: SyndicThreadId,
-    turn: SyndicTurnId,
-    source: Option<CasTurnSource>,
-    payload: SourceEventPayload,
-    observed_at: SyndicTimestamp,
-) {
-    let state = storage
-        .turn_state(store, turn, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let event = LiveSourceEvent::new(
-        thread,
-        turn,
-        state.revision(),
-        gate.revision(),
-        SourceEventSequence::new(state.source_event_count() + 1).unwrap(),
-        source,
-        payload,
-        observed_at,
-    )
-    .unwrap();
-    execute(
-        store,
-        storage.admit_live_source_event(storage.revision(store).unwrap(), event),
-    );
-}
-
-fn activate_exact_turn(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    thread: SyndicThreadId,
-    turn: SyndicTurnId,
-) -> CasTurnSource {
-    let selected = storage
-        .current_binding(store, thread, point_limit())
-        .unwrap()
-        .unwrap()
-        .binding()
-        .selected_path();
-    let turn_record = storage.turn(store, turn, point_limit()).unwrap().unwrap();
-    let (parent, parent_digest) = match turn_record.parent().turn() {
-        Some(parent) => {
-            let parent = storage.turn(store, parent, point_limit()).unwrap().unwrap();
-            (Some(parent.id()), parent.chain_digest())
-        }
-        None => (None, empty_selected_path_digest()),
-    };
-    let represented =
-        CasRepresentedPrefixProof::new(parent, selected.thread_revision(), parent_digest);
-    let current_revision = current_binding_revision(store, storage, thread);
-    let prior = current_revision
-        .get()
-        .checked_sub(1)
-        .and_then(|revision| BindingRevision::new(revision).ok())
-        .and_then(|revision| {
-            storage
-                .binding(store, thread, revision, point_limit())
-                .unwrap()
-        });
-    let (cas_thread, lineage) = match prior.as_ref().map(|stored| stored.state()) {
-        Some(BindingState::Valid(usable))
-            if usable.represented_prefix().tail() == represented.tail()
-                && usable.represented_prefix().digest() == represented.digest() =>
-        {
-            (usable.cas_thread_id().clone(), usable.lineage())
-        }
-        _ => {
-            let cas_thread = CasThreadId::new(format!("fixture-thread-{turn}")).unwrap();
-            let lineage = CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap();
-            (cas_thread, lineage)
-        }
-    };
-    publish_valid(
-        store,
-        storage,
-        valid_request(
-            store,
-            storage,
-            thread,
-            selected,
-            cas_thread.clone(),
-            represented,
-            lineage,
-        ),
-    );
-    let snapshot = SyndicExecutionSnapshotId::from_bytes(*turn.as_bytes());
-    let gate = current_gate_revision(store, storage, thread);
-    execute(
-        store,
-        storage.activate_binding(
-            storage.revision(store).unwrap(),
-            ActivateBinding::new(
+            CreateThread::ordinary(
                 thread,
-                current_binding_revision(store, storage, thread),
-                gate,
-                selected,
-                snapshot,
-                turn,
-                loaded_generation(1, 1),
-                timestamp(4),
+                draft,
+                execution_binding(),
+                timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     );
-    let cas_turn = CasTurnId::new(format!("fixture-turn-{turn}")).unwrap();
-    execute(
-        store,
-        storage.publish_active_cas_turn(
-            storage.revision(store).unwrap(),
-            PublishActiveCasTurn::new(
-                thread,
-                current_binding_revision(store, storage, thread),
-                current_gate_revision(store, storage, thread),
-                snapshot,
-                cas_thread.clone(),
-                cas_turn.clone(),
-                timestamp(4),
-            ),
-        ),
-    );
-    CasTurnSource::new(cas_thread, cas_turn)
-}
-
-fn complete_turn(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    thread: SyndicThreadId,
-    turn: SyndicTurnId,
-) {
-    let source = activate_exact_turn(store, storage, thread, turn);
-    admit_event(
-        store,
-        storage,
-        thread,
-        turn,
-        Some(source.clone()),
-        SourceEventPayload::TurnActivated,
-        timestamp(4),
-    );
-    correlate_submitted_user_item(store, storage, thread, turn, &source);
-    admit_event(
-        store,
-        storage,
-        thread,
-        turn,
-        Some(source),
-        SourceEventPayload::TurnEnded(TurnEndStatus::complete()),
-        timestamp(5),
-    );
-    converge_and_release_terminal_history(store, storage, thread, turn);
-}
-
-fn correlate_submitted_user_item(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    thread: SyndicThreadId,
-    turn: SyndicTurnId,
-    source: &CasTurnSource,
-) {
-    let index = storage
-        .turn_items(
-            store,
-            turn,
-            None,
-            CursorReadLimits::new(2, 1_000_000).unwrap(),
-        )
-        .unwrap()
-        .records()[0]
-        .clone();
-    support::exact_cas::correlate_user_item(
-        store,
-        storage,
-        thread,
-        turn,
-        index.item_id(),
-        source,
-        timestamp(4),
-    );
-}
-
-fn root_pending(
-    store: &HomeStore,
-    storage: SyndicStorage,
-) -> (SyndicThreadId, SyndicTurnId, SelectedPathProof) {
-    let thread = id(1);
-    create_thread(store, storage, thread, draft_id(2));
-    save_text(store, storage, thread, "root", timestamp(2));
-    let (turn, selected) = submit_current(
-        store,
-        storage,
-        thread,
-        draft_id(3),
-        SyndicItemId::from_bytes([4; 16]),
-        timestamp(3),
-    );
-    (thread, turn, selected)
-}
-
-fn non_root_pending(
-    store: &HomeStore,
-    storage: SyndicStorage,
-) -> (
-    SyndicThreadId,
-    SyndicTurnId,
-    SyndicTurnId,
-    SelectedPathProof,
-) {
-    let (thread, parent, _) = root_pending(store, storage);
-    complete_turn(store, storage, thread, parent);
-    save_text(store, storage, thread, "child", timestamp(6));
-    let (turn, selected) = submit_current(
-        store,
-        storage,
-        thread,
-        draft_id(5),
-        SyndicItemId::from_bytes([6; 16]),
-        timestamp(7),
-    );
-    (thread, parent, turn, selected)
 }
 
 fn current_binding_revision(
@@ -425,25 +124,221 @@ fn current_gate_revision(
         .revision()
 }
 
-fn valid_request(
+fn loaded_generation(process: u64, thread: u64) -> CasLoadedSessionGeneration {
+    CasLoadedSessionGeneration::new(
+        CasProcessGeneration::new(process).unwrap(),
+        CasLoadedThreadGeneration::new(thread).unwrap(),
+    )
+}
+
+fn same_home_path_records(
     store: &HomeStore,
     storage: SyndicStorage,
     thread: SyndicThreadId,
-    selected: SelectedPathProof,
-    cas_thread: CasThreadId,
-    represented: CasRepresentedPrefixProof,
-    lineage: CasLineageProof,
-) -> PublishValidBinding {
-    valid_request_with_count(
+    draft: SyndicDraftId,
+    tail: SyndicTurnId,
+    digest: beryl_model::SyndicPathDigest,
+    history_complete: bool,
+    last_activity_at: SyndicTimestamp,
+) -> Vec<FixtureRecord> {
+    let thread_revision = ThreadRevision::new(1).unwrap();
+    let projection_revision = ProjectionRevision::new(1).unwrap();
+    let binding_revision = BindingRevision::new(1).unwrap();
+    let selected = SelectedPathProof::new(Some(tail), thread_revision, digest);
+    let thread_record = ThreadRecord::new(
+        thread,
+        selected,
+        draft,
+        ThreadLineageProof::new(
+            None,
+            None,
+            ThreadLineageDepth::FIRST,
+            root_thread_lineage_digest(thread),
+        ),
+        ThreadImageLabelFrontiers::empty(),
+        None,
+    );
+    let execution = ThreadExecutionRecord::new(
+        thread,
+        storage
+            .thread_execution(store, thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .execution()
+            .clone(),
+    );
+    let attributes = ThreadAttributesRecord::ordinary(thread);
+    let history = HistorySummaryRecord::new(
+        thread,
+        projection_revision,
+        thread_revision,
+        Some(tail),
+        digest,
+        history_complete,
+        last_activity_at,
+    );
+    let catalog =
+        ThreadCatalogSummaryRecord::initial(&thread_record, &execution, &attributes, &history);
+    vec![
+        FixtureRecord::Thread(thread_record),
+        FixtureRecord::ThreadCatalogSummary(catalog),
+        FixtureRecord::TranscriptViewHead(TranscriptViewHeadRecord::new(
+            thread,
+            TranscriptGeneration::FIRST,
+            projection_revision,
+            0,
+            Some(tail),
+            digest,
+            ProjectionLifecycle::Current,
+        )),
+        FixtureRecord::HistorySummary(history),
+        FixtureRecord::Binding(BindingRecord::new(
+            thread,
+            binding_revision,
+            selected,
+            BindingState::unbound("fixture").unwrap(),
+        )),
+        FixtureRecord::BindingHead(BindingHeadRecord::new(
+            thread,
+            binding_revision,
+            BindingLifecycle::Unbound,
+            digest,
+        )),
+    ]
+}
+
+fn fault_pending_path(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread_byte: u8,
+    non_root: bool,
+) -> (
+    SyndicThreadId,
+    Option<SyndicTurnId>,
+    SyndicTurnId,
+    SelectedPathProof,
+) {
+    let thread = id(thread_byte);
+    let draft = draft_id(thread_byte.wrapping_add(10));
+    create_thread(store, storage, thread, draft);
+    let root = SyndicTurnId::from_bytes([thread_byte.wrapping_add(1); 16]);
+    let root_digest = root_turn_chain_digest(root);
+    let (tail, digest, depth, parent) = if non_root {
+        let child = SyndicTurnId::from_bytes([thread_byte.wrapping_add(2); 16]);
+        (
+            child,
+            child_turn_chain_digest(child, root, root_digest),
+            TurnDepth::new(2).unwrap(),
+            ConversationParent::Turn(root),
+        )
+    } else {
+        (
+            root,
+            root_digest,
+            TurnDepth::FIRST,
+            ConversationParent::Root,
+        )
+    };
+    let selected = SelectedPathProof::new(Some(tail), ThreadRevision::new(1).unwrap(), digest);
+    let mut records = same_home_path_records(
         store,
         storage,
         thread,
-        selected,
-        cas_thread,
-        represented,
-        CasNativeTurnCount::ZERO,
-        lineage,
-    )
+        draft,
+        tail,
+        digest,
+        false,
+        timestamp(4),
+    );
+    if non_root {
+        records.extend([
+            FixtureRecord::Turn(TurnRecord::new(
+                root,
+                thread,
+                TurnKind::OrdinaryUser,
+                ConversationParent::Root,
+                None,
+                TurnDepth::FIRST,
+                root_digest,
+                timestamp(2),
+            )),
+            FixtureRecord::TurnState(fixture_turn_state(
+                root,
+                TurnStateRevision::FIRST,
+                TurnLifecycle::Interrupted,
+                1,
+                0,
+                timestamp(3),
+            )),
+            FixtureRecord::SourceEvent(
+                SourceEventRecord::new(
+                    root,
+                    SourceEventSequence::FIRST,
+                    None,
+                    SourceEventPayload::TurnEnded(
+                        TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            FixtureRecord::TurnChild(TurnChildIndexRecord::new(root, tail, depth, digest)),
+        ]);
+    }
+    records.extend([
+        FixtureRecord::Turn(TurnRecord::new(
+            tail,
+            thread,
+            TurnKind::OrdinaryUser,
+            parent,
+            non_root.then_some(root),
+            depth,
+            digest,
+            timestamp(4),
+        )),
+        FixtureRecord::TurnState(fixture_turn_state(
+            tail,
+            TurnStateRevision::FIRST,
+            TurnLifecycle::Pending,
+            0,
+            0,
+            timestamp(4),
+        )),
+        FixtureRecord::InputGate(
+            InputGateRecord::new(
+                thread,
+                InputGateRevision::new(1).unwrap(),
+                InputGateState::PendingTurn(tail),
+                0,
+                None,
+                None,
+                0,
+                0,
+                0,
+            )
+            .unwrap(),
+        ),
+    ]);
+    let transcript_path = if non_root {
+        vec![
+            (
+                root,
+                root_digest,
+                TurnLifecycle::Interrupted,
+                1,
+                timestamp(3),
+            ),
+            (tail, digest, TurnLifecycle::Pending, 0, timestamp(4)),
+        ]
+    } else {
+        vec![(tail, digest, TurnLifecycle::Pending, 0, timestamp(4))]
+    };
+    records.extend(item_free_transcript_build_records(
+        thread,
+        ThreadRevision::new(1).unwrap(),
+        &transcript_path,
+    ));
+    commit(store, storage, batch(records));
+    (thread, non_root.then_some(root), tail, selected)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -476,9 +371,194 @@ fn valid_request_with_count(
     )
 }
 
+fn valid_request(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    selected: SelectedPathProof,
+    cas_thread: CasThreadId,
+) -> PublishValidBinding {
+    let represented = CasRepresentedPrefixProof::new(
+        None,
+        selected.thread_revision(),
+        empty_selected_path_digest(),
+    );
+    valid_request_with_count(
+        store,
+        storage,
+        thread,
+        selected,
+        cas_thread,
+        represented,
+        CasNativeTurnCount::ZERO,
+        CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap(),
+    )
+}
+
 fn publish_valid(store: &HomeStore, storage: SyndicStorage, request: PublishValidBinding) {
     execute(
         store,
         storage.publish_valid_binding(storage.revision(store).unwrap(), request),
     );
+}
+
+#[test]
+fn immutable_binding_history_and_current_head_survive_reopen() {
+    let home = TestHome::new("phase9-immutable-binding-history");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    seed_populated(&store, storage);
+    let thread = id(30);
+    let expected: Vec<_> = (1..=4)
+        .map(|revision| {
+            storage
+                .binding(
+                    &store,
+                    thread,
+                    BindingRevision::new(revision).unwrap(),
+                    point_limit(),
+                )
+                .unwrap()
+                .unwrap()
+        })
+        .collect();
+    let head = storage
+        .current_binding(&store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(head.binding(), expected.last().unwrap());
+    store.close().unwrap();
+
+    let mut reopened = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    for (index, expected) in expected.iter().enumerate() {
+        assert_eq!(
+            storage
+                .binding(
+                    &reopened,
+                    thread,
+                    BindingRevision::new(index as u64 + 1).unwrap(),
+                    point_limit(),
+                )
+                .unwrap()
+                .as_ref(),
+            Some(expected)
+        );
+    }
+    assert_eq!(
+        storage
+            .current_binding(&reopened, thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .binding(),
+        expected.last().unwrap()
+    );
+    reopened.close().unwrap();
+}
+
+#[test]
+fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
+    let home = TestHome::new("phase9-permanent-cas-thread-reservation");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let owner = id(70);
+    let contender = id(80);
+    create_thread(&store, storage, owner, draft_id(71));
+    create_thread(&store, storage, contender, draft_id(81));
+    let owner_selected = storage
+        .current_binding(&store, owner, point_limit())
+        .unwrap()
+        .unwrap()
+        .binding()
+        .selected_path();
+    let contender_selected = storage
+        .current_binding(&store, contender, point_limit())
+        .unwrap()
+        .unwrap()
+        .binding()
+        .selected_path();
+    let cas_thread = CasThreadId::new("permanently-reserved-cas").unwrap();
+    let stale = StaleCasBinding::new(
+        execution_binding(),
+        cas_thread.clone(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        "abandoned canonical projection",
+        timestamp(2),
+    )
+    .unwrap();
+    execute(
+        &store,
+        storage.publish_stale_binding(
+            storage.revision(&store).unwrap(),
+            PublishStaleBinding::new(
+                owner,
+                current_binding_revision(&store, storage, owner),
+                owner_selected,
+                stale,
+            ),
+        ),
+    );
+
+    let contender_request = || {
+        valid_request(
+            &store,
+            storage,
+            contender,
+            contender_selected,
+            cas_thread.clone(),
+        )
+    };
+    let outcome = execute_outcome(
+        &store,
+        storage.publish_valid_binding(storage.revision(&store).unwrap(), contender_request()),
+    );
+    assert!(matches!(
+        typed_error(&outcome),
+        SyndicMutationError::CasThreadOwnershipConflict
+    ));
+    execute(
+        &store,
+        storage.publish_unbound_binding(
+            storage.revision(&store).unwrap(),
+            PublishUnboundBinding::new(
+                owner,
+                current_binding_revision(&store, storage, owner),
+                owner_selected,
+                "projection remains retired",
+            )
+            .unwrap(),
+        ),
+    );
+    let outcome = execute_outcome(
+        &store,
+        storage.publish_valid_binding(storage.revision(&store).unwrap(), contender_request()),
+    );
+    assert!(matches!(
+        typed_error(&outcome),
+        SyndicMutationError::CasThreadOwnershipConflict
+    ));
+    store.close().unwrap();
+
+    let mut reopened = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let request = valid_request(
+        &reopened,
+        storage,
+        contender,
+        contender_selected,
+        cas_thread,
+    );
+    let outcome = execute_outcome(
+        &reopened,
+        storage.publish_valid_binding(storage.revision(&reopened).unwrap(), request),
+    );
+    assert!(matches!(
+        typed_error(&outcome),
+        SyndicMutationError::CasThreadOwnershipConflict
+    ));
+    reopened.close().unwrap();
 }

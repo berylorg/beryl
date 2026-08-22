@@ -13,8 +13,8 @@ use beryl_model::{
     SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{
-    FixtureBatch, FixtureDelete, FixtureRecord, fixture_advance_item_projection_digest,
-    fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
+    fixture_advance_item_projection_digest, fixture_inline_paragraph_projection,
+    fixture_item_projection_digest_seed, FixtureBatch, FixtureDelete, FixtureRecord,
 };
 use syndic_storage::*;
 
@@ -30,6 +30,7 @@ fn draft_tail_and_turn_topology_corruption_fail_registration_verification_and_re
     exercise_case(
         "missing-draft",
         "thread current draft is missing",
+        &[(id(1), draft_id(2))],
         base,
         || {
             let mut batch = FixtureBatch::new();
@@ -41,6 +42,7 @@ fn draft_tail_and_turn_topology_corruption_fail_registration_verification_and_re
     exercise_case(
         "draft-turn-collision",
         "live draft and submitted turn reuse one raw identity",
+        &[(id(1), draft_id(2))],
         base,
         || {
             let turn = SyndicTurnId::from_bytes(*draft_id(2).as_bytes());
@@ -74,6 +76,7 @@ fn draft_tail_and_turn_topology_corruption_fail_registration_verification_and_re
     exercise_case(
         "dangling-tail",
         "thread committed tail is missing",
+        &[(id(1), draft_id(2))],
         base,
         || {
             let missing = SyndicTurnId::from_bytes([9; 16]);
@@ -100,6 +103,7 @@ fn draft_tail_and_turn_topology_corruption_fail_registration_verification_and_re
     exercise_case(
         "wrong-root-digest",
         "root turn depth, ancestor skip, or chain digest is invalid",
+        &[(id(1), draft_id(2))],
         seed_unreachable_turn,
         || {
             let turn = SyndicTurnId::from_bytes([3; 16]);
@@ -149,6 +153,7 @@ fn a_thread_cannot_retain_two_blocking_turns() {
     exercise_case(
         "duplicate-blocking-turn",
         "blocking turn is not its origin thread's committed tail",
+        &[(thread, draft)],
         || {
             let mut records = thread_records_with_activity(
                 thread,
@@ -273,6 +278,7 @@ fn ordering_event_item_and_projection_corruption_fail_closed() {
     exercise_case(
         "accepted-order-gap",
         "accepted order does not begin at the first ordinal",
+        &[(id(1), draft_id(2))],
         base,
         || {
             let input_id = SyndicAcceptedInputId::from_bytes([5; 16]);
@@ -393,6 +399,7 @@ fn ordering_event_item_and_projection_corruption_fail_closed() {
     exercise_case(
         "source-event-gap",
         "source-event key or contiguous sequence disagrees",
+        &[(id(1), draft_id(2))],
         seed_unreachable_turn,
         || {
             let turn = SyndicTurnId::from_bytes([3; 16]);
@@ -424,6 +431,7 @@ fn ordering_event_item_and_projection_corruption_fail_closed() {
     exercise_case(
         "successful-completion-without-source",
         "successful turn completion lacks exact source authority",
+        &[(id(1), draft_id(2))],
         seed_unreachable_turn,
         || {
             let turn = SyndicTurnId::from_bytes([3; 16]);
@@ -441,6 +449,7 @@ fn ordering_event_item_and_projection_corruption_fail_closed() {
     exercise_case(
         "turn-item-index",
         "turn-item index disagrees",
+        &[(id(1), draft_id(2))],
         seed_unreachable_turn,
         || {
             let turn = SyndicTurnId::from_bytes([3; 16]);
@@ -477,6 +486,7 @@ fn ordering_event_item_and_projection_corruption_fail_closed() {
     exercise_case(
         "projection-index",
         "stable item-projection target disagrees",
+        &[(id(1), draft_id(2))],
         seed_item_projection,
         || {
             let item = SyndicItemId::from_bytes([6; 16]);
@@ -499,6 +509,7 @@ fn ordering_event_item_and_projection_corruption_fail_closed() {
     exercise_case(
         "missing-resource-metadata",
         "projection resource metadata is missing",
+        &[(id(1), draft_id(2))],
         seed_item_projection,
         || {
             let projection = fixture_inline_paragraph_projection(

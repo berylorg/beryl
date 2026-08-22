@@ -29,20 +29,14 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 156: Restore Syndic Storage Target Verification (finished)
+# Phase 157: Restore Thread, Binding, And Recovery Verification (finished)
 
-Removed obsolete-only targets and unmounted residues, replaced shared support with canonical
-root-history creation and fault-only injection, corrected Phase 65/147/148 feature ownership, and
-recorded the stale-target failure lesson. Locked metadata, library, corrected-root and 34 focused
-fault-enabled tests passed; owned formatting, residue gates, and independent review passed. Exact
-per-target sweeps leave only the live Phase 157-160 repair groups failing, with no example failures.
-
-# Phase 157: Restore Thread, Binding, And Recovery Verification (pending)
-
-Rewrite the live Phase 2, 3, 9, 10, and 102 integration targets directly against canonical
-root-history creation, binding, reopen, corruption, recovery, native projection, and targeted
-reconciliation APIs. Preserve their unique target-state assertions while deleting only obsolete
-dirty whole-payload cases; prove default and fault-feature compilation and focused nextest execution.
+Rewrote all nineteen live Phase 2, 3, 9, 10, and 102 targets against canonical same-home fixtures,
+preserving thread, binding, reopen, corruption, bounded-recovery, native-planning, and reconciliation
+assertions while removing obsolete whole-payload-only setup. Fault-owned canonical admission state
+verifies downstream allocator and planning invariants only; Phase 165 retains the live admission
+boundary proof. Applicable compilation, exhaustive and focused nextest suites, formatting, residue,
+scoped-diff, persistent-failure-state, and fresh independent semantic gates passed.
 
 # Phase 158: Restore Provider And Projection Verification (pending)
 

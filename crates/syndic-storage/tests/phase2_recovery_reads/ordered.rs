@@ -103,6 +103,7 @@ fn successful_recovery_requires_old_handle_reacquisition() {
     )
     .unwrap();
     let old = SyndicStorage::register(&mut store).unwrap();
+    super::support::seed_canonical_empty_thread(&store, old, id(1), draft_id(2));
     commit(&store, old, batch(empty_thread_records(id(1), draft_id(2))));
 
     let replacement = HistorySummaryRecord::new(
@@ -135,15 +136,12 @@ fn successful_recovery_requires_old_handle_reacquisition() {
     let store = candidate.publish();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
-    assert!(
-        old.thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
-            .is_err()
-    );
-    assert!(
-        current
-            .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
-            .unwrap()
-            .is_some()
-    );
+    assert!(old
+        .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
+        .is_err());
+    assert!(current
+        .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
+        .unwrap()
+        .is_some());
     store.close().unwrap();
 }

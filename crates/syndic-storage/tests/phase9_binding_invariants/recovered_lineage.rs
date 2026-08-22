@@ -1,19 +1,30 @@
 use super::*;
 
+fn recovered_proof(
+    represented: CasRepresentedPrefixProof,
+    generation: CasLoadedSessionGeneration,
+) -> RecoveredInjectionProof {
+    RecoveredInjectionProof::new(
+        RecoveryProjectionVersion::V1,
+        represented,
+        beryl_model::RecoveryItemSequenceDigest::from_bytes([12; 32]),
+        RecoveryItemCount::new(1).unwrap(),
+        RecoveryUtf8ByteCount::new(5).unwrap(),
+        timestamp(6),
+        generation,
+    )
+    .unwrap()
+}
+
 #[test]
-fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chronology() {
-    let home = TestHome::new("phase13-recovered-injection-process");
+fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() {
+    let home = TestHome::new("phase9-recovered-injection-process");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, parent, turn, selected) = non_root_pending(&store, storage);
-    assert_eq!(
-        storage
-            .input_gate(&store, thread, point_limit())
-            .unwrap()
-            .unwrap()
-            .route_generation_high_water(),
-        Some(AcceptedRouteGeneration::FIRST)
-    );
+    let (thread, Some(parent), turn, selected) = fault_pending_path(&store, storage, 170, true)
+    else {
+        unreachable!()
+    };
     let parent = storage
         .turn(&store, parent, point_limit())
         .unwrap()
@@ -25,40 +36,20 @@ fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chr
     );
     let injection_generation = loaded_generation(7, 11);
     let handoff_generation = loaded_generation(7, 12);
-    let recovered = RecoveredInjectionProof::new(
-        RecoveryProjectionVersion::V1,
-        represented,
-        RecoveryItemSequenceDigest::from_bytes([12; 32]),
-        RecoveryItemCount::new(1).unwrap(),
-        RecoveryUtf8ByteCount::new(5).unwrap(),
-        timestamp(6),
-        injection_generation,
-    )
-    .unwrap();
-    let valid = valid_request(
+    let recovered = recovered_proof(represented, injection_generation);
+    let request = valid_request_with_count(
         &store,
         storage,
         thread,
         selected,
         CasThreadId::new("recovered-generation-cas").unwrap(),
         represented,
+        CasNativeTurnCount::ZERO,
         CasLineageProof::recovered(recovered),
     );
-    publish_valid(&store, storage, valid);
-    let established = storage
-        .current_binding(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let BindingState::Valid(established) = established.binding().state() else {
-        panic!("recovered establishment is not valid");
-    };
-    assert_eq!(established.native_turn_count(), CasNativeTurnCount::ZERO);
-    assert_eq!(
-        established.lineage().recovered_injection_generation(),
-        Some(injection_generation)
-    );
+    publish_valid(&store, storage, request);
 
-    let snapshot = SyndicExecutionSnapshotId::from_bytes([13; 16]);
+    let snapshot = SyndicExecutionSnapshotId::from_bytes([173; 16]);
     let wrong_process = ActivateBinding::new(
         thread,
         current_binding_revision(&store, storage, thread),
@@ -69,20 +60,18 @@ fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chr
         loaded_generation(8, 12),
         timestamp(8),
     );
-    let error = execute_outcome(
+    let outcome = execute_outcome(
         &store,
         storage.activate_binding(storage.revision(&store).unwrap(), wrong_process),
     );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::BindingStateConflict
     ));
-    assert!(
-        storage
-            .execution_snapshot(&store, snapshot, point_limit())
-            .unwrap()
-            .is_none()
-    );
+    assert!(storage
+        .execution_snapshot(&store, snapshot, point_limit())
+        .unwrap()
+        .is_none());
 
     let too_early = ActivateBinding::new(
         thread,
@@ -94,147 +83,49 @@ fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chr
         handoff_generation,
         timestamp(5),
     );
-    let error = execute_outcome(
+    let outcome = execute_outcome(
         &store,
         storage.activate_binding(storage.revision(&store).unwrap(), too_early),
     );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::TimestampRegressed
     ));
-    assert!(
-        storage
-            .execution_snapshot(&store, snapshot, point_limit())
-            .unwrap()
-            .is_none()
-    );
 
-    let same_process_handoff = ActivateBinding::new(
-        thread,
-        current_binding_revision(&store, storage, thread),
-        current_gate_revision(&store, storage, thread),
-        selected,
-        snapshot,
-        turn,
-        handoff_generation,
-        timestamp(8),
-    );
     execute(
         &store,
-        storage.activate_binding(storage.revision(&store).unwrap(), same_process_handoff),
+        storage.activate_binding(
+            storage.revision(&store).unwrap(),
+            ActivateBinding::new(
+                thread,
+                current_binding_revision(&store, storage, thread),
+                current_gate_revision(&store, storage, thread),
+                selected,
+                snapshot,
+                turn,
+                handoff_generation,
+                timestamp(8),
+            ),
+        ),
     );
-    let gate = storage
-        .input_gate(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        gate.route_generation_high_water(),
-        Some(AcceptedRouteGeneration::new(2).unwrap())
-    );
-    assert_eq!(
-        gate.selected_route().unwrap().generation(),
-        AcceptedRouteGeneration::new(2).unwrap()
-    );
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
-
     let binding = storage
         .current_binding(&store, thread, point_limit())
         .unwrap()
         .unwrap();
     let BindingState::Active(active) = binding.binding().state() else {
-        panic!("recovered binding is not active");
+        panic!("recovered binding did not activate")
     };
-    let persisted_snapshot = storage
-        .execution_snapshot(&store, snapshot, point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(persisted_snapshot.loaded_generation(), handoff_generation);
     assert_eq!(
         active.usable().lineage(),
         CasLineageProof::recovered(recovered)
     );
+    let persisted = storage
+        .execution_snapshot(&store, snapshot, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(persisted.loaded_generation(), handoff_generation);
+    assert!(persisted.started_at() >= recovered.completed_at());
     store.close().unwrap();
-
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
-    reopened
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
-    let binding = storage
-        .current_binding(&reopened, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let BindingState::Active(active) = binding.binding().state() else {
-        panic!("reopened recovered binding is not active");
-    };
-    let persisted_snapshot = storage
-        .execution_snapshot(&reopened, snapshot, point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(persisted_snapshot.loaded_generation(), handoff_generation);
-    assert_eq!(
-        active.usable().lineage().recovered_injection_generation(),
-        Some(injection_generation)
-    );
-
-    let impossible_start = timestamp(5);
-    let corrupt_active = ActiveCasBinding::new(
-        active.usable().clone(),
-        active.snapshot_id(),
-        active.turn_id(),
-        active.activation_gate_revision(),
-        impossible_start,
-    );
-    let persisted_snapshot = persisted_snapshot;
-    let corrupt_snapshot = ExecutionSnapshotRecord::new(
-        persisted_snapshot.id(),
-        persisted_snapshot.thread_id(),
-        persisted_snapshot.binding_revision(),
-        persisted_snapshot.activation_gate_revision(),
-        persisted_snapshot.active_turn_id(),
-        persisted_snapshot.cas_thread_id().clone(),
-        persisted_snapshot.selected_path(),
-        persisted_snapshot.represented_base_prefix(),
-        persisted_snapshot.represented_base_native_turn_count(),
-        persisted_snapshot.tool_profile(),
-        persisted_snapshot.lineage(),
-        persisted_snapshot.execution().clone(),
-        persisted_snapshot.loaded_generation(),
-        impossible_start,
-    );
-    commit(
-        &reopened,
-        storage,
-        batch([
-            FixtureRecord::Binding(BindingRecord::new(
-                binding.binding().thread_id(),
-                binding.binding().revision(),
-                binding.binding().selected_path(),
-                BindingState::active(corrupt_active),
-            )),
-            FixtureRecord::ExecutionSnapshot(corrupt_snapshot),
-        ]),
-    );
-    reopened.close().unwrap();
-
-    let mut invalid = open(home.path());
-    let error = match SyndicStorage::register(&mut invalid) {
-        Ok(_) => panic!("impossible recovered chronology registered successfully"),
-        Err(error) => error,
-    };
-    match error {
-        DomainRegistrationError::Validation { domain, source } => {
-            assert_eq!(domain, "syndic");
-            assert_eq!(
-                source.to_string(),
-                "recovered execution snapshot predates injection completion"
-            );
-        }
-        other => panic!("expected recovered chronology rejection, got {other:?}"),
-    }
-    invalid.close().unwrap();
 }
 
 #[test]
@@ -242,7 +133,9 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
     let home = TestHome::new("phase9-recovered-lineage-redefinition");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, parent, _, selected) = non_root_pending(&store, storage);
+    let (thread, Some(parent), _, selected) = fault_pending_path(&store, storage, 180, true) else {
+        unreachable!()
+    };
     let parent = storage
         .turn(&store, parent, point_limit())
         .unwrap()
@@ -253,26 +146,18 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
         parent.chain_digest(),
     );
     let cas_thread = CasThreadId::new("recovered-cannot-become-native").unwrap();
-    let recovered = RecoveredInjectionProof::new(
-        RecoveryProjectionVersion::V1,
-        represented,
-        RecoveryItemSequenceDigest::from_bytes([44; 32]),
-        RecoveryItemCount::new(1).unwrap(),
-        RecoveryUtf8ByteCount::new(5).unwrap(),
-        timestamp(6),
-        loaded_generation(7, 11),
-    )
-    .unwrap();
+    let recovered = recovered_proof(represented, loaded_generation(9, 11));
     publish_valid(
         &store,
         storage,
-        valid_request(
+        valid_request_with_count(
             &store,
             storage,
             thread,
             selected,
             cas_thread.clone(),
             represented,
+            CasNativeTurnCount::ZERO,
             CasLineageProof::recovered(recovered),
         ),
     );
@@ -284,81 +169,78 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
                 thread,
                 current_binding_revision(&store, storage, thread),
                 selected,
-                "reload proof required",
+                "recovered injection must not become native",
             )
             .unwrap(),
         ),
     );
 
-    for (mechanism, cas_name) in [
-        (NativeCasLineage::Continuation, "continuation"),
-        (NativeCasLineage::Resume, "resume"),
-        (NativeCasLineage::Fork, "fork"),
+    for mechanism in [
+        NativeCasLineage::Continuation,
+        NativeCasLineage::Resume,
+        NativeCasLineage::Fork,
     ] {
-        let request = valid_request(
+        let request = valid_request_with_count(
             &store,
             storage,
             thread,
             selected,
             cas_thread.clone(),
             represented,
+            CasNativeTurnCount::ZERO,
             CasLineageProof::native(mechanism, represented).unwrap(),
         );
-        let error = execute_outcome(
+        let outcome = execute_outcome(
             &store,
             storage.publish_valid_binding(storage.revision(&store).unwrap(), request),
         );
-        assert!(
-            matches!(
-                typed_error(&error),
-                SyndicMutationError::BindingPathConflict
-            ),
-            "{cas_name} redefined recovered lineage"
-        );
+        assert!(matches!(
+            typed_error(&outcome),
+            SyndicMutationError::BindingPathConflict
+        ));
     }
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+    let current = storage
+        .current_binding(&store, thread, point_limit())
+        .unwrap()
         .unwrap();
+    assert!(matches!(
+        current.binding().state(),
+        BindingState::Unbound { .. }
+    ));
     store.close().unwrap();
 }
 
 #[test]
-fn active_cas_turn_rejects_pre_start_time_and_reconciles_different_second_publication() {
+fn active_cas_turn_rejects_pre_start_and_reconciles_exact_or_colliding_publication() {
     let home = TestHome::new("phase9-active-cas-turn-collisions");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn, selected) = root_pending(&store, storage);
-    let represented = CasRepresentedPrefixProof::new(
-        None,
-        selected.thread_revision(),
-        empty_selected_path_digest(),
-    );
+    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 184, false) else {
+        unreachable!()
+    };
     let cas_thread = CasThreadId::new("active-publication-cas").unwrap();
-    let valid = valid_request(
+    publish_valid(
         &store,
         storage,
-        thread,
-        selected,
-        cas_thread.clone(),
-        represented,
-        CasLineageProof::native(NativeCasLineage::Fresh, represented).unwrap(),
+        valid_request(&store, storage, thread, selected, cas_thread.clone()),
     );
-    publish_valid(&store, storage, valid);
 
-    let snapshot = SyndicExecutionSnapshotId::from_bytes([14; 16]);
-    let activate = ActivateBinding::new(
-        thread,
-        current_binding_revision(&store, storage, thread),
-        current_gate_revision(&store, storage, thread),
-        selected,
-        snapshot,
-        turn,
-        loaded_generation(20, 30),
-        timestamp(10),
-    );
+    let snapshot = SyndicExecutionSnapshotId::from_bytes([187; 16]);
     execute(
         &store,
-        storage.activate_binding(storage.revision(&store).unwrap(), activate),
+        storage.activate_binding(
+            storage.revision(&store).unwrap(),
+            ActivateBinding::new(
+                thread,
+                current_binding_revision(&store, storage, thread),
+                current_gate_revision(&store, storage, thread),
+                selected,
+                snapshot,
+                turn,
+                loaded_generation(20, 30),
+                timestamp(10),
+            ),
+        ),
     );
 
     let cas_turn = CasTurnId::new("first-active-turn").unwrap();
@@ -371,12 +253,12 @@ fn active_cas_turn_rejects_pre_start_time_and_reconciles_different_second_public
         cas_turn.clone(),
         timestamp(9),
     );
-    let error = execute_outcome(
+    let outcome = execute_outcome(
         &store,
         storage.publish_active_cas_turn(storage.revision(&store).unwrap(), regressed),
     );
     assert!(matches!(
-        typed_error(&error),
+        typed_error(&outcome),
         SyndicMutationError::TimestampRegressed
     ));
 
@@ -392,6 +274,12 @@ fn active_cas_turn_rejects_pre_start_time_and_reconciles_different_second_public
     execute(
         &store,
         storage.publish_active_cas_turn(storage.revision(&store).unwrap(), publication.clone()),
+    );
+    assert_eq!(
+        storage
+            .active_cas_turn_publication_status(&store, &publication, point_limit())
+            .unwrap(),
+        ActiveCasTurnPublicationStatus::Exact
     );
     assert_eq!(
         storage

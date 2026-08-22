@@ -5,15 +5,16 @@ mod support;
 use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
-    CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
+    CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
+use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{
-    ComposerAtom, ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision,
-    PreparedContent, SyndicPointReadLimit, SyndicReadError, SyndicStorage, ThreadCreationStatus,
+    CreateThread, DraftByThreadRecord, DraftRecord, DraftSubmissionIntent, SyndicPointReadLimit,
+    SyndicReadError, SyndicStorage, ThreadCreationStatus,
 };
 
-use support::{TestHome, draft_id, id, stage_prepared_content, timestamp};
+use support::{batch, commit, draft_id, id, timestamp, TestHome};
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(400_000).unwrap()
@@ -126,31 +127,31 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
         .current_draft(&store, thread_id, limit())
         .unwrap()
         .unwrap();
-    let payload = ComposerPayload::new(vec![ComposerAtom::text("new").unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(&store, storage, &content);
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
+    let next_revision = current.draft().revision().checked_next().unwrap();
+    let publication = batch([
+        FixtureRecord::Draft(DraftRecord::new(
+            current.draft().id(),
+            thread_id,
+            next_revision,
+            DraftSubmissionIntent::Ordinary,
+            current.draft().root_history(),
+            current.draft().created_at(),
+            current.draft().updated_at(),
+        )),
+        FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+            thread_id,
+            current.draft().id(),
+            next_revision,
+            current.thread().revision(),
+        )),
+    ]);
 
     let block = faults.block_next(FaultPoint::BeforeReadConfirmation);
     let store = Arc::new(store);
     let reader_store = Arc::clone(&store);
     let reader = thread::spawn(move || storage.current_draft(&reader_store, thread_id, limit()));
     assert!(block.wait_until_reached(Duration::from_secs(10)));
-
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()))
-        .unwrap();
-    match store.execute(command) {
-        beryl_home_store::CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome => panic!("expected clean payload update command, got {outcome:?}"),
-    }
+    commit(&store, storage, publication);
     block.release();
 
     assert!(matches!(
@@ -163,13 +164,14 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
         .current_draft(&store, thread_id, limit())
         .unwrap()
         .unwrap();
-    assert!(update.matches_committed(&committed));
+    assert_eq!(committed.draft().revision(), next_revision);
+    assert_eq!(
+        committed.draft().root_history(),
+        current.draft().root_history()
+    );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    let store = match Arc::try_unwrap(store) {
-        Ok(store) => store,
-        Err(_) => panic!("reader retained the Beryl home"),
-    };
+    let store = Arc::try_unwrap(store).unwrap_or_else(|_| panic!("reader retained the Beryl home"));
     store.close().unwrap();
 }

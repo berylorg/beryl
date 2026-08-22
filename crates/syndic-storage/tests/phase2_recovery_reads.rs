@@ -5,19 +5,19 @@ mod ordered;
 mod support;
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     CursorReadLimits, DomainCallbackSource, DomainRegistrationError, DomainValidationError,
     HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, ReadError,
     WholeHomeScrubTrigger,
-    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
     AcceptedInputRevision, BindingRevision, DiscussionContextOwnerId, DraftRevision,
     InputGateRevision, SyndicDraftId, SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{
-    FixtureBatch, FixtureRecord, PhysicalCorruption, PhysicalFamily,
-    RepresentativePhysicalCorruption, current_binding_read_metrics, inject_physical_corruption,
-    inject_representative_physical_corruption, reset_current_binding_read_metrics,
+    current_binding_read_metrics, inject_physical_corruption,
+    inject_representative_physical_corruption, reset_current_binding_read_metrics, FixtureBatch,
+    FixtureRecord, PhysicalCorruption, PhysicalFamily, RepresentativePhysicalCorruption,
 };
 use syndic_storage::{
     AcceptedInputAdmissionProof, AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedInputRecord,
@@ -32,56 +32,95 @@ use syndic_storage::{
 use support::populated::*;
 use support::*;
 
-#[test]
-fn malformed_physical_records_are_found_only_by_explicit_validation_or_scrub() {
+const PHYSICAL_CORRUPTIONS: [PhysicalCorruption; 3] = [
+    PhysicalCorruption::UnsupportedRecordVersion,
+    PhysicalCorruption::MalformedStoredKey,
+    PhysicalCorruption::MalformedCodecPayload,
+];
+
+fn exercise_physical_corruption_partition(partitions: usize, partition: usize) {
     assert_eq!(PhysicalFamily::ALL.len(), 61);
-    for family in PhysicalFamily::ALL {
-        for corruption in [
-            PhysicalCorruption::UnsupportedRecordVersion,
-            PhysicalCorruption::MalformedStoredKey,
-            PhysicalCorruption::MalformedCodecPayload,
-        ] {
-            let home = TestHome::new(&format!("physical-{}-{corruption:?}", family.name()));
-            let mut store = open(home.path());
-            let storage = SyndicStorage::register(&mut store).unwrap();
-            inject_physical_corruption(&store, storage, family, corruption).unwrap();
-            assert!(matches!(
-                store.scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit),
-                Err(error) if matches!(
-                    error.validation_error(),
-                    DomainValidationError::Access { domain: "syndic", .. }
-                )
-            ));
-            let candidate = store.recover_same_home().unwrap();
-            let recovered_storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-            let recovered = candidate.publish();
-            assert!(storage.revision(&recovered).is_err());
-            recovered_storage.revision(&recovered).unwrap();
-            recovered.close().unwrap();
+    assert_eq!(PhysicalFamily::ALL.len() * PHYSICAL_CORRUPTIONS.len(), 183);
+    for (family, corruption) in PhysicalFamily::ALL
+        .into_iter()
+        .flat_map(|family| {
+            PHYSICAL_CORRUPTIONS
+                .into_iter()
+                .map(move |corruption| (family, corruption))
+        })
+        .skip(partition)
+        .step_by(partitions)
+    {
+        let home = TestHome::new(&format!("physical-{}-{corruption:?}", family.name()));
+        let mut store = open(home.path());
+        let storage = SyndicStorage::register(&mut store).unwrap();
+        inject_physical_corruption(&store, storage, family, corruption).unwrap();
+        assert!(matches!(
+            store.scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit),
+            Err(error) if matches!(
+                error.validation_error(),
+                DomainValidationError::Access { domain: "syndic", .. }
+            )
+        ));
+        let candidate = store.recover_same_home().unwrap();
+        let recovered_storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+        let recovered = candidate.publish();
+        assert!(storage.revision(&recovered).is_err());
+        recovered_storage.revision(&recovered).unwrap();
+        recovered.close().unwrap();
 
-            let mut reopened = open(home.path());
-            assert!(matches!(
-                SyndicStorage::register_with_schema_validation(&mut reopened),
-                Err(DomainRegistrationError::ValidationAccess {
-                    domain: "syndic",
-                    source: DomainCallbackSource::Read(_),
-                })
-            ));
-            reopened.close().unwrap();
+        let mut reopened = open(home.path());
+        assert!(matches!(
+            SyndicStorage::register_with_schema_validation(&mut reopened),
+            Err(DomainRegistrationError::ValidationAccess {
+                domain: "syndic",
+                source: DomainCallbackSource::Read(_),
+            })
+        ));
+        reopened.close().unwrap();
 
-            let mut scrubbed = open(home.path());
-            SyndicStorage::register(&mut scrubbed).unwrap();
-            assert!(matches!(
-                scrubbed.scrub_whole_home(WholeHomeScrubTrigger::Explicit),
-                Err(error) if matches!(
-                    error.validation_error(),
-                    DomainValidationError::Access { domain: "syndic", .. }
-                )
-            ));
-            scrubbed.close().unwrap();
-        }
+        let mut scrubbed = open(home.path());
+        SyndicStorage::register(&mut scrubbed).unwrap();
+        assert!(matches!(
+            scrubbed.scrub_whole_home(WholeHomeScrubTrigger::Explicit),
+            Err(error) if matches!(
+                error.validation_error(),
+                DomainValidationError::Access { domain: "syndic", .. }
+            )
+        ));
+        scrubbed.close().unwrap();
     }
 }
+
+macro_rules! physical_corruption_partition_tests {
+    ($($name:ident => $partition:expr),+ $(,)?) => {
+        $(
+            #[test]
+            fn $name() {
+                exercise_physical_corruption_partition(16, $partition);
+            }
+        )+
+    };
+}
+
+physical_corruption_partition_tests!(
+    malformed_physical_records_partition_00 => 0,
+    malformed_physical_records_partition_01 => 1,
+    malformed_physical_records_partition_02 => 2,
+    malformed_physical_records_partition_03 => 3,
+    malformed_physical_records_partition_04 => 4,
+    malformed_physical_records_partition_05 => 5,
+    malformed_physical_records_partition_06 => 6,
+    malformed_physical_records_partition_07 => 7,
+    malformed_physical_records_partition_08 => 8,
+    malformed_physical_records_partition_09 => 9,
+    malformed_physical_records_partition_10 => 10,
+    malformed_physical_records_partition_11 => 11,
+    malformed_physical_records_partition_12 => 12,
+    malformed_physical_records_partition_13 => 13,
+    malformed_physical_records_partition_14 => 14,
+    malformed_physical_records_partition_15 => 15,
+);
 
 #[test]
 fn strict_decoders_reject_unknown_tags_trailing_bytes_and_noncanonical_options_on_explicit_paths() {
@@ -133,11 +172,9 @@ fn routine_reopen_leaves_dormant_malformed_records_for_the_encountering_typed_re
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    assert!(
-        storage
-            .thread(&reopened, id(1), SyndicPointReadLimit::new(1_024).unwrap())
-            .is_err()
-    );
+    assert!(storage
+        .thread(&reopened, id(1), SyndicPointReadLimit::new(1_024).unwrap())
+        .is_err());
     assert_eq!(reopened.health().state(), HomeHealthState::Failed);
     reopened.close().unwrap();
 
@@ -157,6 +194,7 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
     let home = TestHome::new("bounded-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    seed_canonical_empty_thread(&store, storage, id(1), draft_id(2));
     let mut records = empty_thread_records(id(1), draft_id(2));
     let final_thread_revision = ThreadRevision::new(3).unwrap();
     for record in &mut records {
@@ -426,13 +464,11 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .is_none(),
         "the real plain-text provider projection must not recreate the former synthetic attachment"
     );
-    assert!(
-        storage
-            .history_summary(&store, id(30), limit)
-            .unwrap()
-            .unwrap()
-            .complete()
-    );
+    assert!(storage
+        .history_summary(&store, id(30), limit)
+        .unwrap()
+        .unwrap()
+        .complete());
     let binding_revision = BindingRevision::new(3).unwrap();
     let binding = storage
         .binding(&store, id(40), binding_revision, limit)
