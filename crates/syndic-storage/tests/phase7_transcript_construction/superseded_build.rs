@@ -13,7 +13,6 @@ fn selected_tail_advance_preserves_the_completed_release_build() {
         "root before supersession",
         draft_id(3),
         SyndicItemId::from_bytes([30; 16]),
-        timestamp(2),
         timestamp(3),
     );
     complete_turn(
@@ -45,7 +44,6 @@ fn selected_tail_advance_preserves_the_completed_release_build() {
         "new selected tail",
         draft_id(4),
         SyndicItemId::from_bytes([31; 16]),
-        timestamp(7),
         timestamp(8),
     );
     let retained = storage

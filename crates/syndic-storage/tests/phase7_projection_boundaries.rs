@@ -11,18 +11,18 @@ use beryl_model::{
     SyndicDraftMarkerId, SyndicItemId, SyndicResourceId,
 };
 use syndic_storage::{
-    AdvanceItemProjectionBuild, CONTENT_CHUNK_MAX_BYTES, ComposerAtom, ComposerContentAssembler,
-    ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission,
-    ImageLabelOrdinal, ItemProjectionGeneration, MARKDOWN_CODE_INLINE_MAX_BYTES,
-    MARKDOWN_CODE_INLINE_MAX_LINES, MARKDOWN_PARAGRAPH_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES,
+    AdvanceItemProjectionBuild, ComposerAtom, ComposerContentAssembler, ComposerPayload,
+    CreateThread, DraftEditHistoryPolicyV1, ImageLabelOrdinal, ItemProjectionGeneration,
+    MarkdownBlockKind, PreparedContent, ProjectionPayload, StartItemProjectionBuild,
+    SyndicPointReadLimit, SyndicReadError, SyndicStorage, CONTENT_CHUNK_MAX_BYTES,
+    MARKDOWN_CODE_INLINE_MAX_BYTES, MARKDOWN_CODE_INLINE_MAX_LINES,
+    MARKDOWN_PARAGRAPH_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES,
     MARKDOWN_TABLE_INLINE_MAX_BODY_ROWS, MARKDOWN_TABLE_INLINE_MAX_BYTES,
-    MARKDOWN_TABLE_INLINE_MAX_COLUMNS, MarkdownBlockKind, PreparedContent, ProjectionPayload,
-    StartItemProjectionBuild, SyndicPointReadLimit, SyndicReadError, SyndicStorage,
-    TRANSCRIPT_PAGE_MAX_BYTES,
+    MARKDOWN_TABLE_INLINE_MAX_COLUMNS, TRANSCRIPT_PAGE_MAX_BYTES,
 };
 
 use fixture::*;
-use support::{TestHome, draft_id, id, open, stage_prepared_content, timestamp};
+use support::{draft_id, exact_cas::submit_prepared_current_draft, id, open, timestamp, TestHome};
 
 #[test]
 fn composer_chunk_boundaries_never_split_utf8_scalars() {
@@ -247,19 +247,17 @@ fn heavy_resource_text_is_range_read_with_exact_bounded_continuations() {
         .unwrap();
     assert!(empty.bytes().is_empty());
     assert_eq!(empty.next_offset(), None);
-    assert!(
-        fixture
-            .storage
-            .resource_text_range(
-                &fixture.store,
-                SyndicResourceId::from_bytes([99; 16]),
-                0,
-                0,
-                1,
-            )
-            .unwrap()
-            .is_none()
-    );
+    assert!(fixture
+        .storage
+        .resource_text_range(
+            &fixture.store,
+            SyndicResourceId::from_bytes([99; 16]),
+            0,
+            0,
+            1,
+        )
+        .unwrap()
+        .is_none());
     assert!(matches!(
         fixture.storage.resource_text_range(
             &fixture.store,

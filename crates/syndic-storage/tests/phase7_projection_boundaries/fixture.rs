@@ -32,7 +32,7 @@ pub(super) fn project_user_markdown(name: &str, text: &str) -> ProjectedFixture 
 pub(super) fn project_user_payload(
     name: &str,
     payload: ComposerPayload,
-    _asset_reference_set: Option<SealedAssetReferenceSetProof>,
+    asset_reference_set: Option<SealedAssetReferenceSetProof>,
 ) -> ProjectedFixture {
     let home = TestHome::new(name);
     let mut store = open(home.path());
@@ -48,63 +48,37 @@ pub(super) fn project_user_payload(
                 draft,
                 crate::support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     );
 
     let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(&store, storage, &content);
-    let current = storage
-        .current_draft(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    execute(
-        &store,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    );
-
-    let current = storage
-        .current_draft(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let thread_record = storage
-        .thread(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
     let item = SyndicItemId::from_bytes([4; 16]);
-    let source = current.draft().content().sealed_marker_summary().unwrap();
-    let asset_reference_set = (source.marker_count() != 0).then(|| {
-        SealedAssetReferenceSetProof::new(
-            AssetReferenceSetId::from_bytes([5; 16]),
-            source,
-            source.marker_count(),
-            AssetReferenceSetDigest::from_bytes([6; 32]),
-        )
-        .unwrap()
+    let source = content
+        .reference(ContentRevision::new(1).unwrap())
+        .sealed_marker_summary()
+        .unwrap();
+    let asset_reference_set = asset_reference_set.or_else(|| {
+        (source.marker_count() != 0).then(|| {
+            SealedAssetReferenceSetProof::new(
+                AssetReferenceSetId::from_bytes([5; 16]),
+                source,
+                source.marker_count(),
+                AssetReferenceSetDigest::from_bytes([6; 32]),
+            )
+            .unwrap()
+        })
     });
-    let submission = IdleSubmission::new(
+    submit_prepared_current_draft(
+        &store,
+        storage,
         thread,
-        thread_record.revision(),
-        draft,
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
         draft_id(3),
         item,
+        &content,
         asset_reference_set,
         timestamp(3),
-    );
-    execute(
-        &store,
-        storage.submit_idle_draft(storage.revision(&store).unwrap(), submission),
     );
 
     let canonical = storage

@@ -7,19 +7,19 @@ mod support;
 use beryl_home_store::{CursorReadLimits, HomeCommand, HomeStore};
 use beryl_model::{CasItemId, SyndicItemId, SyndicProjectionId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    AdvanceItemProjectionBuild, CasTurnSource, ComposerAtom, ComposerPayload, CreateThread,
-    DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission, ItemProjectionBuildPhase,
-    ItemProjectionGeneration, ItemProjectionIndexRecord, ItemProjectionSetRecord, PreparedContent,
-    ProjectionLifecycle, ProviderAgentMessageV1, ProviderFrameOrdinalV1, ProviderItemDeltaV1,
-    ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
-    ProviderMessagePhaseV1, ProviderTextV1, SourceEventPayload, StartItemProjectionBuild,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TRANSCRIPT_PAGE_MAX_BYTES, TurnLifecycle,
+    AdvanceItemProjectionBuild, CasTurnSource, CreateThread, DraftEditHistoryPolicyV1,
+    ItemProjectionBuildPhase, ItemProjectionGeneration, ItemProjectionIndexRecord,
+    ItemProjectionSetRecord, ProjectionLifecycle, ProviderAgentMessageV1, ProviderFrameOrdinalV1,
+    ProviderItemDeltaV1, ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemV1,
+    ProviderLifecycleTimestampMsV1, ProviderMessagePhaseV1, ProviderTextV1, SourceEventPayload,
+    StartItemProjectionBuild, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnLifecycle,
+    TRANSCRIPT_PAGE_MAX_BYTES,
 };
 
 use support::{
-    TestHome, draft_id,
-    exact_cas::{admit_event, admit_item_frame, establish_turn},
-    id, open, stage_prepared_content, timestamp,
+    draft_id,
+    exact_cas::{admit_event, admit_item_frame, establish_turn, submit_current_draft},
+    id, open, timestamp, TestHome,
 };
 
 const USER_ITEM_BYTE: u8 = 4;
@@ -106,54 +106,19 @@ fn seed_live_assistant(
                 draft,
                 support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     );
 
-    let payload = ComposerPayload::new(vec![ComposerAtom::text("question").unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(store, storage, &content);
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    execute(
+    let turn = submit_current_draft(
         store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
-
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let thread_record = storage
-        .thread(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let submission = IdleSubmission::new(
+        storage,
         thread,
-        thread_record.revision(),
-        draft,
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
         draft_id(3),
         SyndicItemId::from_bytes([USER_ITEM_BYTE; 16]),
-        None,
+        "question",
         timestamp(3),
-    );
-    let turn = submission.submitted_turn_id();
-    execute(
-        store,
-        storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
     );
 
     let source = establish_turn(store, storage, thread, turn, timestamp(4));

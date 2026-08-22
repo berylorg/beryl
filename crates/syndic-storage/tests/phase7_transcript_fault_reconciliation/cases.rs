@@ -55,14 +55,14 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
                 beryl_home_store::CommandOutcome::NotCommitted {
                     evidence: CommandError::Commit { .. },
                 },
-            )
-            | (
+            ) => HomeHealthState::Failed,
+            (
                 FaultPoint::AfterPersist,
                 beryl_home_store::CommandOutcome::Committed {
                     later_failure: Some(CommandError::Persistence { .. }),
                     ..
                 },
-            ) => HomeHealthState::Healthy,
+            ) => HomeHealthState::Failed,
             (
                 FaultPoint::AfterCommitBeforePersist,
                 beryl_home_store::CommandOutcome::Indeterminate {
@@ -75,7 +75,24 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
             }
             (_, outcome) => panic!("unexpected transcript fault outcome: {outcome:?}"),
         };
-        assert_eq!(store.health().state(), expected_health);
+        assert_eq!(
+            store.health().state(),
+            expected_health,
+            "unexpected health after {point:?}"
+        );
+        if expected_health == HomeHealthState::Failed {
+            assert!(!retained_custody);
+            store.close().unwrap();
+            let mut reopened = open(home.path());
+            let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+            let durable = observe(&reopened, reopened_storage, &target);
+            assert_state(&durable, &unpublished, &published, expected);
+            reopened
+                .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+                .unwrap();
+            reopened.close().unwrap();
+            continue;
+        }
 
         let recovered = observe(&store, storage, &target);
         assert_state(&recovered, &unpublished, &published, expected);
@@ -86,13 +103,11 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
             let close_error = store.close().unwrap_err();
             assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
             drop(close_error);
-            assert!(
-                HomeStore::open(HomeOpenOptions::new(
-                    home.path(),
-                    HomeSchemaVersion::CURRENT
-                ))
-                .is_err()
-            );
+            assert!(HomeStore::open(HomeOpenOptions::new(
+                home.path(),
+                HomeSchemaVersion::CURRENT
+            ))
+            .is_err());
             continue;
         }
         store.close().unwrap();

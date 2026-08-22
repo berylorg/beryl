@@ -92,13 +92,13 @@ fn assert_current_and_reopen_reject(fixture: Fixture) {
 
     store.close().unwrap();
     let mut reopened = open(home.path());
-    let reopen_error = match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("corrupted provider-observation issue fold reopened successfully"),
-        Err(error) => error,
-    };
+    SyndicStorage::register(&mut reopened).unwrap();
+    let reopen_error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         reopen_error.to_string().contains(FOLD_MISMATCH),
-        "unexpected reopen validation error: {reopen_error}"
+        "unexpected reopened-home scrub error: {reopen_error}"
     );
 }
 

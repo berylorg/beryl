@@ -5,8 +5,8 @@ mod support;
 use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
-    CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
+    CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{ContentRevision, SyndicContentId, SyndicDraftMarkerId};
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
@@ -15,7 +15,7 @@ use syndic_storage::{
     PreparedContent, SyndicReadError, SyndicStorage,
 };
 
-use support::{TestHome, batch, commit, open, prepared_content_records};
+use support::{batch, commit, open, prepared_content_records, TestHome};
 
 struct Fixture {
     store: HomeStore,
@@ -233,12 +233,10 @@ fn missing_and_inexact_content_references_are_distinct() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let missing = composer("missing").reference(ContentRevision::new(1).unwrap());
-    assert!(
-        storage
-            .sealed_content_text_range(&store, missing, 0, 64)
-            .unwrap()
-            .is_none()
-    );
+    assert!(storage
+        .sealed_content_text_range(&store, missing, 0, 64)
+        .unwrap()
+        .is_none());
 
     let prepared = composer("exact");
     let (content, records) = prepared_content_records(&prepared);
@@ -278,12 +276,19 @@ fn nonsealed_lifecycle_and_missing_chunk_reject_without_fallback() {
         .put(FixtureRecord::ContentManifest(prepared.building_manifest()))
         .unwrap();
     commit(&fixture.store, fixture.storage, replace);
-    assert!(matches!(
+    let building_read =
         fixture
             .storage
-            .sealed_content_text_range(&fixture.store, fixture.content, 0, 64,),
-        Err(SyndicReadError::ContentTextRequiresSealed)
-    ));
+            .sealed_content_text_range(&fixture.store, fixture.content, 0, 64);
+    assert!(
+        matches!(
+            building_read,
+            Err(SyndicReadError::Invariant(
+                "ownerless content is unavailable before seal"
+            ))
+        ),
+        "unexpected building-content result: {building_read:?}"
+    );
 
     let fixture = seed("phase13-content-text-missing-chunk", &prepared);
     let mut remove = FixtureBatch::new();
@@ -383,7 +388,7 @@ fn sealed_manifest_identity_must_remain_content_addressed() {
     let home = TestHome::new("phase13-content-text-corrupt-manifest");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let prepared = composer("corrupt identity");
+    let prepared = PreparedContent::utf8("corrupt identity").unwrap();
     let original = prepared.reference(ContentRevision::new(1).unwrap());
     let corrupt_id = SyndicContentId::from_bytes([0x44; 16]);
     let corrupt = syndic_storage::ContentManifestRecord::new(
@@ -407,10 +412,14 @@ fn sealed_manifest_identity_must_remain_content_addressed() {
         original.encoding(),
         original.summary(),
     );
-    assert!(matches!(
-        storage.sealed_content_text_range(&store, corrupt_reference, 0, 64),
-        Err(SyndicReadError::Invariant(
-            "sealed content reference disagrees with its exact manifest"
-        ))
-    ));
+    let corrupt_read = storage.sealed_content_text_range(&store, corrupt_reference, 0, 64);
+    assert!(
+        matches!(
+            corrupt_read,
+            Err(SyndicReadError::Invariant(
+                "sealed content reference disagrees with its exact manifest"
+            ))
+        ),
+        "unexpected corrupt-manifest result: {corrupt_read:?}"
+    );
 }

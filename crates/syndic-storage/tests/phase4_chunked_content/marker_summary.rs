@@ -14,9 +14,6 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
     let home = TestHome::new("phase4-content-marker-summary");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = id(101);
-    let draft = draft_id(102);
-    create_thread(&store, storage, thread, draft);
 
     let marker_a = SyndicDraftMarkerId::from_bytes([103; 16]);
     let marker_b = SyndicDraftMarkerId::from_bytes([104; 16]);
@@ -53,19 +50,8 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
     while let Some(next) = append_one_batch(&store, storage, &manifest, &content) {
         manifest = next;
     }
-    let current = storage
-        .current_draft(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    execute(
-        &store,
-        storage,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    );
+    manifest = seal_prepared_content(&store, storage, &manifest, &content);
+    assert_eq!(manifest.lifecycle(), ContentLifecycle::Sealed);
     store.close().unwrap();
 
     let mut reopened = open(home.path());

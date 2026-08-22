@@ -3,19 +3,18 @@
 mod support;
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore,
-    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::SyndicItemId;
 use syndic_storage::{
-    AdvanceItemProjectionBuild, ComposerAtom, ComposerPayload, CreateThread, DraftPayloadUpdate,
-    DraftPayloadUpdateDecision, IdleSubmission, ItemProjectionBuildPhase,
-    ItemProjectionBuildRecord, ItemProjectionGeneration, PreparedContent, ProjectionLifecycle,
+    AdvanceItemProjectionBuild, CreateThread, DraftEditHistoryPolicyV1, ItemProjectionBuildPhase,
+    ItemProjectionBuildRecord, ItemProjectionGeneration, ProjectionLifecycle,
     StartItemProjectionBuild, SyndicPointReadLimit, SyndicStorage,
 };
 
-use support::{TestHome, draft_id, id, open, stage_prepared_content, timestamp};
+use support::{draft_id, exact_cas::submit_current_draft, id, open, timestamp, TestHome};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RecoveredState {
@@ -65,57 +64,20 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
                 draft,
                 support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     );
 
-    let payload =
-        ComposerPayload::new(vec![ComposerAtom::text("atomic projection").unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(store, storage, &content);
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    execute(
-        store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
-
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let thread_record = storage
-        .thread(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
     let item = SyndicItemId::from_bytes([4; 16]);
-    execute(
+    submit_current_draft(
         store,
-        storage.submit_idle_draft(
-            storage.revision(store).unwrap(),
-            IdleSubmission::new(
-                thread,
-                thread_record.revision(),
-                draft,
-                current.draft().revision(),
-                current.draft().content(),
-                gate.revision(),
-                draft_id(3),
-                item,
-                None,
-                timestamp(3),
-            ),
-        ),
+        storage,
+        thread,
+        draft_id(3),
+        item,
+        "atomic projection",
+        timestamp(3),
     );
 
     let canonical = storage
@@ -152,18 +114,14 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
         ItemProjectionBuildPhase::Parsing(_)
     ));
     assert_eq!(build.projection_count(), 0);
-    assert!(
-        storage
-            .item_projection_set(store, item, generation, point_limit())
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        storage
-            .item_projection_head(store, item, point_limit())
-            .unwrap()
-            .is_none()
-    );
+    assert!(storage
+        .item_projection_set(store, item, generation, point_limit())
+        .unwrap()
+        .is_none());
+    assert!(storage
+        .item_projection_head(store, item, point_limit())
+        .unwrap()
+        .is_none());
     PendingPublication {
         item,
         generation,
@@ -274,14 +232,14 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
                 beryl_home_store::CommandOutcome::NotCommitted {
                     evidence: CommandError::Commit { .. },
                 },
-            )
-            | (
+            ) => HomeHealthState::Failed,
+            (
                 FaultPoint::AfterPersist,
                 beryl_home_store::CommandOutcome::Committed {
                     later_failure: Some(CommandError::Persistence { .. }),
                     ..
                 },
-            ) => HomeHealthState::Healthy,
+            ) => HomeHealthState::Failed,
             (
                 FaultPoint::AfterCommitBeforePersist,
                 beryl_home_store::CommandOutcome::Indeterminate {
@@ -295,6 +253,18 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
             (_, outcome) => panic!("unexpected projection fault outcome: {outcome:?}"),
         };
         assert_eq!(store.health().state(), expected_health);
+        if expected_health == HomeHealthState::Failed {
+            assert!(!retained_custody);
+            store.close().unwrap();
+            let mut reopened = open(home.path());
+            let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+            reopened
+                .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+                .unwrap();
+            assert_recovered_state(&reopened, reopened_storage, &pending, expected);
+            reopened.close().unwrap();
+            continue;
+        }
         assert_recovered_state(&store, storage, &pending, expected);
         store
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -303,13 +273,11 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
             let close_error = store.close().unwrap_err();
             assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
             drop(close_error);
-            assert!(
-                HomeStore::open(HomeOpenOptions::new(
-                    home.path(),
-                    HomeSchemaVersion::CURRENT
-                ))
-                .is_err()
-            );
+            assert!(HomeStore::open(HomeOpenOptions::new(
+                home.path(),
+                HomeSchemaVersion::CURRENT
+            ))
+            .is_err());
             continue;
         }
         store.close().unwrap();

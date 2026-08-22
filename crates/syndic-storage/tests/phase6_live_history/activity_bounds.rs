@@ -293,46 +293,15 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
     );
     converge_and_release_terminal_history(&store, storage, thread, turn);
 
-    let payload = ComposerPayload::new(vec![ComposerAtom::text("next question").unwrap()]).unwrap();
-    let prepared = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(&store, storage, &prepared);
-    let current = storage
-        .current_draft(&store, thread, limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) =
-        DraftPayloadUpdate::prepare(&current, &prepared, timestamp(51)).unwrap()
-    else {
-        panic!("next-period draft must become nonempty")
-    };
-    assert_committed(execute(
+    submit_current_draft(
         &store,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    ));
-    let current = storage
-        .current_draft(&store, thread, limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(&store, thread, limit())
-        .unwrap()
-        .unwrap();
-    let submission = IdleSubmission::new(
+        storage,
         thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
         draft_id(90),
         SyndicItemId::from_bytes([91; 16]),
-        None,
+        "next question",
         timestamp(52),
     );
-    assert_committed(execute(
-        &store,
-        storage.submit_idle_draft(storage.revision(&store).unwrap(), submission),
-    ));
     let next = storage
         .activity_query_head(&store, thread, limit())
         .unwrap()
@@ -370,18 +339,16 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         reopened_head.work_period(),
         ActivityWorkPeriod::new(2).unwrap()
     );
-    assert!(
-        reopened_storage
-            .activity_query_page(
-                &reopened,
-                &reopened_head,
-                None,
-                CursorReadLimits::new(4, 1_000_000).unwrap(),
-            )
-            .unwrap()
-            .records()
-            .is_empty()
-    );
+    assert!(reopened_storage
+        .activity_query_page(
+            &reopened,
+            &reopened_head,
+            None,
+            CursorReadLimits::new(4, 1_000_000).unwrap(),
+        )
+        .unwrap()
+        .records()
+        .is_empty());
     assert_eq!(
         reopened_storage
             .fixture_activity_query_entry_count(

@@ -19,47 +19,51 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
     let (content, content_records) = composer_content_records(&payload);
     let digest = syndic_storage::root_turn_chain_digest(turn);
 
-    let mut records = empty_thread_records(thread, draft);
+    seed_canonical_empty_thread(&store, storage, thread, draft);
+    let initial_thread = storage
+        .thread(&store, thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .clone();
+    let initial_draft = storage
+        .current_draft(&store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let initial_summary = storage
+        .history_summary(&store, thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .clone();
     let thread_revision = ThreadRevision::new(2).unwrap();
-    for record in &mut records {
-        match record {
-            FixtureRecord::Thread(record) => {
-                *record = ThreadRecord::new(
-                    record.id(),
-                    SelectedPathProof::new(
-                        record.committed_tail(),
-                        thread_revision,
-                        record.selected_path_digest(),
-                    ),
-                    record.current_draft_id(),
-                    record.lineage(),
-                    record.image_label_frontiers(),
-                    record.context_owner_id(),
-                );
-            }
-            FixtureRecord::DraftByThread(index) => {
-                *index = DraftByThreadRecord::new(
-                    index.thread_id(),
-                    index.draft_id(),
-                    index.draft_revision(),
-                    thread_revision,
-                );
-            }
-            FixtureRecord::HistorySummary(summary) => {
-                *summary = HistorySummaryRecord::new(
-                    summary.thread_id(),
-                    summary.revision().checked_next().unwrap(),
-                    thread_revision,
-                    summary.committed_tail(),
-                    summary.selected_path_digest(),
-                    summary.complete(),
-                    summary.last_activity_at(),
-                );
-            }
-            _ => {}
-        }
-    }
-    records.retain(|record| !matches!(record, FixtureRecord::InputGate(_)));
+    let mut records = vec![
+        FixtureRecord::Thread(ThreadRecord::new(
+            initial_thread.id(),
+            SelectedPathProof::new(
+                initial_thread.committed_tail(),
+                thread_revision,
+                initial_thread.selected_path_digest(),
+            ),
+            initial_thread.current_draft_id(),
+            initial_thread.lineage(),
+            initial_thread.image_label_frontiers(),
+            initial_thread.context_owner_id(),
+        )),
+        FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+            thread,
+            draft,
+            initial_draft.draft().revision(),
+            thread_revision,
+        )),
+        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
+            thread,
+            initial_summary.revision().checked_next().unwrap(),
+            thread_revision,
+            initial_summary.committed_tail(),
+            initial_summary.selected_path_digest(),
+            initial_summary.complete(),
+            initial_summary.last_activity_at(),
+        )),
+    ];
     records.extend(content_records);
     records.extend([
         FixtureRecord::AcceptedInput(

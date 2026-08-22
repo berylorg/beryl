@@ -32,56 +32,17 @@ pub(super) fn submit_text(
     text: &str,
     next_draft: SyndicDraftId,
     user_item: SyndicItemId,
-    updated_at: SyndicTimestamp,
     admitted_at: SyndicTimestamp,
 ) -> SyndicTurnId {
-    let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(store, storage, &content);
-
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, updated_at).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => panic!("fixture draft must change"),
-    };
-    execute(
+    submit_current_draft(
         store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
-
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let thread_record = storage
-        .thread(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let submission = IdleSubmission::new(
+        storage,
         thread,
-        thread_record.revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
         next_draft,
         user_item,
-        None,
+        text,
         admitted_at,
-    );
-    let turn = submission.submitted_turn_id();
-    execute(
-        store,
-        storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
-    );
-    turn
+    )
 }
 
 pub(super) fn admit(

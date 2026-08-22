@@ -1,6 +1,5 @@
 use super::*;
 
-use beryl_home_store::DomainRegistrationError;
 use syndic_storage::test_faults::ProviderObservationCorruption;
 
 fn publish_duplicate_start_issue(
@@ -65,17 +64,13 @@ fn assert_published_issue_corruption_detected(
 
     fixture.store.close().unwrap();
     let mut reopened = open(fixture.home.path());
-    let reopen_error = match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("corrupted provider-observation issue reopened successfully"),
-        Err(error) => error,
-    };
-    let DomainRegistrationError::Validation { domain, source } = reopen_error else {
-        panic!("expected provider-observation issue validation failure, got {reopen_error:?}");
-    };
-    assert_eq!(domain, "syndic");
+    SyndicStorage::register(&mut reopened).unwrap();
+    let reopen_error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert_eq!(
-        source.to_string(),
-        "provider-observation issue evidence is not exact sealed authority"
+        reopen_error.to_string(),
+        "domain `syndic` failed invariant validation: provider-observation issue evidence is not exact sealed authority"
     );
     reopened.close().unwrap();
 }

@@ -14,6 +14,7 @@ pub(super) fn seed_terminal_turn_with_open_assistant(
                 draft_id(2),
                 crate::support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     );
@@ -25,7 +26,6 @@ pub(super) fn seed_terminal_turn_with_open_assistant(
         "original question",
         draft_id(3),
         user_item,
-        timestamp(2),
         timestamp(3),
     );
     let assistant_item = SyndicItemId::from_bytes([5; 16]);
@@ -141,8 +141,8 @@ pub(super) fn replace_with_completed_root(
         .current_draft(store, old.thread, point_limit())
         .unwrap()
         .unwrap();
-    let gate = storage
-        .input_gate(store, old.thread, point_limit())
+    let summary = storage
+        .history_summary(store, old.thread, point_limit())
         .unwrap()
         .unwrap();
     let head = storage
@@ -155,55 +155,42 @@ pub(super) fn replace_with_completed_root(
         thread.revision(),
         thread.selected_path_digest(),
     );
-    execute(
+    let replacement_revision = draft.draft().revision().checked_next().unwrap();
+    crate::support::commit(
         store,
-        storage.start_replacement_edit(
-            storage.revision(store).unwrap(),
-            StartReplacementEdit::new(
-                old.thread,
-                thread.revision(),
+        storage,
+        crate::support::batch([
+            syndic_storage::test_faults::FixtureRecord::Draft(DraftRecord::new(
                 draft.draft().id(),
-                draft.draft().revision(),
-                gate.revision(),
-                old.turn,
-                old.user_item,
-                selected_path,
-                CurrentTranscriptEntryProof::new(head.generation(), entry.position()),
-                None,
-                timestamp(9),
-            ),
-        ),
+                old.thread,
+                replacement_revision,
+                DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
+                    old.turn,
+                    selected_path,
+                    CurrentTranscriptEntryProof::new(head.generation(), entry.position()),
+                )),
+                draft.draft().root_history(),
+                draft.draft().created_at(),
+                summary.last_activity_at(),
+            )),
+            syndic_storage::test_faults::FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+                old.thread,
+                draft.draft().id(),
+                replacement_revision,
+                thread.revision(),
+            )),
+        ]),
     );
 
-    let editing = storage
-        .current_draft(store, old.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let thread = storage
-        .thread(store, old.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, old.thread, point_limit())
-        .unwrap()
-        .unwrap();
     let replacement_item = SyndicItemId::from_bytes([7; 16]);
-    let submission = IdleSubmission::new(
+    let replacement_turn = submit_current_draft(
+        store,
+        storage,
         old.thread,
-        thread.revision(),
-        editing.draft().id(),
-        editing.draft().revision(),
-        editing.draft().content(),
-        gate.revision(),
         draft_id(6),
         replacement_item,
-        None,
+        "original question",
         timestamp(10),
-    );
-    let replacement_turn = submission.submitted_turn_id();
-    execute(
-        store,
-        storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
     );
 
     let source = establish_turn(store, storage, old.thread, replacement_turn, timestamp(11));

@@ -14,7 +14,6 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
         "root",
         draft_id(3),
         SyndicItemId::from_bytes([20; 16]),
-        timestamp(2),
         timestamp(3),
     );
     complete_turn(
@@ -34,7 +33,6 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
         "middle",
         draft_id(4),
         SyndicItemId::from_bytes([21; 16]),
-        timestamp(7),
         timestamp(8),
     );
     complete_turn(
@@ -55,7 +53,6 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
         &large_tail,
         draft_id(5),
         SyndicItemId::from_bytes([22; 16]),
-        timestamp(12),
         timestamp(13),
     );
     complete_turn(
@@ -174,13 +171,11 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     assert_eq!(head.generation(), generation);
     assert_eq!(head.entry_count(), 67);
     assert_eq!(head.lifecycle(), ProjectionLifecycle::Current);
-    assert!(
-        storage
-            .history_summary(&store, thread, point_limit())
-            .unwrap()
-            .unwrap()
-            .complete()
-    );
+    assert!(storage
+        .history_summary(&store, thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .complete());
 
     let mut expected = Vec::new();
     expected.extend(

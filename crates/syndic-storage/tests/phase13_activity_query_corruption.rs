@@ -1,12 +1,12 @@
 #![cfg(feature = "test-faults")]
 
-#[path = "support/activity_handoff.rs"]
+#[path = "phase13_activity_query_corruption/support.rs"]
 mod activity_handoff;
 mod support;
 
 use beryl_home_store::{CommandError, CommandOutcome, CursorReadLimits, HomeCommand};
 use syndic_storage::test_faults::{
-    FixtureBatch, FixtureRecord, fixture_activity_query_entry_stored_bytes,
+    fixture_activity_query_entry_stored_bytes, FixtureBatch, FixtureRecord,
 };
 use syndic_storage::*;
 
@@ -44,7 +44,7 @@ fn publication_rejects_a_final_answer_with_later_activity_before_terminal() {
 }
 
 #[test]
-fn reopen_rejects_handoff_entry_fact_that_disagrees_with_membership() {
+fn scrub_rejects_handoff_entry_fact_that_disagrees_with_membership() {
     let fixture = published_child_handoff("phase13-activity-handoff-fact-corruption");
     let head = fixture.head;
     let page = fixture
@@ -99,14 +99,14 @@ fn reopen_rejects_handoff_entry_fact_that_disagrees_with_membership() {
     }
     fixture.store.close().unwrap();
     let mut reopened = open(fixture.home.path());
-    let error = match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("mismatched activity handoff fact reopened successfully"),
-        Err(error) => error,
-    };
+    SyndicStorage::register(&mut reopened).unwrap();
+    let error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
     assert!(
         error
             .to_string()
             .contains("activity-query handoff entry disagrees with membership"),
-        "unexpected reopen error: {error}"
+        "unexpected scrub error: {error}"
     );
 }

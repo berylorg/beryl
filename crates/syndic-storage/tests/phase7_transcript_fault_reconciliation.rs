@@ -5,26 +5,25 @@ mod cases;
 mod support;
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore, MutationContribution,
-    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    AdvanceItemProjectionBuild, AdvanceTranscriptBuild, CasTurnSource, ComposerAtom,
-    ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision,
-    FinalizeNextTurnItem, FreezeNextTurnItem, HistorySummaryRecord, IdleSubmission,
-    ItemProjectionGeneration, PreparedContent, ProjectionLifecycle, ProjectionOrdinal,
-    SourceEventPayload, StartItemProjectionBuild, StartTranscriptBuild, SyndicPointReadLimit,
-    SyndicStorage, SyndicTimestamp, TranscriptBuildPhase, TranscriptBuildRecord,
-    TranscriptGeneration, TranscriptPosition, TranscriptViewEntryRecord, TranscriptViewHeadRecord,
-    TurnDepth, TurnEndStatus, TurnItemOrdinal, test_faults::fixture_advance_transcript_digest,
+    test_faults::fixture_advance_transcript_digest, AdvanceItemProjectionBuild,
+    AdvanceTranscriptBuild, CasTurnSource, CreateThread, DraftEditHistoryPolicyV1,
+    FinalizeNextTurnItem, FreezeNextTurnItem, HistorySummaryRecord, ItemProjectionGeneration,
+    ProjectionLifecycle, ProjectionOrdinal, SourceEventPayload, StartItemProjectionBuild,
+    StartTranscriptBuild, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    TranscriptBuildPhase, TranscriptBuildRecord, TranscriptGeneration, TranscriptPosition,
+    TranscriptViewEntryRecord, TranscriptViewHeadRecord, TurnDepth, TurnEndStatus, TurnItemOrdinal,
 };
 
 use support::{
-    TestHome, draft_id,
-    exact_cas::{admit_event, correlate_user_item, establish_turn},
-    id, open, stage_prepared_content, timestamp,
+    draft_id,
+    exact_cas::{admit_event, correlate_user_item, establish_turn, submit_current_draft},
+    id, open, timestamp, TestHome,
 };
 
 const READ_BYTES: usize = 1_000_000;
@@ -74,6 +73,7 @@ fn create_thread(store: &HomeStore, storage: SyndicStorage) -> SyndicThreadId {
                 draft_id(2),
                 support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     );
@@ -81,53 +81,15 @@ fn create_thread(store: &HomeStore, storage: SyndicStorage) -> SyndicThreadId {
 }
 
 fn submit_turn(store: &HomeStore, storage: SyndicStorage, thread: SyndicThreadId) -> SubmittedTurn {
-    let payload =
-        ComposerPayload::new(vec![ComposerAtom::text("publish atomically").unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(store, storage, &content);
-
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => panic!("fixture draft must change"),
-    };
-    execute(
-        store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
-
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let thread_record = storage
-        .thread(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
     let item = SyndicItemId::from_bytes([20; 16]);
-    let submission = IdleSubmission::new(
+    let turn = submit_current_draft(
+        store,
+        storage,
         thread,
-        thread_record.revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
         draft_id(3),
         item,
-        None,
+        "publish atomically",
         timestamp(3),
-    );
-    let turn = submission.submitted_turn_id();
-    execute(
-        store,
-        storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
     );
     SubmittedTurn { turn, item }
 }

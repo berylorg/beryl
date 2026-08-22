@@ -15,47 +15,20 @@ pub(super) fn seed_pending_turn(
                 draft,
                 crate::support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));
 
-    let payload = ComposerPayload::new(vec![ComposerAtom::text("question").unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(store, storage, &content);
-    let current = storage
-        .current_draft(store, thread, limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    assert_committed(execute(
+    let turn = submit_current_draft(
         store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    ));
-
-    let current = storage
-        .current_draft(store, thread, limit())
-        .unwrap()
-        .unwrap();
-    let submission = IdleSubmission::new(
+        storage,
         thread,
-        ThreadRevision::new(1).unwrap(),
-        draft,
-        DraftRevision::new(2).unwrap(),
-        current.draft().content(),
-        InputGateRevision::new(1).unwrap(),
         draft_id(3),
         SyndicItemId::from_bytes([4; 16]),
-        None,
+        "question",
         timestamp(3),
     );
-    let turn = submission.submitted_turn_id();
-    assert_committed(execute(
-        store,
-        storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
-    ));
     (thread, turn)
 }
 

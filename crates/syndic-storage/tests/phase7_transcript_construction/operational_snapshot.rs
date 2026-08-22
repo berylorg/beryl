@@ -13,7 +13,6 @@ fn operational_event_refreshes_current_path_snapshot_without_invalidating_transc
         "question",
         draft_id(3),
         SyndicItemId::from_bytes([40; 16]),
-        timestamp(2),
         timestamp(3),
     );
     let source = establish_turn(&store, storage, thread, submitted.turn, timestamp(4));

@@ -29,21 +29,14 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 157: Restore Thread, Binding, And Recovery Verification (finished)
+# Phase 158: Restore Provider And Projection Verification (finished)
 
-Rewrote all nineteen live Phase 2, 3, 9, 10, and 102 targets against canonical same-home fixtures,
-preserving thread, binding, reopen, corruption, bounded-recovery, native-planning, and reconciliation
-assertions while removing obsolete whole-payload-only setup. Fault-owned canonical admission state
-verifies downstream allocator and planning invariants only; Phase 165 retains the live admission
-boundary proof. Applicable compilation, exhaustive and focused nextest suites, formatting, residue,
-scoped-diff, persistent-failure-state, and fresh independent semantic gates passed.
-
-# Phase 158: Restore Provider And Projection Verification (pending)
-
-Rewrite the live Phase 4, 6, 7, 13, and 18 content, live-history, projection, activity, provider,
-route-generation, and issue targets against sealed content and target-state fault fixtures. Preserve
-identity, stable-prefix, corruption, and reconciliation coverage without rebuilding a whole-current-
-draft compatibility path; prove default and fault-feature compilation and focused nextest execution.
+Rewrote all twenty-three live Phase 4, 6, 7, 13, and 18 targets against sealed content and bounded
+target-state fixtures, preserving identity, parentage, asset authority, stable-prefix, projection,
+activity, provider, route, issue, corruption, scrub, reopen, and exact reconciliation assertions
+without production or whole-draft compatibility expansion. Canonical and fault-feature compilation,
+158 focused nextest cases, formatting, residue, scoped-diff, process, and fresh independent semantic
+gates passed.
 
 # Phase 159: Restore Delivery And Promotion Verification (pending)
 

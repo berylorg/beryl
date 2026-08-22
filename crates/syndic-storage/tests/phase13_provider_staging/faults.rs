@@ -1,13 +1,12 @@
 use beryl_home_store::{
-    CommandOutcome, DomainRegistrationError, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore,
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
 use syndic_storage::test_faults::PersistedProviderNarrativeCorruption;
 
 use super::{restart::*, *};
 
 #[test]
-fn provable_partial_narrative_corruption_is_rejected_on_reopen() {
+fn provable_partial_narrative_corruption_is_rejected_by_scrub() {
     for (corruption, expected) in [
         (
             PersistedProviderNarrativeCorruption::SourceDigest,
@@ -108,17 +107,14 @@ fn provable_partial_narrative_corruption_is_rejected_on_reopen() {
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
-        let error = match SyndicStorage::register(&mut reopened) {
-            Ok(_) => panic!("{corruption:?} reopened successfully"),
-            Err(error) => error,
-        };
-        match error {
-            DomainRegistrationError::Validation { domain, source } => {
-                assert_eq!(domain, "syndic");
-                assert_eq!(source.to_string(), expected);
-            }
-            other => panic!("expected provider validation rejection, got {other:?}"),
-        }
+        SyndicStorage::register(&mut reopened).unwrap();
+        let error = reopened
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap_err();
+        assert!(
+            error.to_string().contains(expected),
+            "unexpected scrub rejection for {corruption:?}: {error}"
+        );
         reopened.close().unwrap();
     }
 }

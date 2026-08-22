@@ -7,24 +7,24 @@ use beryl_home_store::{
     HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{
-    AcceptedInputRevision, ContentRevision, DraftRevision, ImageLabelOrdinal, InputGateRevision,
-    ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
-    SyndicTurnId, ThreadRevision, advance_content_marker_digest, content_marker_digest_seed,
+    advance_content_marker_digest, content_marker_digest_seed, AcceptedInputRevision,
+    ContentRevision, DraftRevision, ImageLabelOrdinal, InputGateRevision, ProjectionRevision,
+    SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicTurnId,
+    ThreadRevision,
 };
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{
     AcceptedInputAdmissionProof, AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedInputRecord,
     AcceptedNextSourceRecord, AcceptedOrderIndexRecord, AcceptedRouteGeneration,
     AcceptedRouteGenerationRecord, AcceptedRouteLeafRecord, AcceptedRouteLeafState,
-    AcceptedRouteRevision, AcceptedRouteTarget, AdvanceItemProjectionBuild,
-    CONTENT_APPEND_MAX_CHUNKS, CONTENT_CHUNK_MAX_BYTES, CanonicalItemRecord, ComposerAtom,
-    ComposerPayload, ContentAppend, ContentBuild, ContentLifecycle, ContentManifestRecord,
-    DraftByThreadRecord, DraftPayloadUpdate, DraftPayloadUpdateDecision, HistorySummaryRecord,
+    AcceptedRouteRevision, AcceptedRouteTarget, AdvanceItemProjectionBuild, CanonicalItemRecord,
+    ComposerAtom, ComposerContentAssembler, ComposerPayload, ContentAppend, ContentBuild,
+    ContentLifecycle, ContentManifestRecord, DraftByThreadRecord, HistorySummaryRecord,
     InputGateRecord, InputGateState, ItemProjectionGeneration, NextTurnReason, PreparedContent,
     SelectedPathProof, StartItemProjectionBuild, SyndicMutationError, SyndicPointReadLimit,
     SyndicStorage, ThreadRecord, TurnDepth, TurnEndStatus, TurnIncompleteReason,
     TurnItemIndexRecord, TurnItemOrdinal, TurnKind, TurnLifecycle, TurnRecord, TurnStateRecord,
-    TurnStateRevision, TurnTerminalOutcome,
+    TurnStateRevision, TurnTerminalOutcome, CONTENT_APPEND_MAX_CHUNKS, CONTENT_CHUNK_MAX_BYTES,
 };
 
 use support::*;
@@ -43,12 +43,10 @@ fn execute(
             receipt,
             later_failure: None,
         } => {
-            assert!(
-                storage
-                    .committed_revision(store, &receipt)
-                    .unwrap()
-                    .is_some()
-            );
+            assert!(storage
+                .committed_revision(store, &receipt)
+                .unwrap()
+                .is_some());
             receipt
         }
         outcome => panic!("expected clean chunked-content command, got {outcome:?}"),
@@ -62,25 +60,6 @@ fn execute_outcome(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
     store.execute(command)
-}
-
-fn create_thread(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    thread: beryl_model::SyndicThreadId,
-    draft: beryl_model::SyndicDraftId,
-) {
-    let creation = syndic_storage::CreateThread::ordinary(
-        thread,
-        draft,
-        support::exact_cas::execution_binding(),
-        timestamp(1),
-    );
-    execute(
-        store,
-        storage,
-        storage.create_thread(storage.revision(store).unwrap(), creation),
-    );
 }
 
 fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
@@ -137,6 +116,25 @@ fn append_one_batch(
         storage.append_content(storage.revision(store).unwrap(), append),
     );
     Some(next)
+}
+
+fn seal_prepared_content(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    manifest: &ContentManifestRecord,
+    content: &PreparedContent,
+) -> ContentManifestRecord {
+    assert_eq!(manifest.lifecycle(), ContentLifecycle::Building);
+    assert_eq!(manifest.chunk_count(), content.summary().chunk_count());
+    assert_eq!(manifest.encoded_bytes(), content.summary().encoded_bytes());
+    assert_eq!(manifest.chain_digest(), content.summary().digest());
+    let sealed = content.sealed_manifest(manifest.revision().checked_next().unwrap());
+    commit(
+        store,
+        storage,
+        batch([FixtureRecord::ContentManifest(sealed.clone())]),
+    );
+    sealed
 }
 
 fn huge_boundary_payload() -> ComposerPayload {

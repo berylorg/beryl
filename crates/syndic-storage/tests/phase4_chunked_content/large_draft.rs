@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
+fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
     let home = TestHome::new("phase4-large-content");
     let mut store = HomeStore::open(HomeOpenOptions::new(
         home.path(),
@@ -9,20 +9,15 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = id(1);
-    let draft = draft_id(2);
-    create_thread(&store, storage, thread, draft);
 
     let payload = huge_boundary_payload();
     assert!(payload.utf8_bytes() > 10_000_000);
     let content = PreparedContent::composer(&payload).unwrap();
     assert!(content.chunks().len() > CONTENT_APPEND_MAX_CHUNKS);
-    assert!(
-        content
-            .chunks()
-            .iter()
-            .all(|chunk| chunk.bytes().len() <= CONTENT_CHUNK_MAX_BYTES)
-    );
+    assert!(content
+        .chunks()
+        .iter()
+        .all(|chunk| chunk.bytes().len() <= CONTENT_CHUNK_MAX_BYTES));
 
     execute(
         &store,
@@ -35,17 +30,6 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
     let mut manifest = content.building_manifest();
     manifest = append_one_batch(&store, storage, &manifest, &content).unwrap();
     assert_eq!(manifest.lifecycle(), ContentLifecycle::Building);
-    assert_eq!(
-        read_composer_payload(
-            &store,
-            storage,
-            &storage
-                .current_draft(&store, thread, point_limit())
-                .unwrap()
-                .unwrap(),
-        ),
-        ComposerPayload::default()
-    );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -53,45 +37,14 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
 
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let stored = storage
-        .content_manifest(&store, content.id(), point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(stored, manifest);
     while let Some(next) = append_one_batch(&store, storage, &manifest, &content) {
         manifest = next;
     }
+    manifest = seal_prepared_content(&store, storage, &manifest, &content);
     assert_eq!(manifest.expected(), content.summary());
-
-    let current = storage
-        .current_draft(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    execute(
-        &store,
-        storage,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    );
-    let current = storage
-        .current_draft(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(current.draft().content().id(), content.id());
-    assert_eq!(read_composer_payload(&store, storage, &current), payload);
-    assert_eq!(current.content().lifecycle(), ContentLifecycle::Sealed);
-    assert_eq!(
-        storage
-            .draft(&store, draft, point_limit())
-            .unwrap()
-            .unwrap()
-            .content()
-            .id(),
-        content.id()
-    );
+    let sealed = manifest.sealed_reference().unwrap();
+    assert_eq!(sealed.id(), content.id());
+    let mut assembler = ComposerContentAssembler::new(sealed).unwrap();
 
     let mut after = None;
     let mut observed_chunks = 0_u64;
@@ -108,33 +61,14 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
         for chunk in page.records() {
             observed_chunks += 1;
             after = Some(chunk.ordinal());
+            assembler.push(chunk).unwrap();
         }
         if !page.has_more() {
             break;
         }
     }
     assert_eq!(observed_chunks, content.summary().chunk_count());
-
-    let second_thread = id(3);
-    create_thread(&store, storage, second_thread, draft_id(4));
-    let second = storage
-        .current_draft(&store, second_thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&second, &content, timestamp(3)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    execute(
-        &store,
-        storage,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    );
-    let second = storage
-        .current_draft(&store, second_thread, point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(second.draft().content(), current.draft().content());
+    assert_eq!(assembler.finish().unwrap(), payload);
 
     let duplicate = execute_outcome(
         &store,
@@ -156,11 +90,9 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
         source.downcast_ref::<SyndicMutationError>(),
         Some(SyndicMutationError::ContentIdentityCollision)
     ));
-    assert!(
-        ContentAppend::prepare(current.content(), &content)
-            .unwrap()
-            .is_none()
-    );
+    assert!(ContentAppend::prepare(&manifest, &content)
+        .unwrap()
+        .is_none());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -168,10 +100,11 @@ fn multi_million_token_scale_draft_stages_reopens_and_publishes_exactly() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    let current = storage
-        .current_draft(&reopened, thread, point_limit())
+    let stored = storage
+        .content_manifest(&reopened, content.id(), point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(read_composer_payload(&reopened, storage, &current), payload);
+    assert_eq!(stored, manifest);
+    assert_eq!(stored.sealed_reference(), Some(sealed));
     reopened.close().unwrap();
 }

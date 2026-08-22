@@ -5,6 +5,9 @@ mod lifecycle;
 pub mod populated;
 pub mod semantic;
 
+#[allow(unused_imports)]
+pub use exact_cas::converge_and_release_terminal_history;
+
 use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -76,7 +79,20 @@ pub fn commit(store: &HomeStore, storage: SyndicStorage, batch: FixtureBatch) {
             later_failure: None,
             ..
         } => {}
-        outcome => panic!("expected clean fixture-batch command, got {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("fixture-batch command committed with a later failure: {failure:?}"),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("fixture-batch command did not commit: {evidence:?}")
+        }
+        CommandOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("fixture-batch command was indeterminate: {failure:?}")
+        }
     }
 }
 
@@ -296,6 +312,15 @@ pub fn prepared_content_records(
 ) -> (ContentReference, Vec<FixtureRecord>) {
     let revision = ContentRevision::new(1).unwrap();
     prepared_content_records_with_manifest(content, content.sealed_manifest(revision))
+}
+
+pub fn stage_prepared_content(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    content: &PreparedContent,
+) {
+    let (_, records) = prepared_content_records(content);
+    commit(store, storage, batch(records));
 }
 
 fn prepared_content_records_with_manifest(

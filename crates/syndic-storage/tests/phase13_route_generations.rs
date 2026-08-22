@@ -1,8 +1,10 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "phase13_route_generations/support.rs"]
+mod route_support;
 mod support;
 
-use beryl_home_store::{CommandOutcome, DomainRegistrationError, HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{
     AcceptedInputRevision, DraftRevision, InputGateRevision, SyndicAcceptedInputId, SyndicDraftId,
     ThreadRevision,
@@ -10,7 +12,7 @@ use beryl_model::{
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
-use support::phase11::{
+use route_support::{
     abandonment_request, delivering_input, retryable_input, seed_mixed_abandonment,
 };
 use support::populated::{next_input, seed_populated, steering_input};
@@ -393,7 +395,7 @@ fn route_generation_rejects_checked_aggregate_overflow() {
 }
 
 #[test]
-fn reopen_rejects_route_generation_high_water_drift() {
+fn scrub_rejects_route_generation_high_water_drift() {
     let home = TestHome::new("phase13-route-generation-high-water-drift");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
@@ -422,20 +424,19 @@ fn reopen_rejects_route_generation_high_water_drift() {
     store.close().unwrap();
 
     let mut reopened = open(home.path());
-    let error = match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("route-generation high-water drift reopened successfully"),
-        Err(error) => error,
-    };
-    assert!(matches!(
-        error,
-        DomainRegistrationError::Validation { source, .. }
-            if source.to_string() == "input-gate route-generation high-water disagrees"
-    ));
+    SyndicStorage::register(&mut reopened).unwrap();
+    let error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "domain `syndic` failed invariant validation: input-gate route-generation high-water disagrees"
+    );
     reopened.close().unwrap();
 }
 
 #[test]
-fn reopen_rejects_a_gap_in_monotonic_route_generations() {
+fn scrub_rejects_a_gap_in_monotonic_route_generations() {
     let home = TestHome::new("phase13-route-generation-gap");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
@@ -488,14 +489,13 @@ fn reopen_rejects_a_gap_in_monotonic_route_generations() {
     store.close().unwrap();
 
     let mut reopened = open(home.path());
-    let error = match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("route-generation gap reopened successfully"),
-        Err(error) => error,
-    };
-    assert!(matches!(
-        error,
-        DomainRegistrationError::Validation { source, .. }
-            if source.to_string() == "accepted-route generations are not sequential"
-    ));
+    SyndicStorage::register(&mut reopened).unwrap();
+    let error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "domain `syndic` failed invariant validation: accepted-route generations are not sequential"
+    );
     reopened.close().unwrap();
 }

@@ -13,7 +13,7 @@ use beryl_model::{
 };
 use syndic_storage::*;
 
-use support::{TestHome, exact_cas, open, timestamp};
+use support::{exact_cas, open, timestamp, TestHome};
 
 struct Fixture {
     store: HomeStore,
@@ -57,6 +57,7 @@ fn setup(name: &str) -> Fixture {
                 SyndicDraftId::from_bytes([2; 16]),
                 exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));

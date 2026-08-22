@@ -17,6 +17,7 @@ fn a_live_event_cannot_mutate_another_threads_turn_or_gate() {
                 draft_id(41),
                 crate::support::exact_cas::execution_binding(),
                 timestamp(4),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     ));

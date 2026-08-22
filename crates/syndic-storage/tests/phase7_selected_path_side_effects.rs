@@ -7,9 +7,11 @@ use beryl_model::{CasItemId, SyndicDraftId, SyndicItemId, SyndicThreadId, Syndic
 use syndic_storage::*;
 
 use support::{
-    TestHome, converge_and_release_terminal_history, draft_id,
-    exact_cas::{admit_event, admit_item_frame, correlate_user_item, establish_turn},
-    id, open, stage_prepared_content, timestamp,
+    converge_and_release_terminal_history, draft_id,
+    exact_cas::{
+        admit_event, admit_item_frame, correlate_user_item, establish_turn, submit_current_draft,
+    },
+    id, open, timestamp, TestHome,
 };
 
 const PAGE_BYTES: usize = 4_096;

@@ -115,14 +115,12 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
 
     store.close().unwrap();
     let mut reopened = open(home.path());
-    let error = match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("corrupted activity query registered successfully"),
-        Err(error) => error,
-    };
-    assert!(
-        error
-            .to_string()
-            .contains("activity-query head counters or retention cutoff disagree")
-    );
+    SyndicStorage::register(&mut reopened).unwrap();
+    let error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("activity-query head counters or retention cutoff disagree"));
     reopened.close().unwrap();
 }

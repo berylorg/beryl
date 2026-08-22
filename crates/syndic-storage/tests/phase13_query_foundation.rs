@@ -10,7 +10,7 @@ use beryl_model::{
 use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 use syndic_storage::*;
 
-use support::{TestHome, batch, commit, open, timestamp};
+use support::{batch, commit, open, timestamp, TestHome};
 
 fn identity(value: u128) -> SyndicThreadId {
     SyndicThreadId::from_bytes(value.to_be_bytes())
@@ -50,45 +50,15 @@ fn submit_image_draft(
     asset_reference_set: SealedAssetReferenceSetProof,
 ) {
     let prepared = PreparedContent::composer(&payload).unwrap();
-    support::stage_prepared_content(store, storage, &prepared);
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) =
-        DraftPayloadUpdate::prepare(&current, &prepared, timestamp(4)).unwrap()
-    else {
-        panic!("image-label fixture draft must become nonempty");
-    };
-    execute(
+    support::exact_cas::submit_prepared_current_draft(
         store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    execute(
-        store,
-        storage.submit_idle_draft(
-            storage.revision(store).unwrap(),
-            IdleSubmission::new(
-                thread,
-                current.thread().revision(),
-                current.draft().id(),
-                current.draft().revision(),
-                current.draft().content(),
-                gate.revision(),
-                next_draft,
-                item,
-                Some(asset_reference_set),
-                timestamp(4),
-            ),
-        ),
+        storage,
+        thread,
+        next_draft,
+        item,
+        &prepared,
+        Some(asset_reference_set),
+        timestamp(4),
     );
 }
 
@@ -160,16 +130,14 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
         .unwrap();
     assert_eq!(exact_first.records().len(), 1);
     assert_eq!(exact_first.stored_bytes(), root_stored_bytes);
-    assert!(
-        storage
-            .thread_lineage_page(
-                &store,
-                &head,
-                first_cursor,
-                CursorReadLimits::new(1, root_stored_bytes - 1).unwrap(),
-            )
-            .is_err()
-    );
+    assert!(storage
+        .thread_lineage_page(
+            &store,
+            &head,
+            first_cursor,
+            CursorReadLimits::new(1, root_stored_bytes - 1).unwrap(),
+        )
+        .is_err());
     let mut cursor = head.cursor();
     let mut observed = Vec::new();
     while let Some(current) = cursor {

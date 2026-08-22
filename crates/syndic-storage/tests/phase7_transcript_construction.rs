@@ -8,23 +8,24 @@ use beryl_model::{
     SyndicTurnId,
 };
 use syndic_storage::{
-    AdvanceItemProjectionBuild, AdvanceTranscriptBuild, CasTurnSource, ComposerAtom,
-    ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision,
-    FinalizeNextTurnItem, FreezeNextTurnItem, IdleSubmission, ItemProjectionGeneration,
-    MARKDOWN_CODE_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES, PreparedContent, ProjectionLifecycle,
-    ProviderCommandExecutionV1, ProviderCommandSourceV1, ProviderCommandStatusV1,
-    ProviderFrameOrdinalV1, ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemV1,
-    ProviderLifecycleTimestampMsV1, ProviderSubmittedContentV1, ProviderTextV1,
-    ProviderUserMessageV1, SourceEventPayload, StartItemProjectionBuild, StartTranscriptBuild,
-    SyndicMutationError, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    TranscriptBuildPhase, TranscriptBuildRecord, TranscriptGeneration, TranscriptPosition,
-    TurnDepth, TurnEndStatus, TurnItemOrdinal,
+    AdvanceItemProjectionBuild, AdvanceTranscriptBuild, CasTurnSource, CreateThread,
+    DraftEditHistoryPolicyV1, FinalizeNextTurnItem, FreezeNextTurnItem, ItemProjectionGeneration,
+    ProjectionLifecycle, ProviderCommandExecutionV1, ProviderCommandSourceV1,
+    ProviderCommandStatusV1, ProviderFrameOrdinalV1, ProviderItemFrameV1,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
+    ProviderSubmittedContentV1, ProviderTextV1, ProviderUserMessageV1, SourceEventPayload,
+    StartItemProjectionBuild, StartTranscriptBuild, SyndicMutationError, SyndicPointReadLimit,
+    SyndicStorage, SyndicTimestamp, TranscriptBuildPhase, TranscriptBuildRecord,
+    TranscriptGeneration, TranscriptPosition, TurnDepth, TurnEndStatus, TurnItemOrdinal,
+    MARKDOWN_CODE_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES,
 };
 
 use support::{
-    TestHome, converge_and_release_terminal_history, draft_id,
-    exact_cas::{admit_event, admit_item_frame, correlate_user_item, establish_turn},
-    id, open, stage_prepared_content, timestamp,
+    converge_and_release_terminal_history, draft_id,
+    exact_cas::{
+        admit_event, admit_item_frame, correlate_user_item, establish_turn, submit_current_draft,
+    },
+    id, open, timestamp, TestHome,
 };
 
 const PAGE_BYTES: usize = 4_096;
@@ -71,6 +72,7 @@ fn create_thread(store: &HomeStore, storage: SyndicStorage) -> SyndicThreadId {
                 draft_id(2),
                 support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     );
@@ -85,55 +87,9 @@ fn submit_text(
     text: &str,
     next_draft: SyndicDraftId,
     item: SyndicItemId,
-    updated_at: SyndicTimestamp,
     admitted_at: SyndicTimestamp,
 ) -> SubmittedTurn {
-    let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(store, storage, &content);
-
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, updated_at).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => panic!("fixture draft must change"),
-    };
-    execute(
-        store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
-
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let thread_record = storage
-        .thread(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let submission = IdleSubmission::new(
-        thread,
-        thread_record.revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
-        next_draft,
-        item,
-        None,
-        admitted_at,
-    );
-    let turn = submission.submitted_turn_id();
-    execute(
-        store,
-        storage.submit_idle_draft(storage.revision(store).unwrap(), submission),
-    );
+    let turn = submit_current_draft(store, storage, thread, next_draft, item, text, admitted_at);
     SubmittedTurn { turn, item }
 }
 
