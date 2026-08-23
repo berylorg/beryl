@@ -29,25 +29,13 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 163: Reconcile Bounded Undo And Redo Authority (finished)
+# Phase 164: Establish And Pin Direct Host-History Widget Settlement (finished)
 
-Reconciled package and widget authority so ordinary edits remain cursor-paged while undo and redo
-select immutable durable roots through fixed-size intent and settlement state, then realize content
-through bounded text and object pages. Added finite cross-generation settlement custody and the
-dependency rigor contract; all 82 tracker targets, 106 local links, schemas, spacing, residue gates,
-and independent semantic authority review passed.
-
-# Phase 164: Establish And Pin Direct Host-History Widget Settlement (pending)
-
-Implement the reconciled `gpui-text-input` history boundary with exact host-supplied availability,
-one bounded keyed intent/session, and direct atomic successor binding, extent, caret, directed
-selection, and availability settlement. Rejected, conflict, cancelled, and error preserve the prior
-projection; rebind and disposal cancel only unadmitted intent; admitted operations retain bounded
-multi-generation late-settlement custody without overwrite; inconsistent caret/selection facts fail
-closed; and late or duplicate completion is inert. Prove all lifecycle and retained-count cases,
-run the complete locked dependency gates and focused adversarial review, publish the accepted
-dependency commit, canonically pin it in Beryl, validate locked metadata and `beryl-app`, and restart
-the language server before relying on the new Cargo model.
+Published and pinned `gpui-text-input` direct historical-root settlement with exact keyed frontier
+CAS, one shared finite cross-generation custody and operation-identity coordinator, atomic opaque
+successor adoption, bounded page realization, and payload-free restoration. All 269 locked
+dependency tests, focused adversarial acceptance, canonical metadata, `beryl-app`, lockfile, and
+language-server restart gates passed.
 
 # Phase 165: Route Beryl Host History Through Syndic Historical Roots (pending)
 
