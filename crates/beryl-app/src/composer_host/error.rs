@@ -3,7 +3,8 @@ use beryl_home_store::{
 };
 use beryl_model::BerylHomeId;
 use syndic_storage::{
-    DraftEditorCandidateSessionCommandErrorV1, DraftMutationStagingErrorV1,
+    DraftEditorCandidateSessionCommandErrorV1, DraftHistoricalRootAdoptionPrepareErrorV1,
+    DraftHistoricalRootAdoptionReconciliationErrorV1, DraftMutationStagingErrorV1,
     DraftPieceCommandReconciliationErrorV1, DraftPiecePrepareErrorV1, DraftPieceRangeSourceErrorV1,
     SyndicMutationError, SyndicReadError,
 };
@@ -54,6 +55,16 @@ pub enum ComposerHostError {
     MutationIdentityCollision,
     #[error("the composer mutation path is unavailable")]
     MutationUnavailable,
+    #[error("the shared composer settlement-custody capacity is exhausted")]
+    SettlementCustodyLimit,
+    #[error("a composer history selection is already pending")]
+    HistoryPending,
+    #[error("the composer history selection is not pending")]
+    HistoryNotPending,
+    #[error("the range-widget history intent cannot be represented exactly")]
+    HistoryMalformed,
+    #[error("the composer history path is terminally unavailable")]
+    HistoryUnavailable,
     #[error("home read failed: {0}")]
     HomeRead(#[from] ReadError),
     #[error("home command construction failed: {0}")]
@@ -74,4 +85,8 @@ pub enum ComposerHostError {
     Reconciliation(#[from] DraftPieceCommandReconciliationErrorV1),
     #[error("draft mutation staging failed: {0}")]
     MutationStaging(#[from] DraftMutationStagingErrorV1),
+    #[error("historical-root selection preparation failed: {0}")]
+    HistoryPrepare(#[from] DraftHistoricalRootAdoptionPrepareErrorV1),
+    #[error("historical-root selection reconciliation failed: {0}")]
+    HistoryReconciliation(#[from] DraftHistoricalRootAdoptionReconciliationErrorV1),
 }

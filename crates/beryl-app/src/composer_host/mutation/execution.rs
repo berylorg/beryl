@@ -42,6 +42,9 @@ impl SyndicComposerHost {
         binding: ComposerHostBinding,
         request: MutationBeginRequest,
     ) -> Result<(), ComposerHostError> {
+        if self.pending_history.is_some() {
+            return Err(ComposerHostError::HistoryPending);
+        }
         if self.pending_mutation.is_some() {
             return Err(match self.pending_mutation {
                 Some(ComposerHostPendingMutation::Unavailable(_)) => {
@@ -50,9 +53,13 @@ impl SyndicComposerHost {
                 _ => ComposerHostError::MutationPending,
             });
         }
+        self.reserve_settlement_custody()?;
         let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
         if active.binding != binding {
             return Err(ComposerHostError::OldBinding);
+        }
+        if active.unavailable {
+            return Err(ComposerHostError::HistoryUnavailable);
         }
         validate_store(binding, store)?;
         validate_begin_key(binding, request)?;
@@ -324,9 +331,9 @@ impl SyndicComposerHost {
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
         if self
-            .detached_mutation
-            .as_ref()
-            .is_some_and(|pending| pending.key() == request.key())
+            .detached_mutations
+            .iter()
+            .any(|pending| pending.key() == request.key())
         {
             return self.execute_detached_mutation(store, request, cancellation);
         }
@@ -380,14 +387,17 @@ impl SyndicComposerHost {
         request: MutationCommitRequest,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
-        let pending = self
-            .detached_mutation
-            .take()
+        let position = self
+            .detached_mutations
+            .iter()
+            .position(|pending| pending.key() == request.key())
             .ok_or(ComposerHostError::MutationNotPending)?;
+        let pending = self.detached_mutations.remove(position);
         match pending {
             ComposerHostPendingMutation::Terminal(terminal) => {
                 if request.key() != terminal.key {
-                    self.detached_mutation = Some(ComposerHostPendingMutation::Terminal(terminal));
+                    self.detached_mutations
+                        .push(ComposerHostPendingMutation::Terminal(terminal));
                     return Err(ComposerHostError::RequestMismatch);
                 }
                 Ok(ComposerHostMutationOutcome::Conflict)
@@ -397,7 +407,8 @@ impl SyndicComposerHost {
             }
             ComposerHostPendingMutation::Active(mut pending) => {
                 if request.key() != pending.begin.proposal().key() {
-                    self.detached_mutation = Some(ComposerHostPendingMutation::Active(pending));
+                    self.detached_mutations
+                        .push(ComposerHostPendingMutation::Active(pending));
                     return Err(ComposerHostError::RequestMismatch);
                 }
                 let result =
@@ -407,7 +418,8 @@ impl SyndicComposerHost {
                         Ok(ComposerHostMutationOutcome::Conflict)
                     }
                     Err(error) => {
-                        self.detached_mutation = Some(ComposerHostPendingMutation::Active(pending));
+                        self.detached_mutations
+                            .push(ComposerHostPendingMutation::Active(pending));
                         Err(error)
                     }
                 }

@@ -111,6 +111,27 @@ impl ComposerHostBinding {
     pub const fn logical_extent(self) -> DraftLogicalExtentV1 {
         self.candidate.logical_extent()
     }
+
+    pub const fn range_binding(self) -> gpui_text_input::RangeBinding {
+        gpui_text_input::RangeBinding::new(
+            gpui_text_input::BindingId::new(self.host_generation.get()),
+            gpui_text_input::SourceRevision::new(self.candidate.candidate_generation()),
+            gpui_text_input::LogicalExtent::new(
+                self.logical_extent().logical_utf8_bytes(),
+                self.logical_extent().logical_line_count(),
+            ),
+        )
+    }
+
+    pub const fn range_history_frontier(self) -> gpui_text_input::RangeHistoryFrontier {
+        let availability = self.history().availability();
+        gpui_text_input::RangeHistoryFrontier {
+            binding: self.range_binding(),
+            id: self.history().frontier_revision(),
+            undo_available: availability.undo_available(),
+            redo_available: availability.redo_available(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

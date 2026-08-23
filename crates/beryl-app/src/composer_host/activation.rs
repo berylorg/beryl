@@ -15,17 +15,6 @@ impl SyndicComposerHost {
         request: ComposerHostActivationRequest,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
-        if self.detached_mutation.is_some()
-            && matches!(
-                self.pending_mutation,
-                Some(
-                    ComposerHostPendingMutation::Active(_)
-                        | ComposerHostPendingMutation::Terminal(_)
-                )
-            )
-        {
-            return Err(ComposerHostError::MutationPending);
-        }
         if request.first_demands().len() > COMPOSER_HOST_MAX_INITIAL_DEMANDS {
             return Err(ComposerHostError::TooManyInitialDemands);
         }
@@ -172,12 +161,13 @@ impl SyndicComposerHost {
                 actual: after.generation(),
             });
         }
-        self.detach_pending_mutation()?;
+        self.detach_live_operation()?;
         self.active = Some(ActiveComposerHost {
             binding,
             storage_candidate: binding.candidate(),
             thread_id: request.thread_id(),
             initial_responses,
+            unavailable: false,
         });
         self.last_generation = Some(host_generation);
         self.last_request_id = request

@@ -29,25 +29,13 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 165: Select Historical Roots From Compact Syndic Intents (finished)
+# Phase 166: Route Beryl Host History Through Syndic Historical Roots (finished)
 
-Added bounded authenticated undo/redo selection from one compact active-session intent and reused
-the canonical historical-root adoption and reconciliation path without caller-cached history or
-current-draft publication. All 38 locked edit-history, retention, and historical-adoption tests,
-locked all-targets checking, formatting, and independent persistence/concurrency review passed.
-
-# Phase 166: Route Beryl Host History Through Syndic Historical Roots (pending)
-
-Add a dedicated Beryl composer-host history coordinator that translates one exact active widget
-history intent into the retained Syndic transition and direct historical-root adoption. Atomically
-rebind the live host only on committed settlement; preserve both frontiers on rejection, conflict,
-cancellation, error, candidate drift, corrupt or missing authority, and terminal collision; retain
-indeterminate custody through exact reconciliation; and drain admitted work across release or
-rebind without accepting late completion. Prove sequential undo/redo, repeated branching and redo
-clearing, retention eviction, restart, all five settlements, cancellation cuts, every
-reconciliation classification, candidate drift, corrupt or missing roots, rebind, release, late
-completion, and one atomic live-view update without inverse text, marker-registry residency, or
-current-draft publication.
+Integrated compact widget history intents with direct Syndic historical-root adoption through one
+shared finite edit/history custody boundary, exact five-outcome settlement, bounded position-gap
+hydration, generation-atomic live rebind, and fixed-size terminal replay. All 43 focused host,
+mutation, and history tests, locked production-library checking, formatting, and fresh adversarial
+persistence, concurrency, lifecycle, and resource-boundary review passed.
 
 # Phase 167: Enforce Credit-Gated Composer Realization (pending)
 

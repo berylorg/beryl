@@ -1,14 +1,17 @@
 mod activation;
 mod error;
+mod history;
 mod model;
 mod mutation;
 mod request;
 
 use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
 
 use syndic_storage::{DraftEditorCandidateActivationBindingV1, SyndicStorage};
 
 pub use error::ComposerHostError;
+pub use history::{ComposerHostHistoryStatus, ComposerHostRetainedHistoryIntent};
 pub use model::*;
 use mutation::ComposerHostPendingMutation;
 pub use mutation::{
@@ -21,7 +24,10 @@ struct ActiveComposerHost {
     storage_candidate: DraftEditorCandidateActivationBindingV1,
     thread_id: beryl_model::SyndicThreadId,
     initial_responses: Vec<ComposerHostResponse>,
+    unavailable: bool,
 }
+
+const DEFAULT_SETTLEMENT_CUSTODY_CAPACITY: usize = 4;
 
 pub struct SyndicComposerHost {
     storage: SyndicStorage,
@@ -30,13 +36,24 @@ pub struct SyndicComposerHost {
     last_request_id: u64,
     pending: BTreeMap<u64, ComposerHostPendingRequest>,
     pending_mutation: Option<ComposerHostPendingMutation>,
-    detached_mutation: Option<ComposerHostPendingMutation>,
+    detached_mutations: Vec<ComposerHostPendingMutation>,
+    pending_history: Option<history::ComposerHostPendingHistory>,
+    detached_history: Vec<history::ComposerHostPendingHistory>,
+    settlement_custody_capacity: usize,
     last_mutation_identity: Option<(ComposerHostBinding, mutation::ComposerHostMutationIdentity)>,
+    last_history_identity: Option<(ComposerHostBinding, gpui_text_input::RangeHistoryIntent)>,
+    last_history_outcome: Option<gpui_text_input::RangeHistoryOutcome>,
     #[cfg(feature = "test-faults")]
     activation_after_selector_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
     mutation_before_execute_fault:
+        Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    history_before_execute_fault:
+        Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    history_after_commit_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
     mutation_transition_limit: usize,
@@ -46,6 +63,16 @@ pub struct SyndicComposerHost {
 
 impl SyndicComposerHost {
     pub const fn new(storage: SyndicStorage) -> Self {
+        Self::with_settlement_custody_capacity(
+            storage,
+            NonZeroUsize::new(DEFAULT_SETTLEMENT_CUSTODY_CAPACITY).unwrap(),
+        )
+    }
+
+    pub const fn with_settlement_custody_capacity(
+        storage: SyndicStorage,
+        capacity: NonZeroUsize,
+    ) -> Self {
         Self {
             storage,
             active: None,
@@ -53,12 +80,21 @@ impl SyndicComposerHost {
             last_request_id: 0,
             pending: BTreeMap::new(),
             pending_mutation: None,
-            detached_mutation: None,
+            detached_mutations: Vec::new(),
+            pending_history: None,
+            detached_history: Vec::new(),
+            settlement_custody_capacity: capacity.get(),
             last_mutation_identity: None,
+            last_history_identity: None,
+            last_history_outcome: None,
             #[cfg(feature = "test-faults")]
             activation_after_selector_fault: None,
             #[cfg(feature = "test-faults")]
             mutation_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            history_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            history_after_commit_fault: None,
             #[cfg(feature = "test-faults")]
             mutation_transition_limit: mutation::COMPOSER_HOST_MAX_MUTATION_TRANSITIONS,
             #[cfg(feature = "test-faults")]
@@ -92,14 +128,15 @@ impl SyndicComposerHost {
     }
 
     pub fn release(&mut self) -> Result<bool, ComposerHostError> {
-        self.detach_pending_mutation()?;
+        self.detach_live_operation()?;
         let released = self.active.take().is_some();
         self.pending.clear();
         self.last_request_id = 0;
         Ok(released)
     }
 
-    fn detach_pending_mutation(&mut self) -> Result<(), ComposerHostError> {
+    fn detach_live_operation(&mut self) -> Result<(), ComposerHostError> {
+        self.detach_pending_history()?;
         if matches!(
             self.pending_mutation,
             Some(ComposerHostPendingMutation::Unavailable(_))
@@ -110,13 +147,47 @@ impl SyndicComposerHost {
         if self.pending_mutation.is_none() {
             return Ok(());
         }
-        if self.detached_mutation.is_some() {
-            return Err(ComposerHostError::MutationPending);
-        }
         let mut pending = self.pending_mutation.take().unwrap();
         pending.detach();
-        self.detached_mutation = Some(pending);
+        self.detached_mutations.push(pending);
         Ok(())
+    }
+
+    pub const fn settlement_custody_capacity(&self) -> usize {
+        self.settlement_custody_capacity
+    }
+
+    pub fn settlement_custody_in_use(&self) -> usize {
+        usize::from(self.pending_mutation.is_some())
+            + self.detached_mutations.len()
+            + usize::from(self.pending_history.is_some())
+            + self.detached_history.len()
+    }
+
+    fn live_operation_pending(&self) -> bool {
+        self.pending_mutation.is_some() || self.pending_history.is_some()
+    }
+
+    fn reserve_settlement_custody(&self) -> Result<(), ComposerHostError> {
+        if self.settlement_custody_in_use() >= self.settlement_custody_capacity {
+            Err(ComposerHostError::SettlementCustodyLimit)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn mark_active_unavailable(&mut self, binding: ComposerHostBinding) {
+        if let Some(active) = self.active.as_mut()
+            && active.binding == binding
+        {
+            active.unavailable = true;
+        }
+    }
+
+    pub fn is_unavailable(&self) -> bool {
+        self.active
+            .as_ref()
+            .is_some_and(|active| active.unavailable)
     }
 
     #[cfg(feature = "test-faults")]
@@ -140,6 +211,24 @@ impl SyndicComposerHost {
     ) {
         assert!(self.mutation_before_execute_fault.is_none());
         self.mutation_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_history_before_execute_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send + 'static,
+    ) {
+        assert!(self.history_before_execute_fault.is_none());
+        self.history_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_history_after_commit_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send + 'static,
+    ) {
+        assert!(self.history_after_commit_fault.is_none());
+        self.history_after_commit_fault = Some(Box::new(fault));
     }
 
     fn next_generation(&self) -> Result<ComposerHostGeneration, ComposerHostError> {
