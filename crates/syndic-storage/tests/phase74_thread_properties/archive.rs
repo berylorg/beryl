@@ -43,7 +43,11 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
     }
 }
 
-fn job(store: &HomeStore, state: BerylState, job_id: JobId) -> beryl_state::BranchHandoffJobRecord {
+fn job(
+    store: &HomeStore,
+    state: &BerylState,
+    job_id: JobId,
+) -> beryl_state::BranchHandoffJobRecord {
     state.durable_jobs().job(store, job_id).unwrap().unwrap()
 }
 
@@ -66,7 +70,11 @@ fn admission() -> BranchHandoffJobAdmission {
     )
 }
 
-fn prepare_parent_active_job(store: &HomeStore, state: BerylState, syndic: SyndicStorage) -> JobId {
+fn prepare_parent_active_job(
+    store: &HomeStore,
+    state: &BerylState,
+    syndic: SyndicStorage,
+) -> JobId {
     seed_populated(store, syndic);
     let admission = admission();
     let job_id = admission.job_id();
@@ -129,7 +137,7 @@ fn prepare_parent_active_job(store: &HomeStore, state: BerylState, syndic: Syndi
 
 fn terminal_command(
     store: &HomeStore,
-    state: BerylState,
+    state: &BerylState,
     syndic: SyndicStorage,
     job_id: JobId,
 ) -> HomeCommand {
@@ -160,9 +168,9 @@ fn durable_job_success_and_intrinsic_archive_publish_atomically() {
     let mut store = open_with_faults(home.path(), FaultController::new());
     let state = BerylState::register(&mut store).unwrap();
     let syndic = SyndicStorage::register(&mut store).unwrap();
-    let job_id = prepare_parent_active_job(&store, state, syndic);
+    let job_id = prepare_parent_active_job(&store, &state, syndic);
 
-    match store.execute(terminal_command(&store, state, syndic, job_id)) {
+    match store.execute(terminal_command(&store, &state, syndic, job_id)) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -170,7 +178,7 @@ fn durable_job_success_and_intrinsic_archive_publish_atomically() {
         outcome => panic!("expected clean terminal archive command, got {outcome:?}"),
     }
     assert_eq!(
-        job(&store, state, job_id).lifecycle(),
+        job(&store, &state, job_id).lifecycle(),
         BranchHandoffJobLifecycle::Succeeded
     );
     let attributes = syndic
@@ -197,10 +205,10 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
     let mut store = open_with_faults(home.path(), faults.clone());
     let state = BerylState::register(&mut store).unwrap();
     let syndic = SyndicStorage::register(&mut store).unwrap();
-    let job_id = prepare_parent_active_job(&store, state, syndic);
+    let job_id = prepare_parent_active_job(&store, &state, syndic);
 
     faults.fail_next(FaultPoint::BeforeCommit);
-    match store.execute(terminal_command(&store, state, syndic, job_id)) {
+    match store.execute(terminal_command(&store, &state, syndic, job_id)) {
         CommandOutcome::NotCommitted {
             evidence: CommandError::Commit { .. },
         } => {}
@@ -210,12 +218,16 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
         }
         outcome => panic!("expected pre-commit archive fault, got {outcome:?}"),
     }
+    let candidate = store.recover_same_home().unwrap();
+    let recovered_state = BerylState::reacquire_candidate(&candidate).unwrap();
+    let recovered_syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let recovered = candidate.publish();
     assert_eq!(
-        job(&store, state, job_id).lifecycle(),
+        job(&recovered, &recovered_state, job_id).lifecycle(),
         BranchHandoffJobLifecycle::ParentActive
     );
-    let attributes = syndic
-        .thread_attributes(&store, id(36), limit())
+    let attributes = recovered_syndic
+        .thread_attributes(&recovered, id(36), limit())
         .unwrap()
         .unwrap();
     assert_eq!(attributes.revision(), ThreadAttributesRevision::FIRST);
@@ -223,7 +235,7 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
         attributes.archive(),
         ThreadArchiveState::BranchDiscussionOpen
     );
-    store
+    recovered
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
 }

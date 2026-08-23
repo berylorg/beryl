@@ -1,13 +1,12 @@
 use beryl_home_store::CommandOutcome;
-use beryl_model::{BerylHomeId, SyndicThreadId};
+use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     BindingRecord, BindingState, CasTurnSource, CompactionConsumedWitness,
     CompactionContinuationReceipt, CompactionOperationId, CompactionOperationRecord,
     CompactionOperationState, CompactionOperationTarget, CompactionSettlement,
     CompactionSettlementReceiptRecord, CompactionTerminalObservation, SelectedPathProof,
     SettleCompactionOperation, SourceEventPayload, SourceEventRecord, SourceEventSequence,
-    TurnDepth, TurnEndStatus, TurnLifecycle, TurnRecord, TurnStateRecord, TurnTerminalOutcome,
-    root_turn_chain_digest,
+    TurnEndStatus, TurnLifecycle, TurnRecord, TurnStateRecord, TurnTerminalOutcome,
     test_faults::{
         FixtureBatch, FixtureDelete, FixtureRecord, compaction_settlement_receipt_commitment,
     },

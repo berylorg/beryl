@@ -1,3 +1,4 @@
+#[cfg(feature = "test-faults")]
 mod support;
 
 #[path = "phase65_stop_storage/support.rs"]
@@ -12,6 +13,7 @@ mod recovery;
 #[path = "phase65_stop_storage/abandonment.rs"]
 mod abandonment;
 
+#[cfg(feature = "test-faults")]
 #[path = "phase65_stop_storage/queued.rs"]
 mod queued;
 

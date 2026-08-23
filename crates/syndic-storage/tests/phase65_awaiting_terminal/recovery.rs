@@ -1,11 +1,18 @@
 use super::*;
 
-fn only_recovery_source(store: &HomeStore, storage: SyndicStorage) -> DeliveryRecoverySource {
+fn recovery_source(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread_id: SyndicThreadId,
+) -> DeliveryRecoverySource {
     let page = storage
         .delivery_recovery_startup_page(store, None, cursor_limits())
         .unwrap();
-    assert_eq!(page.records().len(), 1);
-    page.records()[0].clone()
+    page.records()
+        .iter()
+        .find(|source| source.thread_id() == thread_id)
+        .unwrap()
+        .clone()
 }
 
 #[test]
@@ -29,7 +36,7 @@ fn restart_classifies_awaiting_terminal_as_active_possible_dispatch_and_abandons
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    let source = only_recovery_source(&reopened, storage);
+    let source = recovery_source(&reopened, storage, thread);
     let DeliveryRecoveryCase::Active(active) = storage
         .classify_delivery_recovery(&reopened, &source, point_limit())
         .unwrap()
@@ -101,7 +108,7 @@ fn restart_classifies_awaiting_terminal_as_active_possible_dispatch_and_abandons
             .unwrap()
             .is_some()
     );
-    let recovered = only_recovery_source(&reopened, storage);
+    let recovered = recovery_source(&reopened, storage, thread);
     assert!(matches!(
         storage.classify_delivery_recovery(&reopened, &recovered, point_limit()),
         Ok(DeliveryRecoveryCase::PostAbandonment {
@@ -136,7 +143,7 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    let source = only_recovery_source(&reopened, storage);
+    let source = recovery_source(&reopened, storage, thread);
     let DeliveryRecoveryCase::Active(active) = storage
         .classify_delivery_recovery(&reopened, &source, point_limit())
         .unwrap()

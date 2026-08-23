@@ -1,23 +1,88 @@
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
-use beryl_model::{
-    CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasTurnId,
-    SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId,
-};
-use syndic_storage::{
-    AcceptedInputAdmission, BindingState, ClaimCompactionDispatch, CompactionAdmissionRead,
-    CompactionAttemptNonce, CompactionMarkerLifecycle, CompactionOperationId,
-    CompactionOperationNonce, CompactionOperationRecord, CompactionProviderEvent,
-    CompactionProviderSequence, CompactionRequestDisposition, CompactionThreadStatus, ComposerAtom,
-    ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision, InputGateRecord,
-    PreparedContent, PublishCompactionProviderEvent, PublishCompactionRequestDisposition,
-    SealLifecycleContinuationContent, SourceEventPayload, SyndicPointReadLimit, SyndicStorage,
-    TurnEndStatus, TurnTerminalOutcome, prepare_lifecycle_continuation_content,
+use std::{
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::support::{
-    TestHome, converge_and_release_terminal_history, exact_cas, open, stage_prepared_content,
-    timestamp,
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
+use beryl_model::{
+    CasConversationToolProfile, CasLoadedSessionGeneration, CasLoadedThreadGeneration,
+    CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding, PathFlavor,
+    RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicItemId, SyndicThreadId,
+};
+#[cfg(feature = "test-faults")]
+use beryl_model::{DraftRevision, SyndicAcceptedInputId};
+use syndic_storage::{
+    BindingState, CasLineageProof, CasRepresentedPrefixProof, ClaimCompactionDispatch,
+    CompactionAdmissionRead, CompactionAttemptNonce, CompactionMarkerLifecycle,
+    CompactionOperationId, CompactionOperationNonce, CompactionOperationRecord,
+    CompactionProviderEvent, CompactionProviderSequence, CompactionRequestDisposition,
+    CompactionThreadStatus, ContentAppend, ContentBuild, ContentManifestRecord, CreateThread,
+    DraftEditHistoryPolicyV1, InputGateRecord, NativeCasLineage, PreparedContent,
+    PublishCompactionProviderEvent, PublishCompactionRequestDisposition, PublishValidBinding,
+    SealLifecycleContinuationContent, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    TurnEndStatus, TurnTerminalOutcome, empty_selected_path_digest,
+    prepare_lifecycle_continuation_content,
+};
+
+static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
+
+pub struct TestHome {
+    path: PathBuf,
+}
+
+impl TestHome {
+    fn new(name: &str) -> Self {
+        loop {
+            let sequence = NEXT_HOME.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "beryl-syndic-phase72-{name}-{}-{sequence}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Self { path },
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("failed to create isolated compaction test home: {error}"),
+            }
+        }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TestHome {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+fn open(path: &Path) -> HomeStore {
+    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+}
+
+pub fn timestamp(value: u64) -> SyndicTimestamp {
+    SyndicTimestamp::from_unix_millis(value)
+}
+
+fn execution_binding() -> ExecutionBinding {
+    ExecutionBinding::new(
+        RuntimeId::from_bytes([246; 16]),
+        RootId::from_bytes([247; 16]),
+        RuntimeNativePath::from_admitted(
+            RuntimeMode::host(),
+            PathFlavor::Windows,
+            "C:\\syndic-phase72-compaction",
+        )
+        .unwrap(),
+    )
+}
+
+fn tool_profile() -> CasConversationToolProfile {
+    CasConversationToolProfile::v1([248; 32])
+}
 
 pub fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
@@ -35,6 +100,32 @@ pub fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContri
     }
 }
 
+fn stage_prepared_content(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    prepared: &PreparedContent,
+) -> ContentManifestRecord {
+    let mut manifest = prepared.building_manifest();
+    execute(
+        store,
+        storage.begin_content(
+            storage.revision(store).unwrap(),
+            ContentBuild::from_prepared(prepared),
+        ),
+    );
+    loop {
+        let Some(append) = ContentAppend::prepare(&manifest, prepared).unwrap() else {
+            break;
+        };
+        manifest = append.next_manifest().clone();
+        execute(
+            store,
+            storage.append_content(storage.revision(store).unwrap(), append),
+        );
+    }
+    manifest
+}
+
 pub fn loaded_generation() -> CasLoadedSessionGeneration {
     CasLoadedSessionGeneration::new(
         CasProcessGeneration::new(72).unwrap(),
@@ -47,8 +138,6 @@ pub struct CompactionFixture {
     pub store: HomeStore,
     pub storage: SyndicStorage,
     pub thread: SyndicThreadId,
-    pub base_turn: SyndicTurnId,
-    pub current_draft: SyndicDraftId,
 }
 
 impl CompactionFixture {
@@ -57,69 +146,52 @@ impl CompactionFixture {
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
         let thread = SyndicThreadId::from_bytes([id_byte; 16]);
-        let first_draft = SyndicDraftId::from_bytes([id_byte.wrapping_add(1); 16]);
         execute(
             &store,
             storage.create_thread(
                 storage.revision(&store).unwrap(),
                 CreateThread::ordinary(
                     thread,
-                    first_draft,
-                    crate::support::exact_cas::execution_binding(),
+                    beryl_model::SyndicDraftId::from_bytes([id_byte.wrapping_add(1); 16]),
+                    execution_binding(),
                     timestamp(1),
+                    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
                 ),
             ),
         );
-
-        let current_draft = SyndicDraftId::from_bytes([id_byte.wrapping_add(2); 16]);
-        let submitted_item = SyndicItemId::from_bytes([id_byte.wrapping_add(3); 16]);
-        let base_turn = exact_cas::submit_current_draft(
-            &store,
-            storage,
-            thread,
-            current_draft,
-            submitted_item,
-            "compaction fixture base turn",
-            timestamp(2),
+        let current = storage
+            .current_binding(&store, thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let selected_path = current.binding().selected_path();
+        let represented_prefix = CasRepresentedPrefixProof::new(
+            None,
+            selected_path.thread_revision(),
+            empty_selected_path_digest(),
         );
-        let source = exact_cas::establish_turn(&store, storage, thread, base_turn, timestamp(3));
-        exact_cas::admit_event(
+        let lineage = CasLineageProof::native(NativeCasLineage::Fresh, represented_prefix).unwrap();
+        execute(
             &store,
-            storage,
-            thread,
-            base_turn,
-            &source,
-            SourceEventPayload::TurnActivated,
-            timestamp(4),
-        );
-        exact_cas::correlate_user_item(
-            &store,
-            storage,
-            thread,
-            base_turn,
-            submitted_item,
-            &source,
-            timestamp(5),
-        );
-        exact_cas::admit_event(
-            &store,
-            storage,
-            thread,
-            base_turn,
-            &source,
-            SourceEventPayload::TurnEnded(
-                TurnEndStatus::new(TurnTerminalOutcome::Complete, None).unwrap(),
+            storage.publish_valid_binding(
+                storage.revision(&store).unwrap(),
+                PublishValidBinding::new(
+                    thread,
+                    current.binding().revision(),
+                    selected_path,
+                    execution_binding(),
+                    CasThreadId::new(format!("phase72-compaction-{id_byte}")).unwrap(),
+                    represented_prefix,
+                    CasNativeTurnCount::ZERO,
+                    tool_profile(),
+                    lineage,
+                ),
             ),
-            timestamp(6),
         );
-        converge_and_release_terminal_history(&store, storage, thread, base_turn);
         let fixture = Self {
             home,
             store,
             storage,
             thread,
-            base_turn,
-            current_draft,
         };
         assert_eq!(
             fixture.gate().state(),
@@ -263,8 +335,6 @@ impl CompactionFixture {
             store,
             storage: _,
             thread,
-            base_turn,
-            current_draft,
         } = self;
         drop(store);
         let mut store = open(home.path());
@@ -274,8 +344,6 @@ impl CompactionFixture {
             store,
             storage,
             thread,
-            base_turn,
-            current_draft,
         }
     }
 
@@ -325,12 +393,7 @@ impl CompactionFixture {
 
     pub fn prepare_lifecycle_content(&self) -> syndic_storage::ContentReference {
         let prepared = prepare_lifecycle_continuation_content().unwrap();
-        stage_prepared_content(&self.store, self.storage, &prepared);
-        let manifest = self
-            .storage
-            .content_manifest(&self.store, prepared.id(), point_limit())
-            .unwrap()
-            .unwrap();
+        let manifest = stage_prepared_content(&self.store, self.storage, &prepared);
         match self
             .store
             .execute_current(self.storage.current_seal_lifecycle_continuation_content(
@@ -350,54 +413,177 @@ impl CompactionFixture {
             .unwrap()
     }
 
-    pub fn admit_current_draft_as_accepted(
+    #[cfg(feature = "test-faults")]
+    pub fn inject_deferred_accepted_next(
         &self,
-        text: &str,
         next_draft_byte: u8,
         at: u64,
-    ) -> AcceptedInputAdmission {
-        let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
-        let prepared = PreparedContent::composer(&payload).unwrap();
-        stage_prepared_content(&self.store, self.storage, &prepared);
-        let current = self
-            .storage
-            .current_draft(&self.store, self.thread, point_limit())
-            .unwrap()
-            .unwrap();
-        let DraftPayloadUpdateDecision::Update(update) =
-            DraftPayloadUpdate::prepare(&current, &prepared, timestamp(at)).unwrap()
-        else {
-            panic!("test draft must become nonempty");
+    ) -> SyndicAcceptedInputId {
+        use syndic_storage::{
+            AcceptedInputAdmissionProof, AcceptedInputLifecycle, AcceptedInputOrdinal,
+            AcceptedInputRecord, AcceptedNextSourceRecord, AcceptedOrderIndexRecord,
+            AcceptedRouteGeneration, AcceptedRouteGenerationHeadRecord,
+            AcceptedRouteGenerationRecord, AcceptedRouteHeadProof, AcceptedRouteLeafRecord,
+            AcceptedRouteLeafState, AcceptedRouteRevision, AcceptedRouteTarget, ComposerPayload,
+            DraftByThreadRecord, DraftRecord, HistorySummaryRecord, NextTurnReason, ThreadRecord,
+            test_faults::{FixtureBatch, FixtureDelete, FixtureRecord},
         };
-        execute(
-            &self.store,
-            self.storage
-                .update_draft_payload(self.storage.revision(&self.store).unwrap(), update),
-        );
+
         let current = self
             .storage
             .current_draft(&self.store, self.thread, point_limit())
             .unwrap()
             .unwrap();
-        let gate = self.gate();
-        let admission = AcceptedInputAdmission::new(
-            self.thread,
-            current.thread().revision(),
-            current.draft().id(),
-            current.draft().revision(),
-            current.draft().content(),
-            gate.revision(),
-            SyndicDraftId::from_bytes([next_draft_byte; 16]),
-            None,
-            timestamp(at),
-        );
-        execute(
+        let source_draft = current.draft().clone();
+        let source_thread = current.thread().clone();
+        let source_gate = self.gate();
+        let summary = self
+            .storage
+            .history_summary(&self.store, self.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let replacement = beryl_model::SyndicDraftId::from_bytes([next_draft_byte; 16]);
+        let replacement_roots = crate::support::seed_detached_canonical_draft_backing(
             &self.store,
-            self.storage.admit_accepted_input(
-                self.storage.revision(&self.store).unwrap(),
-                admission.clone(),
-            ),
+            self.storage,
+            SyndicThreadId::from_bytes([next_draft_byte.wrapping_add(1); 16]),
+            replacement,
         );
-        admission
+        let (content, content_records) =
+            crate::support::composer_content_records(&ComposerPayload::default());
+        let next_thread_revision = source_thread.revision().checked_next().unwrap();
+        let next_gate_revision = source_gate.revision().checked_next().unwrap();
+        let generation = AcceptedRouteGeneration::FIRST;
+        let route_revision = AcceptedRouteRevision::FIRST;
+        let ordinal = AcceptedInputOrdinal::FIRST;
+        let input_id = source_draft.id().accepted_input_id();
+        let admitted_at = timestamp(at);
+        let admission = AcceptedInputAdmissionProof::new(
+            source_thread.revision(),
+            source_draft.id(),
+            source_draft.revision(),
+            source_gate.revision(),
+            replacement,
+        )
+        .unwrap();
+        let input = AcceptedInputRecord::new(
+            input_id,
+            self.thread,
+            ordinal,
+            admission,
+            generation,
+            content,
+            None,
+            admitted_at,
+        )
+        .unwrap();
+        let mut batch = FixtureBatch::new();
+        for record in content_records {
+            batch.put(record).unwrap();
+        }
+        for record in [
+            FixtureRecord::Thread(ThreadRecord::new(
+                self.thread,
+                syndic_storage::SelectedPathProof::new(
+                    source_thread.committed_tail(),
+                    next_thread_revision,
+                    source_thread.selected_path_digest(),
+                ),
+                replacement,
+                source_thread.lineage(),
+                source_thread.image_label_frontiers(),
+                source_thread.context_owner_id(),
+            )),
+            FixtureRecord::Draft(DraftRecord::new(
+                replacement,
+                self.thread,
+                DraftRevision::new(1).unwrap(),
+                source_draft.submission_intent(),
+                replacement_roots,
+                admitted_at,
+                admitted_at,
+            )),
+            FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+                self.thread,
+                replacement,
+                DraftRevision::new(1).unwrap(),
+                next_thread_revision,
+            )),
+            FixtureRecord::HistorySummary(HistorySummaryRecord::new(
+                self.thread,
+                summary.revision().checked_next().unwrap(),
+                next_thread_revision,
+                summary.committed_tail(),
+                summary.selected_path_digest(),
+                summary.complete(),
+                admitted_at,
+            )),
+            FixtureRecord::InputGate(
+                InputGateRecord::new(
+                    self.thread,
+                    next_gate_revision,
+                    source_gate.state().clone(),
+                    ordinal.get(),
+                    Some(generation),
+                    source_gate.selected_route(),
+                    source_gate.live_steering_count(),
+                    1,
+                    content.summary().logical_utf8_bytes(),
+                )
+                .unwrap(),
+            ),
+            FixtureRecord::AcceptedInput(input),
+            FixtureRecord::AcceptedOrder(AcceptedOrderIndexRecord::new(
+                self.thread,
+                ordinal,
+                input_id,
+                generation,
+            )),
+            FixtureRecord::AcceptedRouteGenerationHead(AcceptedRouteGenerationHeadRecord::new(
+                self.thread,
+                AcceptedRouteHeadProof::new(generation, route_revision),
+            )),
+            FixtureRecord::AcceptedRouteGeneration(
+                AcceptedRouteGenerationRecord::new(
+                    self.thread,
+                    generation,
+                    route_revision,
+                    AcceptedRouteTarget::NextTurn(NextTurnReason::Compaction),
+                    Some(ordinal),
+                    Some(ordinal),
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    content.summary().logical_utf8_bytes(),
+                    0,
+                )
+                .unwrap(),
+            ),
+            FixtureRecord::AcceptedRouteLeaf(AcceptedRouteLeafRecord::new(
+                input_id,
+                self.thread,
+                generation,
+                ordinal,
+                beryl_model::AcceptedInputRevision::new(1).unwrap(),
+                AcceptedRouteLeafState::NextTurn(NextTurnReason::Compaction),
+                AcceptedInputLifecycle::Admitted,
+            )),
+            FixtureRecord::AcceptedNextSource(AcceptedNextSourceRecord::new(
+                self.thread,
+                generation,
+                route_revision,
+                ordinal,
+                ordinal,
+            )),
+        ] {
+            batch.put(record).unwrap();
+        }
+        batch
+            .delete(FixtureDelete::Draft(source_draft.id()))
+            .unwrap();
+        crate::support::commit(&self.store, self.storage, batch);
+        input_id
     }
 }

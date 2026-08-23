@@ -1,412 +1,673 @@
-#![cfg(feature = "test-faults")]
+use std::{
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+};
 
-mod support;
-
-use beryl_home_store::{CommandOutcome, HomeCommand};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
-    AssetReferenceSetDigest, AssetReferenceSetId, ProjectionRevision, SealedAssetReferenceSetProof,
-    SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicThreadId,
+    AdmittedHostPath, Availability, CasConversationToolProfile, CasLoadedSessionGeneration,
+    CasLoadedThreadGeneration, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId,
+    ExecutionBinding, PathFlavor, ProjectionRevision, RootId, RuntimeId, RuntimeMode,
+    RuntimeNativePath, SyndicDraftId, SyndicItemId, SyndicThreadId,
 };
-use syndic_storage::test_faults::FixtureRecord;
+use beryl_state::{
+    AvailabilitySnapshot, BerylState, CatalogArchiveSummary, CatalogAvailabilitySummary,
+    CatalogClaimSummary, CatalogExecutionSummary, CatalogFacts, CatalogLineageSummary,
+    CatalogPointReadLimit, CatalogResolvedTitle, CatalogRow, CatalogRowExpectation,
+    CatalogSourceRevisions, CreateRuntimeWithHomeRoot, MarkCatalogRowStale, RootRegistration,
+    RuntimeRegistration, UnixMillis,
+};
 use syndic_storage::{
-    AcceptGeneratedThreadTitle, CanonicalItemRecord, ComposerAtom, ComposerPayload, ContentAppend,
-    ContentBuild, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision,
-    GeneratedThreadTitle, IdleSubmission, ImageLabelOrdinal, PreparedContent, SourceEventPayload,
-    SyndicPointReadLimit, SyndicStorage, ThreadAttributesRevision, ThreadCatalogSummaryPreparation,
-    TurnEndStatus, TurnItemIndexRecord, TurnItemOrdinal, TurnTerminalOutcome,
+    CasLineageProof, CasRepresentedPrefixProof, ClaimCompactionDispatch, CompactionAdmissionRead,
+    CompactionAttemptNonce, CompactionMarkerLifecycle, CompactionOperationId,
+    CompactionOperationNonce, CompactionOperationRecord, CompactionProviderEvent,
+    CompactionProviderSequence, CompactionRequestDisposition, CompactionThreadStatus,
+    ContentAppend, ContentBuild, ContentManifestRecord, CreateThread, DraftEditHistoryPolicyV1,
+    ExactThreadCatalogSummary, NativeCasLineage, PreparedContent,
+    PreparedThreadCatalogSummaryReplacement, PublishCompactionProviderEvent,
+    PublishCompactionRequestDisposition, PublishValidBinding, SealLifecycleContinuationContent,
+    SettleLifecycleCompaction, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    ThreadArchiveState, ThreadCatalogSummaryPreparation, ThreadCatalogTitleSource,
+    ThreadLineageDepth, TurnEndStatus, TurnTerminalOutcome, empty_selected_path_digest,
+    prepare_lifecycle_continuation_content,
 };
 
-use support::{TestHome, batch, commit, draft_id, id, open, timestamp};
+static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
 
-fn limit() -> SyndicPointReadLimit {
+struct TestHome {
+    path: PathBuf,
+}
+
+impl TestHome {
+    fn new(name: &str) -> Self {
+        loop {
+            let sequence = NEXT_HOME.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "beryl-phase75-{name}-{}-{sequence}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Self { path },
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("create test home {path:?}: {error}"),
+            }
+        }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TestHome {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+struct Fixture {
+    home: TestHome,
+    store: HomeStore,
+    state: BerylState,
+    syndic: SyndicStorage,
+    thread: SyndicThreadId,
+    runtime: RuntimeId,
+    root: RootId,
+}
+
+impl Fixture {
+    fn new(name: &str) -> Self {
+        let home = TestHome::new(name);
+        let mut store = HomeStore::open(HomeOpenOptions::new(
+            home.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        let state = BerylState::register(&mut store).unwrap();
+        let syndic = SyndicStorage::register(&mut store).unwrap();
+        let runtime = RuntimeId::from_bytes([75; 16]);
+        let root = RootId::from_bytes([76; 16]);
+        let thread = SyndicThreadId::from_bytes([77; 16]);
+        let mode = RuntimeMode::host();
+        let root_path = runtime_path(mode.clone(), r"C:\\Work\\Beryl");
+        let runtime_registration = RuntimeRegistration::new(
+            runtime,
+            admitted_host_path(r"C:\\Codex\\codex.exe"),
+            mode.clone(),
+            runtime_path(mode.clone(), r"C:\\Codex\\codex.exe"),
+            UnixMillis::new(1),
+            AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(2)).unwrap(),
+        )
+        .unwrap();
+        let root_registration = RootRegistration::new(
+            root,
+            root_path.clone(),
+            admitted_host_path(r"C:\\Work\\Beryl"),
+            UnixMillis::new(1),
+            AvailabilitySnapshot::unknown(),
+        );
+        let mut command = HomeCommand::new(store.home_revision().unwrap());
+        command
+            .add(state.runtime_roots().create_runtime_with_home_root(
+                state.runtime_roots().revision(&store).unwrap(),
+                CreateRuntimeWithHomeRoot::new(runtime_registration, root_registration).unwrap(),
+            ))
+            .unwrap();
+        command
+            .add(syndic.create_thread(
+                syndic.revision(&store).unwrap(),
+                CreateThread::ordinary(
+                    thread,
+                    SyndicDraftId::from_bytes([78; 16]),
+                    ExecutionBinding::new(runtime, root, root_path),
+                    syndic_storage::SyndicTimestamp::from_unix_millis(3),
+                    history_policy(),
+                ),
+            ))
+            .unwrap();
+        execute(&store, command);
+        let fixture = Self {
+            home,
+            store,
+            state,
+            syndic,
+            thread,
+            runtime,
+            root,
+        };
+        fixture.publish_valid_binding();
+        fixture
+    }
+
+    fn execution_binding(&self) -> ExecutionBinding {
+        ExecutionBinding::new(
+            self.runtime,
+            self.root,
+            runtime_path(RuntimeMode::host(), r"C:\\Work\\Beryl"),
+        )
+    }
+
+    fn publish_valid_binding(&self) {
+        let current = self
+            .syndic
+            .current_binding(&self.store, self.thread, syndic_limit())
+            .unwrap()
+            .unwrap();
+        let selected_path = current.binding().selected_path();
+        let represented_prefix = CasRepresentedPrefixProof::new(
+            None,
+            selected_path.thread_revision(),
+            empty_selected_path_digest(),
+        );
+        execute_contribution(
+            &self.store,
+            self.syndic.publish_valid_binding(
+                self.syndic.revision(&self.store).unwrap(),
+                PublishValidBinding::new(
+                    self.thread,
+                    current.binding().revision(),
+                    selected_path,
+                    self.execution_binding(),
+                    CasThreadId::new("phase75-catalog-history").unwrap(),
+                    represented_prefix,
+                    CasNativeTurnCount::ZERO,
+                    CasConversationToolProfile::v1([75; 32]),
+                    CasLineageProof::native(NativeCasLineage::Fresh, represented_prefix).unwrap(),
+                ),
+            ),
+        );
+    }
+
+    fn operation(&self, id: CompactionOperationId) -> CompactionOperationRecord {
+        self.syndic
+            .compaction_operation(&self.store, id, syndic_limit())
+            .unwrap()
+            .unwrap()
+    }
+
+    fn publish_provider(&self, id: CompactionOperationId, event: CompactionProviderEvent, at: u64) {
+        let operation = self.operation(id);
+        let sequence = operation
+            .provider_frontier()
+            .map_or(CompactionProviderSequence::FIRST, |frontier| {
+                frontier.checked_next().unwrap()
+            });
+        execute_current(
+            &self.store,
+            self.syndic.current_publish_compaction_provider_event(
+                PublishCompactionProviderEvent::new(
+                    id,
+                    operation.revision(),
+                    sequence,
+                    event,
+                    timestamp(at),
+                ),
+            ),
+        );
+    }
+
+    fn advance_history_summary_with_lifecycle_continuation(&self) {
+        let CompactionAdmissionRead::Admissible(candidate) = self
+            .syndic
+            .compaction_admission_read(&self.store, self.thread, syndic_limit())
+            .unwrap()
+        else {
+            panic!("current idle thread must admit lifecycle compaction");
+        };
+        let admission = candidate.admission(
+            CompactionOperationNonce::from_bytes([79; 16]),
+            CompactionAttemptNonce::from_bytes([80; 16]),
+            CasLoadedSessionGeneration::new(
+                CasProcessGeneration::new(75).unwrap(),
+                CasLoadedThreadGeneration::new(1).unwrap(),
+            ),
+            timestamp(10),
+        );
+        let id = admission.operation_id();
+        execute_current(
+            &self.store,
+            self.syndic.current_admit_compaction_operation(admission),
+        );
+        let operation = self.operation(id);
+        execute_current(
+            &self.store,
+            self.syndic
+                .current_claim_compaction_dispatch(ClaimCompactionDispatch::new(
+                    id,
+                    operation.revision(),
+                    operation.attempt(),
+                )),
+        );
+        let operation = self.operation(id);
+        execute_current(
+            &self.store,
+            self.syndic.current_publish_compaction_request_disposition(
+                PublishCompactionRequestDisposition::new(
+                    id,
+                    operation.revision(),
+                    operation.attempt(),
+                    CompactionRequestDisposition::Accepted,
+                ),
+            ),
+        );
+        self.publish_provider(
+            id,
+            CompactionProviderEvent::ThreadStatus(CompactionThreadStatus::Active),
+            20,
+        );
+        self.publish_provider(
+            id,
+            CompactionProviderEvent::TurnStarted(CasTurnId::new("phase75-compaction").unwrap()),
+            21,
+        );
+        let marker = SyndicItemId::from_bytes([81; 16]);
+        self.publish_provider(
+            id,
+            CompactionProviderEvent::Marker {
+                item_id: marker,
+                lifecycle: CompactionMarkerLifecycle::Started,
+            },
+            22,
+        );
+        self.publish_provider(
+            id,
+            CompactionProviderEvent::Marker {
+                item_id: marker,
+                lifecycle: CompactionMarkerLifecycle::Completed,
+            },
+            23,
+        );
+        self.publish_provider(
+            id,
+            CompactionProviderEvent::ThreadStatus(CompactionThreadStatus::Idle),
+            24,
+        );
+        self.publish_provider(
+            id,
+            CompactionProviderEvent::Terminal(
+                TurnEndStatus::new(TurnTerminalOutcome::Complete, None).unwrap(),
+            ),
+            25,
+        );
+        let prepared = prepare_lifecycle_continuation_content().unwrap();
+        let manifest = stage_prepared_content(&self.store, self.syndic, &prepared);
+        execute_current(
+            &self.store,
+            self.syndic.current_seal_lifecycle_continuation_content(
+                SealLifecycleContinuationContent::new(manifest),
+            ),
+        );
+        let content = self
+            .syndic
+            .content_manifest(&self.store, prepared.id(), syndic_limit())
+            .unwrap()
+            .unwrap()
+            .sealed_reference()
+            .unwrap();
+        let operation = self.operation(id);
+        execute_current(
+            &self.store,
+            self.syndic
+                .current_settle_lifecycle_compaction(SettleLifecycleCompaction::new(
+                    &operation,
+                    content,
+                    timestamp(30),
+                )),
+        );
+    }
+}
+
+fn admitted_host_path(value: &str) -> AdmittedHostPath {
+    AdmittedHostPath::from_admitted(PathFlavor::Windows, value).unwrap()
+}
+
+fn runtime_path(mode: RuntimeMode, value: &str) -> RuntimeNativePath {
+    RuntimeNativePath::from_admitted(mode, PathFlavor::Windows, value).unwrap()
+}
+
+fn history_policy() -> DraftEditHistoryPolicyV1 {
+    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap()
+}
+
+fn timestamp(value: u64) -> SyndicTimestamp {
+    SyndicTimestamp::from_unix_millis(value)
+}
+
+fn syndic_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
-fn execute(
-    store: &beryl_home_store::HomeStore,
-    contribution: beryl_home_store::MutationContribution,
-) {
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
+fn execute(store: &HomeStore, command: HomeCommand) {
     match store.execute(command) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
         } => {}
-        CommandOutcome::Committed {
-            receipt,
-            later_failure: Some(failure),
-        } => panic!(
-            "expected clean catalog-summary command, got committed receipt {receipt:?} with later failure {failure:?}"
-        ),
-        CommandOutcome::NotCommitted { evidence } => {
-            panic!("expected clean catalog-summary command, got definitive non-commit {evidence:?}")
-        }
-        CommandOutcome::Indeterminate {
-            failure,
-            reconciliation,
-        } => {
-            reconciliation.install();
-            panic!("expected clean catalog-summary command, got indeterminate outcome {failure:?}")
-        }
+        outcome => panic!("expected a clean catalog command, got {outcome:?}"),
     }
 }
 
-fn stage_content(
-    store: &beryl_home_store::HomeStore,
+fn execute_rejected(store: &HomeStore, command: HomeCommand) {
+    match store.execute(command) {
+        CommandOutcome::NotCommitted { .. } => {}
+        CommandOutcome::Indeterminate { reconciliation, .. } => {
+            reconciliation.install();
+            panic!("expected rejected catalog command, got Indeterminate");
+        }
+        outcome => panic!("expected rejected catalog command, got {outcome:?}"),
+    }
+}
+
+fn execute_contribution(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    execute(store, command);
+}
+
+fn execute_current(store: &HomeStore, command: beryl_home_store::CurrentDomainCommand) {
+    match store.execute_current(command) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected a clean current-domain command, got {outcome:?}"),
+    }
+}
+
+fn stage_prepared_content(
+    store: &HomeStore,
     storage: SyndicStorage,
-    content: &PreparedContent,
-) {
-    execute(
+    prepared: &PreparedContent,
+) -> ContentManifestRecord {
+    let mut manifest = prepared.building_manifest();
+    execute_contribution(
         store,
         storage.begin_content(
             storage.revision(store).unwrap(),
-            ContentBuild::from_prepared(content),
+            ContentBuild::from_prepared(prepared),
         ),
     );
-    let mut manifest = content.building_manifest();
-    while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
-        let next = append.next_manifest().clone();
-        execute(
+    loop {
+        let Some(append) = ContentAppend::prepare(&manifest, prepared).unwrap() else {
+            break;
+        };
+        manifest = append.next_manifest().clone();
+        execute_contribution(
             store,
             storage.append_content(storage.revision(store).unwrap(), append),
         );
-        manifest = next;
     }
+    manifest
 }
 
-fn asset_proof(content: &PreparedContent, seed: u8) -> Option<SealedAssetReferenceSetProof> {
-    (content.summary().image_marker_count() != 0).then(|| {
-        let source = content
-            .reference(beryl_model::ContentRevision::new(1).unwrap())
-            .sealed_marker_summary()
-            .unwrap();
-        SealedAssetReferenceSetProof::new(
-            AssetReferenceSetId::from_bytes([seed; 16]),
-            source,
-            source.marker_count(),
-            AssetReferenceSetDigest::from_bytes([seed.wrapping_add(1); 32]),
-        )
-        .unwrap()
-    })
-}
-
-fn submit_payload(
-    store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
-    thread: SyndicThreadId,
-    next_draft: SyndicDraftId,
-    item: SyndicItemId,
-    payload: ComposerPayload,
-    seed: u8,
-    at: u64,
-) {
-    let prepared = PreparedContent::composer(&payload).unwrap();
-    let proof = asset_proof(&prepared, seed);
-    stage_content(store, storage, &prepared);
-    let current = storage
-        .current_draft(store, thread, limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) =
-        DraftPayloadUpdate::prepare(&current, &prepared, timestamp(at)).unwrap()
-    else {
-        panic!("test payload must change the draft")
+fn catalog_facts(
+    summary: &syndic_storage::ThreadCatalogSummaryRecord,
+    source: &beryl_state::RuntimeRootCatalogSource,
+) -> CatalogFacts {
+    let title = match summary.title() {
+        None => CatalogResolvedTitle::absent(),
+        Some(title) => match title.source() {
+            ThreadCatalogTitleSource::Generated => {
+                CatalogResolvedTitle::generated(title.text()).unwrap()
+            }
+            ThreadCatalogTitleSource::HistoryDerived => {
+                CatalogResolvedTitle::history_derived(title.text()).unwrap()
+            }
+        },
     };
-    execute(
-        store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
-    let current = storage
-        .current_draft(store, thread, limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage.input_gate(store, thread, limit()).unwrap().unwrap();
-    execute(
-        store,
-        storage.submit_idle_draft(
-            storage.revision(store).unwrap(),
-            IdleSubmission::new(
-                thread,
-                current.thread().revision(),
-                current.draft().id(),
-                current.draft().revision(),
-                current.draft().content(),
-                gate.revision(),
-                next_draft,
-                item,
-                proof,
-                timestamp(at + 1),
-            ),
-        ),
-    );
-}
-
-fn title_for_payload(name: &str, payload: ComposerPayload) -> Option<String> {
-    let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = id(10);
-    execute(
-        &store,
-        storage.create_thread(
-            storage.revision(&store).unwrap(),
-            CreateThread::ordinary(
-                thread,
-                draft_id(11),
-                support::exact_cas::execution_binding(),
-                timestamp(1),
-            ),
-        ),
-    );
-    submit_payload(
-        &store,
-        storage,
-        thread,
-        draft_id(12),
-        SyndicItemId::from_bytes([13; 16]),
-        payload,
-        14,
-        2,
-    );
-    let prepared = storage
-        .prepare_thread_catalog_summary(&store, thread)
-        .unwrap()
-        .unwrap();
-    let replacement = match prepared {
-        ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => prepared,
-        ThreadCatalogSummaryPreparation::ExactCurrent(_) => {
-            panic!("submitted history must stale the initial summary")
+    let archive = match summary.archive() {
+        ThreadArchiveState::Ordinary => CatalogArchiveSummary::Ordinary,
+        ThreadArchiveState::BranchDiscussionOpen => CatalogArchiveSummary::BranchDiscussionOpen,
+        ThreadArchiveState::BranchDiscussionArchived { .. } => {
+            CatalogArchiveSummary::BranchDiscussionArchived
         }
     };
-    let expected = replacement.replacement().title().map(|title| {
-        assert_eq!(
-            title.source(),
-            syndic_storage::ThreadCatalogTitleSource::HistoryDerived
-        );
-        title.text().to_owned()
-    });
-    execute(&store, storage.rebuild_thread_catalog_summary(replacement));
-    let revision = storage.revision(&store).unwrap();
-    let exact = storage
-        .prepare_thread_catalog_summary(&store, thread)
-        .unwrap()
-        .unwrap();
-    let ThreadCatalogSummaryPreparation::ExactCurrent(exact) = exact else {
-        panic!("rebuilt summary must prepare as an exact no-op")
+    let lineage = match (summary.parent_thread_id(), summary.lineage_depth()) {
+        (None, depth) if depth == ThreadLineageDepth::FIRST => CatalogLineageSummary::TopLevel,
+        (Some(parent), depth) => {
+            CatalogLineageSummary::descendant(parent, depth.get(), summary.lineage_digest())
+                .unwrap()
+        }
+        (None, _) => panic!("top-level summary has non-root lineage"),
     };
-    assert_eq!(storage.revision(&store).unwrap(), revision);
-    assert_eq!(
-        exact.summary().title().map(|title| title.text()),
-        expected.as_deref()
-    );
-    store
-        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
-        .unwrap();
-    expected
-}
-
-#[test]
-fn logical_lines_controls_and_unicode_whitespace_are_normalized_exactly() {
-    let title = title_for_payload(
-        "phase75-title-lines-controls",
-        ComposerPayload::new(vec![
-            ComposerAtom::text("---\r\n\tFirst\u{2003}\u{00a0}line\u{0007} \rbare").unwrap(),
-        ])
-        .unwrap(),
-    );
-    assert_eq!(title.as_deref(), Some(" First line bare"));
-}
-
-#[test]
-fn image_markers_are_zero_width_even_across_text_piece_boundaries() {
-    let title = title_for_payload(
-        "phase75-title-markers",
-        ComposerPayload::new(vec![
-            ComposerAtom::text("Mark").unwrap(),
-            ComposerAtom::image_marker(
-                SyndicDraftMarkerId::from_bytes([21; 16]),
-                ImageLabelOrdinal::FIRST,
+    let runtime = source.runtime();
+    let root = source.root();
+    CatalogFacts::new(
+        title,
+        CatalogExecutionSummary::new(
+            runtime.runtime_id(),
+            root.root_id(),
+            runtime.environment_label(),
+            runtime.canonical_executable().clone(),
+            root.display_path().clone(),
+            CatalogAvailabilitySummary::new(
+                runtime.availability().availability(),
+                root.availability().availability(),
             ),
-            ComposerAtom::text("er title").unwrap(),
-        ])
+        )
         .unwrap(),
-    );
-    assert_eq!(title.as_deref(), Some("Marker title"));
-}
-
-#[test]
-fn scalar_utf8_and_scan_limits_stop_without_an_ellipsis() {
-    let source = format!("{}界tail", "a".repeat(79));
-    let title = title_for_payload(
-        "phase75-title-scalar-limit",
-        ComposerPayload::new(vec![ComposerAtom::text(source).unwrap()]).unwrap(),
-    );
-    let title = title.expect("scalar-limited title must be present");
-    assert_eq!(title.chars().count(), 80);
-    assert_eq!(title, format!("{}界", "a".repeat(79)));
-
-    let outside = format!("{}\nOutside", ".".repeat(4_096));
-    assert_eq!(
-        title_for_payload(
-            "phase75-title-scan-limit",
-            ComposerPayload::new(vec![ComposerAtom::text(outside).unwrap()]).unwrap(),
-        ),
-        None
-    );
-}
-
-#[test]
-fn truncated_history_title_may_lack_an_alphanumeric_character() {
-    let source = format!("{}A", ".".repeat(80));
-    let title = title_for_payload(
-        "phase75-title-truncated-prefix",
-        ComposerPayload::new(vec![ComposerAtom::text(source).unwrap()]).unwrap(),
+        archive,
+        UnixMillis::new(summary.last_activity_at().unix_millis()),
+        summary.complete(),
+        CatalogClaimSummary::Unclaimed,
+        lineage,
     )
-    .expect("truncated-prefix title must be present");
-    assert_eq!(title, ".".repeat(80));
-    assert!(!title.chars().any(char::is_alphanumeric));
+    .unwrap()
 }
 
-#[test]
-fn generated_title_precedes_history_and_invalidates_an_older_preparation() {
-    let home = TestHome::new("phase75-generated-precedence");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = id(30);
-    execute(
-        &store,
-        storage.create_thread(
-            storage.revision(&store).unwrap(),
-            CreateThread::ordinary(
-                thread,
-                draft_id(31),
-                support::exact_cas::execution_binding(),
-                timestamp(1),
-            ),
-        ),
-    );
-    let item = SyndicItemId::from_bytes([32; 16]);
-    let turn = support::exact_cas::submit_current_draft(
-        &store,
-        storage,
-        thread,
-        draft_id(33),
-        item,
-        "history title",
-        timestamp(2),
-    );
-    let stale = match storage
-        .prepare_thread_catalog_summary(&store, thread)
-        .unwrap()
-        .unwrap()
-    {
-        ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => prepared,
-        ThreadCatalogSummaryPreparation::ExactCurrent(_) => panic!("history must stale catalog"),
-    };
-    let content = storage
-        .canonical_item(&store, item, limit())
-        .unwrap()
-        .unwrap()
-        .presentation_content()
+fn publish_exact_current(fixture: &Fixture, exact: ExactThreadCatalogSummary) {
+    let summary = exact.summary().clone();
+    let runtime_revision = fixture
+        .state
+        .runtime_roots()
+        .revision(&fixture.store)
         .unwrap();
-    let current_thread = storage.thread(&store, thread, limit()).unwrap().unwrap();
-    let generated = GeneratedThreadTitle::new(
-        "Generated winner",
-        turn,
-        content,
-        current_thread.selected_path_digest(),
-        current_thread.revision(),
-        timestamp(3),
+    let runtime_source = fixture
+        .state
+        .runtime_roots()
+        .catalog_source(&fixture.store, fixture.runtime, fixture.root)
+        .unwrap();
+    let session_revision = fixture.state.session().revision(&fixture.store).unwrap();
+    let claim_source = fixture
+        .state
+        .session()
+        .thread_claim_catalog_source(&fixture.store, fixture.thread)
+        .unwrap();
+    let publication = beryl_state::PublishCatalogRow::new(
+        fixture.thread,
+        CatalogRowExpectation::Missing,
+        CatalogSourceRevisions::new(
+            summary.revision(),
+            runtime_source.runtime().revision(),
+            runtime_source.root().revision(),
+            None,
+        ),
+        catalog_facts(&summary, &runtime_source),
     )
     .unwrap();
-    execute(
-        &store,
-        storage.accept_generated_thread_title(
-            storage.revision(&store).unwrap(),
-            AcceptGeneratedThreadTitle::new(thread, ThreadAttributesRevision::FIRST, generated),
-        ),
-    );
-    let mut stale_command = HomeCommand::new(store.home_revision().unwrap());
-    stale_command
-        .add(storage.rebuild_thread_catalog_summary(stale))
+    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
+    command
+        .add(fixture.state.catalog().publish(
+            fixture.state.catalog().revision(&fixture.store).unwrap(),
+            publication,
+        ))
         .unwrap();
-    match store.execute(stale_command) {
-        CommandOutcome::NotCommitted { .. } => {}
-        CommandOutcome::Committed {
-            receipt,
-            later_failure,
-        } => panic!(
-            "expected stale catalog-summary rebuild rejection, got committed receipt {receipt:?} with later failure {later_failure:?}"
+    command
+        .add_validation(
+            fixture
+                .syndic
+                .validate_current_thread_catalog_summary(exact),
+        )
+        .unwrap();
+    command
+        .add_validation(
+            fixture
+                .state
+                .runtime_roots()
+                .validate_catalog_source(runtime_revision, runtime_source),
+        )
+        .unwrap();
+    command
+        .add_validation(
+            fixture
+                .state
+                .session()
+                .validate_thread_claim_catalog_source(session_revision, claim_source),
+        )
+        .unwrap();
+    execute(&fixture.store, command);
+}
+
+fn current_catalog_row(fixture: &Fixture) -> CatalogRow {
+    fixture
+        .state
+        .catalog()
+        .row(
+            &fixture.store,
+            fixture.thread,
+            CatalogPointReadLimit::schema_maximum(),
+        )
+        .unwrap()
+        .unwrap()
+}
+
+fn publish_replacement(
+    fixture: &Fixture,
+    expected_row: &CatalogRow,
+    prepared: PreparedThreadCatalogSummaryReplacement,
+) {
+    let replacement = prepared.replacement().clone();
+    let runtime_revision = fixture
+        .state
+        .runtime_roots()
+        .revision(&fixture.store)
+        .unwrap();
+    let runtime_source = fixture
+        .state
+        .runtime_roots()
+        .catalog_source(&fixture.store, fixture.runtime, fixture.root)
+        .unwrap();
+    let session_revision = fixture.state.session().revision(&fixture.store).unwrap();
+    let claim_source = fixture
+        .state
+        .session()
+        .thread_claim_catalog_source(&fixture.store, fixture.thread)
+        .unwrap();
+    let publication = beryl_state::PublishCatalogRow::new(
+        fixture.thread,
+        CatalogRowExpectation::Revision(expected_row.revision()),
+        CatalogSourceRevisions::new(
+            replacement.revision(),
+            runtime_source.runtime().revision(),
+            runtime_source.root().revision(),
+            None,
         ),
-        CommandOutcome::Indeterminate {
-            failure,
-            reconciliation,
-        } => {
-            reconciliation.install();
-            panic!(
-                "expected stale catalog-summary rebuild rejection, got indeterminate outcome {failure:?}"
-            )
-        }
-    }
-    let prepared = match storage
-        .prepare_thread_catalog_summary(&store, thread)
+        catalog_facts(&replacement, &runtime_source),
+    )
+    .unwrap();
+    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
+    command
+        .add(fixture.state.catalog().publish(
+            fixture.state.catalog().revision(&fixture.store).unwrap(),
+            publication,
+        ))
+        .unwrap();
+    command
+        .add(fixture.syndic.rebuild_thread_catalog_summary(prepared))
+        .unwrap();
+    command
+        .add_validation(
+            fixture
+                .state
+                .runtime_roots()
+                .validate_catalog_source(runtime_revision, runtime_source),
+        )
+        .unwrap();
+    command
+        .add_validation(
+            fixture
+                .state
+                .session()
+                .validate_thread_claim_catalog_source(session_revision, claim_source),
+        )
+        .unwrap();
+    execute(&fixture.store, command);
+}
+
+#[test]
+fn ordinary_creation_has_an_exact_compact_summary_and_cross_domain_publication() {
+    let fixture = Fixture::new("creation-publication");
+    let exact = match fixture
+        .syndic
+        .prepare_thread_catalog_summary(&fixture.store, fixture.thread)
         .unwrap()
         .unwrap()
     {
-        ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => prepared,
-        ThreadCatalogSummaryPreparation::ExactCurrent(_) => panic!("attributes must stale catalog"),
+        ThreadCatalogSummaryPreparation::ExactCurrent(exact) => exact,
+        ThreadCatalogSummaryPreparation::PreparedReplacement(_) => {
+            panic!("ordinary creation must publish an exact compact summary")
+        }
     };
-    let title = prepared.replacement().title().unwrap();
-    assert_eq!(title.text(), "Generated winner");
+    assert!(exact.summary().title().is_none());
+    assert!(exact.summary().complete());
+    publish_exact_current(&fixture, exact);
+    let row = fixture
+        .state
+        .catalog()
+        .row(
+            &fixture.store,
+            fixture.thread,
+            CatalogPointReadLimit::schema_maximum(),
+        )
+        .unwrap()
+        .unwrap();
     assert_eq!(
-        title.source(),
-        syndic_storage::ThreadCatalogTitleSource::Generated
+        row.sources().syndic_summary(),
+        ProjectionRevision::new(1).unwrap()
     );
-    execute(&store, storage.rebuild_thread_catalog_summary(prepared));
-    store
+    assert_eq!(row.facts().execution().runtime_id(), fixture.runtime);
+    assert_eq!(row.facts().execution().root_id(), fixture.root);
+    assert!(matches!(
+        fixture
+            .syndic
+            .prepare_thread_catalog_summary(&fixture.store, fixture.thread)
+            .unwrap()
+            .unwrap(),
+        ThreadCatalogSummaryPreparation::ExactCurrent(_)
+    ));
+    fixture
+        .store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
 }
 
 #[test]
-fn reopen_accepts_a_valid_stale_summary_then_prepares_its_exact_rebuild() {
-    let home = TestHome::new("phase75-stale-reopen");
-    let thread = id(40);
+fn current_catalog_summary_and_cross_domain_row_survive_reopen() {
+    let fixture = Fixture::new("reopen");
+    let exact = match fixture
+        .syndic
+        .prepare_thread_catalog_summary(&fixture.store, fixture.thread)
+        .unwrap()
+        .unwrap()
     {
-        let mut store = open(home.path());
-        let storage = SyndicStorage::register(&mut store).unwrap();
-        execute(
-            &store,
-            storage.create_thread(
-                storage.revision(&store).unwrap(),
-                CreateThread::ordinary(
-                    thread,
-                    draft_id(41),
-                    support::exact_cas::execution_binding(),
-                    timestamp(1),
-                ),
-            ),
-        );
-        support::exact_cas::submit_current_draft(
-            &store,
-            storage,
-            thread,
-            draft_id(42),
-            SyndicItemId::from_bytes([43; 16]),
-            "stale but valid",
-            timestamp(2),
-        );
-        store.close().unwrap();
-    }
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+        ThreadCatalogSummaryPreparation::ExactCurrent(exact) => exact,
+        ThreadCatalogSummaryPreparation::PreparedReplacement(_) => unreachable!(),
+    };
+    publish_exact_current(&fixture, exact);
+    let path = fixture.home.path().to_owned();
+    let thread = fixture.thread;
+    fixture.store.close().unwrap();
+    let mut reopened =
+        HomeStore::open(HomeOpenOptions::new(&path, HomeSchemaVersion::CURRENT)).unwrap();
+    let syndic = SyndicStorage::register(&mut reopened).unwrap();
     assert!(matches!(
-        storage
+        syndic
             .prepare_thread_catalog_summary(&reopened, thread)
             .unwrap()
             .unwrap(),
-        ThreadCatalogSummaryPreparation::PreparedReplacement(_)
+        ThreadCatalogSummaryPreparation::ExactCurrent(_)
     ));
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -414,165 +675,129 @@ fn reopen_accepts_a_valid_stale_summary_then_prepares_its_exact_rebuild() {
 }
 
 #[test]
-fn from_tail_creation_publishes_the_entire_selected_path_fallback_immediately() {
-    let home = TestHome::new("phase75-from-tail-title");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let source_thread = id(50);
-    execute(
-        &store,
-        storage.create_thread(
-            storage.revision(&store).unwrap(),
-            CreateThread::ordinary(
-                source_thread,
-                draft_id(51),
-                support::exact_cas::execution_binding(),
-                timestamp(1),
-            ),
-        ),
-    );
-    let item = SyndicItemId::from_bytes([52; 16]);
-    let turn = support::exact_cas::submit_current_draft(
-        &store,
-        storage,
-        source_thread,
-        draft_id(53),
-        item,
-        "Inherited fallback",
-        timestamp(2),
-    );
-    let source =
-        support::exact_cas::establish_turn(&store, storage, source_thread, turn, timestamp(3));
-    support::exact_cas::admit_event(
-        &store,
-        storage,
-        source_thread,
-        turn,
-        &source,
-        SourceEventPayload::TurnActivated,
-        timestamp(3),
-    );
-    support::exact_cas::correlate_user_item(
-        &store,
-        storage,
-        source_thread,
-        turn,
-        item,
-        &source,
-        timestamp(4),
-    );
-    support::exact_cas::admit_event(
-        &store,
-        storage,
-        source_thread,
-        turn,
-        &source,
-        SourceEventPayload::TurnEnded(
-            TurnEndStatus::new(TurnTerminalOutcome::Complete, None).unwrap(),
-        ),
-        timestamp(5),
-    );
-    support::converge_and_release_terminal_history(&store, storage, source_thread, turn);
-    let tail = storage
-        .thread_tail(&store, source_thread, limit())
+fn history_change_rebuilds_catalog_and_stale_replacement_is_atomic() {
+    let fixture = Fixture::new("history-replacement");
+    let initial_exact = match fixture
+        .syndic
+        .prepare_thread_catalog_summary(&fixture.store, fixture.thread)
         .unwrap()
-        .unwrap();
-    assert_eq!(
-        tail.entire_selected_path_title().unwrap().text(),
-        "Inherited fallback"
-    );
-    let child = id(54);
-    execute(
-        &store,
-        storage.create_thread(
-            storage.revision(&store).unwrap(),
-            CreateThread::from_tail(child, draft_id(55), timestamp(10), tail).unwrap(),
-        ),
-    );
-    let prepared = storage
-        .prepare_thread_catalog_summary(&store, child)
         .unwrap()
-        .unwrap();
-    let ThreadCatalogSummaryPreparation::ExactCurrent(exact) = prepared else {
-        panic!("from-tail creation must publish its current fallback")
+    {
+        ThreadCatalogSummaryPreparation::ExactCurrent(exact) => exact,
+        ThreadCatalogSummaryPreparation::PreparedReplacement(_) => unreachable!(),
+    };
+    let initial_summary = initial_exact.summary().clone();
+    publish_exact_current(&fixture, initial_exact);
+    let initial_row = current_catalog_row(&fixture);
+
+    fixture.advance_history_summary_with_lifecycle_continuation();
+    let prepared = match fixture
+        .syndic
+        .prepare_thread_catalog_summary(&fixture.store, fixture.thread)
+        .unwrap()
+        .unwrap()
+    {
+        ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => prepared,
+        ThreadCatalogSummaryPreparation::ExactCurrent(_) => {
+            panic!("current history change must make the compact summary stale")
+        }
     };
     assert_eq!(
-        exact.summary().title().unwrap().text(),
-        "Inherited fallback"
+        prepared.replacement().revision(),
+        initial_summary.revision().checked_next().unwrap()
+    );
+    assert!(
+        prepared.replacement().sources().history_summary_revision()
+            > initial_summary.sources().history_summary_revision()
+    );
+    let expected_replacement = prepared.replacement().clone();
+    let stale_prepared = prepared.clone();
+    publish_replacement(&fixture, &initial_row, prepared);
+
+    let exact_after_rebuild = match fixture
+        .syndic
+        .prepare_thread_catalog_summary(&fixture.store, fixture.thread)
+        .unwrap()
+        .unwrap()
+    {
+        ThreadCatalogSummaryPreparation::ExactCurrent(exact) => exact,
+        ThreadCatalogSummaryPreparation::PreparedReplacement(_) => {
+            panic!("checked replacement must publish the exact current summary")
+        }
+    };
+    assert_eq!(exact_after_rebuild.summary(), &expected_replacement);
+    let valid_summary = exact_after_rebuild.summary().clone();
+    let valid_row = current_catalog_row(&fixture);
+    assert_eq!(
+        valid_row.sources().syndic_summary(),
+        valid_summary.revision()
     );
     assert_eq!(
-        exact.summary().sources().history_summary_revision(),
-        ProjectionRevision::new(1).unwrap()
+        valid_row.facts().last_activity_at(),
+        UnixMillis::new(valid_summary.last_activity_at().unix_millis())
     );
-    store
+
+    let mut failed_replacement = HomeCommand::new(fixture.store.home_revision().unwrap());
+    failed_replacement
+        .add(fixture.state.catalog().mark_stale(
+            fixture.state.catalog().revision(&fixture.store).unwrap(),
+            MarkCatalogRowStale::new(fixture.thread, valid_row.revision()),
+        ))
+        .unwrap();
+    failed_replacement
+        .add(
+            fixture
+                .syndic
+                .rebuild_thread_catalog_summary(stale_prepared),
+        )
+        .unwrap();
+    execute_rejected(&fixture.store, failed_replacement);
+    assert_eq!(
+        fixture
+            .syndic
+            .thread_catalog_summary(&fixture.store, fixture.thread, syndic_limit())
+            .unwrap()
+            .unwrap(),
+        valid_summary
+    );
+    assert_eq!(current_catalog_row(&fixture), valid_row);
+
+    let runtime_source = fixture
+        .state
+        .runtime_roots()
+        .catalog_source(&fixture.store, fixture.runtime, fixture.root)
+        .unwrap();
+    let stale_publication = beryl_state::PublishCatalogRow::new(
+        fixture.thread,
+        CatalogRowExpectation::Revision(initial_row.revision()),
+        CatalogSourceRevisions::new(
+            valid_summary.revision(),
+            runtime_source.runtime().revision(),
+            runtime_source.root().revision(),
+            None,
+        ),
+        catalog_facts(&valid_summary, &runtime_source),
+    )
+    .unwrap();
+    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
+    command
+        .add(fixture.state.catalog().publish(
+            fixture.state.catalog().revision(&fixture.store).unwrap(),
+            stale_publication,
+        ))
+        .unwrap();
+    execute_rejected(&fixture.store, command);
+    assert_eq!(
+        fixture
+            .syndic
+            .thread_catalog_summary(&fixture.store, fixture.thread, syndic_limit())
+            .unwrap()
+            .unwrap(),
+        valid_summary
+    );
+    assert_eq!(current_catalog_row(&fixture), valid_row);
+    fixture
+        .store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-}
-
-#[test]
-fn branch_discussion_uses_branch_local_input_instead_of_inherited_history() {
-    let home = TestHome::new("phase75-branch-local-title");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    support::populated::seed_populated(&store, storage);
-
-    // Extend the inherited fixture root with a real canonical user input. The source-tail read
-    // proves that the entire-path builder sees it, while the branch builder must exclude it by
-    // origin-thread ownership.
-    let inherited_turn = beryl_model::SyndicTurnId::from_bytes([29; 16]);
-    let inherited_item = SyndicItemId::from_bytes([60; 16]);
-    let inherited_payload =
-        ComposerPayload::new(vec![ComposerAtom::text("Inherited title").unwrap()]).unwrap();
-    let (inherited_content, mut inherited_records) =
-        support::composer_content_records(&inherited_payload);
-    inherited_records.extend([
-        FixtureRecord::CanonicalItem(CanonicalItemRecord::local_user_input(
-            inherited_item,
-            inherited_turn,
-            TurnItemOrdinal::FIRST,
-            ProjectionRevision::new(1).unwrap(),
-            inherited_content,
-            None,
-        )),
-        FixtureRecord::TurnItem(TurnItemIndexRecord::new(
-            inherited_turn,
-            TurnItemOrdinal::FIRST,
-            inherited_item,
-            ProjectionRevision::new(1).unwrap(),
-        )),
-    ]);
-    commit(&store, storage, batch(inherited_records));
-    assert_eq!(
-        storage
-            .thread_tail(&store, id(30), limit())
-            .unwrap()
-            .unwrap()
-            .entire_selected_path_title()
-            .unwrap()
-            .text(),
-        "Inherited title"
-    );
-
-    let branch = id(36);
-    submit_payload(
-        &store,
-        storage,
-        branch,
-        draft_id(241),
-        SyndicItemId::from_bytes([242; 16]),
-        ComposerPayload::new(vec![ComposerAtom::text("Branch local title").unwrap()]).unwrap(),
-        243,
-        6,
-    );
-    let prepared = storage
-        .prepare_thread_catalog_summary(&store, branch)
-        .unwrap()
-        .unwrap();
-    let ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) = prepared else {
-        panic!("first branch-local input must stale the branch summary")
-    };
-    assert_eq!(
-        prepared.replacement().title().unwrap().text(),
-        "Branch local title"
-    );
 }

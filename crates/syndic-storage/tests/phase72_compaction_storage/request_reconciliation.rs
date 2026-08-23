@@ -1,19 +1,24 @@
-use beryl_home_store::{CommandOutcome, CursorReadLimits};
-use beryl_model::{InputGateRevision, SyndicItemId, SyndicTurnId};
+use beryl_home_store::CommandOutcome;
+#[cfg(feature = "test-faults")]
+use beryl_model::InputGateRevision;
 use syndic_storage::{
-    ACCEPTED_NEXT_PAGE_MAX_BYTES, CompactionAttemptNonce, CompactionConsumedWitness,
-    CompactionOperationRecord, CompactionOperationState, CompactionRequestDisposition,
-    CompactionRequestTransitionStatus, CompactionSettlement, CompactionSettlementReceiptRecord,
-    ConversationParent, InputGateRecord, InputGateState, PromoteAcceptedInput,
-    PublishCompactionRequestDisposition, SettleCompactionOperation, SettleLifecycleCompaction,
-    TurnLifecycle, TurnStateRecord,
+    CompactionAttemptNonce, CompactionRequestDisposition, CompactionRequestTransitionStatus,
+    CompactionSettlement, PublishCompactionRequestDisposition, SettleCompactionOperation,
+};
+#[cfg(feature = "test-faults")]
+use syndic_storage::{
+    CompactionConsumedWitness, CompactionOperationRecord, CompactionOperationState,
+    CompactionSettlementReceiptRecord, ConversationParent, InputGateRecord, InputGateState,
+    SettleLifecycleCompaction, TurnLifecycle, TurnStateRecord,
     test_faults::{FixtureBatch, FixtureDelete, FixtureRecord},
 };
 
-use super::compaction_support::{CompactionFixture, execute, point_limit};
-use crate::support::timestamp;
+#[cfg(feature = "test-faults")]
+use super::compaction_support::timestamp;
+use super::compaction_support::{CompactionFixture, point_limit};
 
 #[path = "request_reconciliation/successor_corruption.rs"]
+#[cfg(feature = "test-faults")]
 mod successor_corruption;
 
 fn settled_fixture(
@@ -147,12 +152,13 @@ fn late_same_attempt_completion_unknown_preserves_terminal_successor() {
 }
 
 #[test]
-fn late_acknowledgement_survives_progress_beyond_user_work_settlement() {
+#[cfg(feature = "test-faults")]
+fn late_acknowledgement_survives_user_work_settlement() {
     let fixture = CompactionFixture::new("phase72-late-ack-progressed-gate", 145);
     let id = fixture.admit(165, 10);
     fixture.claim(id);
     fixture.publish_success(id, 20);
-    let accepted = fixture.admit_current_draft_as_accepted("accepted work wins", 195, 35);
+    let accepted = fixture.inject_deferred_accepted_next(195, 35);
     let operation = fixture.operation(id);
     match fixture
         .store
@@ -177,32 +183,8 @@ fn late_acknowledgement_survives_progress_beyond_user_work_settlement() {
         CompactionRequestDisposition::Accepted,
     );
 
-    let revision = fixture.storage.revision(&fixture.store).unwrap();
-    let limits = CursorReadLimits::new(256, ACCEPTED_NEXT_PAGE_MAX_BYTES).unwrap();
-    let sources = fixture
-        .storage
-        .accepted_next_source_page(&fixture.store, revision, None, limits)
-        .unwrap();
-    let candidate = fixture
-        .storage
-        .accepted_next_candidate_page(&fixture.store, sources.records()[0], None, limits)
-        .unwrap()
-        .into_candidate()
-        .expect("user-work settlement retains one promotable accepted input");
-    let promotion = PromoteAcceptedInput::new(
-        candidate,
-        SyndicTurnId::from_bytes([196; 16]),
-        SyndicItemId::from_bytes([197; 16]),
-        timestamp(41),
-    );
-    execute(
-        &fixture.store,
-        fixture.storage.promote_accepted_input(promotion),
-    );
-    assert!(matches!(
-        fixture.gate().state(),
-        InputGateState::PendingTurn(_)
-    ));
+    assert_eq!(fixture.gate().state(), &InputGateState::Idle);
+    assert_eq!(fixture.gate().live_next_turn_count(), 1);
 
     assert_eq!(
         fixture
@@ -320,7 +302,7 @@ fn late_acknowledgement_survives_progress_beyond_user_work_settlement() {
     crate::support::commit(&fixture.store, fixture.storage, restore_operation);
     let mut delete_accepted = FixtureBatch::new();
     delete_accepted
-        .delete(FixtureDelete::AcceptedInput(accepted.accepted_input_id()))
+        .delete(FixtureDelete::AcceptedInput(accepted))
         .unwrap();
     crate::support::commit(&fixture.store, fixture.storage, delete_accepted);
     assert!(matches!(

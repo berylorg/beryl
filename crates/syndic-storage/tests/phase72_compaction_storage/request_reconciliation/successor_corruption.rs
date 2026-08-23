@@ -135,7 +135,7 @@ fn late_terminal_reconciliation_rejects_continuation_outside_admission_path() {
         turn.id(),
         turn.origin_thread_id(),
         turn.kind(),
-        ConversationParent::Root,
+        ConversationParent::Turn(beryl_model::SyndicTurnId::from_bytes([0xAD; 16])),
         turn.ancestor_skip(),
         turn.depth(),
         turn.chain_digest(),

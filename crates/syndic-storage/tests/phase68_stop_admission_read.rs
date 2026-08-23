@@ -1,14 +1,16 @@
-#![cfg(feature = "test-faults")]
-
+#[cfg(feature = "test-faults")]
 mod support;
 
+#[cfg(feature = "test-faults")]
 #[path = "phase63_delivery_recovery/finalizing_history_support.rs"]
 mod finalizing_history_support;
+#[cfg(feature = "test-faults")]
 #[path = "phase63_delivery_recovery/support.rs"]
 mod recovery_support;
 #[path = "phase65_stop_storage/support.rs"]
 mod stop_support;
 
+#[cfg(feature = "test-faults")]
 use std::{thread, time::Duration};
 
 use beryl_home_store::CommandOutcome;
@@ -22,11 +24,13 @@ use syndic_storage::{
 };
 
 use stop_support::{
-    active_stop_fixture, active_stop_fixture_with_faults, admit_current_draft_as_accepted, execute,
-    point_limit,
+    TestHome, active_stop_fixture, correlate_user_item, execute, execution_binding, open,
+    pending_turn_fixture, point_limit, timestamp,
 };
-use support::{TestHome, exact_cas, open, timestamp};
+#[cfg(feature = "test-faults")]
+use stop_support::{active_stop_fixture_with_faults, admit_current_draft_as_accepted};
 
+#[cfg(feature = "test-faults")]
 fn delete_fixture(
     store: &beryl_home_store::HomeStore,
     storage: syndic_storage::SyndicStorage,
@@ -90,6 +94,7 @@ fn empty_active_route_returns_an_exact_safe_admission_source() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn path_neutral_accepted_input_advance_returns_the_current_gate_and_route() {
     let fixture = active_stop_fixture("phase68-stop-admission-path-neutral");
     let before = fixture.gate();
@@ -133,12 +138,13 @@ fn path_neutral_accepted_input_advance_returns_the_current_gate_and_route() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_delivering_steering_leaf_is_typed_ineligible() {
     let fixture = active_stop_fixture("phase68-stop-admission-delivering");
     let admitted = admit_current_draft_as_accepted(&fixture, "delivering", 0x6b, 5);
     let ready = fixture
         .storage
-        .ready_steering_input(&fixture.store, admitted.accepted_input_id(), point_limit())
+        .ready_steering_input(&fixture.store, admitted.id(), point_limit())
         .unwrap()
         .unwrap();
     match fixture
@@ -146,7 +152,7 @@ fn a_delivering_steering_leaf_is_typed_ineligible() {
         .execute_current(fixture.storage.current_begin_accepted_input_delivery(
             BeginAcceptedInputDelivery::new(
                 fixture.thread,
-                admitted.accepted_input_id(),
+                admitted.id(),
                 ready.accepted_input_revision(),
                 ready.target().clone(),
             ),
@@ -249,21 +255,24 @@ fn admitted_joined_and_claimed_stops_return_one_shared_live_authority() {
         StopOperationState::DispatchClaimed
     ));
 
-    admit_current_draft_as_accepted(&fixture, "queued during stop", 0x6d, 6);
-    let descendant_gate = fixture.gate();
-    let StopAdmissionRead::Stopping(descendant) = fixture
-        .storage
-        .stop_admission_read(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-    else {
-        panic!("queued stop-period input must preserve live stop authority")
-    };
-    assert_eq!(descendant.target(), &fixture.target);
-    assert_eq!(
-        descendant.current_gate_revision(),
-        descendant_gate.revision()
-    );
-    assert_eq!(descendant.attempt(), Some(attempt));
+    #[cfg(feature = "test-faults")]
+    {
+        admit_current_draft_as_accepted(&fixture, "queued during stop", 0x6d, 6);
+        let descendant_gate = fixture.gate();
+        let StopAdmissionRead::Stopping(descendant) = fixture
+            .storage
+            .stop_admission_read(&fixture.store, fixture.thread, point_limit())
+            .unwrap()
+        else {
+            panic!("queued stop-period input must preserve live stop authority")
+        };
+        assert_eq!(descendant.target(), &fixture.target);
+        assert_eq!(
+            descendant.current_gate_revision(),
+            descendant_gate.revision()
+        );
+        assert_eq!(descendant.attempt(), Some(attempt));
+    }
 }
 
 #[test]
@@ -279,8 +288,9 @@ fn idle_and_pending_gates_are_typed_ineligible() {
             CreateThread::ordinary(
                 thread,
                 SyndicDraftId::from_bytes([0x6f; 16]),
-                support::exact_cas::execution_binding(),
+                execution_binding(),
                 timestamp(1),
+                syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ),
     );
@@ -297,23 +307,18 @@ fn idle_and_pending_gates_are_typed_ineligible() {
         }) if current_gate_revision == idle_gate.revision()
     ));
 
-    let turn = exact_cas::submit_current_draft(
-        &store,
-        storage,
-        thread,
-        SyndicDraftId::from_bytes([0x70; 16]),
-        SyndicItemId::from_bytes([0x71; 16]),
-        "pending",
-        timestamp(2),
-    );
-    let pending_gate = storage
-        .input_gate(&store, thread, point_limit())
+    let pending = pending_turn_fixture("phase68-stop-admission-pending");
+    let turn = pending.turn;
+    let pending_gate = pending
+        .storage
+        .input_gate(&pending.store, pending.thread, point_limit())
         .unwrap()
         .unwrap();
     assert!(matches!(pending_gate.state(), InputGateState::PendingTurn(id) if *id == turn));
     assert!(matches!(
-        storage
-            .stop_admission_read(&store, thread, point_limit())
+        pending
+            .storage
+            .stop_admission_read(&pending.store, pending.thread, point_limit())
             .unwrap(),
         StopAdmissionRead::Ineligible(StopAdmissionIneligibility::PendingTurn {
             turn_id,
@@ -373,6 +378,7 @@ fn awaiting_terminal_is_typed_ineligible_without_stop_authority() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn compacting_and_finalizing_gates_are_typed_ineligible() {
     let compacting = recovery_support::pending_home("phase68-stop-admission-compacting", 680);
     recovery_support::replace_gate_state(
@@ -424,6 +430,7 @@ fn compacting_and_finalizing_gates_are_typed_ineligible() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_stale_binding_successor_is_typed_ineligible() {
     let fixture = active_stop_fixture("phase68-stop-admission-stale-binding");
     let source = recovery_support::startup_source(&fixture.store, fixture.storage);
@@ -473,6 +480,7 @@ fn a_constituent_point_read_budget_exhaustion_is_returned() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_stop_revision_change_between_complete_passes_is_concurrent_change() {
     use beryl_home_store::test_faults::{FaultController, FaultPoint};
 
@@ -526,6 +534,7 @@ fn a_stop_revision_change_between_complete_passes_is_concurrent_change() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn matching_terminal_consumption_during_the_second_pass_is_concurrent_change() {
     use beryl_home_store::test_faults::{FaultController, FaultPoint};
 
@@ -533,12 +542,12 @@ fn matching_terminal_consumption_during_the_second_pass_is_concurrent_change() {
     let fixture =
         active_stop_fixture_with_faults("phase68-stop-admission-terminal-race", faults.clone());
     fixture.admit_stop();
-    exact_cas::correlate_user_item(
+    correlate_user_item(
         &fixture.store,
         fixture.storage,
         fixture.thread,
         fixture.turn,
-        SyndicItemId::from_bytes([104; 16]),
+        fixture.item,
         &fixture.source,
         timestamp(5),
     );
@@ -597,6 +606,7 @@ fn matching_terminal_consumption_during_the_second_pass_is_concurrent_change() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_gate_route_change_inside_one_raw_pass_is_concurrent_change() {
     use beryl_home_store::test_faults::{FaultController, FaultPoint};
 
@@ -652,6 +662,7 @@ fn a_stably_missing_active_cas_turn_is_an_invariant_failure() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_missing_reverse_cas_turn_authority_is_an_invariant_failure() {
     let fixture = active_stop_fixture("phase68-stop-admission-missing-cas-turn-index");
     delete_fixture(
@@ -674,6 +685,7 @@ fn a_missing_reverse_cas_turn_authority_is_an_invariant_failure() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_present_but_contradictory_cas_turn_authority_is_an_invariant_failure() {
     use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 
@@ -712,6 +724,7 @@ fn a_present_but_contradictory_cas_turn_authority_is_an_invariant_failure() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_missing_ready_route_source_is_an_invariant_failure() {
     let fixture = active_stop_fixture("phase68-stop-admission-missing-ready-source");
     admit_current_draft_as_accepted(&fixture, "ready source", 0x72, 7);
@@ -736,6 +749,7 @@ fn a_missing_ready_route_source_is_an_invariant_failure() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_missing_stopped_next_route_source_is_an_invariant_failure() {
     let fixture = active_stop_fixture("phase68-stop-admission-missing-next-source");
     admit_current_draft_as_accepted(&fixture, "next source", 0x73, 7);
@@ -783,6 +797,7 @@ fn a_missing_stopped_next_route_source_is_an_invariant_failure() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn a_stopping_gate_without_its_selected_record_is_an_invariant_failure() {
     let fixture = active_stop_fixture("phase68-stop-admission-missing-stop");
     fixture.admit_stop();

@@ -1,20 +1,26 @@
-#![cfg(feature = "test-faults")]
-
+#[cfg(feature = "test-faults")]
 mod support;
 
+#[path = "phase65_stop_storage/support.rs"]
+mod stop_support;
+
+#[cfg(feature = "test-faults")]
 #[path = "phase65_awaiting_terminal/canonical.rs"]
 mod canonical;
+#[cfg(feature = "test-faults")]
 #[path = "phase65_awaiting_terminal/corruption.rs"]
 mod corruption;
+#[cfg(feature = "test-faults")]
 #[path = "phase65_awaiting_terminal/recovery.rs"]
 mod recovery;
+#[cfg(feature = "test-faults")]
 #[path = "phase65_awaiting_terminal/resolution.rs"]
 mod resolution;
 
+#[cfg(feature = "test-faults")]
+use beryl_home_store::test_faults::{FaultController, FaultPoint};
 use beryl_home_store::{
-    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore,
-    test_faults::{FaultController, FaultPoint},
+    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeHealthState, HomeStore,
 };
 use beryl_model::{
     AcceptedInputRevision, CasItemId, SyndicAcceptedInputId, SyndicDraftId, SyndicItemId,
@@ -22,11 +28,12 @@ use beryl_model::{
 };
 use syndic_storage::*;
 
-use support::{
-    TestHome, batch, commit, converge_and_release_terminal_history, draft_id, empty_thread_records,
-    exact_cas::{self, admit_event, establish_turn},
-    id, open, stage_prepared_content, timestamp,
+use stop_support::{
+    TestHome, active_stop_fixture, admit_event, converge_and_release_terminal_history, open,
+    timestamp,
 };
+#[cfg(feature = "test-faults")]
+use support::{commit, draft_id, exact_cas};
 
 struct ActiveFixture {
     _home: TestHome,
@@ -65,115 +72,46 @@ fn assert_clean(outcome: CommandOutcome) {
 }
 
 fn active_fixture(name: &str) -> ActiveFixture {
-    active_fixture_with_open(name, open)
-}
-
-fn active_fixture_with_faults(name: &str, faults: FaultController) -> ActiveFixture {
-    active_fixture_with_open(name, |path| {
-        HomeStore::open_with_faults(
-            HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
-            faults,
-        )
-        .unwrap()
-    })
-}
-
-fn active_fixture_with_open(
-    name: &str,
-    open_store: impl FnOnce(&std::path::Path) -> HomeStore,
-) -> ActiveFixture {
-    let home = TestHome::new(name);
-    let mut store = open_store(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = id(40);
-    commit(
-        &store,
-        storage,
-        batch(empty_thread_records(thread, draft_id(41))),
-    );
-    let turn = exact_cas::submit_current_draft(
-        &store,
-        storage,
-        thread,
-        draft_id(42),
-        SyndicItemId::from_bytes([43; 16]),
-        "parent turn",
-        timestamp(3),
-    );
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
-    admit_event(
-        &store,
-        storage,
-        thread,
-        turn,
-        &source,
-        SourceEventPayload::TurnActivated,
-        timestamp(5),
-    );
+    let fixture = active_stop_fixture(name);
     ActiveFixture {
-        _home: home,
-        store,
-        storage,
-        thread,
-        turn,
-        source,
+        _home: fixture._home,
+        store: fixture.store,
+        storage: fixture.storage,
+        thread: fixture.thread,
+        turn: fixture.turn,
+        source: fixture.source,
     }
 }
 
+#[cfg(feature = "test-faults")]
+fn active_fixture_with_faults(name: &str, faults: FaultController) -> ActiveFixture {
+    let fixture = stop_support::active_stop_fixture_with_faults(name, faults);
+    ActiveFixture {
+        _home: fixture._home,
+        store: fixture.store,
+        storage: fixture.storage,
+        thread: fixture.thread,
+        turn: fixture.turn,
+        source: fixture.source,
+    }
+}
+
+#[cfg(feature = "test-faults")]
 fn accept_text(
     fixture: &ActiveFixture,
     text: &str,
     next_draft: SyndicDraftId,
     at: u64,
 ) -> SyndicAcceptedInputId {
-    let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
-    let prepared = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(&fixture.store, fixture.storage, &prepared);
-    let current = fixture
-        .storage
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) =
-        DraftPayloadUpdate::prepare(&current, &prepared, timestamp(at)).unwrap()
-    else {
-        panic!("test draft must become nonempty");
-    };
-    assert_clean(execute(
+    stop_support::admit_queued_text(
         &fixture.store,
-        fixture
-            .storage
-            .update_draft_payload(fixture.storage.revision(&fixture.store).unwrap(), update),
-    ));
-    let current = fixture
-        .storage
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = fixture
-        .storage
-        .input_gate(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let admission = AcceptedInputAdmission::new(
+        fixture.storage,
         fixture.thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
+        text,
         next_draft,
-        None,
-        timestamp(at + 1),
-    );
-    let input = admission.accepted_input_id();
-    assert_clean(execute(
-        &fixture.store,
-        fixture
-            .storage
-            .admit_accepted_input(fixture.storage.revision(&fixture.store).unwrap(), admission),
-    ));
-    input
+        at,
+    )
+    .id()
 }
 
 fn admit_unknown(fixture: &ActiveFixture, at: u64) {
@@ -298,6 +236,152 @@ fn started_agent_frame(cas_item: CasItemId, at: u64) -> ProviderItemFrameV1 {
 }
 
 #[test]
+fn unknown_terminal_without_queued_input_reactivates_the_exact_target() {
+    let fixture = active_fixture("phase65-awaiting-terminal-default-reactivation");
+    let original = fixture
+        .storage
+        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .selected_route()
+        .unwrap();
+
+    admit_unknown(&fixture, 6);
+    let awaiting = fixture
+        .storage
+        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        awaiting.state(),
+        &InputGateState::AwaitingTerminal(fixture.turn)
+    );
+    assert_eq!(awaiting.live_count(), 0);
+    assert_eq!(
+        awaiting.selected_route().unwrap().generation(),
+        original.generation()
+    );
+
+    admit_event(
+        &fixture.store,
+        fixture.storage,
+        fixture.thread,
+        fixture.turn,
+        &fixture.source,
+        SourceEventPayload::TurnActivated,
+        timestamp(7),
+    );
+    let reactivated = fixture
+        .storage
+        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        reactivated.state(),
+        &InputGateState::Steerable(fixture.turn)
+    );
+    assert!(
+        reactivated.selected_route().unwrap().generation()
+            > awaiting.selected_route().unwrap().generation()
+    );
+    assert_eq!(reactivated.live_count(), 0);
+}
+
+#[test]
+fn late_terminal_without_queued_input_enters_and_releases_terminal_history() {
+    let fixture = active_fixture("phase65-awaiting-terminal-default-resolution");
+    admit_unknown(&fixture, 6);
+    admit_event(
+        &fixture.store,
+        fixture.storage,
+        fixture.thread,
+        fixture.turn,
+        &fixture.source,
+        SourceEventPayload::TurnEnded(
+            TurnEndStatus::new(
+                TurnTerminalOutcome::Incomplete,
+                Some(TurnIncompleteReason::ItemAuditFailed),
+            )
+            .unwrap(),
+        ),
+        timestamp(7),
+    );
+    let gate = fixture
+        .storage
+        .input_gate(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        gate.state(),
+        &InputGateState::FinalizingHistory(fixture.turn)
+    );
+    assert_eq!(gate.live_count(), 0);
+    converge_and_release_terminal_history(
+        &fixture.store,
+        fixture.storage,
+        fixture.thread,
+        fixture.turn,
+    );
+    assert_eq!(
+        fixture
+            .storage
+            .input_gate(&fixture.store, fixture.thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .state(),
+        &InputGateState::Idle
+    );
+}
+
+#[test]
+fn restart_classifies_empty_awaiting_terminal_as_active_loss_authority() {
+    let fixture = active_fixture("phase65-awaiting-terminal-default-recovery");
+    admit_unknown(&fixture, 6);
+    let ActiveFixture {
+        _home: home,
+        store,
+        thread,
+        turn,
+        ..
+    } = fixture;
+    store.close().unwrap();
+    let mut reopened = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let page = storage
+        .delivery_recovery_startup_page(&reopened, None, cursor_limits())
+        .unwrap();
+    assert_eq!(page.records().len(), 1);
+    let DeliveryRecoveryCase::Active(active) = storage
+        .classify_delivery_recovery(&reopened, &page.records()[0], point_limit())
+        .unwrap()
+    else {
+        panic!("awaiting-terminal recovery must retain active loss authority")
+    };
+    assert_eq!(active.thread_id(), thread);
+    assert_eq!(active.turn_id(), turn);
+    let abandonment = active
+        .generic_abandonment(
+            "awaiting-terminal foreground generation was lost",
+            active.minimum_timestamp(),
+        )
+        .unwrap();
+    assert!(matches!(
+        abandonment.target(),
+        AcceptedRouteLostTarget::AwaitingTerminal(_)
+    ));
+    assert_clean(reopened.execute_current(storage.current_abandon_active_binding(abandonment)));
+    assert_eq!(
+        storage
+            .input_gate(&reopened, thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .state(),
+        &InputGateState::PendingTurn(turn)
+    );
+}
+
+#[test]
+#[cfg(feature = "test-faults")]
 fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_route() {
     let fixture = active_fixture("phase65-awaiting-terminal-reactivation");
     let first = accept_text(&fixture, "before uncertainty", draft_id(43), 6);

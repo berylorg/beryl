@@ -1,8 +1,8 @@
 use beryl_model::{BerylHomeId, SyndicThreadId};
 use syndic_storage::{
-    CompactionOperationId, CompactionOperationNonce, ComposerAtom, ComposerPayload,
-    LIFECYCLE_CONTINUATION_TEXT, PreparedContent, derive_lifecycle_continuation_item_id,
-    derive_lifecycle_continuation_turn_id, prepare_lifecycle_continuation_content,
+    CompactionOperationId, CompactionOperationNonce, ContentEncoding, LIFECYCLE_CONTINUATION_TEXT,
+    derive_lifecycle_continuation_item_id, derive_lifecycle_continuation_turn_id,
+    prepare_lifecycle_continuation_content,
 };
 
 fn operation() -> CompactionOperationId {
@@ -24,17 +24,22 @@ fn provider_turn_identity_is_the_exact_operation_nonce_payload() {
 
 #[test]
 fn lifecycle_content_is_exactly_one_fixed_text_atom() {
-    let expected = PreparedContent::composer(
-        &ComposerPayload::new(vec![
-            ComposerAtom::text(LIFECYCLE_CONTINUATION_TEXT).unwrap(),
-        ])
-        .unwrap(),
-    )
-    .unwrap();
+    let prepared = prepare_lifecycle_continuation_content().unwrap();
+    let mut expected = vec![1];
+    expected.extend_from_slice(&1_u64.to_be_bytes());
+    expected.push(0);
+    expected.extend_from_slice(&(LIFECYCLE_CONTINUATION_TEXT.len() as u64).to_be_bytes());
+    expected.extend_from_slice(LIFECYCLE_CONTINUATION_TEXT.as_bytes());
 
-    assert_eq!(prepare_lifecycle_continuation_content().unwrap(), expected);
-    assert_eq!(expected.summary().atom_count(), 1);
-    assert_eq!(expected.summary().image_marker_count(), 0);
+    assert_eq!(prepared.encoding(), ContentEncoding::ComposerV1);
+    assert_eq!(prepared.summary().atom_count(), 1);
+    assert_eq!(prepared.summary().image_marker_count(), 0);
+    assert_eq!(
+        prepared.summary().logical_utf8_bytes(),
+        LIFECYCLE_CONTINUATION_TEXT.len() as u64
+    );
+    assert_eq!(prepared.chunks().len(), 1);
+    assert_eq!(prepared.chunks()[0].bytes(), expected);
 }
 
 #[test]

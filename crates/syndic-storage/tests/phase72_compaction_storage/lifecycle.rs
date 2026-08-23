@@ -4,8 +4,10 @@ use syndic_storage::{
     SettleCompactionOperation, SettleLifecycleCompaction, TurnKind, TurnLifecycle,
 };
 
+use super::compaction_support::timestamp;
 use super::compaction_support::{CompactionFixture, point_limit};
-use crate::support::{converge_and_release_terminal_history, exact_cas, timestamp};
+#[cfg(feature = "test-faults")]
+use crate::support::{converge_and_release_terminal_history, exact_cas};
 
 fn consumed_settlement(
     fixture: &CompactionFixture,
@@ -140,13 +142,14 @@ fn lifecycle_continuation_uses_durable_home_and_preserves_current_draft() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn accepted_user_work_wins_lifecycle_settlement_after_compaction_admission() {
     let fixture = CompactionFixture::new("phase72-compaction-lifecycle-user-work", 50);
     let id = fixture.admit(60, 10);
     fixture.claim(id);
     fixture.publish_success(id, 20);
     fixture.publish_request(id, syndic_storage::CompactionRequestDisposition::Accepted);
-    fixture.admit_current_draft_as_accepted("later accepted work", 90, 35);
+    fixture.inject_deferred_accepted_next(90, 35);
 
     let content = fixture.prepare_lifecycle_content();
     let operation = fixture.operation(id);
@@ -183,6 +186,7 @@ fn accepted_user_work_wins_lifecycle_settlement_after_compaction_admission() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen() {
     let fixture = CompactionFixture::new("phase72-compaction-continuation-descendants", 70);
     let id = fixture.admit(90, 10);

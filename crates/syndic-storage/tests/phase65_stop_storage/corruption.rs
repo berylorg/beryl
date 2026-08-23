@@ -6,7 +6,7 @@ use syndic_storage::{
     StopOperationTransitionStatus, TurnEndStatus, TurnTerminalOutcome,
 };
 
-use super::stop_support::{active_stop_fixture, point_limit};
+use super::stop_support::{active_stop_fixture, correlate_user_item, point_limit, timestamp};
 
 fn delete(fixture: &super::stop_support::ActiveStopFixture, record: FixtureDelete) {
     let mut mutation = FixtureBatch::new();
@@ -92,14 +92,14 @@ fn safe_reopen_reconciliation_rejects_a_missing_successor_route_half() {
 fn matching_terminal_reconciliation_rejects_a_missing_event_half() {
     let fixture = active_stop_fixture("phase66-stop-missing-terminal-event");
     fixture.admit_stop();
-    crate::support::exact_cas::correlate_user_item(
+    correlate_user_item(
         &fixture.store,
         fixture.storage,
         fixture.thread,
         fixture.turn,
-        beryl_model::SyndicItemId::from_bytes([104; 16]),
+        fixture.item,
         &fixture.source,
-        crate::support::timestamp(5),
+        timestamp(5),
     );
     let state = fixture
         .storage
@@ -117,7 +117,7 @@ fn matching_terminal_reconciliation_rejects_a_missing_event_half() {
         SourceEventPayload::TurnEnded(
             TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
         ),
-        crate::support::timestamp(6),
+        timestamp(6),
     )
     .unwrap();
     match fixture.store.execute_current(

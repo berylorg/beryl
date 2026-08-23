@@ -8,7 +8,9 @@ use syndic_storage::{
     StopOperationTransitionStatus, SyndicStorage, TurnEndStatus, TurnTerminalOutcome,
 };
 
-use super::stop_support::{active_stop_fixture_with_faults, point_limit};
+use super::stop_support::{
+    active_stop_fixture_with_faults, correlate_user_item, point_limit, timestamp,
+};
 
 fn cuts() -> [(
     &'static str,
@@ -101,6 +103,7 @@ fn recover_direct_fault(
         storage: _,
         thread,
         turn,
+        item,
         target,
         operation_id,
         admission,
@@ -116,6 +119,7 @@ fn recover_direct_fault(
         storage,
         thread,
         turn,
+        item,
         target,
         operation_id,
         admission,
@@ -300,14 +304,14 @@ fn matching_terminal_fault_cuts_reconcile_to_one_whole_state() {
             faults.clone(),
         );
         fixture.admit_stop();
-        crate::support::exact_cas::correlate_user_item(
+        correlate_user_item(
             &fixture.store,
             fixture.storage,
             fixture.thread,
             fixture.turn,
-            beryl_model::SyndicItemId::from_bytes([104; 16]),
+            fixture.item,
             &fixture.source,
-            crate::support::timestamp(5),
+            timestamp(5),
         );
         let state = fixture
             .storage
@@ -325,7 +329,7 @@ fn matching_terminal_fault_cuts_reconcile_to_one_whole_state() {
             SourceEventPayload::TurnEnded(
                 TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
             ),
-            crate::support::timestamp(6),
+            timestamp(6),
         )
         .unwrap();
         faults.fail_next(point);

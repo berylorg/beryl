@@ -7,7 +7,10 @@ use syndic_storage::{
     TurnTerminalOutcome,
 };
 
-use super::stop_support::{active_stop_fixture, pending_stop_fixture, point_limit};
+use super::stop_support::{
+    active_stop_fixture, admit_event, correlate_user_item, pending_stop_fixture, point_limit,
+    timestamp,
+};
 
 #[test]
 fn admission_reconciles_and_retains_the_exact_stop_cut() {
@@ -212,7 +215,7 @@ fn pending_published_target_stops_and_consumes_a_matching_terminal_without_activ
         SourceEventPayload::TurnEnded(TurnEndStatus::incomplete(
             syndic_storage::TurnIncompleteReason::StreamLost,
         )),
-        crate::support::timestamp(4),
+        timestamp(4),
     )
     .unwrap();
     assert_eq!(
@@ -748,14 +751,14 @@ fn interrupting_approval_prevents_safe_reopen() {
 fn matching_terminal_atomically_consumes_the_live_stop() {
     let fixture = active_stop_fixture("phase65-stop-matching-terminal");
     fixture.admit_stop();
-    crate::support::exact_cas::correlate_user_item(
+    correlate_user_item(
         &fixture.store,
         fixture.storage,
         fixture.thread,
         fixture.turn,
-        beryl_model::SyndicItemId::from_bytes([104; 16]),
+        fixture.item,
         &fixture.source,
-        crate::support::timestamp(5),
+        timestamp(5),
     );
     let state = fixture
         .storage
@@ -773,7 +776,7 @@ fn matching_terminal_atomically_consumes_the_live_stop() {
         SourceEventPayload::TurnEnded(
             TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
         ),
-        crate::support::timestamp(6),
+        timestamp(6),
     )
     .unwrap();
     assert_eq!(
@@ -875,16 +878,16 @@ fn consuming_transitions_win_cleanly_against_a_stale_cause_join() {
         terminal.stop().revision(),
         StopCause::HealthyHomeWindowClose,
     );
-    crate::support::exact_cas::correlate_user_item(
+    correlate_user_item(
         &terminal.store,
         terminal.storage,
         terminal.thread,
         terminal.turn,
-        beryl_model::SyndicItemId::from_bytes([104; 16]),
+        terminal.item,
         &terminal.source,
-        crate::support::timestamp(5),
+        timestamp(5),
     );
-    crate::support::exact_cas::admit_event(
+    admit_event(
         &terminal.store,
         terminal.storage,
         terminal.thread,
@@ -893,7 +896,7 @@ fn consuming_transitions_win_cleanly_against_a_stale_cause_join() {
         SourceEventPayload::TurnEnded(
             TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
         ),
-        crate::support::timestamp(6),
+        timestamp(6),
     );
     assert_eq!(
         terminal

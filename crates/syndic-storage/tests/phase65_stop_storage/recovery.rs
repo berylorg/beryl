@@ -4,9 +4,9 @@ use syndic_storage::{
     StopOperationState, StopOperationTransitionStatus,
 };
 
-use super::stop_support::{
-    active_stop_fixture, admit_current_draft_as_accepted, pending_stop_fixture, point_limit,
-};
+#[cfg(feature = "test-faults")]
+use super::stop_support::admit_current_draft_as_accepted;
+use super::stop_support::{active_stop_fixture, pending_stop_fixture, point_limit};
 
 fn recovery_source(
     fixture: &super::stop_support::ActiveStopFixture,
@@ -125,6 +125,7 @@ fn restart_retains_claimed_attempt_but_never_mints_another() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn claimed_stop_reopens_then_converges_through_startup_abandonment_with_queued_work() {
     let fixture = active_stop_fixture("phase66-stop-reopen-claimed-abandon");
     fixture.admit_stop();

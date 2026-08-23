@@ -8,15 +8,20 @@ use syndic_storage::test_faults::{
     thread_usage_with_revision,
 };
 use syndic_storage::{
-    CreateThread, SyndicPointReadLimit, SyndicStorage, ThreadAttributesRevision,
-    ThreadCatalogSourceWitnesses, ThreadCatalogSummaryRecord, ThreadCatalogTitle,
-    ThreadCatalogTitleSource, ThreadCreationStatus, ThreadUsageRecord, ThreadUsageRevision,
+    CreateThread, DraftEditHistoryPolicyV1, SyndicPointReadLimit, SyndicStorage,
+    ThreadAttributesRevision, ThreadCatalogSourceWitnesses, ThreadCatalogSummaryRecord,
+    ThreadCatalogTitle, ThreadCatalogTitleSource, ThreadCreationStatus, ThreadUsageRecord,
+    ThreadUsageRevision,
 };
 
 use crate::support::{TestHome, commit, draft_id, id, open, timestamp};
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
+}
+
+fn history_policy() -> DraftEditHistoryPolicyV1 {
+    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap()
 }
 
 fn execute(
@@ -55,7 +60,13 @@ fn ordinary_creation_publishes_all_properties_and_reconciles_execution_exactly()
     let thread = id(1);
     let draft = draft_id(2);
     let execution = crate::support::exact_cas::execution_binding();
-    let creation = CreateThread::ordinary(thread, draft, execution.clone(), timestamp(1));
+    let creation = CreateThread::ordinary(
+        thread,
+        draft,
+        execution.clone(),
+        timestamp(1),
+        history_policy(),
+    );
 
     execute(
         &store,
@@ -71,7 +82,13 @@ fn ordinary_creation_publishes_all_properties_and_reconciles_execution_exactly()
         storage
             .thread_creation_status(
                 &store,
-                &CreateThread::ordinary(thread, draft, other_execution(), timestamp(1)),
+                &CreateThread::ordinary(
+                    thread,
+                    draft,
+                    other_execution(),
+                    timestamp(1),
+                    history_policy(),
+                ),
                 limit(),
             )
             .unwrap(),
@@ -127,6 +144,7 @@ fn from_tail_inherits_the_source_canonical_execution() {
         child,
         SyndicDraftId::from_bytes([81; 16]),
         timestamp(20),
+        history_policy(),
         source,
     )
     .unwrap();
@@ -157,6 +175,7 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
         draft_id(11),
         crate::support::exact_cas::execution_binding(),
         timestamp(1),
+        history_policy(),
     );
     execute(
         &store,
@@ -239,6 +258,7 @@ fn impossible_property_revisions_and_future_catalog_witnesses_are_rejected() {
                     draft_id(21),
                     crate::support::exact_cas::execution_binding(),
                     timestamp(1),
+                    history_policy(),
                 ),
             ),
         );
@@ -262,6 +282,7 @@ fn impossible_property_revisions_and_future_catalog_witnesses_are_rejected() {
                 draft_id(31),
                 crate::support::exact_cas::execution_binding(),
                 timestamp(1),
+                history_policy(),
             ),
         ),
     );
@@ -317,6 +338,7 @@ fn exact_catalog_history_revision_requires_matching_semantic_provenance() {
                 draft_id(41),
                 crate::support::exact_cas::execution_binding(),
                 timestamp(1),
+                history_policy(),
             ),
         ),
     );
@@ -372,6 +394,7 @@ fn generated_catalog_title_requires_a_current_canonical_attributes_source() {
                 draft_id(51),
                 crate::support::exact_cas::execution_binding(),
                 timestamp(1),
+                history_policy(),
             ),
         ),
     );

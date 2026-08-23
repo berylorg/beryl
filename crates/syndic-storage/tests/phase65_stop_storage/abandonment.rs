@@ -4,7 +4,9 @@ use syndic_storage::{
     SafelyReopenStopOperation, StopCause, StopOperationState, StopOperationTransitionStatus,
 };
 
-use super::stop_support::{active_stop_fixture, admit_current_draft_as_accepted, point_limit};
+#[cfg(feature = "test-faults")]
+use super::stop_support::admit_current_draft_as_accepted;
+use super::stop_support::{active_stop_fixture, point_limit};
 
 fn recovery_source(
     fixture: &super::stop_support::ActiveStopFixture,
@@ -54,6 +56,7 @@ pub(super) fn startup_abandonment(
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn classified_abandonment_converges_without_losing_queued_input() {
     let fixture = active_stop_fixture("phase65-stop-abandonment");
     fixture.admit_stop();

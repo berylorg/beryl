@@ -54,7 +54,7 @@ fn receipt_rejects_wrong_parent_provenance() {
         receipt.successor_gate().clone(),
         receipt.settlement().clone(),
         Some(CompactionContinuationReceipt::new(
-            syndic_storage::ConversationParent::Root,
+            syndic_storage::ConversationParent::Turn(SyndicTurnId::from_bytes([0xAC; 16])),
             continuation.selected_path(),
             continuation.binding_revision(),
             continuation.content(),
@@ -67,7 +67,7 @@ fn receipt_rejects_wrong_parent_provenance() {
 }
 
 #[test]
-fn rejects_coherently_forged_same_thread_parent_path_and_binding() {
+fn rejects_forged_continuation_path_revision() {
     let (fixture, id) = continuation_fixture("phase72-continuation-coherent-topology", 119);
     let operation = fixture.operation(id);
     let CompactionOperationState::Consumed(witness) = operation.state() else {
@@ -83,31 +83,14 @@ fn rejects_coherently_forged_same_thread_parent_path_and_binding() {
         .unwrap()
         .unwrap();
     let continuation = receipt.continuation().unwrap();
-    let turn_id = continuation.selected_path().tail().unwrap();
-    let turn = fixture
-        .storage
-        .turn(
-            &fixture.store,
-            turn_id,
-            super::super::compaction_support::point_limit(),
-        )
-        .unwrap()
-        .unwrap();
-    let digest = root_turn_chain_digest(turn_id);
     let selected_path = SelectedPathProof::new(
-        Some(turn_id),
-        continuation.selected_path().thread_revision(),
-        digest,
-    );
-    let forged_turn = TurnRecord::new(
-        turn.id(),
-        turn.origin_thread_id(),
-        turn.kind(),
-        syndic_storage::ConversationParent::Root,
-        None,
-        TurnDepth::FIRST,
-        digest,
-        turn.submitted_at(),
+        continuation.selected_path().tail(),
+        continuation
+            .selected_path()
+            .thread_revision()
+            .checked_next()
+            .unwrap(),
+        continuation.selected_path().digest(),
     );
     let forged_binding = BindingRecord::new(
         fixture.thread,
@@ -144,7 +127,6 @@ fn rejects_coherently_forged_same_thread_parent_path_and_binding() {
     batch
         .put(FixtureRecord::CompactionOperation(forged_operation))
         .unwrap();
-    batch.put(FixtureRecord::Turn(forged_turn)).unwrap();
     batch.put(FixtureRecord::Binding(forged_binding)).unwrap();
     commit(&fixture, batch);
 

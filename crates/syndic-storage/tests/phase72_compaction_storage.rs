@@ -1,9 +1,9 @@
-#![cfg(feature = "test-faults")]
-
+#[cfg(feature = "test-faults")]
 mod support;
 
 #[path = "phase72_compaction_storage/support.rs"]
 mod compaction_support;
+#[cfg(feature = "test-faults")]
 #[path = "phase72_compaction_storage/corruption.rs"]
 mod corruption;
 #[path = "phase72_compaction_storage/lifecycle.rs"]

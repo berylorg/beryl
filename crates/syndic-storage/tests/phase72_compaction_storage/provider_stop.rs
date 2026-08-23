@@ -1,13 +1,16 @@
 use beryl_home_store::{CommandOutcome, CursorReadLimits};
 use beryl_model::CasTurnId;
 use syndic_storage::{
-    AbandonStopOperation, CompactionOperationId, CompactionOperationRecord,
-    CompactionOperationRevision, CompactionOperationState, CompactionProviderEvent,
+    AbandonStopOperation, CompactionOperationId, CompactionOperationState, CompactionProviderEvent,
     CompactionRecoveryCase, CompactionRequestDisposition, DeliveryRecoveryCase, InputGateState,
-    SafelyReopenStopOperation, StopAbandonmentWitness, StopAdmissionRead, StopCause, StopCauseSet,
-    StopMatchingTerminalWitness, StopOperationId, StopOperationNonce, StopOperationRecord,
-    StopOperationState, StopOperationTransitionStatus, StopSafeReopenWitness, TurnEndStatus,
-    TurnTerminalOutcome,
+    SafelyReopenStopOperation, StopAdmissionRead, StopCause, StopCauseSet, StopOperationId,
+    StopOperationNonce, StopOperationRecord, StopOperationState, StopOperationTransitionStatus,
+    TurnEndStatus, TurnTerminalOutcome,
+};
+#[cfg(feature = "test-faults")]
+use syndic_storage::{
+    CompactionOperationRecord, CompactionOperationRevision, StopAbandonmentWitness,
+    StopMatchingTerminalWitness, StopSafeReopenWitness,
     test_faults::{FixtureBatch, FixtureDelete, FixtureRecord},
 };
 
@@ -65,12 +68,7 @@ fn admit_provider_stop(
         } => {}
         outcome => panic!("expected clean provider-stop admission, got {outcome:?}"),
     }
-    fixture.admit_current_draft_as_accepted(
-        "queued during provider stop",
-        seed.wrapping_add(60),
-        22,
-    );
-    assert_eq!(fixture.gate().live_next_turn_count(), 1);
+    assert_eq!(fixture.gate().live_next_turn_count(), 0);
     (fixture, compaction_id, stop_id)
 }
 
@@ -82,6 +80,7 @@ fn stop(fixture: &CompactionFixture, id: StopOperationId) -> StopOperationRecord
         .unwrap()
 }
 
+#[cfg(feature = "test-faults")]
 fn replace_stop(
     fixture: &CompactionFixture,
     current: &StopOperationRecord,
@@ -164,7 +163,7 @@ fn committed_provider_stop_is_immediately_authenticated_without_an_ordinary_rout
     assert_eq!(live.state(), StopOperationState::Admitted);
     assert_eq!(live.stopped_route(), None);
     assert_eq!(live.target().turn_id(), compaction_id.provider_turn_id());
-    assert_eq!(fixture.gate().live_next_turn_count(), 1);
+    assert_eq!(fixture.gate().live_next_turn_count(), 0);
     assert_eq!(
         fixture.operation(compaction_id).state(),
         &CompactionOperationState::Stopping(stop_id.nonce())
@@ -254,7 +253,7 @@ fn provider_stop_reopens_and_classifies_as_nonreplayable_startup_authority() {
     };
     assert_eq!(recovered.operation_id(), stop_id);
     assert_eq!(recovered.stopped_route(), None);
-    assert_eq!(fixture.gate().live_next_turn_count(), 1);
+    assert_eq!(fixture.gate().live_next_turn_count(), 0);
 }
 
 #[test]
@@ -294,6 +293,34 @@ fn provider_stop_abandonment_retains_exact_stopping_gate_receipt() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
+fn provider_stop_preserves_deferred_accepted_next_through_abandonment() {
+    let (fixture, compaction_id, stop_id) =
+        admit_provider_stop("phase72-provider-stop-accepted-next", 193);
+    fixture.inject_deferred_accepted_next(253, 30);
+
+    let StopAdmissionRead::Stopping(live) = fixture
+        .storage
+        .stop_admission_read(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+    else {
+        panic!("path-neutral accepted-next admission must retain provider stop authority")
+    };
+    assert_eq!(live.operation_id(), stop_id);
+    assert_eq!(fixture.gate().live_next_turn_count(), 1);
+
+    abandon_provider_stop(&fixture);
+    let receipt = fixture
+        .storage
+        .compaction_settlement_receipt(&fixture.store, compaction_id, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt.source_gate().live_next_turn_count(), 1);
+    assert_eq!(receipt.successor_gate().live_next_turn_count(), 1);
+}
+
+#[test]
+#[cfg(feature = "test-faults")]
 fn reopened_provider_stop_with_missing_compaction_pair_is_corruption() {
     let (fixture, compaction_id, _) = admit_provider_stop("phase72-provider-stop-corrupt", 183);
     let fixture = fixture.reopen();
@@ -322,6 +349,7 @@ fn reopened_provider_stop_with_missing_compaction_pair_is_corruption() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn provider_stop_rejects_impossible_stopping_compaction_revision() {
     let (fixture, compaction_id, _) =
         admit_provider_stop("phase72-provider-stop-impossible-revision", 185);
@@ -368,6 +396,7 @@ fn provider_stop_rejects_impossible_stopping_compaction_revision() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn provider_stop_rejects_unwitnessed_higher_stopping_compaction_revision() {
     let (fixture, compaction_id, _) =
         admit_provider_stop("phase72-provider-stop-unwitnessed-revision", 186);

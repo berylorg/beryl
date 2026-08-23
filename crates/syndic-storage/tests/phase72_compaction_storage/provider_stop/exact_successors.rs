@@ -87,6 +87,7 @@ fn matching_terminal_authenticates_a_late_request_descendant() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn coherently_shifted_safe_reopen_compaction_pair_is_corruption() {
     let (fixture, _, stop_id) =
         admit_provider_stop("phase72-provider-stop-safe-reopen-forged", 190);
@@ -126,6 +127,7 @@ fn coherently_shifted_safe_reopen_compaction_pair_is_corruption() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn coherently_shifted_matching_terminal_compaction_pair_is_corruption() {
     let (fixture, compaction_id, stop_id) =
         admit_provider_stop("phase72-provider-stop-terminal-forged", 191);
@@ -167,6 +169,7 @@ fn coherently_shifted_matching_terminal_compaction_pair_is_corruption() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn coherently_shifted_abandonment_compaction_pair_is_corruption() {
     let (fixture, _, stop_id) =
         admit_provider_stop("phase72-provider-stop-abandonment-forged", 192);
