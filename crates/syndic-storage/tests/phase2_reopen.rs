@@ -6,12 +6,12 @@ use std::sync::Mutex;
 
 use beryl_model::{SyndicTurnId, ThreadRevision};
 use syndic_storage::test_faults::{
-    reset_validation_page_metrics, validation_page_metrics, FixtureRecord,
+    FixtureRecord, reset_validation_page_metrics, validation_page_metrics,
 };
 use syndic_storage::{
-    child_turn_chain_digest, root_turn_chain_digest, ConversationParent, SourceEventPayload,
-    SourceEventRecord, SourceEventSequence, SyndicStorage, TurnChildIndexRecord, TurnDepth,
-    TurnEndStatus, TurnKind, TurnLifecycle, TurnRecord, TurnStateRevision, TurnTerminalOutcome,
+    ConversationParent, SourceEventPayload, SourceEventRecord, SourceEventSequence, SyndicStorage,
+    TurnChildIndexRecord, TurnDepth, TurnEndStatus, TurnKind, TurnLifecycle, TurnRecord,
+    TurnStateRevision, TurnTerminalOutcome, child_turn_chain_digest, root_turn_chain_digest,
 };
 
 use support::*;

@@ -5,8 +5,8 @@ mod support;
 use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    test_faults::{FaultController, FaultPoint},
 };
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{
@@ -14,7 +14,7 @@ use syndic_storage::{
     SyndicReadError, SyndicStorage, ThreadCreationStatus,
 };
 
-use support::{batch, commit, draft_id, id, timestamp, TestHome};
+use support::{TestHome, batch, commit, draft_id, id, timestamp};
 
 fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(400_000).unwrap()

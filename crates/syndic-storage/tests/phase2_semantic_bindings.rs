@@ -4,7 +4,7 @@ mod support;
 
 use beryl_model::{BindingRevision, CasThreadId, ProjectionRevision, SyndicTurnId, ThreadRevision};
 use syndic_storage::test_faults::{
-    fixture_transcript_digest_seed, FixtureBatch, FixtureDelete, FixtureRecord,
+    FixtureBatch, FixtureDelete, FixtureRecord, fixture_transcript_digest_seed,
 };
 use syndic_storage::*;
 

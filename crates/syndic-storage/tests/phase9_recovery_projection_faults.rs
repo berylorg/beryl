@@ -4,15 +4,15 @@
 mod support;
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    test_faults::{FaultController, FaultPoint},
 };
 use syndic_storage::{
     RecoveryProjectionError, RecoveryProjectionRequest, SelectedPathProof, SyndicPointReadLimit,
     SyndicStorage,
 };
 
-use support::{id, seed_populated, TestHome};
+use support::{TestHome, id, seed_populated};
 
 fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
     HomeStore::open_with_faults(
@@ -45,16 +45,18 @@ fn recovery_assembly_read_fault_preserves_state_for_same_home_recovery() {
     );
 
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
-    assert!(storage
-        .prepare_recovery_projection(
-            &store,
-            RecoveryProjectionRequest::for_current_selected_path(
-                thread_id,
-                selected_path,
-                Some(100_000),
-            ),
-        )
-        .is_err());
+    assert!(
+        storage
+            .prepare_recovery_projection(
+                &store,
+                RecoveryProjectionRequest::for_current_selected_path(
+                    thread_id,
+                    selected_path,
+                    Some(100_000),
+                ),
+            )
+            .is_err()
+    );
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 
     let candidate = store.recover_same_home().unwrap();

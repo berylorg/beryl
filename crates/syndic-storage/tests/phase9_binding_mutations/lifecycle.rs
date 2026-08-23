@@ -275,10 +275,12 @@ fn cancelled_activation_reconciles_prior_then_exact_and_survives_reopen() {
         .unwrap()
         .unwrap();
     assert_eq!(gate.state(), &InputGateState::PendingTurn(fixture.turn));
-    assert!(storage
-        .active_cas_turn(&store, fixture.snapshot, point_limit())
-        .unwrap()
-        .is_none());
+    assert!(
+        storage
+            .active_cas_turn(&store, fixture.snapshot, point_limit())
+            .unwrap()
+            .is_none()
+    );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

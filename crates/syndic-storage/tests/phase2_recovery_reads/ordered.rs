@@ -136,12 +136,15 @@ fn successful_recovery_requires_old_handle_reacquisition() {
     let store = candidate.publish();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
-    assert!(old
-        .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
-        .is_err());
-    assert!(current
-        .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
-        .unwrap()
-        .is_some());
+    assert!(
+        old.thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
+            .is_err()
+    );
+    assert!(
+        current
+            .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
+            .unwrap()
+            .is_some()
+    );
     store.close().unwrap();
 }

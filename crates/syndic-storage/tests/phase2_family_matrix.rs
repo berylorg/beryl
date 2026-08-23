@@ -11,13 +11,13 @@ use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord, Ph
 use syndic_storage::*;
 
 use support::{
-    commit, draft_id, id, open,
+    TestHome, commit, draft_id, id, open,
     populated::{
         active_item, active_snapshot, active_turn, activity_item, build_item, cas_item, cas_thread,
         cas_turn, next_input, populated_records, source_item, source_projection, source_turn,
         steering_input, suffix_item,
     },
-    seed_populated, TestHome,
+    seed_populated,
 };
 
 struct DeletionCase {

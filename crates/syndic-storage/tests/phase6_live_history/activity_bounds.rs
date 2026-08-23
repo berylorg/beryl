@@ -339,16 +339,18 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         reopened_head.work_period(),
         ActivityWorkPeriod::new(2).unwrap()
     );
-    assert!(reopened_storage
-        .activity_query_page(
-            &reopened,
-            &reopened_head,
-            None,
-            CursorReadLimits::new(4, 1_000_000).unwrap(),
-        )
-        .unwrap()
-        .records()
-        .is_empty());
+    assert!(
+        reopened_storage
+            .activity_query_page(
+                &reopened,
+                &reopened_head,
+                None,
+                CursorReadLimits::new(4, 1_000_000).unwrap(),
+            )
+            .unwrap()
+            .records()
+            .is_empty()
+    );
     assert_eq!(
         reopened_storage
             .fixture_activity_query_entry_count(

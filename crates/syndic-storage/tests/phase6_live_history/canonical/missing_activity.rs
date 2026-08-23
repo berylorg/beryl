@@ -119,8 +119,10 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("activity-query head counters or retention cutoff disagree"));
+    assert!(
+        error
+            .to_string()
+            .contains("activity-query head counters or retention cutoff disagree")
+    );
     reopened.close().unwrap();
 }

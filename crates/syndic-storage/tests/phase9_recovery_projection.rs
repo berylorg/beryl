@@ -14,8 +14,8 @@ use syndic_storage::test_faults::{FixtureDelete, FixtureRecord};
 use syndic_storage::*;
 
 use support::{
-    batch, commit, composer_content_records, draft_id, fixture_turn_state, id, open,
-    seed_canonical_empty_thread, timestamp, TestHome,
+    TestHome, batch, commit, composer_content_records, draft_id, fixture_turn_state, id, open,
+    seed_canonical_empty_thread, timestamp,
 };
 
 struct RecoveryFixture {
@@ -510,10 +510,12 @@ fn caller_page_limit_preserves_utf8_progress_and_returns_the_exact_lease() {
     assert_eq!(terminal.text(), "x");
     assert!(terminal.item_terminal());
     assert!(terminal.sequence_terminal());
-    assert!(storage
-        .read_recovery_cursor_page(&store, &mut cursor, terminal.into_page_lease(), 16,)
-        .unwrap()
-        .is_none());
+    assert!(
+        storage
+            .read_recovery_cursor_page(&store, &mut cursor, terminal.into_page_lease(), 16,)
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(pool.diagnostics().available, 1);
     store.close().unwrap();
 }

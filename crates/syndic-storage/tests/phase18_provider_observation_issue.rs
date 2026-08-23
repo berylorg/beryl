@@ -13,7 +13,7 @@ use beryl_model::{
 };
 use syndic_storage::*;
 
-use support::{exact_cas, open, timestamp, TestHome};
+use support::{TestHome, exact_cas, open, timestamp};
 
 struct Fixture {
     store: HomeStore,

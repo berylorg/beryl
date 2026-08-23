@@ -44,11 +44,13 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
         .unwrap();
     assert_eq!(pending_head.entry_count(), 0);
     assert_eq!(pending_head.lifecycle(), ProjectionLifecycle::Current);
-    assert!(!storage
-        .history_summary(&store, thread, point_limit())
-        .unwrap()
-        .unwrap()
-        .complete());
+    assert!(
+        !storage
+            .history_summary(&store, thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .complete()
+    );
 
     let source = establish_turn(&store, storage, thread, pending.turn, timestamp(4));
     admit(
@@ -317,11 +319,13 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].position(), TranscriptPosition::FIRST);
     assert_eq!(entries[0].item_id(), pending.item);
-    assert!(storage
-        .history_summary(&store, thread, point_limit())
-        .unwrap()
-        .unwrap()
-        .complete());
+    assert!(
+        storage
+            .history_summary(&store, thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .complete()
+    );
 
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

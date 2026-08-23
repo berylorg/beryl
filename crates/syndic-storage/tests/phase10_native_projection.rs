@@ -12,12 +12,12 @@ use beryl_model::{
     SyndicThreadId, SyndicTurnId,
 };
 use syndic_storage::{
-    empty_selected_path_digest, BindingState, NativeProjectionError, NativeProjectionPlan,
-    NativeProjectionRequest, NativeProjectionUnavailable, SelectedPathProof, SyndicPointReadLimit,
-    SyndicStorage,
+    BindingState, NativeProjectionError, NativeProjectionPlan, NativeProjectionRequest,
+    NativeProjectionUnavailable, SelectedPathProof, SyndicPointReadLimit, SyndicStorage,
+    empty_selected_path_digest,
 };
 
-use support::{id, open, seed_populated, TestHome};
+use support::{TestHome, id, open, seed_populated};
 
 fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()

@@ -438,9 +438,11 @@ fn route_generation_exhaustion_rejects_without_overwrite() {
             .unwrap(),
         before_gate
     );
-    assert!(storage
-        .execution_snapshot(&store, snapshot, point_limit())
-        .unwrap()
-        .is_none());
+    assert!(
+        storage
+            .execution_snapshot(&store, snapshot, point_limit())
+            .unwrap()
+            .is_none()
+    );
     store.close().unwrap();
 }

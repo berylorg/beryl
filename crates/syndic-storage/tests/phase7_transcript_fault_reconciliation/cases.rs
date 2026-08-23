@@ -103,11 +103,13 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
             let close_error = store.close().unwrap_err();
             assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
             drop(close_error);
-            assert!(HomeStore::open(HomeOpenOptions::new(
-                home.path(),
-                HomeSchemaVersion::CURRENT
-            ))
-            .is_err());
+            assert!(
+                HomeStore::open(HomeOpenOptions::new(
+                    home.path(),
+                    HomeSchemaVersion::CURRENT
+                ))
+                .is_err()
+            );
             continue;
         }
         store.close().unwrap();

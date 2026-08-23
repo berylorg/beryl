@@ -13,8 +13,8 @@ use beryl_model::{
     SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{
-    fixture_advance_item_projection_digest, fixture_inline_paragraph_projection,
-    fixture_item_projection_digest_seed, FixtureBatch, FixtureDelete, FixtureRecord,
+    FixtureBatch, FixtureDelete, FixtureRecord, fixture_advance_item_projection_digest,
+    fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
 };
 use syndic_storage::*;
 

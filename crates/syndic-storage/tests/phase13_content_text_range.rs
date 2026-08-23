@@ -5,8 +5,8 @@ mod support;
 use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{ContentRevision, SyndicContentId, SyndicDraftMarkerId};
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
@@ -15,7 +15,7 @@ use syndic_storage::{
     PreparedContent, SyndicReadError, SyndicStorage,
 };
 
-use support::{batch, commit, open, prepared_content_records, TestHome};
+use support::{TestHome, batch, commit, open, prepared_content_records};
 
 struct Fixture {
     store: HomeStore,
@@ -233,10 +233,12 @@ fn missing_and_inexact_content_references_are_distinct() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let missing = composer("missing").reference(ContentRevision::new(1).unwrap());
-    assert!(storage
-        .sealed_content_text_range(&store, missing, 0, 64)
-        .unwrap()
-        .is_none());
+    assert!(
+        storage
+            .sealed_content_text_range(&store, missing, 0, 64)
+            .unwrap()
+            .is_none()
+    );
 
     let prepared = composer("exact");
     let (content, records) = prepared_content_records(&prepared);

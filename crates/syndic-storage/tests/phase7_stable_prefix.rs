@@ -12,14 +12,14 @@ use syndic_storage::{
     ItemProjectionSetRecord, ProjectionLifecycle, ProviderAgentMessageV1, ProviderFrameOrdinalV1,
     ProviderItemDeltaV1, ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemV1,
     ProviderLifecycleTimestampMsV1, ProviderMessagePhaseV1, ProviderTextV1, SourceEventPayload,
-    StartItemProjectionBuild, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnLifecycle,
-    TRANSCRIPT_PAGE_MAX_BYTES,
+    StartItemProjectionBuild, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    TRANSCRIPT_PAGE_MAX_BYTES, TurnLifecycle,
 };
 
 use support::{
-    draft_id,
+    TestHome, draft_id,
     exact_cas::{admit_event, admit_item_frame, establish_turn, submit_current_draft},
-    id, open, timestamp, TestHome,
+    id, open, timestamp,
 };
 
 const USER_ITEM_BYTE: u8 = 4;

@@ -191,10 +191,12 @@ fn ordinary_creation_is_atomic_reopenable_and_naturally_reconcilable() {
         .unwrap()
         .unwrap();
     assert_eq!(current.draft().id(), draft_id);
-    assert!(storage
-        .current_binding(&store, thread_id, limit())
-        .unwrap()
-        .is_some());
+    assert!(
+        storage
+            .current_binding(&store, thread_id, limit())
+            .unwrap()
+            .is_some()
+    );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

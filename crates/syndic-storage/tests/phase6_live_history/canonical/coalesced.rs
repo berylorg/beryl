@@ -74,16 +74,18 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     assert_eq!(narrative_only_head.source_frontier(), 7);
     assert_eq!(narrative_only_head.logical_row_count(), 0);
     assert_eq!(narrative_only_head.running_row_count(), 0);
-    assert!(storage
-        .activity_query_page(
-            &store,
-            &narrative_only_head,
-            None,
-            CursorReadLimits::new(16, 1_000_000).unwrap(),
-        )
-        .unwrap()
-        .records()
-        .is_empty());
+    assert!(
+        storage
+            .activity_query_page(
+                &store,
+                &narrative_only_head,
+                None,
+                CursorReadLimits::new(16, 1_000_000).unwrap(),
+            )
+            .unwrap()
+            .records()
+            .is_empty()
+    );
     admit_item_frame(
         &store,
         storage,
@@ -335,11 +337,13 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
         .unwrap();
     assert_eq!(head.entry_count(), 0);
     assert_eq!(head.lifecycle(), ProjectionLifecycle::Stale);
-    assert!(!storage
-        .history_summary(&store, thread, limit())
-        .unwrap()
-        .unwrap()
-        .complete());
+    assert!(
+        !storage
+            .history_summary(&store, thread, limit())
+            .unwrap()
+            .unwrap()
+            .complete()
+    );
 
     store.close().unwrap();
     let mut reopened = open(home.path());

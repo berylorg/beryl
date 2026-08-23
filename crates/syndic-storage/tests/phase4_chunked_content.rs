@@ -7,24 +7,24 @@ use beryl_home_store::{
     HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{
-    advance_content_marker_digest, content_marker_digest_seed, AcceptedInputRevision,
-    ContentRevision, DraftRevision, ImageLabelOrdinal, InputGateRevision, ProjectionRevision,
-    SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicTurnId,
-    ThreadRevision,
+    AcceptedInputRevision, ContentRevision, DraftRevision, ImageLabelOrdinal, InputGateRevision,
+    ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
+    SyndicTurnId, ThreadRevision, advance_content_marker_digest, content_marker_digest_seed,
 };
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{
     AcceptedInputAdmissionProof, AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedInputRecord,
     AcceptedNextSourceRecord, AcceptedOrderIndexRecord, AcceptedRouteGeneration,
     AcceptedRouteGenerationRecord, AcceptedRouteLeafRecord, AcceptedRouteLeafState,
-    AcceptedRouteRevision, AcceptedRouteTarget, AdvanceItemProjectionBuild, CanonicalItemRecord,
-    ComposerAtom, ComposerContentAssembler, ComposerPayload, ContentAppend, ContentBuild,
-    ContentLifecycle, ContentManifestRecord, DraftByThreadRecord, HistorySummaryRecord,
-    InputGateRecord, InputGateState, ItemProjectionGeneration, NextTurnReason, PreparedContent,
-    SelectedPathProof, StartItemProjectionBuild, SyndicMutationError, SyndicPointReadLimit,
-    SyndicStorage, ThreadRecord, TurnDepth, TurnEndStatus, TurnIncompleteReason,
-    TurnItemIndexRecord, TurnItemOrdinal, TurnKind, TurnLifecycle, TurnRecord, TurnStateRecord,
-    TurnStateRevision, TurnTerminalOutcome, CONTENT_APPEND_MAX_CHUNKS, CONTENT_CHUNK_MAX_BYTES,
+    AcceptedRouteRevision, AcceptedRouteTarget, AdvanceItemProjectionBuild,
+    CONTENT_APPEND_MAX_CHUNKS, CONTENT_CHUNK_MAX_BYTES, CanonicalItemRecord, ComposerAtom,
+    ComposerContentAssembler, ComposerPayload, ContentAppend, ContentBuild, ContentLifecycle,
+    ContentManifestRecord, DraftByThreadRecord, HistorySummaryRecord, InputGateRecord,
+    InputGateState, ItemProjectionGeneration, NextTurnReason, PreparedContent, SelectedPathProof,
+    StartItemProjectionBuild, SyndicMutationError, SyndicPointReadLimit, SyndicStorage,
+    ThreadRecord, TurnDepth, TurnEndStatus, TurnIncompleteReason, TurnItemIndexRecord,
+    TurnItemOrdinal, TurnKind, TurnLifecycle, TurnRecord, TurnStateRecord, TurnStateRevision,
+    TurnTerminalOutcome,
 };
 
 use support::*;
@@ -43,10 +43,12 @@ fn execute(
             receipt,
             later_failure: None,
         } => {
-            assert!(storage
-                .committed_revision(store, &receipt)
-                .unwrap()
-                .is_some());
+            assert!(
+                storage
+                    .committed_revision(store, &receipt)
+                    .unwrap()
+                    .is_some()
+            );
             receipt
         }
         outcome => panic!("expected clean chunked-content command, got {outcome:?}"),

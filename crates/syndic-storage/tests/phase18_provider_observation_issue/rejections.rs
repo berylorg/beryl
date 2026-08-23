@@ -35,11 +35,13 @@ fn duplicate_start_issue_with_the_wrong_reason_is_rejected_atomically() {
         .unwrap();
     assert_eq!(state.source_event_count(), 2);
     assert_eq!(state.provider_observation_issue(), None);
-    assert!(fixture
-        .storage
-        .source_event(&fixture.store, fixture.turn, event.sequence(), limit())
-        .unwrap()
-        .is_none());
+    assert!(
+        fixture
+            .storage
+            .source_event(&fixture.store, fixture.turn, event.sequence(), limit())
+            .unwrap()
+            .is_none()
+    );
     fixture
         .store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -80,11 +82,13 @@ fn legally_admissible_completion_only_observation_cannot_be_published_as_an_issu
     assert_eq!(state.source_event_count(), 1);
     assert_eq!(state.item_count(), 1);
     assert_eq!(state.provider_observation_issue(), None);
-    assert!(fixture
-        .storage
-        .source_event(&fixture.store, fixture.turn, event.sequence(), limit())
-        .unwrap()
-        .is_none());
+    assert!(
+        fixture
+            .storage
+            .source_event(&fixture.store, fixture.turn, event.sequence(), limit())
+            .unwrap()
+            .is_none()
+    );
     fixture
         .store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

@@ -29,22 +29,12 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 160: Restore Stop, Compaction, Catalog, And Full Package Gates (finished)
+# Phase 161: Normalize Pre-Existing Syndic Test Formatting (finished)
 
-Restored all nine Phase 65/68/72/74/75 roots with production-reachable default stop, terminal,
-compaction, property and rebuildable-catalog evidence; raw faults and deferred exact-root admission
-remain explicitly feature-gated without compatibility payload surfaces. Locked metadata, both
-all-target compile modes, both complete nextest suites, scoped formatting/residue/resource gates,
-and independent semantic review passed. Phase 161 owns pre-existing workspace formatting debt;
-Phase 166 retains the deferred app-fixture and footprint-label conversion.
-
-# Phase 161: Normalize Pre-Existing Syndic Test Formatting (pending)
-
-Mechanically normalize the 43 clean pre-existing Phase 2–18 `syndic-storage` integration-test files
-reported by `cargo fmt --all -- --check`, without changing behavior or touching the suspended
-historical-root-adoption implementation. Verify workspace formatting, exact formatting-only diffs,
-locked default and all-feature `syndic-storage` all-target checks, no task-owned process or temporary
-residue, and one focused completion review.
+Mechanically normalized the 43 pre-existing Phase 2–18 `syndic-storage` integration-test files with
+no behavior, token, literal, comment, API, or suspended-work changes. Workspace formatting, exact
+Rustfmt reproduction, scoped diff checks, locked default and all-feature all-target checks, resource
+and residue gates, and independent focused completion review passed.
 
 # Phase 162: Adopt Historical Composer Roots Durably (pending)
 

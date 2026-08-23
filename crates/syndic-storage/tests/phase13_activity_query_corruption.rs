@@ -6,7 +6,7 @@ mod support;
 
 use beryl_home_store::{CommandError, CommandOutcome, CursorReadLimits, HomeCommand};
 use syndic_storage::test_faults::{
-    fixture_activity_query_entry_stored_bytes, FixtureBatch, FixtureRecord,
+    FixtureBatch, FixtureRecord, fixture_activity_query_entry_stored_bytes,
 };
 use syndic_storage::*;
 

@@ -6,12 +6,12 @@ mod support;
 use beryl_home_store::{HomeHealthState, HomeStore};
 use beryl_model::{SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    test_faults::{recovery_residency_metrics, reset_recovery_residency_metrics, FixtureRecord},
     RecoveryBudgetKind, RecoveryItemCount, RecoveryProjectionError, RecoveryProjectionRequest,
     SelectedPathProof, SyndicPointReadLimit, SyndicStorage, TurnStateRecord,
+    test_faults::{FixtureRecord, recovery_residency_metrics, reset_recovery_residency_metrics},
 };
 
-use support::{batch, commit, id, open, seed_populated, TestHome};
+use support::{TestHome, batch, commit, id, open, seed_populated};
 
 struct BudgetFixture {
     _home: TestHome,

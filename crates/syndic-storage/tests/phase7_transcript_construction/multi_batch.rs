@@ -171,11 +171,13 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     assert_eq!(head.generation(), generation);
     assert_eq!(head.entry_count(), 67);
     assert_eq!(head.lifecycle(), ProjectionLifecycle::Current);
-    assert!(storage
-        .history_summary(&store, thread, point_limit())
-        .unwrap()
-        .unwrap()
-        .complete());
+    assert!(
+        storage
+            .history_summary(&store, thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .complete()
+    );
 
     let mut expected = Vec::new();
     expected.extend(

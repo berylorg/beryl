@@ -14,8 +14,8 @@ use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
 use support::{
-    batch, commit, composer_content_records, draft_id, fixture_turn_state, id, open,
-    seed_canonical_empty_thread, timestamp, TestHome,
+    TestHome, batch, commit, composer_content_records, draft_id, fixture_turn_state, id, open,
+    seed_canonical_empty_thread, timestamp,
 };
 
 fn point_limit() -> SyndicPointReadLimit {

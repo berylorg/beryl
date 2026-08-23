@@ -8,12 +8,12 @@ use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::*;
 
 use support::{
-    batch, commit, converge_and_release_terminal_history, draft_id,
+    TestHome, batch, commit, converge_and_release_terminal_history, draft_id,
     exact_cas::{
         admit_event, admit_started_then_completed_item, correlate_user_item, establish_turn,
         submit_current_draft,
     },
-    id, open, populated, timestamp, TestHome,
+    id, open, populated, timestamp,
 };
 
 fn point_limit() -> SyndicPointReadLimit {
@@ -353,11 +353,13 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         )
         .unwrap();
     assert_eq!(clean_sources.records().len(), 2);
-    assert!(clean_sources
-        .records()
-        .iter()
-        .find(|record| record.source().thread_id() == child)
-        .is_some_and(|record| !record.active()));
+    assert!(
+        clean_sources
+            .records()
+            .iter()
+            .find(|record| record.source().thread_id() == child)
+            .is_some_and(|record| !record.active())
+    );
 
     let revised = ActivityQueryHeadRecord::new(
         published.thread_id(),

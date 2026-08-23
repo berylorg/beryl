@@ -10,7 +10,7 @@ use beryl_model::{
 use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 use syndic_storage::*;
 
-use support::{batch, commit, open, timestamp, TestHome};
+use support::{TestHome, batch, commit, open, timestamp};
 
 fn identity(value: u128) -> SyndicThreadId {
     SyndicThreadId::from_bytes(value.to_be_bytes())
@@ -130,14 +130,16 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
         .unwrap();
     assert_eq!(exact_first.records().len(), 1);
     assert_eq!(exact_first.stored_bytes(), root_stored_bytes);
-    assert!(storage
-        .thread_lineage_page(
-            &store,
-            &head,
-            first_cursor,
-            CursorReadLimits::new(1, root_stored_bytes - 1).unwrap(),
-        )
-        .is_err());
+    assert!(
+        storage
+            .thread_lineage_page(
+                &store,
+                &head,
+                first_cursor,
+                CursorReadLimits::new(1, root_stored_bytes - 1).unwrap(),
+            )
+            .is_err()
+    );
     let mut cursor = head.cursor();
     let mut observed = Vec::new();
     while let Some(current) = cursor {

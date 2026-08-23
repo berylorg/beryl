@@ -68,10 +68,12 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
         typed_error(&outcome),
         SyndicMutationError::BindingStateConflict
     ));
-    assert!(storage
-        .execution_snapshot(&store, snapshot, point_limit())
-        .unwrap()
-        .is_none());
+    assert!(
+        storage
+            .execution_snapshot(&store, snapshot, point_limit())
+            .unwrap()
+            .is_none()
+    );
 
     let too_early = ActivateBinding::new(
         thread,

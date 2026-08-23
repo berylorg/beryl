@@ -3,9 +3,9 @@
 mod support;
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CommandError, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore,
+    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::SyndicItemId;
 use syndic_storage::{
@@ -14,7 +14,7 @@ use syndic_storage::{
     StartItemProjectionBuild, SyndicPointReadLimit, SyndicStorage,
 };
 
-use support::{draft_id, exact_cas::submit_current_draft, id, open, timestamp, TestHome};
+use support::{TestHome, draft_id, exact_cas::submit_current_draft, id, open, timestamp};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RecoveredState {
@@ -114,14 +114,18 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
         ItemProjectionBuildPhase::Parsing(_)
     ));
     assert_eq!(build.projection_count(), 0);
-    assert!(storage
-        .item_projection_set(store, item, generation, point_limit())
-        .unwrap()
-        .is_none());
-    assert!(storage
-        .item_projection_head(store, item, point_limit())
-        .unwrap()
-        .is_none());
+    assert!(
+        storage
+            .item_projection_set(store, item, generation, point_limit())
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        storage
+            .item_projection_head(store, item, point_limit())
+            .unwrap()
+            .is_none()
+    );
     PendingPublication {
         item,
         generation,
@@ -273,11 +277,13 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
             let close_error = store.close().unwrap_err();
             assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
             drop(close_error);
-            assert!(HomeStore::open(HomeOpenOptions::new(
-                home.path(),
-                HomeSchemaVersion::CURRENT
-            ))
-            .is_err());
+            assert!(
+                HomeStore::open(HomeOpenOptions::new(
+                    home.path(),
+                    HomeSchemaVersion::CURRENT
+                ))
+                .is_err()
+            );
             continue;
         }
         store.close().unwrap();

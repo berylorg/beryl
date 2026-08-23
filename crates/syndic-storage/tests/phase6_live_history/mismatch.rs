@@ -276,11 +276,13 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
         timestamp(11),
     );
     assert_eq!(projected_item_text(&store, storage, assistant), live_text);
-    assert!(!storage
-        .history_summary(&store, thread, limit())
-        .unwrap()
-        .unwrap()
-        .complete());
+    assert!(
+        !storage
+            .history_summary(&store, thread, limit())
+            .unwrap()
+            .unwrap()
+            .complete()
+    );
     let selected = selected_path(&store, storage, thread);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

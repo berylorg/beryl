@@ -14,10 +14,12 @@ fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
     assert!(payload.utf8_bytes() > 10_000_000);
     let content = PreparedContent::composer(&payload).unwrap();
     assert!(content.chunks().len() > CONTENT_APPEND_MAX_CHUNKS);
-    assert!(content
-        .chunks()
-        .iter()
-        .all(|chunk| chunk.bytes().len() <= CONTENT_CHUNK_MAX_BYTES));
+    assert!(
+        content
+            .chunks()
+            .iter()
+            .all(|chunk| chunk.bytes().len() <= CONTENT_CHUNK_MAX_BYTES)
+    );
 
     execute(
         &store,
@@ -90,9 +92,11 @@ fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
         source.downcast_ref::<SyndicMutationError>(),
         Some(SyndicMutationError::ContentIdentityCollision)
     ));
-    assert!(ContentAppend::prepare(&manifest, &content)
-        .unwrap()
-        .is_none());
+    assert!(
+        ContentAppend::prepare(&manifest, &content)
+            .unwrap()
+            .is_none()
+    );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

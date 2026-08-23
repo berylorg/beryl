@@ -5,19 +5,19 @@ mod ordered;
 mod support;
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CursorReadLimits, DomainCallbackSource, DomainRegistrationError, DomainValidationError,
     HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, ReadError,
     WholeHomeScrubTrigger,
+    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
     AcceptedInputRevision, BindingRevision, DiscussionContextOwnerId, DraftRevision,
     InputGateRevision, SyndicDraftId, SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{
-    current_binding_read_metrics, inject_physical_corruption,
-    inject_representative_physical_corruption, reset_current_binding_read_metrics, FixtureBatch,
-    FixtureRecord, PhysicalCorruption, PhysicalFamily, RepresentativePhysicalCorruption,
+    FixtureBatch, FixtureRecord, PhysicalCorruption, PhysicalFamily,
+    RepresentativePhysicalCorruption, current_binding_read_metrics, inject_physical_corruption,
+    inject_representative_physical_corruption, reset_current_binding_read_metrics,
 };
 use syndic_storage::{
     AcceptedInputAdmissionProof, AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedInputRecord,
@@ -172,9 +172,11 @@ fn routine_reopen_leaves_dormant_malformed_records_for_the_encountering_typed_re
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    assert!(storage
-        .thread(&reopened, id(1), SyndicPointReadLimit::new(1_024).unwrap())
-        .is_err());
+    assert!(
+        storage
+            .thread(&reopened, id(1), SyndicPointReadLimit::new(1_024).unwrap())
+            .is_err()
+    );
     assert_eq!(reopened.health().state(), HomeHealthState::Failed);
     reopened.close().unwrap();
 
@@ -464,11 +466,13 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .is_none(),
         "the real plain-text provider projection must not recreate the former synthetic attachment"
     );
-    assert!(storage
-        .history_summary(&store, id(30), limit)
-        .unwrap()
-        .unwrap()
-        .complete());
+    assert!(
+        storage
+            .history_summary(&store, id(30), limit)
+            .unwrap()
+            .unwrap()
+            .complete()
+    );
     let binding_revision = BindingRevision::new(3).unwrap();
     let binding = storage
         .binding(&store, id(40), binding_revision, limit)
