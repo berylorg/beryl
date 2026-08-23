@@ -1,5 +1,5 @@
+use beryl_home_store::HomeHealthState;
 use beryl_home_store::test_faults::FaultPoint;
-use beryl_home_store::{CommandOutcome, HomeHealthState};
 use syndic_storage::test_faults::{
     DraftEditHistoryRecordDeletion, DraftPieceImmutableDeletion,
     alternative_ordinary_draft_edit_history, delete_draft_edit_history_record,
@@ -65,24 +65,19 @@ fn historical(
     storage: SyndicStorage,
     store: &beryl_home_store::HomeStore,
     session: &syndic_storage::DraftEditorCandidateSessionV1,
-    transition: &syndic_storage::DraftEditHistoryTransitionV1,
     direction: DraftHistoricalRootDirectionV1,
     operation: u8,
 ) -> Option<syndic_storage::DraftHistoricalRootAdoptionProofV1> {
-    let request = DraftHistoricalRootAdoptionRequestV1::new(
-        session.draft_id(),
-        session.session_id(),
-        operation_id(operation),
-        session.newest_history(),
-        transition.reference(),
-        direction,
-        transition.predecessor_root(),
-        transition.before_caret(),
-        transition.before_selection(),
-    );
-    let prepared = storage
-        .prepare_draft_historical_root_adoption(store, request)
-        .ok()?;
+    let prepared = match storage
+        .prepare_draft_historical_root_selection(
+            store,
+            historical_selection_intent(session, operation, direction),
+        )
+        .ok()?
+    {
+        syndic_storage::DraftHistoricalRootSelectionV1::Prepared(prepared) => prepared,
+        syndic_storage::DraftHistoricalRootSelectionV1::Unavailable => return None,
+    };
     let outcome = execute(
         store,
         storage.adopt_draft_historical_root(revision(storage, store), prepared.clone()),
@@ -135,14 +130,14 @@ fn every_four_record_commit_cut_recovers_only_exact_old_or_exact_new_after_reope
             3,
             6,
         );
-        let request = undo_request(
+        let prepared = prepare_historical_selection(
+            storage,
+            &store,
             second.adopted_session(),
-            second.transition(),
             seed.wrapping_add(6),
+            DraftHistoricalRootDirectionV1::Undo,
         );
-        let prepared = storage
-            .prepare_draft_historical_root_adoption(&store, request)
-            .unwrap();
+        let request = prepared.request();
         let old_session = second.adopted_session().clone();
         faults.fail_next(cut);
         let outcome = execute(
@@ -250,12 +245,13 @@ fn adoption_reuses_immutable_roots_and_preserves_canonical_records_and_current_p
 }
 
 #[test]
-fn missing_root_transition_and_corrupt_frontier_fail_without_successor_publication() {
+fn missing_or_corrupt_root_transition_and_frontier_fail_without_successor_publication() {
     for (name, seed, corruption) in [
         ("missing-root", 220, 0_u8),
         ("missing-transition", 225, 1_u8),
-        ("corrupt-frontier", 230, 2_u8),
-        ("replaced-transition", 235, 3_u8),
+        ("missing-frontier", 230, 2_u8),
+        ("corrupt-frontier", 235, 3_u8),
+        ("replaced-transition", 240, 4_u8),
     ] {
         let (home, store, storage, thread) = fixture(name, seed);
         let durable = current(storage, &store, thread);
@@ -276,14 +272,14 @@ fn missing_root_transition_and_corrupt_frontier_fail_without_successor_publicati
             3,
             6,
         );
-        let request = undo_request(
+        let prepared = prepare_historical_selection(
+            storage,
+            &store,
             second.adopted_session(),
-            second.transition(),
             seed.wrapping_add(6),
+            DraftHistoricalRootDirectionV1::Undo,
         );
-        let prepared = storage
-            .prepare_draft_historical_root_adoption(&store, request)
-            .unwrap();
+        let request = prepared.request();
         match corruption {
             0 => committed(execute(
                 &store,
@@ -302,7 +298,15 @@ fn missing_root_transition_and_corrupt_frontier_fail_without_successor_publicati
                     DraftEditHistoryRecordDeletion::Transition(request.selected_transition().key()),
                 ),
             )),
-            2 => inject_draft_edit_history_frontier_digest_corruption(
+            2 => committed(execute(
+                &store,
+                delete_draft_edit_history_record(
+                    &store,
+                    storage,
+                    DraftEditHistoryRecordDeletion::Frontier(request.source_history().key()),
+                ),
+            )),
+            3 => inject_draft_edit_history_frontier_digest_corruption(
                 &store,
                 storage,
                 request.source_history().key(),
@@ -330,11 +334,18 @@ fn missing_root_transition_and_corrupt_frontier_fail_without_successor_publicati
                 ));
             }
         }
-        let outcome = execute(
-            &store,
-            storage.adopt_draft_historical_root(revision(storage, &store), prepared.clone()),
+        assert!(
+            storage
+                .prepare_draft_historical_root_selection(
+                    &store,
+                    historical_selection_intent(
+                        second.adopted_session(),
+                        seed.wrapping_add(7),
+                        DraftHistoricalRootDirectionV1::Undo,
+                    ),
+                )
+                .is_err()
         );
-        assert!(matches!(outcome, CommandOutcome::NotCommitted { .. }));
         let (store, storage) = reopen(&home, store);
         assert!(!matches!(
             storage.draft_historical_root_adoption_status(&store, request),
@@ -497,6 +508,28 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
     );
     assert!(third.transition().prior_undo().is_some());
     assert!(successor.undo_head().is_none());
+    let unavailable_source = proof.settlement().successor_candidate().unwrap().clone();
+    assert!(matches!(
+        storage.prepare_draft_historical_root_selection(
+            &store,
+            historical_selection_intent(
+                &unavailable_source,
+                33,
+                DraftHistoricalRootDirectionV1::Undo,
+            ),
+        ),
+        Ok(syndic_storage::DraftHistoricalRootSelectionV1::Unavailable)
+    ));
+    assert_eq!(
+        storage
+            .draft_editor_candidate_session(
+                &store,
+                unavailable_source.draft_id(),
+                unavailable_source.session_id(),
+            )
+            .unwrap(),
+        DraftEditorCandidateSessionReadOutcomeV1::Active(unavailable_source)
+    );
     if let (Some(floor), Some(undo)) = (successor.oldest_eligible(), successor.undo_head()) {
         assert!(undo.cumulative_encoded_bytes() >= floor.cumulative_encoded_bytes());
     }
@@ -514,7 +547,6 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
         storage,
         &store,
         proof.settlement().successor_candidate().unwrap(),
-        proof.settlement().successor_transition().unwrap(),
         DraftHistoricalRootDirectionV1::Redo,
         30,
     )
@@ -524,7 +556,6 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
         storage,
         &store,
         redo.settlement().successor_candidate().unwrap(),
-        redo.settlement().successor_transition().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
         31,
     )
@@ -570,7 +601,6 @@ fn redo_prior_floor_filter_survives_reopen_historical_continuation_and_branch() 
         storage,
         &store,
         third.adopted_session(),
-        third.transition(),
         DraftHistoricalRootDirectionV1::Undo,
         49,
     )
@@ -589,7 +619,6 @@ fn redo_prior_floor_filter_survives_reopen_historical_continuation_and_branch() 
         storage,
         &store,
         undo_one.settlement().successor_candidate().unwrap(),
-        second.transition(),
         DraftHistoricalRootDirectionV1::Undo,
         50,
     )
@@ -602,7 +631,6 @@ fn redo_prior_floor_filter_survives_reopen_historical_continuation_and_branch() 
         storage,
         &store,
         undo_two.settlement().successor_candidate().unwrap(),
-        selected_redo,
         DraftHistoricalRootDirectionV1::Redo,
         51,
     )
@@ -620,7 +648,6 @@ fn redo_prior_floor_filter_survives_reopen_historical_continuation_and_branch() 
         storage,
         &store,
         redo.settlement().successor_candidate().unwrap(),
-        redo.settlement().successor_transition().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
         52,
     )

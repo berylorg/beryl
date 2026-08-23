@@ -34,6 +34,12 @@ pub struct PreparedDraftHistoricalRootAdoptionV1 {
     target_root: super::super::super::DraftPieceRootRecordV1,
 }
 
+#[derive(Clone)]
+pub enum DraftHistoricalRootSelectionV1 {
+    Prepared(PreparedDraftHistoricalRootAdoptionV1),
+    Unavailable,
+}
+
 impl PreparedDraftHistoricalRootAdoptionV1 {
     pub const fn request(&self) -> DraftHistoricalRootAdoptionRequestV1 {
         self.request
@@ -92,6 +98,75 @@ struct TerminalMutation {
 }
 
 impl SyndicStorage {
+    pub fn prepare_draft_historical_root_selection(
+        &self,
+        store: &HomeStore,
+        intent: DraftHistoricalRootSelectionIntentV1,
+    ) -> Result<DraftHistoricalRootSelectionV1, DraftHistoricalRootAdoptionPrepareErrorV1> {
+        let activation = intent.activation();
+        let source_session = match self.draft_editor_candidate_session(
+            store,
+            activation.draft_id(),
+            activation.session_id(),
+        )? {
+            DraftEditorCandidateSessionReadOutcomeV1::Active(session)
+                if super::super::super::DraftEditorCandidateActivationBindingV1::from_head(
+                    &session,
+                ) == activation
+                    && session.active_operation().is_none() =>
+            {
+                session
+            }
+            _ => return Err(DraftHistoricalRootAdoptionPrepareErrorV1::InvalidRequest),
+        };
+        let source_history = self
+            .point::<DraftEditHistoryFrontiersFamily>(
+                store,
+                activation.history().key(),
+                point_limit(),
+            )?
+            .filter(|history| history.reference() == activation.history())
+            .ok_or(DraftHistoricalRootAdoptionPrepareErrorV1::InvalidRequest)?;
+        if source_session.newest_history() != source_history.reference()
+            || source_session.newest_root() != source_history.reference().root()
+            || !super::super::draft_edit_history_frontier_is_authenticated_v1(
+                self,
+                store,
+                &source_history,
+            )?
+        {
+            return Err(DraftHistoricalRootAdoptionPrepareErrorV1::InvalidRequest);
+        }
+        let selected_reference = match intent.direction() {
+            DraftHistoricalRootDirectionV1::Undo => source_history.undo_head(),
+            DraftHistoricalRootDirectionV1::Redo => source_history.redo_head(),
+        };
+        let Some(selected_reference) = selected_reference else {
+            return Ok(DraftHistoricalRootSelectionV1::Unavailable);
+        };
+        let selected_transition = self
+            .point::<DraftEditHistoryTransitionsFamily>(
+                store,
+                selected_reference.key(),
+                point_limit(),
+            )?
+            .filter(|transition| transition.reference() == selected_reference)
+            .ok_or(DraftHistoricalRootAdoptionPrepareErrorV1::InvalidRequest)?;
+        let request = DraftHistoricalRootAdoptionRequestV1::new(
+            activation.draft_id(),
+            activation.session_id(),
+            intent.operation_id(),
+            source_history.reference(),
+            selected_transition.reference(),
+            intent.direction(),
+            selected_transition.predecessor_root(),
+            selected_transition.before_caret(),
+            selected_transition.before_selection(),
+        );
+        self.prepare_draft_historical_root_adoption(store, request)
+            .map(DraftHistoricalRootSelectionV1::Prepared)
+    }
+
     pub fn prepare_draft_historical_root_adoption(
         &self,
         store: &HomeStore,

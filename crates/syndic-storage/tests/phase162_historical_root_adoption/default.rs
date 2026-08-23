@@ -12,27 +12,13 @@ fn committed_adoption(
     storage: syndic_storage::SyndicStorage,
     store: &beryl_home_store::HomeStore,
     session: &syndic_storage::DraftEditorCandidateSessionV1,
-    transition: &DraftEditHistoryTransitionV1,
     direction: DraftHistoricalRootDirectionV1,
     operation: u8,
 ) -> (
     syndic_storage::DraftHistoricalRootAdoptionProofV1,
     syndic_storage::PreparedDraftHistoricalRootAdoptionV1,
 ) {
-    let request = DraftHistoricalRootAdoptionRequestV1::new(
-        session.draft_id(),
-        session.session_id(),
-        operation_id(operation),
-        session.newest_history(),
-        transition.reference(),
-        direction,
-        transition.predecessor_root(),
-        transition.before_caret(),
-        transition.before_selection(),
-    );
-    let prepared = storage
-        .prepare_draft_historical_root_adoption(store, request)
-        .unwrap();
+    let prepared = prepare_historical_selection(storage, store, session, operation, direction);
     let outcome = execute(
         store,
         storage.adopt_draft_historical_root(revision(storage, store), prepared.clone()),
@@ -125,20 +111,13 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
     };
 
     for (operation, contribution) in [(17, 0_u8), (18, 1_u8), (19, 2_u8)] {
-        let request = DraftHistoricalRootAdoptionRequestV1::new(
-            second_adoption.adopted_session().draft_id(),
-            second_adoption.adopted_session().session_id(),
-            operation_id(operation),
-            second_adoption.adopted_session().newest_history(),
-            second_adoption.transition().reference(),
+        let prepared = prepare_historical_selection(
+            storage,
+            &store,
+            second_adoption.adopted_session(),
+            operation,
             DraftHistoricalRootDirectionV1::Undo,
-            second_adoption.transition().predecessor_root(),
-            second_adoption.transition().before_caret(),
-            second_adoption.transition().before_selection(),
         );
-        let prepared = storage
-            .prepare_draft_historical_root_adoption(&store, request)
-            .unwrap();
         let outcome = match contribution {
             0 => execute(
                 &store,
@@ -186,7 +165,6 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
         storage,
         &store,
         second_adoption.adopted_session(),
-        second_adoption.transition(),
         DraftHistoricalRootDirectionV1::Undo,
         7,
     );
@@ -209,7 +187,6 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
         storage,
         &store,
         undo_session,
-        undo_settlement.successor_transition().unwrap(),
         DraftHistoricalRootDirectionV1::Redo,
         8,
     );
@@ -228,7 +205,6 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
         storage,
         &store,
         redo_session,
-        redo_settlement.successor_transition().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
         9,
     );
@@ -269,12 +245,23 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
     let session = open_session(storage, &store, &durable, 40, 41);
     let first = committed_edit(storage, &store, &session, 42, "one", 0, 3);
     let second = committed_edit(storage, &store, first.adopted_session(), 43, "two", 3, 6);
+    (store, storage) = reopen(&home, store);
+    let second_session = match storage
+        .draft_editor_candidate_session(
+            &store,
+            second.adopted_session().draft_id(),
+            second.adopted_session().session_id(),
+        )
+        .unwrap()
+    {
+        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
+        value => panic!("reopened session is not active: {value:?}"),
+    };
 
     let (undo, undo_prepared) = committed_adoption(
         storage,
         &store,
-        second.adopted_session(),
-        second.transition(),
+        &second_session,
         DraftHistoricalRootDirectionV1::Undo,
         44,
     );
@@ -297,7 +284,6 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
         storage,
         &store,
         undo_settlement.successor_candidate().unwrap(),
-        undo_settlement.successor_transition().unwrap(),
         DraftHistoricalRootDirectionV1::Redo,
         45,
     );
@@ -320,7 +306,6 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
         storage,
         &store,
         redo_settlement.successor_candidate().unwrap(),
-        redo_settlement.successor_transition().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
         46,
     );
@@ -374,10 +359,19 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
     let session = open_session(storage, &store, &durable, 20, 21);
     let first = committed_edit(storage, &store, &session, 22, "one", 0, 3);
     let second = committed_edit(storage, &store, first.adopted_session(), 23, "two", 3, 6);
-    let stale_request = undo_request(second.adopted_session(), second.transition(), 24);
-    let stale = storage
-        .prepare_draft_historical_root_adoption(&store, stale_request)
-        .unwrap();
+    let stale_intent = historical_selection_intent(
+        second.adopted_session(),
+        24,
+        DraftHistoricalRootDirectionV1::Undo,
+    );
+    let stale = prepare_historical_selection(
+        storage,
+        &store,
+        second.adopted_session(),
+        24,
+        DraftHistoricalRootDirectionV1::Undo,
+    );
+    let stale_request = stale.request();
     let third = committed_edit(
         storage,
         &store,
@@ -387,10 +381,41 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
         6,
         11,
     );
-    let disagreeing_request = undo_request(third.adopted_session(), third.transition(), 24);
-    let disagreeing = storage
-        .prepare_draft_historical_root_adoption(&store, disagreeing_request)
-        .unwrap();
+    assert!(
+        storage
+            .prepare_draft_historical_root_selection(&store, stale_intent)
+            .is_err()
+    );
+    let current_binding =
+        syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(third.adopted_session());
+    let stale_frontier = syndic_storage::DraftEditorCandidateActivationBindingV1::new(
+        current_binding.draft_id(),
+        current_binding.session_id(),
+        current_binding.session_generation(),
+        current_binding.candidate_generation(),
+        current_binding.root(),
+        second.adopted_session().newest_history(),
+        current_binding.logical_extent(),
+    );
+    assert!(
+        storage
+            .prepare_draft_historical_root_selection(
+                &store,
+                syndic_storage::DraftHistoricalRootSelectionIntentV1::new(
+                    stale_frontier,
+                    operation_id(26),
+                    DraftHistoricalRootDirectionV1::Undo,
+                ),
+            )
+            .is_err()
+    );
+    let disagreeing = prepare_historical_selection(
+        storage,
+        &store,
+        third.adopted_session(),
+        24,
+        DraftHistoricalRootDirectionV1::Undo,
+    );
 
     committed(execute(
         &store,
@@ -454,10 +479,14 @@ fn settlement_only_outcomes_preserve_candidate_and_history_across_reopen() {
     let source = first.adopted_session().clone();
 
     for (operation, terminal) in [(33, 0_u8), (34, 1_u8), (35, 2_u8)] {
-        let request = undo_request(&source, first.transition(), operation);
-        let prepared = storage
-            .prepare_draft_historical_root_adoption(&store, request)
-            .unwrap();
+        let prepared = prepare_historical_selection(
+            storage,
+            &store,
+            &source,
+            operation,
+            DraftHistoricalRootDirectionV1::Undo,
+        );
+        let request = prepared.request();
         let outcome = match terminal {
             0 => execute(
                 &store,
@@ -682,7 +711,6 @@ fn sixty_four_slot_witness_remains_bounded_and_authenticates_deep_undo() {
         storage,
         &store,
         latest.adopted_session(),
-        latest.transition(),
         DraftHistoricalRootDirectionV1::Undo,
         200,
     );

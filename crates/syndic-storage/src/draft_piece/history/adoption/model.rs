@@ -1,8 +1,9 @@
 use beryl_model::SyndicDraftId;
 
 use super::super::super::{
-    DraftCompositePositionV1, DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionV1,
-    DraftPieceOperationIdV1, DraftPieceRootRecordV1, DraftPieceRootReferenceV1,
+    DraftCompositePositionV1, DraftEditorCandidateActivationBindingV1,
+    DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionV1, DraftPieceOperationIdV1,
+    DraftPieceRootRecordV1, DraftPieceRootReferenceV1,
 };
 use super::super::{
     DraftEditHistoryFrontierReferenceV1, DraftEditHistoryFrontierV1,
@@ -45,6 +46,37 @@ impl DraftHistoricalRootAdoptionKeyV1 {
 pub enum DraftHistoricalRootDirectionV1 {
     Undo,
     Redo,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DraftHistoricalRootSelectionIntentV1 {
+    activation: DraftEditorCandidateActivationBindingV1,
+    operation_id: DraftPieceOperationIdV1,
+    direction: DraftHistoricalRootDirectionV1,
+}
+
+impl DraftHistoricalRootSelectionIntentV1 {
+    pub const fn new(
+        activation: DraftEditorCandidateActivationBindingV1,
+        operation_id: DraftPieceOperationIdV1,
+        direction: DraftHistoricalRootDirectionV1,
+    ) -> Self {
+        Self {
+            activation,
+            operation_id,
+            direction,
+        }
+    }
+
+    pub const fn activation(self) -> DraftEditorCandidateActivationBindingV1 {
+        self.activation
+    }
+    pub const fn operation_id(self) -> DraftPieceOperationIdV1 {
+        self.operation_id
+    }
+    pub const fn direction(self) -> DraftHistoricalRootDirectionV1 {
+        self.direction
+    }
 }
 
 impl DraftHistoricalRootDirectionV1 {

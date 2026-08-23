@@ -13,12 +13,15 @@ use beryl_model::{
 };
 use syndic_storage::{
     CreateThread, DraftCompositeGapWitnessV1, DraftCompositePositionV1, DraftEditHistoryPolicyV1,
-    DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionOpenOutcomeV1,
-    DraftEditorCandidateSessionOpenRequestV1, DraftEditorCandidateSessionV1,
-    DraftEditorCurrentSelectorV1, DraftPieceBuildFragmentV1, DraftPieceEditHeaderV1,
-    DraftPieceOperationIdV1, DraftPieceReplacementV1, DraftPieceV1, PreparedDraftPieceEditV1,
-    SyndicCurrentDraft, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    canonical_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_fragment_chain_v1,
+    DraftEditorCandidateActivationBindingV1, DraftEditorCandidateSessionIdV1,
+    DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionOpenRequestV1,
+    DraftEditorCandidateSessionV1, DraftEditorCurrentSelectorV1, DraftHistoricalRootDirectionV1,
+    DraftHistoricalRootSelectionIntentV1, DraftHistoricalRootSelectionV1,
+    DraftPieceBuildFragmentV1, DraftPieceEditHeaderV1, DraftPieceOperationIdV1,
+    DraftPieceReplacementV1, DraftPieceV1, PreparedDraftHistoricalRootAdoptionV1,
+    PreparedDraftPieceEditV1, SyndicCurrentDraft, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp, canonical_draft_piece_fragment_chain_v1,
+    canonical_empty_draft_piece_fragment_chain_v1,
 };
 
 #[cfg(feature = "test-faults")]
@@ -300,6 +303,39 @@ pub fn settle(
 
 pub fn operation_id(value: u8) -> DraftPieceOperationIdV1 {
     DraftPieceOperationIdV1::from_bytes([value; 16])
+}
+
+pub fn historical_selection_intent(
+    session: &DraftEditorCandidateSessionV1,
+    operation: u8,
+    direction: DraftHistoricalRootDirectionV1,
+) -> DraftHistoricalRootSelectionIntentV1 {
+    DraftHistoricalRootSelectionIntentV1::new(
+        DraftEditorCandidateActivationBindingV1::from_head(session),
+        operation_id(operation),
+        direction,
+    )
+}
+
+pub fn prepare_historical_selection(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    session: &DraftEditorCandidateSessionV1,
+    operation: u8,
+    direction: DraftHistoricalRootDirectionV1,
+) -> PreparedDraftHistoricalRootAdoptionV1 {
+    match storage
+        .prepare_draft_historical_root_selection(
+            store,
+            historical_selection_intent(session, operation, direction),
+        )
+        .unwrap()
+    {
+        DraftHistoricalRootSelectionV1::Prepared(prepared) => prepared,
+        DraftHistoricalRootSelectionV1::Unavailable => {
+            panic!("historical direction unexpectedly unavailable")
+        }
+    }
 }
 
 pub fn point(offset: u64) -> DraftCompositePositionV1 {

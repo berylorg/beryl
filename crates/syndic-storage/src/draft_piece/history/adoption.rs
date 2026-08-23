@@ -5,7 +5,8 @@ mod status;
 
 pub use model::*;
 pub use mutation::{
-    DraftHistoricalRootAdoptionPrepareErrorV1, PreparedDraftHistoricalRootAdoptionV1,
+    DraftHistoricalRootAdoptionPrepareErrorV1, DraftHistoricalRootSelectionV1,
+    PreparedDraftHistoricalRootAdoptionV1,
 };
 pub use status::DraftHistoricalRootAdoptionReconciliationErrorV1;
 
