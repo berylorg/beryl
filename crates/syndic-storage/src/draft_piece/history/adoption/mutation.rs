@@ -17,7 +17,7 @@ use super::super::super::{
     DraftPiecePrepareErrorV1, DraftPieceRootsFamily, point_limit, validate_position,
 };
 use super::super::{
-    DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
+    DraftEditHistoryFrontierKeyV1, DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
     DraftEditHistoryRetentionErrorV1, DraftEditHistoryTransitionsCodec,
     DraftEditHistoryTransitionsFamily, append_historical_draft_edit_history_with_retention_v1,
     authenticate_draft_edit_history_frontier_v1,
@@ -343,9 +343,20 @@ impl DomainMutation<SyndicDomain> for AdoptMutation {
                     DraftHistoricalRootAdoptionErrorReasonV1::OccupiedIdentity,
                 );
             } else {
+                let append_history = if matches!(
+                    self.prepared.source_history.reference().key(),
+                    DraftEditHistoryFrontierKeyV1::Publication { .. }
+                ) {
+                    self.prepared
+                        .source_history
+                        .fork_session(current.session_id())
+                        .ok_or(SyndicMutationError::IdentityCollision)?
+                } else {
+                    self.prepared.source_history.clone()
+                };
                 match append_historical_draft_edit_history_with_retention_v1(
                     reader,
-                    &self.prepared.source_history,
+                    &append_history,
                     self.prepared.request.selected_transition(),
                     self.prepared.request.direction().transition_kind(),
                     current

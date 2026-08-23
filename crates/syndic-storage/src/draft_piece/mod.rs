@@ -5,6 +5,7 @@ mod materializer;
 mod model;
 mod mutation;
 mod persistent;
+mod publication;
 mod read;
 mod session;
 mod staging;
@@ -16,6 +17,10 @@ pub use history::*;
 pub use materializer::*;
 pub use model::*;
 pub use mutation::{PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
+pub use publication::{
+    DraftEditorCandidatePublicationCommandErrorV1, PreparedDraftEditorCandidatePublicationV1,
+    PreparedDraftEditorCandidateSessionDisposeV1,
+};
 pub use read::DraftPieceCommandReconciliationErrorV1;
 pub use session::{
     DraftEditorCandidateSessionCommandErrorV1, PreparedDraftEditorCandidateSessionOpenV1,

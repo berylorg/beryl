@@ -9,7 +9,9 @@ use beryl_model::{
 
 use super::history::{
     DraftEditHistoryFrontierReferenceV1, DraftEditHistoryFrontierV1, DraftEditHistoryTransitionV1,
+    DraftRootHistoryPairV1,
 };
+use crate::SyndicTimestamp;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DraftPieceOperationIdV1([u8; 16]);
@@ -48,6 +50,16 @@ pub enum DraftEditorCandidateSessionRecordKeyV1 {
         session_id: DraftEditorCandidateSessionIdV1,
         operation_id: DraftPieceOperationIdV1,
     },
+    PublicationReceipt {
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    },
+    DisposalReceipt {
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    },
 }
 
 impl DraftEditorCandidateSessionRecordKeyV1 {
@@ -73,15 +85,45 @@ impl DraftEditorCandidateSessionRecordKeyV1 {
         }
     }
 
+    pub const fn publication_receipt(
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    ) -> Self {
+        Self::PublicationReceipt {
+            draft_id,
+            session_id,
+            operation_id,
+        }
+    }
+
+    pub const fn disposal_receipt(
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    ) -> Self {
+        Self::DisposalReceipt {
+            draft_id,
+            session_id,
+            operation_id,
+        }
+    }
+
     pub const fn draft_id(self) -> SyndicDraftId {
         match self {
-            Self::Head { draft_id, .. } | Self::OpenReceipt { draft_id, .. } => draft_id,
+            Self::Head { draft_id, .. }
+            | Self::OpenReceipt { draft_id, .. }
+            | Self::PublicationReceipt { draft_id, .. }
+            | Self::DisposalReceipt { draft_id, .. } => draft_id,
         }
     }
 
     pub const fn session_id(self) -> DraftEditorCandidateSessionIdV1 {
         match self {
-            Self::Head { session_id, .. } | Self::OpenReceipt { session_id, .. } => session_id,
+            Self::Head { session_id, .. }
+            | Self::OpenReceipt { session_id, .. }
+            | Self::PublicationReceipt { session_id, .. }
+            | Self::DisposalReceipt { session_id, .. } => session_id,
         }
     }
 }
@@ -339,6 +381,96 @@ impl DraftEditorCandidateSessionOpenRequestV1 {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DraftEditorCandidatePublicationRequestV1 {
+    selector: DraftEditorCurrentSelectorV1,
+    session_id: DraftEditorCandidateSessionIdV1,
+    operation_id: DraftPieceOperationIdV1,
+    candidate_generation: u64,
+    candidate: DraftRootHistoryPairV1,
+    published_at: SyndicTimestamp,
+}
+
+impl DraftEditorCandidatePublicationRequestV1 {
+    pub const fn new(
+        selector: DraftEditorCurrentSelectorV1,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+        candidate_generation: u64,
+        candidate: DraftRootHistoryPairV1,
+        published_at: SyndicTimestamp,
+    ) -> Self {
+        Self {
+            selector,
+            session_id,
+            operation_id,
+            candidate_generation,
+            candidate,
+            published_at,
+        }
+    }
+    pub const fn selector(self) -> DraftEditorCurrentSelectorV1 {
+        self.selector
+    }
+    pub const fn session_id(self) -> DraftEditorCandidateSessionIdV1 {
+        self.session_id
+    }
+    pub const fn operation_id(self) -> DraftPieceOperationIdV1 {
+        self.operation_id
+    }
+    pub const fn candidate_generation(self) -> u64 {
+        self.candidate_generation
+    }
+    pub const fn candidate(self) -> DraftRootHistoryPairV1 {
+        self.candidate
+    }
+    pub const fn published_at(self) -> SyndicTimestamp {
+        self.published_at
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DraftEditorCandidateSessionDisposeRequestV1 {
+    draft_id: SyndicDraftId,
+    session_id: DraftEditorCandidateSessionIdV1,
+    operation_id: DraftPieceOperationIdV1,
+    expected_session_generation: u64,
+    expected_pair: DraftRootHistoryPairV1,
+}
+
+impl DraftEditorCandidateSessionDisposeRequestV1 {
+    pub const fn new(
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+        expected_session_generation: u64,
+        expected_pair: DraftRootHistoryPairV1,
+    ) -> Self {
+        Self {
+            draft_id,
+            session_id,
+            operation_id,
+            expected_session_generation,
+            expected_pair,
+        }
+    }
+    pub const fn draft_id(self) -> SyndicDraftId {
+        self.draft_id
+    }
+    pub const fn session_id(self) -> DraftEditorCandidateSessionIdV1 {
+        self.session_id
+    }
+    pub const fn operation_id(self) -> DraftPieceOperationIdV1 {
+        self.operation_id
+    }
+    pub const fn expected_session_generation(self) -> u64 {
+        self.expected_session_generation
+    }
+    pub const fn expected_pair(self) -> DraftRootHistoryPairV1 {
+        self.expected_pair
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftEditorCandidateSessionV1 {
     thread_id: SyndicThreadId,
@@ -359,6 +491,7 @@ pub struct DraftEditorCandidateSessionV1 {
     dirty_generation: u64,
     logical_extent: DraftLogicalExtentV1,
     lifecycle: DraftEditorCandidateSessionLifecycleV1,
+    disposal_operation_id: Option<DraftPieceOperationIdV1>,
     active_operation: Option<DraftEditorActiveOperationV1>,
 }
 
@@ -393,6 +526,7 @@ impl DraftEditorCandidateSessionV1 {
             dirty_generation: 0,
             logical_extent: root.summary().logical_extent(),
             lifecycle: DraftEditorCandidateSessionLifecycleV1::Active,
+            disposal_operation_id: None,
             active_operation: None,
         }
     }
@@ -419,6 +553,53 @@ impl DraftEditorCandidateSessionV1 {
         lifecycle: DraftEditorCandidateSessionLifecycleV1,
         active_operation: Option<DraftEditorActiveOperationV1>,
     ) -> Self {
+        Self::from_parts_with_disposal(
+            thread_id,
+            draft_id,
+            session_id,
+            open_operation_id,
+            session_generation,
+            durable_base_selector_revision,
+            durable_base_root,
+            durable_base_history,
+            published_candidate_generation,
+            published_selector_revision,
+            published_root,
+            published_history,
+            newest_candidate_generation,
+            newest_root,
+            newest_history,
+            dirty_generation,
+            logical_extent,
+            lifecycle,
+            None,
+            active_operation,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) const fn from_parts_with_disposal(
+        thread_id: SyndicThreadId,
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        open_operation_id: DraftPieceOperationIdV1,
+        session_generation: u64,
+        durable_base_selector_revision: DraftRevision,
+        durable_base_root: DraftPieceRootReferenceV1,
+        durable_base_history: DraftEditHistoryFrontierReferenceV1,
+        published_candidate_generation: u64,
+        published_selector_revision: DraftRevision,
+        published_root: DraftPieceRootReferenceV1,
+        published_history: DraftEditHistoryFrontierReferenceV1,
+        newest_candidate_generation: u64,
+        newest_root: DraftPieceRootReferenceV1,
+        newest_history: DraftEditHistoryFrontierReferenceV1,
+        dirty_generation: u64,
+        logical_extent: DraftLogicalExtentV1,
+        lifecycle: DraftEditorCandidateSessionLifecycleV1,
+        disposal_operation_id: Option<DraftPieceOperationIdV1>,
+        active_operation: Option<DraftEditorActiveOperationV1>,
+    ) -> Self {
         Self {
             thread_id,
             draft_id,
@@ -438,6 +619,7 @@ impl DraftEditorCandidateSessionV1 {
             dirty_generation,
             logical_extent,
             lifecycle,
+            disposal_operation_id,
             active_operation,
         }
     }
@@ -495,6 +677,9 @@ impl DraftEditorCandidateSessionV1 {
     }
     pub const fn lifecycle(&self) -> DraftEditorCandidateSessionLifecycleV1 {
         self.lifecycle
+    }
+    pub const fn disposal_operation_id(&self) -> Option<DraftPieceOperationIdV1> {
+        self.disposal_operation_id
     }
 
     pub const fn active_operation(&self) -> Option<&DraftEditorActiveOperationV1> {
@@ -616,6 +801,7 @@ impl DraftEditorCandidateSessionV1 {
             dirty_generation: self.dirty_generation.checked_add(1)?,
             logical_extent: successor.summary().logical_extent(),
             lifecycle: self.lifecycle,
+            disposal_operation_id: self.disposal_operation_id,
             active_operation: None,
         })
     }
@@ -649,8 +835,54 @@ impl DraftEditorCandidateSessionV1 {
             dirty_generation: self.dirty_generation.checked_add(1)?,
             logical_extent: successor.summary().logical_extent(),
             lifecycle: self.lifecycle,
+            disposal_operation_id: self.disposal_operation_id,
             active_operation: None,
         })
+    }
+
+    pub(crate) fn published(
+        &self,
+        candidate_generation: u64,
+        candidate: DraftRootHistoryPairV1,
+        selector_revision: DraftRevision,
+    ) -> Option<Self> {
+        if self.lifecycle != DraftEditorCandidateSessionLifecycleV1::Active
+            || self.active_operation.is_some()
+            || candidate_generation <= self.published_candidate_generation
+            || candidate_generation > self.newest_candidate_generation
+            || candidate.history().candidate_generation() != candidate_generation
+            || candidate.root() != candidate.history().root()
+            || selector_revision <= self.published_selector_revision
+        {
+            return None;
+        }
+        let mut next = self.clone();
+        next.session_generation = next.session_generation.checked_add(1)?;
+        next.published_candidate_generation = candidate_generation;
+        next.published_selector_revision = selector_revision;
+        next.published_root = candidate.root();
+        next.published_history = candidate.history();
+        if candidate_generation == next.newest_candidate_generation {
+            next.newest_root = candidate.root();
+            next.newest_history = candidate.history();
+        }
+        Some(next)
+    }
+
+    pub(crate) fn disposed(&self, operation_id: DraftPieceOperationIdV1) -> Option<Self> {
+        if self.lifecycle != DraftEditorCandidateSessionLifecycleV1::Active
+            || self.active_operation.is_some()
+            || self.published_candidate_generation != self.newest_candidate_generation
+            || self.published_root != self.newest_root
+            || self.published_history != self.newest_history
+        {
+            return None;
+        }
+        let mut next = self.clone();
+        next.session_generation = next.session_generation.checked_add(1)?;
+        next.lifecycle = DraftEditorCandidateSessionLifecycleV1::Disposed;
+        next.disposal_operation_id = Some(operation_id);
+        Some(next)
     }
 
     pub(crate) fn is_coherent(&self) -> bool {
@@ -685,11 +917,17 @@ impl DraftEditorCandidateSessionV1 {
             && self.published_history.candidate_generation() == self.published_candidate_generation
             && self.newest_history.root() == self.newest_root
             && self.newest_history.candidate_generation() == self.newest_candidate_generation;
-        let lifecycle_is_coherent = self.lifecycle
-            != DraftEditorCandidateSessionLifecycleV1::Disposed
-            || (self.published_candidate_generation == self.newest_candidate_generation
-                && self.published_root == self.newest_root
-                && self.active_operation.is_none());
+        let lifecycle_is_coherent = match self.lifecycle {
+            DraftEditorCandidateSessionLifecycleV1::Active => self.disposal_operation_id.is_none(),
+            DraftEditorCandidateSessionLifecycleV1::Disposed => {
+                self.disposal_operation_id
+                    .is_some_and(|operation_id| operation_id != self.open_operation_id)
+                    && self.published_candidate_generation == self.newest_candidate_generation
+                    && self.published_root == self.newest_root
+                    && self.published_history == self.newest_history
+                    && self.active_operation.is_none()
+            }
+        };
         self.session_generation != 0
             && generations_are_ordered
             && roots_are_owned
@@ -713,22 +951,167 @@ impl DraftEditorCandidateSessionV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftEditorCandidateSessionOpenReceiptV1 {
-    request_bytes: Vec<u8>,
-    head: DraftEditorCandidateSessionV1,
+    payload: DraftEditorCandidateSessionReceiptPayloadV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum DraftEditorCandidateSessionReceiptPayloadV1 {
+    Open {
+        request_bytes: Vec<u8>,
+        head: DraftEditorCandidateSessionV1,
+    },
+    Publication(Box<DraftEditorCandidatePublicationReceiptV1>),
+    Disposal(Box<DraftEditorCandidateSessionDisposeReceiptV1>),
 }
 
 impl DraftEditorCandidateSessionOpenReceiptV1 {
     pub fn new(request_bytes: Vec<u8>, head: DraftEditorCandidateSessionV1) -> Self {
         Self {
+            payload: DraftEditorCandidateSessionReceiptPayloadV1::Open {
+                request_bytes,
+                head,
+            },
+        }
+    }
+    pub fn request_bytes(&self) -> &[u8] {
+        match &self.payload {
+            DraftEditorCandidateSessionReceiptPayloadV1::Open { request_bytes, .. } => {
+                request_bytes
+            }
+            DraftEditorCandidateSessionReceiptPayloadV1::Publication(receipt) => {
+                receipt.request_bytes()
+            }
+            DraftEditorCandidateSessionReceiptPayloadV1::Disposal(receipt) => {
+                receipt.request_bytes()
+            }
+        }
+    }
+    pub fn head(&self) -> &DraftEditorCandidateSessionV1 {
+        match &self.payload {
+            DraftEditorCandidateSessionReceiptPayloadV1::Open { head, .. } => head,
+            DraftEditorCandidateSessionReceiptPayloadV1::Publication(receipt) => {
+                receipt.before_head()
+            }
+            DraftEditorCandidateSessionReceiptPayloadV1::Disposal(receipt) => receipt.before_head(),
+        }
+    }
+    pub(crate) fn from_publication(receipt: DraftEditorCandidatePublicationReceiptV1) -> Self {
+        Self {
+            payload: DraftEditorCandidateSessionReceiptPayloadV1::Publication(Box::new(receipt)),
+        }
+    }
+    pub(crate) fn from_disposal(receipt: DraftEditorCandidateSessionDisposeReceiptV1) -> Self {
+        Self {
+            payload: DraftEditorCandidateSessionReceiptPayloadV1::Disposal(Box::new(receipt)),
+        }
+    }
+    pub(crate) fn publication(&self) -> Option<&DraftEditorCandidatePublicationReceiptV1> {
+        match &self.payload {
+            DraftEditorCandidateSessionReceiptPayloadV1::Publication(v) => Some(v),
+            _ => None,
+        }
+    }
+    pub(crate) fn disposal(&self) -> Option<&DraftEditorCandidateSessionDisposeReceiptV1> {
+        match &self.payload {
+            DraftEditorCandidateSessionReceiptPayloadV1::Disposal(v) => Some(v),
+            _ => None,
+        }
+    }
+    pub(crate) fn is_open(&self) -> bool {
+        matches!(
+            self.payload,
+            DraftEditorCandidateSessionReceiptPayloadV1::Open { .. }
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DraftEditorCandidatePublicationReceiptV1 {
+    request_bytes: Vec<u8>,
+    prior_selector: DraftEditorCurrentSelectorV1,
+    successor_selector: DraftEditorCurrentSelectorV1,
+    before_head: DraftEditorCandidateSessionV1,
+    after_head: DraftEditorCandidateSessionV1,
+    captured_frontier: DraftEditHistoryFrontierV1,
+}
+
+impl DraftEditorCandidatePublicationReceiptV1 {
+    pub(crate) fn new(
+        request_bytes: Vec<u8>,
+        prior_selector: DraftEditorCurrentSelectorV1,
+        successor_selector: DraftEditorCurrentSelectorV1,
+        before_head: DraftEditorCandidateSessionV1,
+        after_head: DraftEditorCandidateSessionV1,
+        captured_frontier: DraftEditHistoryFrontierV1,
+    ) -> Self {
+        Self {
             request_bytes,
-            head,
+            prior_selector,
+            successor_selector,
+            before_head,
+            after_head,
+            captured_frontier,
         }
     }
     pub fn request_bytes(&self) -> &[u8] {
         &self.request_bytes
     }
-    pub const fn head(&self) -> &DraftEditorCandidateSessionV1 {
-        &self.head
+    pub const fn prior_selector(&self) -> DraftEditorCurrentSelectorV1 {
+        self.prior_selector
+    }
+    pub const fn successor_selector(&self) -> DraftEditorCurrentSelectorV1 {
+        self.successor_selector
+    }
+    pub const fn before_head(&self) -> &DraftEditorCandidateSessionV1 {
+        &self.before_head
+    }
+    pub const fn after_head(&self) -> &DraftEditorCandidateSessionV1 {
+        &self.after_head
+    }
+    pub const fn captured_frontier(&self) -> &DraftEditHistoryFrontierV1 {
+        &self.captured_frontier
+    }
+    pub const fn published_pair(&self) -> DraftRootHistoryPairV1 {
+        DraftRootHistoryPairV1::new(
+            self.successor_selector.root(),
+            self.successor_selector.history(),
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DraftEditorCandidateSessionDisposeReceiptV1 {
+    request_bytes: Vec<u8>,
+    before_head: DraftEditorCandidateSessionV1,
+    after_head: DraftEditorCandidateSessionV1,
+    frontier: DraftEditHistoryFrontierV1,
+}
+
+impl DraftEditorCandidateSessionDisposeReceiptV1 {
+    pub(crate) fn new(
+        request_bytes: Vec<u8>,
+        before_head: DraftEditorCandidateSessionV1,
+        after_head: DraftEditorCandidateSessionV1,
+        frontier: DraftEditHistoryFrontierV1,
+    ) -> Self {
+        Self {
+            request_bytes,
+            before_head,
+            after_head,
+            frontier,
+        }
+    }
+    pub fn request_bytes(&self) -> &[u8] {
+        &self.request_bytes
+    }
+    pub const fn before_head(&self) -> &DraftEditorCandidateSessionV1 {
+        &self.before_head
+    }
+    pub const fn after_head(&self) -> &DraftEditorCandidateSessionV1 {
+        &self.after_head
+    }
+    pub const fn frontier(&self) -> &DraftEditHistoryFrontierV1 {
+        &self.frontier
     }
 }
 
@@ -736,6 +1119,73 @@ impl DraftEditorCandidateSessionOpenReceiptV1 {
 pub enum DraftEditorCandidateSessionRecordV1 {
     Head(DraftEditorCandidateSessionV1),
     OpenReceipt(DraftEditorCandidateSessionOpenReceiptV1),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DraftEditorCandidatePublicationCollisionProofV1 {
+    requested: DraftEditorCandidatePublicationRequestV1,
+    occupied: DraftEditorCandidatePublicationReceiptV1,
+}
+
+impl DraftEditorCandidatePublicationCollisionProofV1 {
+    pub(crate) const fn new(
+        requested: DraftEditorCandidatePublicationRequestV1,
+        occupied: DraftEditorCandidatePublicationReceiptV1,
+    ) -> Self {
+        Self {
+            requested,
+            occupied,
+        }
+    }
+    pub const fn requested(&self) -> DraftEditorCandidatePublicationRequestV1 {
+        self.requested
+    }
+    pub const fn occupied(&self) -> &DraftEditorCandidatePublicationReceiptV1 {
+        &self.occupied
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DraftEditorCandidatePublicationOutcomeV1 {
+    Published(DraftEditorCurrentSelectorV1, DraftRootHistoryPairV1),
+    ExactReplay(DraftEditorCandidatePublicationReceiptV1),
+    Superseded(u64, DraftRootHistoryPairV1),
+    DurableBaseConflict(DraftEditorCurrentSelectorV1),
+    SessionDisposed,
+    OccupiedIdentityCollision(DraftEditorCandidatePublicationCollisionProofV1),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DraftEditorCandidateSessionDisposeCollisionProofV1 {
+    requested: DraftEditorCandidateSessionDisposeRequestV1,
+    occupied: DraftEditorCandidateSessionDisposeReceiptV1,
+}
+
+impl DraftEditorCandidateSessionDisposeCollisionProofV1 {
+    pub(crate) const fn new(
+        requested: DraftEditorCandidateSessionDisposeRequestV1,
+        occupied: DraftEditorCandidateSessionDisposeReceiptV1,
+    ) -> Self {
+        Self {
+            requested,
+            occupied,
+        }
+    }
+    pub const fn requested(&self) -> DraftEditorCandidateSessionDisposeRequestV1 {
+        self.requested
+    }
+    pub const fn occupied(&self) -> &DraftEditorCandidateSessionDisposeReceiptV1 {
+        &self.occupied
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DraftEditorCandidateSessionDisposeOutcomeV1 {
+    Disposed(DraftEditorCandidateSessionV1),
+    ExactReplay(DraftEditorCandidateSessionDisposeReceiptV1),
+    DirtyConflict(DraftEditorCandidateSessionV1),
+    AlreadyDisposed(DraftEditorCandidateSessionV1),
+    OccupiedIdentityCollision(DraftEditorCandidateSessionDisposeCollisionProofV1),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

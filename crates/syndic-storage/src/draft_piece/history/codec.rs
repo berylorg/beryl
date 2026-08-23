@@ -21,7 +21,7 @@ impl Family for DraftEditHistoryFrontiersFamily {
     type Value = DraftEditHistoryFrontierV1;
     const NAME: &'static str = "draft-edit-history-frontiers";
     const RECORD_VERSION: RecordVersion = RecordVersion::new(1);
-    const MAX_KEY_BYTES: usize = 33;
+    const MAX_KEY_BYTES: usize = 49;
     const MAX_VALUE_BYTES: usize = 65_536;
 
     fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
@@ -135,6 +135,15 @@ pub(super) fn enc_frontier_key(e: &mut Encoder, key: DraftEditHistoryFrontierKey
             e.u8(1);
             e.fixed16(session_id.as_bytes());
         }
+        DraftEditHistoryFrontierKeyV1::Publication {
+            session_id,
+            operation_id,
+            ..
+        } => {
+            e.u8(2);
+            e.fixed16(session_id.as_bytes());
+            e.fixed16(operation_id.as_bytes());
+        }
     }
 }
 
@@ -145,6 +154,11 @@ fn dec_frontier_key(d: &mut Decoder<'_>) -> Result<DraftEditHistoryFrontierKeyV1
         1 => Ok(DraftEditHistoryFrontierKeyV1::session(
             draft_id,
             DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?),
+        )),
+        2 => Ok(DraftEditHistoryFrontierKeyV1::publication(
+            draft_id,
+            DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?),
+            DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
         )),
         tag => Err(CodecError::InvalidTag {
             kind: "draft edit-history frontier key",

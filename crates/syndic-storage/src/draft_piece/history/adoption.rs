@@ -10,7 +10,7 @@ pub use mutation::{
 };
 pub use status::DraftHistoricalRootAdoptionReconciliationErrorV1;
 
-pub(crate) use codec::DraftHistoricalRootAdoptionsCodec;
+pub(crate) use codec::{DraftHistoricalRootAdoptionsCodec, DraftHistoricalRootAdoptionsFamily};
 pub(crate) use mutation::{
     historical_candidate_session_is_exact, historical_candidate_session_is_exact_in_store,
 };

@@ -131,6 +131,60 @@ impl DraftEditHistoryFrontierV1 {
         )))
     }
 
+    pub(crate) fn publication_snapshot(
+        &self,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    ) -> Option<Self> {
+        if !self.is_locally_valid() {
+            return None;
+        }
+        let key = DraftEditHistoryFrontierKeyV1::publication(
+            self.reference.key().draft_id(),
+            session_id,
+            operation_id,
+        );
+        let retained_without_head = self
+            .retained_encoded_bytes
+            .checked_sub(stored_frontier_charge(self).ok()?)?;
+        let provisional = Self::from_parts(
+            DraftEditHistoryFrontierReferenceV1::new(
+                key,
+                self.reference.candidate_generation(),
+                self.reference.root(),
+                self.reference.frontier_revision(),
+                self.byte_budget,
+                self.retention_policy_revision,
+                self.reference.availability(),
+                DraftPieceDigestV1::from_bytes([0; 32]),
+            ),
+            self.journal_head,
+            self.undo_head,
+            self.redo_head,
+            self.oldest_eligible,
+            self.cumulative_encoded_bytes,
+            0,
+            self.byte_budget,
+            self.retention_policy_revision,
+        );
+        let retained =
+            retained_without_head.checked_add(stored_frontier_charge(&provisional).ok()?)?;
+        if retained > self.byte_budget {
+            return None;
+        }
+        Some(authenticated_frontier(Self::from_parts(
+            provisional.reference,
+            provisional.journal_head,
+            provisional.undo_head,
+            provisional.redo_head,
+            provisional.oldest_eligible,
+            provisional.cumulative_encoded_bytes,
+            retained,
+            provisional.byte_budget,
+            provisional.retention_policy_revision,
+        )))
+    }
+
     pub(crate) fn is_locally_valid(&self) -> bool {
         let reference = self.reference;
         let key = reference.key();
@@ -174,7 +228,8 @@ impl DraftEditHistoryFrontierV1 {
                     && stored_frontier_charge(self) == Ok(self.retained_encoded_bytes)
                     && reference.availability() == DraftEditHistoryAvailabilityV1::NONE
             }
-            DraftEditHistoryFrontierKeyV1::Session { .. } => true,
+            DraftEditHistoryFrontierKeyV1::Session { .. }
+            | DraftEditHistoryFrontierKeyV1::Publication { .. } => true,
         }
     }
 }

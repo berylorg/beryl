@@ -1294,7 +1294,7 @@ fn expected_active_session(
     }
 }
 
-fn authenticate_progress_receipt(
+pub(super) fn authenticate_progress_receipt(
     reader: &DomainReader<'_, SyndicDomain>,
     receipt: &DraftPieceBuildProgressReceiptV1,
 ) -> Result<(), SyndicMutationError> {
@@ -1406,6 +1406,9 @@ pub(super) fn session_head(
     if !super::session::receipt_matches_head(&receipt, &head) {
         return Err(SyndicMutationError::IdentityCollision);
     }
+    if !super::publication::candidate_session_publication_is_exact(reader, &head)? {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
     if let Some(custody) = head.active_operation() {
         if let Some(staging_receipt) = custody.staging_receipt() {
             let identity = staging_receipt.identity();
@@ -1486,7 +1489,13 @@ pub(super) fn session_head(
             required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
         if published.reference() != head.published_history()
             || newest.reference() != head.newest_history()
-            || published.fork_session(head.session_id()).as_ref() != Some(&newest)
+            || !(published == newest
+                && matches!(
+                    published.reference().key(),
+                    DraftEditHistoryFrontierKeyV1::Publication { session_id, .. }
+                        if session_id == head.session_id()
+                )
+                || published.fork_session(head.session_id()).as_ref() == Some(&newest))
         {
             return Err(SyndicMutationError::IdentityCollision);
         }
@@ -2085,6 +2094,16 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
             .ok_or(SyndicMutationError::IdentityCollision)?;
         let root = DraftPieceRootRecordV1::new(successor);
         let observed_history = authenticated_history_frontier(reader, current.newest_history())?;
+        let append_history = if matches!(
+            observed_history.reference().key(),
+            DraftEditHistoryFrontierKeyV1::Publication { .. }
+        ) {
+            observed_history
+                .fork_session(current.session_id())
+                .ok_or(SyndicMutationError::IdentityCollision)?
+        } else {
+            observed_history.clone()
+        };
         let (outcome, closure, lifecycle, target_session) = if current.lifecycle()
             == DraftEditorCandidateSessionLifecycleV1::Active
             && current.newest_candidate_generation() == build.predecessor_candidate_generation()
@@ -2093,7 +2112,7 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
         {
             match append_ordinary_draft_edit_history_with_retention_v1(
                 reader,
-                &observed_history,
+                &append_history,
                 current
                     .newest_candidate_generation()
                     .checked_add(1)

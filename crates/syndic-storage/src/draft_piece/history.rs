@@ -13,8 +13,8 @@ pub use witness::*;
 
 pub use adoption::*;
 pub(crate) use adoption::{
-    DraftHistoricalRootAdoptionsCodec, historical_candidate_session_is_exact,
-    historical_candidate_session_is_exact_in_store,
+    DraftHistoricalRootAdoptionsCodec, DraftHistoricalRootAdoptionsFamily,
+    historical_candidate_session_is_exact, historical_candidate_session_is_exact_in_store,
 };
 #[cfg(feature = "test-faults")]
 pub(crate) use append::{

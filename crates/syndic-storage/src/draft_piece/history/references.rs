@@ -2,7 +2,8 @@ use beryl_model::SyndicDraftId;
 use std::num::NonZeroU64;
 
 use super::super::{
-    DraftEditorCandidateSessionIdV1, DraftPieceDigestV1, DraftPieceRootReferenceV1,
+    DraftEditorCandidateSessionIdV1, DraftPieceDigestV1, DraftPieceOperationIdV1,
+    DraftPieceRootReferenceV1,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,6 +44,11 @@ pub enum DraftEditHistoryFrontierKeyV1 {
         draft_id: SyndicDraftId,
         session_id: DraftEditorCandidateSessionIdV1,
     },
+    Publication {
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    },
 }
 
 impl DraftEditHistoryFrontierKeyV1 {
@@ -60,16 +66,39 @@ impl DraftEditHistoryFrontierKeyV1 {
         }
     }
 
+    pub const fn publication(
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    ) -> Self {
+        Self::Publication {
+            draft_id,
+            session_id,
+            operation_id,
+        }
+    }
+
     pub const fn draft_id(self) -> SyndicDraftId {
         match self {
-            Self::CanonicalEmpty { draft_id } | Self::Session { draft_id, .. } => draft_id,
+            Self::CanonicalEmpty { draft_id }
+            | Self::Session { draft_id, .. }
+            | Self::Publication { draft_id, .. } => draft_id,
         }
     }
 
     pub const fn session_id(self) -> Option<DraftEditorCandidateSessionIdV1> {
         match self {
             Self::CanonicalEmpty { .. } => None,
-            Self::Session { session_id, .. } => Some(session_id),
+            Self::Session { session_id, .. } | Self::Publication { session_id, .. } => {
+                Some(session_id)
+            }
+        }
+    }
+
+    pub const fn publication_operation_id(self) -> Option<DraftPieceOperationIdV1> {
+        match self {
+            Self::Publication { operation_id, .. } => Some(operation_id),
+            Self::CanonicalEmpty { .. } | Self::Session { .. } => None,
         }
     }
 }

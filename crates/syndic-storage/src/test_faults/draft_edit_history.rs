@@ -14,7 +14,8 @@ use crate::{
         DraftEditHistoryTransitionV1, DraftEditHistoryTransitionsCodec,
         DraftEditHistoryTransitionsFamily, DraftEditorCandidateSessionRecordKeyV1,
         DraftEditorCandidateSessionRecordV1, DraftEditorCandidateSessionV1,
-        DraftEditorCandidateSessionsCodec, DraftPieceRootReferenceV1, DraftPieceRootsFamily,
+        DraftEditorCandidateSessionsCodec, DraftEditorCandidateSessionsFamily,
+        DraftPieceOperationIdV1, DraftPieceRootReferenceV1, DraftPieceRootsFamily,
         DraftRootHistoryPairV1, point_limit,
     },
 };
@@ -116,6 +117,32 @@ pub fn alternative_ordinary_draft_edit_history(
 pub enum DraftEditHistoryRecordDeletion {
     Frontier(DraftEditHistoryFrontierKeyV1),
     Transition(DraftEditHistoryTransitionKeyV1),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DraftCandidatePublicationFault {
+    DeleteSessionRecord(DraftEditorCandidateSessionRecordKeyV1),
+    OccupyReceiptWithHead {
+        receipt_key: DraftEditorCandidateSessionRecordKeyV1,
+        draft_id: beryl_model::SyndicDraftId,
+        session_id: crate::DraftEditorCandidateSessionIdV1,
+    },
+    RetargetDisposedHead {
+        draft_id: beryl_model::SyndicDraftId,
+        session_id: crate::DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    },
+}
+
+pub fn inject_draft_candidate_publication_fault(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    fault: DraftCandidatePublicationFault,
+) -> MutationContribution {
+    storage.handle.contribution(
+        storage.revision(store).expect("fixture revision reads"),
+        InjectDraftCandidatePublicationFault(fault),
+    )
 }
 
 pub fn delete_draft_edit_history_frontier(
@@ -286,6 +313,89 @@ struct PublishDraftEditHistoryPair {
     draft: DraftRecord,
     root: DraftPieceRootReferenceV1,
     history: crate::DraftEditHistoryFrontierReferenceV1,
+}
+
+#[derive(Clone)]
+struct InjectDraftCandidatePublicationFault(DraftCandidatePublicationFault);
+
+impl DomainMutation<SyndicDomain> for InjectDraftCandidatePublicationFault {
+    type Error = SyndicMutationError;
+
+    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        &self,
+        reader: &DomainReader<'_, SyndicDomain>,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        match self.0 {
+            DraftCandidatePublicationFault::DeleteSessionRecord(key) => {
+                mutations.delete::<DraftEditorCandidateSessionsCodec>(&key)?;
+            }
+            DraftCandidatePublicationFault::OccupyReceiptWithHead {
+                receipt_key,
+                draft_id,
+                session_id,
+            } => {
+                let value = required::<DraftEditorCandidateSessionsFamily>(
+                    reader,
+                    &DraftEditorCandidateSessionRecordKeyV1::head(draft_id, session_id),
+                )?;
+                mutations.put::<DraftEditorCandidateSessionsCodec>(&receipt_key, &value)?;
+            }
+            DraftCandidatePublicationFault::RetargetDisposedHead {
+                draft_id,
+                session_id,
+                operation_id,
+            } => {
+                let DraftEditorCandidateSessionRecordV1::Head(head) =
+                    required::<DraftEditorCandidateSessionsFamily>(
+                        reader,
+                        &DraftEditorCandidateSessionRecordKeyV1::head(draft_id, session_id),
+                    )?
+                else {
+                    return Err(SyndicMutationError::IdentityCollision);
+                };
+                let replacement = DraftEditorCandidateSessionV1::from_parts_with_disposal(
+                    head.thread_id(),
+                    head.draft_id(),
+                    head.session_id(),
+                    head.open_operation_id(),
+                    head.session_generation(),
+                    head.durable_base_selector_revision(),
+                    head.durable_base_root(),
+                    head.durable_base_history(),
+                    head.published_candidate_generation(),
+                    head.published_selector_revision(),
+                    head.published_root(),
+                    head.published_history(),
+                    head.newest_candidate_generation(),
+                    head.newest_root(),
+                    head.newest_history(),
+                    head.dirty_generation(),
+                    head.logical_extent(),
+                    head.lifecycle(),
+                    Some(operation_id),
+                    head.active_operation().cloned(),
+                );
+                mutations.put::<DraftEditorCandidateSessionsCodec>(
+                    &DraftEditorCandidateSessionRecordKeyV1::head(draft_id, session_id),
+                    &DraftEditorCandidateSessionRecordV1::Head(replacement),
+                )?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl DomainMutation<SyndicDomain> for DeleteDraftEditHistoryFrontier {

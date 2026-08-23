@@ -29,23 +29,13 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 166: Route Beryl Host History Through Syndic Historical Roots (finished)
+# Phase 167: Establish Durable Candidate Publication And Disposal (finished)
 
-Integrated compact widget history intents with direct Syndic historical-root adoption through one
-shared finite edit/history custody boundary, exact five-outcome settlement, bounded position-gap
-hydration, generation-atomic live rebind, and fixed-size terminal replay. All 43 focused host,
-mutation, and history tests, locked production-library checking, formatting, and fresh adversarial
-persistence, concurrency, lifecycle, and resource-boundary review passed.
-
-# Phase 167: Enforce Credit-Gated Composer Realization (pending)
-
-Enforce configured composer retained-memory and per-frame work budgets independently of viewport
-dimensions. Prioritize caret, IME, selection, interaction and scroll anchors; admit nearby pages
-only while credits remain; coalesce unrealized nominally visible content into bounded filler; keep
-logical scroll extent and re-anchor on interaction; expose capacity saturation; and leave
-unrepresentable drawable-surface rejection to the shell/renderer. Prove pathological viewport,
-rapid scrolling, focus, hit-testing, marker, release, and recovery behavior without an unbounded
-demand queue.
+Implemented bounded point-read Syndic candidate publication and receipt-bound nondeleting clean
+disposal with immutable frontier snapshots, exact replay/collision/reconciliation, stale-request
+fencing, and complete current-session fixed-point authentication. The 10 focused publication,
+disposal, corruption, and fault-cut tests, 41 adoption/history regressions, locked all-targets check,
+formatting, and final independent adversarial persistence/concurrency review passed.
 
 # Phase 168: Publish Dirty Candidates And Satisfy Flush Barriers (pending)
 
@@ -54,6 +44,14 @@ composition, dirty autosave deadlines and settings rearm, ambiguous-outcome reco
 repeated flush-to-clean barriers, and lifecycle release. Editing may advance beyond a captured save;
 only the captured frontier becomes published, and close, switch, Exit, and submission barriers stay
 unsatisfied until the newest eligible candidate is durably published or terminally unavailable.
+
+Verify clean no-ops, dirty timer and settings rearm, concurrent newer edits, marker-free and changed
+or unchanged marker ownership, exact replay/collision and every ambiguous command cut, repeated
+flush-to-clean progress, terminal unavailability, cancellation and stale completion, rebind/unmount
+release, and restart-visible publication without retaining draft-sized values or an unbounded save
+queue. Completion requires locked focused integration tests, locked production-library checking,
+formatting, scoped residue checks, and fresh independent adversarial review of persistence,
+concurrency, lifecycle, and external-effect boundaries.
 
 # Phase 169: Materialize Exact Draft Roots For Submission (pending)
 
@@ -80,12 +78,17 @@ activation, insertion, removal, clipboard, and bounded overlay behavior through 
 asset contracts. Use no fabricated source bytes, custom marker overlay, resident compatibility
 path, or whole-value draft projection.
 
-# Phase 172: Accept Bounded Composer Integration At Large Scale (pending)
+# Phase 172: Enforce And Accept Bounded Composer Integration At Large Scale (pending)
 
-Verify atomic activation, large-draft traversal and editing, logical marker scale and same-anchor
-ordering, bounded editor and marker residency, paste and clipboard limits, autosave, undo/redo,
-submission, lifecycle release, and failure/reconciliation states. Obtain fresh independent
-acceptance before native-lineage recovery mounts restoration.
+Connect the mounted composer to explicit nonzero retained-memory and per-frame work budgets that
+are independent of viewport dimensions; enforce caret, IME, selection, interaction/scroll-anchor,
+then nearby-content priority; coalesce unrealized regions into bounded filler; preserve logical
+scroll extent and re-anchor on interaction; expose exact saturation states; and leave drawable-
+surface rejection to the shell/renderer. Verify atomic activation, pathological viewport and rapid
+scrolling, large-draft traversal and editing, logical marker scale and same-anchor ordering, exact
+hit testing, bounded editor/marker/demand residency, paste and clipboard limits, autosave,
+undo/redo, submission, lifecycle release, recovery, and failure/reconciliation states before
+native-lineage recovery mounts restoration.
 
 # Phase 173: Mount Native-Lineage Recovery And Editor Restoration (pending)
 

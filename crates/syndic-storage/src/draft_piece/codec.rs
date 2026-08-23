@@ -4,7 +4,7 @@ use beryl_model::{
     ThreadRevision,
 };
 
-use crate::codec::parts::{Decoder, Encoder};
+use crate::codec::parts::{Decoder, Encoder, dec_timestamp, enc_timestamp};
 use crate::codec::{CodecError, ExactCodec, Family, SMALL_MAX, invalid};
 
 use super::*;
@@ -539,6 +539,93 @@ fn decode_canonical_session_open_request_bytes(
     Ok(request)
 }
 
+pub(crate) fn canonical_candidate_publication_request_bytes(
+    value: DraftEditorCandidatePublicationRequestV1,
+) -> Vec<u8> {
+    let mut e = Encoder::new();
+    e.bytes(b"syndic/draft-editor-candidate-publication/v1");
+    let selector = value.selector();
+    e.fixed16(selector.thread_id().as_bytes());
+    e.u64(selector.thread_revision().get());
+    e.fixed16(selector.draft_id().as_bytes());
+    e.u64(selector.selector_revision().get());
+    enc_root_reference(&mut e, selector.root());
+    enc_history_reference(&mut e, selector.history());
+    e.fixed16(value.session_id().as_bytes());
+    e.fixed16(value.operation_id().as_bytes());
+    e.u64(value.candidate_generation());
+    enc_root_reference(&mut e, value.candidate().root());
+    enc_history_reference(&mut e, value.candidate().history());
+    enc_timestamp(&mut e, value.published_at());
+    e.finish()
+}
+
+pub(crate) fn decode_candidate_publication_request_bytes(
+    bytes: &[u8],
+) -> Result<DraftEditorCandidatePublicationRequestV1, CodecError> {
+    let mut d = Decoder::new(bytes);
+    if d.bytes("candidate publication domain")? != b"syndic/draft-editor-candidate-publication/v1" {
+        return Err(CodecError::InvalidLength("candidate publication domain"));
+    }
+    let selector = DraftEditorCurrentSelectorV1::new(
+        SyndicThreadId::from_bytes(d.fixed16()?),
+        ThreadRevision::new(d.u64()?).map_err(|e| invalid("publication thread revision", e))?,
+        SyndicDraftId::from_bytes(d.fixed16()?),
+        DraftRevision::new(d.u64()?).map_err(|e| invalid("publication selector revision", e))?,
+        dec_root_reference(&mut d)?,
+        dec_history_reference(&mut d)?,
+    );
+    let request = DraftEditorCandidatePublicationRequestV1::new(
+        selector,
+        DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?),
+        DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
+        d.u64()?,
+        DraftRootHistoryPairV1::new(dec_root_reference(&mut d)?, dec_history_reference(&mut d)?),
+        dec_timestamp(&mut d)?,
+    );
+    d.finish()?;
+    if canonical_candidate_publication_request_bytes(request) != bytes {
+        return Err(CodecError::InvalidLength("candidate publication request"));
+    }
+    Ok(request)
+}
+
+pub(crate) fn canonical_candidate_disposal_request_bytes(
+    value: DraftEditorCandidateSessionDisposeRequestV1,
+) -> Vec<u8> {
+    let mut e = Encoder::new();
+    e.bytes(b"syndic/draft-editor-candidate-session-disposal/v1");
+    e.fixed16(value.draft_id().as_bytes());
+    e.fixed16(value.session_id().as_bytes());
+    e.fixed16(value.operation_id().as_bytes());
+    e.u64(value.expected_session_generation());
+    enc_root_reference(&mut e, value.expected_pair().root());
+    enc_history_reference(&mut e, value.expected_pair().history());
+    e.finish()
+}
+
+pub(crate) fn decode_candidate_disposal_request_bytes(
+    bytes: &[u8],
+) -> Result<DraftEditorCandidateSessionDisposeRequestV1, CodecError> {
+    let mut d = Decoder::new(bytes);
+    if d.bytes("candidate disposal domain")? != b"syndic/draft-editor-candidate-session-disposal/v1"
+    {
+        return Err(CodecError::InvalidLength("candidate disposal domain"));
+    }
+    let request = DraftEditorCandidateSessionDisposeRequestV1::new(
+        SyndicDraftId::from_bytes(d.fixed16()?),
+        DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?),
+        DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
+        d.u64()?,
+        DraftRootHistoryPairV1::new(dec_root_reference(&mut d)?, dec_history_reference(&mut d)?),
+    );
+    d.finish()?;
+    if canonical_candidate_disposal_request_bytes(request) != bytes {
+        return Err(CodecError::InvalidLength("candidate disposal request"));
+    }
+    Ok(request)
+}
+
 fn enc_session_key(e: &mut Encoder, key: DraftEditorCandidateSessionRecordKeyV1) {
     e.fixed16(key.draft_id().as_bytes());
     e.fixed16(key.session_id().as_bytes());
@@ -546,6 +633,14 @@ fn enc_session_key(e: &mut Encoder, key: DraftEditorCandidateSessionRecordKeyV1)
         DraftEditorCandidateSessionRecordKeyV1::Head { .. } => e.u8(0),
         DraftEditorCandidateSessionRecordKeyV1::OpenReceipt { operation_id, .. } => {
             e.u8(1);
+            e.fixed16(operation_id.as_bytes());
+        }
+        DraftEditorCandidateSessionRecordKeyV1::PublicationReceipt { operation_id, .. } => {
+            e.u8(2);
+            e.fixed16(operation_id.as_bytes());
+        }
+        DraftEditorCandidateSessionRecordKeyV1::DisposalReceipt { operation_id, .. } => {
+            e.u8(3);
             e.fixed16(operation_id.as_bytes());
         }
     }
@@ -561,6 +656,16 @@ fn dec_session_key(
             draft_id, session_id,
         )),
         1 => Ok(DraftEditorCandidateSessionRecordKeyV1::open_receipt(
+            draft_id,
+            session_id,
+            DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
+        )),
+        2 => Ok(DraftEditorCandidateSessionRecordKeyV1::publication_receipt(
+            draft_id,
+            session_id,
+            DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
+        )),
+        3 => Ok(DraftEditorCandidateSessionRecordKeyV1::disposal_receipt(
             draft_id,
             session_id,
             DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
@@ -595,6 +700,13 @@ pub(crate) fn enc_session_head(e: &mut Encoder, value: &DraftEditorCandidateSess
         DraftEditorCandidateSessionLifecycleV1::Active => 0,
         DraftEditorCandidateSessionLifecycleV1::Disposed => 1,
     });
+    match value.disposal_operation_id() {
+        None => e.u8(0),
+        Some(operation_id) => {
+            e.u8(1);
+            e.fixed16(operation_id.as_bytes());
+        }
+    }
     match value.active_operation() {
         None => e.u8(0),
         Some(DraftEditorActiveOperationV1::Staging {
@@ -666,6 +778,16 @@ pub(crate) fn dec_session_head(
             });
         }
     };
+    let disposal_operation_id = match d.u8()? {
+        0 => None,
+        1 => Some(DraftPieceOperationIdV1::from_bytes(d.fixed16()?)),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "draft editor disposal operation option",
+                tag,
+            });
+        }
+    };
     let active_operation = match d.u8()? {
         0 => None,
         1 => Some(DraftEditorActiveOperationV1::staging(
@@ -696,7 +818,7 @@ pub(crate) fn dec_session_head(
             });
         }
     };
-    let value = DraftEditorCandidateSessionV1::from_parts(
+    let value = DraftEditorCandidateSessionV1::from_parts_with_disposal(
         thread_id,
         draft_id,
         session_id,
@@ -715,6 +837,7 @@ pub(crate) fn dec_session_head(
         dirty_generation,
         logical_extent,
         lifecycle,
+        disposal_operation_id,
         active_operation,
     );
     if !value.is_coherent() {
@@ -733,9 +856,25 @@ fn encode_session_record(
             enc_session_head(&mut e, head);
         }
         DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt) => {
-            e.u8(1);
-            e.bytes(receipt.request_bytes());
-            enc_session_head(&mut e, receipt.head());
+            if let Some(receipt) = receipt.publication() {
+                e.u8(2);
+                e.bytes(receipt.request_bytes());
+                enc_current_selector(&mut e, receipt.prior_selector());
+                enc_current_selector(&mut e, receipt.successor_selector());
+                enc_session_head(&mut e, receipt.before_head());
+                enc_session_head(&mut e, receipt.after_head());
+                enc_history_frontier(&mut e, receipt.captured_frontier());
+            } else if let Some(receipt) = receipt.disposal() {
+                e.u8(3);
+                e.bytes(receipt.request_bytes());
+                enc_session_head(&mut e, receipt.before_head());
+                enc_session_head(&mut e, receipt.after_head());
+                enc_history_frontier(&mut e, receipt.frontier());
+            } else {
+                e.u8(1);
+                e.bytes(receipt.request_bytes());
+                enc_session_head(&mut e, receipt.head());
+            }
         }
     }
     Ok(e.finish())
@@ -780,6 +919,87 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
                 DraftEditorCandidateSessionOpenReceiptV1::new(request_bytes, head),
             )
         }
+        2 => {
+            let request_bytes = d.bytes("candidate publication request")?.to_vec();
+            let prior = dec_current_selector(&mut d)?;
+            let successor = dec_current_selector(&mut d)?;
+            let before = dec_session_head(&mut d)?;
+            let after = dec_session_head(&mut d)?;
+            let frontier = dec_history_frontier(&mut d)?;
+            let request = decode_candidate_publication_request_bytes(&request_bytes)?;
+            let published_pair =
+                DraftRootHistoryPairV1::new(request.candidate().root(), frontier.reference());
+            if request.selector() != prior
+                || request.candidate_generation()
+                    != request.candidate().history().candidate_generation()
+                || frontier.reference().key()
+                    != DraftEditHistoryFrontierKeyV1::publication(
+                        prior.draft_id(),
+                        request.session_id(),
+                        request.operation_id(),
+                    )
+                || frontier.reference().candidate_generation() != request.candidate_generation()
+                || frontier.reference().root() != request.candidate().root()
+                || successor.thread_id() != prior.thread_id()
+                || successor.thread_revision() != prior.thread_revision()
+                || successor.draft_id() != prior.draft_id()
+                || successor.root() != request.candidate().root()
+                || successor.history() != frontier.reference()
+                || prior.selector_revision().checked_next().ok()
+                    != Some(successor.selector_revision())
+                || before.draft_id() != prior.draft_id()
+                || before.session_id() != request.session_id()
+                || before
+                    .published(
+                        request.candidate_generation(),
+                        published_pair,
+                        successor.selector_revision(),
+                    )
+                    .as_ref()
+                    != Some(&after)
+            {
+                return Err(CodecError::InvalidLength("candidate publication receipt"));
+            }
+            DraftEditorCandidateSessionRecordV1::OpenReceipt(
+                DraftEditorCandidateSessionOpenReceiptV1::from_publication(
+                    DraftEditorCandidatePublicationReceiptV1::new(
+                        request_bytes,
+                        prior,
+                        successor,
+                        before,
+                        after,
+                        frontier,
+                    ),
+                ),
+            )
+        }
+        3 => {
+            let request_bytes = d.bytes("candidate disposal request")?.to_vec();
+            let before = dec_session_head(&mut d)?;
+            let after = dec_session_head(&mut d)?;
+            let frontier = dec_history_frontier(&mut d)?;
+            let request = decode_candidate_disposal_request_bytes(&request_bytes)?;
+            if request.draft_id() != before.draft_id()
+                || request.session_id() != before.session_id()
+                || request.expected_session_generation() != before.session_generation()
+                || request.expected_pair()
+                    != DraftRootHistoryPairV1::new(before.newest_root(), before.newest_history())
+                || frontier.reference() != before.newest_history()
+                || before.disposed(request.operation_id()).as_ref() != Some(&after)
+            {
+                return Err(CodecError::InvalidLength("candidate disposal receipt"));
+            }
+            DraftEditorCandidateSessionRecordV1::OpenReceipt(
+                DraftEditorCandidateSessionOpenReceiptV1::from_disposal(
+                    DraftEditorCandidateSessionDisposeReceiptV1::new(
+                        request_bytes,
+                        before,
+                        after,
+                        frontier,
+                    ),
+                ),
+            )
+        }
         tag => {
             return Err(CodecError::InvalidTag {
                 kind: "draft editor session record",
@@ -789,6 +1009,26 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
     };
     d.finish()?;
     Ok(value)
+}
+
+fn enc_current_selector(e: &mut Encoder, value: DraftEditorCurrentSelectorV1) {
+    e.fixed16(value.thread_id().as_bytes());
+    e.u64(value.thread_revision().get());
+    e.fixed16(value.draft_id().as_bytes());
+    e.u64(value.selector_revision().get());
+    enc_root_reference(e, value.root());
+    enc_history_reference(e, value.history());
+}
+
+fn dec_current_selector(d: &mut Decoder<'_>) -> Result<DraftEditorCurrentSelectorV1, CodecError> {
+    Ok(DraftEditorCurrentSelectorV1::new(
+        SyndicThreadId::from_bytes(d.fixed16()?),
+        ThreadRevision::new(d.u64()?).map_err(|e| invalid("selector thread revision", e))?,
+        SyndicDraftId::from_bytes(d.fixed16()?),
+        DraftRevision::new(d.u64()?).map_err(|e| invalid("selector draft revision", e))?,
+        dec_root_reference(d)?,
+        dec_history_reference(d)?,
+    ))
 }
 
 fn enc_search_key(e: &mut Encoder, key: DraftCompositeSearchKeyV1) {
@@ -2187,7 +2427,7 @@ family!(
     DraftEditorCandidateSessionRecordV1,
     "draft-editor-candidate-sessions",
     49,
-    4_096,
+    16_384,
     encode_session_family_key,
     decode_session_family_key,
     encode_session_record,
