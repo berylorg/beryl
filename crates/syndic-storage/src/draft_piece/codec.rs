@@ -572,7 +572,7 @@ fn dec_session_key(
     }
 }
 
-fn enc_session_head(e: &mut Encoder, value: &DraftEditorCandidateSessionV1) {
+pub(crate) fn enc_session_head(e: &mut Encoder, value: &DraftEditorCandidateSessionV1) {
     e.fixed16(value.thread_id().as_bytes());
     e.fixed16(value.draft_id().as_bytes());
     e.fixed16(value.session_id().as_bytes());
@@ -634,7 +634,9 @@ fn enc_session_head(e: &mut Encoder, value: &DraftEditorCandidateSessionV1) {
     }
 }
 
-fn dec_session_head(d: &mut Decoder<'_>) -> Result<DraftEditorCandidateSessionV1, CodecError> {
+pub(crate) fn dec_session_head(
+    d: &mut Decoder<'_>,
+) -> Result<DraftEditorCandidateSessionV1, CodecError> {
     let thread_id = SyndicThreadId::from_bytes(d.fixed16()?);
     let draft_id = SyndicDraftId::from_bytes(d.fixed16()?);
     let session_id = DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?);

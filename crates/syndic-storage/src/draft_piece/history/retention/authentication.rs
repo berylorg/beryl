@@ -5,8 +5,8 @@ use crate::mutation::required;
 use crate::{SyndicMutationError, SyndicReadError, SyndicStorage};
 
 mod witness;
-pub(super) use witness::build_ancestor_witness;
-use witness::{transition_is_ancestor_of, transition_is_ancestor_of_read};
+use witness::transition_is_ancestor_of_read;
+pub(super) use witness::{build_ancestor_witness, transition_is_ancestor_of};
 
 #[cfg(feature = "test-faults")]
 use super::super::super::DraftPieceDigestV1;
@@ -44,18 +44,17 @@ pub(crate) fn authenticate_draft_edit_history_frontier_v1(
     reader: &DomainReader<'_, SyndicDomain>,
     frontier: &DraftEditHistoryFrontierV1,
 ) -> Result<(), SyndicMutationError> {
-    if !frontier.is_locally_valid()
-        || frontier.undo_head() != frontier.journal_head()
-        || frontier.redo_head().is_some()
-    {
+    if !frontier.is_locally_valid() {
         return Err(SyndicMutationError::IdentityCollision);
     }
     authenticate_root_pin(reader, frontier.reference().root())?;
     let floor = match frontier.oldest_eligible() {
-        Some(reference) => Some(exact_transition_reference(reader, reference)?),
+        Some(reference) => Some(authenticated_transition_reference(reader, reference)?),
         None => None,
     };
     let mut journal = None;
+    let mut undo = None;
+    let mut redo = None;
     for reference in [
         frontier.journal_head(),
         frontier.undo_head(),
@@ -78,13 +77,68 @@ pub(crate) fn authenticate_draft_edit_history_frontier_v1(
             return Err(SyndicMutationError::IdentityCollision);
         }
         if Some(reference) == frontier.journal_head() {
-            journal = Some(value);
+            journal = Some(value.clone());
+        }
+        if Some(reference) == frontier.undo_head() {
+            undo = Some(value.clone());
+        }
+        if Some(reference) == frontier.redo_head() {
+            redo = Some(value);
         }
     }
-    if let (Some(head), Some(floor)) = (journal.as_ref(), floor.as_ref())
-        && !transition_is_ancestor_of(reader, head, floor)?
-    {
-        return Err(SyndicMutationError::IdentityCollision);
+    if let Some(head) = journal.as_ref() {
+        for member in [floor.as_ref(), undo.as_ref(), redo.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            if !transition_is_ancestor_of(reader, head, member)? {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
+        }
+        if head.successor_root() != frontier.reference().root()
+            || undo
+                .as_ref()
+                .is_some_and(|value| value.successor_root() != frontier.reference().root())
+            || redo
+                .as_ref()
+                .is_some_and(|value| value.successor_root() != frontier.reference().root())
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        match head.kind() {
+            DraftEditHistoryTransitionKindV1::OrdinaryEdit => {
+                if frontier.undo_head() != Some(head.reference()) || frontier.redo_head().is_some()
+                {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
+            }
+            DraftEditHistoryTransitionKindV1::Undo => {
+                let selected = head
+                    .prior_undo()
+                    .map(|reference| authenticated_transition_reference(reader, reference))
+                    .transpose()?
+                    .ok_or(SyndicMutationError::IdentityCollision)?;
+                if frontier.redo_head() != Some(head.reference())
+                    || frontier.undo_head()
+                        != retained_stack_link(floor.as_ref(), selected.prior_undo())
+                {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
+            }
+            DraftEditHistoryTransitionKindV1::Redo => {
+                let selected = head
+                    .prior_redo()
+                    .map(|reference| authenticated_transition_reference(reader, reference))
+                    .transpose()?
+                    .ok_or(SyndicMutationError::IdentityCollision)?;
+                if frontier.undo_head() != Some(head.reference())
+                    || frontier.redo_head()
+                        != retained_stack_link(floor.as_ref(), selected.prior_redo())
+                {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
+            }
+        }
     }
     let frontier_charge =
         stored_frontier_charge(frontier).map_err(|_| SyndicMutationError::IdentityCollision)?;
@@ -124,6 +178,8 @@ pub(super) fn authenticated_transition_reference(
 ) -> Result<DraftEditHistoryTransitionV1, SyndicMutationError> {
     let value = exact_transition_reference(reader, reference)?;
     authenticate_transition_predecessor(reader, &value)?;
+    authenticate_root_pin(reader, value.predecessor_root())?;
+    authenticate_root_pin(reader, value.successor_root())?;
     Ok(value)
 }
 
@@ -133,12 +189,6 @@ pub(super) fn exact_transition_reference(
 ) -> Result<DraftEditHistoryTransitionV1, SyndicMutationError> {
     let value = required::<DraftEditHistoryTransitionsFamily>(reader, &reference.key())?;
     if value.reference() != reference || !value.is_locally_valid() {
-        return Err(SyndicMutationError::IdentityCollision);
-    }
-    if value.kind() != DraftEditHistoryTransitionKindV1::OrdinaryEdit
-        || value.prior_undo() != value.prior_journal()
-        || value.prior_redo().is_some()
-    {
         return Err(SyndicMutationError::IdentityCollision);
     }
     Ok(value)
@@ -180,7 +230,7 @@ pub(super) fn authenticate_root_pin(
     authenticate_root_topology(reader, root)
 }
 
-pub(super) fn authenticate_root_topology(
+pub(crate) fn authenticate_root_topology(
     reader: &DomainReader<'_, SyndicDomain>,
     root: DraftPieceRootReferenceV1,
 ) -> Result<(), SyndicMutationError> {
@@ -277,8 +327,6 @@ pub(crate) fn draft_edit_history_frontier_is_authenticated_v1(
     frontier: &DraftEditHistoryFrontierV1,
 ) -> Result<bool, SyndicReadError> {
     if !frontier.is_locally_valid()
-        || frontier.undo_head() != frontier.journal_head()
-        || frontier.redo_head().is_some()
         || !root_pin_is_authenticated(storage, store, frontier.reference().root())?
     {
         return Ok(false);
@@ -293,6 +341,8 @@ pub(crate) fn draft_edit_history_frontier_is_authenticated_v1(
         None => None,
     };
     let mut journal = None;
+    let mut undo = None;
+    let mut redo = None;
     for reference in [
         frontier.journal_head(),
         frontier.undo_head(),
@@ -312,13 +362,68 @@ pub(crate) fn draft_edit_history_frontier_is_authenticated_v1(
             return Ok(false);
         }
         if Some(reference) == frontier.journal_head() {
-            journal = Some(value);
+            journal = Some(value.clone());
+        }
+        if Some(reference) == frontier.undo_head() {
+            undo = Some(value.clone());
+        }
+        if Some(reference) == frontier.redo_head() {
+            redo = Some(value);
         }
     }
-    if let (Some(head), Some(floor)) = (journal.as_ref(), floor.as_ref())
-        && !transition_is_ancestor_of_read(storage, store, head, floor)?
-    {
-        return Ok(false);
+    if let Some(head) = journal.as_ref() {
+        for member in [floor.as_ref(), undo.as_ref(), redo.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            if !transition_is_ancestor_of_read(storage, store, head, member)? {
+                return Ok(false);
+            }
+        }
+        if head.successor_root() != frontier.reference().root()
+            || undo
+                .as_ref()
+                .is_some_and(|value| value.successor_root() != frontier.reference().root())
+            || redo
+                .as_ref()
+                .is_some_and(|value| value.successor_root() != frontier.reference().root())
+        {
+            return Ok(false);
+        }
+        let stack_is_exact = match head.kind() {
+            DraftEditHistoryTransitionKindV1::OrdinaryEdit => {
+                frontier.undo_head() == Some(head.reference()) && frontier.redo_head().is_none()
+            }
+            DraftEditHistoryTransitionKindV1::Undo => {
+                let Some(reference) = head.prior_undo() else {
+                    return Ok(false);
+                };
+                let Some(selected) =
+                    transition_reference_is_authenticated(storage, store, reference)?
+                else {
+                    return Ok(false);
+                };
+                frontier.redo_head() == Some(head.reference())
+                    && frontier.undo_head()
+                        == retained_stack_link(floor.as_ref(), selected.prior_undo())
+            }
+            DraftEditHistoryTransitionKindV1::Redo => {
+                let Some(reference) = head.prior_redo() else {
+                    return Ok(false);
+                };
+                let Some(selected) =
+                    transition_reference_is_authenticated(storage, store, reference)?
+                else {
+                    return Ok(false);
+                };
+                frontier.undo_head() == Some(head.reference())
+                    && frontier.redo_head()
+                        == retained_stack_link(floor.as_ref(), selected.prior_redo())
+            }
+        };
+        if !stack_is_exact {
+            return Ok(false);
+        }
     }
     let Ok(frontier_charge) = stored_frontier_charge(frontier) else {
         return Ok(false);
@@ -350,6 +455,18 @@ pub(crate) fn draft_edit_history_frontier_is_authenticated_v1(
         _ => return Ok(false),
     };
     Ok(retained == frontier.retained_encoded_bytes() && retained <= frontier.byte_budget())
+}
+
+fn retained_stack_link(
+    floor: Option<&DraftEditHistoryTransitionV1>,
+    reference: Option<DraftEditHistoryTransitionReferenceV1>,
+) -> Option<DraftEditHistoryTransitionReferenceV1> {
+    reference.filter(|reference| {
+        floor.is_none_or(|floor| {
+            reference.journal_depth() >= floor.journal_depth()
+                && reference.cumulative_encoded_bytes() >= floor.cumulative_encoded_bytes()
+        })
+    })
 }
 
 fn transition_reference_is_authenticated(
@@ -390,13 +507,9 @@ fn transition_reference_is_exact(
         reference.key(),
         point_limit(),
     )?;
-    let Some(value) = value.filter(|value| {
-        value.reference() == reference
-            && value.is_locally_valid()
-            && value.kind() == DraftEditHistoryTransitionKindV1::OrdinaryEdit
-            && value.prior_undo() == value.prior_journal()
-            && value.prior_redo().is_none()
-    }) else {
+    let Some(value) =
+        value.filter(|value| value.reference() == reference && value.is_locally_valid())
+    else {
         return Ok(None);
     };
     Ok(Some(value))

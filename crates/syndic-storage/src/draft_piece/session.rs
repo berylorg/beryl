@@ -245,10 +245,32 @@ fn candidate_session_adoption_is_exact(
                 && frontier.fork_session(head.session_id()).as_ref() == Some(stored_history)
         }));
     }
+    let Some(journal_head) = stored_history.journal_head() else {
+        return Ok(false);
+    };
+    let Some(newest_transition) = storage.point::<DraftEditHistoryTransitionsFamily>(
+        store,
+        journal_head.key(),
+        point_limit(),
+    )?
+    else {
+        return Ok(false);
+    };
+    if newest_transition.reference() != journal_head {
+        return Ok(false);
+    }
+    if newest_transition.kind() != DraftEditHistoryTransitionKindV1::OrdinaryEdit {
+        return historical_candidate_session_is_exact_in_store(
+            storage,
+            store,
+            head,
+            newest_transition.operation_id(),
+        );
+    }
     let key = DraftPieceSettlementKeyV1::new(
         head.draft_id(),
         head.session_id(),
-        root.key().operation_id(),
+        newest_transition.operation_id(),
     );
     let settlement = storage.point::<DraftPieceSettlementsFamily>(store, key, point_limit())?;
     let build = storage.point::<DraftPieceBuildsFamily>(store, key, point_limit())?;

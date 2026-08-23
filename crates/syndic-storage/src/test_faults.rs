@@ -2,6 +2,7 @@
 
 use crate::{
     codec::{ActivityQueryEntryKey, activity_entry_stored_bytes},
+    domain::SyndicDomain,
     *,
 };
 
@@ -116,6 +117,80 @@ pub use schema_history::{
 
 pub fn syndic_v5_family_names() -> Vec<&'static str> {
     crate::domain::v5_family_names().collect()
+}
+
+pub fn roundtrip_draft_historical_root_adoption(
+    value: &DraftHistoricalRootAdoptionV1,
+) -> Option<DraftHistoricalRootAdoptionV1> {
+    use beryl_home_store::RecordCodec;
+
+    let bytes =
+        <DraftHistoricalRootAdoptionsCodec as RecordCodec<SyndicDomain>>::encode_value(value)
+            .ok()?;
+    <DraftHistoricalRootAdoptionsCodec as RecordCodec<SyndicDomain>>::decode_value(&bytes).ok()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DraftPieceImmutableSnapshot {
+    pub root_records: u64,
+    pub node_records: u64,
+    pub leaf_records: u64,
+    pub canonical_bytes: Vec<u8>,
+}
+
+pub fn draft_piece_immutable_snapshot(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    reference: DraftPieceRootReferenceV1,
+) -> Option<DraftPieceImmutableSnapshot> {
+    use beryl_home_store::RecordCodec;
+
+    let root = storage
+        .point::<DraftPieceRootsFamily>(store, reference.key(), point_limit())
+        .ok()??;
+    let mut snapshot = DraftPieceImmutableSnapshot {
+        root_records: 1,
+        node_records: 0,
+        leaf_records: 0,
+        canonical_bytes: <DraftPieceRootsCodec as RecordCodec<SyndicDomain>>::encode_value(&root)
+            .ok()?,
+    };
+    let mut pending = reference
+        .root_node()
+        .map(|id| (id, reference.summary().height()))
+        .into_iter()
+        .collect::<Vec<_>>();
+    while let Some((id, height)) = pending.pop() {
+        let key = DraftPieceRecordKeyV1::new(reference.key().draft_id(), id);
+        let node = storage
+            .point::<DraftPieceNodesFamily>(store, key, point_limit())
+            .ok()??;
+        snapshot.node_records = snapshot.node_records.checked_add(1)?;
+        snapshot
+            .canonical_bytes
+            .extend(<DraftPieceNodesCodec as RecordCodec<SyndicDomain>>::encode_value(&node).ok()?);
+        if height == 1 {
+            for child in node.children() {
+                let leaf_key = DraftPieceRecordKeyV1::new(reference.key().draft_id(), child.id());
+                let leaf = storage
+                    .point::<DraftPieceLeavesFamily>(store, leaf_key, point_limit())
+                    .ok()??;
+                snapshot.leaf_records = snapshot.leaf_records.checked_add(1)?;
+                snapshot.canonical_bytes.extend(
+                    <DraftPieceLeavesCodec as RecordCodec<SyndicDomain>>::encode_value(&leaf)
+                        .ok()?,
+                );
+            }
+        } else {
+            pending.extend(
+                node.children()
+                    .iter()
+                    .rev()
+                    .map(|child| (child.id(), height - 1)),
+            );
+        }
+    }
+    Some(snapshot)
 }
 
 /// Computes the exact canonical receipt commitment for deliberate corruption fixtures.

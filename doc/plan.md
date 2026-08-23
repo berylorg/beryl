@@ -29,45 +29,13 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 161: Normalize Pre-Existing Syndic Test Formatting (finished)
+# Phase 162: Adopt Historical Composer Roots Durably (finished)
 
-Mechanically normalized the 43 pre-existing Phase 2–18 `syndic-storage` integration-test files with
-no behavior, token, literal, comment, API, or suspended-work changes. Workspace formatting, exact
-Rustfmt reproduction, scoped diff checks, locked default and all-feature all-target checks, resource
-and residue gates, and independent focused completion review passed.
-
-# Phase 162: Adopt Historical Composer Roots Durably (pending)
-
-Add direct authenticated same-draft historical-root adoption under a new candidate generation,
-preserving transition history and restoring exact directed selection. Prove undo/redo frontier
-movement, the first reachable undo-created branch and redo clearing, five settlements, replay,
-collision, restart, stale or evicted roots and no content copy.
-
-The boundary audit found no authority or API blocker. Add the authorized
-`draft-historical-root-adoptions` primary family immediately after edit-history transitions, taking
-the implemented registry from 77 to 78 families and shifting composer families to indices 21/22;
-leave the four deferred terminal-repair families unregistered. Implement a focused historical-
-adoption model, codec, prepare/mutation, status and reconciliation boundary without a piece build,
-candidate-root creation, inverse bytes, root copy, current-draft publication or app undo/redo route.
-
-Generalize retained-history authentication from the current ordinary-only shape so journal, undo,
-redo and floor references are authenticated as same-draft retained members through the existing
-fixed skip witness. Derive one no-custody candidate-session successor and atomically append the
-Undo/Redo action transition, replace the frontier and session head, and insert the immutable
-settlement. Noncommit outcomes insert only their immutable settlement and preserve candidate and
-history authority. Reuse checked retention accounting and clear stack heads that cross an advanced
-floor without weakening membership or over-evicting.
-
-Verification must cover exact family order and codecs; sequential undo/redo; ordinary edit after
-undo creating the first reachable branch and clearing redo; exact caret and directed-selection
-restoration; all five durable outcomes; byte-equal replay and natural-key collision; every commit
-cut and reopen; stale, evicted, missing, replaced, detached-sibling and wrong-draft roots or
-transitions; bounded ancestry; unchanged root/node/leaf counts and bytes; and current-draft
-nonpublication. Resumable milestone: the 78th family, historical-adoption model/codec, four-record
-mutation, settlement-only noncommit paths, targeted reconciliation, generalized retained-lineage
-authentication, and newest-transition settlement identity compile for the library with fault
-features. Focused historical-root-adoption tests and fixtures are not yet implemented. Resume only
-after Phase 161 closes the workspace-formatting gate over the Phase 160 package graph.
+Established the 78th Syndic family and exact four-record historical-root adoption with generalized
+bounded retained-lineage authentication, five immutable outcomes, targeted reconciliation, no-copy
+root reuse, floor-aware undo/redo continuation, and no current-draft publication. Locked checks,
+6 default and 12 fault-feature focused tests, 26 affected history regressions, formatting and
+resource gates, and independent semantic completion review passed.
 
 # Phase 163: Route Host Undo And Redo Through Durable Root History (pending)
 

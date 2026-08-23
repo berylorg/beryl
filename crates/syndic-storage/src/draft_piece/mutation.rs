@@ -1492,10 +1492,34 @@ pub(super) fn session_head(
         }
     } else if head.newest_candidate_generation() != head.published_candidate_generation() {
         let root = head.newest_root();
+        let newest_history =
+            required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
+        if newest_history.reference() != head.newest_history() {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        authenticate_draft_edit_history_frontier_v1(reader, &newest_history)?;
+        let journal_head = newest_history
+            .journal_head()
+            .ok_or(SyndicMutationError::IdentityCollision)?;
+        let newest_transition =
+            required::<DraftEditHistoryTransitionsFamily>(reader, &journal_head.key())?;
+        if newest_transition.reference() != journal_head {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        if newest_transition.kind() != DraftEditHistoryTransitionKindV1::OrdinaryEdit {
+            if !historical_candidate_session_is_exact(
+                reader,
+                &head,
+                newest_transition.operation_id(),
+            )? {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
+            return Ok(head);
+        }
         let key = DraftPieceSettlementKeyV1::new(
             head.draft_id(),
             head.session_id(),
-            root.key().operation_id(),
+            newest_transition.operation_id(),
         );
         let stored_root = required::<DraftPieceRootsFamily>(reader, &root.key())?;
         let settlement = required::<DraftPieceSettlementsFamily>(reader, &key)?;

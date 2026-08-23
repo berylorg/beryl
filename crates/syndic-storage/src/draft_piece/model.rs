@@ -620,6 +620,39 @@ impl DraftEditorCandidateSessionV1 {
         })
     }
 
+    pub(crate) fn adopted_without_custody(
+        &self,
+        successor: DraftPieceRootReferenceV1,
+        successor_history: DraftEditHistoryFrontierReferenceV1,
+    ) -> Option<Self> {
+        if self.lifecycle != DraftEditorCandidateSessionLifecycleV1::Active
+            || self.active_operation.is_some()
+        {
+            return None;
+        }
+        Some(Self {
+            thread_id: self.thread_id,
+            draft_id: self.draft_id,
+            session_id: self.session_id,
+            open_operation_id: self.open_operation_id,
+            session_generation: self.session_generation.checked_add(1)?,
+            durable_base_selector_revision: self.durable_base_selector_revision,
+            durable_base_root: self.durable_base_root,
+            durable_base_history: self.durable_base_history,
+            published_candidate_generation: self.published_candidate_generation,
+            published_selector_revision: self.published_selector_revision,
+            published_root: self.published_root,
+            published_history: self.published_history,
+            newest_candidate_generation: self.newest_candidate_generation.checked_add(1)?,
+            newest_root: successor,
+            newest_history: successor_history,
+            dirty_generation: self.dirty_generation.checked_add(1)?,
+            logical_extent: successor.summary().logical_extent(),
+            lifecycle: self.lifecycle,
+            active_operation: None,
+        })
+    }
+
     pub(crate) fn is_coherent(&self) -> bool {
         let generations_are_ordered = self.published_candidate_generation
             <= self.newest_candidate_generation

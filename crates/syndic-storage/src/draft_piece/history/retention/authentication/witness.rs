@@ -46,7 +46,7 @@ pub(crate) fn build_ancestor_witness(
     ))
 }
 
-pub(super) fn transition_is_ancestor_of(
+pub(crate) fn transition_is_ancestor_of(
     reader: &DomainReader<'_, SyndicDomain>,
     head: &DraftEditHistoryTransitionV1,
     candidate: &DraftEditHistoryTransitionV1,

@@ -1,3 +1,4 @@
+mod adoption;
 mod append;
 mod codec;
 mod records;
@@ -10,6 +11,11 @@ pub use records::*;
 pub use references::*;
 pub use witness::*;
 
+pub use adoption::*;
+pub(crate) use adoption::{
+    DraftHistoricalRootAdoptionsCodec, historical_candidate_session_is_exact,
+    historical_candidate_session_is_exact_in_store,
+};
 #[cfg(feature = "test-faults")]
 pub(crate) use append::{
     alternative_ordinary_draft_edit_history_for_test, draft_edit_history_overflow_errors_for_test,
@@ -22,7 +28,8 @@ pub(crate) use codec::{
     dec_history_transition, enc_history_frontier, enc_history_reference, enc_history_transition,
 };
 pub(crate) use retention::{
-    DraftEditHistoryRetentionErrorV1, append_ordinary_draft_edit_history_with_retention_v1,
+    DraftEditHistoryRetentionErrorV1, append_historical_draft_edit_history_with_retention_v1,
+    append_ordinary_draft_edit_history_with_retention_v1,
     authenticate_draft_edit_history_frontier_v1, draft_edit_history_frontier_is_authenticated_v1,
     ordinary_draft_edit_history_adoption_is_locally_exact,
 };

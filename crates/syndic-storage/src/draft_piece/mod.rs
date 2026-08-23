@@ -37,8 +37,10 @@ pub(crate) use codec::*;
 pub(crate) use history::{
     DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
     DraftEditHistoryTransitionsCodec, DraftEditHistoryTransitionsFamily,
-    canonical_history_reference_bytes, dec_history_frontier, dec_history_reference,
-    dec_history_transition, enc_history_frontier, enc_history_reference, enc_history_transition,
+    DraftHistoricalRootAdoptionsCodec, canonical_history_reference_bytes, dec_history_frontier,
+    dec_history_reference, dec_history_transition, enc_history_frontier, enc_history_reference,
+    enc_history_transition, historical_candidate_session_is_exact,
+    historical_candidate_session_is_exact_in_store,
 };
 pub(crate) use persistent::*;
 #[cfg(feature = "test-faults")]
