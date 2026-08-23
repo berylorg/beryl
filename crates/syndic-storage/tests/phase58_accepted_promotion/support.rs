@@ -1,8 +1,9 @@
+use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_model::{
-    DraftRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicThreadId, SyndicTurnId,
-    ThreadRevision,
+    BindingRevision, DraftRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicThreadId,
+    SyndicTurnId, ThreadRevision,
 };
-use syndic_storage::test_faults::FixtureRecord;
+use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::*;
 
 use crate::{
@@ -26,6 +27,69 @@ pub struct NewerGenerationFixture {
     pub newer_generation: AcceptedRouteGeneration,
     pub newer_head: AcceptedRouteGenerationHeadRecord,
     pub newer_accepted_input: SyndicAcceptedInputId,
+}
+
+pub fn seed_detached_draft_backing(
+    store: &beryl_home_store::HomeStore,
+    storage: SyndicStorage,
+    staging_thread: SyndicThreadId,
+    draft: SyndicDraftId,
+) -> DraftRootHistoryPairV1 {
+    let request = CreateThread::ordinary(
+        staging_thread,
+        draft,
+        crate::support::exact_cas::execution_binding(),
+        timestamp(1),
+        DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+    );
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command
+        .add(storage.create_thread(storage.revision(store).unwrap(), request))
+        .unwrap();
+    assert!(matches!(
+        store.execute(command),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
+    let root_history = storage
+        .current_draft(
+            store,
+            staging_thread,
+            SyndicPointReadLimit::new(65_536).unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+        .draft()
+        .root_history();
+    let mut cleanup = FixtureBatch::new();
+    for delete in [
+        FixtureDelete::Thread(staging_thread),
+        FixtureDelete::ThreadExecution(staging_thread),
+        FixtureDelete::ThreadAttributes(staging_thread),
+        FixtureDelete::ThreadUsage(staging_thread),
+        FixtureDelete::ThreadCatalogSummary(staging_thread),
+        FixtureDelete::Draft(draft),
+        FixtureDelete::InputGate(staging_thread),
+        FixtureDelete::ActivityQueryHead(staging_thread),
+        FixtureDelete::TranscriptViewHead(staging_thread),
+        FixtureDelete::TranscriptBuild {
+            thread: staging_thread,
+            generation: TranscriptGeneration::FIRST,
+        },
+        FixtureDelete::HistorySummary(staging_thread),
+        FixtureDelete::Binding {
+            thread: staging_thread,
+            revision: BindingRevision::new(1).unwrap(),
+        },
+        FixtureDelete::DraftByThread(staging_thread),
+        FixtureDelete::BindingHead(staging_thread),
+    ] {
+        cleanup.delete(delete).unwrap();
+    }
+    crate::support::commit(store, storage, cleanup);
+    root_history
 }
 
 pub fn promotion_fixture(seed: u8, thread: SyndicThreadId) -> Fixture {
@@ -82,7 +146,7 @@ fn promotion_fixture_for_generations(
     thread: SyndicThreadId,
     generations: &[GenerationSpec],
 ) -> Fixture {
-    let mut records = next_turn_records(seed, thread, generations);
+    let mut records = next_turn_records(u64::from(seed), thread, generations);
     let parent = SyndicTurnId::from_bytes([seed.wrapping_add(10); 16]);
     let parent_digest = root_turn_chain_digest(parent);
     let current_draft = records
@@ -126,11 +190,14 @@ fn promotion_fixture_for_generations(
         .expect("promotion fixture owns an accepted-input frontier");
     let accepted_payload =
         ComposerPayload::new(vec![ComposerAtom::text("queued input").unwrap()]).unwrap();
-    let draft_payload =
-        ComposerPayload::new(vec![ComposerAtom::text("unsent draft").unwrap()]).unwrap();
     let (accepted_content, accepted_content_records) = composer_content_records(&accepted_payload);
-    let (draft_content, draft_content_records) = composer_content_records(&draft_payload);
-    records.retain(|record| !matches!(record, FixtureRecord::TranscriptBuild(_)));
+    records.retain(|record| match record {
+        FixtureRecord::TranscriptBuild(_) | FixtureRecord::TranscriptPathTurn(_) => false,
+        FixtureRecord::Turn(turn) => turn.id() != parent,
+        FixtureRecord::TurnState(state) => state.turn_id() != parent,
+        FixtureRecord::SourceEvent(event) => event.turn_id() != parent,
+        _ => true,
+    });
     rewrite_base_records(
         &mut records,
         thread,
@@ -138,12 +205,10 @@ fn promotion_fixture_for_generations(
         parent,
         parent_digest,
         accepted_content,
-        draft_content,
         thread_revision,
         current_draft_created_at,
     );
     records.extend(accepted_content_records);
-    records.extend(draft_content_records);
     records.extend([
         FixtureRecord::Turn(TurnRecord::new(
             parent,
@@ -203,7 +268,6 @@ fn rewrite_base_records(
     parent: SyndicTurnId,
     parent_digest: beryl_model::SyndicPathDigest,
     accepted_content: ContentReference,
-    draft_content: ContentReference,
     thread_revision: ThreadRevision,
     current_draft_created_at: SyndicTimestamp,
 ) {
@@ -227,7 +291,7 @@ fn rewrite_base_records(
                     thread,
                     draft_revision,
                     current.submission_intent(),
-                    draft_content,
+                    current.root_history(),
                     current_draft_created_at,
                     timestamp(15),
                 );

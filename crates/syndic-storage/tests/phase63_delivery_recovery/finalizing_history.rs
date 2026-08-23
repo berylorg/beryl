@@ -54,9 +54,9 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
         }) if thread_id == thread && turn_id == turn
     ));
 
-    let admission = queue_input(&store, storage, thread, 501, timestamp(11), timestamp(12));
+    let input_id = queue_input(&store, storage, thread, 501, timestamp(12));
     let input = storage
-        .accepted_input(&store, admission.accepted_input_id(), point_limit())
+        .accepted_input(&store, input_id, point_limit())
         .unwrap()
         .unwrap();
     let route = storage
@@ -282,7 +282,6 @@ fn stale_completion_proof_consumes_multiple_queued_admission_descendants() {
         recovery.storage,
         recovery.thread,
         503,
-        timestamp(11),
         timestamp(12),
     );
     queue_input(
@@ -290,7 +289,6 @@ fn stale_completion_proof_consumes_multiple_queued_admission_descendants() {
         recovery.storage,
         recovery.thread,
         504,
-        timestamp(13),
         timestamp(14),
     );
 
@@ -430,7 +428,6 @@ fn successful_completed_history_stays_complete_across_queued_admission_and_relea
         recovery.storage,
         recovery.thread,
         505,
-        timestamp(11),
         timestamp(12),
     );
 

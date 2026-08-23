@@ -1,17 +1,26 @@
 use beryl_home_store::{CommandError, CommandOutcome, HomeCommand, HomeStore};
-use beryl_model::{SyndicDraftId, SyndicItemId};
+use beryl_model::{
+    AcceptedInputRevision, DraftRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicItemId,
+};
+use syndic_storage::test_faults::{FixtureDelete, FixtureRecord};
 use syndic_storage::{
-    AcceptedInputAdmission, AdvanceItemProjectionBuild, AdvanceTranscriptBuild,
-    CompleteTerminalHistory, ComposerAtom, ComposerPayload, DraftPayloadUpdate,
-    DraftPayloadUpdateDecision, FinalizeNextTurnItem, FreezeNextTurnItem, InputGateState,
-    ItemProjectionGeneration, PreparedContent, ProjectionLifecycle, SourceEventPayload,
+    AcceptedInputAdmissionProof, AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedInputRecord,
+    AcceptedOrderIndexRecord, AcceptedRouteGeneration, AcceptedRouteGenerationRecord,
+    AcceptedRouteLeafRecord, AcceptedRouteLeafState, AcceptedRouteRevision, AcceptedRouteTarget,
+    AdvanceItemProjectionBuild, AdvanceTranscriptBuild, CompleteTerminalHistory, ComposerAtom,
+    ComposerPayload, DraftByThreadRecord, DraftRecord, DraftSubmissionIntent, FinalizeNextTurnItem,
+    FreezeNextTurnItem, HistorySummaryRecord, InputGateRecord, InputGateState,
+    ItemProjectionGeneration, NextTurnReason, ProjectionLifecycle, SourceEventPayload,
     StartItemProjectionBuild, StartTranscriptBuild, SyndicMutationError, TranscriptBuildPhase,
     TurnEndStatus, TurnIncompleteReason,
 };
 
 use crate::{
     recovery_support::{execute, ordered_id, pending_home, point_limit},
-    support::{exact_cas, stage_prepared_content, timestamp},
+    support::{
+        batch, commit, composer_content_records, exact_cas, seed_detached_canonical_draft_backing,
+        timestamp,
+    },
 };
 
 pub(super) fn execute_result(
@@ -268,28 +277,12 @@ pub(super) fn queue_input(
     storage: syndic_storage::SyndicStorage,
     thread: beryl_model::SyndicThreadId,
     value: u64,
-    updated_at: syndic_storage::SyndicTimestamp,
     admitted_at: syndic_storage::SyndicTimestamp,
-) -> AcceptedInputAdmission {
+) -> SyndicAcceptedInputId {
     let payload = ComposerPayload::new(vec![
         ComposerAtom::text(format!("queued while finalizing {value}")).unwrap(),
     ])
     .unwrap();
-    let prepared = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(store, storage, &prepared);
-    let current = storage
-        .current_draft(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) =
-        DraftPayloadUpdate::prepare(&current, &prepared, updated_at).unwrap()
-    else {
-        panic!("queued finalizing-history draft must become nonempty");
-    };
-    execute(
-        store,
-        storage.update_draft_payload(storage.revision(store).unwrap(), update),
-    );
     let current = storage
         .current_draft(store, thread, point_limit())
         .unwrap()
@@ -298,20 +291,148 @@ pub(super) fn queue_input(
         .input_gate(store, thread, point_limit())
         .unwrap()
         .unwrap();
-    let admission = AcceptedInputAdmission::new(
-        thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
-        SyndicDraftId::from_bytes(*ordered_id(value + 40_000).as_bytes()),
-        None,
-        admitted_at,
-    );
-    execute(
+    let InputGateState::FinalizingHistory(turn) = gate.state() else {
+        panic!("queued finalizing-history fixture requires a finalizing gate");
+    };
+    let history = storage
+        .history_summary(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let input_id = current.draft().id().accepted_input_id();
+    let replacement = SyndicDraftId::from_bytes(*ordered_id(value + 40_000).as_bytes());
+    let replacement_roots = seed_detached_canonical_draft_backing(
         store,
-        storage.admit_accepted_input(storage.revision(store).unwrap(), admission.clone()),
+        storage,
+        ordered_id(value + 50_000),
+        replacement,
     );
-    admission
+    let ordinal =
+        AcceptedInputOrdinal::new(gate.accepted_high_water().checked_add(1).unwrap()).unwrap();
+    let generation = gate
+        .route_generation_high_water()
+        .map(AcceptedRouteGeneration::checked_next)
+        .transpose()
+        .unwrap()
+        .unwrap_or(AcceptedRouteGeneration::FIRST);
+    let thread_revision = current.thread().revision().checked_next().unwrap();
+    let gate_revision = gate.revision().checked_next().unwrap();
+    let (content, mut records) = composer_content_records(&payload);
+    let content_bytes = content.summary().logical_utf8_bytes();
+    records.extend([
+        FixtureRecord::Thread(syndic_storage::ThreadRecord::new(
+            thread,
+            syndic_storage::SelectedPathProof::new(
+                current.thread().committed_tail(),
+                thread_revision,
+                current.thread().selected_path_digest(),
+            ),
+            replacement,
+            current.thread().lineage(),
+            current.thread().image_label_frontiers(),
+            current.thread().context_owner_id(),
+        )),
+        FixtureRecord::Draft(DraftRecord::new(
+            replacement,
+            thread,
+            DraftRevision::new(1).unwrap(),
+            DraftSubmissionIntent::Ordinary,
+            replacement_roots,
+            admitted_at,
+            admitted_at,
+        )),
+        FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+            thread,
+            replacement,
+            DraftRevision::new(1).unwrap(),
+            thread_revision,
+        )),
+        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
+            thread,
+            history.revision().checked_next().unwrap(),
+            thread_revision,
+            history.committed_tail(),
+            history.selected_path_digest(),
+            history.complete(),
+            admitted_at,
+        )),
+        FixtureRecord::InputGate(
+            InputGateRecord::new(
+                thread,
+                gate_revision,
+                InputGateState::FinalizingHistory(*turn),
+                ordinal.get(),
+                Some(generation),
+                gate.selected_route(),
+                0,
+                gate.live_next_turn_count().checked_add(1).unwrap(),
+                gate.live_logical_utf8_bytes()
+                    .checked_add(content_bytes)
+                    .unwrap(),
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedInput(
+            AcceptedInputRecord::new(
+                input_id,
+                thread,
+                ordinal,
+                AcceptedInputAdmissionProof::new(
+                    current.thread().revision(),
+                    current.draft().id(),
+                    current.draft().revision(),
+                    gate.revision(),
+                    replacement,
+                )
+                .unwrap(),
+                generation,
+                content,
+                None,
+                admitted_at,
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedOrder(AcceptedOrderIndexRecord::new(
+            thread, ordinal, input_id, generation,
+        )),
+        FixtureRecord::AcceptedRouteGeneration(
+            AcceptedRouteGenerationRecord::new(
+                thread,
+                generation,
+                AcceptedRouteRevision::FIRST,
+                AcceptedRouteTarget::NextTurn(NextTurnReason::TerminalHistory),
+                Some(ordinal),
+                Some(ordinal),
+                1,
+                0,
+                0,
+                1,
+                0,
+                content_bytes,
+                0,
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::AcceptedRouteLeaf(AcceptedRouteLeafRecord::new(
+            input_id,
+            thread,
+            generation,
+            ordinal,
+            AcceptedInputRevision::new(1).unwrap(),
+            AcceptedRouteLeafState::NextTurn(NextTurnReason::TerminalHistory),
+            AcceptedInputLifecycle::Admitted,
+        )),
+        FixtureRecord::AcceptedNextSource(syndic_storage::AcceptedNextSourceRecord::new(
+            thread,
+            generation,
+            AcceptedRouteRevision::FIRST,
+            ordinal,
+            ordinal,
+        )),
+    ]);
+    let mut fixture = batch(records);
+    fixture
+        .delete(FixtureDelete::Draft(current.draft().id()))
+        .unwrap();
+    commit(store, storage, fixture);
+    input_id
 }

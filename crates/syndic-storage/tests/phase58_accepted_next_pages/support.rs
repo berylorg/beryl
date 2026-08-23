@@ -1,13 +1,12 @@
 use beryl_model::{
-    AcceptedInputRevision, BindingRevision, DraftRevision, InputGateRevision, SyndicDraftId,
-    SyndicThreadId, SyndicTurnId, ThreadRevision,
+    AcceptedInputRevision, DraftRevision, InputGateRevision, SyndicDraftId, SyndicThreadId,
+    SyndicTurnId, ThreadRevision,
 };
-use syndic_storage::test_faults::FixtureRecord;
+use syndic_storage::test_faults::{FixtureRecord, fixture_route_leaf_with_transition};
 use syndic_storage::*;
 
 use crate::support::{
-    draft_id,
-    populated::{active_snapshot, active_turn, cas_thread, cas_turn},
+    composer_content_records, fixture_turn_state, item_free_transcript_build_records,
     thread_records, timestamp,
 };
 
@@ -32,15 +31,23 @@ impl GenerationSpec {
     }
 }
 
-fn source_draft(seed: u8, ordinal: u64) -> SyndicDraftId {
+fn source_draft(seed: u64, ordinal: u64) -> SyndicDraftId {
     let mut bytes = [0_u8; 16];
-    bytes[0] = seed;
+    bytes[..8].copy_from_slice(&seed.to_be_bytes());
     bytes[8..].copy_from_slice(&ordinal.to_be_bytes());
     SyndicDraftId::from_bytes(bytes)
 }
 
+fn source_turn(seed: u64) -> SyndicTurnId {
+    let mut bytes = [0_u8; 16];
+    bytes[..8].copy_from_slice(&seed.to_be_bytes());
+    bytes[8] = 0xff;
+    bytes[15] = 0xff;
+    SyndicTurnId::from_bytes(bytes)
+}
+
 pub fn next_turn_records(
-    seed: u8,
+    seed: u64,
     thread: SyndicThreadId,
     specs: &[GenerationSpec],
 ) -> Vec<FixtureRecord> {
@@ -48,19 +55,14 @@ pub fn next_turn_records(
     assert!(specs.iter().all(|spec| spec.candidate_count != 0));
     let total = specs.iter().map(|spec| spec.row_count()).sum::<u64>();
     let live_next = specs.iter().map(|spec| spec.candidate_count).sum::<u64>();
-    let current_draft = draft_id(seed.wrapping_add(1));
-    let prior_turn = SyndicTurnId::from_bytes([seed; 16]);
+    let terminal_count = specs.iter().map(|spec| spec.terminal_prefix).sum::<u64>();
+    let current_draft = source_draft(seed, 0);
+    let prior_turn = source_turn(seed);
     let prior_digest = root_turn_chain_digest(prior_turn);
     let mut records = thread_records(thread, current_draft, Some(prior_turn), prior_digest);
-    let content = records
-        .iter()
-        .find_map(|record| match record {
-            FixtureRecord::Draft(draft) if draft.id() == current_draft => Some(draft.content()),
-            _ => None,
-        })
-        .expect("empty thread fixture contains its current draft");
+    let content = composer_content_records(&ComposerPayload::default()).0;
     let final_thread_revision = ThreadRevision::new(total + 1).unwrap();
-    let final_gate_revision = InputGateRevision::new(total + 1).unwrap();
+    let final_gate_revision = InputGateRevision::new(total + 1 + (terminal_count * 2)).unwrap();
     let generation_high_water =
         AcceptedRouteGeneration::new(u64::try_from(specs.len()).unwrap()).unwrap();
 
@@ -110,8 +112,35 @@ pub fn next_turn_records(
                     summary.committed_tail(),
                     summary.selected_path_digest(),
                     summary.complete(),
-                    summary.last_activity_at(),
+                    timestamp(total.max(5)),
                 );
+            }
+            FixtureRecord::TranscriptViewHead(view) if view.thread_id() == thread => {
+                *view = TranscriptViewHeadRecord::new(
+                    thread,
+                    view.generation(),
+                    view.revision(),
+                    0,
+                    Some(prior_turn),
+                    prior_digest,
+                    ProjectionLifecycle::Current,
+                );
+            }
+            FixtureRecord::Binding(binding) if binding.thread_id() == thread => {
+                *binding = BindingRecord::new(
+                    thread,
+                    binding.revision(),
+                    SelectedPathProof::new(
+                        Some(prior_turn),
+                        ThreadRevision::new(1).unwrap(),
+                        prior_digest,
+                    ),
+                    binding.state().clone(),
+                );
+            }
+            FixtureRecord::BindingHead(head) if head.thread_id() == thread => {
+                *head =
+                    BindingHeadRecord::new(thread, head.revision(), head.lifecycle(), prior_digest);
             }
             _ => {}
         }
@@ -121,17 +150,20 @@ pub fn next_turn_records(
         .map(|ordinal| source_draft(seed, ordinal))
         .collect::<Vec<_>>();
     let mut ordinal_value = 1_u64;
+    let mut completed_before_generation = 0_u64;
     for (generation_index, spec) in specs.iter().copied().enumerate() {
         let generation =
             AcceptedRouteGeneration::new(u64::try_from(generation_index).unwrap() + 1).unwrap();
         let first = AcceptedInputOrdinal::new(ordinal_value).unwrap();
         let last_value = ordinal_value + spec.row_count() - 1;
         let last = AcceptedInputOrdinal::new(last_value).unwrap();
+        let generation_revision =
+            AcceptedRouteRevision::new(1 + (spec.terminal_prefix * 2)).unwrap();
         records.push(FixtureRecord::AcceptedRouteGeneration(
             AcceptedRouteGenerationRecord::new(
                 thread,
                 generation,
-                AcceptedRouteRevision::FIRST,
+                generation_revision,
                 AcceptedRouteTarget::NextTurn(spec.reason),
                 Some(first),
                 Some(last),
@@ -146,13 +178,7 @@ pub fn next_turn_records(
             .unwrap(),
         ));
         records.push(FixtureRecord::AcceptedNextSource(
-            AcceptedNextSourceRecord::new(
-                thread,
-                generation,
-                AcceptedRouteRevision::FIRST,
-                first,
-                last,
-            ),
+            AcceptedNextSourceRecord::new(thread, generation, generation_revision, first, last),
         ));
         for local_index in 0..spec.row_count() {
             let ordinal = AcceptedInputOrdinal::new(ordinal_value).unwrap();
@@ -187,27 +213,88 @@ pub fn next_turn_records(
                 FixtureRecord::AcceptedOrder(AcceptedOrderIndexRecord::new(
                     thread, ordinal, input_id, generation,
                 )),
-                FixtureRecord::AcceptedRouteLeaf(AcceptedRouteLeafRecord::new(
-                    input_id,
-                    thread,
-                    generation,
-                    ordinal,
-                    AcceptedInputRevision::new(1).unwrap(),
-                    if local_index < spec.terminal_prefix {
-                        AcceptedRouteLeafState::Routed
-                    } else {
-                        AcceptedRouteLeafState::NextTurn(spec.reason)
-                    },
-                    if local_index < spec.terminal_prefix {
-                        AcceptedInputLifecycle::Delivered
-                    } else {
-                        AcceptedInputLifecycle::Admitted
-                    },
-                )),
+                FixtureRecord::AcceptedRouteLeaf(if local_index < spec.terminal_prefix {
+                    fixture_route_leaf_with_transition(
+                        AcceptedRouteLeafRecord::new(
+                            input_id,
+                            thread,
+                            generation,
+                            ordinal,
+                            AcceptedInputRevision::new(3).unwrap(),
+                            AcceptedRouteLeafState::Routed,
+                            AcceptedInputLifecycle::Delivered,
+                        ),
+                        AcceptedRouteLeafTransitionProof::new(
+                            InputGateRevision::new(
+                                total + 2 + ((completed_before_generation + local_index) * 2),
+                            )
+                            .unwrap(),
+                            AcceptedRouteHeadProof::new(
+                                generation,
+                                AcceptedRouteRevision::new(2 + (local_index * 2)).unwrap(),
+                            ),
+                            AcceptedInputRevision::new(2).unwrap(),
+                            AcceptedRouteLeafTransitionKind::Complete,
+                        ),
+                    )
+                } else {
+                    AcceptedRouteLeafRecord::new(
+                        input_id,
+                        thread,
+                        generation,
+                        ordinal,
+                        AcceptedInputRevision::new(1).unwrap(),
+                        AcceptedRouteLeafState::NextTurn(spec.reason),
+                        AcceptedInputLifecycle::Admitted,
+                    )
+                }),
             ]);
             ordinal_value += 1;
         }
+        completed_before_generation += spec.terminal_prefix;
     }
+    records.extend([
+        FixtureRecord::Turn(TurnRecord::new(
+            prior_turn,
+            thread,
+            TurnKind::OrdinaryUser,
+            ConversationParent::Root,
+            None,
+            TurnDepth::FIRST,
+            prior_digest,
+            timestamp(1),
+        )),
+        FixtureRecord::TurnState(fixture_turn_state(
+            prior_turn,
+            TurnStateRevision::FIRST,
+            TurnLifecycle::Failed,
+            1,
+            0,
+            timestamp(5),
+        )),
+        FixtureRecord::SourceEvent(
+            SourceEventRecord::new(
+                prior_turn,
+                SourceEventSequence::FIRST,
+                None,
+                SourceEventPayload::TurnEnded(
+                    TurnEndStatus::new(TurnTerminalOutcome::Failed, None).unwrap(),
+                ),
+            )
+            .unwrap(),
+        ),
+    ]);
+    records.extend(item_free_transcript_build_records(
+        thread,
+        final_thread_revision,
+        &[(
+            prior_turn,
+            prior_digest,
+            TurnLifecycle::Failed,
+            1,
+            timestamp(5),
+        )],
+    ));
     records
 }
 
@@ -216,7 +303,7 @@ pub fn set_gate_state(
     thread: SyndicThreadId,
     state: InputGateState,
 ) {
-    for record in records {
+    for record in records.iter_mut() {
         if let FixtureRecord::InputGate(gate) = record
             && gate.thread_id() == thread
         {
@@ -236,71 +323,6 @@ pub fn set_gate_state(
         }
     }
     panic!("fixture gate is missing");
-}
-
-pub fn set_projection_lost(
-    records: &mut [FixtureRecord],
-    thread: SyndicThreadId,
-    generation_id: AcceptedRouteGeneration,
-) {
-    let pending = PendingSteeringTargetProof::new(
-        BindingRevision::new(1).unwrap(),
-        active_snapshot(),
-        active_turn(),
-        cas_thread(),
-    );
-    let lost = AcceptedRouteProjectionLostProof::new(
-        AcceptedRouteLostTarget::Steering(SteeringTargetProof::new(pending, cas_turn())),
-        AcceptedRouteAbandonmentProof::new(
-            BindingRevision::new(1).unwrap(),
-            InputGateRevision::new(1).unwrap(),
-            AcceptedRouteHeadProof::new(generation_id, AcceptedRouteRevision::FIRST),
-            AcceptedRouteAbandonmentKind::Generic,
-        ),
-        BindingRevision::new(2).unwrap(),
-        active_snapshot(),
-        cas_thread(),
-    );
-    for record in records {
-        match record {
-            FixtureRecord::AcceptedRouteGeneration(generation)
-                if generation.thread_id() == thread && generation.generation() == generation_id =>
-            {
-                *generation = AcceptedRouteGenerationRecord::new(
-                    thread,
-                    generation_id,
-                    generation.revision(),
-                    AcceptedRouteTarget::ProjectionLost(lost.clone()),
-                    generation.first_ordinal(),
-                    generation.last_ordinal(),
-                    generation.input_count(),
-                    generation.ready_retryable_count(),
-                    generation.delivering_count(),
-                    generation.next_turn_count(),
-                    generation.terminal_count(),
-                    generation.live_logical_utf8_bytes(),
-                    generation.delivering_logical_utf8_bytes(),
-                )
-                .unwrap();
-            }
-            FixtureRecord::AcceptedRouteLeaf(leaf)
-                if leaf.thread_id() == thread
-                    && leaf.generation() == generation_id
-                    && !leaf.lifecycle().is_terminal() =>
-            {
-                *leaf = AcceptedRouteLeafRecord::new(
-                    leaf.input_id(),
-                    leaf.thread_id(),
-                    leaf.generation(),
-                    leaf.ordinal(),
-                    leaf.revision(),
-                    AcceptedRouteLeafState::Routed,
-                    leaf.lifecycle(),
-                );
-            }
-            _ => {}
-        }
-    }
 }
 
 pub fn corrupt_effective_leaves_as_terminal(

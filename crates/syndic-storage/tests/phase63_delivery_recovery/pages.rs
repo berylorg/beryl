@@ -1,14 +1,13 @@
 use beryl_home_store::CursorReadLimits;
 use beryl_model::SyndicItemId;
-use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{
     DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES, DELIVERY_RECOVERY_GATE_PAGE_MAX_RECORDS,
-    DeliveryRecoveryCase, InputGateRecord, InputGateState, SyndicReadError, SyndicStorage,
+    DeliveryRecoveryCase, InputGateState, SyndicReadError, SyndicStorage,
 };
 
 use crate::{
     recovery_support::{ordered_draft, ordered_id, pending_home, point_limit, replace_gate_state},
-    support::{TestHome, batch, commit, empty_thread_records, exact_cas, open},
+    support::{TestHome, exact_cas, open, seed_canonical_empty_thread},
 };
 
 fn limits(items: usize) -> CursorReadLimits {
@@ -21,14 +20,14 @@ fn startup_cursor_progress_survives_earlier_gate_mutation_and_filtered_pages() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let threads = [ordered_id(1), ordered_id(2), ordered_id(3)];
-    let records = threads
-        .iter()
-        .enumerate()
-        .flat_map(|(index, thread)| {
-            empty_thread_records(*thread, ordered_draft(10_000 + index as u64))
-        })
-        .collect::<Vec<_>>();
-    commit(&store, storage, batch(records));
+    for (index, thread) in threads.iter().enumerate() {
+        seed_canonical_empty_thread(
+            &store,
+            storage,
+            *thread,
+            ordered_draft(10_000 + index as u64),
+        );
+    }
     for (index, thread) in [(0_u64, threads[0]), (2, threads[2])] {
         let text = format!("restart-{index}");
         exact_cas::submit_current_draft(
@@ -70,9 +69,14 @@ fn terminal_heavy_gate_pages_clamp_and_advance_while_filtered_empty() {
     let home = TestHome::new("phase63-terminal-heavy-pages");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let records =
-        (1..=300).map(|value| FixtureRecord::InputGate(InputGateRecord::idle(ordered_id(value))));
-    commit(&store, storage, batch(records));
+    for value in 1..=300 {
+        seed_canonical_empty_thread(
+            &store,
+            storage,
+            ordered_id(value),
+            ordered_draft(10_000 + value),
+        );
+    }
     let oversized = CursorReadLimits::new(usize::MAX, usize::MAX).unwrap();
 
     let first = storage
@@ -112,14 +116,14 @@ fn recovered_pending_page_proves_safe_work_and_fences_cursor_revision() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let threads = [ordered_id(11), ordered_id(12)];
-    let records = threads
-        .iter()
-        .enumerate()
-        .flat_map(|(index, thread)| {
-            empty_thread_records(*thread, ordered_draft(40_000 + index as u64))
-        })
-        .collect::<Vec<_>>();
-    commit(&store, storage, batch(records));
+    for (index, thread) in threads.iter().enumerate() {
+        seed_canonical_empty_thread(
+            &store,
+            storage,
+            *thread,
+            ordered_draft(40_000 + index as u64),
+        );
+    }
     let mut turns = Vec::new();
     for (index, thread) in threads.into_iter().enumerate() {
         let text = format!("safe pending {index}");
@@ -192,15 +196,14 @@ fn startup_cursor_from_another_home_is_rejected() {
         let home = TestHome::new(name);
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        commit(
-            &store,
-            storage,
-            batch(
-                [base, base + 1].into_iter().map(|value| {
-                    FixtureRecord::InputGate(InputGateRecord::idle(ordered_id(value)))
-                }),
-            ),
-        );
+        for value in [base, base + 1] {
+            seed_canonical_empty_thread(
+                &store,
+                storage,
+                ordered_id(value),
+                ordered_draft(10_000 + value),
+            );
+        }
         (home, store, storage)
     }
     let (_first_home, first_store, first_storage) =

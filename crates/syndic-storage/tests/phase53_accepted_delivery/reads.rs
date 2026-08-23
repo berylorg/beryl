@@ -9,10 +9,10 @@ use syndic_storage::test_faults::{
 use syndic_storage::*;
 
 use crate::{
+    accepted_fixtures::{delivering_input, retryable_input},
     accepted_support::{limit, seeded_large_ready, seeded_mixed, seeded_populated},
     support::{
         batch, commit, id,
-        phase11::{delivering_input, retryable_input},
         populated::{
             active_snapshot, active_turn, cas_thread, cas_turn, next_input, steering_input,
         },

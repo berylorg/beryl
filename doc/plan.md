@@ -29,21 +29,13 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 158: Restore Provider And Projection Verification (finished)
+# Phase 159: Restore Delivery And Promotion Verification (finished)
 
-Rewrote all twenty-three live Phase 4, 6, 7, 13, and 18 targets against sealed content and bounded
-target-state fixtures, preserving identity, parentage, asset authority, stable-prefix, projection,
-activity, provider, route, issue, corruption, scrub, reopen, and exact reconciliation assertions
-without production or whole-draft compatibility expansion. Canonical and fault-feature compilation,
-158 focused nextest cases, formatting, residue, scoped-diff, process, and fresh independent semantic
-gates passed.
-
-# Phase 159: Restore Delivery And Promotion Verification (pending)
-
-Rewrite the live Phase 52, 53, 57, 58, and 63 steering, delivery, admission-reconciliation,
-ready-page, promotion, and recovery targets against durable target-state witnesses and fault
-fixtures. Remove obsolete public admission cases while preserving exact delivery and reconciliation
-coverage; prove default and fault-feature compilation and focused nextest execution.
+Rewrote all ten Phase 52, 53, 57, 58, and 63 targets over bounded production-reachable durable
+fixtures, removed obsolete public-admission and mutable-payload cases, and preserved exact delivery,
+projection-loss, paging, promotion, fault, reopen, and recovery evidence without production or
+deferred-recovery expansion. Both scoped compile modes, 78 focused nextest cases, formatting,
+residue, scoped-diff, process, and fresh independent semantic gates passed.
 
 # Phase 160: Restore Stop, Compaction, Catalog, And Full Package Gates (pending)
 

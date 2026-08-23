@@ -17,6 +17,7 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
                 beryl_model::SyndicDraftId::from_bytes([201; 16]),
                 crate::support::exact_cas::execution_binding(),
                 timestamp(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
             ),
         ))
         .unwrap();

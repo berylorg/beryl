@@ -12,7 +12,7 @@ mod finalizing_history;
 mod finalizing_history_support;
 #[path = "phase63_delivery_recovery/pages.rs"]
 mod pages;
-#[path = "phase9_recovery_projection/support.rs"]
+#[path = "phase63_delivery_recovery/projection_support.rs"]
 mod projection_support;
 #[path = "phase63_delivery_recovery/support.rs"]
 mod recovery_support;

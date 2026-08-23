@@ -71,9 +71,10 @@ fn generic_abandonment_reopen_rejects_nonprior_gate_witness() {
     store.close().unwrap();
 
     let mut reopened = open(home.path());
-    match SyndicStorage::register(&mut reopened) {
-        Ok(_) => panic!("generic abandonment with a non-prior gate witness reopened"),
-        Err(error) => assert!(error.to_string().contains("abandonment proof disagrees")),
-    }
+    let _storage = SyndicStorage::register(&mut reopened).unwrap();
+    let error = reopened
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap_err();
+    assert!(error.to_string().contains("abandonment proof disagrees"));
     reopened.close().unwrap();
 }

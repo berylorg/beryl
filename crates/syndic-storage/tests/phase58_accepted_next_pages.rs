@@ -2,30 +2,68 @@
 
 mod support;
 
+#[path = "phase53_accepted_delivery/fixtures.rs"]
+mod accepted_fixtures;
 #[path = "phase58_accepted_next_pages/support.rs"]
 mod accepted_next_support;
 
-use beryl_home_store::CursorReadLimits;
-use beryl_model::{InputGateRevision, SyndicThreadId};
+use beryl_home_store::{CommandOutcome, CursorReadLimits};
+use beryl_model::{InputGateRevision, SyndicThreadId, SyndicTurnId};
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
-use accepted_next_support::{
-    GenerationSpec, next_turn_records, set_gate_state, set_projection_lost,
-};
-use support::{TestHome, batch, commit, id, open, populated::active_turn, seed_populated};
+use accepted_next_support::{GenerationSpec, next_turn_records, set_gate_state};
+use support::{TestHome, batch, commit, id, open, seed_detached_canonical_draft_backing};
 
 const FIXTURE_DELTA_RECORDS_PER_COMMAND: usize = 96;
-const POPULATED_SEED_ACTIVE_THREAD_BYTE: u8 = 40;
 
 fn seeded(
     name: &str,
-    records: Vec<FixtureRecord>,
+    mut records: Vec<FixtureRecord>,
 ) -> (TestHome, beryl_home_store::HomeStore, SyndicStorage) {
+    let current_drafts = records
+        .iter()
+        .filter_map(|record| match record {
+            FixtureRecord::Thread(thread) => Some(thread.current_draft_id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    for current_draft in current_drafts {
+        let root_history = seed_detached_canonical_draft_backing(
+            &store,
+            storage,
+            SyndicThreadId::from_bytes([0xf3; 16]),
+            current_draft,
+        );
+        let latest_admission = records
+            .iter()
+            .filter_map(|record| match record {
+                FixtureRecord::AcceptedInput(input) => Some(input.admitted_at()),
+                _ => None,
+            })
+            .max();
+        for record in &mut records {
+            let FixtureRecord::Draft(draft) = record else {
+                continue;
+            };
+            if draft.id() != current_draft {
+                continue;
+            }
+            let created_at = latest_admission.unwrap_or(draft.created_at());
+            *draft = DraftRecord::new(
+                draft.id(),
+                draft.thread_id(),
+                draft.revision(),
+                draft.submission_intent(),
+                root_history.clone(),
+                created_at,
+                created_at,
+            );
+        }
+    }
     for delta in records.chunks(FIXTURE_DELTA_RECORDS_PER_COMMAND) {
         commit(&store, storage, batch(delta.iter().cloned()));
     }
@@ -36,6 +74,10 @@ fn limits(items: usize) -> CursorReadLimits {
     CursorReadLimits::new(items, ACCEPTED_NEXT_PAGE_MAX_BYTES).unwrap()
 }
 
+fn point_limit() -> SyndicPointReadLimit {
+    SyndicPointReadLimit::new(65_536).unwrap()
+}
+
 fn sources(store: &beryl_home_store::HomeStore, storage: SyndicStorage) -> Vec<AcceptedNextSource> {
     let revision = storage.revision(store).unwrap();
     storage
@@ -43,9 +85,6 @@ fn sources(store: &beryl_home_store::HomeStore, storage: SyndicStorage) -> Vec<A
         .unwrap()
         .records()
         .iter()
-        // Candidate assertions below address the source introduced by each test's
-        // delta, rather than the independent active-route source in the real seed.
-        .filter(|source| source.thread_id() != id(POPULATED_SEED_ACTIVE_THREAD_BYTE))
         .cloned()
         .collect()
 }
@@ -58,18 +97,17 @@ fn ordered_thread(value: u64) -> SyndicThreadId {
 
 #[test]
 fn global_source_pages_are_ordered_clamped_and_revision_fenced() {
-    // The real populated seed contributes its own later-sorting source. Together
-    // with this bounded delta, the scan remains exactly 300 records wide.
-    let records = (1..=299).map(|value| {
-        FixtureRecord::AcceptedNextSource(AcceptedNextSourceRecord::new(
+    let records = (1..=300).flat_map(|value| {
+        next_turn_records(
+            value,
             ordered_thread(value),
-            AcceptedRouteGeneration::FIRST,
-            AcceptedRouteRevision::FIRST,
-            AcceptedInputOrdinal::FIRST,
-            AcceptedInputOrdinal::FIRST,
-        ))
+            &[GenerationSpec::new(0, 1, NextTurnReason::PendingTurn)],
+        )
     });
     let (_home, store, storage) = seeded("phase58-next-global-bounds", records.collect::<Vec<_>>());
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let revision = storage.revision(&store).unwrap();
     let oversized = CursorReadLimits::new(usize::MAX, usize::MAX).unwrap();
     let first = storage
@@ -133,6 +171,9 @@ fn candidate_pages_advance_terminal_history_and_stop_at_the_first_candidate() {
         &[GenerationSpec::new(300, 2, NextTurnReason::PendingTurn)],
     );
     let (_home, store, storage) = seeded("phase58-next-terminal-heavy", records);
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let source = sources(&store, storage)[0];
     let first = storage
         .accepted_next_candidate_page(&store, source, None, limits(256))
@@ -251,23 +292,58 @@ fn candidate_cursor_from_another_source_is_rejected() {
 }
 
 #[test]
-fn projection_lost_routed_input_is_an_effective_candidate() {
-    let thread = id(86);
-    let mut records = next_turn_records(
-        86,
-        thread,
-        &[GenerationSpec::new(0, 1, NextTurnReason::PendingTurn)],
-    );
-    set_projection_lost(&mut records, thread, AcceptedRouteGeneration::FIRST);
-    let (_home, store, storage) = seeded("phase58-next-projection-lost", records);
+fn projection_lost_routed_input_stays_ineligible_while_gate_is_not_idle() {
+    let thread = id(40);
+    let home = TestHome::new("phase58-next-projection-lost");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    accepted_fixtures::seed_mixed_abandonment(&store, storage);
+    let request = accepted_fixtures::abandonment_request(&store, storage);
+    assert!(matches!(
+        store.execute_current(storage.current_abandon_active_binding(request)),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     let source = sources(&store, storage)[0];
+    let generation = syndic_storage::test_faults::accepted_route_generation(
+        &store,
+        storage,
+        thread,
+        AcceptedRouteGeneration::FIRST,
+    )
+    .unwrap();
+    assert!(matches!(
+        generation.target(),
+        AcceptedRouteTarget::ProjectionLost(_)
+    ));
+    let gate = storage
+        .input_gate(&store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        gate.selected_route(),
+        Some(AcceptedRouteHeadProof::new(
+            AcceptedRouteGeneration::FIRST,
+            generation.revision(),
+        ))
+    );
+    assert_eq!(
+        syndic_storage::test_faults::accepted_route_generation_head(&store, storage, thread)
+            .unwrap()
+            .unwrap()
+            .proof(),
+        gate.selected_route().unwrap()
+    );
+    assert_ne!(gate.state(), &InputGateState::Idle);
     let page = storage
         .accepted_next_candidate_page(&store, source, None, limits(256))
         .unwrap();
-    let candidate = page.candidate().expect("projection-lost candidate");
-    assert_eq!(candidate.next_turn_reason(), NextTurnReason::ProjectionLost);
-    assert_eq!(candidate.ordinal(), AcceptedInputOrdinal::FIRST);
-    assert!(page.next_cursor().is_none());
+    assert!(page.candidate().is_none());
 }
 
 #[test]
@@ -281,7 +357,7 @@ fn non_idle_gate_returns_a_completed_empty_candidate_page() {
     set_gate_state(
         &mut records,
         thread,
-        InputGateState::PendingTurn(active_turn()),
+        InputGateState::PendingTurn(SyndicTurnId::from_bytes([87; 16])),
     );
     let (_home, store, storage) = seeded("phase58-next-non-idle", records);
     let source = sources(&store, storage)[0];

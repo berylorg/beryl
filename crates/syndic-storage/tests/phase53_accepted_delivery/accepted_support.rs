@@ -8,9 +8,9 @@ use beryl_model::{
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
+use crate::accepted_fixtures::{delivering_input, seed_mixed_abandonment};
 use crate::support::{
     TestHome, batch, commit, id, open,
-    phase11::{delivering_input, seed_mixed_abandonment},
     populated::{
         active_snapshot, active_turn, cas_thread, cas_turn, next_input, seed_populated,
         steering_input,

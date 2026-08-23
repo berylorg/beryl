@@ -2,6 +2,9 @@
 
 mod support;
 
+#[path = "phase53_accepted_delivery/fixtures.rs"]
+mod accepted_fixtures;
+
 use beryl_model::{
     AcceptedInputRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration,
     CasProcessGeneration, CasTurnId, DraftRevision, InputGateRevision, RootId, RuntimeId,
@@ -12,7 +15,7 @@ use syndic_storage::test_faults::{
 };
 use syndic_storage::*;
 
-use support::phase11::{
+use accepted_fixtures::{
     DELIVERY_UNKNOWN_LOGICAL_BYTES, delivering_input, retryable_input, seed_mixed_abandonment,
 };
 use support::populated::{active_snapshot, active_turn, cas_thread, cas_turn, steering_input};

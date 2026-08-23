@@ -4,14 +4,11 @@ use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
 use crate::{
+    accepted_fixtures::{abandonment_request, delivering_input, retryable_input},
     accepted_support::{
         AcceptedOperation, limit, seeded_mixed, seeded_operation, seeded_populated,
     },
-    support::{
-        batch, commit, id, open,
-        phase11::{abandonment_request, delivering_input, retryable_input},
-        populated::steering_input,
-    },
+    support::{batch, commit, id, open, populated::steering_input},
 };
 
 fn route(revision: u64) -> AcceptedRouteHeadProof {

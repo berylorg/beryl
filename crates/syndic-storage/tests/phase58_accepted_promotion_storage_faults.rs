@@ -14,8 +14,6 @@ mod descendant_collisions;
 mod identity;
 #[path = "phase58_accepted_promotion/support.rs"]
 mod promotion_support;
-#[path = "phase58_accepted_promotion_storage_faults/races.rs"]
-mod races;
 
 use beryl_home_store::{
     CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeHealthState, HomeOpenOptions,
@@ -26,7 +24,7 @@ use beryl_model::{SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
-use promotion_support::{Fixture, promotion_fixture};
+use promotion_support::{Fixture, promotion_fixture, seed_detached_draft_backing};
 use support::{
     TestHome, batch, commit, fixture_turn_state, id, item_free_transcript_build_records, open,
     timestamp,
@@ -52,11 +50,50 @@ fn seed(
     name: &str,
     records: impl IntoIterator<Item = FixtureRecord>,
 ) -> (TestHome, HomeStore, SyndicStorage) {
+    let mut records = records.into_iter().collect::<Vec<_>>();
+    let current_draft = records
+        .iter()
+        .find_map(|record| match record {
+            FixtureRecord::Thread(thread) => Some(thread.current_draft_id()),
+            _ => None,
+        })
+        .expect("promotion fixture owns its current draft");
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let root_history = seed_detached_draft_backing(
+        &store,
+        storage,
+        SyndicThreadId::from_bytes([0xf2; 16]),
+        current_draft,
+    );
+    install_current_draft_root_history(&mut records, current_draft, root_history);
     commit(&store, storage, batch(records));
     (home, store, storage)
+}
+
+fn install_current_draft_root_history(
+    records: &mut [FixtureRecord],
+    draft_id: beryl_model::SyndicDraftId,
+    root_history: syndic_storage::DraftRootHistoryPairV1,
+) {
+    for record in records {
+        let FixtureRecord::Draft(draft) = record else {
+            continue;
+        };
+        if draft.id() != draft_id {
+            continue;
+        }
+        *draft = DraftRecord::new(
+            draft.id(),
+            draft.thread_id(),
+            draft.revision(),
+            draft.submission_intent(),
+            root_history.clone(),
+            draft.created_at(),
+            draft.updated_at(),
+        );
+    }
 }
 
 fn candidate(store: &HomeStore, storage: SyndicStorage) -> AcceptedNextCandidate {
@@ -124,7 +161,15 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
         let fixture = promotion_fixture(90, id(90));
-        commit(&store, storage, batch(fixture.records));
+        let root_history = seed_detached_draft_backing(
+            &store,
+            storage,
+            SyndicThreadId::from_bytes([0xf2; 16]),
+            fixture.current_draft,
+        );
+        let mut records = fixture.records;
+        install_current_draft_root_history(&mut records, fixture.current_draft, root_history);
+        commit(&store, storage, batch(records));
         let request = promotion(
             &store,
             storage,
@@ -351,7 +396,7 @@ fn substitute_exact_authority(
                     draft.thread_id(),
                     revised,
                     draft.submission_intent(),
-                    draft.content(),
+                    draft.root_history(),
                     draft.created_at(),
                     draft.updated_at(),
                 );
@@ -393,7 +438,7 @@ fn substitute_exact_authority(
                             draft.thread_id(),
                             draft.revision(),
                             draft.submission_intent(),
-                            draft.content(),
+                            draft.root_history(),
                             draft.created_at(),
                             draft.updated_at(),
                         );
