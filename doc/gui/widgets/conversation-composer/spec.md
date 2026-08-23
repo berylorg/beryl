@@ -29,15 +29,20 @@ treatment.
 
 The external text-input's range-backed variant owns text-editing mechanics, caret, compact logical
 selection, bounded clipboard primitives, IME composition, opaque atom ranges, resident-range
-wrapping, visible byte-range demand, inner vertical scrolling, and routing edit, undo, and redo
-commands through its cursor-based bounded-page mutation protocol. The host supplies the
-authoritative revision-bound document source and edit sink plus opaque durable undo/redo
-authority and exact availability. The conversation composer neither stores nor advances that
-frontier. The text-input retains only the visible range, bounded overscan, active editing/IME
-ranges, one bounded pending-mutation session with compact cursors, and compact range identities; it
-never requests or stores the complete document or operation. The conversation composer owns the
-surrounding panel surface, adaptive panel measurement, bounded filler and capacity-saturated state
-treatment, and integration of owner-supplied inline atom widgets.
+wrapping, visible byte-range demand, inner vertical scrolling, routing ordinary edits through its
+cursor-based bounded-page mutation protocol, and routing undo and redo through its fixed-size
+historical-root selection protocol. The host supplies the authoritative revision-bound document
+source and ordinary-edit sink plus opaque durable history authority and exact undo and redo
+availability bound to the current editor binding, revision, and logical extent. The conversation
+composer neither stores nor advances that frontier. The text-input retains only the visible range,
+bounded overscan, active editing/IME ranges, one bounded pending ordinary-mutation session with
+compact cursors, one fixed-size pending historical-selection intent, and compact range identities;
+it never requests or stores the complete document, ordinary operation, inverse value, history
+collection, or root graph.
+
+The conversation composer owns the surrounding panel surface, adaptive panel measurement, bounded
+filler and capacity-saturated state treatment, and integration of owner-supplied inline atom
+widgets.
 
 The widget does not contain a persistent submission button or a manual resize handle.
 
@@ -58,8 +63,8 @@ Inline atoms remain compact and baseline-aligned with surrounding text. The acti
 
 The widget supports writable, focused, unfocused, empty, populated, submission-ready,
 submission-disabled, inert, activation-pending, paste-pending, atom-present, growing, clamped,
-inner-overflowing, inner-scrolling, capacity-saturated, and viewport-exceeds-rendering-capacity
-states.
+inner-overflowing, inner-scrolling, historical-root-selection-pending, historical-root-rebind-
+pending, capacity-saturated, and viewport-exceeds-rendering-capacity states.
 
 Capacity saturation retains the coherent editor, caret, selection, active interaction anchor,
 logical scroll extent, and undo/redo availability while bounded filler covers unrealized nominally
@@ -77,10 +82,25 @@ part of the incoming content.
 
 Text editing, pointer selection, caret movement, clipboard behavior, IME, and inline-atom hit
 testing follow the external text-input contract's range-backed multiline variant. Undo and redo
-input is routed by text-input as an exact revision-bound host-mutation request. The host decides
-whether that request is available and advances or preserves the opaque durable undo/redo
-frontier through the atomic result. Crossing a nonresident boundary requests bounded document pages and
-preserves the last coherent editor frame until they arrive.
+input is routed by text-input as a fixed-size historical-root selection intent containing the exact
+current binding, revision, logical extent, opaque durable history-authority identity, direction,
+operation identity, caret, and directed selection. It carries no inverse or replacement text,
+marker registry, root graph, proposal page source, whole draft, or historical content. The host
+decides exact availability, selects an existing immutable durable historical root, and advances or
+preserves its opaque authority through one exact terminal result. Crossing a nonresident boundary
+requests bounded document pages and preserves the last coherent editor frame until they arrive.
+
+Pre-admission cancellation leaves the current root, caret, selection, and availability unchanged.
+After admission, cancellation cannot override the result; the host reconciles indeterminate custody
+until the operation settles exactly once as `Committed`, `Rejected`, `Conflict`, `Cancelled`, or
+`Error`. The four noncommitted outcomes preserve the live editor and history frontier. `Committed`
+supplies only the successor binding, revision, logical extent, exact caret and directed selection,
+and successor authority identity with exact undo and redo availability. Every terminal settlement
+is fixed-size control state and contains no draft, inverse or replacement payload, marker collection,
+root graph, or source page. The text-input atomically retires the old live binding and installs those
+compact successor facts, then realizes the selected root through its ordinary bounded text-page and
+object-page sources. Any prior frame retained while that realization is pending is inert and cannot
+accept editing or hit testing as successor content.
 
 The owning feature chooses whether focused Enter propagates as a submission or edit-commit command and whether Shift+Enter inserts a newline. The widget reports those key events without defining acceptance, queueing, steering, or persistence effects.
 
@@ -94,10 +114,32 @@ only when the owner marks the retained range safe for that interaction.
 When inert, pointer and keyboard input cannot mutate text or atoms. Existing content remains selectable only if the owning feature's inert reason explicitly permits readonly selection; otherwise the editor does not accept focus.
 
 Inline image markers occupy indivisible opaque atom ranges in the text-input. The text-input owns
-caret traversal and range selection and routes deletion, cut, paste, undo, and redo requests around
-those atoms through the same bounded host-mutation protocol. The host owns acceptance, authoritative
-mutation coordination, and supplies the opaque undo/redo authority. Marker activation reports the
-exact stable atom identity and geometry to the owning feature.
+caret traversal and range selection and routes deletion, cut, paste, and other ordinary edits around
+those atoms through the cursor-paged host-mutation protocol. Undo and redo instead select the
+existing immutable root whose exact marker positions, caret, and directed selection are already
+part of durable history authority. The host owns acceptance and authoritative coordination and
+supplies the opaque undo/redo authority. Marker activation reports the exact stable atom identity
+and geometry to the owning feature.
+
+The composer host configures one finite settlement-custody capacity shared across live and detached
+editor generations. Each ordinary commit or historical-root selection reserves one compact slot
+before admission. Rebind or unmount transfers only the exact operation identity, base binding key,
+and terminal reconciliation state into that slot; it transfers no source or proposal page, inverse
+content, marker collection, root graph, whole draft, or widget instance. A later editor generation
+may admit work only while another slot is available. Each late result matches and releases only its
+reserved slot and cannot change the current editor generation, so repeated recovery, activation,
+rebind, or unmount retains at most the configured number of fixed-size late-settlement records.
+Custody exhaustion rejects a new operation before admission without changing exact durable
+undo/redo availability or the current editor.
+
+At a quiescent cut with no composition, ordinary mutation, historical-root selection, or unpublished
+page or geometry work, the composer may pass through the text-input's payload-free compact
+restoration seed. The seed binds the exact source binding, revision and logical extent; caret and
+directed selection; logical scroll continuation; opaque history-authority identity; and exact undo
+and redo availability. It contains no text, object or marker page, layout state, inverse or
+replacement content, in-flight operation, detached-settlement custody, or widget instance. A new
+mount validates that exact key and re-requests its bounded resident pages; it never revives an old
+resident surface or operation.
 
 When wrapped content exceeds the current panel clamp, the text-input owns vertical scrolling and keeps the caret or active selection endpoint visible. Scroll input propagates outward when the inner editor cannot scroll further, following `scroll-ownership`.
 
