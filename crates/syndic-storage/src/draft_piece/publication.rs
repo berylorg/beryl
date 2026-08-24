@@ -18,9 +18,91 @@ use crate::domain::{SyndicDomain, SyndicStorage};
 use crate::mutation::{current_draft, point, required};
 use crate::{
     DraftByThreadRecord, DraftRecord, HistorySummaryRecord, SyndicMutationError, SyndicReadError,
+    SyndicTimestamp,
 };
 
 use super::*;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DraftEditorCandidatePublicationSourceCaptureRequestV1 {
+    selector: DraftEditorCurrentSelectorV1,
+    candidate: DraftEditorCandidateActivationBindingV1,
+    operation_id: DraftPieceOperationIdV1,
+    published_at: SyndicTimestamp,
+}
+
+impl DraftEditorCandidatePublicationSourceCaptureRequestV1 {
+    pub const fn new(
+        selector: DraftEditorCurrentSelectorV1,
+        candidate: DraftEditorCandidateActivationBindingV1,
+        operation_id: DraftPieceOperationIdV1,
+        published_at: SyndicTimestamp,
+    ) -> Self {
+        Self {
+            selector,
+            candidate,
+            operation_id,
+            published_at,
+        }
+    }
+
+    pub const fn selector(self) -> DraftEditorCurrentSelectorV1 {
+        self.selector
+    }
+
+    pub const fn candidate(self) -> DraftEditorCandidateActivationBindingV1 {
+        self.candidate
+    }
+
+    pub const fn operation_id(self) -> DraftPieceOperationIdV1 {
+        self.operation_id
+    }
+
+    pub const fn published_at(self) -> SyndicTimestamp {
+        self.published_at
+    }
+}
+
+pub struct CapturedDraftEditorCandidatePublicationSourceV1 {
+    storage: SyndicStorage,
+    request: DraftEditorCandidatePublicationSourceCaptureRequestV1,
+    source_frontier: DraftEditHistoryFrontierV1,
+    captured_head: DraftEditorCandidateSessionV1,
+}
+
+pub struct DraftEditorCandidatePublicationSourcePreparationErrorV1 {
+    source: CapturedDraftEditorCandidatePublicationSourceV1,
+    error: DraftEditorCandidatePublicationCommandErrorV1,
+}
+
+impl DraftEditorCandidatePublicationSourcePreparationErrorV1 {
+    pub fn into_parts(
+        self,
+    ) -> (
+        CapturedDraftEditorCandidatePublicationSourceV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    ) {
+        (self.source, self.error)
+    }
+}
+
+impl fmt::Debug for DraftEditorCandidatePublicationSourcePreparationErrorV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DraftEditorCandidatePublicationSourcePreparationErrorV1")
+            .field("source", &"[opaque]")
+            .field("error", &self.error)
+            .finish()
+    }
+}
+
+impl fmt::Display for DraftEditorCandidatePublicationSourcePreparationErrorV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
+impl Error for DraftEditorCandidatePublicationSourcePreparationErrorV1 {}
 
 #[derive(Clone)]
 pub struct PreparedDraftEditorCandidatePublicationV1 {
@@ -225,6 +307,21 @@ fn publication_source_matches(
         && current.newest_candidate_generation() >= captured.newest_candidate_generation()
 }
 
+fn captured_publication_source_matches(
+    current: &DraftEditorCandidateSessionV1,
+    captured: &DraftEditorCandidateSessionV1,
+) -> bool {
+    current.thread_id() == captured.thread_id()
+        && current.draft_id() == captured.draft_id()
+        && current.session_id() == captured.session_id()
+        && current.open_operation_id() == captured.open_operation_id()
+        && current.durable_base_selector_revision() == captured.durable_base_selector_revision()
+        && current.durable_base_root() == captured.durable_base_root()
+        && current.durable_base_history() == captured.durable_base_history()
+        && current.published_candidate_generation() >= captured.published_candidate_generation()
+        && current.newest_candidate_generation() >= captured.newest_candidate_generation()
+}
+
 fn current_selector(
     reader: &DomainReader<'_, SyndicDomain>,
     thread_id: beryl_model::SyndicThreadId,
@@ -261,7 +358,7 @@ fn captured_adoption_is_exact(
         return Ok(false);
     }
     if transition.kind() != DraftEditHistoryTransitionKindV1::OrdinaryEdit {
-        return historical_candidate_session_is_exact(reader, captured, transition.operation_id());
+        return captured_historical_adoption_is_exact(reader, captured, frontier, &transition);
     }
     let key = DraftPieceSettlementKeyV1::new(
         captured.draft_id(),
@@ -283,6 +380,49 @@ fn captured_adoption_is_exact(
         && adoption.adopted_root() == &root
         && adoption.adopted_history() == frontier
         && adoption.transition() == &transition)
+}
+
+fn captured_historical_adoption_is_exact(
+    reader: &DomainReader<'_, SyndicDomain>,
+    captured: &DraftEditorCandidateSessionV1,
+    frontier: &DraftEditHistoryFrontierV1,
+    transition: &DraftEditHistoryTransitionV1,
+) -> Result<bool, SyndicMutationError> {
+    let key = DraftHistoricalRootAdoptionKeyV1::new(
+        captured.draft_id(),
+        captured.session_id(),
+        transition.operation_id(),
+    );
+    let Some(settlement) = point::<DraftHistoricalRootAdoptionsFamily>(reader, &key)? else {
+        return Ok(false);
+    };
+    if !settlement.is_locally_valid()
+        || authenticate_draft_edit_history_frontier_v1(reader, settlement.source_history()).is_err()
+        || match settlement.request().direction() {
+            DraftHistoricalRootDirectionV1::Undo => settlement.source_history().undo_head(),
+            DraftHistoricalRootDirectionV1::Redo => settlement.source_history().redo_head(),
+        } != Some(settlement.selected_transition().reference())
+        || point::<DraftEditHistoryTransitionsFamily>(
+            reader,
+            &settlement.selected_transition().key(),
+        )?
+        .as_ref()
+            != Some(settlement.selected_transition())
+        || point::<DraftPieceRootsFamily>(reader, &settlement.target_root().reference().key())?
+            .as_ref()
+            != Some(settlement.target_root())
+    {
+        return Ok(false);
+    }
+    Ok(
+        settlement.outcome() == DraftHistoricalRootAdoptionSettlementOutcomeV1::Committed
+            && settlement.successor_transition() == Some(transition)
+            && settlement.successor_history() == Some(frontier)
+            && settlement.successor_candidate().is_some_and(|candidate| {
+                session::adopted_head_matches_current(candidate, captured)
+            })
+            && authenticate_draft_edit_history_frontier_v1(reader, frontier).is_ok(),
+    )
 }
 
 fn publication_receipt_parts(
@@ -361,8 +501,13 @@ fn session_descends_from_publication(
                 && current.published_root() == after.published_root()
                 && current.published_history() == after.published_history()))
         && (current.newest_candidate_generation() != after.newest_candidate_generation()
-            || (current.newest_root() == after.newest_root()
-                && current.newest_history() == after.newest_history()))
+            || current.newest_root() == after.newest_root()
+                && (current.newest_history() == after.newest_history()
+                    || current.published_candidate_generation()
+                        == current.newest_candidate_generation()
+                        && current.published_candidate_generation()
+                            > after.published_candidate_generation()
+                        && current.newest_history() == current.published_history()))
 }
 
 fn captured_adoption_is_exact_in_store(
@@ -408,6 +553,35 @@ fn captured_adoption_is_exact_in_store(
         let Some(settlement) = settlement else {
             return Ok(false);
         };
+        if !settlement.is_locally_valid()
+            || !draft_edit_history_frontier_is_authenticated_v1(
+                storage,
+                store,
+                settlement.source_history(),
+            )?
+            || match settlement.request().direction() {
+                DraftHistoricalRootDirectionV1::Undo => settlement.source_history().undo_head(),
+                DraftHistoricalRootDirectionV1::Redo => settlement.source_history().redo_head(),
+            } != Some(settlement.selected_transition().reference())
+            || storage
+                .point::<DraftEditHistoryTransitionsFamily>(
+                    store,
+                    settlement.selected_transition().key(),
+                    point_limit(),
+                )?
+                .as_ref()
+                != Some(settlement.selected_transition())
+            || storage
+                .point::<DraftPieceRootsFamily>(
+                    store,
+                    settlement.target_root().reference().key(),
+                    point_limit(),
+                )?
+                .as_ref()
+                != Some(settlement.target_root())
+        {
+            return Ok(false);
+        }
         return Ok(settlement.outcome()
             == DraftHistoricalRootAdoptionSettlementOutcomeV1::Committed
             && settlement.successor_transition() == Some(&transition)
@@ -527,16 +701,20 @@ pub(super) fn candidate_session_publication_is_exact(
     reader: &DomainReader<'_, SyndicDomain>,
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<bool, SyndicMutationError> {
-    let Some(operation_id) = head.published_history().key().publication_operation_id() else {
+    let published_key = head.published_history().key();
+    let Some(operation_id) = published_key.publication_operation_id() else {
         return Ok(
             head.published_selector_revision() == head.durable_base_selector_revision()
                 && head.published_root() == head.durable_base_root()
                 && head.published_history() == head.durable_base_history(),
         );
     };
+    let Some(publication_session_id) = published_key.session_id() else {
+        return Ok(false);
+    };
     let key = DraftEditorCandidateSessionRecordKeyV1::publication_receipt(
         head.draft_id(),
-        head.session_id(),
+        publication_session_id,
         operation_id,
     );
     let Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(record)) =
@@ -547,12 +725,21 @@ pub(super) fn candidate_session_publication_is_exact(
     let Some(receipt) = record.publication() else {
         return Ok(false);
     };
+    let same_session = publication_session_id == head.session_id();
     if receipt.successor_selector().selector_revision() != head.published_selector_revision()
         || receipt.published_pair()
             != DraftRootHistoryPairV1::new(head.published_root(), head.published_history())
-        || receipt.after_head().published_candidate_generation()
-            != head.published_candidate_generation()
-        || receipt.after_head().published_selector_revision() != head.published_selector_revision()
+        || same_session
+            && (receipt.after_head().published_candidate_generation()
+                != head.published_candidate_generation()
+                || receipt.after_head().published_selector_revision()
+                    != head.published_selector_revision())
+        || !same_session
+            && (head.durable_base_selector_revision() != head.published_selector_revision()
+                || head.durable_base_root() != head.published_root()
+                || head.durable_base_history() != head.published_history()
+                || head.published_candidate_generation()
+                    != head.published_history().candidate_generation())
     {
         return Ok(false);
     }
@@ -565,16 +752,20 @@ pub(super) fn candidate_session_publication_is_exact_in_store(
     store: &HomeStore,
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<bool, SyndicReadError> {
-    let Some(operation_id) = head.published_history().key().publication_operation_id() else {
+    let published_key = head.published_history().key();
+    let Some(operation_id) = published_key.publication_operation_id() else {
         return Ok(
             head.published_selector_revision() == head.durable_base_selector_revision()
                 && head.published_root() == head.durable_base_root()
                 && head.published_history() == head.durable_base_history(),
         );
     };
+    let Some(publication_session_id) = published_key.session_id() else {
+        return Ok(false);
+    };
     let key = DraftEditorCandidateSessionRecordKeyV1::publication_receipt(
         head.draft_id(),
-        head.session_id(),
+        publication_session_id,
         operation_id,
     );
     let Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(record)) =
@@ -588,14 +779,22 @@ pub(super) fn candidate_session_publication_is_exact_in_store(
     if !validate_publication_receipt_history_in_store(storage, store, receipt)? {
         return Ok(false);
     }
+    let same_session = publication_session_id == head.session_id();
     Ok(
         receipt.successor_selector().selector_revision() == head.published_selector_revision()
             && receipt.published_pair()
                 == DraftRootHistoryPairV1::new(head.published_root(), head.published_history())
-            && receipt.after_head().published_candidate_generation()
-                == head.published_candidate_generation()
-            && receipt.after_head().published_selector_revision()
-                == head.published_selector_revision(),
+            && (same_session
+                && receipt.after_head().published_candidate_generation()
+                    == head.published_candidate_generation()
+                && receipt.after_head().published_selector_revision()
+                    == head.published_selector_revision()
+                || !same_session
+                    && head.durable_base_selector_revision() == head.published_selector_revision()
+                    && head.durable_base_root() == head.published_root()
+                    && head.durable_base_history() == head.published_history()
+                    && head.published_candidate_generation()
+                        == head.published_history().candidate_generation()),
     )
 }
 
@@ -841,7 +1040,8 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
             let receipt = receipt
                 .publication()
                 .ok_or(SyndicMutationError::IdentityCollision)?;
-            return validate_publication_receipt(reader, receipt);
+            validate_publication_receipt(reader, receipt)?;
+            return Err(SyndicMutationError::IdentityCollision);
         }
         let DraftEditorCandidateSessionRecordV1::Head(head) =
             required::<DraftEditorCandidateSessionsFamily>(
@@ -855,7 +1055,7 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
             || request.candidate_generation() <= head.published_candidate_generation()
             || current_selector(reader, request.selector().thread_id())? != request.selector()
         {
-            return Ok(());
+            return Err(SyndicMutationError::IdentityCollision);
         }
         if head.active_operation().is_some() {
             return Err(SyndicMutationError::IdentityCollision);
@@ -905,7 +1105,7 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
         let request = self.prepared.request;
         if point::<DraftEditorCandidateSessionsFamily>(reader, &publication_key(request))?.is_some()
         {
-            return Ok(());
+            return Err(SyndicMutationError::IdentityCollision);
         }
         let DraftEditorCandidateSessionRecordV1::Head(head) =
             required::<DraftEditorCandidateSessionsFamily>(
@@ -919,7 +1119,7 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
             || request.candidate_generation() <= head.published_candidate_generation()
             || current_selector(reader, request.selector().thread_id())? != request.selector()
         {
-            return Ok(());
+            return Err(SyndicMutationError::IdentityCollision);
         }
         let draft = current_draft(reader, request.selector().thread_id())?;
         let thread = required::<ThreadsFamily>(reader, &request.selector().thread_id())?;
@@ -1102,14 +1302,109 @@ impl DomainMutation<SyndicDomain> for DisposalMutation {
 }
 
 impl SyndicStorage {
+    pub fn capture_draft_editor_candidate_publication_source(
+        &self,
+        store: &HomeStore,
+        request: DraftEditorCandidatePublicationSourceCaptureRequestV1,
+    ) -> Result<
+        CapturedDraftEditorCandidatePublicationSourceV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
+        let candidate = request.candidate();
+        let pair = DraftRootHistoryPairV1::new(candidate.root(), candidate.history());
+        if candidate.draft_id() != request.selector().draft_id()
+            || !pair.is_coherent()
+            || candidate.candidate_generation() != candidate.history().candidate_generation()
+            || (candidate.candidate_generation() != 0
+                && candidate.root().key().session_id() != Some(candidate.session_id()))
+        {
+            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+        }
+        let limit = point_limit();
+        let root = self
+            .point::<DraftPieceRootsFamily>(store, candidate.root().key(), limit)?
+            .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
+        if root.reference() != candidate.root()
+            || !draft_piece_root_reference_is_locally_exact_v1(root.reference())
+        {
+            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+        }
+        let head = match self.draft_editor_candidate_session(
+            store,
+            request.selector().draft_id(),
+            candidate.session_id(),
+        )? {
+            DraftEditorCandidateSessionReadOutcomeV1::Active(head) => head,
+            _ => return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant),
+        };
+        if head.active_operation().is_some() {
+            return Err(DraftEditorCandidatePublicationCommandErrorV1::ActiveOperation);
+        }
+        if DraftEditorCandidateActivationBindingV1::from_head(&head) != candidate
+            || head.thread_id() != request.selector().thread_id()
+            || head.published_selector_revision() != request.selector().selector_revision()
+            || head.published_root() != request.selector().root()
+            || head.published_history() != request.selector().history()
+        {
+            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+        }
+        let source_frontier = self
+            .point::<DraftEditHistoryFrontiersFamily>(store, candidate.history().key(), limit)?
+            .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
+        if source_frontier.reference() != candidate.history()
+            || !draft_edit_history_frontier_is_authenticated_v1(self, store, &source_frontier)?
+            || !session::candidate_session_adoption_is_exact(self, store, &head)?
+        {
+            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+        }
+        Ok(CapturedDraftEditorCandidatePublicationSourceV1 {
+            storage: *self,
+            request,
+            source_frontier,
+            captured_head: head,
+        })
+    }
+
     pub fn prepare_draft_editor_candidate_publication(
         &self,
         store: &HomeStore,
-        request: DraftEditorCandidatePublicationRequestV1,
+        source: CapturedDraftEditorCandidatePublicationSourceV1,
+        evidence: DraftEditorCandidatePublicationEvidenceV1,
+    ) -> Result<
+        PreparedDraftEditorCandidatePublicationV1,
+        DraftEditorCandidatePublicationSourcePreparationErrorV1,
+    > {
+        let prepared =
+            self.prepare_draft_editor_candidate_publication_inner(store, &source, evidence);
+        prepared.map_err(
+            |error| DraftEditorCandidatePublicationSourcePreparationErrorV1 { source, error },
+        )
+    }
+
+    fn prepare_draft_editor_candidate_publication_inner(
+        &self,
+        store: &HomeStore,
+        source: &CapturedDraftEditorCandidatePublicationSourceV1,
+        evidence: DraftEditorCandidatePublicationEvidenceV1,
     ) -> Result<
         PreparedDraftEditorCandidatePublicationV1,
         DraftEditorCandidatePublicationCommandErrorV1,
     > {
+        source
+            .storage
+            .revision(store)
+            .map_err(SyndicReadError::Read)?;
+        let capture = source.request;
+        let candidate = capture.candidate();
+        let request = DraftEditorCandidatePublicationRequestV1::new(
+            capture.selector(),
+            candidate.session_id(),
+            capture.operation_id(),
+            candidate.candidate_generation(),
+            DraftRootHistoryPairV1::new(candidate.root(), candidate.history()),
+            evidence,
+            capture.published_at(),
+        );
         if !request.candidate().is_coherent()
             || request.candidate_generation()
                 != request.candidate().history().candidate_generation()
@@ -1162,23 +1457,20 @@ impl SyndicStorage {
         if head.active_operation().is_some() {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::ActiveOperation);
         }
-        let source_frontier = self
-            .point::<DraftEditHistoryFrontiersFamily>(
-                store,
-                request.candidate().history().key(),
-                limit,
-            )?
-            .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-        if source_frontier.reference() != request.candidate().history()
-            || !draft_edit_history_frontier_is_authenticated_v1(self, store, &source_frontier)?
+        let captured = &source.captured_head;
+        let source_frontier = &source.source_frontier;
+        if captured.draft_id() != request.selector().draft_id()
+            || captured.session_id() != request.session_id()
+            || captured.newest_candidate_generation() != request.candidate_generation()
+            || captured.newest_root() != request.candidate().root()
+            || captured.newest_history() != request.candidate().history()
+            || source_frontier.reference() != request.candidate().history()
+            || !captured_publication_source_matches(&head, captured)
+            || !candidate_session_publication_is_exact_in_store(self, store, &head)?
+            || !candidate_session_publication_is_exact_in_store(self, store, captured)?
+            || !captured_adoption_is_exact_in_store(self, store, captured, source_frontier)?
         {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-        }
-        let captured = captured_head(&head, request).unwrap_or_else(|| head.clone());
-        if request.candidate_generation() > head.published_candidate_generation() {
-            if !session::candidate_session_adoption_is_exact(self, store, &captured)? {
-                return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-            }
         }
         let captured_frontier = source_frontier
             .publication_snapshot(request.session_id(), request.operation_id())
@@ -1186,9 +1478,9 @@ impl SyndicStorage {
         Ok(PreparedDraftEditorCandidatePublicationV1 {
             request,
             canonical_request: canonical_candidate_publication_request_bytes(request),
-            source_frontier,
+            source_frontier: source_frontier.clone(),
             captured_frontier,
-            captured_head: captured,
+            captured_head: captured.clone(),
             initially_absent: true,
         })
     }
@@ -1289,7 +1581,7 @@ impl SyndicStorage {
         }
         if head.published_candidate_generation() >= request.candidate_generation() {
             return Ok(DraftEditorCandidatePublicationOutcomeV1::Superseded(
-                request.candidate_generation(),
+                head.published_candidate_generation(),
                 DraftRootHistoryPairV1::new(head.published_root(), head.published_history()),
             ));
         }

@@ -2221,6 +2221,24 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   direct-threshold result when the captured adoption advanced the floor, receipt endpoint and
   immediate predecessor, and compact head and never walks predecessor settlements, progress
   receipts, or the journal.
+- Publication is a first-class capture-then-prepare protocol. Before marker comparison or sealing,
+  one bounded source-capture request names the exact durable selector base, editor session,
+  candidate generation/root/history pair, publication operation, and timestamp. Syndic validates
+  the live candidate and its ordinary settlement or historical-root adoption closure while its
+  session frontier still selects that candidate, then returns one opaque process-local captured
+  source containing the authenticated frontier snapshot and exact publication base. The captured
+  source contains no marker evidence and contributes no mutation. It is bounded independently of
+  history size, cannot be caller-constructed, and remains valid when any number of later candidates
+  adopt in the same session.
+- Final publication preparation consumes that opaque source and package-issued unchanged or
+  changed marker evidence. It reauthenticates the immutable captured adoption closure, root,
+  frontier, publication base, and current live session; it never reloads captured authority from
+  the mutable session-frontier value, follows predecessor history, or assumes exactly one later
+  candidate. The existing canonical publication request and durable receipt remain the final
+  command and replay authority, so source capture adds no record family, codec, schema, or durable
+  prepublication state. Process loss before final writer admission may discard the process-local
+  source with its unpublished editor session; after writer admission the ordinary command receipt
+  and reconciliation custody remain authoritative.
 - Before publication contribution preparation, this package compares the prior published root's
   exact `DraftMarkerCommitmentV1` with the captured root's authenticated commitment. Equality uses
   bounded point reads and admits only reuse/validation of the existing nonempty CurrentDraft Asset

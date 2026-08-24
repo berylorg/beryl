@@ -2,12 +2,15 @@ use beryl_home_store::{
     CommandBuildError, HomeGeneration, HomeHealthState, ReadError, ReconciliationFailure,
 };
 use beryl_model::BerylHomeId;
+use beryl_state::{AssetOwnerHeadUpdateError, AssetOwnerHeadValidationError, AssetReadError};
 use syndic_storage::{
-    DraftEditorCandidateSessionCommandErrorV1, DraftHistoricalRootAdoptionPrepareErrorV1,
-    DraftHistoricalRootAdoptionReconciliationErrorV1, DraftMutationStagingErrorV1,
-    DraftPieceCommandReconciliationErrorV1, DraftPiecePrepareErrorV1, DraftPieceRangeSourceErrorV1,
-    SyndicMutationError, SyndicReadError,
+    DraftEditorCandidatePublicationCommandErrorV1, DraftEditorCandidateSessionCommandErrorV1,
+    DraftHistoricalRootAdoptionPrepareErrorV1, DraftHistoricalRootAdoptionReconciliationErrorV1,
+    DraftMutationStagingErrorV1, DraftPieceCommandReconciliationErrorV1, DraftPiecePrepareErrorV1,
+    DraftPieceRangeSourceErrorV1, SyndicMutationError, SyndicReadError,
 };
+
+use crate::composer_marker_seal::DraftMarkerSealServiceError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ComposerHostError {
@@ -65,6 +68,40 @@ pub enum ComposerHostError {
     HistoryMalformed,
     #[error("the composer history path is terminally unavailable")]
     HistoryUnavailable,
+    #[error("a composer publication or disposal command is already pending")]
+    PublicationPending,
+    #[error("no composer publication or disposal command is pending")]
+    PublicationNotPending,
+    #[error("the publication or disposal callback generation is stale")]
+    StalePublicationGeneration,
+    #[error("the composer publication path is terminally unavailable")]
+    PublicationUnavailable,
+    #[error("the durable draft selector changed before publication capture")]
+    DurableSelectorChanged,
+    #[error("the captured candidate binding changed before publication capture")]
+    CandidateBindingChanged,
+    #[error("changed-marker publication requires the original marker-seal authority")]
+    MarkerSealAuthorityRequired,
+    #[error("unchanged-marker publication cannot consume marker-seal authority")]
+    UnexpectedMarkerSealAuthority,
+    #[error("the bounded marker-seal flight capacity is full")]
+    MarkerSealCapacity,
+    #[error("the marker-seal operation identity is occupied by different authority")]
+    MarkerSealIdentityCollision,
+    #[error("composer lifecycle release requires a clean, settled publication state")]
+    LifecycleBlocked,
+    #[error("the supplied Asset ownership case does not match the captured draft root")]
+    PublicationAssetMismatch,
+    #[error("candidate publication or disposal failed: {0}")]
+    Publication(#[from] DraftEditorCandidatePublicationCommandErrorV1),
+    #[error("asset read failed: {0}")]
+    AssetRead(#[from] AssetReadError),
+    #[error("asset owner-head update failed: {0}")]
+    AssetOwnerUpdate(#[from] AssetOwnerHeadUpdateError),
+    #[error("asset owner-head validation failed: {0}")]
+    AssetOwnerValidation(#[from] AssetOwnerHeadValidationError),
+    #[error("draft marker sealing failed: {0}")]
+    MarkerSeal(#[from] DraftMarkerSealServiceError),
     #[error("home read failed: {0}")]
     HomeRead(#[from] ReadError),
     #[error("home command construction failed: {0}")]

@@ -29,25 +29,21 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 171: Bound Streamed Draft-Marker Seal Flights (finished)
+# Phase 172: Publish And Reconcile Captured Draft Candidates (finished)
 
-The app-owned marker-seal service now shares one fixed compatible per-home flight boundary, streams
-one source-ordered page through each atomic Syndic/Asset command, retains the original secret-backed
-Asset staging authority, and reopens exact building or sealed completion after faults and competing
-sealers. Construction rejects mismatched generation, domain authority, or limits; terminal replay,
-disposal, and generation loss release exact custody without queues, marker collections, or draft-
-sized values. Locked verification passed 24 app cases and 12 Asset V3 cases, default app checking and
-formatting passed, and the final fresh adversarial review found no remaining findings.
+Composer publication now uses one generation-qualified lane and a first-class opaque Syndic
+capture-then-prepare source. The bounded process-local source authenticates ordinary or historical
+candidate adoption before marker work, survives later N+k adoption without reconstruction, and is
+consumed beside internally derived marker evidence. Unchanged and streamed changed-marker branches
+use the existing final canonical request/receipt and one atomic Syndic/Asset command; replay,
+supersession, collision, disposal, generation loss, and terminal release retain only exact bounded
+custody. Revision-fenced callback convergence accepts coherent same-session descendants, rejects
+external durable-base advance, and cannot reinstall an older selector.
 
-# Phase 172: Publish And Reconcile Captured Draft Candidates (pending)
-
-Integrate the bounded seal service into a generation-qualified publication lane. Remove caller-
-supplied marker-publication evidence, compose the unchanged, changed-nonempty, and changed-to-empty
-Syndic/Asset branches atomically, retain exact ambiguous and terminal intent/evidence, and prove
-wrong-generation callbacks cannot consume newer custody. Publish only the captured candidate and
-history frontier while later adopted edits remain dirty; implement exact replay, supersession,
-durable-base conflict, collision, and clean-disposal receipts without a whole draft or unbounded
-save queue.
+Locked verification passed 19 Phase 172 app cases, 12 lower publication cases, 6 migrated marker-
+summary/evidence cases, and 24 Phase 171 regressions; default checks, formatting, scoped hygiene,
+and the final independent adversarial review passed with no findings. The accepted correction is
+recorded in `doc/failures/composer-captured-publication-frontier.md`.
 
 # Phase 173: Coordinate Autosave, Flush Barriers, And Lifecycle Release (pending)
 

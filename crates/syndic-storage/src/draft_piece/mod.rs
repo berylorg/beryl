@@ -23,8 +23,10 @@ pub use materializer::*;
 pub use model::*;
 pub use mutation::{PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
 pub use publication::{
-    DraftEditorCandidatePublicationCommandErrorV1, PreparedDraftEditorCandidatePublicationV1,
-    PreparedDraftEditorCandidateSessionDisposeV1,
+    CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidatePublicationCommandErrorV1,
+    DraftEditorCandidatePublicationSourceCaptureRequestV1,
+    DraftEditorCandidatePublicationSourcePreparationErrorV1,
+    PreparedDraftEditorCandidatePublicationV1, PreparedDraftEditorCandidateSessionDisposeV1,
 };
 pub use read::DraftPieceCommandReconciliationErrorV1;
 pub use session::{

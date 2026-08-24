@@ -5,9 +5,12 @@ use beryl_model::{
     SealedAssetReferenceSetProof,
 };
 use syndic_storage::{
+    CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidateActivationBindingV1,
     DraftEditorCandidatePublicationEvidenceV1, DraftEditorCandidatePublicationOutcomeV1,
-    DraftEditorCandidatePublicationRequestV1, DraftMarkerSealOperationIdV1, DraftMarkerSealProofV1,
-    DraftMarkerSealRequestV1, DraftMarkerSealStatusV1, DraftRootHistoryPairV1,
+    DraftEditorCandidatePublicationRequestV1,
+    DraftEditorCandidatePublicationSourceCaptureRequestV1, DraftMarkerSealOperationIdV1,
+    DraftMarkerSealProofV1, DraftMarkerSealRequestV1, DraftMarkerSealStatusV1,
+    DraftRootHistoryPairV1,
 };
 
 #[test]
@@ -183,8 +186,13 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
             asset_proof: nonempty_asset,
         },
     );
+    let changed_source = capture_publication_source(storage, &store, changed_request);
     let changed_prepared = storage
-        .prepare_draft_editor_candidate_publication(&store, changed_request)
+        .prepare_draft_editor_candidate_publication(
+            &store,
+            changed_source,
+            changed_request.evidence(),
+        )
         .unwrap();
     session = complete_staged(
         &storage,
@@ -305,18 +313,21 @@ fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
     let changed_nonempty = session.clone();
     let nonempty_seal = seal_root(&storage, &store, changed_nonempty.newest_root(), 67);
     let nonempty_asset = asset_proof(nonempty_seal, 68);
+    let changed_request = publication_request(
+        &initial,
+        &changed_nonempty,
+        69,
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+            seal_proof: nonempty_seal,
+            asset_proof: nonempty_asset,
+        },
+    );
+    let changed_source = capture_publication_source(storage, &store, changed_request);
     let changed_prepared = storage
         .prepare_draft_editor_candidate_publication(
             &store,
-            publication_request(
-                &initial,
-                &changed_nonempty,
-                69,
-                DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
-                    seal_proof: nonempty_seal,
-                    asset_proof: nonempty_asset,
-                },
-            ),
+            changed_source,
+            changed_request.evidence(),
         )
         .unwrap();
     let occurrence = storage
@@ -430,9 +441,10 @@ fn assert_rejected_without_publication(
 ) {
     let before = current(storage, store, thread);
     let revision = storage.revision(store).unwrap();
+    let source = capture_publication_source(storage, store, request);
     assert!(
         storage
-            .prepare_draft_editor_candidate_publication(store, request)
+            .prepare_draft_editor_candidate_publication(store, source, request.evidence())
             .is_err()
     );
     assert_eq!(storage.revision(store).unwrap(), revision);
@@ -444,8 +456,9 @@ fn publish(
     store: &HomeStore,
     request: DraftEditorCandidatePublicationRequestV1,
 ) {
+    let source = capture_publication_source(storage, store, request);
     let prepared = storage
-        .prepare_draft_editor_candidate_publication(store, request)
+        .prepare_draft_editor_candidate_publication(store, source, request.evidence())
         .unwrap();
     let outcome = execute(
         store,
@@ -457,6 +470,39 @@ fn publish(
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
+}
+
+fn capture_publication_source(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    request: DraftEditorCandidatePublicationRequestV1,
+) -> CapturedDraftEditorCandidatePublicationSourceV1 {
+    let head = active_session(
+        &storage,
+        store,
+        request.selector().draft_id(),
+        request.session_id(),
+    );
+    let candidate = DraftEditorCandidateActivationBindingV1::new(
+        request.selector().draft_id(),
+        request.session_id(),
+        head.session_generation(),
+        request.candidate_generation(),
+        request.candidate().root(),
+        request.candidate().history(),
+        request.candidate().root().summary().logical_extent(),
+    );
+    storage
+        .capture_draft_editor_candidate_publication_source(
+            store,
+            DraftEditorCandidatePublicationSourceCaptureRequestV1::new(
+                request.selector(),
+                candidate,
+                request.operation_id(),
+                request.published_at(),
+            ),
+        )
+        .unwrap()
 }
 
 fn seal_root(

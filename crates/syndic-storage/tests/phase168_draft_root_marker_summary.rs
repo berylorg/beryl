@@ -2,10 +2,12 @@ include!("phase154_durable_builder/support.rs");
 
 use beryl_model::{AssetReferenceSetDigest, AssetReferenceSetId, SealedAssetReferenceSetProof};
 use syndic_storage::{
+    CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidateActivationBindingV1,
     DraftEditorCandidatePublicationEvidenceV1, DraftEditorCandidatePublicationOutcomeV1,
-    DraftEditorCandidatePublicationRequestV1, DraftMarkerSealOperationIdV1, DraftMarkerSealProofV1,
-    DraftMarkerSealRequestV1, DraftMarkerSealStatusV1, DraftRootHistoryPairV1,
-    canonical_empty_draft_marker_commitment_v1,
+    DraftEditorCandidatePublicationRequestV1,
+    DraftEditorCandidatePublicationSourceCaptureRequestV1, DraftMarkerSealOperationIdV1,
+    DraftMarkerSealProofV1, DraftMarkerSealRequestV1, DraftMarkerSealStatusV1,
+    DraftRootHistoryPairV1, canonical_empty_draft_marker_commitment_v1,
     test_faults::{
         DraftPieceCandidateRootCollision, inject_draft_piece_candidate_root_collision,
         reset_syndic_point_read_count, syndic_point_read_count,
@@ -174,9 +176,11 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
         asset_proof,
     };
     let request = publication_request(&durable, &session, 189, 2, evidence);
+    let source = capture_publication_source(storage, &store, request);
+    let replay_source = capture_publication_source(storage, &store, request);
     reset_syndic_point_read_count();
     let prepared = storage
-        .prepare_draft_editor_candidate_publication(&store, request)
+        .prepare_draft_editor_candidate_publication(&store, source, request.evidence())
         .unwrap();
     let publication_point_reads = syndic_point_read_count();
     assert!(
@@ -198,7 +202,7 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
     assert_eq!(published.marker_commitment(), Some(ordered));
 
     let replay = storage
-        .prepare_draft_editor_candidate_publication(&store, request)
+        .prepare_draft_editor_candidate_publication(&store, replay_source, request.evidence())
         .unwrap();
     let command_outcome = execute(
         &store,
@@ -269,6 +273,17 @@ fn persisted_marker_commitment_corruption_fails_publication_closed() {
         AssetReferenceSetDigest::from_bytes([209; 32]),
     )
     .unwrap();
+    let request = publication_request(
+        &durable,
+        &session,
+        206,
+        2,
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+            seal_proof,
+            asset_proof,
+        },
+    );
+    let source = capture_publication_source(storage, &store, request);
     committed(execute(
         &store,
         inject_draft_piece_candidate_root_collision(
@@ -280,19 +295,7 @@ fn persisted_marker_commitment_corruption_fails_publication_closed() {
     ));
     assert!(
         storage
-            .prepare_draft_editor_candidate_publication(
-                &store,
-                publication_request(
-                    &durable,
-                    &session,
-                    206,
-                    2,
-                    DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
-                        seal_proof,
-                        asset_proof,
-                    },
-                ),
-            )
+            .prepare_draft_editor_candidate_publication(&store, source, request.evidence(),)
             .is_err()
     );
     assert!(
@@ -335,6 +338,39 @@ fn publication_request(
         evidence,
         SyndicTimestamp::from_unix_millis(at),
     )
+}
+
+fn capture_publication_source(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    request: DraftEditorCandidatePublicationRequestV1,
+) -> CapturedDraftEditorCandidatePublicationSourceV1 {
+    let head = active_session(
+        &storage,
+        store,
+        request.selector().draft_id(),
+        request.session_id(),
+    );
+    let candidate = DraftEditorCandidateActivationBindingV1::new(
+        request.selector().draft_id(),
+        request.session_id(),
+        head.session_generation(),
+        request.candidate_generation(),
+        request.candidate().root(),
+        request.candidate().history(),
+        request.candidate().root().summary().logical_extent(),
+    );
+    storage
+        .capture_draft_editor_candidate_publication_source(
+            store,
+            DraftEditorCandidatePublicationSourceCaptureRequestV1::new(
+                request.selector(),
+                candidate,
+                request.operation_id(),
+                request.published_at(),
+            ),
+        )
+        .unwrap()
 }
 
 fn seal_root(

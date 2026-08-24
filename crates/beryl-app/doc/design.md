@@ -247,7 +247,12 @@ Keep independent main-window presentation responsive while process-wide services
   and Syndic selects the current thread tail atomically. Background accepted-input promotion never
   changes the resident editor, draft record, draft revision, undo state, or draft asset owner.
 - Dirty autosave and timed or lifecycle flush barriers snapshot only an already adopted candidate
-  and edit-history frontier. The host first asks Syndic to compare the captured root's exact marker
+  and edit-history frontier. Before marker evidence work, the host asks Syndic for one opaque
+  bounded publication-source capture that authenticates the exact candidate generation, root,
+  immutable history frontier and ordinary or historical adoption closure, publication operation,
+  durable selector base, and editor session. The capture contains no marker evidence, authorizes no
+  write by itself, and remains the lane's sole source custody while any number of later candidates
+  continue to adopt. The host then asks Syndic to compare the captured root's exact marker
   commitment with the prior published root. Equality reuses and validation-asserts the existing
   nonempty CurrentDraft Asset head and proof, or validates an absent head for marker-free state,
   without a marker scan. A changed commitment starts or resumes Syndic's bounded seal over the exact
@@ -259,7 +264,10 @@ Keep independent main-window presentation responsive while process-wide services
   restart or an ambiguous page outcome replays/reconciles that immutable page from those durable
   frontiers rather than retaining or reconstructing an operation prefix.
 - After a changed-marker seal completes, the host composes one `HomeCommand` with one Syndic
-  mutation participant and one Asset participant. A changed nonempty commitment also requires the
+  mutation participant prepared from the opaque captured source and one Asset participant. Final
+  preparation reauthenticates the source, its immutable adoption closure, and the current live
+  session without reloading the captured state from the session's mutable frontier. A changed
+  nonempty commitment also requires the
   completed Asset set and opaque proof; Syndic requires its `SequentialMarkerSummaryV1` and
   `OrderedMarkerAssetSummaryV1` to equal the seal proof's summaries, and Asset swaps the exact
   CurrentDraft head. Changed-to-empty instead has Syndic validate the completed seal against the
@@ -270,8 +278,10 @@ Keep independent main-window presentation responsive while process-wide services
   session lineage, and captured generation, carries no selected-path thread revision, performs no
   work proportional to unchanged draft length, and never builds `ComposerV1`.
 - Edits may continue adopting newer candidates while one captured frontier publishes. Draft
-  orchestration retains only exact session, candidate, timer, publication-request, and dirty
-  generations around that work. A completion clears only its captured generation and cannot clean
+  orchestration retains only the opaque bounded publication source plus exact session, candidate,
+  timer, publication-request, and dirty generations around that work. The capture is released on
+  every proven terminal disposition and is never reconstructed by walking candidate history. A
+  completion clears only its captured generation and cannot clean
   a later candidate. The first clean-to-dirty adoption arms the applicable interval and later dirty
   edits do not debounce it. A successful dirty save rearms only if a dirty successor remains; a
   proven noncommit or recoverable nonterminal autosave failure rearms from its classification time,
@@ -281,6 +291,12 @@ Keep independent main-window presentation responsive while process-wide services
   failure ends that flush unsatisfied without a retry loop; external durable-base conflict or
   terminal unavailability likewise leaves the barrier unsatisfied, and terminal unavailability
   does not rearm autosave.
+- Published, exact-replay, and superseded callbacks converge through one revision-fenced bounded
+  observation of the current durable selector and captured editor session. A changed Syndic
+  revision retains the prepared lane for replay instead of classifying a mixed read. An exact cut
+  or authenticated same-session published descendant installs the current coherent selector;
+  another session's durable descendant is a durable-base conflict. No callback may reinstall its
+  older selector or classify a compatible same-session descendant as collision.
 - Each home service admits only a fixed nonzero number of marker-seal flights and bounded marker and
   Asset page custody. It coalesces or supersedes obsolete save demand instead of retaining an
   unbounded queue. Success, cancellation, failure, supersession, session disposal, home-generation

@@ -3,6 +3,7 @@ mod error;
 mod history;
 mod model;
 mod mutation;
+mod publication;
 mod request;
 
 use std::collections::BTreeMap;
@@ -18,6 +19,7 @@ pub use mutation::{
     ComposerHostImageMarkerMetadata, ComposerHostMutationOutcome, ComposerHostMutationStatus,
     ComposerHostRetainedMutationIntent,
 };
+pub use publication::*;
 
 struct ActiveComposerHost {
     binding: ComposerHostBinding,
@@ -25,6 +27,10 @@ struct ActiveComposerHost {
     thread_id: beryl_model::SyndicThreadId,
     initial_responses: Vec<ComposerHostResponse>,
     unavailable: bool,
+    durable_selector: syndic_storage::DraftEditorCurrentSelectorV1,
+    published_candidate_generation: u64,
+    published_pair: syndic_storage::DraftRootHistoryPairV1,
+    session_disposed: bool,
 }
 
 const DEFAULT_SETTLEMENT_CUSTODY_CAPACITY: usize = 4;
@@ -43,6 +49,7 @@ pub struct SyndicComposerHost {
     last_mutation_identity: Option<(ComposerHostBinding, mutation::ComposerHostMutationIdentity)>,
     last_history_identity: Option<(ComposerHostBinding, gpui_text_input::RangeHistoryIntent)>,
     last_history_outcome: Option<gpui_text_input::RangeHistoryOutcome>,
+    publication: publication::ComposerHostPublicationCoordinator,
     #[cfg(feature = "test-faults")]
     activation_after_selector_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
@@ -54,6 +61,9 @@ pub struct SyndicComposerHost {
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
     history_after_commit_fault:
+        Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    publication_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
     mutation_transition_limit: usize,
@@ -87,6 +97,7 @@ impl SyndicComposerHost {
             last_mutation_identity: None,
             last_history_identity: None,
             last_history_outcome: None,
+            publication: publication::ComposerHostPublicationCoordinator::new(),
             #[cfg(feature = "test-faults")]
             activation_after_selector_fault: None,
             #[cfg(feature = "test-faults")]
@@ -95,6 +106,8 @@ impl SyndicComposerHost {
             history_before_execute_fault: None,
             #[cfg(feature = "test-faults")]
             history_after_commit_fault: None,
+            #[cfg(feature = "test-faults")]
+            publication_before_execute_fault: None,
             #[cfg(feature = "test-faults")]
             mutation_transition_limit: mutation::COMPOSER_HOST_MAX_MUTATION_TRANSITIONS,
             #[cfg(feature = "test-faults")]
@@ -128,6 +141,9 @@ impl SyndicComposerHost {
     }
 
     pub fn release(&mut self) -> Result<bool, ComposerHostError> {
+        if self.publication.lane.is_some() {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
         self.detach_live_operation()?;
         let released = self.active.take().is_some();
         self.pending.clear();
@@ -184,6 +200,14 @@ impl SyndicComposerHost {
         }
     }
 
+    fn mark_active_session_unavailable(&mut self, binding: ComposerHostBinding) {
+        if let Some(active) = self.active.as_mut()
+            && publication::same_session(active.binding, binding)
+        {
+            active.unavailable = true;
+        }
+    }
+
     pub fn is_unavailable(&self) -> bool {
         self.active
             .as_ref()
@@ -229,6 +253,15 @@ impl SyndicComposerHost {
     ) {
         assert!(self.history_after_commit_fault.is_none());
         self.history_after_commit_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_publication_before_execute_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send + 'static,
+    ) {
+        assert!(self.publication_before_execute_fault.is_none());
+        self.publication_before_execute_fault = Some(Box::new(fault));
     }
 
     fn next_generation(&self) -> Result<ComposerHostGeneration, ComposerHostError> {
