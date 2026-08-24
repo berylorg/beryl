@@ -29,28 +29,15 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 170: Reopen Exact Asset Reference-Set Completion (finished)
+# Phase 171: Bound Streamed Draft-Marker Seal Flights (finished)
 
-Beryl-state now binds each construction to an opaque set-and-secret capability while persisting only
-its commitment. Begin, bounded page append, and seal atomically maintain a separate compact
-completion-evidence record; the building-or-sealed read point-reads that record and the manifest,
-revalidates lifecycle, summaries, frontier, chain, and final-proof commitments, and returns only the
-bounded open manifest or exact opaque sealed proof. Fresh-handle replay, same-set capability remint,
-wrong summaries, corrupted or missing evidence, ordinary sealed-proof gates, the greater-than-1024
-marker fixture, and absence of owner publication passed 12 locked Asset V3 cases plus 5 owner-
-validation cases. A fresh repeat adversarial review passed after the initial authority and
-independent-commitment findings were corrected. The preserved Phase 171 app marker-seal WIP remains
-uncommitted.
-
-# Phase 171: Bound Streamed Draft-Marker Seal Flights (pending)
-
-Implement the app-owned per-home marker-seal service with a fixed nonzero shared flight limit and
-bounded page, cursor, and custody residency. Stream each authenticated Syndic marker page into Asset
-staging in the same `HomeCommand`, resume or replay exact durable frontiers after fault cuts, and
-return only completed root-bound Syndic and Asset proof authority. Prove changed-nonempty and
-changed-to-empty completion, shared multi-host saturation, coalescing or rejection without queued
-work, and exact release on success, cancellation, failure, supersession, session disposal, home-
-generation loss, and service disposal without retaining a marker collection or draft-sized value.
+The app-owned marker-seal service now shares one fixed compatible per-home flight boundary, streams
+one source-ordered page through each atomic Syndic/Asset command, retains the original secret-backed
+Asset staging authority, and reopens exact building or sealed completion after faults and competing
+sealers. Construction rejects mismatched generation, domain authority, or limits; terminal replay,
+disposal, and generation loss release exact custody without queues, marker collections, or draft-
+sized values. Locked verification passed 24 app cases and 12 Asset V3 cases, default app checking and
+formatting passed, and the final fresh adversarial review found no remaining findings.
 
 # Phase 172: Publish And Reconcile Captured Draft Candidates (pending)
 

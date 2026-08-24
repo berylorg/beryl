@@ -181,6 +181,7 @@ mod branch_discussion_dynamic_tools;
 pub mod cas_projection;
 pub mod catalog_projection;
 pub mod composer_host;
+pub mod composer_marker_seal;
 pub mod conversation_tools;
 mod dynamic_tool_namespace;
 pub mod input_admission;

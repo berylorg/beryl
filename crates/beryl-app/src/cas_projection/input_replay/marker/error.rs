@@ -102,6 +102,8 @@ fn map_asset_read_error(error: AssetReadError) -> StreamedInputSourceError {
         AssetReadError::ReferenceSetMissing(_)
         | AssetReadError::ReferenceSetNotBuilding(_)
         | AssetReadError::ReferenceSetNotSealed(_)
+        | AssetReadError::CompletionMismatch(_)
+        | AssetReadError::CompletionEvidenceMismatch(_)
         | AssetReadError::SealedProofMismatch(_) => StreamedInputSourceError::InvalidSource,
     }
 }
