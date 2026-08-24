@@ -75,9 +75,15 @@ Every Syndic thread owns exactly one current draft.
 A current draft is durable mutable pre-submission state with a stable id and selector revision. Its
 small metadata record selects one exact immutable combined draft root and one closed ordinary,
 branch-context, or replacement submission intent. The root binds a copy-on-write composite
-sequence piece tree and marker-identity index; text and zero-width image markers may be read in
+sequence piece tree, marker-identity index, and marker-order commitment tree plus its exact
+`DraftMarkerCommitmentV1`; text and zero-width image markers may be read in
 bounded ranges without making the whole draft resident. An image marker retains its stable identity
 and final label ordinal while the image-asset system resolves that marker to durable bytes.
+
+Text-only edits reuse the complete marker-identity and marker-order roots. Marker insertion,
+removal, movement, or replacement path-copies only bounded-height paths in all three structures.
+The combined root authenticates all three; the commitment is structural root authority and is not
+the content-neutral sequential marker summary.
 
 Ordinary drafts have no parent and no branch context; they are only the user's unsent composer
 state. A branch-discussion first draft's context intent owns exact selected-text provenance whose
@@ -96,10 +102,16 @@ start or cancellation uses its own explicit revisioned operation. An interrupted
 exposes wholly the prior or new selected root, never a partial draft. Fresh activation trusts only
 that durable selector, so unpublished candidates from an abandoned session are ignored.
 
-The same publication uses the single image-asset `CurrentDraft(draft id)` owner head. A changed
-marker set replaces its sealed set or removes the head after the last marker; an unchanged nonempty
-marker set validation-only checks the existing exact head and proof and reuses its sealed set; an
-already marker-free draft validation-only checks that the single head is absent.
+The same publication first compares the prior and captured exact draft-marker commitments inside
+Syndic. Equal nonempty commitments validation-check and reuse the existing exact image-asset
+`CurrentDraft(draft id)` head and proof without a marker scan; equal empty commitments validate head
+absence. A changed commitment requires a completed bounded Syndic seal binding the captured exact
+root/build/commitment/frontier to `SequentialMarkerSummaryV1`. Changed nonempty also requires a new
+sealed Asset set proof with that same summary and swaps the exact head. Changed-to-empty instead
+has Syndic validate the seal/root/commitment and require its exact empty sequential summary/removal
+branch; one Asset participant validates and removes the exact prior head, with no Asset proof or
+synthetic empty set. One mutating Syndic participant and one Asset
+participant publish atomically or neither does.
 
 A branch-context or replacement intent requires an idle input gate with no live accepted work.
 Consequently, an idle gate with queued next-turn work can be promoted without reading or changing
@@ -107,7 +119,9 @@ the ordinary current draft.
 
 An idle-thread submission first flushes the editor candidate session, then materializes the exact
 selected combined root into sealed canonical `ComposerV1` content. Acceptance resolves every marker
-to its exact durable asset identity, selects the then-current committed tail as the ordinary turn's
+to its exact durable asset identity, independently validates the sealed content identity/full
+digest through Syndic, requires the content-bound summary's embedded `SequentialMarkerSummaryV1`
+to equal the Asset proof's content-neutral summary, selects the then-current committed tail as the ordinary turn's
 parent under the exact thread, draft, selected-root, and gate revisions, transitions the same draft
 identity into a submitted turn, creates the typed canonical user-input item, advances the thread's
 committed tail, and creates its replacement current draft atomically. A later candidate or selector
@@ -125,6 +139,10 @@ receipt remains exact after the draft or route advances. A bounded mutable route
 selected generation head resolves steering, pending, next-turn, and terminal delivery state while
 retaining the same accepted-input identity and marker ownership; queueing does not manufacture
 another queued-input identity or a competing active turn.
+
+When sealed `ComposerV1` becomes editable for replacement or recall, one bounded import stream
+derives, builds, and cross-validates the sequence tree, marker-identity index, and marker-order
+commitment tree/summary before one complete imported root may be selected.
 
 Terminal publication does not make the input gate idle before derived history settles. It enters
 durable `FinalizingHistory` for the exact terminal turn. Input accepted during that state joins

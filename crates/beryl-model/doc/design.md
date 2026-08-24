@@ -87,11 +87,22 @@ Provide shared pure-data identities and values used across Beryl packages withou
 - `ImageLabelOrdinal` is the shared nonzero `u64` value for one final per-thread image label. It
   provides canonical bijective-letter presentation without owning label allocation, thread
   frontiers, origin evidence, marker references, or durable encoding.
-- `SealedContentMarkerSummary` binds exact Syndic content identity and full digest to its
-  marker-only digest/count and optional maximum label. `AssetReferenceSetId`,
-  `AssetReferenceSetDigest`, and `SealedAssetReferenceSetProof` are shared pure cross-domain
-  evidence that add one set identity, entry frontier, and asset-chain digest to that summary. These
-  values own no staging lifecycle, owner mutation, storage revision, path, or byte-access authority.
+- `SequentialMarkerSummaryV1` is the separate content-neutral pure value holding the established
+  sequential SHA-256-style digest, exact count, and optional maximum label over exact ordered
+  marker-id/label pairs.
+- `SealedContentMarkerSummary` binds exact Syndic content identity and full digest to one embedded
+  `SequentialMarkerSummaryV1`. It remains the content-bound summary used by sealed `ComposerV1`; it
+  is not a draft-tree root commitment or an Asset-set identity.
+- `DraftMarkerCommitmentV1` is a separate versioned pure value containing one marker-only tree-root
+  digest, exact count, and optional maximum label. It is compact evidence, not persistence or
+  publication authority. Its digest commits the exact persisted tree structure, so separately
+  shaped trees with the same ordered marker semantics need not have equal commitments.
+- `AssetReferenceSetId` and `AssetReferenceSetDigest` are shared pure values.
+  `SealedAssetReferenceSetProof` is opaque sealed evidence issued by the Asset owner and adds exact
+  set identity, entry frontier, and asset-chain digest to one `SequentialMarkerSummaryV1`; it binds
+  no Syndic content identity or full content digest.
+  A summary, commitment, set identity, or digest alone authorizes no staging, owner mutation,
+  storage read, path access, or byte access.
 - Asset identity exposes only its version, digest, and length as pure identity fields; it encodes no
   consumer-specific presentation, persistence, or sidecar policy.
 - The type owns no filesystem path, media metadata, reference record, sidecar operation, or garbage-collection policy.

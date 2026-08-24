@@ -71,8 +71,8 @@ records carry the finished-staging reference, consumed source/proposal lane fron
 fragment endpoint/chain, structure frontiers, and at most one bounded pending marker effect. Storage
 therefore point-reads only the next durable staging window after restart and never scans from ordinal
 one, accepts caller bytes, or uses app-built prefix reconstruction. A window has at most 256 physical
-pages/items, two page/receipt reads per page, eight fixed endpoint-read slots, 520 total acquisition
-reads, and 34,078,720 complete encoded-value bytes. The independent limits remain 256 fragments and
+pages/items, two page/receipt reads per page, nine fixed endpoint-read slots, 521 total acquisition
+reads, and 34,144,256 complete encoded-value bytes. The independent limits remain 256 fragments and
 65,536 inserted UTF-8 bytes. Source-only windows durably advance even when they create no fragment.
 Per-command byte-equal source/target closure and cumulative authenticated checkpoints close replay
 without rescanning earlier pages.

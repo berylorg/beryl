@@ -258,8 +258,8 @@ absorbing Syndic thread ownership.
 
 - Asset records store opaque asset id, versioned digest and byte length, validated media facts, sidecar state, creation revision, and asset revision.
 - Asset domain schema V2 represents marker ownership through immutable paged reference sets. One
-  sealed set manifest stores exact owner-neutral content identity/digest, marker-only digest/count,
-  maximum label, entry frontier, and asset-chain digest;
+  sealed set manifest stores one content-neutral `SequentialMarkerSummaryV1`, entry frontier, and
+  asset-chain digest;
   bounded ordered entries map stable marker identities and labels to exact asset ids and carry
   validated first-occurrence disposition. Build-local durable label-first keys derive that
   disposition without an in-memory seen-label set. Compact owner-head records bind one current
@@ -268,10 +268,23 @@ absorbing Syndic thread ownership.
 - Asset schema V2 is the only supported asset record shape. This package exposes no V1 decoder,
   migration path, dual write, or compatibility adapter.
 - Reference-set construction is typed unpublished staging. Bounded commands append entries and a
-  final seal proves the exact source content identity, marker-only digest/count, maximum label,
-  entry frontier, and asset-chain digest. One final
+  final seal proves the exact `SequentialMarkerSummaryV1`, entry frontier, and asset-chain digest. One final
   cross-domain home command swaps only compact source/destination owner heads while publishing the
   matching Syndic admission; it never moves one Fjall record per marker in that transaction.
+- Nonempty current-draft replacement-set construction accepts bounded ordered marker entries and the target
+  `SequentialMarkerSummaryV1`, validates every staged entry and exact EOF/frontier/count/
+  maximum/digest agreement, and returns only the existing opaque sealed-set proof. The package does
+  not accept or authenticate a Syndic draft root, build identity, marker-tree commitment, or marker-
+  seal proof, and it has no dependency on `syndic-storage`; a public summary alone authorizes no
+  owner-head mutation.
+- For current-draft publication, this package contributes exactly one Asset participant. A changed
+  nonempty marker set validates the opaque sealed-set proof and swaps the exact CurrentDraft head; a
+  changed empty set accepts the empty-removal branch only after Syndic has validated its completed
+  seal and exact empty sequential summary, then validates the exact prior head/revision transition
+  and removes that head, requiring no Asset proof or synthetic empty set; an
+  unchanged nonempty set asserts the existing head and proof; and an unchanged marker-free set
+  asserts absence. Syndic, not this package, decides unchanged versus changed from its authenticated
+  draft commitments. No Asset outcome independently reports whole-command success.
 - Marker-free admission carries one bounded, duplicate-free typed validation-only owner-head
   participant in the same home command as the mutating Syndic participant. It checks the exact
   optional state of every source and destination head on the serialized writer snapshot and
@@ -316,16 +329,18 @@ absorbing Syndic thread ownership.
   success. Missing, disagreeing, or unstaged Beryl-state media rejects this participant. A failed or
   incomplete repair leaves its staging records and prepared sidecars inert and unreachable; only a
   future home-wide garbage collector may reclaim them.
-- Mutable draft reference changes build a replacement set by streaming the prior set plus exact
-  edits, then atomically swap the one draft owner head. Duplicate markers, label/asset disagreement,
-  stale owner revision, count overflow, and digest mismatch reject publication.
+- A nonempty mutable draft reference change streams every ordered marker page supplied during the
+  captured Syndic seal into one replacement set, then atomically swaps the draft owner head. A
+  changed-to-empty reference instead removes the exact head through the no-proof branch above.
+  Duplicate markers, label/asset disagreement, stale owner revision, count overflow, sequential-
+  summary mismatch, and digest mismatch reject publication.
 - Owner-head removal retains asset metadata and the sidecar. There is no metadata deletion or
   byte-deletion command and no eager zero-reference proof.
 - Public entry reads clamp caller limits to the package's fixed page-item and stored-byte ceilings;
   label-first lookups are bounded point reads used after a Syndic origin-span lookup.
 - Sealed manifest, entry-page, and label-first reads require the complete opaque
   `SealedAssetReferenceSetProof`, not a caller-supplied set id. Every read rechecks the selected
-  manifest against that proof's exact content, marker, label, frontier, and digest authority before
+  manifest against that proof's exact sequential marker, frontier, and digest authority before
   returning data; a different proof for the same set identity is rejected. Unsealed construction
   inspection uses separate typed build authority and cannot select sealed state. A bare set id
   never authorizes a sealed-manifest read.

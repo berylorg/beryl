@@ -91,6 +91,11 @@ confusing current drafts with submitted transcript history or image identity.
 - Editing remains available while autosave publishes a captured state. A completion for an older
   captured state never marks later edits saved; those edits remain dirty for the next autosave or
   flush.
+- When the captured state changes image markers, autosave may continue as bounded background work
+  proportional to that captured marker set. Ordinary small marker edits and undo or redo remain
+  responsive while it runs. The dirty indication and every dependent flush barrier remain in place
+  until that exact state is wholly published; cancellation or failure preserves the coherent draft
+  and history rather than exposing a partial save.
 - A flush lets a save already underway reach an exact outcome instead of cancelling it. If the
   durable outcome is ambiguous, the barrier remains unsatisfied while same-home verification or
   recovery classifies it as proven saved, proven not saved, or terminally unavailable. Terminal

@@ -162,6 +162,11 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   participation by the same typed domain remains invalid across both roles. An ordinary mutation
   that emits no changes remains an error, so validation intent cannot hide an accidental empty
   write path.
+- Current-draft publication that changes marker ownership uses exactly one mutating Syndic
+  participant and one Asset participant in the same command. Syndic's proof checks remain part of
+  that one mutating participant; a second Syndic validation-only participant would be duplicate
+  same-domain participation and is invalid. This specialization does not weaken the generic
+  duplicate-participant rule.
 - One accepted command writes every participating keyspace mutation in one Fjall write batch. A
   successful Fjall `SyncAll` outcome means that complete batch committed atomically and is durable;
   only then may Beryl report durable success.

@@ -75,17 +75,56 @@ Allow many drafts and turns to share exact bytes without making a thread directo
 ## Reference And Label Evidence
 
 - Beryl asset records prove byte identity and reference ownership; Syndic input records prove per-thread historical label use.
+- `SequentialMarkerSummaryV1` remains the content-neutral sequential digest, exact count, and
+  optional maximum label over every exact ordered marker-id/label pair. Asset reference sets bind
+  that value. The sealed `ComposerV1` summary separately binds exact content identity and full
+  digest while embedding the same sequential summary. A draft root instead carries a compact
+  structural marker-tree commitment; none substitutes for another or independently authorizes
+  publication.
+- Syndic owns an immutable persistent marker-order commitment tree alongside each draft's composite
+  sequence tree and marker-identity index. Its leaves commit only exact ordered marker ids and
+  labels, independent of text positions. Text-only edits reuse it unchanged; marker insertion,
+  removal, movement, or replacement path-copies only bounded-height paths. The combined draft root
+  authenticates the exact commitment-tree root and compact commitment. This is structural root
+  authority, not a promise that independently shaped trees with equal semantics have equal digests.
+- A marker-changing draft save captures one exact immutable Syndic root and streams its complete
+  marker-order tree through a durable bounded seal cursor. Exact EOF, frontier, count, maximum label,
+  commitment, and root/build agreement yields one opaque Syndic seal proof binding that root and
+  commitment to `SequentialMarkerSummaryV1`, never to a content identity or content-bound summary.
+  Failure, cancellation, restart, replay, collision,
+  corruption, and supersession remain bounded and cannot publish partial current-draft ownership.
+- The app may feed each same-root marker page into Beryl-state's unpublished reference-set build
+  while retaining only bounded current page, cursor, and custody state. Beryl-state validates its
+  own exact ordered entries against `SequentialMarkerSummaryV1` and returns its opaque sealed-set proof;
+  it neither authenticates Syndic roots nor depends on Syndic storage. The app composes these opaque
+  proofs and never constructs an authority mapping from a draft commitment to a sequential summary.
+- Final marker-changing current-draft publication uses one mutating Syndic participant plus one
+  Asset participant in a single `HomeCommand`. For a changed nonempty commitment, the Syndic
+  participant validates its seal proof against the captured root and commitment and requires the
+  new sealed Asset proof's `SequentialMarkerSummaryV1` to match; the Asset participant swaps the
+  exact `CurrentDraft(draft id)` head. For changed-to-empty, Syndic instead requires that seal to
+  prove the exact empty sequential summary and the Asset participant removes the exact prior head;
+  no Asset proof or synthetic empty set exists. Both participants publish or neither does, and no
+  second validation-only Syndic participant is present.
+- Syndic compares the prior and captured exact draft-marker commitments before publication. Equal
+  commitments reuse and validation-assert the existing nonempty CurrentDraft Asset head and proof,
+  or validate an absent head for marker-free state, without sealing or scanning markers. A changed
+  commitment, including undo or redo to a different marker set, requires bounded sealing and owner-
+  head replacement or removal. Structurally different but semantically equal commitments may
+  conservatively reseal and rebuild.
 - Draft-to-turn and draft-to-accepted-input admission streams every marker into one sealed
-  owner-neutral reference set. The final command rebinds that set from draft to admitted owner and
-  publishes the Syndic input only when content identity/digest, marker-only digest/count, maximum
-  label, marker/label/asset order, first-occurrence disposition, frontier, and asset-chain digest
-  agree exactly. Build-local durable
+  owner-neutral reference set. The final command independently validates the root-bound sealed
+  `ComposerV1` content identity/full digest through Syndic, requires its embedded
+  `SequentialMarkerSummaryV1` to equal the Asset proof's content-neutral summary, then rebinds that
+  set from draft to admitted owner only when marker/label/asset order, first-occurrence disposition,
+  frontier, and asset-chain digest also agree exactly. Build-local durable
   label-first keys avoid an in-memory set even when marker count is arbitrarily large.
 - Accepted-input-to-submitted-item promotion performs the corresponding compact owner-head swap
   without rebuilding or scanning the paged set. Marker-free promotion validates both heads absent.
   The current-draft owner head is outside this transition and remains unchanged.
 - Starting replacement edit retains the submitted item's immutable reference set and constructs the
-  current draft's copy-on-write owner head over that same set. Later edits build replacement sets;
+  current draft's copy-on-write owner head over that same set. Later nonempty marker changes build
+  replacement sets, while last-marker removal uses the sealed empty-removal branch above;
   historical ownership is never moved merely because its turn is being replaced. One Asset-domain
   mutation participant asserts the unchanged historical head and publishes the absent draft head;
   it never composes separate validation and mutation participants for the same domain.

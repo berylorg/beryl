@@ -68,11 +68,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - The package exposes operations for constructing its opaque domain handle, creating threads and
   current drafts, opening, reading, publishing, and disposing bounded editor-candidate sessions,
   durable two-lane pre-finish mutation staging and reconciliation, authenticated finish-to-builder
-  custody transfer, revisioned predecessor-linked combined sequence/index candidate transactions, bounded draft text
+  custody transfer, revisioned predecessor-linked combined sequence/index/marker-commitment candidate transactions, bounded draft text
   and marker reads, compact restoration validation, durable edit-history frontier reads and
   retention, exactly-once ordinary transition append, direct authenticated historical-root
   adoption for undo/redo, and exactly-once durable candidate settlement and replay,
-  exact-root streamed `ComposerV1` materialization, atomic draft submission/replacement, accepted-input
+  exact-root bounded marker sealing, exact-root streamed `ComposerV1` materialization, atomic draft submission/replacement, accepted-input
   admission, revision-bound ready-steering source and candidate pages, revision-bound next-source
   pages, atomic accepted-input promotion and exact reconciliation, exact steering-delivery
   claim/outcome transitions, exact stop admission, dispatch claim, safe reopening, terminal
@@ -112,8 +112,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   bounded source/target closure. It accepts no staging-page bytes, caller fragment, ordinal-one
   restart request, prefix proof, or app-built edit reconstruction. Status and same-home resume return
   the authenticated current endpoint or terminal settlement and use the same preparation boundary.
-  Window acquisition has at most two page/receipt reads per physical page plus the exact fixed eight-
-  endpoint allowance and the checked 34,078,720-byte complete encoded-value ceiling defined under V5
+  Window acquisition has at most two page/receipt reads per physical page plus the exact fixed nine-
+  endpoint allowance and the checked 34,144,256-byte complete encoded-value ceiling defined under V5
   bounds; item-specific structure reads remain under their separate tree/index limits.
 - The package exposes checked maximum mutation-footprint descriptors for exactly two public durable-
   start operations: idle draft submission and accepted-input promotion. Each descriptor derives
@@ -228,11 +228,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `DraftPieceRootReferenceV1` is the combined draft-root reference. It binds the owning draft, one
   closed `DraftPieceRootBuildIdentityV1`, optional composite-sequence root-node
   identity and complete sequence summary, optional marker-identity-index root-node identity and
-  complete index summary, and one combined-root digest. The build identity is either
+  complete index summary, optional marker-order-commitment root-node identity and exact
+  `DraftMarkerCommitmentV1`, and one combined-root digest. The build identity is either
   `DirectCanonicalEmpty` with the deterministic draft-scoped operation defined below, or
   `EditorCandidate` with exact editor session and caller-owned operation identity for an edit or
   sealed-content import. The referenced immutable
-  `draft-piece-roots` record repeats the build identity, both roots, and summaries. A reference with
+  `draft-piece-roots` record repeats the build identity, all three roots, and summaries. A reference with
   a different owner, build identity, structure identity, summary, or digest is invalid even when its logical byte extent
   happens to match.
 - `DraftLogicalExtentV1` is the exact public pair of checked logical UTF-8 byte length and logical
@@ -240,18 +241,21 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   and otherwise equals the committed checked newline count plus one. Every edit settlement,
   candidate root/history head, activation binding, range-source wrapper, and restoration request that names a
   logical extent uses this pair rather than a byte length alone.
-- V1 piece digests use domain-separated SHA-256 over canonical package encodings. A text leaf hashes
+- V1 piece and tree digests use domain-separated SHA-256 over canonical package encodings. A text leaf hashes
   its exact UTF-8 bytes and summary; a marker leaf hashes its stable identity, order key, final
   label, and zero-text summary; an internal node hashes its height plus each ordered child identity,
   digest, subtree aggregate, and
   composite search envelope. A marker-identity leaf hashes the stable marker id, final label,
   same-anchor order key, and exact sequence marker-leaf identity and digest. An identity internal node hashes
   its height plus each ordered child identity, digest, checked record count, and disjoint stable-id
-  search envelope. The sequence-root and identity-root digests each commit their exact canonical
-  shape and summary; the combined-root formula below commits both. Owner and the complete closed
-  build identity remain in the enclosing root record rather than content digests. The ordered
-  marker digest is the sequence-order fold of marker leaves only. Semantic equality between
-  distinct combined roots still requires bounded composite comparison.
+  search envelope. The sequence-root, identity-root, and marker-order-root digests each commit their
+  exact canonical shape and summary; the combined-root formula below commits all three. Owner and
+  the complete closed build identity remain in the enclosing root record rather than content
+  digests. A marker-order commitment leaf hashes only its exact marker id and final label; its internal node
+  hashes its height plus each ordered child identity, digest, count, and maximum label. The
+  commitment root digest therefore authenticates one exact persisted tree shape and ordered leaf
+  sequence. It is not `SequentialMarkerSummaryV1`, and semantic equality between
+  distinct combined roots still requires bounded comparison when a consumer needs it.
 - Every sequence leaf, internal node, sequence root, and combined root carries a canonical checked
   logical text summary with `u64` UTF-8 byte length, newline count, and logical line count. Empty
   text has all three values zero. Nonempty text has logical line count equal to checked newline
@@ -265,20 +269,21 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   one for nonempty is invalid.
 - For the following root hashes, `H` is SHA-256, `LP(x)` is the unsigned big-endian `u64` byte
   length of `x` followed by `x`, and every named domain is its exact ASCII byte string. The empty
-  sequence-root digest is
-  `H(LP("syndic/draft-sequence-root/v1/empty"))`; the empty ordered-marker digest is
-  `H(LP("syndic/draft-ordered-marker-fold/v1/empty"))`; and the empty identity-index-root digest is
-  `H(LP("syndic/draft-marker-identity-index-root/v1/empty"))`. For canonical sequence-summary bytes
-  `S` and identity-index-summary bytes `I`, every combined-root digest, empty or nonempty, is
-  `H(LP("syndic/draft-combined-root/v1") || LP(S) || LP(I))`. A text-only root uses a nonempty
-  sequence summary containing the empty ordered-marker digest plus the empty identity-index
-  summary. A marker-only root has zero UTF-8 length but nonzero sequence piece/marker and identity-
-  index summaries.
-- The canonical empty combined root has no sequence or identity-index root-node identity, both
-  heights zero, zero UTF-8 length, newlines, logical lines, pieces, markers, and identity records,
-  and exactly the empty
-  digests above. Any empty root with a node, nonzero aggregate, or another digest is invalid; any
-  nonempty marker set with an empty identity index, or the converse, is invalid.
+  sequence-root digest is `H(LP("syndic/draft-sequence-root/v1/empty"))`; the empty identity-index-
+  root digest is `H(LP("syndic/draft-marker-identity-index-root/v1/empty"))`; and the empty marker-
+  order-commitment root digest is
+  `H(LP("syndic/draft-marker-order-commitment-root/v1/empty"))`. For canonical sequence-summary
+  bytes `S`, identity-index-summary bytes `I`, and canonical `DraftMarkerCommitmentV1` bytes `M`,
+  every combined-root digest, empty or nonempty, is
+  `H(LP("syndic/draft-combined-root/v1") || LP(S) || LP(I) || LP(M))`. A text-only root uses a
+  nonempty sequence summary plus the exact empty identity-index summary and empty marker
+  commitment. A marker-only root has zero UTF-8 length but nonzero sequence piece/marker, identity-
+  index, and marker-commitment summaries.
+- The canonical empty combined root has no sequence, identity-index, or marker-order-commitment root-
+  node identity; all three heights and every logical byte, newline, line, piece, marker, and identity
+  aggregate are zero; and it uses exactly the empty digests above. Any empty root with a node,
+  nonzero aggregate, or another digest is invalid; any nonempty marker set missing either marker
+  structure, or either marker structure present for a zero-marker root, is invalid.
 - `CanonicalEmptyDraftRootBuildOperationIdV1` is the first 16 digest bytes, without UUID bit
   rewriting, of
   `H(LP("syndic/canonical-empty-draft-root-build-operation/v1") || LP(draft_id_bytes))`, where
@@ -321,6 +326,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   witness and verifies the leaf's stable occurrence facts through one bounded sequence descent at
   that location. ID-only location discovery is not part of the boundary. Ordering summaries in the
   composite tree are not global stable-id absence authority.
+- The persistent marker-order commitment tree is independently ordered by exact composite marker
+  order but stores no text anchor, order key, sequence-leaf identity, or position. Each immutable
+  leaf stores exactly one stable marker id and final label. Bounded-height internal nodes commit
+  ordered child identities, structural digests, checked counts, and optional maximum labels. The
+  selected root produces `DraftMarkerCommitmentV1`; the combined root repeats and authenticates its
+  exact root identity and commitment. A text-only edit reuses this whole tree, while marker insert,
+  remove, move, or same-id replacement path-copies only logarithmic paths. Exact undo or redo adopts
+  the already authenticated historical combined root and commitment directly.
 - `DraftCompositePositionV1` is a package value independent of GUI types. It contains an absolute
   logical UTF-8 byte offset and a closed gap witness: unambiguous, before all markers at the anchor,
   between one exact adjacent ordered marker pair, or after all markers. Transaction, page,
@@ -560,13 +573,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   predecessor candidate generation and combined root, predecessor caret and directed selection,
   canonical proposal-header bytes and
   digest, cumulative checked replacement, move, item, and byte counts, authenticated consumed
-  source- and proposal-lane frontiers, explicit finish-input identity, sequence-path, identity-
-  removal, identity-insertion, changed-occurrence count/digest, bounded pending marker-effect, and
-  cross-validation frontiers,
+  source- and proposal-lane frontiers, explicit finish-input identity, sequence-path, identity- and
+  marker-commitment removal/insertion, changed-occurrence count/digest, bounded pending marker-
+  effect, and cross-validation frontiers,
   compact checked summaries, and intended
   successor-position digest. A sealed-composer-import build additionally retains the exact sealed `ComposerV1` reference,
   canonical proposal-header bytes and digest, bounded canonical
-  text/marker cursor, and output frontiers for both structures. Both retain the proposed combined-
+  text/marker cursor, and output frontiers for all three structures. Both retain the proposed combined-
   root summary and lifecycle:
   `Open`, `Complete`, `Committed(settlement)`, `Rejected(settlement)`, `Conflict(settlement)`,
   `Cancelled(settlement)`, or `Error(settlement)`. The last five are terminal and can never return
@@ -589,8 +602,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   authenticated canonical-fragment endpoint, canonically empty before any fragment and otherwise
   naming its one-based key and canonical fragment digest plus its chain; the exact staging identity
   and finished staging-head/receipt reference; current phase and relational cursors; authenticated
-  consumed source- and proposal-lane staging frontiers; working sequence and marker-index roots with
-  their complete summaries; source and successor structure frontiers; changed-occurrence count/
+  consumed source- and proposal-lane staging frontiers; working sequence, marker-index, and marker-
+  order-commitment roots with their complete summaries; source and successor structure frontiers; changed-occurrence count/
   digest frontier; bounded pending marker-effect state; next record ordinal; optional successor root
   and build digest; lifecycle; and its
   domain-separated receipt digest. The digest is SHA-256 over the exact ASCII domain
@@ -614,7 +627,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   outcome, settlement-command source basis, terminal progress-receipt key and digest, that receipt's
   immediate-predecessor/root closure, and complete outcome-specific proof. `Committed`
   stores a closed edit-adoption or sealed-import-selection proof. Edit adoption stores the successor
-  candidate generation/combined root and history frontier, paired summary, logical extent,
+  candidate generation/combined root and history frontier, complete combined-root summaries including
+  marker commitment, logical extent,
   positions, adoption receipt, and terminal build digest. Sealed-import selection instead stores
   the imported root and fresh-baseline history reference, exact unavailable undo/redo facts, the
   current-draft selector/root/history before and after triples, and the session published/newest
@@ -658,7 +672,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   changes a draft revision.
 - A content-manifest record stores content identity, optional canonical-item owner, encoding, lifecycle, exact chunk frontier, encoded and logical lengths, atom and marker counts, and a chain digest. Content-chunk records store bounded ordered encoded bytes. Building content is unreachable; ownerless sealed content is immutable and content-addressed; item-owned live UTF-8 content has a deterministic item-derived identity and may append only before it becomes finalized.
 - A canonical user-input item references the exact sealed draft content and matching compact sealed
-  asset-reference-set proof. Syndic content pieces retain ordered marker identity and final label;
+  asset-reference-set proof. The content-bound `SealedContentMarkerSummary` independently
+  authenticates content identity/full digest and its embedded `SequentialMarkerSummaryV1` must equal
+  the Asset proof's content-neutral summary. Syndic content pieces retain ordered marker identity and final label;
   the Beryl-state set retains the matching asset identity and first-occurrence disposition. Syndic
   does not duplicate those paged marker-to-asset records or embed image bytes.
 - An accepted-input record stores immutable input frozen from a draft for active-turn steering or
@@ -1152,9 +1168,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2;
   every other V5 family uses record V1. V5 is a clean replacement
   schema: no prior-record decoder, migration path, or compatibility adapter exists.
-- The 59 primary V5 families are `threads`, `thread-executions`, `thread-attributes`,
+- The 61 primary V5 families are `threads`, `thread-executions`, `thread-attributes`,
   `thread-usage`, `thread-catalog-summaries`, `drafts`, `draft-piece-roots`,
   `draft-piece-nodes`, `draft-piece-leaves`, `draft-marker-identity-index`,
+  `draft-marker-order-commitments`, `draft-marker-seals`,
   `draft-editor-candidate-sessions`, `draft-piece-builds`,
   `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
   `draft-mutation-staging-progress`,
@@ -1175,13 +1192,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `activity-query-heads`, `item-projection-heads`, `item-projection-sets`,
   `item-projection-builds`, `transcript-view-heads`, `transcript-builds`, `projections`,
   `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`.
-- `draft-marker-identity-index`, `draft-editor-candidate-sessions`,
+- `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`,
+  `draft-editor-candidate-sessions`,
   `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
   `draft-mutation-staging-progress`,
   `draft-piece-build-progress`, `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
   and `draft-historical-root-adoptions` are distinct V5 primary families. The marker index uses tagged
   internal-node and leaf records, and the candidate-session family uses tagged head and immutable
-  receipt records. Build progress instead requires its own append-only family so canonical proposal
+  receipt records. Marker-order commitments use tagged immutable internal-node and leaf records;
+  marker seals use compact durable cursor/lifecycle records. Build progress instead requires its own append-only family so canonical proposal
   fragments remain the only values in `draft-piece-build-fragments`.
 - The 23 index V5 families are `draft-by-thread`, `thread-parent-index`,
   `image-label-origin-spans`, `turn-children`, `accepted-order`, `accepted-route-generations`,
@@ -1190,16 +1209,18 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V5 inventory is exactly 59 primary plus 23 index families, or 82 total. A release
+- The complete V5 inventory is exactly 61 primary plus 23 index families, or 84 total. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
-- `draft-piece-roots`, `draft-piece-nodes`, `draft-piece-leaves`, and
-  `draft-marker-identity-index` use immutable V1 codecs. Roots use
+- `draft-piece-roots`, `draft-piece-nodes`, `draft-piece-leaves`,
+  `draft-marker-identity-index`, and `draft-marker-order-commitments` use immutable V1 codecs;
+  `draft-marker-seals` uses its current V1 codec directly. Roots use
   `DraftPieceRootNaturalKeyV1`: draft plus tagged draft-scoped canonical-empty identity, or draft,
-  editor session, and operation for every editor candidate. They bind the complete sequence and identity-index
-  roots and summaries. Direct empty-draft creation uses
+  editor session, and operation for every editor candidate. They bind the complete sequence,
+  identity-index, and marker-order-commitment roots and summaries. Direct empty-draft creation uses
   `CanonicalEmptyDraftRootBuildOperationIdV1`; edit and import roots use their complete
-  `EditorCandidate(session, operation)` identity. Sequence nodes/leaves and tagged identity-index internal/leaf records use
+  `EditorCandidate(session, operation)` identity. Sequence nodes/leaves and tagged identity-index
+  and marker-order-commitment internal/leaf records use
   build-scoped opaque identities allocated by their originating build and repeat their owner, kind,
   and digest so unchanged records can be shared by later roots. A combined root becomes mutable
   current-draft authority only through the matching current-draft reference; a caller holding its
@@ -1219,16 +1240,19 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   stable-id envelope, checked record count, height, and digest agree with the identity summary.
   Every identity internal record has disjoint ordered child envelopes; every identity leaf contains
   one stable id, final label, same-anchor order key, and exact sequence marker-leaf identity and
-  digest, but no absolute anchor or position. Zero markers require no identity node,
-  zero identity height/count, and the exact empty-index digest even when text makes the sequence
-  nonempty. The canonical empty combined root selects neither node and uses the exact empty
-  sequence, index, and combined digests and zero summaries defined above.
-- A nonempty paired root is publishable only from a completed build whose base paired root was
-  already valid, or from a sealed-content import that derived both structures from the same bounded
+  digest, but no absolute anchor or position. A nonzero marker count also selects one marker-order-
+  commitment root whose checked count and maximum label agree with the sequence and identity
+  summaries. Zero markers require neither marker structure and require both exact empty digests even
+  when text makes the sequence nonempty. The canonical empty combined root selects none of the
+  three roots and uses the exact empty sequence, index, commitment, and combined digests and zero
+  summaries defined above.
+- A nonempty combined root is publishable only from a completed build whose base combined root was
+  already valid, or from a sealed-content import that derived all three structures from the same bounded
   stream. The build proves each changed marker's exact old/new stable occurrence facts, equal final
-  marker and index counts, and the paired successor digests while reusing only authenticated
+  marker, index, and commitment counts and maximum labels, and all successor digests while reusing only authenticated
   unchanged subtrees. A text-only rebase that changes no marker leaf must reuse the complete
-  identity-index root unchanged. Missing or duplicate identity leaves, occurrence-fact
+  identity-index and marker-order-commitment roots unchanged. Missing or duplicate identity or
+  commitment leaves, occurrence-fact
   disagreement, count or digest disagreement, one-sided publication, or a root/build/settlement
   mismatch is corruption. Explicit schema
   validation may compare every mapping in bounded pages; routine edit uniqueness never does so.
@@ -1317,9 +1341,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   no staging identity. The record also retains any optional exact sealed
   content source,
   compact declared counts and digests, finished-staging reference, consumed source/proposal staging
-  frontiers, ordered fragment, sequence-path, identity-index, changed-occurrence count/digest,
+  frontiers, ordered fragment, sequence-path, identity-index, marker-order-commitment, changed-occurrence count/digest,
   bounded pending-marker-effect, and cross-validation frontiers, proposed successor candidate
-  generation/combined root, paired canonical summary, and
+  generation/combined root, complete canonical combined-root summaries, and
   exactly `Open`, `Complete`, `Committed(settlement)`,
   `Rejected(settlement)`, `Conflict(settlement)`, `Cancelled(settlement)`, or `Error(settlement)`
   lifecycle. It contains no whole edit, replacement collection, inserted payload, or mutable self-
@@ -1340,7 +1364,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   endpoint, canonically empty before any fragment and otherwise naming its one-based key and
   canonical fragment digest plus its chain; exact staging identity and finished-head/receipt
   reference; current phase and relational cursors; consumed source/proposal staging-lane frontiers;
-  working sequence and identity-index roots and complete summaries; source and successor structure
+  working sequence, identity-index, and marker-order-commitment roots and complete summaries; source and successor structure
   frontiers; changed-occurrence count/digest frontier; bounded pending marker-effect state; next
   record ordinal; optional
   successor root and build digest; lifecycle; and the domain-separated receipt digest defined
@@ -1350,8 +1374,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   a corrupt split even when equal. Once the build head selects this receipt, it can prove replay only
   together with byte equality of the complete same-command closure.
 - These existing V1 build, fragment, and progress record shapes own the durable continuation fields;
-  no additional primary family, secondary index, operation-page history, or marker-effect map is
-  required. A build endpoint locates its next staging page by one natural-key point read from the
+  no further secondary index, operation-page history, or marker-effect map is required beyond the
+  declared marker-order-commitment and marker-seal families. A build endpoint locates its next staging page by one natural-key point read from the
   retained staging identity, selected lane, and next lane ordinal, which is `O(1)` in operation
   length.
 - `draft-piece-settlements` is keyed by the exact 48-byte draft/session/operation identity. Its immutable V1
@@ -1361,7 +1385,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   outcome, source basis, terminal progress-receipt key/digest and immediate-predecessor/root closure,
   and the complete outcome-specific proof defined above. Unknown or
   incomplete outcomes, a no-change outcome naming an adopted successor, a committed outcome
-  missing its exact paired-root/history/build/session-head adoption or direct-selection closure, a terminal build without its agreeing
+  missing its exact combined-root/history/build/session-head adoption or direct-selection closure, a terminal build without its agreeing
   progress receipt and settlement, a settlement disagreed with by the candidate, receipt closure, or
   historical combined-root closure, or a second canonical value at the same key is corruption.
   Exact settlement replay requires the stored build head already to select the terminal target
@@ -1369,12 +1393,21 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   request's canonical header and bounded fragment bytes to equal the settlement's retained proposal
   and referenced build fragments; the stored settlement itself must pass canonical decoding and
   exact closure validation. Equal digests are not sufficient for either check.
+- `draft-marker-seals` stores one V1 durable resumable seal record keyed by exact draft, captured
+  combined-root/build identity, exact `DraftMarkerCommitmentV1`, and caller-owned seal-operation
+  identity. It retains only the next marker-order-tree cursor, completed marker frontier,
+  incremental sequential digest/count/maximum state, and closed `Open`, `Cancelled`, `Failed`,
+  `Superseded`, or `Sealed` lifecycle. Only exact EOF plus frontier/count/maximum/commitment/root
+  agreement creates the package-issued opaque `DraftMarkerSealProofV1` binding the exact root and
+  commitment to `SequentialMarkerSummaryV1`; raw summary values and open
+  records are not proof. Exact replay returns the same proof, while a disagreeing natural identity,
+  cursor closure, tree record, or sealed result is collision or corruption.
 - `draft-composer-builds` is keyed by exact source combined root, format version, and caller-owned
   materialization operation identity. Its V1 value stores the source composite cursor, output
   `ComposerV1` manifest frontier, encoder state, exact input/output summaries, and closed `Open`,
   `Cancelled`, `Failed`, `Superseded(successor operation)`, or `Sealed` lifecycle.
   `draft-composer-materializations` is keyed only by exact source combined root and format version
-  and stores the immutable sealed content reference, source paired-root digest/summary, and exact
+  and stores the immutable sealed content reference, source combined-root digest/summary, and exact
   canonical Composer summary/digest. A second disagreeing sealed result is a collision.
 - `terminal-repair-snapshots` stores one package-local V1 build head keyed by the existing target
   Syndic thread and turn natural identity. Its opaque storage-owned generation and references do not
@@ -1524,18 +1557,19 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - One content chunk carries at most 65,536 encoded bytes, and one staged append command carries a
   fixed bounded chunk count. Content manifests use `u64` counts and lengths; no smaller whole-draft,
   whole-submitted-input, or whole-provider-item byte ceiling is encoded in V5.
-- Every draft combined-root, sequence node/leaf, tagged marker-identity-index internal/leaf, build,
+- Every draft combined-root, sequence node/leaf, tagged marker-identity-index internal/leaf, tagged
+  marker-order-commitment internal/leaf, marker-seal record, build,
   mutation-staging head, canonical staging page, immutable staging-progress receipt, canonical
   fragment, immutable build-progress receipt, settlement, candidate-session head or
   receipt, and materialization record fits the 65,536-byte value ceiling. Internal
-  nodes in either structure have from 2 through 128 children, except that a selected root node may
+  nodes in all three structures have from 2 through 128 children, except that a selected root node may
   have from 1 through 128; every leaf in one nonempty structure has the same depth, and each height
   is at most 64. An identity leaf contains exactly one stable marker id, final label, same-anchor
-  order key, and sequence marker-leaf identity/digest, with no absolute anchor or position. The
-  canonical empty combined root has neither node,
-  both heights and every logical byte, newline, line, piece, marker, and identity aggregate zero,
-  and the exact V1 empty sequence-root, ordered-
-  marker, identity-index-root, and combined-root digests. A text leaf contains at least one complete UTF-8 scalar and no
+  order key, and sequence marker-leaf identity/digest, with no absolute anchor or position. A
+  commitment leaf contains exactly one stable marker id and final label, with no text position or
+  order key. The canonical empty combined root has none of the three nodes, all heights and every
+  logical byte, newline, line, piece, marker, and identity aggregate zero, and the exact V1 empty
+  sequence-root, identity-index-root, marker-order-commitment-root, and combined-root digests. A text leaf contains at least one complete UTF-8 scalar and no
   more payload than its codec-derived record ceiling; a sequence marker leaf contains exactly one
   bounded marker identity, order key, and label.
 - One pre-finish mutation-page batch admits from one through 257 existing source or proposal pages.
@@ -1597,7 +1631,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   plus-value sum of those five effects is bounded by and must
   fit the existing 4,194,304-byte draft-piece command ceiling; excess rejects before mutation.
 - One post-finish draft-piece fragment command admits at most 256 fragment records and 65,536 inserted UTF-8
-  payload bytes. One path-copy command reads or emits at most 256 records across both structures and
+  payload bytes. One path-copy command reads or emits at most 256 records across all three structures and
   at most
   4,194,304 encoded key-plus-value bytes. Larger replacements and tree repairs continue through
   revision-bound build frontiers. After the five-effect finish-to-builder transfer above, every
@@ -1613,8 +1647,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   additionally reads only the natural settlement key, proposed combined root when adopting, and one
   editor-candidate session head.
   Candidate adoption never reads or writes the current-draft selector, reverse index, or history
-  summary. One publication command point-reads one captured candidate settlement/root, the session
-  head, current draft and reverse index, and history summary; it never traverses the candidate chain.
+  summary. One publication command point-reads one captured candidate settlement/root, the prior
+  and captured commitments, required completed seal proof when changed, the session head, current
+  draft and reverse index, and history summary; its sibling Asset participant validates only compact
+  owner/proof state. Final publication never traverses the candidate chain or marker tree.
 - Those 256 records are one-command build capacity, never a cumulative operation limit. Source and
   proposal pages use checked `u64` cursors, counts, lengths, and cumulative canonical identities;
   explicit finish-input fixes the final totals in the staging head before any build exists. One
@@ -1627,12 +1663,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Independently, one post-finish staging-window command consumes at most 256 consecutive physical
   staging pages and therefore at most 256 one-item page records. Window acquisition performs at most
   two point reads per page, one page plus its staging-progress receipt, and has an exact allowance of
-  eight additional endpoint reads: candidate-session head, staging head, finished staging receipt,
+  nine additional endpoint reads: candidate-session head, staging head, finished staging receipt,
   build head, selected build receipt, its immediate predecessor when present, working sequence root,
-  and working identity-index root. It therefore uses at most 520 staging-window point reads. At the
+  working identity-index root, and working marker-order-commitment root. It therefore uses at most
+  521 staging-window point reads. At the
   existing 65,536-byte ceiling for each complete encoded value, checked multiplication gives an exact
-  34,078,720-byte aggregate encoded-value ceiling for that 520-record acquisition closure. The
-  separate bounded sequence/index descents and path-copy reads needed to apply an item retain their
+  34,144,256-byte aggregate encoded-value ceiling for that 521-record acquisition closure. The
+  separate bounded sequence/index/commitment descents and path-copy reads needed to apply an item retain their
   existing height, record-count, and 4,194,304-byte command limits.
 - The selected build receipt/head is the only continuation cursor. It retains the exact staging
   identity and finished staging-head/receipt reference; for each lane, the next page ordinal and
@@ -1702,6 +1739,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   canonical stable-id mapping. Unknown tags, key/value disagreement, duplicate or overlapping
   envelopes, noncanonical counts, trailing bytes, or a mapping outside its ancestor envelopes are
   invalid encodings.
+- `draft-marker-order-commitments` keys canonically encode the owning draft, closed internal-or-leaf
+  tag, and opaque record identity. Values repeat owner, tag, identity, structural digest, checked
+  count, and optional maximum label; leaves contain only one stable marker id and final label.
+  `draft-marker-seals` keys and values canonically bind the exact captured root/build identity,
+  commitment, operation, cursor/frontier, sequential state, and lifecycle. Unknown tags,
+  noncanonical cursors or maxima, key/value disagreement, trailing bytes, or a seal selecting a
+  different root or commitment are invalid encodings.
 - Every V5 exact-replay classification at an occupied natural key requires equality between the
   request's canonical identity bytes and the corresponding canonical request bytes retained by the
   occupied record; a command that proposes the whole record requires complete canonical key/value-
@@ -1898,7 +1942,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `Staging` tag with `Building` in the same command. The build endpoint begins with the exact finished
   staging closure, both lanes' initial unconsumed frontiers, and the canonical empty fragment
   endpoint. Each advance derives only the next window of at most 256 physical pages/items from those
-  frontiers under the 520-read and 34,078,720-byte acquisition ceilings, validates or derives its
+  frontiers under the 521-read and 34,144,256-byte acquisition ceilings, validates or derives its
   separately bounded maximum of 256 fragments and 65,536 inserted UTF-8 bytes, and persists the
   successor lane and fragment checkpoints. A source-only window advances its durable lane frontier
   even when it creates no fragment. Reconciliation and same-home restart start
@@ -2000,8 +2044,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   supplied charges, and proves the required stable-id absence. The same atomic admission either completes the bounded path copies or stores one
   fixed-size pending effect bound to the exact working roots and validated source/destination proofs.
   While it is pending, no later proposal item advances; bounded continuation commands write only
-  unreachable working records, and one final effect command atomically installs both new working
-  roots, updates the mapping, and clears the pending effect. A pure insert omits the removal half and
+  unreachable working records, and one final effect command atomically installs the new sequence,
+  identity-index, and marker-order-commitment working roots, updates the mapping, and clears the
+  pending effect. A pure insert omits the removal half and
   proves absence in both the predecessor and working index; a
   pure removal omits insertion. Destinations may address text already introduced by earlier canonical
   proposal effects. An anchor beyond the current working logical extent or construction frontier is
@@ -2017,14 +2062,17 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   original command is not a second effect. This existing working identity index, plus one bounded
   pending-effect field in the build receipt/head while path-copy work is incomplete, replaces any
   operation-wide marker map or effect collection.
-- Successor construction is a bounded resumable copy-on-write fold over both structures in canonical
+- Successor construction is a bounded resumable copy-on-write fold over all three structures in canonical
   proposal order. A text edit that leaves marker occurrences unchanged reuses the complete identity-
-  index root even when all following absolute anchors shift. The build head retains only counts,
+  index and marker-order-commitment roots even when all following absolute anchors shift. A marker
+  insert, remove, move, or same-id replacement path-copies only bounded-height paths in the marker
+  commitment tree as well as the affected sequence/index paths. The build head retains only counts,
   proposal digests, staging/structure frontiers, bounded pending-effect state, and its latest progress-
   receipt key/digest, never the whole edit or payload.
 - Each completed marker effect advances a changed-occurrence count/digest frontier that commits its
-  sequence/index agreement. Completion requires balanced sequence and identity-index roots whose
-  summaries and digests agree with the build head, equal marker/index-record counts, the final
+  sequence/index/commitment agreement. Completion requires balanced sequence, identity-index, and
+  marker-order-commitment roots whose summaries and digests agree with the build head, equal marker/
+  index/commitment counts and maximum labels, the final
   changed-occurrence frontier, and reused authenticated subtree commitments; it does not reread prior
   marker-effect pages. It rejects
   duplicate same-anchor order keys on each affected sequence path, shares unaffected immutable subtrees, and
@@ -2038,7 +2086,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   candidate-root and history-transition natural keys absent. After the exact successor-charge
   preflight admits successor construction, one command authenticates the current progress endpoint
   and immediate-predecessor/root closure; creates the next terminal progress receipt and immutable
-  paired-root record; advances only that session by exactly one candidate generation; marks the new
+  combined-root record; advances only that session by exactly one candidate generation; marks the new
   generation dirty; appends the compact before/after root, caret, and directed-selection transition
   with its canonical one-based journal depth and complete 64-slot ancestor witness derived from the
   authenticated predecessor in at most 64 point reads; advances the durable history frontier and the
@@ -2079,7 +2127,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   indeterminate completion reconciles the complete source/target closure before returning one of
   the same five terminal results.
 - Sealed-composer import final selection is not ordinary edit adoption and appends no transition.
-  It requires the revision-checked current-draft root/history pair, the completed import build, an
+  It requires the revision-checked current-draft root/history pair and a completed import build that
+  derived, built, and cross-validated the sequence tree, marker-identity index, and marker-order-
+  commitment tree and summary from the same bounded sealed-`ComposerV1` stream, plus an
   absent custody slot, and a session whose published/newest pairs are still equal at that
   predecessor. One atomic command selects the imported root and fresh-baseline history in the
   current draft, advances both session published/newest pairs to that same imported pair so the
@@ -2122,17 +2172,17 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `HomeCommand::Committed` returns only the matching durable settlement record and receipt. A
   terminal-election `HomeCommand::Indeterminate` installs sole reconciliation custody and returns
   no public terminal outcome until the source-versus-target head and complete closure classify the
-  command. A matching settlement is returned exactly, including both adopted structure roots and
+  command. A matching settlement is returned exactly, including all three adopted structure roots and
   summaries after later candidate descendants, only when the stored head selects the target and all
   same-command bytes, including the custody-slot before/after state, match. A source-selecting head
   with absent target and matching claimed custody keeps the operation pending
   and reissues the appropriate terminal election against the same exact build; a source-selecting
-  head with any occupied target fails closed. It never infers an outcome from a settlement or either
+  head with any occupied target fails closed. It never infers an outcome from a settlement or any
   structure's shape alone.
 - While an explicit live candidate session remains owned, an open or complete build without a
   settlement must agree with its active-operation slot, which retains reconciliation custody; a
   terminal build must name its exact agreeing
-  settlement and terminal progress receipt. Either structure or a session-head adoption without its
+  settlement and terminal progress receipt. Any structure or a session-head adoption without its
   `Committed` settlement and receipt closure, a terminal mismatch, or another impossible closure
   keeps that session fail-closed. Routine fresh
   service activation does not scan or resume candidate sessions or their builds: it reads only the
@@ -2163,6 +2213,32 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   direct-threshold result when the captured adoption advanced the floor, receipt endpoint and
   immediate predecessor, and compact head and never walks predecessor settlements, progress
   receipts, or the journal.
+- Before publication contribution preparation, this package compares the prior published root's
+  exact `DraftMarkerCommitmentV1` with the captured root's authenticated commitment. Equality uses
+  bounded point reads and admits only reuse/validation of the existing nonempty CurrentDraft Asset
+  head and proof, or exact absent-head validation when marker-free; it performs no marker traversal
+  or seal. A changed commitment, including direct adoption of a historical undo/redo root with a
+  different marker set, requires a completed `DraftMarkerSealProofV1`. Differently shaped but
+  semantically equal commitments may conservatively take this changed path.
+- Marker sealing starts from one exact captured candidate generation and complete combined-root/
+  build/commitment reference. Each bounded page advances the durable marker-order-tree cursor and
+  compact incremental state for the final `SequentialMarkerSummaryV1` and exposes every ordered marker exactly
+  once for downstream Asset staging. Seal completes only at exact EOF when the completed frontier,
+  count, optional maximum label, commitment-tree root, combined root, and build identity all agree.
+  Undo/redo and later editing never replay history or collect markers for sealing; a later candidate
+  does not change the immutable captured source. Cancellation, failure, restart, replay,
+  supersession, collision, and corruption retain bounded cursor/custody state and never change the
+  current-draft selector.
+- Changed-marker publication accepts only the package-issued opaque marker-seal proof. For a
+  changed nonempty commitment, this package's existing mutating Syndic participant also requires
+  the matching opaque Asset proof and validates its `SequentialMarkerSummaryV1` against the seal.
+  For changed-to-empty, it instead validates that the seal proves the exact empty sequential
+  summary and requires the exact Asset removal contribution; there is no Asset proof or synthetic
+  empty set. The enclosing
+  `HomeCommand` contains that one Syndic mutation participant and one Asset participant; it contains
+  no second same-domain Syndic validation participant. Asset disagreement rejects the whole
+  command, and neither domain publishes alone. A caller-constructed summary, detached commitment,
+  or app-supplied mapping between them authorizes nothing.
 - Publication cancellation is effective only before writer admission. `HomeCommand::NotCommitted`
   preserves the exact prior selector and head. `HomeCommand::Indeterminate` returns sole
   reconciliation custody; only the exact immutable publication receipt plus a coherent selector
@@ -2182,7 +2258,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   Disposal deletes no root, settlement, progress receipt, fragment, or asset record.
 - `ComposerV1` materialization binds its operation and deterministic output content identity to one
   exact immutable combined root and format version. Each bounded step advances the sequence input
-  cursor and content-output frontier together. Seal requires exact end-of-root, paired-root summary/digest,
+  cursor and content-output frontier together while retaining the content-bound
+  `SealedContentMarkerSummary` with its embedded `SequentialMarkerSummaryV1`. Seal requires exact end-of-root, combined-root summary/digest,
   output chunk/text/piece/marker frontiers, and canonical Composer digest; it atomically seals the
   content and publishes the unique combined-root-to-content mapping without changing the draft. Exact retry
   resumes or returns that same result, while a different result at the same natural identity is a
@@ -2214,8 +2291,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   aggregates, creates the caller-named replacement current draft, and disposes the consumed editor
   session without creating a competing submitted turn. Later route transitions preserve that accepted-input identity and permanent
   membership.
-- The same first-acceptance command validates the compact sealed-set proof against the exact content
-  sequence marker digest/count and identity-index count, advances the thread frontier monotonically,
+- The same first-acceptance command independently validates the root-bound sealed `ComposerV1`
+  content identity/full digest, requires its `SealedContentMarkerSummary`'s embedded
+  `SequentialMarkerSummaryV1` to equal the compact sealed-set proof's content-neutral summary,
+  validates the identity-index count, advances the thread frontier monotonically,
   and creates at most one immutable
   local origin span. Per-marker validation already completed through bounded set-staging pages;
   later delivery disposition changes never rescan or rewrite label authority.
@@ -2391,8 +2470,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   image-label frontier as the child's immutable inherited/current starting frontier, and
   context-owner identity. It copies no label-origin spans.
 - Starting replacement edit first streams the target user item's exact sealed content and marker
-  facts through a sealed-composer-import build into one complete immutable sequence tree and
-  marker-identity index. Its final command revision-checks the current empty draft and atomically
+  facts through a sealed-composer-import build that derives, builds, and validates one complete
+  immutable sequence tree, marker-identity index, and marker-order-commitment tree and summary from
+  that same bounded stream. Only after all three structures and cross-summaries agree does its final
+  command revision-check the current empty draft and atomically
   selects that combined root with a fresh-baseline history snapshot bound to the same import
   operation and root, both undo and redo unavailable, while
   setting the exact ordinary-user-turn target and selected-path proof. It retains the target item
@@ -2521,7 +2602,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   or exact target reconciliation proves every batch effect. Later reconciliation reads the natural
   staging records. Authenticated
   finish transfers that one custody slot to the existing builder; only then does candidate construction stage bounded edit fragments and path-copied
-  sequence and marker-identity-index records, then adopts one compact combined-root reference into
+  sequence, marker-identity-index, and marker-order-commitment records, then adopts one compact combined-root reference into
   the exact editor session. Autosave separately publishes an already adopted captured frontier into
   the current-draft selector. The compact build and session records contain no resident whole edit,
   replacement collection, or page payload. Canonical proposal fragments remain one-based immutable
@@ -2533,7 +2614,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   are the durable progress authority. The next bounded staging window is derived only from those
   fields and durable staging custody; no app reconstruction or operation-prefix scan participates.
   Work and writes for an edit are proportional to its inserted fragments, affected base ranges, and
-  copied paths in both bounded-height structures, not to unchanged prefix or suffix length.
+  copied paths in the three bounded-height structures, not to unchanged prefix or suffix length.
 - The final ordinary adoption command also appends one compact root transition and advances the
   durable history frontier. Undo and redo instead use the dedicated direct historical-root adoption
   command. Neither path copies inverse content or scans unchanged root/history state; both publish
@@ -2567,14 +2648,16 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   only compact owner heads whose identity, marker frontier, count, and digest agree with the
   admitted Syndic payload.
 - Candidate adoption is Syndic-local and does not change the Beryl-state current-draft asset-owner
-  head. Candidate publication exposes the captured root's exact marker summary and consumes one
-  enclosing home-command Asset contribution against the single `CurrentDraft(draft id)` head: a
-  changed marker set replaces that head with its newly sealed set or removes it when the last marker
-  is removed; an unchanged nonempty marker set validation-only asserts the existing exact head and
-  proof and reuses its already sealed set; and an already marker-free draft validation-only asserts
-  that the single head is absent. There is no per-root head or synthetic empty set. Any required
-  Asset mutation or validation conflict rejects the
-  whole publication; no candidate root alone becomes durable asset ownership.
+  head. Candidate publication compares the captured and prior authenticated
+  `DraftMarkerCommitmentV1` values. Equality reuses/validates the existing exact nonempty Asset head
+  and proof or validates absent marker-free ownership without a seal or scan. Inequality requires
+  this package's bounded completed marker-seal proof. A nonempty successor also requires the
+  matching new Asset proof and swaps the single `CurrentDraft(draft id)` head; an empty successor
+  requires the seal's exact empty sequential summary and removes the exact prior head without an
+  Asset proof or synthetic set. The one Syndic mutation participant validates the root/commitment/
+  seal and applicable sequential-summary branch; the single Asset participant validates its own
+  owner-head action. There is no same-domain validation participant, per-root head, synthetic empty
+  set, caller-constructible bridge, or partial publication.
 - Validation rejection, revision conflict, and cancellation observed before writer admission leave
   prior canonical Syndic records unchanged. Draft-piece edits additionally persist their immutable
   no-change settlement through a separate terminal-election command. Cancellation after a terminal
@@ -2727,7 +2810,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 - Empty ordinary-thread creation atomically contributes the thread, immutable execution record,
   initial attributes and usage records, empty current draft referencing the canonical immutable
-  empty combined sequence/index root and deterministic canonical-empty edit-history reference,
+  empty combined sequence/index/commitment root and deterministic canonical-empty edit-history reference,
   draft reverse index, current zero-entry transcript head,
   complete history summary, initial compact catalog summary, unbound binding revision, and binding
   head. Natural thread and draft identities are caller-owned inputs; the package derives
@@ -2747,7 +2830,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   outcome; exactly committed requires canonical bytes for every occupied natural record to equal
   the proposed canonical bytes, not merely matching digests.
 - A completed sealed-composer import for replacement editing or composer-history recall is selected
-  only by one revision-checked atomic current-draft command that writes the imported combined root
+  only after its bounded source stream has derived, built, and cross-validated the sequence tree,
+  marker-identity index, and marker-order commitment tree/summary. One revision-checked atomic
+  current-draft command then writes the imported combined root
   and a fresh-baseline immutable history snapshot bound to the same draft/import/root identity. Its
   exact visible availability is undo unavailable and redo unavailable. The command requires any
   prior non-import editor session to be absent or cleanly disposed with equal published/newest
@@ -2757,11 +2842,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   may infer history from the imported root or recover the superseded pair by root digest.
 - Current-draft reads stabilize the reverse index around the thread and draft reads and reject concurrent or contradictory publication rather than returning a mixed generation.
 - An edit starts from one exact candidate-session predecessor, completes its immutable combined
-  sequence/index successor, and adopts it only into that session. Autosave or flush later captures
+  sequence/index/commitment successor, and adopts it only into that session. Autosave or flush later captures
   one adopted candidate/history pair. Its publication requires the exact current draft identity and
   selector revision/root/history triple, active session base and published root/history pair, absent active-operation
-  custody, captured immutable settlement
-  and combined-root summary plus captured immutable history snapshot, and unique publication operation identity; it takes no expected
+  custody, captured immutable settlement and authenticated combined-root summary/marker commitment,
+  the required unchanged-head or changed-seal Asset evidence, captured immutable history snapshot,
+  and unique publication operation identity; it takes no expected
   selected-path thread revision. On the serialized writer snapshot it permits a newer candidate
   head, carries the then-current thread revision into the reverse index, advances the draft selector
   and same session's published root/history pair to the captured pair, preserves thread ownership,
@@ -2779,7 +2865,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 ## Draft Piece-Tree Range Source And Restoration
 
 - Every exact-root draft read requires one combined `DraftPieceRootReferenceV1` and validates its
-  immutable paired-root record, both summaries, applicable node/leaf digest chains, and requested
+  immutable combined-root record, all three summaries, applicable node/leaf digest chains, and requested
   search paths. It does not read
   the mutable current-draft selector before or after traversal and remains a valid historical-root
   integrity read when a newer root becomes current. A missing or inconsistent referenced root is

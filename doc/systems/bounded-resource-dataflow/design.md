@@ -230,6 +230,14 @@ of every allocation made by Beryl or its dependencies.
 - Draft image-marker metadata remains paged or range-indexed. An editor realizes only the marker
   pages needed for its current ranges plus configured overscan; it does not materialize every
   marker merely because the draft is open.
+- A marker-changing draft publication may stream the captured immutable marker order once in
+  bounded pages and therefore take total work proportional to marker count. Its durable cursor,
+  compact digest state, and fixed page custody make that work resumable without retaining the
+  complete marker collection. Text-only publication performs no marker scan.
+- Edit adoption and direct undo/redo root adoption retain logarithmic or compact work even while a
+  captured marker seal runs. Each home service enforces a fixed nonzero seal-flight count and fixed
+  page, cursor, and custody bounds; success, cancellation, failure, supersession, disposal, and home-
+  generation loss release them, and no unbounded queue of save or seal work is retained.
 - Undo, history, autosave staging, image markers, and navigation histories use practical byte,
   page, queue, or operation limits. Undo retention uses its owning durable configurable byte budget
   and explicit retention policy rather than document size or a hardcoded entry count. Limits

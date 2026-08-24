@@ -202,9 +202,10 @@ Keep independent main-window presentation responsive while process-wide services
   prefix, fragment bytes, or app-built reconstruction. It drives `syndic-storage` only by the exact
   `(draft, session, operation)` build endpoint while storage derives each next bounded staging
   window from durable custody. Each command consumes at most 256 physical pages/items under storage's
-  520-read and 34,078,720-byte acquisition ceilings, independently admits at most 256 fragments and
+  521-read and 34,144,256-byte acquisition ceilings, independently admits at most 256 fragments and
   65,536 inserted UTF-8 bytes, and advances a nonempty source-only window even when it produces no
-  fragment. Storage completes both copy-on-write piece-tree and marker-identity-index successors and
+  fragment. Storage completes the copy-on-write piece-tree, marker-identity-index, and marker-order-
+  commitment successors and
   exposes one atomic candidate-adoption command. The app retains only the current
   endpoint and terminal intent while that durable builder runs.
 - Every admitted draft edit reaches exactly one durable `Committed`, `Rejected`, `Conflict`,
@@ -240,15 +241,26 @@ Keep independent main-window presentation responsive while process-wide services
   and Syndic selects the current thread tail atomically. Background accepted-input promotion never
   changes the resident editor, draft record, draft revision, undo state, or draft asset owner.
 - Dirty autosave and timed or lifecycle flush barriers snapshot only an already adopted candidate
-  and edit-history frontier. One atomic home command advances the durable current-draft selector
-  and the same session's published candidate/history frontiers with exactly one Asset case against the single
-  `CurrentDraft(draft id)` head: changed markers replace it with the newly sealed set or remove it
-  after last-marker removal; unchanged nonempty markers validation-only assert its existing exact
-  head and proof and reuse the already sealed set; and an already marker-free draft validation-only
-  asserts that the single head is absent. It creates neither a per-root head nor a synthetic set. It
-  fences the exact durable draft identity, selector revision/root, candidate-session lineage, and
-  captured generation; carries no selected-path thread revision; performs no work proportional to
-  unchanged draft length; and never builds `ComposerV1`.
+  and edit-history frontier. The host first asks Syndic to compare the captured root's exact marker
+  commitment with the prior published root. Equality reuses and validation-asserts the existing
+  nonempty CurrentDraft Asset head and proof, or validates an absent head for marker-free state,
+  without a marker scan. A changed commitment starts or resumes Syndic's bounded seal over the exact
+  captured root. For a nonempty successor, it feeds each returned ordered marker page into Beryl-
+  state's unpublished reference-set construction while retaining only the current pages, cursors,
+  and custody values; an empty successor stages no Asset set.
+  It releases a page only after the exact Syndic seal frontier and Asset staging frontier agree;
+  restart or an ambiguous page outcome replays/reconciles that immutable page from those durable
+  frontiers rather than retaining or reconstructing an operation prefix.
+- After a changed-marker seal completes, the host composes one `HomeCommand` with one Syndic
+  mutation participant and one Asset participant. A changed nonempty commitment also requires the
+  completed Asset set and opaque proof; Syndic requires its `SequentialMarkerSummaryV1` to equal the
+  seal proof's summary, and Asset swaps the exact CurrentDraft head. Changed-to-empty instead has
+  Syndic validate the completed seal against the exact root/commitment and require its exact empty
+  sequential summary/removal branch; the one Asset contribution validates and removes the exact
+  prior head, with no Asset proof or synthetic empty set. The host never constructs a commitment-to-summary mapping, adds a
+  second Syndic validation participant, or creates a per-root Asset head. Publication fences the exact durable draft identity, selector revision/root, candidate-
+  session lineage, and captured generation, carries no selected-path thread revision, performs no
+  work proportional to unchanged draft length, and never builds `ComposerV1`.
 - Edits may continue adopting newer candidates while one captured frontier publishes. Draft
   orchestration retains only exact session, candidate, timer, publication-request, and dirty
   generations around that work. A completion clears only its captured generation and cannot clean
@@ -257,16 +269,25 @@ Keep independent main-window presentation responsive while process-wide services
   ambiguous writer outcome, and repeats from the newest eligible dirty frontier until published
   and candidate frontiers agree; external durable-base conflict or terminal unavailability leaves
   the barrier unsatisfied.
+- Each home service admits only a fixed nonzero number of marker-seal flights and bounded marker and
+  Asset page custody. It coalesces or supersedes obsolete save demand instead of retaining an
+  unbounded queue. Success, cancellation, failure, supersession, session disposal, home-generation
+  loss, and service disposal release every flight, page, cursor, and custody value.
 - Canonical `ComposerV1` materialization is submission-only orchestration and starts only after the
   required flush has selected one exact immutable candidate root as the current draft. The app
   starts or resumes the bounded Syndic materializer without changing the draft or session and
   accepts only its exact sealed root-bound mapping. A later candidate adoption or publication
   neither conflicts with nor rewrites that build or sealed result; it only makes the older result
   ineligible for an acceptance that names the newer current root.
+- Submission materialization retains the content-bound `SealedContentMarkerSummary`, including its
+  embedded `SequentialMarkerSummaryV1`. It may reuse or independently validate exact sequential
+  evidence as required by admission, but it never treats a draft marker-tree commitment as either
+  summary.
 - Submission preparation merge-joins bounded marker pages from that exact root with exact
   Beryl-state asset metadata into one unpublished paged reference set. The admitting home command
-  validates the root-bound `ComposerV1`, marker identity/count/digest, sealed asset proof, and exact
-  compact source and destination owner heads, then publishes Syndic acceptance and the asset-owner
+  independently validates the root-bound `ComposerV1` content identity/full digest through Syndic,
+  requires its embedded `SequentialMarkerSummaryV1` to equal the sealed Asset proof's summary,
+  validates exact compact source and destination owner heads, then publishes Syndic acceptance and the asset-owner
   transition atomically. Marker-free admission carries no synthetic empty set; its validation-only
   Asset participant proves both heads absent on the same serialized writer snapshot.
 - Submission admission validates the same clean editor session and exact published root used by the
@@ -521,7 +542,8 @@ Keep independent main-window presentation responsive while process-wide services
   window or process service cannot reattach the cancelled intent.
 - After successful compaction and while the intent remains exact, the coordinator derives the turn
   and canonical-item identities, stages the fixed ownerless content-addressed candidate with an
-  empty asset proof, revalidates that close or stop did not cancel the intent, and supplies those
+  exact marker-free Asset-head absence contribution and no synthetic set or proof, revalidates that
+  close or stop did not cancel the intent, and supplies those
   facts to atomic settlement. Storage independently verifies the identity domain from the durable
   operation's admission home identity. If user work wins, it consumes the intent and publishes
   accepted-next readiness; if continuation wins, it hands the resulting pending turn to the

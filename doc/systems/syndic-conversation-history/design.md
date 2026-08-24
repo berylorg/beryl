@@ -65,8 +65,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - A current draft is a durable typed pre-submission metadata record with stable id and selector
   revision, one exact immutable published combined draft-root reference, its exact published edit-
   history frontier reference and retention-policy revision, and one closed submission intent: ordinary,
-  branch-context, or replacement. The reference binds both the composite sequence piece-tree root
-  and the persistent marker-identity-index root as one revision. Sequence leaves are UTF-8 text or
+  branch-context, or replacement. The reference binds the composite sequence piece-tree root,
+  persistent marker-identity-index root, and persistent marker-order-commitment-tree root and
+  `DraftMarkerCommitmentV1` as one revision. Sequence leaves are UTF-8 text or
   zero-width image markers; each marker includes its stable identity, same-anchor order, and final
   label ordinal, while Beryl asset references resolve that marker to bytes.
 - An ordinary current draft has no parent or branch context. It is only mutable unsent composer
@@ -76,7 +77,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Beryl transcript presentation may derive one synthetic readonly context group from that immutable envelope at the branch boundary. The group remains presentation-only and keeps stable semantic identity when first submission transitions the context-owning draft into a submitted turn.
 - Autosave or flush publication changes the draft's published combined-root/edit-history pair,
   selector revision, and mutable timestamps. An explicit revision-checked sealed-content import may
-  instead select an imported root with its fresh-baseline history in the same atomic replacement-
+  instead select an imported root only after one bounded source stream derives, builds, and cross-
+  validates its sequence tree, marker-identity index, and marker-order commitment tree/summary; it
+  selects that root with its fresh-baseline history in the same atomic replacement-
   edit or recall operation. Thread owner and submission intent change only through their explicit
   typed operations; replacement start may atomically pair its intent change with that import, and
   ordinary selected-path parentage is not draft state. No operation selects only a root or only a
@@ -84,7 +87,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - A branch-context or replacement draft may exist only with an idle gate and zero live accepted
   work. Promotion's idle gate with positive next-turn work therefore proves that the untouched
   current draft is ordinary without reading or fencing its record.
-- Draft edits stage immutable combined sequence/index successors through bounded commands inside one
+- Draft edits stage immutable combined sequence/index/marker-commitment successors through bounded commands inside one
   explicitly identified durable editor-candidate session. One atomic candidate-adoption command
   writes the immutable settlement, root, and history transition and advances only that session's
   newest candidate/history pair;
@@ -97,9 +100,10 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - A physical record or chunk is bounded, but one logical draft has no fixed whole-content byte ceiling. Storage preserves a draft even when later CAS request assembly rejects it against an exact provider/model limit.
 - An idle-thread submission first flushes the active editor candidate session, then requires one
   sealed `ComposerV1` materialization proven to come from the exact published combined root selected
-  by that flush. Its atomic publication validates that root-bound
-  materialization and the sealed asset-set proof against the combined root's sequence marker
-  digest/count and identity-index count, then selects the then-current committed tail as the
+  by that flush. Its atomic publication independently validates that root-bound materialization's
+  exact content identity/full digest through Syndic and requires the embedded
+  `SequentialMarkerSummaryV1` to equal the sealed Asset proof's content-neutral summary; it never
+  compares the Asset proof with a combined-root sequence digest. It then selects the then-current committed tail as the
   ordinary turn's parent under the exact thread,
   draft, root, and input-gate revisions. It transitions the same draft identity to a submitted
   turn, creates one typed canonical user-input item referencing the sealed content and set proof,
@@ -119,8 +123,10 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   published combined root's sealed `ComposerV1` materialization, and is atomically frozen into one immutable ordered
   accepted-input record referencing that sealed content, compact head of its immutable
   paged marker-reference set, one route-generation identity, and the complete source
-  thread/draft/root/gate revision plus source/replacement draft admission proof. The record is the
-  permanent reconciliation receipt after the replacement draft or route advances. One bounded
+  thread/draft/root/gate revision plus source/replacement draft admission proof. The record becomes
+  authority only after the same independent content identity/full-digest validation and embedded-
+  sequential-summary equality with its Asset proof, then remains the permanent reconciliation
+  receipt after the replacement draft or route advances. One bounded
   mutable route leaf plus the selected route-generation head determines effective steering,
   pending, next-turn, and terminal delivery state. Those transitions retain the same accepted-input
   identity and reference-set ownership; they never create a separate queued-input identity or a
@@ -201,7 +207,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   successful lifecycle-continuation settlement performs one serialized choice: if effective
   accepted-next work exists, it consumes the continuation and releases the gate; otherwise it
   creates one pending conversation turn with `BerylLifecycleContinuation` origin and one canonical
-  user-role item referencing the exact ownerless sealed fixed-text content and empty asset proof.
+  user-role item referencing the exact ownerless sealed fixed-text content with marker-free Asset-
+  head absence evidence and no synthetic Asset set or proof.
   The turn and item identities are domain-separated derivations from the durable record's admission
   home identity and compaction operation. Settlement cannot supply or replace that home identity,
   and the current draft remains unchanged. Writer ordering decides a concurrent admission without
@@ -311,15 +318,15 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   competing same-thread children.
 - Different threads may submit distinct children from the same historical turn without conflict.
 
-## Durable Draft Piece Tree, Candidate Sessions, And Marker Identity Index
+## Durable Draft Piece Tree, Candidate Sessions, Marker Identity, And Marker Commitment
 
 - The autosave backing for a current draft is one durable immutable combined draft root, not
-  `ComposerV1`. It binds a copy-on-write composite sequence piece tree and a copy-on-write marker-
-  identity index keyed by stable marker id. Sequence leaves contain either nonempty UTF-8 ranges or
+  `ComposerV1`. It binds a copy-on-write composite sequence piece tree, a copy-on-write marker-
+  identity index keyed by stable marker id, and an immutable marker-order commitment tree. Sequence leaves contain either nonempty UTF-8 ranges or
   one zero-width marker; bounded sequence nodes retain child extents, disjoint composite search
   envelopes, and integrity summaries. Those envelopes authenticate one bounded descent to a byte
   boundary, exact sequence marker, or adjacent-marker gap even when an arbitrarily long marker run
-  consumes no UTF-8 bytes. Unchanged subtrees in either structure are shared by reference between
+  consumes no UTF-8 bytes. Unchanged subtrees in all three structures are shared by reference between
   candidate roots.
 - The marker-identity index maps each stable marker id only to stable occurrence facts: final label,
   same-anchor order key, and sequence marker-leaf identity and digest. It stores no absolute UTF-8
@@ -330,35 +337,44 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   lookup and then performs one bounded sequence descent at that supplied location to verify the
   named occurrence. ID-only location discovery is not required. Sequence ordering summaries are
   never treated as global marker-id absence authority.
+- The marker-order commitment tree preserves exact composite marker order while each leaf carries
+  only stable marker id and final label. It carries no text position, same-anchor order key, or
+  sequence-leaf identity. Bounded internal nodes commit ordered child identities, structural
+  digests, checked counts, and optional maximum labels. Its root yields
+  `DraftMarkerCommitmentV1`; equal commitments mean the same authenticated structural root, not a
+  promise that independently shaped trees with equal semantics share a digest. Text-only edits
+  reuse the complete identity-index and commitment roots; marker insertion, removal, move, or
+  replacement path-copies only bounded-height paths.
 - Every combined root has one closed build identity. Direct canonical-empty creation is scoped by
   draft and its deterministic empty operation; every editor-built candidate, including a streamed
   sealed-content import, is scoped by exact draft, editor session, and operation. Its canonical
-  summary binds the sequence
-  root identity, height, logical UTF-8 length, logical line count, ordered-piece count, marker
-  count, ordered marker digest, and sequence digest together with the identity-index root identity,
-  height, record count, and identity-index digest. A zero-byte sequence has zero logical lines; a
+  summary binds the sequence root identity, height, logical UTF-8 length, logical line count,
+  ordered-piece count, marker count, and sequence digest; the identity-index root identity, height,
+  record count, and digest; and the marker-order root identity plus exact
+  `DraftMarkerCommitmentV1`. A zero-byte sequence has zero logical lines; a
   nonempty sequence has its checked newline count plus one, including a final empty logical line
   when its last byte is newline. Every leaf and internal-node summary commits checked byte,
   newline, and derived line aggregates, and every node, sequence-root, and combined-root digest
-  commits those summaries. One domain-separated combined-root digest commits both root summaries.
+  commits those summaries. One domain-separated combined-root digest commits all three root summaries.
   Readers and mutations bind to the complete combined reference and summary; a current-draft
   selector revision and an editor-candidate revision are distinct authorities. Either detached root,
   a detached digest, or a byte offset detached from that exact root is not authority.
 - Canonical hashing uses SHA-256 and the exact ASCII domains
-  `syndic/draft-sequence-root/v1/empty`, `syndic/draft-ordered-marker-fold/v1/empty`,
-  `syndic/draft-marker-identity-index-root/v1/empty`, and `syndic/draft-combined-root/v1`.
+  `syndic/draft-sequence-root/v1/empty`, `syndic/draft-marker-identity-index-root/v1/empty`,
+  `syndic/draft-marker-order-commitment-root/v1/empty`, and `syndic/draft-combined-root/v1`.
   The package encoding contract defines their exact length-prefixed preimages. The canonical empty
-  combined root has no sequence or identity-index root node, zero heights and zero
+  combined root has no sequence, identity-index, or marker-order root node, zero heights and zero
   byte/newline/line/piece/marker/index aggregates, the three canonical empty component digests, and the combined
-  digest over both empty summaries. The combined-root digest always hashes the complete canonical
-  sequence and identity-index summaries, including for empty, text-only, and marker-only drafts.
+  digest over all three empty summaries. The combined-root digest always hashes the complete canonical
+  sequence, identity-index, and marker-order summaries, including for empty, text-only, and marker-only drafts.
 - Every newly created canonical empty draft uses the package-owned deterministic empty-root-build
   operation identity derived from its stable draft id. That identity applies to initial thread,
   replacement-draft, and other direct empty-draft creation; an edit whose successor happens to be
   empty retains its caller-owned edit operation identity qualified by its editor session. Each
   closed root-build identity owns its exact root record and reference; shared empty digests are content integrity, not cross-
-  draft owner or selector-revision identity. Zero sequence markers require the empty identity index even when text makes
-  the sequence tree nonempty; any marker-count/index-emptiness disagreement is corruption.
+  draft owner or selector-revision identity. Zero sequence markers require the empty identity index
+  and empty marker-order commitment even when text makes the sequence tree nonempty; any marker-
+  count/index/commitment disagreement is corruption.
 - A storage-neutral composite position is one logical UTF-8 byte offset plus a constant-size gap
   witness at that anchor. The witness proves the before-all edge, one exact adjacent-marker pair,
   or the after-all edge in the selected root, so positions before, between, and after any number of
@@ -456,11 +472,12 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   identity, and before/after lane frontiers; and compares the result with the immutable finished
   declaration. One post-finish staging-window command consumes at most 256 consecutive physical
   pages and their 256 one-item records. It uses at most two page/receipt point reads per page plus
-  exactly eight fixed endpoint-read slots: candidate-session head, staging head, finished staging
+  exactly nine fixed endpoint-read slots: candidate-session head, staging head, finished staging
   receipt, build head, selected build receipt, its immediate predecessor when present, working
-  sequence root, and working identity-index root. The staging-window acquisition closure therefore
-  uses at most 520 point reads and 34,078,720 complete encoded-value bytes, derived with checked
-  arithmetic from 520 records at the existing 65,536-byte per-value ceiling. Bounded structure
+  sequence root, working identity-index root, and working marker-order-commitment root. The staging-
+  window acquisition closure therefore uses at most 521 point reads and 34,144,256 complete
+  encoded-value bytes, derived with checked arithmetic from 521 records at the existing 65,536-byte
+  per-value ceiling. Bounded structure
   descents and path-copy reads for applying an item remain governed separately by their existing
   height/record limits.
 - Thus a restart locates the next bounded staging window in `O(1)` work relative to operation length
@@ -545,8 +562,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   in one bounded marker-effect admission. That atomic transition either completes the bounded path copies immediately or
   stores one fixed-size pending effect bound to the exact working roots and validated source/
   destination proofs. While pending, no later proposal effect is admitted; bounded path-copy commands
-  create only unreachable working records, and one final transition atomically installs both new
-  working roots and clears the pending effect. An insert omits
+  create only unreachable working records, and one final transition atomically installs the new
+  sequence, identity-index, and marker-order-commitment working roots and clears the pending effect. An insert omits
   only the removal checks and instead proves predecessor and working-index absence. A removal omits
   only successor insertion. The destination may address text already applied in canonical proposal
   order, including text on earlier pages. An anchor beyond the current working logical extent or
@@ -563,8 +580,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   same-id replacement the id maps to the new leaf rather than the exact predecessor occurrence, so a
   later effect cannot revalidate the required source facts. Exact replay of the page command is
   classified only by its byte-equal target closure and is not a second semantic effect. Text
-  insertion before any unchanged marker suffix changes no identity-index record.
-- Building a successor begins only from the authenticated finished staging endpoint, walks only the affected predecessor ranges and bounded paths in both structures,
+  insertion before any unchanged marker suffix changes neither the identity-index nor marker-order-
+  commitment root.
+- Building a successor begins only from the authenticated finished staging endpoint, walks only the affected predecessor ranges and bounded paths in all three structures,
   writes new leaves and path-copied nodes in bounded steps, and reuses every unaffected subtree.
   The compact mutable build head retains counts, proposal commitments, progress frontiers, and the
   exact latest progress-receipt key and digest only; it is not authenticated by a mutable self-hash.
@@ -596,7 +614,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   encoded as the canonical empty endpoint before any fragment and otherwise naming the one-based
   endpoint key and canonical fragment digest plus its chain; the exact staging identity and finished-
   head/receipt reference; current phase and relational cursors; consumed source- and proposal-lane
-  staging frontiers; working sequence and identity-index roots with their complete summaries; source
+  staging frontiers; working sequence, identity-index, and marker-order-commitment roots with their complete summaries; source
   and successor structure frontiers; changed-occurrence count/digest frontier; bounded pending
   marker-effect state when one path-copy quantum cannot finish it; next record ordinal;
   optional successor root and build digest; lifecycle; and a domain-separated receipt digest that
@@ -643,21 +661,23 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   effect. Exact replay requires that byte-equal target closure; a source-selected head requires every
   target key absent, and partial or ahead occupancy fails closed. At staging exhaustion, both consumed
   lane frontiers must equal the frozen final frontiers byte for byte and the derived fragment count,
-  endpoint, and chain must equal the finish-derived proposal header. Final root/index closure then
-  requires the exact completed structure frontiers, equal sequence-marker/index counts, and changed-
+  endpoint, and chain must equal the finish-derived proposal header. Final three-structure closure then
+  requires the exact completed structure frontiers, equal sequence-marker/index/commitment counts
+  and maximum labels, and changed-
   occurrence agreement. Those cumulative authenticated checkpoints prove source/target closure after
   restart without rereading prior pages or fragments.
 - Each marker-effect transition incrementally commits exact cross-structure occurrence agreement and
   advances the changed-occurrence count/digest frontier. Before candidate adoption, the completed
-  sequence and identity-index successors must have equal marker count, matching authenticated reused-
-  subtree commitments, and summaries equal to that final frontier. The final command never rescans
+  sequence, identity-index, and marker-order-commitment successors must have equal marker count and
+  maximum label, matching authenticated reused-subtree commitments, and summaries equal to that
+  final frontier. The final command never rescans
   prior marker effects. The final revision-checked candidate-adoption command
   atomically writes the combined successor root and summary, immutable settlement proof and history
   transition, and the matching editor session's next candidate revision and newest candidate/
   history pair. It does not advance the durable current-draft selector or published root/history
   pair. Its committed result returns that adopted candidate root, matching history frontier, logical
   extent, and successor positions after their gap
-  witnesses validate against the new sequence tree; neither structure can publish independently.
+  witnesses validate against the new sequence tree; none of the three structures can publish independently.
 - Each editor-candidate session is keyed by exact draft and session identity and has one bounded
   durable head. It retains only its immutable durable-base selector revision and root/history pair;
   distinct latest published candidate root/history and newest adopted candidate root/history
@@ -672,11 +692,12 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   linked immutable operations validated by the package. The head contains no text, marker
   collection, whole edit, undo payload, or root graph and is not current-draft authority,
   transcript state, or routine reopen authority.
-- The existing staging-page, staging-progress, build, build-fragment, and build-progress families are
+- The staging-page, staging-progress, build, build-fragment, build-progress, marker-order-
+  commitment, and marker-seal families are
   sufficient for this continuation. Their canonical build-head and build-progress record shapes must
   carry the lane-consumption, finished-staging, fragment-chain, changed-occurrence, and bounded
-  pending-effect fields above; no new primary family, secondary index, page-history family, or operation-wide marker map is
-  part of the architecture.
+  pending-effect fields above; no further secondary index, page-history family, or operation-wide
+  marker map is part of the architecture.
 - Each current draft selects an immutable published edit-history reference: the deterministic
   canonical-empty reference, a named session/frontier publication snapshot, or a fresh-baseline
   snapshot created with an atomic sealed-content import. Every form binds one exact selected root,
@@ -791,7 +812,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   admission leaves the predecessor current;
   cancellation after admission cannot retract the result. Crash or an indeterminate final command
   remains nonterminal while it is reconciled from the operation identity, base and successor
-  combined-root/history pairs, candidate revision, and complete paired-root summary. An exact retry returns the
+  combined-root/history pairs, candidate revision, and complete three-structure combined-root
+  summary. An exact retry returns the
   already classified result only through the target-head and complete-closure check above. For a
   committed floor advance, replay and reconciliation recompute the exact eviction threshold from the
   recorded source/successor accounting, validate the canonical source-versus-target atomic command
@@ -842,7 +864,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   a missing, different, or prematurely cleared required slot is corruption,
   not noncommit or replay. The latter four publish none of the proposed
   replacement.
-- `Committed` writes the settlement proof atomically with both successor structures, the combined
+- `Committed` writes the settlement proof atomically with all three successor structures, the combined
   root, history transition/frontier, session/candidate revision and newest-pair advance, terminal
   progress receipt, and committed build state, and clears the matching active-operation custody slot.
   It does not publish the current draft. Each no-change
@@ -871,7 +893,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   disposable orphan authority and never become a fallback successor.
 - Draft text pages, marker pages, composite-position validation, and restoration validation bind
   one exact combined root with fixed page and retained-byte bounds. An exact-root read validates
-  its paired root record, summaries, requested paths, digests, and cross-structure marker facts but
+  its combined-root record, all three summaries, requested paths, digests, and cross-structure marker facts but
   does not require it to remain the current draft root. Marker-id lookup authenticates through the
   identity index; location validation additionally requires the caller's composite position or
   anchor witness and verifies the named occurrence through one sequence descent. Ordered marker
@@ -942,15 +964,27 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   stays dirty. Validation point-reads the captured immutable settlement/frontier and the compact
   session head and never walks the candidate chain.
 - Candidate adoption does not advance the Beryl-state current-draft asset-owner head. Publication
-  atomically pairs the Syndic selector/root/history and session published-pair advance with exactly
-  one Asset-domain case
-  against the single `CurrentDraft(draft id)` owner head: a changed marker set replaces that head
-  with its newly sealed set, or removes it when the last marker is removed; an unchanged nonempty
-  marker set uses a validation-only assertion of the existing exact head and proof and reuses its
-  already sealed set; and an already marker-free draft uses a validation-only assertion that the
-  single head is absent. No per-root owner head or zero-marker synthetic set exists. Rejected,
+  first compares the prior and captured exact `DraftMarkerCommitmentV1` values inside Syndic.
+  Equality performs no marker scan: nonempty state validation-asserts and reuses the existing exact
+  Asset head and proof, while empty state validates head absence. Inequality starts or resumes a
+  bounded Syndic-owned seal over the captured exact root/marker-order tree. Its durable cursor and
+  compact incremental state stream every ordered marker once and issue opaque
+  `DraftMarkerSealProofV1` only after exact EOF/frontier/count/maximum/commitment/root/build
+  agreement, binding that source to `SequentialMarkerSummaryV1`. Undo/redo adopts historical roots
+  directly and never replays history for this seal.
+- Final publication atomically pairs the Syndic selector/root/history and session published-pair
+  advance with exactly one Asset participant. A changed nonempty commitment requires the completed
+  draft seal plus a new sealed Asset set proof whose `SequentialMarkerSummaryV1` matches; Asset
+  swaps the exact single `CurrentDraft(draft id)` head. Changed-to-empty requires the completed seal
+  proving the exact empty sequential summary, and Asset removes the exact prior head with no Asset
+  proof or synthetic empty set. Syndic validates the empty seal/root/commitment and requires this
+  removal branch; Asset validates the exact head transition. The command contains one mutating
+  Syndic participant and one Asset participant, never a second same-domain Syndic validator. Rejected,
   conflicting, cancelled, failed, superseded, or abandoned candidates never become durable asset
   owners, and their inert sets remain future-GC orphans.
+- Each home service enforces fixed marker-seal flight, page, cursor, and custody bounds. Success,
+  cancellation, failure, supersession, session/service disposal, and home-generation loss release
+  them; obsolete save demand is coalesced or superseded rather than queued without bound.
 - The app host coordinates undo and redo but does not own their authoritative history. Syndic owns
   the durable transition journal and frontier; the widget retains only compact current availability
   and one in-flight protocol session. Autosave and flush preserve exact frontier/root agreement and
@@ -980,7 +1014,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Consumers that require canonical composer content use a separate bounded streamed
   materialization from one exact immutable combined root. The materializer walks sequence text and
   marker leaves in composite order, emits unreachable bounded `ComposerV1` chunks and indexes,
-  verifies end-of-root plus the paired-root summary and output summary, then seals one immutable
+  verifies end-of-root plus the complete combined-root summary and content-bound
+  `SealedContentMarkerSummary` with its embedded `SequentialMarkerSummaryV1`, then seals one immutable
   root-bound content reference. Its cursor, input pages, output batch, and retained state stay bounded even though
   total materialization I/O is proportional to that exact combined root.
 - A materialization never changes the current draft, candidate session, or autosave backing. It
@@ -996,7 +1031,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   sealed exact result remains reusable by other canonical consumers naming that root, while a later
   draft root requires a distinct result.
 - Submission validates that the active candidate session is clean at the same published root used
-  by its materialization, that its published and newest root/history pairs are equal, and that it has
+  by its materialization, independently validates the sealed content identity/full digest, requires
+  the embedded `SequentialMarkerSummaryV1` to equal the Asset proof's content-neutral summary, and
+  validates that its published and newest root/history pairs are equal and that it has
   no active-operation custody. Only the atomic accepted send-and-clear transition disposes that session
   and atomically closes its durable edit-history frontier only after the same local canonical head/
   floor, accounting, pin-reference, and availability closure succeeds, while authorizing the app to clear its
@@ -1004,8 +1041,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   cancellation, error, or ambiguous writer custody preserves the coherent session/frontier until
   exact reconciliation.
 - When an existing sealed `ComposerV1` value becomes editable draft content, replacement and recall
-  preparation stream it through bounded canonical text and marker reads into a new immutable piece-
-  tree and marker-identity index. Only a final revision-checked draft operation selects that complete
+  preparation derives, builds, and cross-validates a new immutable sequence tree, marker-identity
+  index, and marker-order commitment tree/summary from the same bounded canonical text and marker
+  stream. Only after all three agree does a final revision-checked draft operation select that complete
   combined root and an immutable fresh-baseline history snapshot bound to the same draft, import,
   and root. The import is not a text edit: undo and redo are both exactly unavailable until a later
   ordinary edit appends a transition. The same command advances the import session's published and
