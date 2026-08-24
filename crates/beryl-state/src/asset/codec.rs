@@ -18,8 +18,8 @@ mod parts;
 
 use parts::{
     decode_asset, decode_dimensions, decode_fixed_16, decode_image_label_option, decode_ordinal,
-    decode_owner, decode_sealed_proof, decode_source, encode_asset, encode_dimensions,
-    encode_image_label_option, encode_owner, encode_sealed_proof, encode_source, encoded_asset,
+    decode_owner, decode_sealed_proof, decode_summary, encode_asset, encode_dimensions,
+    encode_image_label_option, encode_owner, encode_sealed_proof, encode_summary, encoded_asset,
     invalid, invalid_tag,
 };
 
@@ -108,7 +108,7 @@ impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
         let mut encoder = Encoder::new();
         encoder.fixed(value.set_id.as_bytes());
-        encode_source(&mut encoder, value.source);
+        encode_summary(&mut encoder, value.summary);
         encoder.u8(match value.lifecycle {
             AssetReferenceSetLifecycle::Building => 0,
             AssetReferenceSetLifecycle::Sealed => 1,
@@ -125,7 +125,7 @@ impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
     fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
         let mut decoder = Decoder::new(encoded);
         let set_id = AssetReferenceSetId::from_bytes(decoder.fixed()?);
-        let source = decode_source(&mut decoder)?;
+        let summary = decode_summary(&mut decoder)?;
         let lifecycle = match decoder.u8()? {
             0 => AssetReferenceSetLifecycle::Building,
             1 => AssetReferenceSetLifecycle::Sealed,
@@ -140,7 +140,7 @@ impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
         decoder.finish()?;
         Ok(AssetReferenceSetManifest {
             set_id,
-            source,
+            summary,
             lifecycle,
             marker_count,
             marker_digest,

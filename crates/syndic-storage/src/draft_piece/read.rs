@@ -432,7 +432,12 @@ impl SyndicStorage {
             crate::SyndicPointReadLimit::new(65_536).expect("draft-piece point limit is nonzero"),
         )?;
         match value {
-            Some(value) if value.reference() == root => Ok(Some(value)),
+            Some(value)
+                if value.reference() == root
+                    && draft_piece_root_reference_is_locally_exact_v1(value.reference()) =>
+            {
+                Ok(Some(value))
+            }
             Some(_) => Err(SyndicReadError::Invariant(
                 "draft piece root reference mismatch",
             )),

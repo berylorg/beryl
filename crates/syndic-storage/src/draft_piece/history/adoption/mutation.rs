@@ -14,7 +14,8 @@ use super::super::super::{
     DraftEditorCandidateSessionLifecycleV1, DraftEditorCandidateSessionReadOutcomeV1,
     DraftEditorCandidateSessionRecordKeyV1, DraftEditorCandidateSessionRecordV1,
     DraftEditorCandidateSessionsCodec, DraftEditorCandidateSessionsFamily,
-    DraftPiecePrepareErrorV1, DraftPieceRootsFamily, point_limit, validate_position,
+    DraftPiecePrepareErrorV1, DraftPieceRootsFamily,
+    draft_piece_root_reference_is_locally_exact_v1, point_limit, validate_position,
 };
 use super::super::{
     DraftEditHistoryFrontierKeyV1, DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
@@ -221,6 +222,7 @@ impl SyndicStorage {
                 store,
                 &source_history,
             )?
+            || !draft_piece_root_reference_is_locally_exact_v1(target_root.reference())
         {
             return Err(DraftHistoricalRootAdoptionPrepareErrorV1::InvalidRequest);
         }
@@ -417,13 +419,13 @@ impl DomainMutation<SyndicDomain> for AdoptMutation {
         let settlement = DraftHistoricalRootAdoptionV1::new(
             self.prepared.request,
             self.prepared.request_bytes.clone(),
-            self.prepared.source_history.clone(),
-            self.prepared.selected_transition.clone(),
-            self.prepared.target_root.clone(),
+            Box::new(self.prepared.source_history.clone()),
+            Box::new(self.prepared.selected_transition.clone()),
+            Box::new(self.prepared.target_root.clone()),
             outcome,
-            successor_transition,
-            successor_history,
-            successor_candidate,
+            successor_transition.map(Box::new),
+            successor_history.map(Box::new),
+            successor_candidate.map(Box::new),
         );
         mutations.put::<DraftHistoricalRootAdoptionsCodec>(&settlement.key(), &settlement)?;
         Ok(())
@@ -465,9 +467,9 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
         let settlement = DraftHistoricalRootAdoptionV1::new(
             self.prepared.request,
             self.prepared.request_bytes.clone(),
-            self.prepared.source_history.clone(),
-            self.prepared.selected_transition.clone(),
-            self.prepared.target_root.clone(),
+            Box::new(self.prepared.source_history.clone()),
+            Box::new(self.prepared.selected_transition.clone()),
+            Box::new(self.prepared.target_root.clone()),
             outcome,
             None,
             None,
@@ -518,7 +520,8 @@ fn prepared_closure_is_exact(
             == Some(&prepared.selected_transition)
         && point::<DraftPieceRootsFamily>(reader, &prepared.target_root.reference().key())?
             .as_ref()
-            == Some(&prepared.target_root))
+            == Some(&prepared.target_root)
+        && draft_piece_root_reference_is_locally_exact_v1(prepared.target_root.reference()))
 }
 
 fn current_session(

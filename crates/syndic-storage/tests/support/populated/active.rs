@@ -9,18 +9,18 @@ use beryl_model::{
     SealedAssetReferenceSetProof, SyndicDraftMarkerId, ThreadRevision,
 };
 use syndic_storage::test_faults::{
-    fixture_activity_query_entry_stored_bytes, fixture_advance_item_projection_digest,
-    fixture_empty_projection, fixture_inline_paragraph_projection,
-    fixture_item_projection_digest_seed, fixture_route_leaf_with_transition,
-    fixture_transcript_digest_seed, FixtureRecord,
+    FixtureRecord, fixture_activity_query_entry_stored_bytes,
+    fixture_advance_item_projection_digest, fixture_empty_projection,
+    fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
+    fixture_route_leaf_with_transition, fixture_transcript_digest_seed,
 };
 use syndic_storage::*;
 
 use super::provider::ProviderSeedTurn;
 use super::{
-    active_item, active_projection, active_snapshot, activity_item, agent_item_fixture, build_item,
-    cas_item, cas_thread, cas_turn, command_item_fixture, execution_binding, next_input,
-    steering_input, suffix_item, AgentItemFixtureState,
+    AgentItemFixtureState, active_item, active_projection, active_snapshot, activity_item,
+    agent_item_fixture, build_item, cas_item, cas_thread, cas_turn, command_item_fixture,
+    execution_binding, next_input, steering_input, suffix_item,
 };
 use crate::support::{
     canonical_empty_root_history_pair_for, composer_content_records, draft_id,
@@ -99,8 +99,8 @@ pub(super) fn records() -> Vec<FixtureRecord> {
     let steering_source = steering_content.sealed_marker_summary().unwrap();
     let steering_asset_reference_set = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([59; 16]),
-        steering_source,
-        steering_source.marker_count(),
+        steering_source.sequential(),
+        steering_source.sequential().marker_count(),
         AssetReferenceSetDigest::from_bytes([59; 32]),
     )
     .unwrap();

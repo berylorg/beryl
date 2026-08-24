@@ -25,8 +25,8 @@ use syndic_storage::test_faults::{
     inject_draft_mutation_staging_receipt_digest_corruption,
     inject_draft_mutation_terminal_same_operation_custody,
     inject_draft_piece_candidate_root_collision, inject_draft_piece_custody_endpoint_corruption,
-    inject_draft_piece_session_generation_inflation, reset_syndic_point_read_count,
-    syndic_point_read_count,
+    inject_draft_piece_session_generation_inflation, rekey_draft_piece_root_for_collision,
+    reset_syndic_point_read_count, syndic_point_read_count,
 };
 use syndic_storage::{
     CreateThread, DraftComposerBuildKeyV1, DraftComposerFormatV1,
@@ -52,7 +52,6 @@ use syndic_storage::{
 #[cfg(feature = "test-faults")]
 use syndic_storage::{
     DraftMutationStagingPageKeyV1, DraftMutationStagingProgressReceiptKeyV1, DraftPieceRootKeyV1,
-    DraftPieceRootReferenceV1,
 };
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
@@ -1151,17 +1150,13 @@ fn begin_rejects_occupied_build_and_settlement_natural_identity() {
         let session = open_session(storage, &store, &current, 97, 98);
         let identity = staging_identity(&session, 99);
         let root = session.newest_root();
-        let occupied_root = DraftPieceRootReferenceV1::new(
+        let occupied_root = rekey_draft_piece_root_for_collision(
+            root,
             DraftPieceRootKeyV1::editor_candidate(
                 identity.draft_id(),
                 identity.session_id(),
                 identity.operation_id().as_piece_operation(),
             ),
-            root.root_node(),
-            root.summary(),
-            root.marker_index_root(),
-            root.marker_index_summary(),
-            root.combined_digest(),
         );
         committed(execute(
             &store,

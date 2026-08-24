@@ -50,7 +50,7 @@ fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
             transition_embedded_key,
             transition_value,
         ],
-        [33, 33, 644, 40, 40, 674],
+        [33, 33, 687, 40, 40, 760],
     );
     let exact_budget = frontier_outer_key
         .checked_add(frontier_value)

@@ -7,9 +7,12 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
         .reference(ContentRevision::new(1).unwrap())
         .sealed_marker_summary()
         .unwrap();
-    assert_eq!(marker_free.marker_count(), 0);
-    assert_eq!(marker_free.marker_digest(), content_marker_digest_seed());
-    assert_eq!(marker_free.maximum_image_label(), None);
+    assert_eq!(marker_free.sequential().marker_count(), 0);
+    assert_eq!(
+        marker_free.sequential().marker_digest(),
+        content_marker_digest_seed()
+    );
+    assert_eq!(marker_free.sequential().maximum_image_label(), None);
 
     let home = TestHome::new("phase4-content-marker-summary");
     let mut store = open(home.path());
@@ -34,9 +37,9 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
         .sealed_marker_summary()
         .unwrap();
     assert_eq!(summary.content_id(), content.id());
-    assert_eq!(summary.marker_count(), 2);
-    assert_eq!(summary.marker_digest(), marker_digest);
-    assert_eq!(summary.maximum_image_label(), Some(label_b));
+    assert_eq!(summary.sequential().marker_count(), 2);
+    assert_eq!(summary.sequential().marker_digest(), marker_digest);
+    assert_eq!(summary.sequential().maximum_image_label(), Some(label_b));
 
     execute(
         &store,

@@ -10,8 +10,8 @@ use beryl_home_store::{
 };
 use beryl_model::{
     AssetId, AssetReferenceSetId, ImageLabelOrdinal, SealedAssetReferenceSetProof,
-    SealedContentMarkerSummary, SyndicContentDigest, SyndicContentId, SyndicDraftId,
-    SyndicDraftMarkerId, SyndicItemId, advance_content_marker_digest, content_marker_digest_seed,
+    SequentialMarkerSummaryV1, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
+    advance_sequential_marker_digest, sequential_marker_digest_seed,
 };
 use beryl_state::{
     AppendAssetReferencePage, AssetMediaType, AssetOwner, AssetOwnerHeadAssertion,
@@ -114,12 +114,10 @@ fn marker() -> SyndicDraftMarkerId {
     SyndicDraftMarkerId::from_bytes([7; 16])
 }
 
-fn marker_summary() -> SealedContentMarkerSummary {
+fn marker_summary() -> SequentialMarkerSummaryV1 {
     let label = ImageLabelOrdinal::FIRST;
-    SealedContentMarkerSummary::new(
-        SyndicContentId::from_bytes([8; 16]),
-        SyndicContentDigest::from_bytes([9; 32]),
-        advance_content_marker_digest(content_marker_digest_seed(), marker(), label),
+    SequentialMarkerSummaryV1::new(
+        advance_sequential_marker_digest(sequential_marker_digest_seed(), marker(), label),
         1,
         Some(label),
     )

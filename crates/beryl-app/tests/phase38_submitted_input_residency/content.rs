@@ -321,7 +321,7 @@ pub fn seed_submitted_input(
             let image = shared_image.expect("marker-aware input requires the shared image");
             Some(fixture.seal_repeated_asset_reference_set(
                 draft,
-                reference.sealed_marker_summary().unwrap(),
+                reference.sealed_marker_summary().unwrap().sequential(),
                 marker_count,
                 image.asset,
             ))

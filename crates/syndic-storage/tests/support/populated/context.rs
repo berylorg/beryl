@@ -1,5 +1,5 @@
 use beryl_model::{BindingRevision, DiscussionContextOwnerId, DraftRevision, ProjectionRevision};
-use syndic_storage::test_faults::{fixture_transcript_digest_seed, FixtureRecord};
+use syndic_storage::test_faults::{FixtureRecord, fixture_transcript_digest_seed};
 use syndic_storage::*;
 
 use super::{source_item, source_projection, source_turn};

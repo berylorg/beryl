@@ -122,37 +122,6 @@
 //! # }
 //! ```
 //!
-//! # Asset Reference Sets
-//!
-//! Marker-bearing content is staged through fixed-capacity append pages and
-//! sealed before a compact durable owner head may select it. The begin command
-//! emits opaque staging authority; a sealed manifest is readable only with its
-//! complete sealed proof.
-//!
-//! ```
-//! use beryl_model::{
-//!     AssetReferenceSetId, SealedContentMarkerSummary, SyndicContentDigest, SyndicContentId,
-//!     content_marker_digest_seed,
-//! };
-//! use beryl_state::BeginAssetReferenceSet;
-//!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let set_id = AssetReferenceSetId::from_bytes([1; 16]);
-//! let source = SealedContentMarkerSummary::new(
-//!     SyndicContentId::from_bytes([2; 16]),
-//!     SyndicContentDigest::from_bytes([3; 32]),
-//!     content_marker_digest_seed(),
-//!     0,
-//!     None,
-//! )?;
-//! let build = BeginAssetReferenceSet::new(set_id, source);
-//! let staging = build.staging_authority();
-//! assert_eq!(set_id.as_bytes(), &[1; 16]);
-//! let _ = (build, staging);
-//! # Ok(())
-//! # }
-//! ```
-//!
 //! # Example
 //!
 //! ```no_run

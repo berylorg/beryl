@@ -61,9 +61,11 @@ impl Family for DraftHistoricalRootAdoptionsFamily {
         let mut decoder = Decoder::new(bytes);
         let request = dec_request(&mut decoder)?;
         let request_bytes = decoder.bytes("draft historical-root request")?.to_vec();
-        let source_history = dec_history_frontier(&mut decoder)?;
-        let selected_transition = dec_history_transition(&mut decoder)?;
-        let target_root = DraftPieceRootRecordV1::new(dec_root_reference(&mut decoder)?);
+        let source_history = Box::new(dec_history_frontier(&mut decoder)?);
+        let selected_transition = Box::new(dec_history_transition(&mut decoder)?);
+        let target_root = Box::new(DraftPieceRootRecordV1::new(dec_root_reference(
+            &mut decoder,
+        )?));
         let outcome = dec_outcome(&mut decoder)?;
         let successor_transition = dec_optional_transition(&mut decoder)?;
         let successor_history = dec_optional_history(&mut decoder)?;
@@ -245,10 +247,10 @@ fn enc_optional_transition(
 
 fn dec_optional_transition(
     decoder: &mut Decoder<'_>,
-) -> Result<Option<super::super::DraftEditHistoryTransitionV1>, CodecError> {
+) -> Result<Option<Box<super::super::DraftEditHistoryTransitionV1>>, CodecError> {
     match decoder.u8()? {
         0 => Ok(None),
-        1 => Ok(Some(dec_history_transition(decoder)?)),
+        1 => Ok(Some(Box::new(dec_history_transition(decoder)?))),
         tag => Err(CodecError::InvalidTag {
             kind: "optional historical transition",
             tag,
@@ -268,10 +270,10 @@ fn enc_optional_history(
 
 fn dec_optional_history(
     decoder: &mut Decoder<'_>,
-) -> Result<Option<super::super::DraftEditHistoryFrontierV1>, CodecError> {
+) -> Result<Option<Box<super::super::DraftEditHistoryFrontierV1>>, CodecError> {
     match decoder.u8()? {
         0 => Ok(None),
-        1 => Ok(Some(dec_history_frontier(decoder)?)),
+        1 => Ok(Some(Box::new(dec_history_frontier(decoder)?))),
         tag => Err(CodecError::InvalidTag {
             kind: "optional historical frontier",
             tag,
@@ -291,10 +293,10 @@ fn enc_optional_session(
 
 fn dec_optional_session(
     decoder: &mut Decoder<'_>,
-) -> Result<Option<super::super::super::DraftEditorCandidateSessionV1>, CodecError> {
+) -> Result<Option<Box<super::super::super::DraftEditorCandidateSessionV1>>, CodecError> {
     match decoder.u8()? {
         0 => Ok(None),
-        1 => Ok(Some(dec_session_head(decoder)?)),
+        1 => Ok(Some(Box::new(dec_session_head(decoder)?))),
         tag => Err(CodecError::InvalidTag {
             kind: "optional historical candidate",
             tag,

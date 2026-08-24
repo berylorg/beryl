@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use beryl_model::{
     AssetId, AssetProofError, AssetReferenceSetDigest, AssetReferenceSetId, DomainRevision,
-    ImageLabelOrdinal, SealedAssetReferenceSetProof, SealedContentMarkerSummary,
+    ImageLabelOrdinal, SealedAssetReferenceSetProof, SequentialMarkerSummaryV1,
     SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId,
     SyndicRetryRecordId,
 };
@@ -144,14 +144,14 @@ pub enum AssetReferenceSetLifecycle {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AssetReferenceSetStagingAuthority {
     pub(super) set_id: AssetReferenceSetId,
-    pub(super) source: SealedContentMarkerSummary,
+    pub(super) summary: SequentialMarkerSummaryV1,
 }
 
 /// Compact manifest for one staged or sealed immutable marker-reference set.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AssetReferenceSetManifest {
     pub(super) set_id: AssetReferenceSetId,
-    pub(super) source: SealedContentMarkerSummary,
+    pub(super) summary: SequentialMarkerSummaryV1,
     pub(super) lifecycle: AssetReferenceSetLifecycle,
     pub(super) marker_count: u64,
     pub(super) marker_digest: [u8; 32],
@@ -168,8 +168,8 @@ impl AssetReferenceSetManifest {
     }
 
     #[must_use]
-    pub const fn source(&self) -> SealedContentMarkerSummary {
-        self.source
+    pub const fn summary(&self) -> SequentialMarkerSummaryV1 {
+        self.summary
     }
 
     #[must_use]
@@ -212,7 +212,7 @@ impl AssetReferenceSetManifest {
     pub const fn build_proof(&self) -> AssetReferenceSetBuildProof {
         AssetReferenceSetBuildProof {
             set_id: self.set_id,
-            source: self.source,
+            summary: self.summary,
             marker_count: self.marker_count,
             marker_digest: self.marker_digest,
             maximum_image_label: self.maximum_image_label,
@@ -229,7 +229,7 @@ impl AssetReferenceSetManifest {
             AssetReferenceSetLifecycle::Building => None,
             AssetReferenceSetLifecycle::Sealed => match SealedAssetReferenceSetProof::new(
                 self.set_id,
-                self.source,
+                self.summary,
                 self.entry_frontier,
                 self.asset_chain_digest,
             ) {
@@ -244,7 +244,7 @@ impl AssetReferenceSetManifest {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AssetReferenceSetBuildProof {
     pub(super) set_id: AssetReferenceSetId,
-    pub(super) source: SealedContentMarkerSummary,
+    pub(super) summary: SequentialMarkerSummaryV1,
     pub(super) marker_count: u64,
     pub(super) marker_digest: [u8; 32],
     pub(super) maximum_image_label: Option<ImageLabelOrdinal>,
@@ -263,7 +263,7 @@ impl AssetReferenceSetBuildProof {
     pub const fn sealed_proof(self) -> Result<SealedAssetReferenceSetProof, AssetProofError> {
         SealedAssetReferenceSetProof::new(
             self.set_id,
-            self.source,
+            self.summary,
             self.entry_frontier,
             self.asset_chain_digest,
         )

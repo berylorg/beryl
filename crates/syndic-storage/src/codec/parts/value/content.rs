@@ -130,12 +130,10 @@ pub(crate) fn enc_sealed_asset_reference_set_proof(
     proof: SealedAssetReferenceSetProof,
 ) {
     e.fixed16(proof.set_id().as_bytes());
-    let source = proof.source();
-    enc_content(e, source.content_id());
-    e.fixed32(source.content_digest().as_bytes());
-    e.fixed32(&source.marker_digest());
-    e.u64(source.marker_count());
-    enc_opt(e, source.maximum_image_label(), enc_image_label);
+    let summary = proof.summary();
+    e.fixed32(&summary.marker_digest());
+    e.u64(summary.marker_count());
+    enc_opt(e, summary.maximum_image_label(), enc_image_label);
     e.u64(proof.entry_frontier());
     e.fixed32(&proof.asset_chain_digest().as_bytes());
 }
@@ -144,17 +142,15 @@ pub(crate) fn dec_sealed_asset_reference_set_proof(
     d: &mut Decoder<'_>,
 ) -> Result<SealedAssetReferenceSetProof, CodecError> {
     let set_id = AssetReferenceSetId::from_bytes(d.fixed16()?);
-    let source = SealedContentMarkerSummary::new(
-        dec_content(d)?,
-        SyndicContentDigest::from_bytes(d.fixed32()?),
+    let summary = SequentialMarkerSummaryV1::new(
         d.fixed32()?,
         d.u64()?,
         dec_opt(d, "maximum image label", dec_image_label)?,
     )
-    .map_err(|source| invalid("sealed content marker summary", source))?;
+    .map_err(|source| invalid("sequential marker summary", source))?;
     SealedAssetReferenceSetProof::new(
         set_id,
-        source,
+        summary,
         d.u64()?,
         AssetReferenceSetDigest::from_bytes(d.fixed32()?),
     )

@@ -200,7 +200,7 @@ impl AssetState {
         if manifest.lifecycle() != AssetReferenceSetLifecycle::Building {
             return Err(AssetReadError::ReferenceSetNotBuilding(authority.set_id));
         }
-        if manifest.source() != authority.source {
+        if manifest.summary() != authority.summary {
             return Err(AssetReadError::StagingAuthorityMismatch(authority.set_id));
         }
         Ok(manifest)

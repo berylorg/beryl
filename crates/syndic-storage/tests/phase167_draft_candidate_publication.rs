@@ -14,17 +14,17 @@ use beryl_model::{
 };
 use syndic_storage::{
     CreateThread, DraftCompositeGapWitnessV1, DraftCompositePositionV1,
-    DraftEditorCandidatePublicationCommandErrorV1, DraftEditorCandidatePublicationOutcomeV1,
-    DraftEditorCandidatePublicationRequestV1, DraftEditorCandidateSessionDisposeOutcomeV1,
-    DraftEditorCandidateSessionDisposeRequestV1, DraftEditorCandidateSessionIdV1,
-    DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionOpenRequestV1,
-    DraftEditorCandidateSessionReadOutcomeV1, DraftEditorCandidateSessionRecordKeyV1,
-    DraftEditorCandidateSessionV1, DraftEditorCurrentSelectorV1, DraftPieceBuildFragmentV1,
-    DraftPieceEditHeaderV1, DraftPieceOperationIdV1, DraftPieceOperationStatusV1,
-    DraftPieceOperationVerificationV1, DraftPieceReplacementV1, DraftPieceSettlementKeyV1,
-    DraftPieceV1, DraftRootHistoryPairV1, PreparedDraftPieceEditV1, SyndicPointReadLimit,
-    SyndicStorage, SyndicTimestamp, canonical_draft_piece_fragment_chain_v1,
-    canonical_empty_draft_piece_fragment_chain_v1,
+    DraftEditorCandidatePublicationCommandErrorV1, DraftEditorCandidatePublicationEvidenceV1,
+    DraftEditorCandidatePublicationOutcomeV1, DraftEditorCandidatePublicationRequestV1,
+    DraftEditorCandidateSessionDisposeOutcomeV1, DraftEditorCandidateSessionDisposeRequestV1,
+    DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionOpenOutcomeV1,
+    DraftEditorCandidateSessionOpenRequestV1, DraftEditorCandidateSessionReadOutcomeV1,
+    DraftEditorCandidateSessionRecordKeyV1, DraftEditorCandidateSessionV1,
+    DraftEditorCurrentSelectorV1, DraftPieceBuildFragmentV1, DraftPieceEditHeaderV1,
+    DraftPieceOperationIdV1, DraftPieceOperationStatusV1, DraftPieceOperationVerificationV1,
+    DraftPieceReplacementV1, DraftPieceSettlementKeyV1, DraftPieceV1, DraftRootHistoryPairV1,
+    PreparedDraftPieceEditV1, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    canonical_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_fragment_chain_v1,
     test_faults::{
         DraftCandidatePublicationFault, delete_draft_edit_history_frontier,
         delete_draft_piece_terminal_build, inject_draft_candidate_publication_fault,
@@ -589,6 +589,7 @@ fn dirty_disposal_and_durable_base_conflict_are_typed_without_mutation() {
         DraftPieceOperationIdV1::from_bytes([55; 16]),
         dirty.newest_candidate_generation(),
         DraftRootHistoryPairV1::new(dirty.newest_root(), dirty.newest_history()),
+        DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(4),
     );
     let prepared = storage
@@ -644,6 +645,7 @@ fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
         request.operation_id(),
         request.candidate_generation(),
         request.candidate(),
+        request.evidence(),
         SyndicTimestamp::from_unix_millis(4),
     );
     let collision = storage
@@ -667,6 +669,7 @@ fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
         DraftPieceOperationIdV1::from_bytes([66; 16]),
         request.candidate_generation(),
         request.candidate(),
+        request.evidence(),
         request.published_at(),
     );
     let superseded = storage
@@ -1138,6 +1141,7 @@ fn publication_request(
         DraftPieceOperationIdV1::from_bytes([operation; 16]),
         head.newest_candidate_generation(),
         DraftRootHistoryPairV1::new(head.newest_root(), head.newest_history()),
+        DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(at),
     )
 }

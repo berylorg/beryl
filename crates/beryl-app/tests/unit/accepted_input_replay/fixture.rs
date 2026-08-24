@@ -329,7 +329,7 @@ impl Fixture {
         let assets = self.state.assets();
         let begin = BeginAssetReferenceSet::new(
             AssetReferenceSetId::from_bytes([self.seed.wrapping_add(10); 16]),
-            source,
+            source.sequential(),
         );
         let staging = begin.staging_authority();
         execute_one(
@@ -363,7 +363,7 @@ impl Fixture {
             &self.store,
             assets.seal_reference_set(
                 assets.revision(&self.store).unwrap(),
-                SealAssetReferenceSet::new(build, source),
+                SealAssetReferenceSet::new(build, source.sequential()),
             ),
         );
         execute_one(

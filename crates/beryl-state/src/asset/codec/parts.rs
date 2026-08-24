@@ -2,9 +2,8 @@ use std::num::NonZeroU64;
 
 use beryl_model::{
     AssetId, AssetIdentityVersion, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
-    SealedAssetReferenceSetProof, SealedContentMarkerSummary, SyndicAcceptedInputId,
-    SyndicContentDigest, SyndicContentId, SyndicDraftId, SyndicItemId, SyndicProjectionId,
-    SyndicRetryRecordId,
+    SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, SyndicAcceptedInputId, SyndicDraftId,
+    SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
 };
 
 use crate::encoding::{CodecError, Decoder, Encoder};
@@ -64,30 +63,26 @@ pub(super) fn decode_dimensions(
     }
 }
 
-pub(super) fn encode_source(encoder: &mut Encoder, source: SealedContentMarkerSummary) {
-    encoder.fixed(source.content_id().as_bytes());
-    encoder.fixed_32(source.content_digest().as_bytes());
-    encoder.fixed_32(&source.marker_digest());
-    encoder.u64(source.marker_count());
-    encode_image_label_option(encoder, source.maximum_image_label());
+pub(super) fn encode_summary(encoder: &mut Encoder, summary: SequentialMarkerSummaryV1) {
+    encoder.fixed_32(&summary.marker_digest());
+    encoder.u64(summary.marker_count());
+    encode_image_label_option(encoder, summary.maximum_image_label());
 }
 
-pub(super) fn decode_source(
+pub(super) fn decode_summary(
     decoder: &mut Decoder<'_>,
-) -> Result<SealedContentMarkerSummary, CodecError> {
-    SealedContentMarkerSummary::new(
-        SyndicContentId::from_bytes(decoder.fixed()?),
-        SyndicContentDigest::from_bytes(decoder.fixed_32()?),
+) -> Result<SequentialMarkerSummaryV1, CodecError> {
+    SequentialMarkerSummaryV1::new(
         decoder.fixed_32()?,
         decoder.u64()?,
         decode_image_label_option(decoder)?,
     )
-    .map_err(|source| invalid("sealed content marker summary", source))
+    .map_err(|source| invalid("sequential marker summary", source))
 }
 
 pub(super) fn encode_sealed_proof(encoder: &mut Encoder, proof: SealedAssetReferenceSetProof) {
     encoder.fixed(proof.set_id().as_bytes());
-    encode_source(encoder, proof.source());
+    encode_summary(encoder, proof.summary());
     encoder.u64(proof.entry_frontier());
     encoder.fixed_32(&proof.asset_chain_digest().as_bytes());
 }
@@ -97,7 +92,7 @@ pub(super) fn decode_sealed_proof(
 ) -> Result<SealedAssetReferenceSetProof, CodecError> {
     SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes(decoder.fixed()?),
-        decode_source(decoder)?,
+        decode_summary(decoder)?,
         decoder.u64()?,
         AssetReferenceSetDigest::from_bytes(decoder.fixed_32()?),
     )

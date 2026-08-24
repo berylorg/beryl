@@ -121,21 +121,15 @@ impl fmt::Display for ImageLabelOrdinalError {
 
 impl std::error::Error for ImageLabelOrdinalError {}
 
-/// Exact marker evidence retained by one sealed Syndic content object.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct SealedContentMarkerSummary {
-    content_id: SyndicContentId,
-    content_digest: SyndicContentDigest,
+pub struct SequentialMarkerSummaryV1 {
     marker_digest: [u8; 32],
     marker_count: u64,
     maximum_image_label: Option<ImageLabelOrdinal>,
 }
 
-impl SealedContentMarkerSummary {
-    /// Constructs one internally consistent exact marker summary.
+impl SequentialMarkerSummaryV1 {
     pub const fn new(
-        content_id: SyndicContentId,
-        content_digest: SyndicContentDigest,
         marker_digest: [u8; 32],
         marker_count: u64,
         maximum_image_label: Option<ImageLabelOrdinal>,
@@ -144,42 +138,101 @@ impl SealedContentMarkerSummary {
             return Err(AssetProofError::MarkerMaximumMismatch);
         }
         Ok(Self {
-            content_id,
-            content_digest,
             marker_digest,
             marker_count,
             maximum_image_label,
         })
     }
 
-    /// Returns the exact sealed content identity.
-    #[must_use]
-    pub const fn content_id(self) -> SyndicContentId {
-        self.content_id
-    }
-
-    /// Returns the full ordered-content digest.
-    #[must_use]
-    pub const fn content_digest(self) -> SyndicContentDigest {
-        self.content_digest
-    }
-
-    /// Returns the digest of the ordered marker-id and label sequence.
     #[must_use]
     pub const fn marker_digest(self) -> [u8; 32] {
         self.marker_digest
     }
 
-    /// Returns the number of ordered markers.
     #[must_use]
     pub const fn marker_count(self) -> u64 {
         self.marker_count
     }
 
-    /// Returns the greatest image label present, or none for marker-free content.
     #[must_use]
     pub const fn maximum_image_label(self) -> Option<ImageLabelOrdinal> {
         self.maximum_image_label
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct DraftMarkerCommitmentV1 {
+    tree_root_digest: [u8; 32],
+    marker_count: u64,
+    maximum_image_label: Option<ImageLabelOrdinal>,
+}
+
+impl DraftMarkerCommitmentV1 {
+    pub const fn new(
+        tree_root_digest: [u8; 32],
+        marker_count: u64,
+        maximum_image_label: Option<ImageLabelOrdinal>,
+    ) -> Result<Self, AssetProofError> {
+        if (marker_count == 0) != maximum_image_label.is_none() {
+            return Err(AssetProofError::MarkerMaximumMismatch);
+        }
+        Ok(Self {
+            tree_root_digest,
+            marker_count,
+            maximum_image_label,
+        })
+    }
+
+    #[must_use]
+    pub const fn tree_root_digest(self) -> [u8; 32] {
+        self.tree_root_digest
+    }
+
+    #[must_use]
+    pub const fn marker_count(self) -> u64 {
+        self.marker_count
+    }
+
+    #[must_use]
+    pub const fn maximum_image_label(self) -> Option<ImageLabelOrdinal> {
+        self.maximum_image_label
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SealedContentMarkerSummary {
+    content_id: SyndicContentId,
+    content_digest: SyndicContentDigest,
+    sequential: SequentialMarkerSummaryV1,
+}
+
+impl SealedContentMarkerSummary {
+    #[must_use]
+    pub const fn new(
+        content_id: SyndicContentId,
+        content_digest: SyndicContentDigest,
+        sequential: SequentialMarkerSummaryV1,
+    ) -> Self {
+        Self {
+            content_id,
+            content_digest,
+            sequential,
+        }
+    }
+
+    #[must_use]
+    pub const fn content_id(self) -> SyndicContentId {
+        self.content_id
+    }
+
+    #[must_use]
+    pub const fn content_digest(self) -> SyndicContentDigest {
+        self.content_digest
+    }
+
+    #[must_use]
+    pub const fn sequential(self) -> SequentialMarkerSummaryV1 {
+        self.sequential
     }
 }
 
@@ -219,65 +272,56 @@ impl AssetReferenceSetDigest {
     }
 }
 
-/// Compact cross-domain proof for one sealed immutable asset-reference set.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SealedAssetReferenceSetProof {
     set_id: AssetReferenceSetId,
-    source: SealedContentMarkerSummary,
+    summary: SequentialMarkerSummaryV1,
     entry_frontier: u64,
     asset_chain_digest: AssetReferenceSetDigest,
 }
 
 impl SealedAssetReferenceSetProof {
-    /// Constructs proof only when the sealed frontier covers every source marker exactly.
     pub const fn new(
         set_id: AssetReferenceSetId,
-        source: SealedContentMarkerSummary,
+        summary: SequentialMarkerSummaryV1,
         entry_frontier: u64,
         asset_chain_digest: AssetReferenceSetDigest,
     ) -> Result<Self, AssetProofError> {
-        if entry_frontier != source.marker_count() {
+        if entry_frontier != summary.marker_count() {
             return Err(AssetProofError::EntryFrontierMismatch);
         }
         Ok(Self {
             set_id,
-            source,
+            summary,
             entry_frontier,
             asset_chain_digest,
         })
     }
 
-    /// Returns the immutable set identity.
     #[must_use]
     pub const fn set_id(self) -> AssetReferenceSetId {
         self.set_id
     }
 
-    /// Returns the exact source content-marker summary.
     #[must_use]
-    pub const fn source(self) -> SealedContentMarkerSummary {
-        self.source
+    pub const fn summary(self) -> SequentialMarkerSummaryV1 {
+        self.summary
     }
 
-    /// Returns the exact sealed entry frontier.
     #[must_use]
     pub const fn entry_frontier(self) -> u64 {
         self.entry_frontier
     }
 
-    /// Returns the digest of the ordered marker-label-asset chain.
     #[must_use]
     pub const fn asset_chain_digest(self) -> AssetReferenceSetDigest {
         self.asset_chain_digest
     }
 }
 
-/// Why exact shared content-marker or asset-set evidence was inconsistent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AssetProofError {
-    /// Marker-free content has no maximum label and marker-bearing content has one.
     MarkerMaximumMismatch,
-    /// A sealed set must contain exactly one entry for every source marker.
     EntryFrontierMismatch,
 }
 
@@ -296,15 +340,13 @@ impl fmt::Display for AssetProofError {
 
 impl std::error::Error for AssetProofError {}
 
-/// Returns the canonical digest for an empty ordered content-marker sequence.
 #[must_use]
-pub fn content_marker_digest_seed() -> [u8; 32] {
+pub fn sequential_marker_digest_seed() -> [u8; 32] {
     Sha256::digest(b"beryl.syndic.content-markers.v2\0").into()
 }
 
-/// Advances the canonical marker digest by one exact marker-id and label pair.
 #[must_use]
-pub fn advance_content_marker_digest(
+pub fn advance_sequential_marker_digest(
     previous: [u8; 32],
     marker_id: SyndicDraftMarkerId,
     label: ImageLabelOrdinal,

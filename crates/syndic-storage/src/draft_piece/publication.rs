@@ -5,6 +5,7 @@ use beryl_home_store::{
     ReconciliationFailure, ReconciliationReservation, ReconciliationResolution,
 };
 use beryl_model::DomainRevision;
+use beryl_model::{SequentialMarkerSummaryV1, sequential_marker_digest_seed};
 
 use crate::codec::{
     DraftByThreadCodec, DraftByThreadFamily, DraftsCodec, HistorySummariesCodec,
@@ -37,6 +38,9 @@ impl PreparedDraftEditorCandidatePublicationV1 {
     }
     pub const fn captured_frontier(&self) -> &DraftEditHistoryFrontierV1 {
         &self.captured_frontier
+    }
+    pub const fn marker_commitment(&self) -> DraftMarkerCommitmentV1 {
+        self.request.candidate().root().marker_commitment()
     }
 }
 
@@ -82,6 +86,46 @@ impl Error for DraftEditorCandidatePublicationCommandErrorV1 {}
 impl From<SyndicReadError> for DraftEditorCandidatePublicationCommandErrorV1 {
     fn from(value: SyndicReadError) -> Self {
         Self::Read(value)
+    }
+}
+
+fn publication_evidence_is_exact(request: DraftEditorCandidatePublicationRequestV1) -> bool {
+    let prior = request.selector().root().marker_commitment();
+    let captured = request.candidate().root().marker_commitment();
+    let changed = prior != captured;
+    let marker_count = captured.marker_count();
+    let maximum = captured.maximum_image_label();
+    let seal_is_exact = |proof: DraftMarkerSealProofV1| {
+        proof.source() == request.candidate().root()
+            && proof.commitment() == captured
+            && proof.summary().marker_count() == marker_count
+            && proof.summary().maximum_image_label() == maximum
+    };
+    match request.evidence() {
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+            seal_proof,
+            asset_proof,
+        } => {
+            changed
+                && marker_count != 0
+                && seal_is_exact(seal_proof)
+                && asset_proof.summary() == seal_proof.summary()
+        }
+        DraftEditorCandidatePublicationEvidenceV1::ChangedEmpty { seal_proof } => {
+            let empty = SequentialMarkerSummaryV1::new(sequential_marker_digest_seed(), 0, None)
+                .expect("canonical empty sequential marker summary is valid");
+            changed
+                && marker_count == 0
+                && seal_is_exact(seal_proof)
+                && seal_proof.summary() == empty
+        }
+        DraftEditorCandidatePublicationEvidenceV1::UnchangedNonempty { asset_proof } => {
+            !changed
+                && marker_count != 0
+                && asset_proof.summary().marker_count() == marker_count
+                && asset_proof.summary().maximum_image_label() == maximum
+        }
+        DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty => !changed && marker_count == 0,
     }
 }
 
@@ -194,7 +238,9 @@ fn captured_adoption_is_exact(
     frontier: &DraftEditHistoryFrontierV1,
 ) -> Result<bool, SyndicMutationError> {
     let root = required::<DraftPieceRootsFamily>(reader, &captured.newest_root().key())?;
-    if root.reference() != captured.newest_root() {
+    if root.reference() != captured.newest_root()
+        || !draft_piece_root_reference_is_locally_exact_v1(root.reference())
+    {
         return Ok(false);
     }
     authenticate_draft_edit_history_frontier_v1(reader, frontier)?;
@@ -323,6 +369,7 @@ fn captured_adoption_is_exact_in_store(
     )?;
     let Some(root) = root else { return Ok(false) };
     if root.reference() != captured.newest_root()
+        || !draft_piece_root_reference_is_locally_exact_v1(root.reference())
         || !draft_edit_history_frontier_is_authenticated_v1(storage, store, frontier)?
     {
         return Ok(false);
@@ -1058,10 +1105,19 @@ impl SyndicStorage {
             || request.candidate_generation()
                 != request.candidate().history().candidate_generation()
             || request.selector().draft_id() != request.candidate().root().key().draft_id()
+            || !publication_evidence_is_exact(request)
         {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         }
         let limit = point_limit();
+        let root = self
+            .point::<DraftPieceRootsFamily>(store, request.candidate().root().key(), limit)?
+            .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
+        if root.reference() != request.candidate().root()
+            || !draft_piece_root_reference_is_locally_exact_v1(root.reference())
+        {
+            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+        }
         if let Some(record) = self.point::<DraftEditorCandidateSessionsFamily>(
             store,
             publication_key(request),

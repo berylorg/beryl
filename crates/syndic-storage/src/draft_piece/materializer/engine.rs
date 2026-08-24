@@ -136,7 +136,7 @@ impl EncoderWork {
             chunk_count: 0,
             piece_count: 0,
             marker_count: 0,
-            marker_digest: beryl_model::content_marker_digest_seed(),
+            marker_digest: beryl_model::sequential_marker_digest_seed(),
             maximum_image_label: None,
             chain_digest: content_chain_seed(ContentEncoding::ComposerV1),
             carry,
@@ -277,7 +277,7 @@ fn empty_record_frontier() -> DraftComposerRecordFrontierV1 {
         0,
         0,
         0,
-        beryl_model::content_marker_digest_seed(),
+        beryl_model::sequential_marker_digest_seed(),
         None,
         0,
         1,
@@ -1068,7 +1068,7 @@ fn advance_marker_atom(
     if complete {
         work.marker_count = checked_next(work.marker_count)?;
         work.piece_count = checked_next(work.piece_count)?;
-        work.marker_digest = beryl_model::advance_content_marker_digest(
+        work.marker_digest = beryl_model::advance_sequential_marker_digest(
             work.marker_digest,
             marker.marker_id(),
             marker.label(),
@@ -1204,7 +1204,7 @@ fn drain_record(
                 Sha256::digest(encoded).into(),
             )
             .map_err(|_| DraftComposerMaterializationErrorV1::InvalidOutput)?;
-            let digest = beryl_model::advance_content_marker_digest(
+            let digest = beryl_model::advance_sequential_marker_digest(
                 frontier.marker_digest(),
                 marker.marker_id(),
                 marker.label(),

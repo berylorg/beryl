@@ -166,13 +166,13 @@ pub enum DraftHistoricalRootAdoptionSettlementOutcomeV1 {
 pub struct DraftHistoricalRootAdoptionV1 {
     request: DraftHistoricalRootAdoptionRequestV1,
     request_bytes: Vec<u8>,
-    source_history: DraftEditHistoryFrontierV1,
-    selected_transition: DraftEditHistoryTransitionV1,
-    target_root: DraftPieceRootRecordV1,
+    source_history: Box<DraftEditHistoryFrontierV1>,
+    selected_transition: Box<DraftEditHistoryTransitionV1>,
+    target_root: Box<DraftPieceRootRecordV1>,
     outcome: DraftHistoricalRootAdoptionSettlementOutcomeV1,
-    successor_transition: Option<DraftEditHistoryTransitionV1>,
-    successor_history: Option<DraftEditHistoryFrontierV1>,
-    successor_candidate: Option<DraftEditorCandidateSessionV1>,
+    successor_transition: Option<Box<DraftEditHistoryTransitionV1>>,
+    successor_history: Option<Box<DraftEditHistoryFrontierV1>>,
+    successor_candidate: Option<Box<DraftEditorCandidateSessionV1>>,
 }
 
 impl DraftHistoricalRootAdoptionV1 {
@@ -180,13 +180,13 @@ impl DraftHistoricalRootAdoptionV1 {
     pub(crate) fn new(
         request: DraftHistoricalRootAdoptionRequestV1,
         request_bytes: Vec<u8>,
-        source_history: DraftEditHistoryFrontierV1,
-        selected_transition: DraftEditHistoryTransitionV1,
-        target_root: DraftPieceRootRecordV1,
+        source_history: Box<DraftEditHistoryFrontierV1>,
+        selected_transition: Box<DraftEditHistoryTransitionV1>,
+        target_root: Box<DraftPieceRootRecordV1>,
         outcome: DraftHistoricalRootAdoptionSettlementOutcomeV1,
-        successor_transition: Option<DraftEditHistoryTransitionV1>,
-        successor_history: Option<DraftEditHistoryFrontierV1>,
-        successor_candidate: Option<DraftEditorCandidateSessionV1>,
+        successor_transition: Option<Box<DraftEditHistoryTransitionV1>>,
+        successor_history: Option<Box<DraftEditHistoryFrontierV1>>,
+        successor_candidate: Option<Box<DraftEditorCandidateSessionV1>>,
     ) -> Self {
         Self {
             request,
@@ -222,14 +222,14 @@ impl DraftHistoricalRootAdoptionV1 {
     pub const fn outcome(&self) -> DraftHistoricalRootAdoptionSettlementOutcomeV1 {
         self.outcome
     }
-    pub const fn successor_transition(&self) -> Option<&DraftEditHistoryTransitionV1> {
-        self.successor_transition.as_ref()
+    pub fn successor_transition(&self) -> Option<&DraftEditHistoryTransitionV1> {
+        self.successor_transition.as_deref()
     }
-    pub const fn successor_history(&self) -> Option<&DraftEditHistoryFrontierV1> {
-        self.successor_history.as_ref()
+    pub fn successor_history(&self) -> Option<&DraftEditHistoryFrontierV1> {
+        self.successor_history.as_deref()
     }
-    pub const fn successor_candidate(&self) -> Option<&DraftEditorCandidateSessionV1> {
-        self.successor_candidate.as_ref()
+    pub fn successor_candidate(&self) -> Option<&DraftEditorCandidateSessionV1> {
+        self.successor_candidate.as_deref()
     }
 
     pub(crate) fn is_locally_valid(&self) -> bool {

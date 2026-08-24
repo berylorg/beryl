@@ -2,9 +2,10 @@ use std::num::NonZeroU64;
 
 use beryl_model::{AssetId, AssetIdentityVersion, ImageLabelOrdinal, ImageLabelOrdinalError};
 use beryl_model::{
-    AssetProofError, AssetReferenceSetDigest, AssetReferenceSetId, SealedAssetReferenceSetProof,
-    SealedContentMarkerSummary, SyndicContentDigest, SyndicContentId, SyndicDraftMarkerId,
-    advance_content_marker_digest, content_marker_digest_seed,
+    AssetProofError, AssetReferenceSetDigest, AssetReferenceSetId, DraftMarkerCommitmentV1,
+    SealedAssetReferenceSetProof, SealedContentMarkerSummary, SequentialMarkerSummaryV1,
+    SyndicContentDigest, SyndicContentId, SyndicDraftMarkerId, advance_sequential_marker_digest,
+    sequential_marker_digest_seed,
 };
 
 #[test]
@@ -43,37 +44,40 @@ fn image_label_ordinals_use_checked_bijective_letters() {
 }
 
 #[test]
-fn marker_free_and_marker_bearing_summaries_are_exact() {
+fn marker_summaries_and_commitments_are_exact() {
     let content_id = SyndicContentId::from_bytes([8; 16]);
     let content_digest = SyndicContentDigest::from_bytes([9; 32]);
-    let empty = SealedContentMarkerSummary::new(
-        content_id,
-        content_digest,
-        content_marker_digest_seed(),
-        0,
-        None,
-    )
-    .unwrap();
+    let empty = SequentialMarkerSummaryV1::new(sequential_marker_digest_seed(), 0, None).unwrap();
     assert_eq!(empty.marker_count(), 0);
     assert_eq!(empty.maximum_image_label(), None);
 
     let label = ImageLabelOrdinal::new(27).unwrap();
     let marker_id = SyndicDraftMarkerId::from_bytes([10; 16]);
-    let digest = advance_content_marker_digest(content_marker_digest_seed(), marker_id, label);
-    let bearing =
-        SealedContentMarkerSummary::new(content_id, content_digest, digest, 1, Some(label))
-            .unwrap();
+    let digest =
+        advance_sequential_marker_digest(sequential_marker_digest_seed(), marker_id, label);
+    let bearing = SequentialMarkerSummaryV1::new(digest, 1, Some(label)).unwrap();
     assert_eq!(bearing.marker_digest(), digest);
     assert_eq!(bearing.maximum_image_label(), Some(label));
     assert_eq!(
-        SealedContentMarkerSummary::new(content_id, content_digest, digest, 1, None),
+        SequentialMarkerSummaryV1::new(digest, 1, None),
         Err(AssetProofError::MarkerMaximumMismatch)
     );
+
+    let commitment = DraftMarkerCommitmentV1::new([13; 32], 1, Some(label)).unwrap();
+    assert_eq!(commitment.tree_root_digest(), [13; 32]);
+    assert_eq!(commitment.maximum_image_label(), Some(label));
+    assert_eq!(
+        DraftMarkerCommitmentV1::new([13; 32], 0, Some(label)),
+        Err(AssetProofError::MarkerMaximumMismatch)
+    );
+
+    let sealed = SealedContentMarkerSummary::new(content_id, content_digest, bearing);
+    assert_eq!(sealed.sequential(), bearing);
 
     let set_id = AssetReferenceSetId::from_bytes([11; 16]);
     let chain = AssetReferenceSetDigest::from_bytes([12; 32]);
     let proof = SealedAssetReferenceSetProof::new(set_id, bearing, 1, chain).unwrap();
-    assert_eq!(proof.source(), bearing);
+    assert_eq!(proof.summary(), bearing);
     assert_eq!(proof.asset_chain_digest(), chain);
     assert_eq!(
         SealedAssetReferenceSetProof::new(set_id, bearing, 0, chain),

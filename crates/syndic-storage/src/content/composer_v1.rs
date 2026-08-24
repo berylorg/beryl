@@ -107,7 +107,7 @@ impl<'a, S: ComposerV1RecordSink> ComposerV1Fold<'a, S> {
             chunk_count: 0,
             encoded_bytes: 0,
             logical_utf8_bytes: 0,
-            marker_digest: beryl_model::content_marker_digest_seed(),
+            marker_digest: beryl_model::sequential_marker_digest_seed(),
             maximum_image_label: None,
             chain: content_chain_seed(ContentEncoding::ComposerV1),
             buffer: Vec::with_capacity(crate::CONTENT_CHUNK_MAX_BYTES),
@@ -256,7 +256,7 @@ impl<'a, S: ComposerV1RecordSink> ComposerV1Fold<'a, S> {
         self.marker_count = marker_count;
         self.piece_count = piece_count;
         self.marker_digest =
-            beryl_model::advance_content_marker_digest(self.marker_digest, marker_id, label);
+            beryl_model::advance_sequential_marker_digest(self.marker_digest, marker_id, label);
         self.maximum_image_label = Some(
             self.maximum_image_label
                 .map_or(label, |current| current.max(label)),

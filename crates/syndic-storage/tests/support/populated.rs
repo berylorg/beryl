@@ -17,8 +17,8 @@ use beryl_model::{
     ThreadRevision,
 };
 use provider::{
-    accept_clean, agent_item_fixture, command_item_fixture, correlated_user_item_fixture,
-    AgentItemFixtureState, ProviderItemFixture, ProviderSeedTurn,
+    AgentItemFixtureState, ProviderItemFixture, ProviderSeedTurn, accept_clean, agent_item_fixture,
+    command_item_fixture, correlated_user_item_fixture,
 };
 use seed::provider_command_owned;
 pub use seed::seed_populated;
@@ -27,9 +27,9 @@ use source::{
     execution_binding, source_cas_item, source_cas_thread, source_cas_turn, source_snapshot,
 };
 use syndic_storage::test_faults::{
-    fixture_advance_item_projection_digest, fixture_advance_transcript_digest,
-    fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
-    fixture_transcript_digest_seed, FixtureBatch, FixtureDelete, FixtureRecord,
+    FixtureBatch, FixtureDelete, FixtureRecord, fixture_advance_item_projection_digest,
+    fixture_advance_transcript_digest, fixture_inline_paragraph_projection,
+    fixture_item_projection_digest_seed, fixture_transcript_digest_seed,
 };
 use syndic_storage::*;
 

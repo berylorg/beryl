@@ -76,8 +76,8 @@ impl<'a> Builder<'a> {
                 .unwrap();
             SealedAssetReferenceSetProof::new(
                 AssetReferenceSetId::from_bytes([68; 16]),
-                summary,
-                summary.marker_count(),
+                summary.sequential(),
+                summary.sequential().marker_count(),
                 AssetReferenceSetDigest::from_bytes([69; 32]),
             )
             .unwrap()

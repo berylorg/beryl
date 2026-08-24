@@ -71,6 +71,7 @@ pub enum DraftPieceProgressReceiptCorruption {
 pub enum DraftPieceCandidateRootCollision {
     Exact,
     DifferentCanonicalBytes,
+    MarkerCommitmentDigest,
 }
 
 pub fn draft_piece_fragment_zero_ordinal_codec_rejections(
@@ -158,13 +159,36 @@ pub fn inject_draft_piece_candidate_root_collision(
     let reference = match collision {
         DraftPieceCandidateRootCollision::Exact => root,
         DraftPieceCandidateRootCollision::DifferentCanonicalBytes => {
-            DraftPieceRootReferenceV1::new(
+            DraftPieceRootReferenceV1::new_authenticated(
                 root.key(),
                 root.root_node(),
                 root.summary(),
                 root.marker_index_root(),
                 root.marker_index_summary(),
+                root.marker_order_root(),
+                root.marker_order_height(),
+                root.marker_commitment(),
                 DraftPieceDigestV1::from_bytes([0xA7; 32]),
+            )
+        }
+        DraftPieceCandidateRootCollision::MarkerCommitmentDigest => {
+            let commitment = root.marker_commitment();
+            let corrupted = DraftMarkerCommitmentV1::new(
+                [0xC3; 32],
+                commitment.marker_count(),
+                commitment.maximum_image_label(),
+            )
+            .expect("corrupted marker digest retains the summary shape");
+            DraftPieceRootReferenceV1::new_authenticated(
+                root.key(),
+                root.root_node(),
+                root.summary(),
+                root.marker_index_root(),
+                root.marker_index_summary(),
+                root.marker_order_root(),
+                root.marker_order_height(),
+                corrupted,
+                root.combined_digest(),
             )
         }
     };
@@ -174,6 +198,23 @@ pub fn inject_draft_piece_candidate_root_collision(
             root.key(),
             DraftPieceRootRecordV1::new(reference),
         )),
+    )
+}
+
+pub fn rekey_draft_piece_root_for_collision(
+    root: DraftPieceRootReferenceV1,
+    key: DraftPieceRootKeyV1,
+) -> DraftPieceRootReferenceV1 {
+    DraftPieceRootReferenceV1::new_authenticated(
+        key,
+        root.root_node(),
+        root.summary(),
+        root.marker_index_root(),
+        root.marker_index_summary(),
+        root.marker_order_root(),
+        root.marker_order_height(),
+        root.marker_commitment(),
+        root.combined_digest(),
     )
 }
 
@@ -289,6 +330,7 @@ pub fn inject_draft_piece_build_corruption(
                 fragment_ordinal,
                 next_rank,
                 end_rank,
+                removed_markers,
                 base_end,
                 successor_start,
                 successor_end,
@@ -301,6 +343,7 @@ pub fn inject_draft_piece_build_corruption(
                     fragment_ordinal,
                     next_rank,
                     end_rank: end_rank.saturating_add(1),
+                    removed_markers,
                     base_end,
                     successor_start,
                     successor_end,

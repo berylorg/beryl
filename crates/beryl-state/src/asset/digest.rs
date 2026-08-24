@@ -1,6 +1,6 @@
 use beryl_model::{
     AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
-    SealedContentMarkerSummary, SyndicDraftMarkerId,
+    SequentialMarkerSummaryV1, SyndicDraftMarkerId,
 };
 use sha2::{Digest, Sha256};
 
@@ -8,16 +8,14 @@ use super::AssetReferenceOrdinal;
 
 pub(super) fn seed(
     set_id: AssetReferenceSetId,
-    source: SealedContentMarkerSummary,
+    summary: SequentialMarkerSummaryV1,
 ) -> AssetReferenceSetDigest {
     let mut hash = Sha256::new();
     hash.update(b"beryl.asset-reference-set.v2\0");
     hash.update(set_id.as_bytes());
-    hash.update(source.content_id().as_bytes());
-    hash.update(source.content_digest().as_bytes());
-    hash.update(source.marker_digest());
-    hash.update(source.marker_count().to_be_bytes());
-    match source.maximum_image_label() {
+    hash.update(summary.marker_digest());
+    hash.update(summary.marker_count().to_be_bytes());
+    match summary.maximum_image_label() {
         Some(label) => {
             hash.update([1]);
             hash.update(label.get().to_be_bytes());

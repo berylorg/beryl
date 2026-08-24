@@ -156,7 +156,7 @@ pub(super) fn marker_source_identity(
     runtime_mode: &RuntimeMode,
 ) -> StreamedInputSourceIdentity {
     let summary = content.summary();
-    let proof_source = asset_proof.source();
+    let proof_summary = asset_proof.summary();
     let mut hasher = Sha256::new();
     hasher.update(b"beryl.app.input-replay-marker-source.v1\0");
     hasher.update(home_id.as_bytes());
@@ -175,11 +175,9 @@ pub(super) fn marker_source_identity(
     hash_optional_label(&mut hasher, summary.maximum_image_label());
     hasher.update(summary.digest().as_bytes());
     hasher.update(asset_proof.set_id().as_bytes());
-    hasher.update(proof_source.content_id().as_bytes());
-    hasher.update(proof_source.content_digest().as_bytes());
-    hasher.update(proof_source.marker_digest());
-    hasher.update(proof_source.marker_count().to_be_bytes());
-    hash_optional_label(&mut hasher, proof_source.maximum_image_label());
+    hasher.update(proof_summary.marker_digest());
+    hasher.update(proof_summary.marker_count().to_be_bytes());
+    hash_optional_label(&mut hasher, proof_summary.maximum_image_label());
     hasher.update(asset_proof.entry_frontier().to_be_bytes());
     hasher.update(asset_proof.asset_chain_digest().as_bytes());
     hasher.update(owner_revision.get().to_be_bytes());

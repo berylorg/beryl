@@ -241,7 +241,7 @@ impl PendingOrdinaryExecution {
                 return Err(OrdinaryTurnExecutionError::InputAssetReferenceSetMismatch);
             }
             (_, Some(proof), Some(head), Some(asset_manifest))
-                if proof.source() == marker_summary
+                if proof.summary() == marker_summary.sequential()
                     && head.owner() == asset_owner
                     && head.set() == proof
                     && asset_manifest.sealed_proof() == Some(proof) => {}

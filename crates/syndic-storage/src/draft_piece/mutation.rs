@@ -52,6 +52,7 @@ pub struct PreparedDraftPieceAdvanceV1 {
     leaves: Vec<DraftPieceLeafRecordV1>,
     nodes: Vec<DraftPieceNodeRecordV1>,
     index_records: Vec<DraftMarkerIdentityRecordV1>,
+    marker_order_records: Vec<DraftMarkerOrderRecordV1>,
     records_read: u64,
 }
 
@@ -255,8 +256,10 @@ impl SyndicStorage {
                 )?,
             ))
         };
-        let staged_record_count =
-            quantum.leaves.len() + quantum.nodes.len() + quantum.index_records.len();
+        let staged_record_count = quantum.leaves.len()
+            + quantum.nodes.len()
+            + quantum.index_records.len()
+            + quantum.marker_order_records.len();
         if staged_record_count > DRAFT_PIECE_STAGE_MAX_RECORDS {
             return Err(DraftPiecePrepareErrorV1::Rejected(
                 DraftPieceRejectedReasonV1::TreeLimit,
@@ -298,6 +301,7 @@ impl SyndicStorage {
             leaves: quantum.leaves,
             nodes: quantum.nodes,
             index_records: quantum.index_records,
+            marker_order_records: quantum.marker_order_records,
             records_read: quantum.records_read,
         }))
     }
@@ -1940,6 +1944,13 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
                     return Err(SyndicMutationError::IdentityCollision);
                 }
             }
+            for record in &self.prepared.marker_order_records {
+                if point::<DraftMarkerOrderCommitmentsFamily>(reader, &record.key())?.as_ref()
+                    != Some(record)
+                {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
+            }
             return Ok(());
         }
         if current != self.prepared.expected {
@@ -1966,6 +1977,11 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
                 return Err(SyndicMutationError::IdentityCollision);
             }
         }
+        for record in &self.prepared.marker_order_records {
+            if point::<DraftMarkerOrderCommitmentsFamily>(reader, &record.key())?.is_some() {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
+        }
         Ok(())
     }
 
@@ -1982,6 +1998,11 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
         if !self.prepared.index_records.is_empty() {
             reservation.reserve_records::<DraftMarkerIdentityIndexCodec>(
                 self.prepared.index_records.len(),
+            )?;
+        }
+        if !self.prepared.marker_order_records.is_empty() {
+            reservation.reserve_records::<DraftMarkerOrderCommitmentsCodec>(
+                self.prepared.marker_order_records.len(),
             )?;
         }
         reservation.reserve_records::<DraftPieceBuildsCodec>(1)?;
@@ -2011,6 +2032,11 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
         for record in &self.prepared.index_records {
             if point::<DraftMarkerIdentityIndexFamily>(reader, &record.key())?.is_none() {
                 mutations.put::<DraftMarkerIdentityIndexCodec>(&record.key(), record)?;
+            }
+        }
+        for record in &self.prepared.marker_order_records {
+            if point::<DraftMarkerOrderCommitmentsFamily>(reader, &record.key())?.is_none() {
+                mutations.put::<DraftMarkerOrderCommitmentsCodec>(&record.key(), record)?;
             }
         }
         put_build_transition(mutations, &self.prepared.next, &self.prepared.next_receipt)?;

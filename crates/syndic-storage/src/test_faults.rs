@@ -72,7 +72,7 @@ pub use draft_piece_corruption::{
     inject_draft_piece_fragment_ahead, inject_draft_piece_fragment_corruption,
     inject_draft_piece_occupied_stage_target, inject_draft_piece_progress_receipt_corruption,
     inject_draft_piece_session_generation_inflation,
-    inject_draft_piece_settlement_closure_corruption,
+    inject_draft_piece_settlement_closure_corruption, rekey_draft_piece_root_for_collision,
 };
 pub use draft_piece_current_drift::arm_draft_piece_current_read_fault;
 pub(crate) use draft_piece_current_drift::run_draft_piece_current_read_fault;

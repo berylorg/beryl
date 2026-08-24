@@ -1,6 +1,8 @@
 mod builder_model;
 mod codec;
 mod history;
+mod marker_commitment;
+mod marker_seal;
 mod materializer;
 mod model;
 mod mutation;
@@ -12,8 +14,11 @@ mod staging;
 mod staging_model;
 mod tree;
 
+pub use beryl_model::DraftMarkerCommitmentV1;
 pub use builder_model::*;
 pub use history::*;
+pub use marker_commitment::canonical_empty_draft_marker_commitment_v1;
+pub use marker_seal::*;
 pub use materializer::*;
 pub use model::*;
 pub use mutation::{PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
@@ -47,6 +52,8 @@ pub(crate) use history::{
     enc_history_transition, historical_candidate_session_is_exact,
     historical_candidate_session_is_exact_in_store,
 };
+pub(crate) use marker_commitment::*;
+pub(crate) use marker_seal::DraftMarkerSealsCodec;
 pub(crate) use persistent::*;
 #[cfg(feature = "test-faults")]
 pub(crate) use staging::head_digest;

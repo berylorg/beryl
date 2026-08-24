@@ -8,10 +8,9 @@ use beryl_home_store::{
 };
 use beryl_model::{
     AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
-    SealedAssetReferenceSetProof, SealedContentMarkerSummary, SyndicAcceptedInputId,
-    SyndicContentDigest, SyndicContentId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
-    SyndicProjectionId, SyndicRetryRecordId, advance_content_marker_digest,
-    content_marker_digest_seed,
+    SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, SyndicAcceptedInputId, SyndicDraftId,
+    SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
+    advance_sequential_marker_digest, sequential_marker_digest_seed,
 };
 use beryl_state::{
     ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES,
@@ -55,9 +54,9 @@ fn begin_reference_set(
     store: &HomeStore,
     state: &BerylState,
     set_id: AssetReferenceSetId,
-    source: SealedContentMarkerSummary,
+    summary: SequentialMarkerSummaryV1,
 ) -> AssetReferenceSetStagingAuthority {
-    let command = BeginAssetReferenceSet::new(set_id, source);
+    let command = BeginAssetReferenceSet::new(set_id, summary);
     let authority = command.staging_authority();
     execute(
         store,
@@ -70,28 +69,22 @@ fn begin_reference_set(
 
 fn marker_summary(
     markers: impl IntoIterator<Item = (SyndicDraftMarkerId, ImageLabelOrdinal)>,
-) -> SealedContentMarkerSummary {
-    marker_summary_for(
-        SyndicContentId::from_bytes([7; 16]),
-        SyndicContentDigest::from_bytes([8; 32]),
-        markers,
-    )
+) -> SequentialMarkerSummaryV1 {
+    marker_summary_for(markers)
 }
 
 fn marker_summary_for(
-    content_id: SyndicContentId,
-    content_digest: SyndicContentDigest,
     markers: impl IntoIterator<Item = (SyndicDraftMarkerId, ImageLabelOrdinal)>,
-) -> SealedContentMarkerSummary {
-    let mut digest = content_marker_digest_seed();
+) -> SequentialMarkerSummaryV1 {
+    let mut digest = sequential_marker_digest_seed();
     let mut count = 0_u64;
     let mut maximum = None;
     for (marker, label) in markers {
-        digest = advance_content_marker_digest(digest, marker, label);
+        digest = advance_sequential_marker_digest(digest, marker, label);
         count += 1;
         maximum = Some(maximum.map_or(label, |prior: ImageLabelOrdinal| prior.max(label)));
     }
-    SealedContentMarkerSummary::new(content_id, content_digest, digest, count, maximum).unwrap()
+    SequentialMarkerSummaryV1::new(digest, count, maximum).unwrap()
 }
 
 fn publish_metadata(store: &HomeStore, state: &BerylState) -> (AssetId, std::path::PathBuf) {
@@ -219,11 +212,8 @@ fn digest_vector(
     );
     let set_id = AssetReferenceSetId::from_bytes([set_byte; 16]);
     let marker_id = marker(marker_index);
-    let source = marker_summary_for(
-        SyndicContentId::from_bytes([content_id_byte; 16]),
-        SyndicContentDigest::from_bytes([content_digest_byte; 32]),
-        [(marker_id, label)],
-    );
+    let _ = (content_id_byte, content_digest_byte);
+    let source = marker_summary_for([(marker_id, label)]);
     let staging = begin_reference_set(&store, &state, set_id, source);
     let building = state
         .assets()

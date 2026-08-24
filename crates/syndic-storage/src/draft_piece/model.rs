@@ -1,10 +1,12 @@
+use beryl_model::DraftMarkerCommitmentV1;
+
 use super::{
-    builder_model::DraftPieceDurableBuildContinuationV1,
+    builder_model::DraftPieceDurableBuildContinuationV1, marker_seal::DraftMarkerSealProofV1,
     staging_model::DraftMutationStagingProgressReceiptReferenceV1,
 };
 use beryl_model::{
-    DraftRevision, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
-    ThreadRevision,
+    DraftRevision, ImageLabelOrdinal, SealedAssetReferenceSetProof, SyndicDraftId,
+    SyndicDraftMarkerId, SyndicThreadId, ThreadRevision,
 };
 
 use super::history::{
@@ -382,12 +384,28 @@ impl DraftEditorCandidateSessionOpenRequestV1 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DraftEditorCandidatePublicationEvidenceV1 {
+    ChangedNonempty {
+        seal_proof: DraftMarkerSealProofV1,
+        asset_proof: SealedAssetReferenceSetProof,
+    },
+    ChangedEmpty {
+        seal_proof: DraftMarkerSealProofV1,
+    },
+    UnchangedNonempty {
+        asset_proof: SealedAssetReferenceSetProof,
+    },
+    UnchangedEmpty,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DraftEditorCandidatePublicationRequestV1 {
     selector: DraftEditorCurrentSelectorV1,
     session_id: DraftEditorCandidateSessionIdV1,
     operation_id: DraftPieceOperationIdV1,
     candidate_generation: u64,
     candidate: DraftRootHistoryPairV1,
+    evidence: DraftEditorCandidatePublicationEvidenceV1,
     published_at: SyndicTimestamp,
 }
 
@@ -398,6 +416,7 @@ impl DraftEditorCandidatePublicationRequestV1 {
         operation_id: DraftPieceOperationIdV1,
         candidate_generation: u64,
         candidate: DraftRootHistoryPairV1,
+        evidence: DraftEditorCandidatePublicationEvidenceV1,
         published_at: SyndicTimestamp,
     ) -> Self {
         Self {
@@ -406,6 +425,7 @@ impl DraftEditorCandidatePublicationRequestV1 {
             operation_id,
             candidate_generation,
             candidate,
+            evidence,
             published_at,
         }
     }
@@ -423,6 +443,9 @@ impl DraftEditorCandidatePublicationRequestV1 {
     }
     pub const fn candidate(self) -> DraftRootHistoryPairV1 {
         self.candidate
+    }
+    pub const fn evidence(self) -> DraftEditorCandidatePublicationEvidenceV1 {
+        self.evidence
     }
     pub const fn published_at(self) -> SyndicTimestamp {
         self.published_at
@@ -1071,6 +1094,9 @@ impl DraftEditorCandidatePublicationReceiptV1 {
     pub const fn captured_frontier(&self) -> &DraftEditHistoryFrontierV1 {
         &self.captured_frontier
     }
+    pub const fn marker_commitment(&self) -> DraftMarkerCommitmentV1 {
+        self.successor_selector.root().marker_commitment()
+    }
     pub const fn published_pair(&self) -> DraftRootHistoryPairV1 {
         DraftRootHistoryPairV1::new(
             self.successor_selector.root(),
@@ -1153,6 +1179,20 @@ pub enum DraftEditorCandidatePublicationOutcomeV1 {
     DurableBaseConflict(DraftEditorCurrentSelectorV1),
     SessionDisposed,
     OccupiedIdentityCollision(DraftEditorCandidatePublicationCollisionProofV1),
+}
+
+impl DraftEditorCandidatePublicationOutcomeV1 {
+    pub const fn marker_commitment(&self) -> Option<DraftMarkerCommitmentV1> {
+        match self {
+            Self::Published(selector, _) | Self::DurableBaseConflict(selector) => {
+                Some(selector.root().marker_commitment())
+            }
+            Self::ExactReplay(receipt) => Some(receipt.marker_commitment()),
+            Self::Superseded(_, pair) => Some(pair.root().marker_commitment()),
+            Self::OccupiedIdentityCollision(proof) => Some(proof.occupied().marker_commitment()),
+            Self::SessionDisposed => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1657,16 +1697,22 @@ pub struct DraftPieceRootReferenceV1 {
     summary: DraftPieceSummaryV1,
     marker_index_root: Option<DraftPieceRecordIdV1>,
     marker_index_summary: DraftMarkerIdentityIndexSummaryV1,
+    marker_order_root: Option<DraftPieceRecordIdV1>,
+    marker_order_height: u8,
+    marker_commitment: DraftMarkerCommitmentV1,
     combined_digest: DraftPieceDigestV1,
 }
 
 impl DraftPieceRootReferenceV1 {
-    pub const fn new(
+    pub(crate) const fn new_authenticated(
         key: DraftPieceRootKeyV1,
         root_node: Option<DraftPieceRecordIdV1>,
         summary: DraftPieceSummaryV1,
         marker_index_root: Option<DraftPieceRecordIdV1>,
         marker_index_summary: DraftMarkerIdentityIndexSummaryV1,
+        marker_order_root: Option<DraftPieceRecordIdV1>,
+        marker_order_height: u8,
+        marker_commitment: DraftMarkerCommitmentV1,
         combined_digest: DraftPieceDigestV1,
     ) -> Self {
         Self {
@@ -1675,6 +1721,9 @@ impl DraftPieceRootReferenceV1 {
             summary,
             marker_index_root,
             marker_index_summary,
+            marker_order_root,
+            marker_order_height,
+            marker_commitment,
             combined_digest,
         }
     }
@@ -1697,6 +1746,18 @@ impl DraftPieceRootReferenceV1 {
 
     pub const fn marker_index_summary(self) -> DraftMarkerIdentityIndexSummaryV1 {
         self.marker_index_summary
+    }
+
+    pub const fn marker_order_root(self) -> Option<DraftPieceRecordIdV1> {
+        self.marker_order_root
+    }
+
+    pub const fn marker_order_height(self) -> u8 {
+        self.marker_order_height
+    }
+
+    pub const fn marker_commitment(self) -> DraftMarkerCommitmentV1 {
+        self.marker_commitment
     }
 
     pub const fn combined_digest(self) -> DraftPieceDigestV1 {
@@ -2375,6 +2436,9 @@ pub struct DraftPieceBuildRootsV1 {
     sequence_summary: DraftPieceSummaryV1,
     marker_index_root: Option<DraftPieceRecordIdV1>,
     marker_index_summary: DraftMarkerIdentityIndexSummaryV1,
+    marker_order_root: Option<DraftPieceRecordIdV1>,
+    marker_order_height: u8,
+    marker_commitment: DraftMarkerCommitmentV1,
 }
 
 impl DraftPieceBuildRootsV1 {
@@ -2383,12 +2447,18 @@ impl DraftPieceBuildRootsV1 {
         sequence_summary: DraftPieceSummaryV1,
         marker_index_root: Option<DraftPieceRecordIdV1>,
         marker_index_summary: DraftMarkerIdentityIndexSummaryV1,
+        marker_order_root: Option<DraftPieceRecordIdV1>,
+        marker_order_height: u8,
+        marker_commitment: DraftMarkerCommitmentV1,
     ) -> Self {
         Self {
             sequence_root,
             sequence_summary,
             marker_index_root,
             marker_index_summary,
+            marker_order_root,
+            marker_order_height,
+            marker_commitment,
         }
     }
 
@@ -2398,6 +2468,9 @@ impl DraftPieceBuildRootsV1 {
             root.summary(),
             root.marker_index_root(),
             root.marker_index_summary(),
+            root.marker_order_root(),
+            root.marker_order_height(),
+            root.marker_commitment(),
         )
     }
 
@@ -2412,6 +2485,15 @@ impl DraftPieceBuildRootsV1 {
     }
     pub const fn marker_index_summary(self) -> DraftMarkerIdentityIndexSummaryV1 {
         self.marker_index_summary
+    }
+    pub const fn marker_order_root(self) -> Option<DraftPieceRecordIdV1> {
+        self.marker_order_root
+    }
+    pub const fn marker_order_height(self) -> u8 {
+        self.marker_order_height
+    }
+    pub const fn marker_commitment(self) -> DraftMarkerCommitmentV1 {
+        self.marker_commitment
     }
 }
 
@@ -2452,6 +2534,7 @@ pub enum DraftPieceBuildFrontierV1 {
         fragment_ordinal: u64,
         next_rank: u64,
         end_rank: u64,
+        removed_markers: u64,
         base_end: DraftPieceBuildBoundaryV1,
         successor_start: DraftPieceBuildBoundaryV1,
         successor_end: DraftPieceBuildBoundaryV1,

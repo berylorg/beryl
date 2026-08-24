@@ -19,6 +19,8 @@ const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<DraftPieceNodesCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftPieceLeavesCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftMarkerIdentityIndexCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftMarkerOrderCommitmentsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftMarkerSealsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftPieceBuildsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftPieceBuildFragmentsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftPieceBuildProgressCodec>(KeyspaceSchemaVersion::new(1)),
@@ -88,7 +90,7 @@ const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<CasTurnIndexCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ProviderObservationChunksCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 78] = [(); V5_FAMILIES.len()];
+const _: [(); 80] = [(); V5_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
 pub(crate) fn v5_family_names() -> impl Iterator<Item = &'static str> {
@@ -128,6 +130,8 @@ impl StorageDomain for SyndicDomain {
         classify!(DraftPieceNodesCodec);
         classify!(DraftPieceLeavesCodec);
         classify!(DraftMarkerIdentityIndexCodec);
+        classify!(DraftMarkerOrderCommitmentsCodec);
+        classify!(DraftMarkerSealsCodec);
         classify!(DraftPieceBuildsCodec);
         classify!(DraftPieceBuildFragmentsCodec);
         classify!(DraftPieceBuildProgressCodec);

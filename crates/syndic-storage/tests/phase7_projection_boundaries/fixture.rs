@@ -60,11 +60,11 @@ pub(super) fn project_user_payload(
         .sealed_marker_summary()
         .unwrap();
     let asset_reference_set = asset_reference_set.or_else(|| {
-        (source.marker_count() != 0).then(|| {
+        (source.sequential().marker_count() != 0).then(|| {
             SealedAssetReferenceSetProof::new(
                 AssetReferenceSetId::from_bytes([5; 16]),
-                source,
-                source.marker_count(),
+                source.sequential(),
+                source.sequential().marker_count(),
                 AssetReferenceSetDigest::from_bytes([6; 32]),
             )
             .unwrap()

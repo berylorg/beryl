@@ -29,29 +29,19 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 168: Specify Mutable Draft Marker Commitment And Seal Bridge (finished)
+# Phase 169: Implement Mutable Draft Marker Commitment And Seal Bridge (finished)
 
-Reconciled Composer, Syndic conversation-history, bounded-resource, Beryl-home, image-asset, and
-package authority around distinct structural, content-neutral sequential, and content-bound marker
-evidence; a bounded Syndic seal bridge; four exact current-draft Asset branches; and one atomic
-Syndic/Asset publication cut. Scoped consistency, arithmetic, residue, and diff checks passed, and
-fresh independent persistence/resource/lifecycle review closed with no remaining blocker.
-
-# Phase 169: Implement Mutable Draft Marker Commitment And Seal Bridge (pending)
-
-Add the pure compact commitment value, Syndic's persistent marker-order commitment tree and combined-
-root binding, logarithmic edit/history maintenance, bounded restartable seal cursor and opaque proof,
-Beryl-state content-neutral sequential Asset-set validation, and the exact candidate-publication
-proof checks. Keep the sealed `ComposerV1` content-bound summary and established sequential digest
-semantics unchanged and cut over current schemas directly without a compatibility path.
-
-Verify marker-free, repeated-reference and same-anchor order; text-only commitment stability;
-insert, remove, move, replacement, undo and redo roots; bounded multi-page seal progress; restart,
-cancellation, replay, collision and persisted corruption; forged or stale root/proof/Asset-summary
-rejection; atomic nonpublication on either-domain conflict; fixed seal custody and release; and no
-whole-draft or whole-marker resident collection. Completion requires locked focused integration
-tests, locked production-library checking, formatting, scoped residue checks, and fresh independent
-adversarial review of persistence, resource, replay, and cross-domain authority.
+Cut over the model and Asset schema to separate structural, sequential and content-bound evidence;
+added Syndic's third persistent marker-order tree with logarithmic edit/history maintenance; and
+implemented bounded durable sealing, complete terminal custody release, opaque proofs and four exact
+publication-evidence branches without a compatibility path or caller-authored mapping. The
+historical-adoption settlement closure was heap-indirected without changing codec bytes after
+default-stack reconciliation exposed production-relevant frame pressure. Locked package checks,
+focused model/state/storage/app integration and corruption suites, formatting and residue checks
+passed. An initial adversarial review found missing seal failure/supersession transitions and branch
+evidence; the corrected implementation passed fresh independent persistence, resource, replay and
+cross-domain closure review. Phase 170 retains ownership of service-wide seal-flight admission,
+autosave, flush, disposal and generation-loss coordination.
 
 # Phase 170: Publish Dirty Candidates And Satisfy Flush Barriers (pending)
 

@@ -1,8 +1,8 @@
 use std::convert::Infallible;
 
 use beryl_model::{
-    ContentRevision, SyndicContentId, SyndicDraftMarkerId, advance_content_marker_digest,
-    content_marker_digest_seed,
+    ContentRevision, SyndicContentId, SyndicDraftMarkerId, advance_sequential_marker_digest,
+    sequential_marker_digest_seed,
 };
 use sha2::{Digest, Sha256};
 
@@ -439,9 +439,9 @@ fn composer_record_error(error: ComposerV1FoldError<Infallible>) -> SyndicRecord
 pub(crate) fn input_marker_digest(
     markers: impl IntoIterator<Item = (SyndicDraftMarkerId, ImageLabelOrdinal)>,
 ) -> [u8; 32] {
-    let mut digest = content_marker_digest_seed();
+    let mut digest = sequential_marker_digest_seed();
     for (marker_id, label) in markers {
-        digest = advance_content_marker_digest(digest, marker_id, label);
+        digest = advance_sequential_marker_digest(digest, marker_id, label);
     }
     digest
 }

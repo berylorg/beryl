@@ -1,7 +1,7 @@
 use beryl_home_store::DomainReader;
 use beryl_model::{
     ImageLabelOrdinal, SealedAssetReferenceSetProof, SyndicContentId,
-    advance_content_marker_digest, content_marker_digest_seed,
+    advance_sequential_marker_digest, sequential_marker_digest_seed,
 };
 use sha2::{Digest, Sha256};
 
@@ -149,7 +149,7 @@ fn validate_content_pieces(
     let mut previous_logical = 0_u64;
     let mut marker_since_text = false;
     let mut marker_count = 0_u64;
-    let mut marker_digest = content_marker_digest_seed();
+    let mut marker_digest = sequential_marker_digest_seed();
     let mut maximum_image_label = None;
     scan::<ContentPiecesFamily>(reader, |key, piece| {
         if owner != Some(key.owner) {
@@ -168,7 +168,7 @@ fn validate_content_pieces(
             previous_logical = 0;
             marker_since_text = false;
             marker_count = 0;
-            marker_digest = content_marker_digest_seed();
+            marker_digest = sequential_marker_digest_seed();
             maximum_image_label = None;
         }
         if key.owner != piece.content_id()
@@ -244,7 +244,7 @@ fn validate_content_pieces(
                     return invariant("content image-marker bytes or digest disagree");
                 }
                 marker_count = marker_ordinal.get();
-                marker_digest = advance_content_marker_digest(marker_digest, *marker_id, *label);
+                marker_digest = advance_sequential_marker_digest(marker_digest, *marker_id, *label);
                 maximum_image_label = Some(
                     maximum_image_label.map_or(*label, |maximum| std::cmp::max(maximum, *label)),
                 );
@@ -436,7 +436,7 @@ fn validate_asset_reference_set(
         (0, Some(_)) | (_, None) => {
             invariant("content and optional asset-reference proof disagree")
         }
-        (_, Some(proof)) if proof.source() == expected => Ok(()),
+        (_, Some(proof)) if proof.summary() == expected.sequential() => Ok(()),
         (_, Some(_)) => invariant("asset-reference proof source disagrees with content"),
     }
 }

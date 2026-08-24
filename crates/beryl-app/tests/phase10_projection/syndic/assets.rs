@@ -79,7 +79,10 @@ impl Fixture {
         let base = self.prepare_submission_on(self.thread, payload, None);
         let proof = self.seal_reference_set(
             draft,
-            base.expected_content().sealed_marker_summary().unwrap(),
+            base.expected_content()
+                .sealed_marker_summary()
+                .unwrap()
+                .sequential(),
             references,
         );
         let submission = IdleSubmission::new(
@@ -155,7 +158,7 @@ impl Fixture {
     fn seal_reference_set(
         &self,
         draft: SyndicDraftId,
-        source: beryl_model::SealedContentMarkerSummary,
+        source: beryl_model::SequentialMarkerSummaryV1,
         references: Vec<AssetReferencePageEntry>,
     ) -> SealedAssetReferenceSetProof {
         let assets = self.state.assets();
@@ -214,7 +217,7 @@ impl Fixture {
     pub fn seal_repeated_asset_reference_set(
         &self,
         draft: SyndicDraftId,
-        source: beryl_model::SealedContentMarkerSummary,
+        source: beryl_model::SequentialMarkerSummaryV1,
         marker_count: u64,
         asset: AssetId,
     ) -> SealedAssetReferenceSetProof {

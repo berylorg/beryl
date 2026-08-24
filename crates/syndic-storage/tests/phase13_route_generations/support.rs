@@ -3,7 +3,7 @@ use beryl_model::{
     AcceptedInputRevision, DraftRevision, InputGateRevision, SyndicAcceptedInputId, SyndicDraftId,
     ThreadRevision,
 };
-use syndic_storage::test_faults::{fixture_route_leaf_with_transition, FixtureRecord};
+use syndic_storage::test_faults::{FixtureRecord, fixture_route_leaf_with_transition};
 use syndic_storage::*;
 
 use crate::support::{

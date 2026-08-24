@@ -11,11 +11,9 @@ use beryl_model::{
 };
 use syndic_storage::test_faults::{FixtureDelete, FixtureRecord};
 use syndic_storage::{
-    child_turn_chain_digest, empty_selected_path_digest, prepare_provider_frame,
-    root_turn_chain_digest, stage_provider_frame, ActivateBinding, ActivityQueryHeadRecord,
-    ActivityQuerySource, ActivityQuerySourceRecord, AdvanceItemProjectionBuild,
-    AdvanceTranscriptBuild, BindingLifecycle, BindingRecord, BindingState,
-    CanonicalItemPresentation, CanonicalItemRecord, CasItemSource, CasLineageProof,
+    ActivateBinding, ActivityQueryHeadRecord, ActivityQuerySource, ActivityQuerySourceRecord,
+    AdvanceItemProjectionBuild, AdvanceTranscriptBuild, BindingLifecycle, BindingRecord,
+    BindingState, CanonicalItemPresentation, CanonicalItemRecord, CasItemSource, CasLineageProof,
     CasRepresentedPrefixProof, CasTurnSource, CompleteTerminalHistory, ComposerAtom,
     ComposerPayload, ContentEncoding, ContentLifecycle, ContentReference, ContextEnvelopeRecord,
     DraftByThreadRecord, DraftRecord, DraftSubmissionIntent, FinalizeNextTurnItem,
@@ -32,6 +30,8 @@ use syndic_storage::{
     ThreadImageLabelFrontiers, ThreadParentIndexRecord, ThreadRecord, TranscriptBuildPhase,
     TranscriptViewHeadRecord, TurnChildIndexRecord, TurnDepth, TurnItemIndexRecord,
     TurnItemOrdinal, TurnKind, TurnLifecycle, TurnStateRecord, TurnStateRevision,
+    child_turn_chain_digest, empty_selected_path_digest, prepare_provider_frame,
+    root_turn_chain_digest, stage_provider_frame,
 };
 
 use super::{batch, commit, prepared_content_records, seed_detached_canonical_draft_backing};
@@ -426,8 +426,8 @@ fn validate_asset_reference_set(
             panic!("exact-CAS content and asset-reference proof disagree")
         }
         (_, Some(proof)) => assert_eq!(
-            proof.source(),
-            content.sealed_marker_summary().unwrap(),
+            proof.summary(),
+            content.sealed_marker_summary().unwrap().sequential(),
             "exact-CAS asset-reference proof source disagrees with content"
         ),
     }

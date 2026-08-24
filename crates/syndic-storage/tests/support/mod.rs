@@ -21,7 +21,7 @@ use beryl_model::{
     ProjectionRevision, SyndicContentId, SyndicDraftId, SyndicPathDigest, SyndicThreadId,
     SyndicTurnId, ThreadRevision,
 };
-use syndic_storage::test_faults::{fixture_transcript_digest_seed, FixtureBatch, FixtureRecord};
+use syndic_storage::test_faults::{FixtureBatch, FixtureRecord, fixture_transcript_digest_seed};
 use syndic_storage::{
     BindingHeadRecord, BindingState, ComposerPayload, ContentByteSpanRecord, ContentManifestRecord,
     ContentReference, DraftByThreadRecord, DraftRecord, DraftSubmissionIntent,

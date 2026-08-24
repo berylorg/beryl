@@ -68,8 +68,10 @@ pub(super) fn admit_owner_set(
     }
 
     let source = content.sealed_marker_summary().unwrap();
-    let begin =
-        BeginAssetReferenceSet::new(AssetReferenceSetId::from_bytes([set_seed; 16]), source);
+    let begin = BeginAssetReferenceSet::new(
+        AssetReferenceSetId::from_bytes([set_seed; 16]),
+        source.sequential(),
+    );
     let staging = begin.staging_authority();
     execute_one(
         store,
@@ -99,7 +101,7 @@ pub(super) fn admit_owner_set(
         store,
         assets.seal_reference_set(
             assets.revision(store).unwrap(),
-            SealAssetReferenceSet::new(build, source),
+            SealAssetReferenceSet::new(build, source.sequential()),
         ),
     );
     execute_one(

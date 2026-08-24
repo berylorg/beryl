@@ -238,10 +238,10 @@ fn adoption_reuses_immutable_roots_and_preserves_canonical_records_and_current_p
     );
     assert_eq!(current(storage, &store, thread), durable);
     let names = syndic_v5_family_names();
-    assert_eq!(names.len(), 78);
-    assert_eq!(names[20], "draft-historical-root-adoptions");
-    assert_eq!(names[21], "draft-composer-builds");
-    assert_eq!(names[22], "draft-composer-materializations");
+    assert_eq!(names.len(), 80);
+    assert_eq!(names[22], "draft-historical-root-adoptions");
+    assert_eq!(names[23], "draft-composer-builds");
+    assert_eq!(names[24], "draft-composer-materializations");
 }
 
 #[test]
@@ -590,7 +590,7 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
 
 #[test]
 fn redo_prior_floor_filter_survives_reopen_historical_continuation_and_branch() {
-    let (home, store, storage, thread) = fixture_with_history_budget("redo-prior-floor", 42, 4_000);
+    let (home, store, storage, thread) = fixture_with_history_budget("redo-prior-floor", 42, 4_300);
     let durable = current(storage, &store, thread);
     let session = open_session(storage, &store, &durable, 44, 45);
     let first = edit(storage, &store, &session, 46, "a", 0, 1);

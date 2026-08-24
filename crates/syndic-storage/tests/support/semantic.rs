@@ -1,8 +1,8 @@
 use beryl_home_store::{DomainRegistrationError, DomainValidationError};
 use beryl_model::{SyndicDraftId, SyndicThreadId};
-use syndic_storage::{test_faults::FixtureBatch, SyndicStorage};
+use syndic_storage::{SyndicStorage, test_faults::FixtureBatch};
 
-use super::{commit, open, populated::seed_populated, seed_canonical_empty_thread, TestHome};
+use super::{TestHome, commit, open, populated::seed_populated, seed_canonical_empty_thread};
 
 pub fn exercise_case(
     name: &str,

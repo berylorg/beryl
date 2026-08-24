@@ -120,7 +120,7 @@ fn seal_repeated_reference_set(
     let assets = state.assets();
     let begin = BeginAssetReferenceSet::new(
         AssetReferenceSetId::from_bytes([seed.wrapping_add(10); 16]),
-        source,
+        source.sequential(),
     );
     let staging = begin.staging_authority();
     execute(
@@ -154,7 +154,7 @@ fn seal_repeated_reference_set(
         home,
         assets.seal_reference_set(
             assets.revision(home).unwrap(),
-            SealAssetReferenceSet::new(build, source),
+            SealAssetReferenceSet::new(build, source.sequential()),
         ),
     );
     execute(

@@ -1,7 +1,8 @@
 use beryl_home_store::RecordVersion;
 use beryl_model::{
-    DraftRevision, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
-    ThreadRevision,
+    AssetReferenceSetDigest, AssetReferenceSetId, DraftRevision, ImageLabelOrdinal,
+    SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, SyndicDraftId, SyndicDraftMarkerId,
+    SyndicThreadId, ThreadRevision,
 };
 
 use crate::codec::parts::{Decoder, Encoder, dec_timestamp, enc_timestamp};
@@ -29,6 +30,7 @@ pub(crate) struct DraftPieceRootsFamily;
 pub(crate) struct DraftPieceNodesFamily;
 pub(crate) struct DraftPieceLeavesFamily;
 pub(crate) struct DraftMarkerIdentityIndexFamily;
+pub(crate) struct DraftMarkerOrderCommitmentsFamily;
 pub(crate) struct DraftPieceBuildsFamily;
 pub(crate) struct DraftPieceBuildFragmentsFamily;
 pub(crate) struct DraftPieceBuildProgressFamily;
@@ -42,6 +44,7 @@ pub(crate) type DraftPieceRootsCodec = ExactCodec<DraftPieceRootsFamily>;
 pub(crate) type DraftPieceNodesCodec = ExactCodec<DraftPieceNodesFamily>;
 pub(crate) type DraftPieceLeavesCodec = ExactCodec<DraftPieceLeavesFamily>;
 pub(crate) type DraftMarkerIdentityIndexCodec = ExactCodec<DraftMarkerIdentityIndexFamily>;
+pub(crate) type DraftMarkerOrderCommitmentsCodec = ExactCodec<DraftMarkerOrderCommitmentsFamily>;
 pub(crate) type DraftPieceBuildsCodec = ExactCodec<DraftPieceBuildsFamily>;
 pub(crate) type DraftPieceBuildFragmentsCodec = ExactCodec<DraftPieceBuildFragmentsFamily>;
 pub(crate) type DraftPieceBuildProgressCodec = ExactCodec<DraftPieceBuildProgressFamily>;
@@ -210,6 +213,38 @@ fn dec_digest(d: &mut Decoder<'_>) -> Result<DraftPieceDigestV1, CodecError> {
     Ok(DraftPieceDigestV1::from_bytes(d.fixed32()?))
 }
 
+fn enc_marker_commitment(e: &mut Encoder, commitment: DraftMarkerCommitmentV1) {
+    e.fixed32(&commitment.tree_root_digest());
+    e.u64(commitment.marker_count());
+    match commitment.maximum_image_label() {
+        Some(label) => {
+            e.u8(1);
+            e.u64(label.get());
+        }
+        None => e.u8(0),
+    }
+}
+
+fn dec_marker_commitment(d: &mut Decoder<'_>) -> Result<DraftMarkerCommitmentV1, CodecError> {
+    let tree_root_digest = d.fixed32()?;
+    let marker_count = d.u64()?;
+    let maximum_image_label = match d.u8()? {
+        0 => None,
+        1 => Some(
+            ImageLabelOrdinal::new(d.u64()?)
+                .map_err(|error| invalid("draft root marker maximum label", error))?,
+        ),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "draft root marker maximum label option",
+                tag,
+            });
+        }
+    };
+    DraftMarkerCommitmentV1::new(tree_root_digest, marker_count, maximum_image_label)
+        .map_err(|error| invalid("draft marker commitment", error))
+}
+
 fn enc_text_summary(e: &mut Encoder, summary: DraftPieceTextSummaryV1) {
     e.u64(summary.logical_utf8_bytes());
     e.u64(summary.newline_count());
@@ -291,6 +326,9 @@ fn enc_build_roots(e: &mut Encoder, roots: DraftPieceBuildRootsV1) {
     enc_summary(e, roots.sequence_summary());
     enc_record_id_option(e, roots.marker_index_root());
     enc_marker_index_summary(e, roots.marker_index_summary());
+    enc_record_id_option(e, roots.marker_order_root());
+    e.u8(roots.marker_order_height());
+    enc_marker_commitment(e, roots.marker_commitment());
 }
 
 fn dec_build_roots(d: &mut Decoder<'_>) -> Result<DraftPieceBuildRootsV1, CodecError> {
@@ -299,6 +337,9 @@ fn dec_build_roots(d: &mut Decoder<'_>) -> Result<DraftPieceBuildRootsV1, CodecE
         dec_summary(d)?,
         dec_record_id_option(d, "draft-piece working identity root")?,
         dec_marker_index_summary(d)?,
+        dec_record_id_option(d, "draft-piece working marker-order root")?,
+        d.u8()?,
+        dec_marker_commitment(d)?,
     ))
 }
 
@@ -337,6 +378,7 @@ fn enc_build_frontier(e: &mut Encoder, frontier: DraftPieceBuildFrontierV1) {
             fragment_ordinal,
             next_rank,
             end_rank,
+            removed_markers,
             base_end,
             successor_start,
             successor_end,
@@ -345,6 +387,7 @@ fn enc_build_frontier(e: &mut Encoder, frontier: DraftPieceBuildFrontierV1) {
             e.u64(fragment_ordinal);
             e.u64(next_rank);
             e.u64(end_rank);
+            e.u64(removed_markers);
             enc_build_boundary(e, base_end);
             enc_build_boundary(e, successor_start);
             enc_build_boundary(e, successor_end);
@@ -393,6 +436,7 @@ fn dec_build_frontier(d: &mut Decoder<'_>) -> Result<DraftPieceBuildFrontierV1, 
             fragment_ordinal: d.u64()?,
             next_rank: d.u64()?,
             end_rank: d.u64()?,
+            removed_markers: d.u64()?,
             base_end: dec_build_boundary(d)?,
             successor_start: dec_build_boundary(d)?,
             successor_end: dec_build_boundary(d)?,
@@ -441,6 +485,9 @@ pub(crate) fn enc_root_reference(e: &mut Encoder, value: DraftPieceRootReference
         None => e.u8(0),
     }
     enc_marker_index_summary(e, value.marker_index_summary());
+    enc_record_id_option(e, value.marker_order_root());
+    e.u8(value.marker_order_height());
+    enc_marker_commitment(e, value.marker_commitment());
     enc_digest(e, value.combined_digest());
 }
 
@@ -476,13 +523,19 @@ pub(crate) fn dec_root_reference(
         }
     };
     let marker_index_summary = dec_marker_index_summary(d)?;
+    let marker_order_root = dec_record_id_option(d, "draft-piece marker-order root")?;
+    let marker_order_height = d.u8()?;
+    let marker_commitment = dec_marker_commitment(d)?;
     let combined_digest = dec_digest(d)?;
-    Ok(DraftPieceRootReferenceV1::new(
+    Ok(DraftPieceRootReferenceV1::new_authenticated(
         key,
         root_node,
         summary,
         marker_index_root,
         marker_index_summary,
+        marker_order_root,
+        marker_order_height,
+        marker_commitment,
         combined_digest,
     ))
 }
@@ -556,6 +609,7 @@ pub(crate) fn canonical_candidate_publication_request_bytes(
     e.u64(value.candidate_generation());
     enc_root_reference(&mut e, value.candidate().root());
     enc_history_reference(&mut e, value.candidate().history());
+    enc_publication_evidence(&mut e, value.evidence());
     enc_timestamp(&mut e, value.published_at());
     e.finish()
 }
@@ -581,6 +635,7 @@ pub(crate) fn decode_candidate_publication_request_bytes(
         DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
         d.u64()?,
         DraftRootHistoryPairV1::new(dec_root_reference(&mut d)?, dec_history_reference(&mut d)?),
+        dec_publication_evidence(&mut d)?,
         dec_timestamp(&mut d)?,
     );
     d.finish()?;
@@ -588,6 +643,117 @@ pub(crate) fn decode_candidate_publication_request_bytes(
         return Err(CodecError::InvalidLength("candidate publication request"));
     }
     Ok(request)
+}
+
+fn enc_sequential_marker_summary(e: &mut Encoder, summary: SequentialMarkerSummaryV1) {
+    e.fixed32(&summary.marker_digest());
+    e.u64(summary.marker_count());
+    match summary.maximum_image_label() {
+        Some(label) => {
+            e.u8(1);
+            e.u64(label.get());
+        }
+        None => e.u8(0),
+    }
+}
+
+fn dec_sequential_marker_summary(
+    d: &mut Decoder<'_>,
+) -> Result<SequentialMarkerSummaryV1, CodecError> {
+    let digest = d.fixed32()?;
+    let count = d.u64()?;
+    let maximum = match d.u8()? {
+        0 => None,
+        1 => Some(
+            ImageLabelOrdinal::new(d.u64()?)
+                .map_err(|error| invalid("publication marker maximum", error))?,
+        ),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "publication marker maximum option",
+                tag,
+            });
+        }
+    };
+    SequentialMarkerSummaryV1::new(digest, count, maximum)
+        .map_err(|error| invalid("publication marker summary", error))
+}
+
+fn enc_asset_proof(e: &mut Encoder, proof: SealedAssetReferenceSetProof) {
+    e.fixed16(proof.set_id().as_bytes());
+    enc_sequential_marker_summary(e, proof.summary());
+    e.u64(proof.entry_frontier());
+    e.fixed32(&proof.asset_chain_digest().as_bytes());
+}
+
+fn dec_asset_proof(d: &mut Decoder<'_>) -> Result<SealedAssetReferenceSetProof, CodecError> {
+    SealedAssetReferenceSetProof::new(
+        AssetReferenceSetId::from_bytes(d.fixed16()?),
+        dec_sequential_marker_summary(d)?,
+        d.u64()?,
+        AssetReferenceSetDigest::from_bytes(d.fixed32()?),
+    )
+    .map_err(|error| invalid("publication asset proof", error))
+}
+
+fn enc_seal_proof(e: &mut Encoder, proof: DraftMarkerSealProofV1) {
+    enc_root_reference(e, proof.source());
+    enc_marker_commitment(e, proof.commitment());
+    enc_sequential_marker_summary(e, proof.summary());
+}
+
+fn dec_seal_proof(d: &mut Decoder<'_>) -> Result<DraftMarkerSealProofV1, CodecError> {
+    Ok(DraftMarkerSealProofV1::new_authenticated(
+        dec_root_reference(d)?,
+        dec_marker_commitment(d)?,
+        dec_sequential_marker_summary(d)?,
+    ))
+}
+
+fn enc_publication_evidence(e: &mut Encoder, evidence: DraftEditorCandidatePublicationEvidenceV1) {
+    match evidence {
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+            seal_proof,
+            asset_proof,
+        } => {
+            e.u8(0);
+            enc_seal_proof(e, seal_proof);
+            enc_asset_proof(e, asset_proof);
+        }
+        DraftEditorCandidatePublicationEvidenceV1::ChangedEmpty { seal_proof } => {
+            e.u8(1);
+            enc_seal_proof(e, seal_proof);
+        }
+        DraftEditorCandidatePublicationEvidenceV1::UnchangedNonempty { asset_proof } => {
+            e.u8(2);
+            enc_asset_proof(e, asset_proof);
+        }
+        DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty => e.u8(3),
+    }
+}
+
+fn dec_publication_evidence(
+    d: &mut Decoder<'_>,
+) -> Result<DraftEditorCandidatePublicationEvidenceV1, CodecError> {
+    match d.u8()? {
+        0 => Ok(DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+            seal_proof: dec_seal_proof(d)?,
+            asset_proof: dec_asset_proof(d)?,
+        }),
+        1 => Ok(DraftEditorCandidatePublicationEvidenceV1::ChangedEmpty {
+            seal_proof: dec_seal_proof(d)?,
+        }),
+        2 => Ok(
+            DraftEditorCandidatePublicationEvidenceV1::UnchangedNonempty {
+                asset_proof: dec_asset_proof(d)?,
+            },
+        ),
+        3 => Ok(DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty),
+        tag => Err(CodecError::InvalidTag {
+            kind: "candidate publication evidence",
+            tag,
+        }),
+    }
 }
 
 pub(crate) fn canonical_candidate_disposal_request_bytes(
@@ -2325,6 +2491,146 @@ fn decode_fragment(bytes: &[u8]) -> Result<DraftPieceBuildFragmentV1, CodecError
     Ok(value)
 }
 
+fn enc_marker_order_key(e: &mut Encoder, key: DraftMarkerOrderRecordKeyV1) {
+    e.fixed16(key.draft_id().as_bytes());
+    e.u8(match key.kind() {
+        DraftMarkerOrderRecordKindV1::Internal => 0,
+        DraftMarkerOrderRecordKindV1::Leaf => 1,
+    });
+    e.fixed16(key.id().as_bytes());
+}
+
+fn dec_marker_order_key(d: &mut Decoder<'_>) -> Result<DraftMarkerOrderRecordKeyV1, CodecError> {
+    let draft_id = SyndicDraftId::from_bytes(d.fixed16()?);
+    let kind = match d.u8()? {
+        0 => DraftMarkerOrderRecordKindV1::Internal,
+        1 => DraftMarkerOrderRecordKindV1::Leaf,
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "draft marker-order record",
+                tag,
+            });
+        }
+    };
+    Ok(DraftMarkerOrderRecordKeyV1::new(
+        draft_id,
+        kind,
+        DraftPieceRecordIdV1::from_bytes(d.fixed16()?),
+    ))
+}
+
+fn encode_marker_order_family_key(
+    key: &DraftMarkerOrderRecordKeyV1,
+) -> Result<Vec<u8>, CodecError> {
+    let mut e = Encoder::new();
+    enc_marker_order_key(&mut e, *key);
+    Ok(e.finish())
+}
+
+fn decode_marker_order_family_key(bytes: &[u8]) -> Result<DraftMarkerOrderRecordKeyV1, CodecError> {
+    let mut d = Decoder::new(bytes);
+    let key = dec_marker_order_key(&mut d)?;
+    d.finish()?;
+    Ok(key)
+}
+
+fn encode_marker_order_record(value: &DraftMarkerOrderRecordV1) -> Result<Vec<u8>, CodecError> {
+    let mut e = Encoder::new();
+    enc_marker_order_key(&mut e, value.key());
+    match value {
+        DraftMarkerOrderRecordV1::Internal {
+            height,
+            children,
+            digest,
+            ..
+        } => {
+            e.u8(*height);
+            e.u64(children.len() as u64);
+            for child in children {
+                e.fixed16(child.id().as_bytes());
+                enc_digest(&mut e, child.digest());
+                e.u64(child.marker_count());
+                e.u64(
+                    child
+                        .maximum_image_label()
+                        .expect("marker-order child is nonempty")
+                        .get(),
+                );
+            }
+            enc_digest(&mut e, *digest);
+        }
+        DraftMarkerOrderRecordV1::Leaf {
+            marker_id,
+            label,
+            digest,
+            ..
+        } => {
+            e.fixed16(marker_id.as_bytes());
+            e.u64(label.get());
+            enc_digest(&mut e, *digest);
+        }
+    }
+    Ok(e.finish())
+}
+
+fn decode_marker_order_record(bytes: &[u8]) -> Result<DraftMarkerOrderRecordV1, CodecError> {
+    let mut d = Decoder::new(bytes);
+    let key = dec_marker_order_key(&mut d)?;
+    let value = match key.kind() {
+        DraftMarkerOrderRecordKindV1::Internal => {
+            let height = d.u8()?;
+            let count = usize::try_from(d.u64()?)
+                .map_err(|_| CodecError::InvalidLength("draft marker-order children"))?;
+            if height == 0
+                || height > DRAFT_PIECE_MAX_HEIGHT
+                || count == 0
+                || count > DRAFT_PIECE_MAX_CHILDREN
+            {
+                return Err(CodecError::InvalidLength("draft marker-order children"));
+            }
+            let mut children = Vec::with_capacity(count);
+            for _ in 0..count {
+                let id = DraftPieceRecordIdV1::from_bytes(d.fixed16()?);
+                let digest = dec_digest(&mut d)?;
+                let marker_count = d.u64()?;
+                let maximum = ImageLabelOrdinal::new(d.u64()?)
+                    .map_err(|error| invalid("draft marker-order maximum label", error))?;
+                children.push(
+                    DraftMarkerOrderChildV1::new(id, digest, marker_count, Some(maximum))
+                        .ok_or(CodecError::InvalidLength("draft marker-order child"))?,
+                );
+            }
+            let digest = dec_digest(&mut d)?;
+            if digest != marker_order_node_digest(height, &children) {
+                return Err(CodecError::InvalidLength("draft marker-order digest"));
+            }
+            DraftMarkerOrderRecordV1::Internal {
+                key,
+                height,
+                children,
+                digest,
+            }
+        }
+        DraftMarkerOrderRecordKindV1::Leaf => {
+            let marker_id = SyndicDraftMarkerId::from_bytes(d.fixed16()?);
+            let label = ImageLabelOrdinal::new(d.u64()?)
+                .map_err(|error| invalid("draft marker-order label", error))?;
+            let digest = dec_digest(&mut d)?;
+            if digest != marker_order_leaf_digest(marker_id, label) {
+                return Err(CodecError::InvalidLength("draft marker-order leaf digest"));
+            }
+            DraftMarkerOrderRecordV1::Leaf {
+                key,
+                marker_id,
+                label,
+                digest,
+            }
+        }
+    };
+    d.finish()?;
+    Ok(value)
+}
+
 family!(
     DraftPieceRootsFamily,
     DraftPieceRootKeyV1,
@@ -2372,6 +2678,18 @@ family!(
     decode_marker_identity_family_key,
     encode_marker_identity_record,
     decode_marker_identity_record
+);
+family!(
+    DraftMarkerOrderCommitmentsFamily,
+    DraftMarkerOrderRecordKeyV1,
+    DraftMarkerOrderRecordV1,
+    "draft-marker-order-commitments",
+    33,
+    32_768,
+    encode_marker_order_family_key,
+    decode_marker_order_family_key,
+    encode_marker_order_record,
+    decode_marker_order_record
 );
 family!(
     DraftPieceBuildsFamily,

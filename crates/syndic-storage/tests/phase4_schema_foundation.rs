@@ -69,8 +69,8 @@ fn canonical_user_input_retains_one_complete_asset_reference_proof() {
     let source = reference.sealed_marker_summary().unwrap();
     let proof = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([3; 16]),
-        source,
-        source.marker_count(),
+        source.sequential(),
+        source.sequential().marker_count(),
         AssetReferenceSetDigest::from_bytes([4; 32]),
     )
     .unwrap();
@@ -81,7 +81,10 @@ fn canonical_user_input_retains_one_complete_asset_reference_proof() {
     ));
     assert_eq!(canonical.content(), Some(reference));
     assert_eq!(canonical.asset_reference_set(), Some(proof));
-    assert_eq!(source.maximum_image_label(), Some(second_label));
+    assert_eq!(
+        source.sequential().maximum_image_label(),
+        Some(second_label)
+    );
 }
 
 #[test]

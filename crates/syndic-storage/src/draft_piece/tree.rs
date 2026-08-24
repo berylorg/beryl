@@ -75,13 +75,19 @@ pub fn canonical_empty_draft_piece_root_v1(
         0,
         canonical_empty_marker_identity_index_digest_v1(),
     );
-    DraftPieceRootRecordV1::new(DraftPieceRootReferenceV1::new(
-        DraftPieceRootKeyV1::direct_canonical_empty(draft_id, operation_id),
+    let key = DraftPieceRootKeyV1::direct_canonical_empty(draft_id, operation_id);
+    let marker_commitment = canonical_empty_draft_marker_commitment_v1();
+    let combined = combined_root_digest(sequence, index, marker_commitment);
+    DraftPieceRootRecordV1::new(DraftPieceRootReferenceV1::new_authenticated(
+        key,
         None,
         sequence,
         None,
         index,
-        combined_root_digest(sequence, index),
+        None,
+        0,
+        marker_commitment,
+        combined,
     ))
 }
 
@@ -97,6 +103,7 @@ fn lp_hash(parts: &[&[u8]]) -> DraftPieceDigestV1 {
 pub(crate) fn combined_root_digest(
     sequence: DraftPieceSummaryV1,
     index: DraftMarkerIdentityIndexSummaryV1,
+    marker_commitment: DraftMarkerCommitmentV1,
 ) -> DraftPieceDigestV1 {
     let mut sequence_bytes = Vec::with_capacity(105);
     sequence_bytes.extend_from_slice(&sequence.logical_utf8_bytes().to_be_bytes());
@@ -111,7 +118,43 @@ pub(crate) fn combined_root_digest(
     index_bytes.extend_from_slice(&index.record_count().to_be_bytes());
     index_bytes.push(index.height());
     index_bytes.extend_from_slice(index.root_digest().as_bytes());
-    lp_hash(&[COMBINED_ROOT, &sequence_bytes, &index_bytes])
+    let mut marker_commitment_bytes = Vec::with_capacity(49);
+    marker_commitment_bytes.extend_from_slice(&marker_commitment.tree_root_digest());
+    marker_commitment_bytes.extend_from_slice(&marker_commitment.marker_count().to_be_bytes());
+    match marker_commitment.maximum_image_label() {
+        Some(label) => {
+            marker_commitment_bytes.push(1);
+            marker_commitment_bytes.extend_from_slice(&label.get().to_be_bytes());
+        }
+        None => marker_commitment_bytes.push(0),
+    }
+    lp_hash(&[
+        COMBINED_ROOT,
+        &sequence_bytes,
+        &index_bytes,
+        &marker_commitment_bytes,
+    ])
+}
+
+pub(crate) fn draft_piece_root_reference_is_locally_exact_v1(
+    root: DraftPieceRootReferenceV1,
+) -> bool {
+    root.summary().text_summary().is_canonical()
+        && root.summary().marker_count() == root.marker_index_summary().record_count()
+        && root.summary().marker_count() == root.marker_commitment().marker_count()
+        && (root.marker_commitment().marker_count() == 0)
+            == root.marker_commitment().maximum_image_label().is_none()
+        && (root.marker_commitment().marker_count() != 0
+            || root.marker_commitment() == canonical_empty_draft_marker_commitment_v1())
+        && (root.marker_commitment().marker_count() == 0) == root.marker_order_root().is_none()
+        && (root.marker_commitment().marker_count() != 0 || root.marker_order_height() == 0)
+        && (root.marker_commitment().marker_count() == 0 || root.marker_order_height() != 0)
+        && root.combined_digest()
+            == combined_root_digest(
+                root.summary(),
+                root.marker_index_summary(),
+                root.marker_commitment(),
+            )
 }
 
 fn digest_bytes(domain: &[u8], parts: &[&[u8]]) -> DraftPieceDigestV1 {
@@ -1492,6 +1535,7 @@ fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
             fragment_ordinal,
             next_rank,
             end_rank,
+            removed_markers,
             base_end,
             successor_start,
             successor_end,
@@ -1500,6 +1544,7 @@ fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
             digest.update(fragment_ordinal.to_be_bytes());
             digest.update(next_rank.to_be_bytes());
             digest.update(end_rank.to_be_bytes());
+            digest.update(removed_markers.to_be_bytes());
             for boundary in [base_end, successor_start, successor_end] {
                 hash_build_boundary(digest, boundary);
             }

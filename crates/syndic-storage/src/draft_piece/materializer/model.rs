@@ -453,7 +453,7 @@ impl DraftComposerBuildRecordV1 {
                 && record_cursor.atom_encoded_offset() <= encoder_cursor.atom_encoded_offset());
         let marker_shape = |count, digest, maximum: Option<ImageLabelOrdinal>| {
             if count == 0 {
-                digest == beryl_model::content_marker_digest_seed() && maximum.is_none()
+                digest == beryl_model::sequential_marker_digest_seed() && maximum.is_none()
             } else {
                 maximum.is_some()
             }
@@ -568,7 +568,7 @@ impl DraftComposerBuildRecordV1 {
             && records.logical_utf8_bytes() == 0
             && records.piece_count() == 0
             && records.marker_count() == 0
-            && records.marker_digest() == beryl_model::content_marker_digest_seed()
+            && records.marker_digest() == beryl_model::sequential_marker_digest_seed()
             && records.maximum_image_label().is_none()
             && records.chunk_start() == 0
             && records.chunk_ordinal() == 1
@@ -583,7 +583,7 @@ impl DraftComposerBuildRecordV1 {
             && encoder.chunk_count() == 0
             && encoder.piece_count() == 0
             && encoder.marker_count() == 0
-            && encoder.marker_digest() == beryl_model::content_marker_digest_seed()
+            && encoder.marker_digest() == beryl_model::sequential_marker_digest_seed()
             && encoder.maximum_image_label().is_none()
             && encoder.chain_digest()
                 == crate::content_chain_seed(crate::ContentEncoding::ComposerV1)

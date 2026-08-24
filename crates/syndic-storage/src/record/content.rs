@@ -1,5 +1,6 @@
 use beryl_model::{
-    ContentRevision, SealedContentMarkerSummary, SyndicContentDigest, SyndicContentId, SyndicItemId,
+    ContentRevision, SealedContentMarkerSummary, SequentialMarkerSummaryV1, SyndicContentDigest,
+    SyndicContentId, SyndicItemId,
 };
 use sha2::{Digest, Sha256};
 
@@ -135,17 +136,21 @@ impl ContentReference {
         self.summary
     }
 
-    /// Returns exact cross-domain marker evidence for this immutable content reference.
     pub const fn sealed_marker_summary(
         self,
     ) -> Result<SealedContentMarkerSummary, beryl_model::AssetProofError> {
-        SealedContentMarkerSummary::new(
-            self.id,
-            self.summary.digest(),
+        match SequentialMarkerSummaryV1::new(
             self.summary.marker_digest(),
             self.summary.image_marker_count(),
             self.summary.maximum_image_label(),
-        )
+        ) {
+            Ok(sequential) => Ok(SealedContentMarkerSummary::new(
+                self.id,
+                self.summary.digest(),
+                sequential,
+            )),
+            Err(error) => Err(error),
+        }
     }
 }
 

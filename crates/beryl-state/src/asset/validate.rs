@@ -1,5 +1,7 @@
 use beryl_home_store::{CursorDirection, DomainReader, SidecarByteLimit, SidecarVerifier};
-use beryl_model::{ImageLabelOrdinal, advance_content_marker_digest, content_marker_digest_seed};
+use beryl_model::{
+    ImageLabelOrdinal, advance_sequential_marker_digest, sequential_marker_digest_seed,
+};
 
 use super::{
     AssetDomain, AssetEntryKey, AssetLabelDisposition, AssetLabelFirstKey, AssetMarkerKey,
@@ -110,8 +112,8 @@ fn validate_manifest_entries(
 ) -> Result<(), AssetValidationError> {
     let mut after = None;
     let mut count = 0_u64;
-    let mut chain_digest = digest::seed(manifest.set_id, manifest.source);
-    let mut marker_digest = content_marker_digest_seed();
+    let mut chain_digest = digest::seed(manifest.set_id, manifest.summary);
+    let mut marker_digest = sequential_marker_digest_seed();
     let mut maximum_image_label = None;
     loop {
         let page = reader.cursor::<AssetReferenceEntryCodec>(
@@ -204,7 +206,7 @@ fn validate_manifest_entries(
                 return invariant("asset reference entry chain digest is invalid");
             }
             marker_digest =
-                advance_content_marker_digest(marker_digest, entry.marker_id, entry.label);
+                advance_sequential_marker_digest(marker_digest, entry.marker_id, entry.label);
             maximum_image_label = Some(
                 maximum_image_label.map_or(entry.label, |maximum: ImageLabelOrdinal| {
                     maximum.max(entry.label)
@@ -229,12 +231,14 @@ fn validate_manifest_entries(
         return invariant("asset reference-set manifest does not match its entry chain");
     }
     if manifest.lifecycle == AssetReferenceSetLifecycle::Sealed
-        && (manifest.marker_count != manifest.source.marker_count()
-            || manifest.marker_digest != manifest.source.marker_digest()
-            || manifest.maximum_image_label != manifest.source.maximum_image_label()
+        && (manifest.marker_count != manifest.summary.marker_count()
+            || manifest.marker_digest != manifest.summary.marker_digest()
+            || manifest.maximum_image_label != manifest.summary.maximum_image_label()
             || manifest.sealed_proof().is_none())
     {
-        return invariant("sealed asset reference-set does not match its source marker summary");
+        return invariant(
+            "sealed asset reference-set does not match its sequential marker summary",
+        );
     }
     Ok(())
 }
