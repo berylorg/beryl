@@ -272,11 +272,15 @@ Keep independent main-window presentation responsive while process-wide services
 - Edits may continue adopting newer candidates while one captured frontier publishes. Draft
   orchestration retains only exact session, candidate, timer, publication-request, and dirty
   generations around that work. A completion clears only its captured generation and cannot clean
-  a later candidate. A successful dirty save rearms from the applicable interval; a superseded
-  timer or settings generation cannot rearm. A flush drains an admitted publication, reconciles an
-  ambiguous writer outcome, and repeats from the newest eligible dirty frontier until published
-  and candidate frontiers agree; external durable-base conflict or terminal unavailability leaves
-  the barrier unsatisfied.
+  a later candidate. The first clean-to-dirty adoption arms the applicable interval and later dirty
+  edits do not debounce it. A successful dirty save rearms only if a dirty successor remains; a
+  proven noncommit or recoverable nonterminal autosave failure rearms from its classification time,
+  while a superseded timer or settings generation cannot rearm. A flush drains an admitted
+  publication, reconciles an ambiguous writer outcome, and repeats from the newest eligible dirty
+  frontier until published and candidate frontiers agree. A recoverable noncommit or nonterminal
+  failure ends that flush unsatisfied without a retry loop; external durable-base conflict or
+  terminal unavailability likewise leaves the barrier unsatisfied, and terminal unavailability
+  does not rearm autosave.
 - Each home service admits only a fixed nonzero number of marker-seal flights and bounded marker and
   Asset page custody. It coalesces or supersedes obsolete save demand instead of retaining an
   unbounded queue. Success, cancellation, failure, supersession, session disposal, home-generation

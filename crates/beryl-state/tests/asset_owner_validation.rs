@@ -17,8 +17,9 @@ use beryl_model::{
 use beryl_state::{
     AppendAssetReferencePage, AssetMediaType, AssetOwner, AssetOwnerHeadAssertion,
     AssetOwnerHeadUpdate, AssetOwnerHeadUpdateError, AssetOwnerHeadValidationError,
-    AssetReferencePageEntry, BeginAssetReferenceSet, BerylState, PublishAssetMetadata,
-    RecordRevision, SealAssetReferenceSet, UpdateAssetOwnerHeads, ValidateAssetOwnerHeads,
+    AssetReferencePageEntry, AssetReferenceSetStagingAuthority, BeginAssetReferenceSet, BerylState,
+    PublishAssetMetadata, RecordRevision, SealAssetReferenceSet, UpdateAssetOwnerHeads,
+    ValidateAssetOwnerHeads,
 };
 use tempfile::tempdir;
 
@@ -183,7 +184,8 @@ fn sealed_set(
 ) -> SealedAssetReferenceSetProof {
     let set_id = AssetReferenceSetId::from_bytes([10; 16]);
     let source = marker_summary();
-    let begin = BeginAssetReferenceSet::new(set_id);
+    let begin =
+        BeginAssetReferenceSet::new(AssetReferenceSetStagingAuthority::new(set_id, [10; 32]));
     let staging = begin.staging_authority();
     execute_asset(
         store,

@@ -18,8 +18,9 @@ use beryl_state::{
     ASSET_REFERENCE_PAGE_MAX_STORED_BYTES, AppendAssetReferencePage, AssetDimensions,
     AssetLabelDisposition, AssetMediaType, AssetMutationError, AssetOwner, AssetOwnerHeadUpdate,
     AssetReadError, AssetReferenceOrdinal, AssetReferencePageEntry, AssetReferencePageError,
-    AssetReferenceSetLifecycle, AssetReferenceSetStagingAuthority, BeginAssetReferenceSet,
-    BerylState, PublishAssetMetadata, SealAssetReferenceSet, UpdateAssetOwnerHeads,
+    AssetReferenceSetCompletion, AssetReferenceSetLifecycle, AssetReferenceSetStagingAuthority,
+    BeginAssetReferenceSet, BerylState, PublishAssetMetadata, SealAssetReferenceSet,
+    UpdateAssetOwnerHeads,
 };
 use tempfile::tempdir;
 
@@ -56,7 +57,10 @@ fn begin_reference_set(
     state: &BerylState,
     set_id: AssetReferenceSetId,
 ) -> AssetReferenceSetStagingAuthority {
-    let command = BeginAssetReferenceSet::new(set_id);
+    let command = BeginAssetReferenceSet::new(AssetReferenceSetStagingAuthority::new(
+        set_id,
+        [set_id.as_bytes()[0]; 32],
+    ));
     let authority = command.staging_authority();
     execute(
         store,
@@ -275,6 +279,8 @@ fn digest_vector(
     [seed, proof.asset_chain_digest().as_bytes()]
 }
 
+#[path = "assets_v3_cases/completion.rs"]
+mod completion_cases;
 #[path = "assets_v3_cases/digest.rs"]
 mod digest_cases;
 #[path = "assets_v3_cases/lifecycle.rs"]

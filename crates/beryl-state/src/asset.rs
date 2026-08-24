@@ -14,18 +14,21 @@ use beryl_model::{
 use crate::StatePage;
 
 mod codec;
+mod completion;
 mod digest;
 mod error;
 mod footprint;
 mod model;
 mod mutation;
+mod read;
 #[cfg(feature = "test-faults")]
 mod test_support;
 mod validate;
 
 use codec::{
-    AssetMetadataCodec, AssetOwnerHeadCodec, AssetReferenceEntryCodec,
-    AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec, AssetReferenceMarkerCodec,
+    AssetMetadataCodec, AssetOwnerHeadCodec, AssetReferenceCompletionEvidenceCodec,
+    AssetReferenceEntryCodec, AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec,
+    AssetReferenceMarkerCodec,
 };
 pub use error::{
     AssetAdmissionError, AssetMutationError, AssetOwnerHeadUpdateError,
@@ -36,13 +39,19 @@ pub use footprint::{
     accepted_input_to_submitted_item_owner_transfer_max_footprint,
     draft_to_submitted_item_owner_transfer_max_footprint,
 };
+#[cfg(feature = "test-faults")]
+pub use model::AssetReferenceSetManifestCorruption;
 pub use model::{
     AssetDimensions, AssetLabelDisposition, AssetMediaType, AssetMetadataRecord, AssetOwner,
     AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetReferenceEntryRecord,
-    AssetReferenceOrdinal, AssetReferenceSetBuildProof, AssetReferenceSetLifecycle,
-    AssetReferenceSetManifest, AssetReferenceSetStagingAuthority, AssetSidecarState,
+    AssetReferenceOrdinal, AssetReferenceSetBuildProof, AssetReferenceSetCompletion,
+    AssetReferenceSetLifecycle, AssetReferenceSetManifest, AssetReferenceSetStagingAuthority,
+    AssetSidecarState,
 };
-use model::{AssetEntryKey, AssetLabelFirstKey, AssetLabelFirstRecord, AssetMarkerKey};
+use model::{
+    AssetEntryKey, AssetLabelFirstKey, AssetLabelFirstRecord, AssetMarkerKey,
+    AssetReferenceSetCompletionEvidence,
+};
 pub use mutation::{
     AppendAssetReferencePage, AssetOwnerHeadAssertion, AssetOwnerHeadUpdate,
     AssetReferencePageEntry, BeginAssetReferenceSet, PublishAssetMetadata, SealAssetReferenceSet,
@@ -52,6 +61,7 @@ pub use mutation::{
 const ASSET_NAMESPACE: &str = "images";
 const ASSET_METADATA_LIMIT: usize = 256;
 const ASSET_MANIFEST_LIMIT: usize = 256;
+const ASSET_COMPLETION_EVIDENCE_LIMIT: usize = 128;
 const ASSET_ENTRY_LIMIT: usize = 256;
 const ASSET_INDEX_LIMIT: usize = 128;
 const ASSET_HEAD_LIMIT: usize = 512;
@@ -69,6 +79,7 @@ pub const ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES: usize = 4;
 const ASSET_FAMILIES: &[RecordFamily<AssetDomain>] = &[
     RecordFamily::new::<AssetMetadataCodec>(KeyspaceSchemaVersion::new(3)),
     RecordFamily::new::<AssetReferenceManifestCodec>(KeyspaceSchemaVersion::new(3)),
+    RecordFamily::new::<AssetReferenceCompletionEvidenceCodec>(KeyspaceSchemaVersion::new(3)),
     RecordFamily::new::<AssetReferenceEntryCodec>(KeyspaceSchemaVersion::new(3)),
     RecordFamily::new::<AssetReferenceMarkerCodec>(KeyspaceSchemaVersion::new(3)),
     RecordFamily::new::<AssetReferenceLabelFirstCodec>(KeyspaceSchemaVersion::new(3)),
@@ -105,6 +116,10 @@ impl StorageDomain for AssetDomain {
             &mut classification,
         )?;
         crate::reconciliation::classify_records::<Self, AssetReferenceManifestCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, AssetReferenceCompletionEvidenceCodec>(
             reader,
             &mut classification,
         )?;
@@ -195,12 +210,7 @@ impl AssetState {
         store: &HomeStore,
         authority: AssetReferenceSetStagingAuthority,
     ) -> Result<AssetReferenceSetManifest, AssetReadError> {
-        let manifest = read_manifest(self, store, authority.set_id)?
-            .ok_or(AssetReadError::ReferenceSetMissing(authority.set_id))?;
-        if manifest.lifecycle() != AssetReferenceSetLifecycle::Building {
-            return Err(AssetReadError::ReferenceSetNotBuilding(authority.set_id));
-        }
-        Ok(manifest)
+        read::require_building_manifest(self, store, authority)
     }
 
     /// Reads a sealed manifest only after rechecking its complete opaque proof.
@@ -209,7 +219,7 @@ impl AssetState {
         store: &HomeStore,
         proof: SealedAssetReferenceSetProof,
     ) -> Result<AssetReferenceSetManifest, AssetReadError> {
-        require_sealed_manifest(self, store, proof)
+        read::require_sealed_manifest(self, store, proof)
     }
 
     pub fn reference_set_entries(
@@ -219,7 +229,7 @@ impl AssetState {
         after: Option<AssetReferenceOrdinal>,
         limits: CursorReadLimits,
     ) -> Result<StatePage<AssetReferenceEntryRecord>, AssetReadError> {
-        require_sealed_manifest(self, store, proof)?;
+        read::require_sealed_manifest(self, store, proof)?;
         let set_id = proof.set_id();
         let limits = CursorReadLimits::new(
             limits.max_items().min(ASSET_REFERENCE_PAGE_MAX_ENTRIES),
@@ -265,7 +275,7 @@ impl AssetState {
         proof: SealedAssetReferenceSetProof,
         marker_id: SyndicDraftMarkerId,
     ) -> Result<Option<AssetReferenceEntryRecord>, AssetReadError> {
-        require_sealed_manifest(self, store, proof)?;
+        read::require_sealed_manifest(self, store, proof)?;
         let set_id = proof.set_id();
         let key = AssetMarkerKey { set_id, marker_id };
         let Some(ordinal) = store.read_point::<AssetDomain, AssetReferenceMarkerCodec>(
@@ -290,7 +300,7 @@ impl AssetState {
         proof: SealedAssetReferenceSetProof,
         label: ImageLabelOrdinal,
     ) -> Result<Option<AssetReferenceEntryRecord>, AssetReadError> {
-        require_sealed_manifest(self, store, proof)?;
+        read::require_sealed_manifest(self, store, proof)?;
         let set_id = proof.set_id();
         let key = AssetLabelFirstKey { set_id, label };
         let Some(first) = store.read_point::<AssetDomain, AssetReferenceLabelFirstCodec>(
@@ -424,6 +434,33 @@ impl AssetState {
             },
         )
     }
+
+    #[cfg(feature = "test-faults")]
+    #[must_use]
+    pub fn corrupt_reference_set_manifest_for_test(
+        &self,
+        expected_revision: DomainRevision,
+        set_id: AssetReferenceSetId,
+        corruption: AssetReferenceSetManifestCorruption,
+    ) -> MutationContribution {
+        self.handle.contribution(
+            expected_revision,
+            test_support::CorruptReferenceSetManifest { set_id, corruption },
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    #[must_use]
+    pub fn remove_reference_set_completion_evidence_for_test(
+        &self,
+        expected_revision: DomainRevision,
+        set_id: AssetReferenceSetId,
+    ) -> MutationContribution {
+        self.handle.contribution(
+            expected_revision,
+            test_support::RemoveReferenceSetCompletionEvidence { set_id },
+        )
+    }
 }
 
 /// Metadata contribution that cannot be separated from its admitted sidecar token.
@@ -460,43 +497,6 @@ fn asset_sidecar_address(asset_id: AssetId) -> SidecarAddress {
         SidecarNamespace::new(ASSET_NAMESPACE).expect("asset sidecar namespace is valid"),
         SidecarDigest::from_bytes(asset_id.digest()),
         asset_id.length().get(),
-    )
-}
-
-fn require_sealed_manifest(
-    state: &AssetState,
-    store: &HomeStore,
-    proof: SealedAssetReferenceSetProof,
-) -> Result<AssetReferenceSetManifest, AssetReadError> {
-    let manifest = read_manifest(state, store, proof.set_id())?
-        .ok_or(AssetReadError::ReferenceSetMissing(proof.set_id()))?;
-    if manifest.lifecycle() != AssetReferenceSetLifecycle::Sealed {
-        return Err(AssetReadError::ReferenceSetNotSealed(proof.set_id()));
-    }
-    if SealedAssetReferenceSetProof::new(
-        manifest.set_id(),
-        manifest.sequential(),
-        manifest.ordered_assets(),
-        manifest.entry_frontier(),
-        manifest.asset_chain_digest(),
-    )
-    .ok()
-        != Some(proof)
-    {
-        return Err(AssetReadError::SealedProofMismatch(proof.set_id()));
-    }
-    Ok(manifest)
-}
-
-fn read_manifest(
-    state: &AssetState,
-    store: &HomeStore,
-    set_id: AssetReferenceSetId,
-) -> Result<Option<AssetReferenceSetManifest>, ReadError> {
-    store.read_point::<AssetDomain, AssetReferenceManifestCodec>(
-        state.handle,
-        &set_id,
-        manifest_point_limit(),
     )
 }
 

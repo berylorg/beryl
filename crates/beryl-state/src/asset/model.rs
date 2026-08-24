@@ -140,9 +140,41 @@ pub enum AssetReferenceSetLifecycle {
 }
 
 /// Opaque authority for inspecting one unpublished reference-set build.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct AssetReferenceSetStagingAuthority {
     pub(super) set_id: AssetReferenceSetId,
+    pub(super) secret: [u8; 32],
+}
+
+impl AssetReferenceSetStagingAuthority {
+    #[must_use]
+    pub const fn new(set_id: AssetReferenceSetId, secret: [u8; 32]) -> Self {
+        Self { set_id, secret }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AssetReferenceSetCompletion {
+    Building(AssetReferenceSetManifest),
+    Sealed(SealedAssetReferenceSetProof),
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AssetReferenceSetManifestCorruption {
+    Lifecycle,
+    Sequential,
+    OrderedAssets,
+    EntryFrontier,
+    AssetChain,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct AssetReferenceSetCompletionEvidence {
+    pub(super) set_id: AssetReferenceSetId,
+    pub(super) authority_commitment: [u8; 32],
+    pub(super) manifest_commitment: [u8; 32],
+    pub(super) sealed_proof_commitment: Option<[u8; 32]>,
 }
 
 /// Compact manifest for one staged or sealed immutable marker-reference set.

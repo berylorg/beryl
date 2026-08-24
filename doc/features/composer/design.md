@@ -84,6 +84,9 @@ confusing current drafts with submitted transcript history or image identity.
   the draft restored after a crash. Autosave or flush separately publishes the newest eligible
   adopted editor state as the current durable draft without requiring a second whole-draft payload.
 - Dirty-only autosave runs every 30 seconds by default. Settings may tune the required interval from 5 through 300 whole seconds but may not disable autosave.
+- The first adopted edit after the published and newest editor frontiers become equal arms the next
+  autosave deadline from that adoption time. Later edits while the draft remains dirty do not
+  debounce, postpone, or otherwise replace that deadline.
 - Publishing a committed autosave-interval change rearms the next dirty-draft deadline from that publication time using the new interval; it does not preserve a deadline derived from the superseded setting.
 - Thread switch, ordinary window close, application Exit, and submission create dirty-draft flush barriers instead of waiting for the timer.
 - Autosave publication is all-or-nothing: after a crash, the current draft is wholly the prior saved
@@ -101,6 +104,13 @@ confusing current drafts with submitted transcript history or image identity.
   recovery classifies it as proven saved, proven not saved, or terminally unavailable. Terminal
   unavailability leaves the barrier unsatisfied and follows Durable Mutation Reconciliation rather
   than being treated as a failed save that can be repeated.
+- A proven noncommit or recoverable nonterminal autosave failure keeps the draft dirty and rearms
+  its next autosave deadline from the classification or failure time using the current committed
+  interval, without an immediate retry loop. When the same outcome settles a flush, that flush
+  returns unsatisfied; close, switch, Exit, or submission may begin a new explicit flush only after
+  its owning surface becomes eligible again. A superseded captured save instead continues the
+  already-active flush toward the newest eligible frontier. Terminal unavailability neither rearms
+  autosave nor authorizes another flush for the dependent operation.
 - Successfully autosaved or flushed draft content survives restart, thread switching, backend
   failure and retry, ordinary window close/reopen, and application Exit. An unexpected process or
   machine loss may discard edits made after the last completed autosave; reopen presents the last

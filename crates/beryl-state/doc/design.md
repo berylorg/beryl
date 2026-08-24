@@ -274,6 +274,16 @@ absorbing Syndic thread ownership.
   entry frontier, and local chain digest. One final
   cross-domain home command swaps only compact source/destination owner heads while publishing the
   matching Syndic admission; it never moves one Fjall record per marker in that transaction.
+- The construction boundary exposes one exact building-or-sealed completion read selected by the
+  original typed staging capability and both expected final marker summaries. The capability binds
+  the set identity to a caller-retained 32-byte secret while storage retains only its commitment.
+  Begin, page append, and seal atomically maintain a separate bounded completion-evidence record
+  committing the current manifest state and, at seal, the final opaque proof. Completion point-reads
+  those two records and returns the building manifest or sealed proof only after revalidating
+  lifecycle, summaries, frontier, local chain, and proof commitments. A bare set identity, a newly
+  minted same-set capability, capability alone, or mismatched expected summaries cannot select or
+  reconstruct sealed authority. This boundary enables exact final-command replay without making
+  ordinary sealed reads proof-discovery APIs.
 - Nonempty current-draft replacement-set construction accepts bounded ordered marker entries and the target
   `SequentialMarkerSummaryV1` plus `OrderedMarkerAssetSummaryV1` only at final seal, validates every
   staged entry and exact EOF/frontier/count/maximum/digest agreement, and returns only the opaque

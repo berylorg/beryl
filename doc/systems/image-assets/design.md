@@ -107,6 +107,17 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   accepts the authenticated final summaries only at seal. It returns its opaque sealed-set proof;
   it neither authenticates Syndic roots nor depends on Syndic storage. The app composes these opaque
   proofs and never constructs an authority mapping from a draft commitment to a sequential summary.
+- Exact reference-set completion is reopenable without weakening proof-gated reads. The original
+  typed staging capability contains the set identity plus a caller-retained 32-byte secret; Asset
+  construction persists only its commitment and independent compact manifest-state evidence. Given
+  that capability plus both expected final marker summaries, Beryl-state point-reads the manifest
+  and evidence and reports either the exact still-building manifest or the exact sealed proof after
+  revalidating lifecycle, summaries, frontier, local chain, and final-proof commitments. A bare set
+  identity, a newly minted capability for the same set, a capability without both expected
+  summaries, or disagreeing completion facts cannot recover sealed authority. A fresh app service
+  receives the original capability with the exact request-owned authority when Syndic already
+  proves the matching marker seal complete, so a final Asset-seal commit never requires another
+  marker traversal.
 - Final marker-changing current-draft publication uses one mutating Syndic participant plus one
   Asset participant in a single `HomeCommand`. For a changed nonempty commitment, the Syndic
   participant validates its seal proof against the captured root and commitment and requires the

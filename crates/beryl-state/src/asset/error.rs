@@ -41,6 +41,8 @@ pub enum AssetReadError {
     ReferenceSetMissing(AssetReferenceSetId),
     ReferenceSetNotBuilding(AssetReferenceSetId),
     ReferenceSetNotSealed(AssetReferenceSetId),
+    CompletionMismatch(AssetReferenceSetId),
+    CompletionEvidenceMismatch(AssetReferenceSetId),
     SealedProofMismatch(AssetReferenceSetId),
 }
 
@@ -60,6 +62,14 @@ impl fmt::Display for AssetReadError {
             Self::ReferenceSetNotSealed(set) => {
                 write!(formatter, "asset reference set {set:?} is not sealed")
             }
+            Self::CompletionMismatch(set) => write!(
+                formatter,
+                "asset reference set {set:?} does not match the requested completion facts"
+            ),
+            Self::CompletionEvidenceMismatch(set) => write!(
+                formatter,
+                "asset reference set {set:?} has incompatible completion evidence"
+            ),
             Self::SealedProofMismatch(set) => write!(
                 formatter,
                 "asset reference set {set:?} does not match the complete sealed proof"
@@ -75,6 +85,8 @@ impl Error for AssetReadError {
             Self::ReferenceSetMissing(_)
             | Self::ReferenceSetNotBuilding(_)
             | Self::ReferenceSetNotSealed(_)
+            | Self::CompletionMismatch(_)
+            | Self::CompletionEvidenceMismatch(_)
             | Self::SealedProofMismatch(_) => None,
         }
     }

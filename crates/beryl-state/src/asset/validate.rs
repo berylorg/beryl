@@ -11,17 +11,18 @@ use super::{
     AssetReferenceSetLifecycle, AssetReferenceSetManifest, AssetValidationError,
     asset_sidecar_address,
     codec::{
-        AssetMetadataCodec, AssetOwnerHeadCodec, AssetReferenceEntryCodec,
-        AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec, AssetReferenceMarkerCodec,
+        AssetMetadataCodec, AssetOwnerHeadCodec, AssetReferenceCompletionEvidenceCodec,
+        AssetReferenceEntryCodec, AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec,
+        AssetReferenceMarkerCodec,
     },
-    digest,
+    completion, digest,
 };
 
 mod range;
 
 use range::{
-    all_entry_range, asset_range, entry_limit, entry_range, index_limit, label_range, limits,
-    manifest_limit, marker_range, metadata_limit, owner_range, set_range,
+    all_entry_range, asset_range, completion_evidence_limit, entry_limit, entry_range, index_limit,
+    label_range, limits, manifest_limit, marker_range, metadata_limit, owner_range, set_range,
 };
 
 pub(super) fn validate(reader: &DomainReader<'_, AssetDomain>) -> Result<(), AssetValidationError> {
@@ -41,11 +42,59 @@ fn validate_records(
 ) -> Result<(), AssetValidationError> {
     validate_metadata(reader, sidecars)?;
     validate_manifests(reader)?;
+    validate_completion_evidence(reader)?;
     validate_all_entries(reader)?;
     validate_marker_indexes(reader)?;
     validate_label_indexes(reader)?;
     validate_owner_heads(reader)?;
     Ok(())
+}
+
+fn validate_completion_evidence(
+    reader: &DomainReader<'_, AssetDomain>,
+) -> Result<(), AssetValidationError> {
+    let mut after = None;
+    loop {
+        let page = reader.cursor::<AssetReferenceCompletionEvidenceCodec>(
+            &set_range(after),
+            CursorDirection::Forward,
+            limits(),
+        )?;
+        for entry in page.records() {
+            if entry.key() != &entry.value().set_id {
+                return invariant("asset completion-evidence key disagrees with its identity");
+            }
+            let manifest = reader
+                .point::<AssetReferenceManifestCodec>(entry.key(), manifest_limit())?
+                .ok_or(AssetValidationError::Invariant(
+                    "asset completion evidence has no manifest",
+                ))?;
+            let valid = match manifest.lifecycle {
+                AssetReferenceSetLifecycle::Building => {
+                    completion::building_matches(&manifest, entry.value())
+                }
+                AssetReferenceSetLifecycle::Sealed => SealedAssetReferenceSetProof::new(
+                    manifest.set_id,
+                    manifest.sequential,
+                    manifest.ordered_assets,
+                    manifest.entry_frontier,
+                    manifest.asset_chain_digest,
+                )
+                .ok()
+                .is_some_and(|proof| completion::sealed_matches(&manifest, entry.value(), proof)),
+            };
+            if !valid {
+                return invariant("asset completion evidence does not match its manifest");
+            }
+        }
+        if !page.has_more() {
+            return Ok(());
+        }
+        after = page.records().last().map(|entry| *entry.key());
+        if after.is_none() {
+            return invariant("asset completion-evidence cursor reported more without a record");
+        }
+    }
 }
 
 fn validate_metadata(
@@ -93,6 +142,15 @@ fn validate_manifests(reader: &DomainReader<'_, AssetDomain>) -> Result<(), Asse
         for entry in page.records() {
             if entry.key() != &entry.value().set_id {
                 return invariant("asset reference-set manifest key disagrees with its identity");
+            }
+            if reader
+                .point::<AssetReferenceCompletionEvidenceCodec>(
+                    entry.key(),
+                    completion_evidence_limit(),
+                )?
+                .is_none()
+            {
+                return invariant("asset reference-set manifest has no completion evidence");
             }
             if entry.value().sequential.marker_count() != entry.value().entry_frontier
                 || entry.value().ordered_assets.marker_count() != entry.value().entry_frontier

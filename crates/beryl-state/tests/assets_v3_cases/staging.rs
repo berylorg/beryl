@@ -59,6 +59,13 @@ fn more_than_1024_markers_stage_v3_in_fixed_pages_and_public_reads_clamp_exactly
         .unwrap();
     assert_eq!(sealed_manifest.sequential(), sealed.sequential());
     assert_eq!(sealed_manifest.ordered_assets(), sealed.ordered_assets());
+    assert_eq!(
+        state
+            .assets()
+            .complete_reference_set(&store, staging, source, sealed.ordered_assets())
+            .unwrap(),
+        AssetReferenceSetCompletion::Sealed(sealed)
+    );
 
     let package_maximum = state
         .assets()

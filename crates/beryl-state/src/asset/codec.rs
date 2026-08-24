@@ -7,11 +7,12 @@ use beryl_model::{
 use crate::encoding::{CodecError, Decoder, Encoder};
 
 use super::{
-    ASSET_ENTRY_LIMIT, ASSET_HEAD_LIMIT, ASSET_INDEX_LIMIT, ASSET_MANIFEST_LIMIT,
-    ASSET_METADATA_LIMIT, AssetDomain, AssetEntryKey, AssetLabelDisposition, AssetLabelFirstKey,
-    AssetLabelFirstRecord, AssetMarkerKey, AssetMediaType, AssetMetadataRecord, AssetOwner,
-    AssetOwnerHeadRecord, AssetReferenceEntryRecord, AssetReferenceOrdinal,
-    AssetReferenceSetLifecycle, AssetReferenceSetManifest, AssetSidecarState,
+    ASSET_COMPLETION_EVIDENCE_LIMIT, ASSET_ENTRY_LIMIT, ASSET_HEAD_LIMIT, ASSET_INDEX_LIMIT,
+    ASSET_MANIFEST_LIMIT, ASSET_METADATA_LIMIT, AssetDomain, AssetEntryKey, AssetLabelDisposition,
+    AssetLabelFirstKey, AssetLabelFirstRecord, AssetMarkerKey, AssetMediaType, AssetMetadataRecord,
+    AssetOwner, AssetOwnerHeadRecord, AssetReferenceEntryRecord, AssetReferenceOrdinal,
+    AssetReferenceSetCompletionEvidence, AssetReferenceSetLifecycle, AssetReferenceSetManifest,
+    AssetSidecarState,
 };
 
 mod parts;
@@ -84,6 +85,7 @@ impl RecordCodec<AssetDomain> for AssetMetadataCodec {
 }
 
 pub(super) struct AssetReferenceManifestCodec;
+pub(super) struct AssetReferenceCompletionEvidenceCodec;
 
 impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
     type Key = AssetReferenceSetId;
@@ -142,6 +144,60 @@ impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
             entry_frontier,
             asset_chain_digest,
             revision,
+        })
+    }
+}
+
+impl RecordCodec<AssetDomain> for AssetReferenceCompletionEvidenceCodec {
+    type Key = AssetReferenceSetId;
+    type Value = AssetReferenceSetCompletionEvidence;
+    type Error = CodecError;
+
+    const FAMILY: &'static str = "reference_set_completion_evidence";
+    const VERSION: RecordVersion = RecordVersion::new(3);
+    const MAX_KEY_BYTES: usize = 16;
+    const MAX_VALUE_BYTES: usize = ASSET_COMPLETION_EVIDENCE_LIMIT;
+
+    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+        Ok(key.as_bytes().to_vec())
+    }
+
+    fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+        decode_fixed_16(encoded, "asset reference-set completion identity")
+            .map(AssetReferenceSetId::from_bytes)
+    }
+
+    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+        let mut encoder = Encoder::new();
+        encoder.fixed(value.set_id.as_bytes());
+        encoder.fixed_32(&value.authority_commitment);
+        encoder.fixed_32(&value.manifest_commitment);
+        match value.sealed_proof_commitment {
+            Some(commitment) => {
+                encoder.u8(1);
+                encoder.fixed_32(&commitment);
+            }
+            None => encoder.u8(0),
+        }
+        Ok(encoder.finish())
+    }
+
+    fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+        let mut decoder = Decoder::new(encoded);
+        let set_id = AssetReferenceSetId::from_bytes(decoder.fixed()?);
+        let authority_commitment = decoder.fixed_32()?;
+        let manifest_commitment = decoder.fixed_32()?;
+        let sealed_proof_commitment = match decoder.u8()? {
+            0 => None,
+            1 => Some(decoder.fixed_32()?),
+            tag => return Err(invalid_tag("asset reference-set completion seal", tag)),
+        };
+        decoder.finish()?;
+        Ok(AssetReferenceSetCompletionEvidence {
+            set_id,
+            authority_commitment,
+            manifest_commitment,
+            sealed_proof_commitment,
         })
     }
 }

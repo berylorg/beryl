@@ -6,9 +6,9 @@ use beryl_model::{
 };
 
 use super::super::{
-    ASSET_ENTRY_LIMIT, ASSET_INDEX_LIMIT, ASSET_MANIFEST_LIMIT, ASSET_METADATA_LIMIT,
-    AssetEntryKey, AssetLabelFirstKey, AssetMarkerKey, AssetOwner, AssetReferenceOrdinal,
-    AssetReferenceSetId,
+    ASSET_COMPLETION_EVIDENCE_LIMIT, ASSET_ENTRY_LIMIT, ASSET_INDEX_LIMIT, ASSET_MANIFEST_LIMIT,
+    ASSET_METADATA_LIMIT, AssetEntryKey, AssetLabelFirstKey, AssetMarkerKey, AssetOwner,
+    AssetReferenceOrdinal, AssetReferenceSetId,
 };
 
 const PAGE_ITEMS: usize = 128;
@@ -128,6 +128,11 @@ pub(super) fn metadata_limit() -> PointReadLimit {
 
 pub(super) fn manifest_limit() -> PointReadLimit {
     PointReadLimit::new(ASSET_MANIFEST_LIMIT + 4).expect("manifest point bound is nonzero")
+}
+
+pub(super) fn completion_evidence_limit() -> PointReadLimit {
+    PointReadLimit::new(ASSET_COMPLETION_EVIDENCE_LIMIT + 4)
+        .expect("completion evidence point bound is nonzero")
 }
 
 pub(super) fn entry_limit() -> PointReadLimit {
