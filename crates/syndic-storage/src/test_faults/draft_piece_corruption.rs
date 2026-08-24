@@ -1058,6 +1058,10 @@ pub fn inject_draft_piece_fragment_corruption(
                 beryl_model::SyndicDraftMarkerId::from_bytes([0xC3; 16]),
                 1,
                 beryl_model::ImageLabelOrdinal::new(1).expect("fixture label is nonzero"),
+                beryl_model::AssetId::sha256_v1(
+                    [0xA3; 32],
+                    std::num::NonZeroU64::new(1).expect("fixture asset length is nonzero"),
+                ),
             );
             let insertion = DraftPieceMarkerInsertionV1::new(
                 0,
@@ -1082,6 +1086,7 @@ pub fn inject_draft_piece_fragment_corruption(
                     beryl_model::SyndicDraftMarkerId::from_bytes([0xC4; 16]),
                     1,
                     marker.label(),
+                    marker.asset_id(),
                 );
                 replacement.with_marker_effect(DraftPieceMarkerEffectV1::Insert(
                     DraftPieceMarkerInsertionV1::new(

@@ -94,8 +94,8 @@ pub struct DraftPieceMarkerEffectChargesV1 {
 }
 
 impl DraftPieceMarkerEffectChargesV1 {
-    pub const fn canonical_single_marker() -> Self {
-        Self::new(0, 1, 121)
+    pub const fn for_marker(_marker: DraftPieceMarkerV1) -> Self {
+        Self::new(0, 1, 162)
     }
 
     pub const fn new(logical_utf8_bytes: u64, marker_count: u64, encoded_bytes: u64) -> Self {
@@ -357,6 +357,7 @@ fn effect_is_exact(effect: DraftPieceMarkerEffectV1) -> bool {
         | DraftPieceMarkerEffectV1::SameIdReplacement { removal, insertion } => {
             removal.occurrence().marker_id() == insertion.marker().marker_id()
                 && removal.occurrence().label() == insertion.marker().label()
+                && removal.occurrence().asset_id() == insertion.marker().asset_id()
                 && valid_charges(insertion.charges())
         }
     }

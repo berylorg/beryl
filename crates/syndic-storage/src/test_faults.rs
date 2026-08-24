@@ -116,8 +116,8 @@ pub use schema_history::{
     inject_awaiting_terminal_predecessor,
 };
 
-pub fn syndic_v5_family_names() -> Vec<&'static str> {
-    crate::domain::v5_family_names().collect()
+pub fn syndic_v6_family_names() -> Vec<&'static str> {
+    crate::domain::v6_family_names().collect()
 }
 
 pub fn roundtrip_draft_historical_root_adoption(

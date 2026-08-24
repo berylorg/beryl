@@ -9,7 +9,7 @@ use beryl_home_store::{
 use beryl_model::{
     AcceptedInputRevision, ContentRevision, DraftRevision, ImageLabelOrdinal, InputGateRevision,
     ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
-    SyndicTurnId, ThreadRevision, advance_content_marker_digest, content_marker_digest_seed,
+    SyndicTurnId, ThreadRevision, advance_sequential_marker_digest, sequential_marker_digest_seed,
 };
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{

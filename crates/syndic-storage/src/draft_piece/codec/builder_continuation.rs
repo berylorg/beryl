@@ -62,6 +62,7 @@ fn dec_charges(d: &mut Decoder<'_>) -> Result<DraftPieceMarkerEffectChargesV1, C
 fn enc_occurrence(e: &mut Encoder, occurrence: DraftMarkerIdentityOccurrenceV1) {
     e.fixed16(occurrence.marker_id().as_bytes());
     e.u64(occurrence.label().get());
+    enc_asset_id(e, occurrence.asset_id());
     e.u64(occurrence.order_key());
     e.fixed16(occurrence.sequence_leaf_id().as_bytes());
     enc_digest(e, occurrence.sequence_leaf_digest());
@@ -72,6 +73,7 @@ fn dec_occurrence(d: &mut Decoder<'_>) -> Result<DraftMarkerIdentityOccurrenceV1
         SyndicDraftMarkerId::from_bytes(d.fixed16()?),
         ImageLabelOrdinal::new(d.u64()?)
             .map_err(|error| invalid("draft pending-marker label", error))?,
+        dec_asset_id(d)?,
         d.u64()?,
         DraftPieceRecordIdV1::from_bytes(d.fixed16()?),
         dec_digest(d)?,

@@ -5,7 +5,7 @@ use super::{
     staging_model::DraftMutationStagingProgressReceiptReferenceV1,
 };
 use beryl_model::{
-    DraftRevision, ImageLabelOrdinal, SealedAssetReferenceSetProof, SyndicDraftId,
+    AssetId, DraftRevision, ImageLabelOrdinal, SealedAssetReferenceSetProof, SyndicDraftId,
     SyndicDraftMarkerId, SyndicThreadId, ThreadRevision,
 };
 
@@ -1844,6 +1844,7 @@ impl DraftMarkerIdentityRecordKeyV1 {
 pub struct DraftMarkerIdentityOccurrenceV1 {
     marker_id: SyndicDraftMarkerId,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
     order_key: u64,
     sequence_leaf_id: DraftPieceRecordIdV1,
     sequence_leaf_digest: DraftPieceDigestV1,
@@ -1853,6 +1854,7 @@ impl DraftMarkerIdentityOccurrenceV1 {
     pub const fn new(
         marker_id: SyndicDraftMarkerId,
         label: ImageLabelOrdinal,
+        asset_id: AssetId,
         order_key: u64,
         sequence_leaf_id: DraftPieceRecordIdV1,
         sequence_leaf_digest: DraftPieceDigestV1,
@@ -1860,6 +1862,7 @@ impl DraftMarkerIdentityOccurrenceV1 {
         Self {
             marker_id,
             label,
+            asset_id,
             order_key,
             sequence_leaf_id,
             sequence_leaf_digest,
@@ -1871,6 +1874,9 @@ impl DraftMarkerIdentityOccurrenceV1 {
     }
     pub const fn label(self) -> ImageLabelOrdinal {
         self.label
+    }
+    pub const fn asset_id(self) -> AssetId {
+        self.asset_id
     }
     pub const fn order_key(self) -> u64 {
         self.order_key
@@ -2072,6 +2078,7 @@ pub struct DraftPieceMarkerV1 {
     marker_id: SyndicDraftMarkerId,
     order_key: u64,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
 }
 
 impl DraftPieceMarkerV1 {
@@ -2079,11 +2086,13 @@ impl DraftPieceMarkerV1 {
         marker_id: SyndicDraftMarkerId,
         order_key: u64,
         label: ImageLabelOrdinal,
+        asset_id: AssetId,
     ) -> Self {
         Self {
             marker_id,
             order_key,
             label,
+            asset_id,
         }
     }
 
@@ -2097,6 +2106,10 @@ impl DraftPieceMarkerV1 {
 
     pub const fn label(self) -> ImageLabelOrdinal {
         self.label
+    }
+
+    pub const fn asset_id(self) -> AssetId {
+        self.asset_id
     }
 }
 

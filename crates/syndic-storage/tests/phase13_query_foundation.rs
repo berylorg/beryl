@@ -201,6 +201,7 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     let proof = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([89; 16]),
         source.sequential(),
+        beryl_model::OrderedMarkerAssetSummaryV1::new([91; 32], source.sequential().marker_count()),
         source.sequential().marker_count(),
         AssetReferenceSetDigest::from_bytes([90; 32]),
     )

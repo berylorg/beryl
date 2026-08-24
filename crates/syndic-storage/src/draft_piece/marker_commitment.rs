@@ -1,10 +1,12 @@
-use beryl_model::{DraftMarkerCommitmentV1, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId};
+use beryl_model::{
+    AssetId, DraftMarkerCommitmentV1, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId,
+};
 use sha2::{Digest, Sha256};
 
 use super::{DraftPieceDigestV1, DraftPieceRecordIdV1};
 
 const EMPTY_COMMITMENT: &[u8] = b"syndic/draft-marker-order-commitment-root/v1/empty";
-const COMMITMENT_LEAF: &[u8] = b"syndic/draft-marker-order-commitment-leaf/v1";
+const COMMITMENT_LEAF: &[u8] = b"syndic/draft-marker-order-commitment-leaf/v2";
 const COMMITMENT_NODE: &[u8] = b"syndic/draft-marker-order-commitment-node/v1";
 
 pub fn canonical_empty_draft_marker_commitment_v1() -> DraftMarkerCommitmentV1 {
@@ -101,6 +103,7 @@ pub(crate) enum DraftMarkerOrderRecordV1 {
         key: DraftMarkerOrderRecordKeyV1,
         marker_id: SyndicDraftMarkerId,
         label: ImageLabelOrdinal,
+        asset_id: AssetId,
         digest: DraftPieceDigestV1,
     },
 }
@@ -128,11 +131,14 @@ impl DraftMarkerOrderRecordV1 {
             Self::Leaf { .. } => None,
         }
     }
-    pub(crate) const fn marker(&self) -> Option<(SyndicDraftMarkerId, ImageLabelOrdinal)> {
+    pub(crate) const fn marker(&self) -> Option<(SyndicDraftMarkerId, ImageLabelOrdinal, AssetId)> {
         match self {
             Self::Leaf {
-                marker_id, label, ..
-            } => Some((*marker_id, *label)),
+                marker_id,
+                label,
+                asset_id,
+                ..
+            } => Some((*marker_id, *label, *asset_id)),
             Self::Internal { .. } => None,
         }
     }
@@ -141,10 +147,17 @@ impl DraftMarkerOrderRecordV1 {
 pub(crate) fn marker_order_leaf_digest(
     marker_id: SyndicDraftMarkerId,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
 ) -> DraftPieceDigestV1 {
     commitment_digest_parts(
         COMMITMENT_LEAF,
-        &[marker_id.as_bytes(), &label.get().to_be_bytes()],
+        &[
+            marker_id.as_bytes(),
+            &label.get().to_be_bytes(),
+            &[asset_id.version() as u8],
+            &asset_id.digest(),
+            &asset_id.length().get().to_be_bytes(),
+        ],
     )
 }
 

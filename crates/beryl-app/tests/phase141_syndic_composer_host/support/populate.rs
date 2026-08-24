@@ -82,6 +82,7 @@ pub fn populate(
         vec![ComposerHostImageMarkerMetadata::new(
             right_id,
             right.label(),
+            right.asset_id(),
         )]
         .into_boxed_slice(),
         LogicalExtent::new(6, 3),
@@ -100,7 +101,12 @@ pub fn populate(
         vec![MutationPageItem::Object(ObjectChange::Insert {
             object: SuccessorObject::new(left_id, ByteOffset::new(3), left_order, 17, 5),
         })],
-        vec![ComposerHostImageMarkerMetadata::new(left_id, left.label())].into_boxed_slice(),
+        vec![ComposerHostImageMarkerMetadata::new(
+            left_id,
+            left.label(),
+            left.asset_id(),
+        )]
+        .into_boxed_slice(),
         LogicalExtent::new(6, 3),
         MutationPositions::collapsed(after_right),
     );

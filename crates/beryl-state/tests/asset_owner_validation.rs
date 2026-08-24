@@ -9,9 +9,10 @@ use beryl_home_store::{
     SidecarNamespace, StorageDomain,
 };
 use beryl_model::{
-    AssetId, AssetReferenceSetId, ImageLabelOrdinal, SealedAssetReferenceSetProof,
-    SequentialMarkerSummaryV1, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
-    advance_sequential_marker_digest, sequential_marker_digest_seed,
+    AssetId, AssetReferenceSetId, ImageLabelOrdinal, OrderedMarkerAssetSummaryV1,
+    SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, SyndicDraftId, SyndicDraftMarkerId,
+    SyndicItemId, advance_ordered_marker_asset_digest, advance_sequential_marker_digest,
+    ordered_marker_asset_digest_seed, sequential_marker_digest_seed,
 };
 use beryl_state::{
     AppendAssetReferencePage, AssetMediaType, AssetOwner, AssetOwnerHeadAssertion,
@@ -124,6 +125,18 @@ fn marker_summary() -> SequentialMarkerSummaryV1 {
     .unwrap()
 }
 
+fn ordered_marker_asset_summary(asset_id: AssetId) -> OrderedMarkerAssetSummaryV1 {
+    OrderedMarkerAssetSummaryV1::new(
+        advance_ordered_marker_asset_digest(
+            ordered_marker_asset_digest_seed(),
+            marker(),
+            ImageLabelOrdinal::FIRST,
+            asset_id,
+        ),
+        1,
+    )
+}
+
 fn publish_asset(store: &HomeStore, state: &BerylState) -> AssetId {
     let bytes = b"asset-owner-validation-sidecar";
     let sidecar = store
@@ -170,7 +183,7 @@ fn sealed_set(
 ) -> SealedAssetReferenceSetProof {
     let set_id = AssetReferenceSetId::from_bytes([10; 16]);
     let source = marker_summary();
-    let begin = BeginAssetReferenceSet::new(set_id, source);
+    let begin = BeginAssetReferenceSet::new(set_id);
     let staging = begin.staging_authority();
     execute_asset(
         store,
@@ -202,19 +215,21 @@ fn sealed_set(
         .staged_reference_set_manifest(store, staging)
         .unwrap();
     let build = manifest.build_proof();
-    let proof = build.sealed_proof().unwrap();
+    let seal =
+        SealAssetReferenceSet::new(build, source, ordered_marker_asset_summary(asset_id)).unwrap();
+    let proof = seal.sealed_proof();
     execute_asset(
         store,
-        state.assets().seal_reference_set(
-            state.assets().revision(store).unwrap(),
-            SealAssetReferenceSet::new(build, source),
-        ),
+        state
+            .assets()
+            .seal_reference_set(state.assets().revision(store).unwrap(), seal),
     );
     let sealed = state
         .assets()
         .sealed_reference_set_manifest(store, proof)
         .unwrap();
-    assert_eq!(sealed.sealed_proof(), Some(proof));
+    assert_eq!(sealed.sequential(), proof.sequential());
+    assert_eq!(sealed.ordered_assets(), proof.ordered_assets());
     proof
 }
 

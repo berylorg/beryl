@@ -153,8 +153,11 @@ impl PendingOrdinaryExecution {
         let asset_reference_set = item.presentation().asset_reference_set();
         let asset_owner = AssetOwner::SubmittedTurnItem(item.id());
         let asset_owner_head = assets.owner_head(store, asset_owner)?;
-        let asset_manifest = asset_reference_set
-            .map(|proof| assets.sealed_reference_set_manifest(store, proof))
+        let asset_proof = asset_reference_set
+            .map(|proof| -> Result<_, beryl_state::AssetReadError> {
+                assets.sealed_reference_set_manifest(store, proof)?;
+                Ok(proof)
+            })
             .transpose()?;
         before_confirmation();
         let confirmed_thread = storage.thread(store, thread_id, limit)?;
@@ -173,8 +176,11 @@ impl PendingOrdinaryExecution {
         let confirmed_item = storage.canonical_item(store, item_index.item_id(), limit)?;
         let confirmed_manifest = storage.content_manifest(store, input.id(), limit)?;
         let confirmed_asset_owner_head = assets.owner_head(store, asset_owner)?;
-        let confirmed_asset_manifest = asset_reference_set
-            .map(|proof| assets.sealed_reference_set_manifest(store, proof))
+        let confirmed_asset_proof = asset_reference_set
+            .map(|proof| -> Result<_, beryl_state::AssetReadError> {
+                assets.sealed_reference_set_manifest(store, proof)?;
+                Ok(proof)
+            })
             .transpose()?;
         if confirmed_thread.as_ref() != Some(&thread)
             || confirmed_binding.as_ref() != Some(&binding)
@@ -186,7 +192,7 @@ impl PendingOrdinaryExecution {
             || confirmed_item.as_ref() != Some(&item)
             || confirmed_manifest.as_ref() != Some(&manifest)
             || confirmed_asset_owner_head != asset_owner_head
-            || confirmed_asset_manifest != asset_manifest
+            || confirmed_asset_proof != asset_proof
         {
             return Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id });
         }
@@ -234,17 +240,17 @@ impl PendingOrdinaryExecution {
             input.summary().image_marker_count(),
             asset_reference_set,
             asset_owner_head.as_ref(),
-            asset_manifest.as_ref(),
+            asset_proof.as_ref(),
         ) {
             (0, None, None, None) => {}
             (0, _, _, _) | (_, None, _, _) | (_, _, None, _) | (_, _, _, None) => {
                 return Err(OrdinaryTurnExecutionError::InputAssetReferenceSetMismatch);
             }
-            (_, Some(proof), Some(head), Some(asset_manifest))
-                if proof.summary() == marker_summary.sequential()
+            (_, Some(proof), Some(head), Some(authenticated_proof))
+                if proof.sequential() == marker_summary.sequential()
                     && head.owner() == asset_owner
                     && head.set() == proof
-                    && asset_manifest.sealed_proof() == Some(proof) => {}
+                    && *authenticated_proof == proof => {}
             _ => return Err(OrdinaryTurnExecutionError::InputAssetReferenceSetMismatch),
         }
         Ok(Self {

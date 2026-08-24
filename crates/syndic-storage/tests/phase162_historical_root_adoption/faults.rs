@@ -6,7 +6,7 @@ use syndic_storage::test_faults::{
     delete_draft_piece_immutable_record, draft_edit_history_stored_charge_components,
     draft_piece_immutable_snapshot, inject_draft_edit_history_frontier_digest_corruption,
     replace_draft_edit_history_transition, roundtrip_draft_historical_root_adoption,
-    syndic_v5_family_names,
+    syndic_v6_family_names,
 };
 use syndic_storage::{
     DraftEditorCandidateSessionReadOutcomeV1, DraftHistoricalRootAdoptionOutcomeV1,
@@ -237,7 +237,7 @@ fn adoption_reuses_immutable_roots_and_preserves_canonical_records_and_current_p
         target_snapshot
     );
     assert_eq!(current(storage, &store, thread), durable);
-    let names = syndic_v5_family_names();
+    let names = syndic_v6_family_names();
     assert_eq!(names.len(), 80);
     assert_eq!(names[22], "draft-historical-root-adoptions");
     assert_eq!(names[23], "draft-composer-builds");

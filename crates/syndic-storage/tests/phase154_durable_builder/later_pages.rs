@@ -182,7 +182,7 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     inserted,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(inserted),
                 ),
             )),
         DraftPieceReplacementV1::new(
@@ -302,7 +302,7 @@ fn later_marker_effect_cannot_overtake_one_pending_effect() {
             DraftPieceMarkerInsertionV1::new(
                 anchor,
                 marker,
-                DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                DraftPieceMarkerEffectChargesV1::for_marker(marker),
             ),
         ))
     };

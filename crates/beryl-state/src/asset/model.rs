@@ -1,8 +1,8 @@
 use std::num::NonZeroU64;
 
 use beryl_model::{
-    AssetId, AssetProofError, AssetReferenceSetDigest, AssetReferenceSetId, DomainRevision,
-    ImageLabelOrdinal, SealedAssetReferenceSetProof, SequentialMarkerSummaryV1,
+    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal,
+    OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof, SequentialMarkerSummaryV1,
     SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId,
     SyndicRetryRecordId,
 };
@@ -57,7 +57,6 @@ impl AssetDimensions {
     }
 }
 
-/// Sidecar publication state represented by asset schema V2.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AssetSidecarState {
     Committed,
@@ -144,18 +143,15 @@ pub enum AssetReferenceSetLifecycle {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AssetReferenceSetStagingAuthority {
     pub(super) set_id: AssetReferenceSetId,
-    pub(super) summary: SequentialMarkerSummaryV1,
 }
 
 /// Compact manifest for one staged or sealed immutable marker-reference set.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AssetReferenceSetManifest {
     pub(super) set_id: AssetReferenceSetId,
-    pub(super) summary: SequentialMarkerSummaryV1,
+    pub(super) sequential: SequentialMarkerSummaryV1,
+    pub(super) ordered_assets: OrderedMarkerAssetSummaryV1,
     pub(super) lifecycle: AssetReferenceSetLifecycle,
-    pub(super) marker_count: u64,
-    pub(super) marker_digest: [u8; 32],
-    pub(super) maximum_image_label: Option<ImageLabelOrdinal>,
     pub(super) entry_frontier: u64,
     pub(super) asset_chain_digest: AssetReferenceSetDigest,
     pub(super) revision: RecordRevision,
@@ -168,8 +164,13 @@ impl AssetReferenceSetManifest {
     }
 
     #[must_use]
-    pub const fn summary(&self) -> SequentialMarkerSummaryV1 {
-        self.summary
+    pub const fn sequential(&self) -> SequentialMarkerSummaryV1 {
+        self.sequential
+    }
+
+    #[must_use]
+    pub const fn ordered_assets(&self) -> OrderedMarkerAssetSummaryV1 {
+        self.ordered_assets
     }
 
     #[must_use]
@@ -179,17 +180,17 @@ impl AssetReferenceSetManifest {
 
     #[must_use]
     pub const fn marker_count(&self) -> u64 {
-        self.marker_count
+        self.sequential.marker_count()
     }
 
     #[must_use]
     pub const fn marker_digest(&self) -> [u8; 32] {
-        self.marker_digest
+        self.sequential.marker_digest()
     }
 
     #[must_use]
     pub const fn maximum_image_label(&self) -> Option<ImageLabelOrdinal> {
-        self.maximum_image_label
+        self.sequential.maximum_image_label()
     }
 
     #[must_use]
@@ -207,35 +208,15 @@ impl AssetReferenceSetManifest {
         self.revision
     }
 
-    /// Returns the exact proof carried by a subsequent append or seal command.
     #[must_use]
     pub const fn build_proof(&self) -> AssetReferenceSetBuildProof {
         AssetReferenceSetBuildProof {
             set_id: self.set_id,
-            summary: self.summary,
-            marker_count: self.marker_count,
-            marker_digest: self.marker_digest,
-            maximum_image_label: self.maximum_image_label,
+            sequential: self.sequential,
+            ordered_assets: self.ordered_assets,
             entry_frontier: self.entry_frontier,
             asset_chain_digest: self.asset_chain_digest,
             revision: self.revision,
-        }
-    }
-
-    /// Returns publication proof only for a sealed manifest.
-    #[must_use]
-    pub const fn sealed_proof(&self) -> Option<SealedAssetReferenceSetProof> {
-        match self.lifecycle {
-            AssetReferenceSetLifecycle::Building => None,
-            AssetReferenceSetLifecycle::Sealed => match SealedAssetReferenceSetProof::new(
-                self.set_id,
-                self.summary,
-                self.entry_frontier,
-                self.asset_chain_digest,
-            ) {
-                Ok(proof) => Some(proof),
-                Err(_) => None,
-            },
         }
     }
 }
@@ -244,10 +225,8 @@ impl AssetReferenceSetManifest {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AssetReferenceSetBuildProof {
     pub(super) set_id: AssetReferenceSetId,
-    pub(super) summary: SequentialMarkerSummaryV1,
-    pub(super) marker_count: u64,
-    pub(super) marker_digest: [u8; 32],
-    pub(super) maximum_image_label: Option<ImageLabelOrdinal>,
+    pub(super) sequential: SequentialMarkerSummaryV1,
+    pub(super) ordered_assets: OrderedMarkerAssetSummaryV1,
     pub(super) entry_frontier: u64,
     pub(super) asset_chain_digest: AssetReferenceSetDigest,
     pub(super) revision: RecordRevision,
@@ -259,14 +238,24 @@ impl AssetReferenceSetBuildProof {
         self.set_id
     }
 
-    /// Derives the complete authority that the exact staged state will publish when sealed.
-    pub const fn sealed_proof(self) -> Result<SealedAssetReferenceSetProof, AssetProofError> {
-        SealedAssetReferenceSetProof::new(
-            self.set_id,
-            self.summary,
-            self.entry_frontier,
-            self.asset_chain_digest,
-        )
+    #[must_use]
+    pub const fn sequential(self) -> SequentialMarkerSummaryV1 {
+        self.sequential
+    }
+
+    #[must_use]
+    pub const fn ordered_assets(self) -> OrderedMarkerAssetSummaryV1 {
+        self.ordered_assets
+    }
+
+    #[must_use]
+    pub const fn entry_frontier(self) -> u64 {
+        self.entry_frontier
+    }
+
+    #[must_use]
+    pub const fn asset_chain_digest(self) -> AssetReferenceSetDigest {
+        self.asset_chain_digest
     }
 }
 

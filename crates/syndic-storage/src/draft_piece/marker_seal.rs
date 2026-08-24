@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, num::NonZeroU64};
 
 #[cfg(feature = "test-faults")]
 use beryl_home_store::RecordCodec;
@@ -7,9 +7,10 @@ use beryl_home_store::{
     ReconciliationReservation, RecordVersion,
 };
 use beryl_model::{
-    DomainRevision, DraftMarkerCommitmentV1, ImageLabelOrdinal, SequentialMarkerSummaryV1,
-    SyndicDraftId, SyndicDraftMarkerId, advance_sequential_marker_digest,
-    sequential_marker_digest_seed,
+    AssetId, DomainRevision, DraftMarkerCommitmentV1, ImageLabelOrdinal,
+    OrderedMarkerAssetSummaryV1, SequentialMarkerSummaryV1, SyndicDraftId, SyndicDraftMarkerId,
+    advance_ordered_marker_asset_digest, advance_sequential_marker_digest,
+    ordered_marker_asset_digest_seed, sequential_marker_digest_seed,
 };
 use sha2::{Digest, Sha256};
 
@@ -32,7 +33,7 @@ use super::{
 
 pub const DRAFT_MARKER_SEAL_PAGE_MAX_MARKERS: usize = 256;
 
-const SEAL_RECORD_DIGEST_DOMAIN: &[u8] = b"beryl.syndic.draft-marker-seal-record.v1\0";
+const SEAL_RECORD_DIGEST_DOMAIN: &[u8] = b"beryl.syndic.draft-marker-seal-record.v2\0";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DraftMarkerSealOperationIdV1([u8; 16]);
@@ -118,6 +119,7 @@ impl DraftMarkerSealRequestV1 {
 pub struct DraftMarkerSealOrderedMarkerV1 {
     marker_id: SyndicDraftMarkerId,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
 }
 
 impl DraftMarkerSealOrderedMarkerV1 {
@@ -127,6 +129,10 @@ impl DraftMarkerSealOrderedMarkerV1 {
 
     pub const fn label(self) -> ImageLabelOrdinal {
         self.label
+    }
+
+    pub const fn asset_id(self) -> AssetId {
+        self.asset_id
     }
 }
 
@@ -183,7 +189,10 @@ pub enum DraftMarkerSealLifecycleV1 {
     Cancelled,
     Failed(DraftMarkerSealFailureReasonV1),
     Superseded(DraftMarkerSealOperationIdV1),
-    Sealed(SequentialMarkerSummaryV1),
+    Sealed {
+        sequential: SequentialMarkerSummaryV1,
+        ordered_assets: OrderedMarkerAssetSummaryV1,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -206,7 +215,8 @@ impl DraftMarkerSealCustodyReleaseV1 {
 pub struct DraftMarkerSealProofV1 {
     source: DraftPieceRootReferenceV1,
     commitment: DraftMarkerCommitmentV1,
-    summary: SequentialMarkerSummaryV1,
+    sequential: SequentialMarkerSummaryV1,
+    ordered_assets: OrderedMarkerAssetSummaryV1,
 }
 
 impl DraftMarkerSealProofV1 {
@@ -218,19 +228,25 @@ impl DraftMarkerSealProofV1 {
         self.commitment
     }
 
-    pub const fn summary(self) -> SequentialMarkerSummaryV1 {
-        self.summary
+    pub const fn sequential(self) -> SequentialMarkerSummaryV1 {
+        self.sequential
+    }
+
+    pub const fn ordered_assets(self) -> OrderedMarkerAssetSummaryV1 {
+        self.ordered_assets
     }
 
     pub(crate) const fn new_authenticated(
         source: DraftPieceRootReferenceV1,
         commitment: DraftMarkerCommitmentV1,
-        summary: SequentialMarkerSummaryV1,
+        sequential: SequentialMarkerSummaryV1,
+        ordered_assets: OrderedMarkerAssetSummaryV1,
     ) -> Self {
         Self {
             source,
             commitment,
-            summary,
+            sequential,
+            ordered_assets,
         }
     }
 }
@@ -316,6 +332,7 @@ struct DraftMarkerSealFrontierV1 {
     digest: DraftPieceDigestV1,
     marker_id: SyndicDraftMarkerId,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -324,6 +341,7 @@ pub(crate) struct DraftMarkerSealRecordV1 {
     cursor: DraftMarkerSealCursorV1,
     frontier: Option<DraftMarkerSealFrontierV1>,
     sequential_digest: [u8; 32],
+    ordered_asset_digest: [u8; 32],
     completed_marker_count: u64,
     maximum_image_label: Option<ImageLabelOrdinal>,
     lifecycle: DraftMarkerSealLifecycleV1,
@@ -414,7 +432,7 @@ impl Family for DraftMarkerSealsFamily {
     type Key = DraftMarkerSealKeyV1;
     type Value = DraftMarkerSealRecordV1;
     const NAME: &'static str = "draft-marker-seals";
-    const RECORD_VERSION: RecordVersion = RecordVersion::new(1);
+    const RECORD_VERSION: RecordVersion = RecordVersion::new(2);
     const MAX_KEY_BYTES: usize = 256;
     const MAX_VALUE_BYTES: usize = 8_192;
 
@@ -474,6 +492,7 @@ impl SyndicStorage {
             cursor: DraftMarkerSealCursorV1::BeforeRoot,
             frontier: None,
             sequential_digest: sequential_marker_digest_seed(),
+            ordered_asset_digest: ordered_marker_asset_digest_seed(),
             completed_marker_count: 0,
             maximum_image_label: None,
             lifecycle: DraftMarkerSealLifecycleV1::Open,
@@ -556,6 +575,12 @@ impl SyndicStorage {
                 frontier.marker_id,
                 frontier.label,
             );
+            next.ordered_asset_digest = advance_ordered_marker_asset_digest(
+                next.ordered_asset_digest,
+                frontier.marker_id,
+                frontier.label,
+                frontier.asset_id,
+            );
             next.completed_marker_count = next
                 .completed_marker_count
                 .checked_add(1)
@@ -568,6 +593,7 @@ impl SyndicStorage {
             markers.push(DraftMarkerSealOrderedMarkerV1 {
                 marker_id: frontier.marker_id,
                 label: frontier.label,
+                asset_id: frontier.asset_id,
             });
         }
 
@@ -588,7 +614,14 @@ impl SyndicStorage {
                 next.maximum_image_label,
             )
             .map_err(|_| DraftMarkerSealErrorV1::Corruption)?;
-            next.lifecycle = DraftMarkerSealLifecycleV1::Sealed(summary);
+            let ordered_assets = OrderedMarkerAssetSummaryV1::new(
+                next.ordered_asset_digest,
+                next.completed_marker_count,
+            );
+            next.lifecycle = DraftMarkerSealLifecycleV1::Sealed {
+                sequential: summary,
+                ordered_assets,
+            };
         } else if markers.is_empty() {
             return Err(DraftMarkerSealErrorV1::Corruption);
         }
@@ -612,10 +645,14 @@ impl SyndicStorage {
     pub fn advance_draft_marker_seal(
         &self,
         expected_domain_revision: DomainRevision,
-        prepared: PreparedDraftMarkerSealAdvanceV1,
+        prepared: &PreparedDraftMarkerSealAdvanceV1,
     ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, AdvanceMutation { prepared })
+        self.handle.contribution(
+            expected_domain_revision,
+            AdvanceMutation {
+                prepared: prepared.clone(),
+            },
+        )
     }
 
     pub fn prepare_draft_marker_seal_cancel(
@@ -740,18 +777,28 @@ impl SyndicStorage {
             DraftMarkerSealLifecycleV1::Superseded(successor) => {
                 DraftMarkerSealStatusV1::Superseded { successor, release }
             }
-            DraftMarkerSealLifecycleV1::Sealed(summary) => {
+            DraftMarkerSealLifecycleV1::Sealed {
+                sequential,
+                ordered_assets,
+            } => {
                 if !matches!(record.cursor, DraftMarkerSealCursorV1::Eof(_))
-                    || summary.marker_digest() != record.sequential_digest
-                    || summary.marker_count() != record.completed_marker_count
-                    || summary.maximum_image_label() != record.maximum_image_label
-                    || summary.marker_count() != key.commitment.marker_count()
-                    || summary.maximum_image_label() != key.commitment.maximum_image_label()
+                    || sequential.marker_digest() != record.sequential_digest
+                    || sequential.marker_count() != record.completed_marker_count
+                    || sequential.maximum_image_label() != record.maximum_image_label
+                    || ordered_assets.marker_asset_digest() != record.ordered_asset_digest
+                    || ordered_assets.marker_count() != record.completed_marker_count
+                    || sequential.marker_count() != key.commitment.marker_count()
+                    || sequential.maximum_image_label() != key.commitment.maximum_image_label()
                 {
                     return Err(DraftMarkerSealErrorV1::Corruption);
                 }
                 DraftMarkerSealStatusV1::Sealed(
-                    DraftMarkerSealProofV1::new_authenticated(source, key.commitment, summary),
+                    DraftMarkerSealProofV1::new_authenticated(
+                        source,
+                        key.commitment,
+                        sequential,
+                        ordered_assets,
+                    ),
                     release,
                 )
             }
@@ -1054,13 +1101,15 @@ fn descend_to_leaf(
         let record = load_marker_record(storage, store, draft_id, kind, record_id)?;
         if expected_height == 0 {
             validate_leaf(&record, expected_digest)?;
-            let (marker_id, label) = record.marker().ok_or(DraftMarkerSealErrorV1::Corruption)?;
+            let (marker_id, label, asset_id) =
+                record.marker().ok_or(DraftMarkerSealErrorV1::Corruption)?;
             return Ok((
                 DraftMarkerSealFrontierV1 {
                     record_id,
                     digest: expected_digest,
                     marker_id,
                     label,
+                    asset_id,
                 },
                 frames,
             ));
@@ -1140,10 +1189,10 @@ fn validate_leaf(
     record: &DraftMarkerOrderRecordV1,
     expected_digest: DraftPieceDigestV1,
 ) -> Result<(), DraftMarkerSealErrorV1> {
-    let (marker_id, label) = record.marker().ok_or(DraftMarkerSealErrorV1::Corruption)?;
+    let (marker_id, label, asset_id) = record.marker().ok_or(DraftMarkerSealErrorV1::Corruption)?;
     if record.height() != 0
         || record.digest() != expected_digest
-        || marker_order_leaf_digest(marker_id, label) != expected_digest
+        || marker_order_leaf_digest(marker_id, label, asset_id) != expected_digest
     {
         return Err(DraftMarkerSealErrorV1::Corruption);
     }
@@ -1255,7 +1304,7 @@ fn validate_frontier_leaf(
         frontier.record_id,
     )?;
     validate_leaf(&leaf, frontier.digest)?;
-    if leaf.marker() != Some((frontier.marker_id, frontier.label)) {
+    if leaf.marker() != Some((frontier.marker_id, frontier.label, frontier.asset_id)) {
         return Err(DraftMarkerSealErrorV1::Corruption);
     }
     Ok(())
@@ -1266,6 +1315,9 @@ fn validate_record(record: &DraftMarkerSealRecordV1) -> Result<(), DraftMarkerSe
         || record.completed_marker_count > record.key.commitment.marker_count()
         || (record.completed_marker_count == 0) != record.maximum_image_label.is_none()
         || (record.completed_marker_count == 0) != record.frontier.is_none()
+        || record.completed_marker_count == 0
+            && (record.sequential_digest != sequential_marker_digest_seed()
+                || record.ordered_asset_digest != ordered_marker_asset_digest_seed())
         || matches!(record.cursor, DraftMarkerSealCursorV1::BeforeRoot)
             && record.completed_marker_count != 0
         || matches!(
@@ -1273,8 +1325,19 @@ fn validate_record(record: &DraftMarkerSealRecordV1) -> Result<(), DraftMarkerSe
             DraftMarkerSealLifecycleV1::Superseded(successor)
                 if successor == record.key.operation_id
         )
-        || matches!(record.lifecycle, DraftMarkerSealLifecycleV1::Sealed(_))
+        || matches!(record.lifecycle, DraftMarkerSealLifecycleV1::Sealed { .. })
             != matches!(record.cursor, DraftMarkerSealCursorV1::Eof(_))
+        || matches!(
+            record.lifecycle,
+            DraftMarkerSealLifecycleV1::Sealed {
+                sequential,
+                ordered_assets,
+            } if sequential.marker_digest() != record.sequential_digest
+                || sequential.marker_count() != record.completed_marker_count
+                || sequential.maximum_image_label() != record.maximum_image_label
+                || ordered_assets.marker_asset_digest() != record.ordered_asset_digest
+                || ordered_assets.marker_count() != record.completed_marker_count
+        )
     {
         return Err(DraftMarkerSealErrorV1::Corruption);
     }
@@ -1567,6 +1630,7 @@ fn encode_record(record: &DraftMarkerSealRecordV1) -> Result<Vec<u8>, CodecError
     enc_cursor(&mut e, &record.cursor);
     enc_frontier(&mut e, record.frontier);
     e.fixed32(&record.sequential_digest);
+    e.fixed32(&record.ordered_asset_digest);
     e.u64(record.completed_marker_count);
     enc_label(&mut e, record.maximum_image_label);
     enc_lifecycle(&mut e, record.lifecycle);
@@ -1582,6 +1646,7 @@ fn decode_record(encoded: &[u8]) -> Result<DraftMarkerSealRecordV1, CodecError> 
         cursor: dec_cursor(&mut d)?,
         frontier: dec_frontier(&mut d)?,
         sequential_digest: d.fixed32()?,
+        ordered_asset_digest: d.fixed32()?,
         completed_marker_count: d.u64()?,
         maximum_image_label: dec_label(&mut d)?,
         lifecycle: dec_lifecycle(&mut d)?,
@@ -1676,6 +1741,26 @@ fn dec_label(d: &mut Decoder<'_>) -> Result<Option<ImageLabelOrdinal>, CodecErro
     }
 }
 
+fn enc_asset_id(e: &mut Encoder, asset_id: AssetId) {
+    e.u8(asset_id.version() as u8);
+    e.fixed32(&asset_id.digest());
+    e.u64(asset_id.length().get());
+}
+
+fn dec_asset_id(d: &mut Decoder<'_>) -> Result<AssetId, CodecError> {
+    match d.u8()? {
+        1 => Ok(AssetId::sha256_v1(
+            d.fixed32()?,
+            NonZeroU64::new(d.u64()?)
+                .ok_or(CodecError::InvalidLength("draft marker seal asset length"))?,
+        )),
+        tag => Err(CodecError::InvalidTag {
+            kind: "draft marker seal asset identity",
+            tag,
+        }),
+    }
+}
+
 fn enc_cursor(e: &mut Encoder, cursor: &DraftMarkerSealCursorV1) {
     match cursor {
         DraftMarkerSealCursorV1::BeforeRoot => e.u8(1),
@@ -1744,6 +1829,7 @@ fn enc_frontier(e: &mut Encoder, frontier: Option<DraftMarkerSealFrontierV1>) {
             e.fixed32(frontier.digest.as_bytes());
             e.fixed16(frontier.marker_id.as_bytes());
             e.u64(frontier.label.get());
+            enc_asset_id(e, frontier.asset_id);
         }
     }
 }
@@ -1757,6 +1843,7 @@ fn dec_frontier(d: &mut Decoder<'_>) -> Result<Option<DraftMarkerSealFrontierV1>
             marker_id: SyndicDraftMarkerId::from_bytes(d.fixed16()?),
             label: ImageLabelOrdinal::new(d.u64()?)
                 .map_err(|_| CodecError::InvalidLength("draft marker seal frontier label"))?,
+            asset_id: dec_asset_id(d)?,
         })),
         tag => Err(CodecError::InvalidTag {
             kind: "draft marker seal frontier",
@@ -1774,11 +1861,16 @@ fn enc_lifecycle(e: &mut Encoder, lifecycle: DraftMarkerSealLifecycleV1) {
             e.u8(4);
             e.fixed16(successor.as_bytes());
         }
-        DraftMarkerSealLifecycleV1::Sealed(summary) => {
+        DraftMarkerSealLifecycleV1::Sealed {
+            sequential,
+            ordered_assets,
+        } => {
             e.u8(5);
-            e.fixed32(&summary.marker_digest());
-            e.u64(summary.marker_count());
-            enc_label(e, summary.maximum_image_label());
+            e.fixed32(&sequential.marker_digest());
+            e.u64(sequential.marker_count());
+            enc_label(e, sequential.maximum_image_label());
+            e.fixed32(&ordered_assets.marker_asset_digest());
+            e.u64(ordered_assets.marker_count());
         }
     }
 }
@@ -1793,10 +1885,11 @@ fn dec_lifecycle(d: &mut Decoder<'_>) -> Result<DraftMarkerSealLifecycleV1, Code
         4 => Ok(DraftMarkerSealLifecycleV1::Superseded(
             DraftMarkerSealOperationIdV1::from_bytes(d.fixed16()?),
         )),
-        5 => Ok(DraftMarkerSealLifecycleV1::Sealed(
-            SequentialMarkerSummaryV1::new(d.fixed32()?, d.u64()?, dec_label(d)?)
+        5 => Ok(DraftMarkerSealLifecycleV1::Sealed {
+            sequential: SequentialMarkerSummaryV1::new(d.fixed32()?, d.u64()?, dec_label(d)?)
                 .map_err(|_| CodecError::InvalidLength("draft marker seal summary"))?,
-        )),
+            ordered_assets: OrderedMarkerAssetSummaryV1::new(d.fixed32()?, d.u64()?),
+        }),
         tag => Err(CodecError::InvalidTag {
             kind: "draft marker seal lifecycle",
             tag,
@@ -1812,6 +1905,7 @@ fn seal_record_digest(record: &DraftMarkerSealRecordV1) -> [u8; 32] {
     enc_cursor(&mut e, &record.cursor);
     enc_frontier(&mut e, record.frontier);
     e.fixed32(&record.sequential_digest);
+    e.fixed32(&record.ordered_asset_digest);
     e.u64(record.completed_marker_count);
     enc_label(&mut e, record.maximum_image_label);
     enc_lifecycle(&mut e, record.lifecycle);

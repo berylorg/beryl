@@ -29,19 +29,16 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 169: Implement Mutable Draft Marker Commitment And Seal Bridge (finished)
+# Phase 169: Correct The Streamed Marker-To-Asset Seal Bridge (finished)
 
-Cut over the model and Asset schema to separate structural, sequential and content-bound evidence;
-added Syndic's third persistent marker-order tree with logarithmic edit/history maintenance; and
-implemented bounded durable sealing, complete terminal custody release, opaque proofs and four exact
-publication-evidence branches without a compatibility path or caller-authored mapping. The
-historical-adoption settlement closure was heap-indirected without changing codec bytes after
-default-stack reconciliation exposed production-relevant frame pressure. Locked package checks,
-focused model/state/storage/app integration and corruption suites, formatting and residue checks
-passed. An initial adversarial review found missing seal failure/supersession transitions and branch
-evidence; the corrected implementation passed fresh independent persistence, resource, replay and
-cross-domain closure review. Phase 170 retains ownership of service-wide seal-flight admission,
-autosave, flush, disposal and generation-loss coordination.
+Cut over directly to Syndic V6 and Asset V3. Canonical draft markers now bind their exact `AssetId`
+through sequence, identity, and order structures; one captured root streams authenticated marker
+triples once through bounded replayable pages while deriving separate content-neutral sequential
+and ordered marker-to-asset summaries. Asset staging starts without caller-supplied summaries,
+advances atomically with each Syndic seal page, validates both opaque final summaries at seal, and
+meets Syndic proof validation at publication without a whole marker collection, second traversal,
+compatibility path, or per-edit Asset publication. Locked focused verification and independent
+adversarial review passed. The preserved Phase 170 composer-host WIP remains uncommitted.
 
 # Phase 170: Publish Dirty Candidates And Satisfy Flush Barriers (pending)
 
@@ -51,13 +48,10 @@ repeated flush-to-clean barriers, and lifecycle release. Editing may advance bey
 only the captured frontier becomes published, and close, switch, Exit, and submission barriers stay
 unsatisfied until the newest eligible candidate is durably published or terminally unavailable.
 
-Verify clean no-ops, dirty timer and settings rearm, concurrent newer edits, marker-free and changed
-or unchanged marker ownership, exact replay/collision and every ambiguous command cut, repeated
-flush-to-clean progress, terminal unavailability, cancellation and stale completion, rebind/unmount
-release, and restart-visible publication without retaining draft-sized values or an unbounded save
-queue. Completion requires locked focused integration tests, locked production-library checking,
-formatting, scoped residue checks, and fresh independent adversarial review of persistence,
-concurrency, lifecycle, and external-effect boundaries.
+After the corrected Phase 169 bridge is accepted, complete the retained composer-host coordinator,
+service-wide seal-flight admission, dirty timer/settings rearm, repeated flush-to-clean barriers,
+ambiguous reconciliation, terminal unavailability, exact disposal, and lifecycle/generation
+release without draft-sized values or an unbounded save queue.
 
 # Phase 171: Materialize Exact Draft Roots For Submission (pending)
 

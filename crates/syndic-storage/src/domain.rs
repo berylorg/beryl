@@ -8,7 +8,7 @@ use beryl_model::DomainRevision;
 
 use crate::{codec::*, draft_piece::*, error::SyndicValidationError};
 
-const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
+const V6_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<ThreadsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ThreadExecutionsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ThreadAttributesCodec>(KeyspaceSchemaVersion::new(1)),
@@ -90,19 +90,19 @@ const V5_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<CasTurnIndexCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ProviderObservationChunksCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 80] = [(); V5_FAMILIES.len()];
+const _: [(); 80] = [(); V6_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
-pub(crate) fn v5_family_names() -> impl Iterator<Item = &'static str> {
-    V5_FAMILIES.iter().map(RecordFamily::name)
+pub(crate) fn v6_family_names() -> impl Iterator<Item = &'static str> {
+    V6_FAMILIES.iter().map(RecordFamily::name)
 }
 
 pub(crate) struct SyndicDomain;
 
 impl StorageDomain for SyndicDomain {
     const NAME: &'static str = "syndic";
-    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(5);
-    const FAMILIES: &'static [RecordFamily<Self>] = V5_FAMILIES;
+    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(6);
+    const FAMILIES: &'static [RecordFamily<Self>] = V6_FAMILIES;
     type ValidationError = SyndicValidationError;
 
     fn validate(
@@ -246,29 +246,18 @@ where
     Ok(())
 }
 
-/// Opaque typed access to the permanent Syndic V5 domain in one Beryl home.
 #[derive(Clone, Copy)]
 pub struct SyndicStorage {
     pub(crate) handle: DomainHandle<SyndicDomain>,
 }
 
 impl SyndicStorage {
-    /// Registers or routinely reacquires the exact V5 domain without scanning application records.
-    ///
-    /// This validates the persisted declaration, required families, exact owner and codec types,
-    /// and current home generation. Use [`Self::register_with_schema_validation`] only at an
-    /// explicit schema-validation boundary.
     pub fn register(store: &mut HomeStore) -> Result<Self, DomainRegistrationError> {
         store
             .register_domain::<SyndicDomain>()
             .map(|handle| Self { handle })
     }
 
-    /// Registers or reacquires the exact V5 domain at an explicit schema-validation boundary.
-    ///
-    /// Unlike [`Self::register`], this exhaustively streams every persisted Syndic family through
-    /// its exact codec and then runs the V5 cross-record and sidecar validator before publishing
-    /// the handle.
     pub fn register_with_schema_validation(
         store: &mut HomeStore,
     ) -> Result<Self, DomainRegistrationError> {

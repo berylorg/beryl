@@ -31,15 +31,6 @@
 //! # }
 //! # example()
 //! ```
-//! Asset owner-transfer maxima are typed participants for durable new-turn starts. They derive
-//! their bounds from Asset V2 owner-head codecs and never accept a caller-supplied byte estimate.
-//!
-//! ```
-//! let footprint = beryl_state::draft_to_submitted_item_owner_transfer_max_footprint()?;
-//! let _ = footprint;
-//! # Ok::<(), beryl_home_store::DurableStartFootprintError>(())
-//! ```
-//!
 //! # Registration Boundaries
 //!
 //! [`BerylState::register`] and [`BerylStateBootstrap::register`] are routine

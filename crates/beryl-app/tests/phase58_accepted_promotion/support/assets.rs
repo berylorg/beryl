@@ -96,13 +96,12 @@ pub(super) fn admit_owner_set(
         .staged_reference_set_manifest(store, staging)
         .unwrap()
         .build_proof();
-    let proof = build.sealed_proof().unwrap();
+    let ordered_assets = build.ordered_assets();
+    let seal = SealAssetReferenceSet::new(build, source.sequential(), ordered_assets).unwrap();
+    let proof = seal.sealed_proof();
     execute_one(
         store,
-        assets.seal_reference_set(
-            assets.revision(store).unwrap(),
-            SealAssetReferenceSet::new(build, source.sequential()),
-        ),
+        assets.seal_reference_set(assets.revision(store).unwrap(), seal),
     );
     execute_one(
         store,

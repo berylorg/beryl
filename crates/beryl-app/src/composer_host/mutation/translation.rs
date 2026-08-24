@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use beryl_model::SyndicDraftMarkerId;
+use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftMarkerId};
 use gpui_text_input::{
     InlineObjectGap, InlineObjectId, MutationLane, MutationPage, MutationPageItem, ObjectChange,
     SourcePosition,
@@ -205,7 +205,7 @@ fn translate_proposal_page(
                             DraftPieceMarkerEffectV1::Insert(DraftPieceMarkerInsertionV1::new(
                                 object.anchor().get(),
                                 marker,
-                                DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                                DraftPieceMarkerEffectChargesV1::for_marker(marker),
                             )),
                             point,
                         )
@@ -217,7 +217,9 @@ fn translate_proposal_page(
                             Vec::new(),
                             DraftPieceMarkerEffectV1::Remove {
                                 removal: target_marker.removal,
-                                charges: DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                                charges: DraftPieceMarkerEffectChargesV1::for_marker(
+                                    target_marker.marker.marker(),
+                                ),
                             },
                             target_start,
                         )
@@ -232,6 +234,7 @@ fn translate_proposal_page(
                             target_marker.marker.marker().marker_id(),
                             object_order(object.order())?,
                             target_marker.marker.marker().label(),
+                            target_marker.marker.marker().asset_id(),
                         );
                         (
                             vec![DraftPieceV1::Marker(marker)],
@@ -240,7 +243,7 @@ fn translate_proposal_page(
                                 insertion: DraftPieceMarkerInsertionV1::new(
                                     object.anchor().get(),
                                     marker,
-                                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                                    DraftPieceMarkerEffectChargesV1::for_marker(marker),
                                 ),
                             },
                             target_start,
@@ -259,6 +262,7 @@ fn translate_proposal_page(
                             target_marker.marker.marker().marker_id(),
                             object_order(object.order())?,
                             target_marker.marker.marker().label(),
+                            target_marker.marker.marker().asset_id(),
                         );
                         (
                             vec![DraftPieceV1::Marker(marker)],
@@ -267,7 +271,7 @@ fn translate_proposal_page(
                                 insertion: DraftPieceMarkerInsertionV1::new(
                                     object.anchor().get(),
                                     marker,
-                                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                                    DraftPieceMarkerEffectChargesV1::for_marker(marker),
                                 ),
                             },
                             point,
@@ -364,10 +368,13 @@ fn scalar_chunks(value: &str, max_bytes: usize) -> Vec<&str> {
 
 fn marker_metadata_map(
     supplied: &[ComposerHostImageMarkerMetadata],
-) -> Result<BTreeMap<InlineObjectId, ImageLabelOrdinal>, ComposerHostError> {
+) -> Result<BTreeMap<InlineObjectId, (ImageLabelOrdinal, AssetId)>, ComposerHostError> {
     let mut metadata = BTreeMap::new();
     for value in supplied {
-        if metadata.insert(value.object_id(), value.label()).is_some() {
+        if metadata
+            .insert(value.object_id(), (value.label(), value.asset_id()))
+            .is_some()
+        {
             return Err(ComposerHostError::MutationMalformed);
         }
     }
@@ -375,16 +382,17 @@ fn marker_metadata_map(
 }
 
 fn new_marker(
-    metadata: &mut BTreeMap<InlineObjectId, ImageLabelOrdinal>,
+    metadata: &mut BTreeMap<InlineObjectId, (ImageLabelOrdinal, AssetId)>,
     object: gpui_text_input::SuccessorObject,
 ) -> Result<DraftPieceMarkerV1, ComposerHostError> {
-    let label = metadata
+    let (label, asset_id) = metadata
         .remove(&object.id())
         .ok_or(ComposerHostError::MutationMalformed)?;
     Ok(DraftPieceMarkerV1::new(
         marker_id(object.id()),
         object_order(object.order())?,
         label,
+        asset_id,
     ))
 }
 
@@ -406,7 +414,12 @@ fn target_marker(
     }
     let marker = DraftPieceMarkerAtV1::new(
         target.range().start().byte_offset.get(),
-        DraftPieceMarkerV1::new(id, existing.order_key(), existing.label()),
+        DraftPieceMarkerV1::new(
+            id,
+            existing.order_key(),
+            existing.label(),
+            existing.asset_id(),
+        ),
     );
     if !storage.validate_draft_marker_location(store, root, marker)? {
         return Err(ComposerHostError::MutationMalformed);

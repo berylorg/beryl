@@ -118,7 +118,7 @@ fn validate_span_owner(
     ))?;
     if owner_thread != span.thread_id()
         || proof != span.asset_reference_set()
-        || proof.summary().maximum_image_label() != Some(span.end_label())
+        || proof.sequential().maximum_image_label() != Some(span.end_label())
     {
         return invariant("image-label origin-span owner evidence disagrees");
     }

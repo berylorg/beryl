@@ -1,27 +1,14 @@
 use beryl_model::{
-    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
-    SequentialMarkerSummaryV1, SyndicDraftMarkerId,
+    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal, SyndicDraftMarkerId,
 };
 use sha2::{Digest, Sha256};
 
 use super::AssetReferenceOrdinal;
 
-pub(super) fn seed(
-    set_id: AssetReferenceSetId,
-    summary: SequentialMarkerSummaryV1,
-) -> AssetReferenceSetDigest {
+pub(super) fn seed(set_id: AssetReferenceSetId) -> AssetReferenceSetDigest {
     let mut hash = Sha256::new();
-    hash.update(b"beryl.asset-reference-set.v2\0");
+    hash.update(b"beryl.asset-reference-set.v3\0");
     hash.update(set_id.as_bytes());
-    hash.update(summary.marker_digest());
-    hash.update(summary.marker_count().to_be_bytes());
-    match summary.maximum_image_label() {
-        Some(label) => {
-            hash.update([1]);
-            hash.update(label.get().to_be_bytes());
-        }
-        None => hash.update([0]),
-    }
     AssetReferenceSetDigest::from_bytes(hash.finalize().into())
 }
 
@@ -34,7 +21,7 @@ pub(super) fn advance(
     first_ordinal: AssetReferenceOrdinal,
 ) -> AssetReferenceSetDigest {
     let mut hash = Sha256::new();
-    hash.update(b"beryl.asset-reference-entry.v2\0");
+    hash.update(b"beryl.asset-reference-entry.v3\0");
     hash.update(previous.as_bytes());
     hash.update(ordinal.get().to_be_bytes());
     hash.update(marker_id.as_bytes());

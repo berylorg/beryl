@@ -41,7 +41,6 @@ pub enum AssetReadError {
     ReferenceSetMissing(AssetReferenceSetId),
     ReferenceSetNotBuilding(AssetReferenceSetId),
     ReferenceSetNotSealed(AssetReferenceSetId),
-    StagingAuthorityMismatch(AssetReferenceSetId),
     SealedProofMismatch(AssetReferenceSetId),
 }
 
@@ -61,10 +60,6 @@ impl fmt::Display for AssetReadError {
             Self::ReferenceSetNotSealed(set) => {
                 write!(formatter, "asset reference set {set:?} is not sealed")
             }
-            Self::StagingAuthorityMismatch(set) => write!(
-                formatter,
-                "asset reference set {set:?} does not match the staging authority"
-            ),
             Self::SealedProofMismatch(set) => write!(
                 formatter,
                 "asset reference set {set:?} does not match the complete sealed proof"
@@ -80,7 +75,6 @@ impl Error for AssetReadError {
             Self::ReferenceSetMissing(_)
             | Self::ReferenceSetNotBuilding(_)
             | Self::ReferenceSetNotSealed(_)
-            | Self::StagingAuthorityMismatch(_)
             | Self::SealedProofMismatch(_) => None,
         }
     }

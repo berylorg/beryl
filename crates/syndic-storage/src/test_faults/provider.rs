@@ -26,7 +26,7 @@ impl ProviderFixtureFamily {
     /// Returns the exact ordered V5 physical-family names for registry assertions.
     #[must_use]
     pub fn domain_family_names() -> Vec<&'static str> {
-        crate::domain::v5_family_names().collect()
+        crate::domain::v6_family_names().collect()
     }
 
     #[must_use]

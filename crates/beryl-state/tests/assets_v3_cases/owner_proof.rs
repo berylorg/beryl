@@ -31,7 +31,8 @@ fn every_owner_variant_round_trips_and_multi_head_rejection_is_atomic() {
     ];
     let missing_proof = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([u8::MAX; 16]),
-        proof.summary(),
+        proof.sequential(),
+        proof.ordered_assets(),
         proof.entry_frontier(),
         proof.asset_chain_digest(),
     )
@@ -175,7 +176,7 @@ fn every_owner_variant_round_trips_and_multi_head_rejection_is_atomic() {
 }
 
 #[test]
-fn authoritative_reference_reads_require_the_complete_sealed_proof() {
+fn authoritative_reference_reads_require_the_complete_v3_sealed_proof() {
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
     let (asset_id, _) = publish_metadata_bytes(
@@ -196,7 +197,8 @@ fn authoritative_reference_reads_require_the_complete_sealed_proof() {
     );
     let wrong = SealedAssetReferenceSetProof::new(
         set_id,
-        proof.summary(),
+        proof.sequential(),
+        proof.ordered_assets(),
         proof.entry_frontier(),
         AssetReferenceSetDigest::from_bytes([u8::MAX; 32]),
     )

@@ -161,6 +161,32 @@ impl SequentialMarkerSummaryV1 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct OrderedMarkerAssetSummaryV1 {
+    marker_asset_digest: [u8; 32],
+    marker_count: u64,
+}
+
+impl OrderedMarkerAssetSummaryV1 {
+    #[must_use]
+    pub const fn new(marker_asset_digest: [u8; 32], marker_count: u64) -> Self {
+        Self {
+            marker_asset_digest,
+            marker_count,
+        }
+    }
+
+    #[must_use]
+    pub const fn marker_asset_digest(self) -> [u8; 32] {
+        self.marker_asset_digest
+    }
+
+    #[must_use]
+    pub const fn marker_count(self) -> u64 {
+        self.marker_count
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DraftMarkerCommitmentV1 {
     tree_root_digest: [u8; 32],
     marker_count: u64,
@@ -275,7 +301,8 @@ impl AssetReferenceSetDigest {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SealedAssetReferenceSetProof {
     set_id: AssetReferenceSetId,
-    summary: SequentialMarkerSummaryV1,
+    sequential: SequentialMarkerSummaryV1,
+    ordered_assets: OrderedMarkerAssetSummaryV1,
     entry_frontier: u64,
     asset_chain_digest: AssetReferenceSetDigest,
 }
@@ -283,16 +310,21 @@ pub struct SealedAssetReferenceSetProof {
 impl SealedAssetReferenceSetProof {
     pub const fn new(
         set_id: AssetReferenceSetId,
-        summary: SequentialMarkerSummaryV1,
+        sequential: SequentialMarkerSummaryV1,
+        ordered_assets: OrderedMarkerAssetSummaryV1,
         entry_frontier: u64,
         asset_chain_digest: AssetReferenceSetDigest,
     ) -> Result<Self, AssetProofError> {
-        if entry_frontier != summary.marker_count() {
+        if entry_frontier != sequential.marker_count() {
             return Err(AssetProofError::EntryFrontierMismatch);
+        }
+        if entry_frontier != ordered_assets.marker_count() {
+            return Err(AssetProofError::OrderedMarkerAssetCountMismatch);
         }
         Ok(Self {
             set_id,
-            summary,
+            sequential,
+            ordered_assets,
             entry_frontier,
             asset_chain_digest,
         })
@@ -304,8 +336,13 @@ impl SealedAssetReferenceSetProof {
     }
 
     #[must_use]
-    pub const fn summary(self) -> SequentialMarkerSummaryV1 {
-        self.summary
+    pub const fn sequential(self) -> SequentialMarkerSummaryV1 {
+        self.sequential
+    }
+
+    #[must_use]
+    pub const fn ordered_assets(self) -> OrderedMarkerAssetSummaryV1 {
+        self.ordered_assets
     }
 
     #[must_use]
@@ -323,6 +360,7 @@ impl SealedAssetReferenceSetProof {
 pub enum AssetProofError {
     MarkerMaximumMismatch,
     EntryFrontierMismatch,
+    OrderedMarkerAssetCountMismatch,
 }
 
 impl fmt::Display for AssetProofError {
@@ -333,6 +371,9 @@ impl fmt::Display for AssetProofError {
             ),
             Self::EntryFrontierMismatch => formatter.write_str(
                 "sealed asset-reference frontier does not equal the source marker count",
+            ),
+            Self::OrderedMarkerAssetCountMismatch => formatter.write_str(
+                "sealed asset-reference frontier does not equal the ordered marker-asset count",
             ),
         }
     }
@@ -356,5 +397,28 @@ pub fn advance_sequential_marker_digest(
     hash.update(previous);
     hash.update(marker_id.as_bytes());
     hash.update(label.get().to_be_bytes());
+    hash.finalize().into()
+}
+
+#[must_use]
+pub fn ordered_marker_asset_digest_seed() -> [u8; 32] {
+    Sha256::digest(b"beryl.marker-asset-associations.v1\0").into()
+}
+
+#[must_use]
+pub fn advance_ordered_marker_asset_digest(
+    previous: [u8; 32],
+    marker_id: SyndicDraftMarkerId,
+    label: ImageLabelOrdinal,
+    asset_id: AssetId,
+) -> [u8; 32] {
+    let mut hash = Sha256::new();
+    hash.update(b"beryl.marker-asset-association-entry.v1\0");
+    hash.update(previous);
+    hash.update(marker_id.as_bytes());
+    hash.update(label.get().to_be_bytes());
+    hash.update([asset_id.version() as u8]);
+    hash.update(asset_id.digest());
+    hash.update(asset_id.length().get().to_be_bytes());
     hash.finalize().into()
 }

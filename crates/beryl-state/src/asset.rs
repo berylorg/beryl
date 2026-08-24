@@ -67,19 +67,19 @@ pub const ASSET_REFERENCE_PAGE_MAX_STORED_BYTES: usize = 65_536;
 pub const ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES: usize = 4;
 
 const ASSET_FAMILIES: &[RecordFamily<AssetDomain>] = &[
-    RecordFamily::new::<AssetMetadataCodec>(KeyspaceSchemaVersion::new(2)),
-    RecordFamily::new::<AssetReferenceManifestCodec>(KeyspaceSchemaVersion::new(2)),
-    RecordFamily::new::<AssetReferenceEntryCodec>(KeyspaceSchemaVersion::new(2)),
-    RecordFamily::new::<AssetReferenceMarkerCodec>(KeyspaceSchemaVersion::new(2)),
-    RecordFamily::new::<AssetReferenceLabelFirstCodec>(KeyspaceSchemaVersion::new(2)),
-    RecordFamily::new::<AssetOwnerHeadCodec>(KeyspaceSchemaVersion::new(2)),
+    RecordFamily::new::<AssetMetadataCodec>(KeyspaceSchemaVersion::new(3)),
+    RecordFamily::new::<AssetReferenceManifestCodec>(KeyspaceSchemaVersion::new(3)),
+    RecordFamily::new::<AssetReferenceEntryCodec>(KeyspaceSchemaVersion::new(3)),
+    RecordFamily::new::<AssetReferenceMarkerCodec>(KeyspaceSchemaVersion::new(3)),
+    RecordFamily::new::<AssetReferenceLabelFirstCodec>(KeyspaceSchemaVersion::new(3)),
+    RecordFamily::new::<AssetOwnerHeadCodec>(KeyspaceSchemaVersion::new(3)),
 ];
 
 pub(crate) struct AssetDomain;
 
 impl StorageDomain for AssetDomain {
     const NAME: &'static str = "beryl-assets";
-    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(2);
+    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(3);
     const FAMILIES: &'static [RecordFamily<Self>] = ASSET_FAMILIES;
     type ValidationError = AssetValidationError;
 
@@ -199,9 +199,6 @@ impl AssetState {
             .ok_or(AssetReadError::ReferenceSetMissing(authority.set_id))?;
         if manifest.lifecycle() != AssetReferenceSetLifecycle::Building {
             return Err(AssetReadError::ReferenceSetNotBuilding(authority.set_id));
-        }
-        if manifest.summary() != authority.summary {
-            return Err(AssetReadError::StagingAuthorityMismatch(authority.set_id));
         }
         Ok(manifest)
     }
@@ -476,7 +473,16 @@ fn require_sealed_manifest(
     if manifest.lifecycle() != AssetReferenceSetLifecycle::Sealed {
         return Err(AssetReadError::ReferenceSetNotSealed(proof.set_id()));
     }
-    if manifest.sealed_proof() != Some(proof) {
+    if SealedAssetReferenceSetProof::new(
+        manifest.set_id(),
+        manifest.sequential(),
+        manifest.ordered_assets(),
+        manifest.entry_frontier(),
+        manifest.asset_chain_digest(),
+    )
+    .ok()
+        != Some(proof)
+    {
         return Err(AssetReadError::SealedProofMismatch(proof.set_id()));
     }
     Ok(manifest)

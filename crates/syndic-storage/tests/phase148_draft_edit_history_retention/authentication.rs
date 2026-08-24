@@ -54,7 +54,7 @@ fn policy_and_family_bounds_remain_exact() {
     assert!(DraftEditHistoryPolicyV1::new(0, 1).is_none());
     assert!(DraftEditHistoryPolicyV1::new(1, 0).is_none());
     assert!(DraftEditHistoryPolicyV1::new(1, 1).is_some());
-    let names = syndic_v5_family_names();
+    let names = syndic_v6_family_names();
     assert_eq!(names.len(), 80);
     assert_eq!(names[20], "draft-edit-history-frontiers");
     assert_eq!(names[21], "draft-edit-history-transitions");

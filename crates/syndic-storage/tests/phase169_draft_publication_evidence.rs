@@ -1,8 +1,8 @@
 include!("phase154_durable_builder/support.rs");
 
 use beryl_model::{
-    AssetReferenceSetDigest, AssetReferenceSetId, SealedAssetReferenceSetProof,
-    SequentialMarkerSummaryV1,
+    AssetReferenceSetDigest, AssetReferenceSetId, OrderedMarkerAssetSummaryV1,
+    SealedAssetReferenceSetProof,
 };
 use syndic_storage::{
     DraftEditorCandidatePublicationEvidenceV1, DraftEditorCandidatePublicationOutcomeV1,
@@ -15,7 +15,7 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
     let (_home, store, storage, thread) = fixture("phase169-publication-evidence", 180);
     let initial = current(storage, &store, thread);
     let initial_empty_seal = seal_root(&storage, &store, initial.draft().piece_root(), 181);
-    let empty_asset = asset_proof(initial_empty_seal.summary(), 182);
+    let empty_asset = asset_proof(initial_empty_seal, 182);
 
     let mut changed_nonempty = open_session(storage, &store, &initial, 183, 184);
     changed_nonempty = complete_staged(
@@ -37,7 +37,7 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     value,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(value),
                 ),
             )),
         DraftLogicalExtentV1::new(1, 1),
@@ -59,7 +59,18 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
         changed_nonempty_captured.newest_root(),
         190,
     );
-    let nonempty_asset = asset_proof(changed_nonempty_seal.summary(), 191);
+    let nonempty_asset = asset_proof(changed_nonempty_seal, 191);
+    let wrong_ordered_asset = SealedAssetReferenceSetProof::new(
+        AssetReferenceSetId::from_bytes([197; 16]),
+        changed_nonempty_seal.sequential(),
+        OrderedMarkerAssetSummaryV1::new(
+            [0xF1; 32],
+            changed_nonempty_seal.ordered_assets().marker_count(),
+        ),
+        changed_nonempty_seal.sequential().marker_count(),
+        AssetReferenceSetDigest::from_bytes([198; 32]),
+    )
+    .unwrap();
 
     assert_rejected_without_publication(
         storage,
@@ -72,6 +83,20 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
             DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
                 seal_proof: same_commitment_wrong_root_seal,
                 asset_proof: nonempty_asset,
+            },
+        ),
+    );
+    assert_rejected_without_publication(
+        storage,
+        &store,
+        thread,
+        publication_request(
+            &initial,
+            &changed_nonempty_captured,
+            199,
+            DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+                seal_proof: changed_nonempty_seal,
+                asset_proof: wrong_ordered_asset,
             },
         ),
     );
@@ -120,7 +145,7 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
     let (_home, store, storage, thread) = fixture("phase169-unchanged-nonempty", 20);
     let initial = current(storage, &store, thread);
     let empty_seal = seal_root(&storage, &store, initial.draft().piece_root(), 21);
-    let empty_asset = asset_proof(empty_seal.summary(), 22);
+    let empty_asset = asset_proof(empty_seal, 22);
     let mut session = open_session(storage, &store, &initial, 23, 24);
     session = complete_staged(
         &storage,
@@ -141,14 +166,14 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     value,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(value),
                 ),
             )),
         DraftLogicalExtentV1::new(1, 1),
     );
     let changed = session.clone();
     let changed_seal = seal_root(&storage, &store, changed.newest_root(), 28);
-    let nonempty_asset = asset_proof(changed_seal.summary(), 29);
+    let nonempty_asset = asset_proof(changed_seal, 29);
     let changed_request = publication_request(
         &initial,
         &changed,
@@ -272,14 +297,14 @@ fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
             DraftPieceMarkerInsertionV1::new(
                 1,
                 value,
-                DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                DraftPieceMarkerEffectChargesV1::for_marker(value),
             ),
         )),
         DraftLogicalExtentV1::new(3, 1),
     );
     let changed_nonempty = session.clone();
     let nonempty_seal = seal_root(&storage, &store, changed_nonempty.newest_root(), 67);
-    let nonempty_asset = asset_proof(nonempty_seal.summary(), 68);
+    let nonempty_asset = asset_proof(nonempty_seal, 68);
     let changed_prepared = storage
         .prepare_draft_editor_candidate_publication(
             &store,
@@ -307,7 +332,7 @@ fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
         DraftPieceReplacementV1::new(marker_position, marker_position, Vec::new())
             .with_marker_effect(DraftPieceMarkerEffectV1::Remove {
                 removal: DraftPieceMarkerRemovalProofV1::new(marker_position, occurrence),
-                charges: DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                charges: DraftPieceMarkerEffectChargesV1::for_marker(value),
             }),
         DraftLogicalExtentV1::new(3, 1),
     );
@@ -457,7 +482,7 @@ fn seal_root(
     {
         committed(execute(
             store,
-            storage.advance_draft_marker_seal(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_marker_seal(storage.revision(store).unwrap(), &advance),
         ));
     }
     let DraftMarkerSealStatusV1::Sealed(proof, _) = storage
@@ -469,11 +494,12 @@ fn seal_root(
     proof
 }
 
-fn asset_proof(summary: SequentialMarkerSummaryV1, seed: u8) -> SealedAssetReferenceSetProof {
+fn asset_proof(seal: DraftMarkerSealProofV1, seed: u8) -> SealedAssetReferenceSetProof {
     SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([seed; 16]),
-        summary,
-        summary.marker_count(),
+        seal.sequential(),
+        seal.ordered_assets(),
+        seal.sequential().marker_count(),
         AssetReferenceSetDigest::from_bytes([seed.wrapping_add(1); 32]),
     )
     .unwrap()

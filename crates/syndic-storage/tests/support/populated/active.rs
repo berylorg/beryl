@@ -100,6 +100,10 @@ pub(super) fn records() -> Vec<FixtureRecord> {
     let steering_asset_reference_set = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([59; 16]),
         steering_source.sequential(),
+        beryl_model::OrderedMarkerAssetSummaryV1::new(
+            [60; 32],
+            steering_source.sequential().marker_count(),
+        ),
         steering_source.sequential().marker_count(),
         AssetReferenceSetDigest::from_bytes([59; 32]),
     )

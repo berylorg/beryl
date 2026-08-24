@@ -6,7 +6,7 @@ use beryl_app::composer_host::{
     SyndicComposerHost,
 };
 use beryl_home_store::{CommandCancellation, HomeCommand, HomeStore};
-use beryl_model::ImageLabelOrdinal;
+use beryl_model::{AssetId, ImageLabelOrdinal};
 use gpui_text_input::{
     BindingId, ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor,
     InlineObjectOrder, LogicalExtent, MutationBeginRequest, MutationCommitRequest, MutationCursor,
@@ -189,9 +189,18 @@ pub fn insert_marker(
         vec![ComposerHostImageMarkerMetadata::new(
             id,
             ImageLabelOrdinal::new(1).unwrap(),
+            asset_id_for_object(id),
         )],
     );
     (binding, before, after_position)
+}
+
+fn asset_id_for_object(id: InlineObjectId) -> AssetId {
+    let bytes = id.get().to_be_bytes();
+    let mut digest = [0; 32];
+    digest[..16].copy_from_slice(&bytes);
+    digest[16..].copy_from_slice(&bytes);
+    AssetId::sha256_v1(digest, NonZeroU64::MIN)
 }
 
 pub fn remove_marker(

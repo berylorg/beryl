@@ -130,10 +130,13 @@ pub(crate) fn enc_sealed_asset_reference_set_proof(
     proof: SealedAssetReferenceSetProof,
 ) {
     e.fixed16(proof.set_id().as_bytes());
-    let summary = proof.summary();
+    let summary = proof.sequential();
     e.fixed32(&summary.marker_digest());
     e.u64(summary.marker_count());
     enc_opt(e, summary.maximum_image_label(), enc_image_label);
+    let ordered_assets = proof.ordered_assets();
+    e.fixed32(&ordered_assets.marker_asset_digest());
+    e.u64(ordered_assets.marker_count());
     e.u64(proof.entry_frontier());
     e.fixed32(&proof.asset_chain_digest().as_bytes());
 }
@@ -151,6 +154,7 @@ pub(crate) fn dec_sealed_asset_reference_set_proof(
     SealedAssetReferenceSetProof::new(
         set_id,
         summary,
+        beryl_model::OrderedMarkerAssetSummaryV1::new(d.fixed32()?, d.u64()?),
         d.u64()?,
         AssetReferenceSetDigest::from_bytes(d.fixed32()?),
     )

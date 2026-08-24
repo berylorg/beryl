@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
+fn paged_reference_set_v3_seals_binds_reopens_and_becomes_unreachable() {
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
     let (asset_id, sidecar_path) = publish_metadata(&store, &state);
@@ -15,7 +15,7 @@ fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
         (marker(index), label)
     }));
 
-    let staging = begin_reference_set(&store, &state, set_id, source);
+    let staging = begin_reference_set(&store, &state, set_id);
     let mut manifest = state
         .assets()
         .staged_reference_set_manifest(&store, staging)
@@ -65,6 +65,7 @@ fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
     let premature_proof = SealedAssetReferenceSetProof::new(
         set_id,
         source,
+        manifest.ordered_assets(),
         manifest.entry_frontier(),
         manifest.asset_chain_digest(),
     )
@@ -80,39 +81,31 @@ fn paged_reference_set_seals_binds_reopens_and_becomes_unreachable() {
     ));
 
     let wrong_source = marker_summary(std::iter::empty());
-    let wrong_staging = BeginAssetReferenceSet::new(set_id, wrong_source).staging_authority();
-    assert!(matches!(
-        state
-            .assets()
-            .staged_reference_set_manifest(&store, wrong_staging),
-        Err(AssetReadError::StagingAuthorityMismatch(actual)) if actual == set_id
-    ));
-    let wrong = state.assets().seal_reference_set(
-        state.assets().revision(&store).unwrap(),
-        SealAssetReferenceSet::new(manifest.build_proof(), wrong_source),
+    assert!(
+        SealAssetReferenceSet::new(
+            manifest.build_proof(),
+            wrong_source,
+            manifest.ordered_assets(),
+        )
+        .is_err()
     );
-    let mut wrong_command = HomeCommand::new(store.home_revision().unwrap());
-    wrong_command.add(wrong).unwrap();
-    assert!(matches!(
-        store.execute(wrong_command),
-        CommandOutcome::NotCommitted { .. }
-    ));
 
     let build = manifest.build_proof();
-    let proof = build.sealed_proof().unwrap();
+    let seal = SealAssetReferenceSet::new(build, source, build.ordered_assets()).unwrap();
+    let proof = seal.sealed_proof();
     execute(
         &store,
-        state.assets().seal_reference_set(
-            state.assets().revision(&store).unwrap(),
-            SealAssetReferenceSet::new(build, source),
-        ),
+        state
+            .assets()
+            .seal_reference_set(state.assets().revision(&store).unwrap(), seal),
     );
     manifest = state
         .assets()
         .sealed_reference_set_manifest(&store, proof)
         .unwrap();
     assert_eq!(manifest.lifecycle(), AssetReferenceSetLifecycle::Sealed);
-    assert_eq!(manifest.sealed_proof(), Some(proof));
+    assert_eq!(manifest.sequential(), proof.sequential());
+    assert_eq!(manifest.ordered_assets(), proof.ordered_assets());
     assert!(matches!(
         state
             .assets()
@@ -263,7 +256,7 @@ fn command_pages_are_physically_bounded_without_an_asset_length_ceiling() {
     let (store, state) = support::open(directory.path());
     let set_id = AssetReferenceSetId::from_bytes([21; 16]);
     let source = marker_summary(std::iter::empty());
-    let staging = begin_reference_set(&store, &state, set_id, source);
+    let staging = begin_reference_set(&store, &state, set_id);
     let proof = state
         .assets()
         .staged_reference_set_manifest(&store, staging)
@@ -290,13 +283,14 @@ fn command_pages_are_physically_bounded_without_an_asset_length_ceiling() {
         .assets()
         .staged_reference_set_manifest(&store, staging)
         .unwrap();
-    let sealed = manifest.build_proof().sealed_proof().unwrap();
+    let build = manifest.build_proof();
+    let seal = SealAssetReferenceSet::new(build, source, build.ordered_assets()).unwrap();
+    let sealed = seal.sealed_proof();
     execute(
         &store,
-        state.assets().seal_reference_set(
-            state.assets().revision(&store).unwrap(),
-            SealAssetReferenceSet::new(manifest.build_proof(), source),
-        ),
+        state
+            .assets()
+            .seal_reference_set(state.assets().revision(&store).unwrap(), seal),
     );
     assert!(
         state

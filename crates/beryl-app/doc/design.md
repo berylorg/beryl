@@ -151,7 +151,13 @@ Keep independent main-window presentation responsive while process-wide services
   widget's accepted successor anchor, stable id, final label, same-anchor order key, checked charges,
   and complete predecessor occurrence proof when removal applies. It carries no caller-selected gap
   or immediate-neighbor witness; storage derives those facts from its current working roots after
-  any removal. The host does not force marker effects
+  any removal. Alongside that bounded widget page, the host supplies exact insertion-time marker
+  metadata keyed by the same stable object identity: the final label and the authenticated `AssetId`
+  admitted for that marker. Translation requires a one-to-one match for every inserted marker and
+  passes the resulting canonical `(marker id, label, AssetId)` association into Syndic. Move and
+  same-id replacement preserve the existing authenticated `AssetId`; changing the referenced asset
+  requires a new marker identity. This metadata is canonical draft state captured at insertion, not
+  a caller-authored seal mapping or a late Asset lookup. The host does not force marker effects
   into the first page, pre-scan or reorder the widget stream, or retain earlier pages to complete a
   later effect. No partial replacement is exposed to the widget,
   session head, history frontier, or current-draft selector, and no whole-operation fragment vector
@@ -245,19 +251,21 @@ Keep independent main-window presentation responsive while process-wide services
   commitment with the prior published root. Equality reuses and validation-asserts the existing
   nonempty CurrentDraft Asset head and proof, or validates an absent head for marker-free state,
   without a marker scan. A changed commitment starts or resumes Syndic's bounded seal over the exact
-  captured root. For a nonempty successor, it feeds each returned ordered marker page into Beryl-
-  state's unpublished reference-set construction while retaining only the current pages, cursors,
-  and custody values; an empty successor stages no Asset set.
+  captured root. For a nonempty successor, it feeds each returned authenticated marker-id/label/
+  asset page into Beryl-state's unpublished reference-set construction in the same `HomeCommand`
+  that advances the Syndic seal cursor, while retaining only the current pages, cursors, and custody
+  values; an empty successor stages no Asset set.
   It releases a page only after the exact Syndic seal frontier and Asset staging frontier agree;
   restart or an ambiguous page outcome replays/reconciles that immutable page from those durable
   frontiers rather than retaining or reconstructing an operation prefix.
 - After a changed-marker seal completes, the host composes one `HomeCommand` with one Syndic
   mutation participant and one Asset participant. A changed nonempty commitment also requires the
-  completed Asset set and opaque proof; Syndic requires its `SequentialMarkerSummaryV1` to equal the
-  seal proof's summary, and Asset swaps the exact CurrentDraft head. Changed-to-empty instead has
-  Syndic validate the completed seal against the exact root/commitment and require its exact empty
-  sequential summary/removal branch; the one Asset contribution validates and removes the exact
-  prior head, with no Asset proof or synthetic empty set. The host never constructs a commitment-to-summary mapping, adds a
+  completed Asset set and opaque proof; Syndic requires its `SequentialMarkerSummaryV1` and
+  `OrderedMarkerAssetSummaryV1` to equal the seal proof's summaries, and Asset swaps the exact
+  CurrentDraft head. Changed-to-empty instead has Syndic validate the completed seal against the
+  exact root/commitment and require both exact empty summaries/removal branch; the one Asset
+  contribution validates and removes the exact prior head, with no Asset proof or synthetic empty
+  set. The host never constructs a commitment-to-summary mapping, adds a
   second Syndic validation participant, or creates a per-root Asset head. Publication fences the exact durable draft identity, selector revision/root, candidate-
   session lineage, and captured generation, carries no selected-path thread revision, performs no
   work proportional to unchanged draft length, and never builds `ComposerV1`.
@@ -283,12 +291,13 @@ Keep independent main-window presentation responsive while process-wide services
   embedded `SequentialMarkerSummaryV1`. It may reuse or independently validate exact sequential
   evidence as required by admission, but it never treats a draft marker-tree commitment as either
   summary.
-- Submission preparation merge-joins bounded marker pages from that exact root with exact
-  Beryl-state asset metadata into one unpublished paged reference set. The admitting home command
-  independently validates the root-bound `ComposerV1` content identity/full digest through Syndic,
-  requires its embedded `SequentialMarkerSummaryV1` to equal the sealed Asset proof's summary,
-  validates exact compact source and destination owner heads, then publishes Syndic acceptance and the asset-owner
-  transition atomically. Marker-free admission carries no synthetic empty set; its validation-only
+- Submission preparation streams authenticated marker-id/label/`AssetId` pages from that exact root
+  into one unpublished paged reference set. The admitting home command independently validates the
+  root-bound `ComposerV1` content identity/full digest and opaque draft-marker seal proof through
+  Syndic, requires its embedded `SequentialMarkerSummaryV1` and the seal proof's ordered association
+  summary to equal the sealed Asset proof's respective summaries, validates exact compact source and
+  destination owner heads, then publishes Syndic acceptance and the asset-owner transition
+  atomically. Marker-free admission carries no synthetic empty set; its validation-only
   Asset participant proves both heads absent on the same serialized writer snapshot.
 - Submission admission validates the same clean editor session and exact published root used by the
   materialization. Only atomic accepted send-and-clear disposes that session and authorizes the app

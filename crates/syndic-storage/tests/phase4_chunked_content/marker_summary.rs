@@ -10,7 +10,7 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
     assert_eq!(marker_free.sequential().marker_count(), 0);
     assert_eq!(
         marker_free.sequential().marker_digest(),
-        content_marker_digest_seed()
+        sequential_marker_digest_seed()
     );
     assert_eq!(marker_free.sequential().maximum_image_label(), None);
 
@@ -29,9 +29,9 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
     ])
     .unwrap();
     let content = PreparedContent::composer(&payload).unwrap();
-    let mut marker_digest = content_marker_digest_seed();
-    marker_digest = advance_content_marker_digest(marker_digest, marker_a, label_a);
-    marker_digest = advance_content_marker_digest(marker_digest, marker_b, label_b);
+    let mut marker_digest = sequential_marker_digest_seed();
+    marker_digest = advance_sequential_marker_digest(marker_digest, marker_a, label_a);
+    marker_digest = advance_sequential_marker_digest(marker_digest, marker_b, label_b);
     let summary = content
         .reference(ContentRevision::new(2).unwrap())
         .sealed_marker_summary()

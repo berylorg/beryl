@@ -54,7 +54,7 @@ fn marker_free_seal_is_restartable_replayable_and_opaque_until_eof() {
     assert_eq!(advance.page().release().target_frontier(), 0);
     committed(execute(
         &store,
-        storage.advance_draft_marker_seal(storage.revision(&store).unwrap(), advance),
+        storage.advance_draft_marker_seal(storage.revision(&store).unwrap(), &advance),
     ));
 
     let DraftMarkerSealStatusV1::Sealed(proof, release) = storage
@@ -65,7 +65,8 @@ fn marker_free_seal_is_restartable_replayable_and_opaque_until_eof() {
     };
     assert_eq!(proof.source(), source);
     assert_eq!(proof.commitment(), source.marker_commitment());
-    assert_eq!(proof.summary().marker_count(), 0);
+    assert_eq!(proof.sequential().marker_count(), 0);
+    assert_eq!(proof.ordered_assets().marker_count(), 0);
     assert_eq!(release.completed_marker_count(), 0);
     assert!(
         storage
@@ -374,7 +375,7 @@ fn ordered_markers_fold_incrementally_into_the_opaque_proof() {
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     first,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(first),
                 ),
             )),
     );
@@ -390,7 +391,7 @@ fn ordered_markers_fold_incrementally_into_the_opaque_proof() {
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     second,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(second),
                 ),
             )),
     );
@@ -414,11 +415,13 @@ fn ordered_markers_fold_incrementally_into_the_opaque_proof() {
         first_page.page().markers()[0].marker_id(),
         second.marker_id()
     );
+    assert_eq!(first_page.page().markers()[0].asset_id(), second.asset_id());
     assert!(!first_page.page().exact_eof());
     committed(execute(
         &store,
-        storage.advance_draft_marker_seal(storage.revision(&store).unwrap(), first_page),
+        storage.advance_draft_marker_seal(storage.revision(&store).unwrap(), &first_page),
     ));
+    assert_eq!(first_page.page().markers()[0].asset_id(), second.asset_id());
     assert!(matches!(
         storage
             .draft_marker_seal_status(&store, request.key())
@@ -441,10 +444,11 @@ fn ordered_markers_fold_incrementally_into_the_opaque_proof() {
         second_page.page().markers()[0].marker_id(),
         first.marker_id()
     );
+    assert_eq!(second_page.page().markers()[0].asset_id(), first.asset_id());
     assert!(second_page.page().exact_eof());
     committed(execute(
         &store,
-        storage.advance_draft_marker_seal(storage.revision(&store).unwrap(), second_page),
+        storage.advance_draft_marker_seal(storage.revision(&store).unwrap(), &second_page),
     ));
 
     let DraftMarkerSealStatusV1::Sealed(proof, _) = storage
@@ -462,9 +466,28 @@ fn ordered_markers_fold_incrementally_into_the_opaque_proof() {
         first.marker_id(),
         first.label(),
     );
-    assert_eq!(proof.summary().marker_digest(), expected_digest);
-    assert_eq!(proof.summary().marker_count(), 2);
-    assert_eq!(proof.summary().maximum_image_label(), Some(second.label()));
+    assert_eq!(proof.sequential().marker_digest(), expected_digest);
+    assert_eq!(proof.sequential().marker_count(), 2);
+    assert_eq!(
+        proof.sequential().maximum_image_label(),
+        Some(second.label())
+    );
+    let expected_assets = beryl_model::advance_ordered_marker_asset_digest(
+        beryl_model::advance_ordered_marker_asset_digest(
+            beryl_model::ordered_marker_asset_digest_seed(),
+            second.marker_id(),
+            second.label(),
+            second.asset_id(),
+        ),
+        first.marker_id(),
+        first.label(),
+        first.asset_id(),
+    );
+    assert_eq!(
+        proof.ordered_assets().marker_asset_digest(),
+        expected_assets
+    );
+    assert_eq!(proof.ordered_assets().marker_count(), 2);
 }
 
 fn complete_marker_edit_for_seal(

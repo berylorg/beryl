@@ -113,11 +113,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   restart request, prefix proof, or app-built edit reconstruction. Status and same-home resume return
   the authenticated current endpoint or terminal settlement and use the same preparation boundary.
   Window acquisition has at most two page/receipt reads per physical page plus the exact fixed nine-
-  endpoint allowance and the checked 34,144,256-byte complete encoded-value ceiling defined under V5
+  endpoint allowance and the checked 34,144,256-byte complete encoded-value ceiling defined under V6
   bounds; item-specific structure reads remain under their separate tree/index limits.
 - The package exposes checked maximum mutation-footprint descriptors for exactly two public durable-
   start operations: idle draft submission and accepted-input promotion. Each descriptor derives
-  its maximum record count and encoded key-plus-value bytes from the operation's package-owned V5
+  its maximum record count and encoded key-plus-value bytes from the operation's package-owned V6
   record shapes and declared field bounds with checked arithmetic. It is stable for a given schema
   contract and is testable without opening a home or constructing caller payloads.
 - A Syndic footprint describes only the records contributed by that Syndic operation. It does not
@@ -671,10 +671,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   nonsealed terminal states publishes a mapping. It never becomes the current-draft backing or
   changes a draft revision.
 - A content-manifest record stores content identity, optional canonical-item owner, encoding, lifecycle, exact chunk frontier, encoded and logical lengths, atom and marker counts, and a chain digest. Content-chunk records store bounded ordered encoded bytes. Building content is unreachable; ownerless sealed content is immutable and content-addressed; item-owned live UTF-8 content has a deterministic item-derived identity and may append only before it becomes finalized.
-- A canonical user-input item references the exact sealed draft content and matching compact sealed
-  asset-reference-set proof. The content-bound `SealedContentMarkerSummary` independently
-  authenticates content identity/full digest and its embedded `SequentialMarkerSummaryV1` must equal
-  the Asset proof's content-neutral summary. Syndic content pieces retain ordered marker identity and final label;
+- A canonical user-input item references the exact sealed draft content, matching root-bound opaque
+  draft-marker seal proof, and compact sealed asset-reference-set proof. The content-bound
+  `SealedContentMarkerSummary` independently authenticates content identity/full digest; its
+  embedded `SequentialMarkerSummaryV1` and the seal proof's ordered association summary must equal
+  the Asset proof's respective summaries. Syndic content pieces retain ordered marker identity and final label;
   the Beryl-state set retains the matching asset identity and first-occurrence disposition. Syndic
   does not duplicate those paged marker-to-asset records or embed image bytes.
 - An accepted-input record stores immutable input frozen from a draft for active-turn steering or
@@ -1158,17 +1159,20 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   is optional resumable work rather than selected authority; losing it requires rebuilding that
   generation but does not corrupt canonical history or a published set.
 
-## V5 Domain Schema
+## V6 Domain Schema
 
-- The stable logical domain name is `syndic` at domain schema V5. Every family uses keyspace schema
+- The stable logical domain name is `syndic` at domain schema V6. Every family uses keyspace schema
   V1 and one exact package-owned record version selected per family. `source-events`,
   and `accepted-inputs` use record V3; `accepted-route-leaves` uses record V4; `input-gates` uses
   record V5;
   `accepted-route-generations` and `turns` use record V3; `threads`, `drafts`, `turn-states`,
-  `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2;
-  every other V5 family uses record V1. V5 is a clean replacement
+  `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2.
+  `draft-mutation-staging-pages`, `draft-piece-build-fragments`, `draft-piece-leaves`,
+  `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-piece-builds`,
+  `draft-piece-build-progress`, `draft-piece-settlements`, `draft-marker-seals`, and
+  `draft-editor-candidate-sessions` also use record V2; every other V6 family uses record V1. V6 is a clean replacement
   schema: no prior-record decoder, migration path, or compatibility adapter exists.
-- The 61 primary V5 families are `threads`, `thread-executions`, `thread-attributes`,
+- The 61 primary V6 families are `threads`, `thread-executions`, `thread-attributes`,
   `thread-usage`, `thread-catalog-summaries`, `drafts`, `draft-piece-roots`,
   `draft-piece-nodes`, `draft-piece-leaves`, `draft-marker-identity-index`,
   `draft-marker-order-commitments`, `draft-marker-seals`,
@@ -1197,24 +1201,24 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
   `draft-mutation-staging-progress`,
   `draft-piece-build-progress`, `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
-  and `draft-historical-root-adoptions` are distinct V5 primary families. The marker index uses tagged
+  and `draft-historical-root-adoptions` are distinct V6 primary families. The marker index uses tagged
   internal-node and leaf records, and the candidate-session family uses tagged head and immutable
   receipt records. Marker-order commitments use tagged immutable internal-node and leaf records;
   marker seals use compact durable cursor/lifecycle records. Build progress instead requires its own append-only family so canonical proposal
   fragments remain the only values in `draft-piece-build-fragments`.
-- The 23 index V5 families are `draft-by-thread`, `thread-parent-index`,
+- The 23 index V6 families are `draft-by-thread`, `thread-parent-index`,
   `image-label-origin-spans`, `turn-children`, `accepted-order`, `accepted-route-generations`,
   `accepted-ready-sources`, `accepted-next-sources`, `turn-items`, `activity-query-entries`,
   `activity-query-sources`, `item-source-events`, `cas-item-index`, `transcript-path-turns`,
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V5 inventory is exactly 61 primary plus 23 index families, or 84 total. A release
+- The complete V6 inventory is exactly 61 primary plus 23 index families, or 84 total. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
-- `draft-piece-roots`, `draft-piece-nodes`, `draft-piece-leaves`,
-  `draft-marker-identity-index`, and `draft-marker-order-commitments` use immutable V1 codecs;
-  `draft-marker-seals` uses its current V1 codec directly. Roots use
+- `draft-piece-roots` and `draft-piece-nodes` use immutable V1 codecs. Marker-bearing
+  `draft-piece-leaves`, `draft-marker-identity-index`, and `draft-marker-order-commitments` use
+  immutable V2 codecs, and `draft-marker-seals` uses its V2 codec directly. Roots use
   `DraftPieceRootNaturalKeyV1`: draft plus tagged draft-scoped canonical-empty identity, or draft,
   editor session, and operation for every editor candidate. They bind the complete sequence,
   identity-index, and marker-order-commitment roots and summaries. Direct empty-draft creation uses
@@ -1393,13 +1397,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   request's canonical header and bounded fragment bytes to equal the settlement's retained proposal
   and referenced build fragments; the stored settlement itself must pass canonical decoding and
   exact closure validation. Equal digests are not sufficient for either check.
-- `draft-marker-seals` stores one V1 durable resumable seal record keyed by exact draft, captured
+- `draft-marker-seals` stores one V2 durable resumable seal record keyed by exact draft, captured
   combined-root/build identity, exact `DraftMarkerCommitmentV1`, and caller-owned seal-operation
   identity. It retains only the next marker-order-tree cursor, completed marker frontier,
-  incremental sequential digest/count/maximum state, and closed `Open`, `Cancelled`, `Failed`,
-  `Superseded`, or `Sealed` lifecycle. Only exact EOF plus frontier/count/maximum/commitment/root
+  incremental sequential digest/count/maximum state, independent ordered marker/asset digest, and
+  closed `Open`, `Cancelled`, `Failed`, `Superseded`, or `Sealed` lifecycle. Only exact EOF plus
+  frontier/count/maximum/commitment/root
   agreement creates the package-issued opaque `DraftMarkerSealProofV1` binding the exact root and
-  commitment to `SequentialMarkerSummaryV1`; raw summary values and open
+  commitment to `SequentialMarkerSummaryV1` and `OrderedMarkerAssetSummaryV1`; raw summary values and open
   records are not proof. Exact replay returns the same proof, while a disagreeing natural identity,
   cursor closure, tree record, or sealed result is collision or corruption.
 - `draft-composer-builds` is keyed by exact source combined root, format version, and caller-owned
@@ -1441,7 +1446,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `doc/systems/cas-live-syndic-transcript/design.md`. This package contributes only its Syndic
   participant and cannot independently assert whole-command success or make partial repair media
   canonical.
-- A V5 `input-gates` value canonically stores the exact stopping variant—blocked Syndic turn plus
+- A V6 `input-gates` value canonically stores the exact stopping variant—blocked Syndic turn plus
   16-byte stop-operation nonce—the compacting variant naming its parentless provider-operation
   turn plus 16-byte compaction-operation nonce, and the distinct awaiting-terminal variant naming
   its unknown-terminal turn. Its distinct `RepairRequired` variant stores the exact target Syndic
@@ -1454,7 +1459,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   encoding rather than an incomplete default. A V3
   `accepted-route-generations` value adds the
   `AwaitingTerminal(exact prior steering target)` authority. V4 route leaves add the closed
-  `UnknownTerminal` next-turn reason. There are no predecessor record decoders because the V5
+  `UnknownTerminal` next-turn reason. There are no predecessor record decoders because the V6
   domain is replacement authority.
 - `stop-operations` is a primary family keyed by the exact 32-byte concatenation of Syndic thread
   identity and stop-operation nonce. Its V1 value repeats both key fields and stores the immutable
@@ -1529,13 +1534,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   candidate, not visible membership. Any reachable membership, set, head, transcript entry, or
   context envelope still requires its complete exact reverse agreement.
 
-## V5 Bounds And Canonical Encoding
+## V6 Bounds And Canonical Encoding
 
 - Persisted integer ordering uses unsigned big-endian encoding. Composite index keys order first by their owning identity and then by one-based ordinal or revision. Cursor-only lower or upper sentinels are rejected as stored keys.
 - Stable Beryl and Syndic identities use their exact 16-byte payloads. Digests use exact 32-byte values. External CAS identities retain validated UTF-8 and remain bounded by `beryl-model`.
 - One terminal-repair build admits at most 262,144 ordered items, 268,435,456 exact encoded item/
   content/media bytes, and 65,536 staged pages across all three staging families. Each page admits at
-  most 256 entries and 65,536 encoded bytes. These are hard V5 codec and mutation ceilings, not
+  most 256 entries and 65,536 encoded bytes. These are hard V6 codec and mutation ceilings, not
   caller-selected budgets: exceeding any count, byte, field, or page limit rejects the repair
   without truncation or partial publication. Normal live-capture terminal-audit page, resident-item,
   and already-admitted-source limits do not lower this independent repair ceiling.
@@ -1556,7 +1561,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   truncation.
 - One content chunk carries at most 65,536 encoded bytes, and one staged append command carries a
   fixed bounded chunk count. Content manifests use `u64` counts and lengths; no smaller whole-draft,
-  whole-submitted-input, or whole-provider-item byte ceiling is encoded in V5.
+  whole-submitted-input, or whole-provider-item byte ceiling is encoded in V6.
 - Every draft combined-root, sequence node/leaf, tagged marker-identity-index internal/leaf, tagged
   marker-order-commitment internal/leaf, marker-seal record, build,
   mutation-staging head, canonical staging page, immutable staging-progress receipt, canonical
@@ -1741,12 +1746,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   invalid encodings.
 - `draft-marker-order-commitments` keys canonically encode the owning draft, closed internal-or-leaf
   tag, and opaque record identity. Values repeat owner, tag, identity, structural digest, checked
-  count, and optional maximum label; leaves contain only one stable marker id and final label.
+  count, and optional maximum label; leaves contain one stable marker id, final label, and complete
+  `AssetId`. The sequence and marker-identity leaves commit the same association so edits, removal,
+  movement, same-id replacement, location proofs, and replay cannot disagree about asset identity.
   `draft-marker-seals` keys and values canonically bind the exact captured root/build identity,
-  commitment, operation, cursor/frontier, sequential state, and lifecycle. Unknown tags,
+  commitment, operation, cursor/frontier, sequential state, ordered marker/asset state, and
+  lifecycle. Unknown tags,
   noncanonical cursors or maxima, key/value disagreement, trailing bytes, or a seal selecting a
   different root or commitment are invalid encodings.
-- Every V5 exact-replay classification at an occupied natural key requires equality between the
+- Every V6 exact-replay classification at an occupied natural key requires equality between the
   request's canonical identity bytes and the corresponding canonical request bytes retained by the
   occupied record; a command that proposes the whole record requires complete canonical key/value-
   byte equality. These equalities are necessary but not sufficient for build-transition replay:
@@ -2222,19 +2230,23 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   semantically equal commitments may conservatively take this changed path.
 - Marker sealing starts from one exact captured candidate generation and complete combined-root/
   build/commitment reference. Each bounded page advances the durable marker-order-tree cursor and
-  compact incremental state for the final `SequentialMarkerSummaryV1` and exposes every ordered marker exactly
-  once for downstream Asset staging. Seal completes only at exact EOF when the completed frontier,
-  count, optional maximum label, commitment-tree root, combined root, and build identity all agree.
+  compact incremental states for the final `SequentialMarkerSummaryV1` and
+  `OrderedMarkerAssetSummaryV1` and exposes every authenticated ordered marker-id/label/asset triple
+  exactly once for downstream Asset staging. The Asset append and Syndic seal advance for one page
+  are participants in the same `HomeCommand`, so restart never loses the only copy of an advanced
+  page or requires a second root traversal. Seal completes only at exact EOF when the completed
+  frontier, count, optional maximum label, both digests, commitment-tree root, combined root, and
+  build identity all agree.
   Undo/redo and later editing never replay history or collect markers for sealing; a later candidate
   does not change the immutable captured source. Cancellation, failure, restart, replay,
   supersession, collision, and corruption retain bounded cursor/custody state and never change the
   current-draft selector.
 - Changed-marker publication accepts only the package-issued opaque marker-seal proof. For a
   changed nonempty commitment, this package's existing mutating Syndic participant also requires
-  the matching opaque Asset proof and validates its `SequentialMarkerSummaryV1` against the seal.
-  For changed-to-empty, it instead validates that the seal proves the exact empty sequential
-  summary and requires the exact Asset removal contribution; there is no Asset proof or synthetic
-  empty set. The enclosing
+  the matching opaque Asset proof and validates its `SequentialMarkerSummaryV1` and
+  `OrderedMarkerAssetSummaryV1` against the seal. For changed-to-empty, it instead validates that
+  the seal proves both canonical empty summaries and requires the exact Asset removal contribution;
+  there is no Asset proof or synthetic empty set. The enclosing
   `HomeCommand` contains that one Syndic mutation participant and one Asset participant; it contains
   no second same-domain Syndic validation participant. Asset disagreement rejects the whole
   command, and neither domain publishes alone. A caller-constructed summary, detached commitment,
@@ -2292,9 +2304,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   session without creating a competing submitted turn. Later route transitions preserve that accepted-input identity and permanent
   membership.
 - The same first-acceptance command independently validates the root-bound sealed `ComposerV1`
-  content identity/full digest, requires its `SealedContentMarkerSummary`'s embedded
-  `SequentialMarkerSummaryV1` to equal the compact sealed-set proof's content-neutral summary,
-  validates the identity-index count, advances the thread frontier monotonically,
+  content identity/full digest and opaque draft-marker seal proof, requires its
+  `SealedContentMarkerSummary`'s embedded `SequentialMarkerSummaryV1` and the seal proof's ordered
+  association summary to equal the compact sealed-set proof's respective summaries, validates the
+  identity-index count, advances the thread frontier monotonically,
   and creates at most one immutable
   local origin span. Per-marker validation already completed through bounded set-staging pages;
   later delivery disposition changes never rescan or rewrite label authority.
@@ -2652,10 +2665,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `DraftMarkerCommitmentV1` values. Equality reuses/validates the existing exact nonempty Asset head
   and proof or validates absent marker-free ownership without a seal or scan. Inequality requires
   this package's bounded completed marker-seal proof. A nonempty successor also requires the
-  matching new Asset proof and swaps the single `CurrentDraft(draft id)` head; an empty successor
-  requires the seal's exact empty sequential summary and removes the exact prior head without an
+  matching new Asset proof with equal sequential and ordered marker/asset summaries and swaps the
+  single `CurrentDraft(draft id)` head; an empty successor requires the seal's two canonical empty
+  summaries and removes the exact prior head without an
   Asset proof or synthetic set. The one Syndic mutation participant validates the root/commitment/
-  seal and applicable sequential-summary branch; the single Asset participant validates its own
+  seal and applicable two-summary branch; the single Asset participant validates its own
   owner-head action. There is no same-domain validation participant, per-root head, synthetic empty
   set, caller-constructible bridge, or partial publication.
 - Validation rejection, revision conflict, and cancellation observed before writer admission leave
@@ -3117,7 +3131,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   successor case or settled idle state. It never manufactures a retry decision from absence,
   rewrites a terminal accepted-input lifecycle, or scans every accepted leaf to authenticate the
   constant-size projection-loss witness.
-- An explicit V5 schema-validation boundary, scrub, background-maintenance pass, or
+- An explicit V6 schema-validation boundary, scrub, background-maintenance pass, or
   corruption-evidence investigation may exhaustively validate current-draft uniqueness,
   thread/draft ownership, append-only draft-build progress-receipt continuity and absence of
   deletion, replacement, or forks, one-way draft-to-turn identity consumption with no live raw-payload

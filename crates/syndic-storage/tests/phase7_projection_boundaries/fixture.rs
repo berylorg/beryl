@@ -64,6 +64,10 @@ pub(super) fn project_user_payload(
             SealedAssetReferenceSetProof::new(
                 AssetReferenceSetId::from_bytes([5; 16]),
                 source.sequential(),
+                beryl_model::OrderedMarkerAssetSummaryV1::new(
+                    [7; 32],
+                    source.sequential().marker_count(),
+                ),
                 source.sequential().marker_count(),
                 AssetReferenceSetDigest::from_bytes([6; 32]),
             )

@@ -56,7 +56,7 @@ impl MarkerSource {
                 .sealed_marker_summary()
                 .map_err(|_| MarkerReplayError::InvalidSource)?
                 .sequential()
-                != asset_proof.summary()
+                != asset_proof.sequential()
             || asset_proof.entry_frontier() != summary.image_marker_count()
             || owner_head.owner() != record.asset_owner()
             || owner_head.set() != asset_proof
@@ -172,15 +172,9 @@ impl MarkerSource {
             }
         }
         {
-            let manifest = self
-                .assets
+            self.assets
                 .sealed_reference_set_manifest(store, self.asset_proof)?;
             check_cancelled(cancellation)?;
-            if manifest.sealed_proof() != Some(self.asset_proof)
-                || manifest.summary() != self.asset_proof.summary()
-            {
-                return Err(MarkerReplayError::InvalidSource);
-            }
         }
         Ok(())
     }

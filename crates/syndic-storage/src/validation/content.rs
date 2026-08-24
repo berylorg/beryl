@@ -436,7 +436,7 @@ fn validate_asset_reference_set(
         (0, Some(_)) | (_, None) => {
             invariant("content and optional asset-reference proof disagree")
         }
-        (_, Some(proof)) if proof.summary() == expected.sequential() => Ok(()),
+        (_, Some(proof)) if proof.sequential() == expected.sequential() => Ok(()),
         (_, Some(_)) => invariant("asset-reference proof source disagrees with content"),
     }
 }

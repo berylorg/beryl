@@ -106,9 +106,10 @@ The same publication first compares the prior and captured exact draft-marker co
 Syndic. Equal nonempty commitments validation-check and reuse the existing exact image-asset
 `CurrentDraft(draft id)` head and proof without a marker scan; equal empty commitments validate head
 absence. A changed commitment requires a completed bounded Syndic seal binding the captured exact
-root/build/commitment/frontier to `SequentialMarkerSummaryV1`. Changed nonempty also requires a new
-sealed Asset set proof with that same summary and swaps the exact head. Changed-to-empty instead
-has Syndic validate the seal/root/commitment and require its exact empty sequential summary/removal
+root/build/commitment/frontier to `SequentialMarkerSummaryV1` and
+`OrderedMarkerAssetSummaryV1`. Changed nonempty also requires a new sealed Asset set proof with
+both summaries and swaps the exact head. Changed-to-empty instead
+has Syndic validate the seal/root/commitment and require both canonical empty summaries/removal
 branch; one Asset participant validates and removes the exact prior head, with no Asset proof or
 synthetic empty set. One mutating Syndic participant and one Asset
 participant publish atomically or neither does.
@@ -120,8 +121,9 @@ the ordinary current draft.
 An idle-thread submission first flushes the editor candidate session, then materializes the exact
 selected combined root into sealed canonical `ComposerV1` content. Acceptance resolves every marker
 to its exact durable asset identity, independently validates the sealed content identity/full
-digest through Syndic, requires the content-bound summary's embedded `SequentialMarkerSummaryV1`
-to equal the Asset proof's content-neutral summary, selects the then-current committed tail as the ordinary turn's
+digest and root-bound opaque draft-marker seal proof through Syndic, requires the content-bound
+summary's embedded `SequentialMarkerSummaryV1` and the seal proof's ordered association summary to
+equal the Asset proof's respective summaries, selects the then-current committed tail as the ordinary turn's
 parent under the exact thread, draft, selected-root, and gate revisions, transitions the same draft
 identity into a submitted turn, creates the typed canonical user-input item, advances the thread's
 committed tail, and creates its replacement current draft atomically. A later candidate or selector

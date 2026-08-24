@@ -77,6 +77,10 @@ impl<'a> Builder<'a> {
             SealedAssetReferenceSetProof::new(
                 AssetReferenceSetId::from_bytes([68; 16]),
                 summary.sequential(),
+                beryl_model::OrderedMarkerAssetSummaryV1::new(
+                    [70; 32],
+                    summary.sequential().marker_count(),
+                ),
                 summary.sequential().marker_count(),
                 AssetReferenceSetDigest::from_bytes([69; 32]),
             )

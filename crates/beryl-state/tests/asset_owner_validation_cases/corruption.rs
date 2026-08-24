@@ -30,7 +30,8 @@ fn reopen_rejects_owner_head_with_a_different_full_proof_for_the_same_set() {
     let head = state.assets().owner_head(&store, owner).unwrap().unwrap();
     let wrong = SealedAssetReferenceSetProof::new(
         proof.set_id(),
-        proof.summary(),
+        proof.sequential(),
+        proof.ordered_assets(),
         proof.entry_frontier(),
         AssetReferenceSetDigest::from_bytes([u8::MAX; 32]),
     )

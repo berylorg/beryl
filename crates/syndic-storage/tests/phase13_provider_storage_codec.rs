@@ -25,7 +25,7 @@ use syndic_storage::{
 const ENCODED_FRAME_BYTES: u64 = 64;
 
 fn empty_marker_digest() -> [u8; 32] {
-    beryl_model::content_marker_digest_seed()
+    beryl_model::sequential_marker_digest_seed()
 }
 
 fn summary(chunks: u64, encoded: u64, digest: u8) -> ContentSummary {

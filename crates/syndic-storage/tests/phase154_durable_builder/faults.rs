@@ -37,7 +37,7 @@ fn pending_marker_command_writer_cuts_recover_one_atomic_root_pair() {
                     DraftPieceMarkerInsertionV1::new(
                         1,
                         marker,
-                        DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                        DraftPieceMarkerEffectChargesV1::for_marker(marker),
                     ),
                 )),
             DraftLogicalExtentV1::new(3, 1),
@@ -56,7 +56,7 @@ fn pending_marker_command_writer_cuts_recover_one_atomic_root_pair() {
                     insertion: DraftPieceMarkerInsertionV1::new(
                         2,
                         marker,
-                        DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                        DraftPieceMarkerEffectChargesV1::for_marker(marker),
                     ),
                 });
         let (prepared, identity, fragments) = stage_interleaved_replacements(

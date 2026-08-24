@@ -1,4 +1,5 @@
 use std::{
+    num::NonZeroU64,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -8,7 +9,7 @@ use beryl_home_store::{
     MutationContribution,
 };
 use beryl_model::{
-    ExecutionBinding, ImageLabelOrdinal, PathFlavor, RootId, RuntimeId, RuntimeMode,
+    AssetId, ExecutionBinding, ImageLabelOrdinal, PathFlavor, RootId, RuntimeId, RuntimeMode,
     RuntimeNativePath, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
 };
 use syndic_storage::{
@@ -366,10 +367,14 @@ pub fn committed(outcome: CommandOutcome) {
 fn marker(seed: u8, order: u64) -> DraftPieceMarkerV1 {
     let mut id = [seed; 16];
     id[1..9].copy_from_slice(&order.to_be_bytes());
+    let mut asset_digest = [0; 32];
+    asset_digest[..16].copy_from_slice(&id);
+    asset_digest[16..].copy_from_slice(&id);
     DraftPieceMarkerV1::new(
         SyndicDraftMarkerId::from_bytes(id),
         order,
         ImageLabelOrdinal::new(order + 1).unwrap(),
+        AssetId::sha256_v1(asset_digest, NonZeroU64::MIN),
     )
 }
 

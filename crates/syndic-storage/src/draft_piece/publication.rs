@@ -5,7 +5,10 @@ use beryl_home_store::{
     ReconciliationFailure, ReconciliationReservation, ReconciliationResolution,
 };
 use beryl_model::DomainRevision;
-use beryl_model::{SequentialMarkerSummaryV1, sequential_marker_digest_seed};
+use beryl_model::{
+    OrderedMarkerAssetSummaryV1, SequentialMarkerSummaryV1, ordered_marker_asset_digest_seed,
+    sequential_marker_digest_seed,
+};
 
 use crate::codec::{
     DraftByThreadCodec, DraftByThreadFamily, DraftsCodec, HistorySummariesCodec,
@@ -98,8 +101,9 @@ fn publication_evidence_is_exact(request: DraftEditorCandidatePublicationRequest
     let seal_is_exact = |proof: DraftMarkerSealProofV1| {
         proof.source() == request.candidate().root()
             && proof.commitment() == captured
-            && proof.summary().marker_count() == marker_count
-            && proof.summary().maximum_image_label() == maximum
+            && proof.sequential().marker_count() == marker_count
+            && proof.sequential().maximum_image_label() == maximum
+            && proof.ordered_assets().marker_count() == marker_count
     };
     match request.evidence() {
         DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
@@ -109,21 +113,26 @@ fn publication_evidence_is_exact(request: DraftEditorCandidatePublicationRequest
             changed
                 && marker_count != 0
                 && seal_is_exact(seal_proof)
-                && asset_proof.summary() == seal_proof.summary()
+                && asset_proof.sequential() == seal_proof.sequential()
+                && asset_proof.ordered_assets() == seal_proof.ordered_assets()
         }
         DraftEditorCandidatePublicationEvidenceV1::ChangedEmpty { seal_proof } => {
             let empty = SequentialMarkerSummaryV1::new(sequential_marker_digest_seed(), 0, None)
                 .expect("canonical empty sequential marker summary is valid");
+            let empty_assets =
+                OrderedMarkerAssetSummaryV1::new(ordered_marker_asset_digest_seed(), 0);
             changed
                 && marker_count == 0
                 && seal_is_exact(seal_proof)
-                && seal_proof.summary() == empty
+                && seal_proof.sequential() == empty
+                && seal_proof.ordered_assets() == empty_assets
         }
         DraftEditorCandidatePublicationEvidenceV1::UnchangedNonempty { asset_proof } => {
             !changed
                 && marker_count != 0
-                && asset_proof.summary().marker_count() == marker_count
-                && asset_proof.summary().maximum_image_label() == maximum
+                && asset_proof.sequential().marker_count() == marker_count
+                && asset_proof.sequential().maximum_image_label() == maximum
+                && asset_proof.ordered_assets().marker_count() == marker_count
         }
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty => !changed && marker_count == 0,
     }

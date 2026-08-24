@@ -59,8 +59,10 @@ mod syndic;
 pub use asset::{
     AssetId, AssetIdentityVersion, AssetProofError, AssetReferenceSetDigest, AssetReferenceSetId,
     DraftMarkerCommitmentV1, ImageLabelOrdinal, ImageLabelOrdinalError,
-    SealedAssetReferenceSetProof, SealedContentMarkerSummary, SequentialMarkerSummaryV1,
-    advance_sequential_marker_digest, sequential_marker_digest_seed,
+    OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof, SealedContentMarkerSummary,
+    SequentialMarkerSummaryV1, advance_ordered_marker_asset_digest,
+    advance_sequential_marker_digest, ordered_marker_asset_digest_seed,
+    sequential_marker_digest_seed,
 };
 pub use availability::{Availability, UnavailableReason};
 pub use ids::{

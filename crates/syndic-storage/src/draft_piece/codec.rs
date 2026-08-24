@@ -1,9 +1,10 @@
 use beryl_home_store::RecordVersion;
 use beryl_model::{
-    AssetReferenceSetDigest, AssetReferenceSetId, DraftRevision, ImageLabelOrdinal,
-    SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, SyndicDraftId, SyndicDraftMarkerId,
-    SyndicThreadId, ThreadRevision,
+    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, DraftRevision, ImageLabelOrdinal,
+    OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof, SequentialMarkerSummaryV1,
+    SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId, ThreadRevision,
 };
+use std::num::NonZeroU64;
 
 use crate::codec::parts::{Decoder, Encoder, dec_timestamp, enc_timestamp};
 use crate::codec::{CodecError, ExactCodec, Family, SMALL_MAX, invalid};
@@ -681,7 +682,8 @@ fn dec_sequential_marker_summary(
 
 fn enc_asset_proof(e: &mut Encoder, proof: SealedAssetReferenceSetProof) {
     e.fixed16(proof.set_id().as_bytes());
-    enc_sequential_marker_summary(e, proof.summary());
+    enc_sequential_marker_summary(e, proof.sequential());
+    enc_ordered_marker_asset_summary(e, proof.ordered_assets());
     e.u64(proof.entry_frontier());
     e.fixed32(&proof.asset_chain_digest().as_bytes());
 }
@@ -690,6 +692,7 @@ fn dec_asset_proof(d: &mut Decoder<'_>) -> Result<SealedAssetReferenceSetProof, 
     SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes(d.fixed16()?),
         dec_sequential_marker_summary(d)?,
+        dec_ordered_marker_asset_summary(d)?,
         d.u64()?,
         AssetReferenceSetDigest::from_bytes(d.fixed32()?),
     )
@@ -699,7 +702,8 @@ fn dec_asset_proof(d: &mut Decoder<'_>) -> Result<SealedAssetReferenceSetProof, 
 fn enc_seal_proof(e: &mut Encoder, proof: DraftMarkerSealProofV1) {
     enc_root_reference(e, proof.source());
     enc_marker_commitment(e, proof.commitment());
-    enc_sequential_marker_summary(e, proof.summary());
+    enc_sequential_marker_summary(e, proof.sequential());
+    enc_ordered_marker_asset_summary(e, proof.ordered_assets());
 }
 
 fn dec_seal_proof(d: &mut Decoder<'_>) -> Result<DraftMarkerSealProofV1, CodecError> {
@@ -707,7 +711,39 @@ fn dec_seal_proof(d: &mut Decoder<'_>) -> Result<DraftMarkerSealProofV1, CodecEr
         dec_root_reference(d)?,
         dec_marker_commitment(d)?,
         dec_sequential_marker_summary(d)?,
+        dec_ordered_marker_asset_summary(d)?,
     ))
+}
+
+fn enc_ordered_marker_asset_summary(e: &mut Encoder, summary: OrderedMarkerAssetSummaryV1) {
+    e.fixed32(&summary.marker_asset_digest());
+    e.u64(summary.marker_count());
+}
+
+fn dec_ordered_marker_asset_summary(
+    d: &mut Decoder<'_>,
+) -> Result<OrderedMarkerAssetSummaryV1, CodecError> {
+    Ok(OrderedMarkerAssetSummaryV1::new(d.fixed32()?, d.u64()?))
+}
+
+fn enc_asset_id(e: &mut Encoder, asset_id: AssetId) {
+    e.u8(asset_id.version() as u8);
+    e.fixed32(&asset_id.digest());
+    e.u64(asset_id.length().get());
+}
+
+fn dec_asset_id(d: &mut Decoder<'_>) -> Result<AssetId, CodecError> {
+    match d.u8()? {
+        1 => Ok(AssetId::sha256_v1(
+            d.fixed32()?,
+            NonZeroU64::new(d.u64()?)
+                .ok_or(CodecError::InvalidLength("draft marker asset length"))?,
+        )),
+        tag => Err(CodecError::InvalidTag {
+            kind: "draft marker asset identity",
+            tag,
+        }),
+    }
 }
 
 fn enc_publication_evidence(e: &mut Encoder, evidence: DraftEditorCandidatePublicationEvidenceV1) {
@@ -1289,6 +1325,7 @@ fn enc_marker(e: &mut Encoder, marker: DraftPieceMarkerV1) {
     e.fixed16(marker.marker_id().as_bytes());
     e.u64(marker.order_key());
     e.u64(marker.label().get());
+    enc_asset_id(e, marker.asset_id());
 }
 
 fn dec_marker(d: &mut Decoder<'_>) -> Result<DraftPieceMarkerV1, CodecError> {
@@ -1296,6 +1333,7 @@ fn dec_marker(d: &mut Decoder<'_>) -> Result<DraftPieceMarkerV1, CodecError> {
         SyndicDraftMarkerId::from_bytes(d.fixed16()?),
         d.u64()?,
         ImageLabelOrdinal::new(d.u64()?).map_err(|error| invalid("draft-piece label", error))?,
+        dec_asset_id(d)?,
     ))
 }
 
@@ -2269,6 +2307,7 @@ fn encode_marker_identity_record(
             enc_marker_identity_key(&mut e, *key);
             e.fixed16(occurrence.marker_id().as_bytes());
             e.u64(occurrence.label().get());
+            enc_asset_id(&mut e, occurrence.asset_id());
             e.u64(occurrence.order_key());
             e.fixed16(occurrence.sequence_leaf_id().as_bytes());
             enc_digest(&mut e, occurrence.sequence_leaf_digest());
@@ -2312,6 +2351,7 @@ fn decode_marker_identity_record(bytes: &[u8]) -> Result<DraftMarkerIdentityReco
                 SyndicDraftMarkerId::from_bytes(d.fixed16()?),
                 ImageLabelOrdinal::new(d.u64()?)
                     .map_err(|error| invalid("draft marker-index label", error))?,
+                dec_asset_id(&mut d)?,
                 d.u64()?,
                 DraftPieceRecordIdV1::from_bytes(d.fixed16()?),
                 dec_digest(&mut d)?,
@@ -2334,12 +2374,12 @@ fn decode_marker_identity_record(bytes: &[u8]) -> Result<DraftMarkerIdentityReco
 }
 
 macro_rules! family {
-    ($family:ty, $key:ty, $value:ty, $name:literal, $key_size:expr, $value_size:expr, $enc_key:expr, $dec_key:expr, $enc_value:expr, $dec_value:expr) => {
+    ($family:ty, $key:ty, $value:ty, $name:literal, $version:expr, $key_size:expr, $value_size:expr, $enc_key:expr, $dec_key:expr, $enc_value:expr, $dec_value:expr) => {
         impl Family for $family {
             type Key = $key;
             type Value = $value;
             const NAME: &'static str = $name;
-            const RECORD_VERSION: RecordVersion = RecordVersion::new(1);
+            const RECORD_VERSION: RecordVersion = RecordVersion::new($version);
             const MAX_KEY_BYTES: usize = $key_size;
             const MAX_VALUE_BYTES: usize = $value_size;
             fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
@@ -2562,11 +2602,13 @@ fn encode_marker_order_record(value: &DraftMarkerOrderRecordV1) -> Result<Vec<u8
         DraftMarkerOrderRecordV1::Leaf {
             marker_id,
             label,
+            asset_id,
             digest,
             ..
         } => {
             e.fixed16(marker_id.as_bytes());
             e.u64(label.get());
+            enc_asset_id(&mut e, *asset_id);
             enc_digest(&mut e, *digest);
         }
     }
@@ -2615,14 +2657,16 @@ fn decode_marker_order_record(bytes: &[u8]) -> Result<DraftMarkerOrderRecordV1, 
             let marker_id = SyndicDraftMarkerId::from_bytes(d.fixed16()?);
             let label = ImageLabelOrdinal::new(d.u64()?)
                 .map_err(|error| invalid("draft marker-order label", error))?;
+            let asset_id = dec_asset_id(&mut d)?;
             let digest = dec_digest(&mut d)?;
-            if digest != marker_order_leaf_digest(marker_id, label) {
+            if digest != marker_order_leaf_digest(marker_id, label, asset_id) {
                 return Err(CodecError::InvalidLength("draft marker-order leaf digest"));
             }
             DraftMarkerOrderRecordV1::Leaf {
                 key,
                 marker_id,
                 label,
+                asset_id,
                 digest,
             }
         }
@@ -2636,6 +2680,7 @@ family!(
     DraftPieceRootKeyV1,
     DraftPieceRootRecordV1,
     "draft-piece-roots",
+    1,
     49,
     SMALL_MAX,
     encode_root_key,
@@ -2648,6 +2693,7 @@ family!(
     DraftPieceRecordKeyV1,
     DraftPieceNodeRecordV1,
     "draft-piece-nodes",
+    1,
     32,
     32_768,
     encode_record_key,
@@ -2660,6 +2706,7 @@ family!(
     DraftPieceRecordKeyV1,
     DraftPieceLeafRecordV1,
     "draft-piece-leaves",
+    2,
     32,
     33_000,
     encode_record_key,
@@ -2672,6 +2719,7 @@ family!(
     DraftMarkerIdentityRecordKeyV1,
     DraftMarkerIdentityRecordV1,
     "draft-marker-identity-index",
+    2,
     33,
     32_768,
     encode_marker_identity_family_key,
@@ -2684,6 +2732,7 @@ family!(
     DraftMarkerOrderRecordKeyV1,
     DraftMarkerOrderRecordV1,
     "draft-marker-order-commitments",
+    2,
     33,
     32_768,
     encode_marker_order_family_key,
@@ -2696,6 +2745,7 @@ family!(
     DraftPieceSettlementKeyV1,
     DraftPieceBuildRecordV1,
     "draft-piece-builds",
+    2,
     48,
     8_192,
     encode_settlement_family_key,
@@ -2708,6 +2758,7 @@ family!(
     DraftPieceBuildFragmentKeyV1,
     DraftPieceBuildFragmentV1,
     "draft-piece-build-fragments",
+    2,
     56,
     75_000,
     encode_fragment_family_key,
@@ -2720,6 +2771,7 @@ family!(
     DraftPieceBuildProgressReceiptKeyV1,
     DraftPieceBuildProgressReceiptV1,
     "draft-piece-build-progress",
+    2,
     56,
     8_192,
     encode_progress_family_key,
@@ -2732,6 +2784,7 @@ family!(
     DraftPieceSettlementKeyV1,
     DraftPieceSettlementV1,
     "draft-piece-settlements",
+    2,
     48,
     65_536,
     encode_settlement_family_key,
@@ -2744,6 +2797,7 @@ family!(
     DraftEditorCandidateSessionRecordKeyV1,
     DraftEditorCandidateSessionRecordV1,
     "draft-editor-candidate-sessions",
+    2,
     49,
     16_384,
     encode_session_family_key,
@@ -2756,6 +2810,7 @@ family!(
     DraftMutationStagingIdentityV1,
     DraftMutationStagingHeadV1,
     "draft-mutation-staging-heads",
+    1,
     48,
     SMALL_MAX,
     staging_head::encode_staging_head_key,
@@ -2768,6 +2823,7 @@ family!(
     DraftMutationStagingPageKeyV1,
     DraftMutationStagingPageV1,
     "draft-mutation-staging-pages",
+    2,
     57,
     SMALL_MAX,
     staging_page::encode_staging_page_key,
@@ -2780,6 +2836,7 @@ family!(
     DraftMutationStagingProgressReceiptKeyV1,
     DraftMutationStagingProgressReceiptV1,
     "draft-mutation-staging-progress",
+    1,
     56,
     4_096,
     staging_head::encode_staging_progress_key,

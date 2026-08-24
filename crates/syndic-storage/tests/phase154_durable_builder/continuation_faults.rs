@@ -31,7 +31,7 @@ fn missing_durable_continuation_fails_status_advance_and_reopen_closed() {
             DraftPieceMarkerInsertionV1::new(
                 1,
                 marker,
-                DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                DraftPieceMarkerEffectChargesV1::for_marker(marker),
             ),
         )),
         DraftLogicalExtentV1::new(3, 1),
@@ -53,7 +53,7 @@ fn missing_durable_continuation_fails_status_advance_and_reopen_closed() {
         insertion: DraftPieceMarkerInsertionV1::new(
             2,
             marker,
-            DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+            DraftPieceMarkerEffectChargesV1::for_marker(marker),
         ),
     });
     let (prepared, identity, fragment) = stage_replacement(

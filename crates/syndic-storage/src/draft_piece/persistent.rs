@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use beryl_home_store::HomeStore;
-use beryl_model::{ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId};
+use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId};
 use sha2::{Digest, Sha256};
 
 use crate::{SyndicStorage, draft_piece::*};
 
-const INDEX_LEAF: &[u8] = b"syndic/draft-marker-identity-index-leaf/v1";
+const INDEX_LEAF: &[u8] = b"syndic/draft-marker-identity-index-leaf/v2";
 const INDEX_NODE: &[u8] = b"syndic/draft-marker-identity-index-node/v1";
 const INDEX_ROOT: &[u8] = b"syndic/draft-marker-identity-index-root/v1";
 
@@ -436,8 +436,9 @@ impl<'a> BuildContext<'a> {
         &mut self,
         marker_id: SyndicDraftMarkerId,
         label: ImageLabelOrdinal,
+        asset_id: AssetId,
     ) -> Result<MarkerOrderRef, DraftPiecePrepareErrorV1> {
-        let digest = marker_order_leaf_digest(marker_id, label);
+        let digest = marker_order_leaf_digest(marker_id, label, asset_id);
         let id = self.next_id(digest)?;
         let key =
             DraftMarkerOrderRecordKeyV1::new(self.draft_id, DraftMarkerOrderRecordKindV1::Leaf, id);
@@ -447,6 +448,7 @@ impl<'a> BuildContext<'a> {
                 key,
                 marker_id,
                 label,
+                asset_id,
                 digest,
             },
         );
@@ -655,13 +657,14 @@ fn validate_marker_order_record(
         DraftMarkerOrderRecordV1::Leaf {
             marker_id,
             label,
+            asset_id,
             digest,
             ..
         } => {
             if expected.height != 0
                 || expected.link.marker_count() != 1
                 || expected.link.maximum_image_label() != Some(*label)
-                || *digest != marker_order_leaf_digest(*marker_id, *label)
+                || *digest != marker_order_leaf_digest(*marker_id, *label, *asset_id)
             {
                 return Err(DraftPiecePrepareErrorV1::InvalidRoot);
             }
@@ -718,6 +721,9 @@ fn index_leaf_digest(value: DraftMarkerIdentityOccurrenceV1) -> DraftPieceDigest
         &[
             value.marker_id().as_bytes(),
             &value.label().get().to_be_bytes(),
+            &[value.asset_id().version() as u8],
+            &value.asset_id().digest(),
+            &value.asset_id().length().get().to_be_bytes(),
             &value.order_key().to_be_bytes(),
             value.sequence_leaf_id().as_bytes(),
             value.sequence_leaf_digest().as_bytes(),
@@ -1909,21 +1915,22 @@ fn marker_order_insert_recursive(
     rank: u64,
     marker_id: SyndicDraftMarkerId,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
 ) -> Result<Vec<MarkerOrderRef>, DraftPiecePrepareErrorV1> {
     if rank > tree.link.marker_count() {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
     if tree.height == 0 {
         let record = context.load_marker_order_record(tree, tree.selected_root)?;
-        let (existing_id, existing_label) = record
+        let (existing_id, existing_label, existing_asset_id) = record
             .marker()
             .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-        let new = context.new_marker_order_leaf(marker_id, label)?;
+        let new = context.new_marker_order_leaf(marker_id, label, asset_id)?;
         return match rank {
             0 => Ok(vec![new, tree]),
             1 => Ok(vec![tree, new]),
             _ => {
-                let _ = (existing_id, existing_label);
+                let _ = (existing_id, existing_label, existing_asset_id);
                 Err(DraftPiecePrepareErrorV1::InvalidRoot)
             }
         };
@@ -1953,6 +1960,7 @@ fn marker_order_insert_recursive(
         remaining,
         marker_id,
         label,
+        asset_id,
     )?;
     children.splice(index..index, replacements.into_iter().map(|part| part.link));
     if children.len() <= DRAFT_PIECE_MAX_CHILDREN {
@@ -1972,15 +1980,16 @@ fn marker_order_insert(
     rank: u64,
     marker_id: SyndicDraftMarkerId,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
 ) -> Result<Option<MarkerOrderRef>, DraftPiecePrepareErrorV1> {
     let Some(root) = root else {
         if rank != 0 {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
-        let leaf = context.new_marker_order_leaf(marker_id, label)?;
+        let leaf = context.new_marker_order_leaf(marker_id, label, asset_id)?;
         return context.new_marker_order_node(1, vec![leaf.link]).map(Some);
     };
-    let parts = marker_order_insert_recursive(context, root, rank, marker_id, label)?;
+    let parts = marker_order_insert_recursive(context, root, rank, marker_id, label, asset_id)?;
     if parts.len() == 1 {
         Ok(parts.into_iter().next())
     } else {
@@ -1997,7 +2006,7 @@ fn marker_order_delete_recursive(
     context: &mut BuildContext<'_>,
     tree: MarkerOrderRef,
     rank: u64,
-    expected: (SyndicDraftMarkerId, ImageLabelOrdinal),
+    expected: (SyndicDraftMarkerId, ImageLabelOrdinal, AssetId),
 ) -> Result<Option<MarkerOrderRef>, DraftPiecePrepareErrorV1> {
     if rank >= tree.link.marker_count() {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
@@ -2139,7 +2148,7 @@ fn marker_order_delete(
     context: &mut BuildContext<'_>,
     root: Option<MarkerOrderRef>,
     rank: u64,
-    expected: (SyndicDraftMarkerId, ImageLabelOrdinal),
+    expected: (SyndicDraftMarkerId, ImageLabelOrdinal, AssetId),
 ) -> Result<Option<MarkerOrderRef>, DraftPiecePrepareErrorV1> {
     let successor = marker_order_delete_recursive(
         context,
@@ -2925,6 +2934,7 @@ pub(crate) fn advance_persistent_tree_build(
                         occurrence.marker_id(),
                         occurrence.order_key(),
                         occurrence.label(),
+                        occurrence.asset_id(),
                     );
                     let witness =
                         DraftPieceMarkerAtV1::new(removal.position().utf8_offset(), marker);
@@ -2994,7 +3004,11 @@ pub(crate) fn advance_persistent_tree_build(
                         &mut context,
                         marker_order,
                         marker_rank,
-                        (occurrence.marker_id(), occurrence.label()),
+                        (
+                            occurrence.marker_id(),
+                            occurrence.label(),
+                            occurrence.asset_id(),
+                        ),
                     )?;
                 } else if let DraftPieceMarkerEffectV1::Insert(insertion) = effect {
                     if index_lookup(&mut context, index, insertion.marker().marker_id())?.is_some()
@@ -3147,6 +3161,7 @@ pub(crate) fn advance_persistent_tree_build(
                     let occurrence = DraftMarkerIdentityOccurrenceV1::new(
                         marker.marker_id(),
                         marker.label(),
+                        marker.asset_id(),
                         marker.order_key(),
                         located.link.id(),
                         located.link.digest(),
@@ -3170,7 +3185,7 @@ pub(crate) fn advance_persistent_tree_build(
                                 &mut context,
                                 marker_order,
                                 base_marker_rank,
-                                (marker.marker_id(), marker.label()),
+                                (marker.marker_id(), marker.label(), marker.asset_id()),
                             )?;
                             next_removed_markers = next_removed_markers.checked_add(1).ok_or(
                                 DraftPiecePrepareErrorV1::Rejected(
@@ -3348,6 +3363,7 @@ pub(crate) fn advance_persistent_tree_build(
                         let occurrence = DraftMarkerIdentityOccurrenceV1::new(
                             marker.marker_id(),
                             marker.label(),
+                            marker.asset_id(),
                             marker.order_key(),
                             leaf.link.id(),
                             leaf.link.digest(),
@@ -3365,6 +3381,7 @@ pub(crate) fn advance_persistent_tree_build(
                             marker_rank,
                             marker.marker_id(),
                             marker.label(),
+                            marker.asset_id(),
                         )?;
                         next_end = marker_end;
                     }
@@ -4715,6 +4732,7 @@ pub(crate) fn validate_marker_location(
     };
     if occurrence.order_key() != witness.marker().order_key()
         || occurrence.label() != witness.marker().label()
+        || occurrence.asset_id() != witness.marker().asset_id()
     {
         return Ok(false);
     }

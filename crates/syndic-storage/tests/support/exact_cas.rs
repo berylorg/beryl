@@ -426,7 +426,7 @@ fn validate_asset_reference_set(
             panic!("exact-CAS content and asset-reference proof disagree")
         }
         (_, Some(proof)) => assert_eq!(
-            proof.summary(),
+            proof.sequential(),
             content.sealed_marker_summary().unwrap().sequential(),
             "exact-CAS asset-reference proof source disagrees with content"
         ),
@@ -448,7 +448,7 @@ fn submission_image_label_authority(
         return (frontiers, None);
     };
     let end = proof
-        .source()
+        .sequential()
         .maximum_image_label()
         .expect("exact-CAS marker-bearing content has a maximum label");
     if frontiers.current().contains(end) {

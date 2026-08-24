@@ -11,7 +11,7 @@ const EMPTY_MARKER_INDEX: &[u8] = b"syndic/draft-marker-identity-index-root/v1/e
 const COMBINED_ROOT: &[u8] = b"syndic/draft-combined-root/v1";
 const EMPTY_ROOT_OPERATION: &[u8] = b"syndic/canonical-empty-draft-root-build-operation/v1";
 const TEXT_LEAF: &[u8] = b"beryl.syndic.draft-piece.text-leaf.v1";
-const MARKER_LEAF: &[u8] = b"beryl.syndic.draft-piece.marker-leaf.v1";
+const MARKER_LEAF: &[u8] = b"beryl.syndic.draft-piece.marker-leaf.v2";
 const MARKER_FOLD: &[u8] = b"beryl.syndic.draft-piece.marker-fold.v1";
 const NODE: &[u8] = b"beryl.syndic.draft-piece.node.v1";
 const ROOT: &[u8] = b"beryl.syndic.draft-piece.root.v1";
@@ -177,6 +177,9 @@ fn marker_digest(
             marker.marker_id().as_bytes(),
             &marker.order_key().to_be_bytes(),
             &marker.label().get().to_be_bytes(),
+            &[marker.asset_id().version() as u8],
+            &marker.asset_id().digest(),
+            &marker.asset_id().length().get().to_be_bytes(),
             &text_summary.logical_utf8_bytes().to_be_bytes(),
             &text_summary.newline_count().to_be_bytes(),
             &text_summary.logical_line_count().to_be_bytes(),
@@ -539,6 +542,7 @@ pub fn draft_piece_fragment_chain_link_v1(
                 digest.update(marker.marker_id().as_bytes());
                 digest.update(marker.order_key().to_be_bytes());
                 digest.update(marker.label().get().to_be_bytes());
+                hash_asset_id(&mut digest, marker.asset_id());
             }
         }
     }
@@ -1636,6 +1640,7 @@ fn hash_charges(digest: &mut Sha256, charges: DraftPieceMarkerEffectChargesV1) {
 fn hash_occurrence(digest: &mut Sha256, occurrence: DraftMarkerIdentityOccurrenceV1) {
     digest.update(occurrence.marker_id().as_bytes());
     digest.update(occurrence.label().get().to_be_bytes());
+    hash_asset_id(digest, occurrence.asset_id());
     digest.update(occurrence.order_key().to_be_bytes());
     digest.update(occurrence.sequence_leaf_id().as_bytes());
     digest.update(occurrence.sequence_leaf_digest().as_bytes());
@@ -1652,7 +1657,14 @@ fn hash_insertion(digest: &mut Sha256, insertion: DraftPieceMarkerInsertionV1) {
     digest.update(marker.marker_id().as_bytes());
     digest.update(marker.order_key().to_be_bytes());
     digest.update(marker.label().get().to_be_bytes());
+    hash_asset_id(digest, marker.asset_id());
     hash_charges(digest, insertion.charges());
+}
+
+fn hash_asset_id(digest: &mut Sha256, asset_id: beryl_model::AssetId) {
+    digest.update([asset_id.version() as u8]);
+    digest.update(asset_id.digest());
+    digest.update(asset_id.length().get().to_be_bytes());
 }
 
 fn hash_marker_effect(digest: &mut Sha256, effect: DraftPieceMarkerEffectV1) {

@@ -13,6 +13,65 @@ use syndic_storage::{
 };
 
 #[test]
+fn asset_identity_changes_structural_and_ordered_but_not_sequential_commitments() {
+    let (_home, store, storage, thread) = fixture("phase169-asset-bound-marker", 211);
+    let durable = current(storage, &store, thread);
+    let first = marker(212, 9, 4);
+    let second = DraftPieceMarkerV1::new(
+        first.marker_id(),
+        first.order_key(),
+        first.label(),
+        beryl_model::AssetId::sha256_v1([0xED; 32], std::num::NonZeroU64::new(999).unwrap()),
+    );
+
+    let build = |session_seed, operation_seed, marker| {
+        let session = open_session(storage, &store, &durable, session_seed, operation_seed);
+        let session = complete_staged(
+            &storage,
+            &store,
+            &session,
+            operation_seed.wrapping_add(1),
+            DraftPieceReplacementV1::new(
+                point(0),
+                point(0),
+                vec![DraftPieceV1::Text("x".to_owned())],
+            ),
+            DraftLogicalExtentV1::new(1, 1),
+        );
+        complete_staged(
+            &storage,
+            &store,
+            &session,
+            operation_seed.wrapping_add(2),
+            DraftPieceReplacementV1::new(point(1), point(1), vec![DraftPieceV1::Marker(marker)])
+                .with_marker_effect(DraftPieceMarkerEffectV1::Insert(
+                    DraftPieceMarkerInsertionV1::new(
+                        1,
+                        marker,
+                        DraftPieceMarkerEffectChargesV1::for_marker(marker),
+                    ),
+                )),
+            DraftLogicalExtentV1::new(1, 1),
+        )
+    };
+    let first_session = build(213, 214, first);
+    let second_session = build(216, 217, second);
+
+    assert_ne!(
+        first_session.newest_root().summary().root_digest(),
+        second_session.newest_root().summary().root_digest()
+    );
+    assert_ne!(
+        first_session.newest_root().marker_commitment(),
+        second_session.newest_root().marker_commitment()
+    );
+    let first_seal = seal_root(&storage, &store, first_session.newest_root(), 219);
+    let second_seal = seal_root(&storage, &store, second_session.newest_root(), 220);
+    assert_eq!(first_seal.sequential(), second_seal.sequential());
+    assert_ne!(first_seal.ordered_assets(), second_seal.ordered_assets());
+}
+
+#[test]
 fn marker_order_commitment_is_structural_reused_published_and_restart_visible() {
     let (home, store, storage, thread) = fixture_with_marker_limit("phase169-commitment", 180, 8);
     let durable = current(storage, &store, thread);
@@ -48,7 +107,7 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     first,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(first),
                 ),
             )),
     );
@@ -71,7 +130,7 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     second,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(second),
                 ),
             )),
     );
@@ -104,8 +163,9 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
     let seal_proof = seal_root(&storage, &store, session.newest_root(), 190);
     let asset_proof = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([191; 16]),
-        seal_proof.summary(),
-        seal_proof.summary().marker_count(),
+        seal_proof.sequential(),
+        seal_proof.ordered_assets(),
+        seal_proof.sequential().marker_count(),
         AssetReferenceSetDigest::from_bytes([192; 32]),
     )
     .unwrap();
@@ -196,15 +256,16 @@ fn persisted_marker_commitment_corruption_fails_publication_closed() {
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     value,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(value),
                 ),
             )),
     );
     let seal_proof = seal_root(&storage, &store, session.newest_root(), 207);
     let asset_proof = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([208; 16]),
-        seal_proof.summary(),
-        seal_proof.summary().marker_count(),
+        seal_proof.sequential(),
+        seal_proof.ordered_assets(),
+        seal_proof.sequential().marker_count(),
         AssetReferenceSetDigest::from_bytes([209; 32]),
     )
     .unwrap();
@@ -299,7 +360,7 @@ fn seal_root(
     {
         committed(execute(
             store,
-            storage.advance_draft_marker_seal(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_marker_seal(storage.revision(store).unwrap(), &advance),
         ));
     }
     let DraftMarkerSealStatusV1::Sealed(proof, _) = storage

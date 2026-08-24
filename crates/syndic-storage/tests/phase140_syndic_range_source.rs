@@ -394,6 +394,7 @@ fn marker(seed: u8, order: u64) -> DraftPieceMarkerV1 {
         SyndicDraftMarkerId::from_bytes(id),
         order,
         ImageLabelOrdinal::new(order + 1).unwrap(),
+        beryl_model::AssetId::sha256_v1([seed; 32], std::num::NonZeroU64::new(order + 1).unwrap()),
     )
 }
 

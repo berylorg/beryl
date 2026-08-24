@@ -23,7 +23,7 @@ use syndic_storage::test_faults::{
     inject_draft_composer_build_corruption, inject_draft_composer_chunk_corruption,
     inject_draft_composer_manifest_corruption, inject_draft_composer_mapping_corruption,
     inject_draft_composer_output_corruption, inject_draft_composer_prepared_chunk,
-    inject_draft_piece_descendant_corruption, syndic_v5_family_names,
+    inject_draft_piece_descendant_corruption, syndic_v6_family_names,
 };
 use syndic_storage::{
     CreateThread, DRAFT_COMPOSER_INPUT_MAX_BYTES, DRAFT_COMPOSER_READ_MAX_RECORDS,
@@ -239,7 +239,7 @@ fn multi_page_utf8_source_reopens_at_every_durable_frontier() {
 #[cfg(feature = "test-faults")]
 #[test]
 fn corrupt_build_mapping_manifest_and_output_are_rejected() {
-    let names = syndic_v5_family_names();
+    let names = syndic_v6_family_names();
     assert_eq!(names.len(), 80);
     assert_eq!(names[10], "draft-marker-order-commitments");
     assert_eq!(names[11], "draft-marker-seals");

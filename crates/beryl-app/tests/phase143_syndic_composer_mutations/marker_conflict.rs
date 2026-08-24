@@ -8,6 +8,7 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
     let id_value = u128::from_be_bytes([0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0xfe]);
     let id = InlineObjectId::new(id_value);
     let label = ImageLabelOrdinal::new(9).unwrap();
+    let asset_id = asset_id_for_object(id);
     let order_one = InlineObjectOrder::new(1);
     let one = source_position(1);
     let after_one = SourcePosition::new(
@@ -24,12 +25,12 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
             object: SuccessorObject::new(id, ByteOffset::new(1), order_one, 17, 5),
         })],
         MutationPositions::collapsed(after_one),
-        vec![ComposerHostImageMarkerMetadata::new(id, label)],
+        vec![ComposerHostImageMarkerMetadata::new(id, label, asset_id)],
         1,
         1,
     );
     let marker_id = SyndicDraftMarkerId::from_bytes(id_value.to_be_bytes());
-    assert_marker(storage, &store, inserted, marker_id, 1, 1, label);
+    assert_marker(storage, &store, inserted, marker_id, 1, 1, label, asset_id);
 
     let before_one = SourcePosition::new(
         ByteOffset::new(1),
@@ -56,7 +57,7 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
         1,
         1,
     );
-    assert_marker(storage, &store, replaced, marker_id, 1, 2, label);
+    assert_marker(storage, &store, replaced, marker_id, 1, 2, label, asset_id);
 
     let before_two_at_one = SourcePosition::new(
         ByteOffset::new(1),
@@ -89,7 +90,7 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
         1,
         1,
     );
-    assert_marker(storage, &store, moved, marker_id, 0, 2, label);
+    assert_marker(storage, &store, moved, marker_id, 0, 2, label, asset_id);
 
     let before_two_at_zero = SourcePosition::new(
         ByteOffset::new(0),
@@ -256,7 +257,11 @@ fn marker_insertions(
                 1,
             ),
         }));
-        metadata.push(ComposerHostImageMarkerMetadata::new(id, label));
+        metadata.push(ComposerHostImageMarkerMetadata::new(
+            id,
+            label,
+            asset_id_for_object(id),
+        ));
     }
     (items, metadata)
 }
@@ -314,6 +319,7 @@ fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
     let id = InlineObjectId::new(id_value);
     let order = InlineObjectOrder::new(7);
     let label = ImageLabelOrdinal::new(11).unwrap();
+    let asset_id = asset_id_for_object(id);
     let marker = MutationPage::new(
         MutationPageKey::new(
             key,
@@ -333,7 +339,7 @@ fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
     host.stage_mutation_page(
         &store,
         MutationPageRequest::new(marker),
-        vec![ComposerHostImageMarkerMetadata::new(id, label)].into_boxed_slice(),
+        vec![ComposerHostImageMarkerMetadata::new(id, label, asset_id)].into_boxed_slice(),
     )
     .unwrap();
 
@@ -367,6 +373,7 @@ fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
         1,
         7,
         label,
+        asset_id,
     );
 }
 

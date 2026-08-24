@@ -2,7 +2,9 @@
 
 use std::convert::Infallible;
 
-use beryl_model::{SyndicDraftMarkerId, advance_content_marker_digest, content_marker_digest_seed};
+use beryl_model::{
+    SyndicDraftMarkerId, advance_sequential_marker_digest, sequential_marker_digest_seed,
+};
 use syndic_storage::{
     CONTENT_CHUNK_MAX_BYTES, ComposerAtom, ComposerPayload, ContentByteSpanRecord,
     ContentChunkRecord, ContentPieceRecord, ContentTextSpanRecord, ImageLabelOrdinal,
@@ -223,8 +225,12 @@ fn marker_order_and_cross_chunk_ranges_match_prepared_content() {
     assert_eq!(marker_id, second_marker);
     assert_eq!(label, second_label);
 
-    let marker_digest = advance_content_marker_digest(
-        advance_content_marker_digest(content_marker_digest_seed(), first_marker, first_label),
+    let marker_digest = advance_sequential_marker_digest(
+        advance_sequential_marker_digest(
+            sequential_marker_digest_seed(),
+            first_marker,
+            first_label,
+        ),
         second_marker,
         second_label,
     );

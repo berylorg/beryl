@@ -294,7 +294,16 @@ fn require_sealed_proof(
     if manifest.lifecycle != AssetReferenceSetLifecycle::Sealed {
         return Err(AssetMutationError::ReferenceSetNotSealed(proof.set_id()));
     }
-    if manifest.sealed_proof() != Some(proof) {
+    if SealedAssetReferenceSetProof::new(
+        manifest.set_id,
+        manifest.sequential,
+        manifest.ordered_assets,
+        manifest.entry_frontier,
+        manifest.asset_chain_digest,
+    )
+    .ok()
+        != Some(proof)
+    {
         return Err(AssetMutationError::BuildProofMismatch(proof.set_id()));
     }
     Ok(())

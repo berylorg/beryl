@@ -9,7 +9,7 @@ use beryl_app::composer_host::{
     ComposerHostMutationStatus, SyndicComposerHost,
 };
 use beryl_home_store::CommandCancellation;
-use beryl_model::{ImageLabelOrdinal, SyndicDraftMarkerId};
+use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftMarkerId};
 use gpui_text_input::{
     BindingId, ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor,
     InlineObjectOrder, LogicalExtent, MutationBeginRequest, MutationCommitRequest, MutationCursor,
@@ -110,8 +110,9 @@ fn assert_marker(
     anchor: u64,
     order: u64,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
 ) {
-    let marker = DraftPieceMarkerV1::new(marker_id, order, label);
+    let marker = DraftPieceMarkerV1::new(marker_id, order, label, asset_id);
     assert!(
         storage
             .validate_draft_marker_location(
@@ -121,6 +122,14 @@ fn assert_marker(
             )
             .unwrap()
     );
+}
+
+fn asset_id_for_object(id: InlineObjectId) -> AssetId {
+    let bytes = id.get().to_be_bytes();
+    let mut digest = [0; 32];
+    digest[..16].copy_from_slice(&bytes);
+    digest[16..].copy_from_slice(&bytes);
+    AssetId::sha256_v1(digest, NonZeroU64::MIN)
 }
 
 fn commit_text(

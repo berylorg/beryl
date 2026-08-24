@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use beryl_home_store::{CommandCancellation, CommandOutcome, HomeCommand, HomeStore};
-use beryl_model::ImageLabelOrdinal;
+use beryl_model::{AssetId, ImageLabelOrdinal};
 use gpui_text_input::{
     BindingId, MutationBeginRequest, MutationCommitRequest, MutationCursor, MutationFinishInput,
     MutationIdentity, MutationKind, MutationLane, MutationPage, MutationPageAcceptance,
@@ -25,11 +25,20 @@ pub(super) const COMPOSER_HOST_MAX_MUTATION_TRANSITIONS: usize = 4096;
 pub struct ComposerHostImageMarkerMetadata {
     object_id: gpui_text_input::InlineObjectId,
     label: ImageLabelOrdinal,
+    asset_id: AssetId,
 }
 
 impl ComposerHostImageMarkerMetadata {
-    pub const fn new(object_id: gpui_text_input::InlineObjectId, label: ImageLabelOrdinal) -> Self {
-        Self { object_id, label }
+    pub const fn new(
+        object_id: gpui_text_input::InlineObjectId,
+        label: ImageLabelOrdinal,
+        asset_id: AssetId,
+    ) -> Self {
+        Self {
+            object_id,
+            label,
+            asset_id,
+        }
     }
 
     pub const fn object_id(self) -> gpui_text_input::InlineObjectId {
@@ -38,6 +47,10 @@ impl ComposerHostImageMarkerMetadata {
 
     pub const fn label(self) -> ImageLabelOrdinal {
         self.label
+    }
+
+    pub const fn asset_id(self) -> AssetId {
+        self.asset_id
     }
 }
 

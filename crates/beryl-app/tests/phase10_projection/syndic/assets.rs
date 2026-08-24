@@ -188,13 +188,12 @@ impl Fixture {
             .staged_reference_set_manifest(home, staging)
             .unwrap()
             .build_proof();
-        let proof = build.sealed_proof().unwrap();
+        let ordered_assets = build.ordered_assets();
+        let seal = SealAssetReferenceSet::new(build, source, ordered_assets).unwrap();
+        let proof = seal.sealed_proof();
         execute(
             home,
-            assets.seal_reference_set(
-                assets.revision(home).unwrap(),
-                SealAssetReferenceSet::new(build, source),
-            ),
+            assets.seal_reference_set(assets.revision(home).unwrap(), seal),
         );
         execute(
             home,
@@ -262,13 +261,12 @@ impl Fixture {
             .staged_reference_set_manifest(home, staging)
             .unwrap()
             .build_proof();
-        let proof = build.sealed_proof().unwrap();
+        let ordered_assets = build.ordered_assets();
+        let seal = SealAssetReferenceSet::new(build, source, ordered_assets).unwrap();
+        let proof = seal.sealed_proof();
         execute(
             home,
-            assets.seal_reference_set(
-                assets.revision(home).unwrap(),
-                SealAssetReferenceSet::new(build, source),
-            ),
+            assets.seal_reference_set(assets.revision(home).unwrap(), seal),
         );
         execute(
             home,

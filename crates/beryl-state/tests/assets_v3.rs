@@ -8,9 +8,10 @@ use beryl_home_store::{
 };
 use beryl_model::{
     AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
-    SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, SyndicAcceptedInputId, SyndicDraftId,
-    SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
-    advance_sequential_marker_digest, sequential_marker_digest_seed,
+    OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof, SequentialMarkerSummaryV1,
+    SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId,
+    SyndicRetryRecordId, advance_ordered_marker_asset_digest, advance_sequential_marker_digest,
+    ordered_marker_asset_digest_seed, sequential_marker_digest_seed,
 };
 use beryl_state::{
     ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES,
@@ -54,9 +55,8 @@ fn begin_reference_set(
     store: &HomeStore,
     state: &BerylState,
     set_id: AssetReferenceSetId,
-    summary: SequentialMarkerSummaryV1,
 ) -> AssetReferenceSetStagingAuthority {
-    let command = BeginAssetReferenceSet::new(set_id, summary);
+    let command = BeginAssetReferenceSet::new(set_id);
     let authority = command.staging_authority();
     execute(
         store,
@@ -65,6 +65,18 @@ fn begin_reference_set(
             .begin_reference_set(state.assets().revision(store).unwrap(), command),
     );
     authority
+}
+
+fn ordered_marker_asset_summary(
+    entries: impl IntoIterator<Item = (SyndicDraftMarkerId, ImageLabelOrdinal, AssetId)>,
+) -> OrderedMarkerAssetSummaryV1 {
+    let mut digest = ordered_marker_asset_digest_seed();
+    let mut count = 0_u64;
+    for (marker, label, asset_id) in entries {
+        digest = advance_ordered_marker_asset_digest(digest, marker, label, asset_id);
+        count += 1;
+    }
+    OrderedMarkerAssetSummaryV1::new(digest, count)
 }
 
 fn marker_summary(
@@ -91,7 +103,7 @@ fn publish_metadata(store: &HomeStore, state: &BerylState) -> (AssetId, std::pat
     publish_metadata_bytes(
         store,
         state,
-        b"asset-schema-v2-sidecar",
+        b"asset-schema-v3-sidecar",
         AssetMediaType::new("image/png").unwrap(),
         None,
     )
@@ -156,7 +168,7 @@ fn seal_one_entry_set(
     asset_id: AssetId,
 ) -> SealedAssetReferenceSetProof {
     let source = marker_summary([(marker_id, label)]);
-    let staging = begin_reference_set(store, state, set_id, source);
+    let staging = begin_reference_set(store, state, set_id);
     let manifest = state
         .assets()
         .staged_reference_set_manifest(store, staging)
@@ -177,19 +189,25 @@ fn seal_one_entry_set(
         .staged_reference_set_manifest(store, staging)
         .unwrap();
     let build = manifest.build_proof();
-    let proof = build.sealed_proof().unwrap();
+    let seal = SealAssetReferenceSet::new(
+        build,
+        source,
+        ordered_marker_asset_summary([(marker_id, label, asset_id)]),
+    )
+    .unwrap();
+    let proof = seal.sealed_proof();
     execute(
         store,
-        state.assets().seal_reference_set(
-            state.assets().revision(store).unwrap(),
-            SealAssetReferenceSet::new(build, source),
-        ),
+        state
+            .assets()
+            .seal_reference_set(state.assets().revision(store).unwrap(), seal),
     );
     let sealed = state
         .assets()
         .sealed_reference_set_manifest(store, proof)
         .unwrap();
-    assert_eq!(sealed.sealed_proof(), Some(proof));
+    assert_eq!(sealed.sequential(), proof.sequential());
+    assert_eq!(sealed.ordered_assets(), proof.ordered_assets());
     proof
 }
 
@@ -214,7 +232,7 @@ fn digest_vector(
     let marker_id = marker(marker_index);
     let _ = (content_id_byte, content_digest_byte);
     let source = marker_summary_for([(marker_id, label)]);
-    let staging = begin_reference_set(&store, &state, set_id, source);
+    let staging = begin_reference_set(&store, &state, set_id);
     let building = state
         .assets()
         .staged_reference_set_manifest(&store, staging)
@@ -236,13 +254,18 @@ fn digest_vector(
         .staged_reference_set_manifest(&store, staging)
         .unwrap();
     let build = building.build_proof();
-    let proof = build.sealed_proof().unwrap();
+    let seal = SealAssetReferenceSet::new(
+        build,
+        source,
+        ordered_marker_asset_summary([(marker_id, label, asset_id)]),
+    )
+    .unwrap();
+    let proof = seal.sealed_proof();
     execute(
         &store,
-        state.assets().seal_reference_set(
-            state.assets().revision(&store).unwrap(),
-            SealAssetReferenceSet::new(build, source),
-        ),
+        state
+            .assets()
+            .seal_reference_set(state.assets().revision(&store).unwrap(), seal),
     );
     let sealed = state
         .assets()
@@ -252,11 +275,11 @@ fn digest_vector(
     [seed, proof.asset_chain_digest().as_bytes()]
 }
 
-#[path = "assets_v2_cases/digest.rs"]
+#[path = "assets_v3_cases/digest.rs"]
 mod digest_cases;
-#[path = "assets_v2_cases/lifecycle.rs"]
+#[path = "assets_v3_cases/lifecycle.rs"]
 mod lifecycle_cases;
-#[path = "assets_v2_cases/owner_proof.rs"]
+#[path = "assets_v3_cases/owner_proof.rs"]
 mod owner_proof_cases;
-#[path = "assets_v2_cases/staging.rs"]
+#[path = "assets_v3_cases/staging.rs"]
 mod staging_cases;

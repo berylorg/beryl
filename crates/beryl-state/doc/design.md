@@ -36,7 +36,7 @@ absorbing Syndic thread ownership.
 - The package exposes a checked maximum mutation-footprint descriptor for its asset-owner-transfer
   participant, selected by the typed draft-to-submitted-item or accepted-input-to-submitted-item
   transfer operation. The descriptor derives its maximum record count and encoded key-plus-value
-  bytes from the package-owned Asset V2 head shapes, including the marker-free validation-only
+  bytes from the package-owned Asset V3 head shapes, including the marker-free validation-only
   case, with checked arithmetic and without opening a home.
 - The descriptor covers only this package's Asset-domain participant. It accepts no caller byte
   estimate and excludes Syndic mutations, home-store participant metadata and home revision, Fjall
@@ -257,30 +257,34 @@ absorbing Syndic thread ownership.
 ## Asset Metadata Domain
 
 - Asset records store opaque asset id, versioned digest and byte length, validated media facts, sidecar state, creation revision, and asset revision.
-- Asset domain schema V2 represents marker ownership through immutable paged reference sets. One
-  sealed set manifest stores one content-neutral `SequentialMarkerSummaryV1`, entry frontier, and
-  asset-chain digest;
+- Asset domain schema V3 represents marker ownership through immutable paged reference sets. One
+  sealed set manifest stores the incrementally derived `SequentialMarkerSummaryV1`,
+  `OrderedMarkerAssetSummaryV1`, entry frontier, and Asset-set-local chain digest;
   bounded ordered entries map stable marker identities and labels to exact asset ids and carry
   validated first-occurrence disposition. Build-local durable label-first keys derive that
   disposition without an in-memory seen-label set. Compact owner-head records bind one current
   draft, accepted input, submitted item, retry record, or
   transcript projection to one sealed set and owner revision.
-- Asset schema V2 is the only supported asset record shape. This package exposes no V1 decoder,
+- Asset schema V3 is the only supported asset record shape. This package exposes no V1 or V2 decoder,
   migration path, dual write, or compatibility adapter.
-- Reference-set construction is typed unpublished staging. Bounded commands append entries and a
-  final seal proves the exact `SequentialMarkerSummaryV1`, entry frontier, and asset-chain digest. One final
+- Reference-set construction is typed unpublished staging. Begin accepts only the set identity and
+  establishes canonical empty accumulators; it does not accept either caller-declared final
+  summary. Bounded commands append entries and advance the sequential, ordered marker/asset, and
+  Asset-set-local chain digests. A final seal accepts and proves the exact two final summaries,
+  entry frontier, and local chain digest. One final
   cross-domain home command swaps only compact source/destination owner heads while publishing the
   matching Syndic admission; it never moves one Fjall record per marker in that transaction.
 - Nonempty current-draft replacement-set construction accepts bounded ordered marker entries and the target
-  `SequentialMarkerSummaryV1`, validates every staged entry and exact EOF/frontier/count/
-  maximum/digest agreement, and returns only the existing opaque sealed-set proof. The package does
+  `SequentialMarkerSummaryV1` plus `OrderedMarkerAssetSummaryV1` only at final seal, validates every
+  staged entry and exact EOF/frontier/count/maximum/digest agreement, and returns only the opaque
+  sealed-set proof. The package does
   not accept or authenticate a Syndic draft root, build identity, marker-tree commitment, or marker-
   seal proof, and it has no dependency on `syndic-storage`; a public summary alone authorizes no
   owner-head mutation.
 - For current-draft publication, this package contributes exactly one Asset participant. A changed
   nonempty marker set validates the opaque sealed-set proof and swaps the exact CurrentDraft head; a
   changed empty set accepts the empty-removal branch only after Syndic has validated its completed
-  seal and exact empty sequential summary, then validates the exact prior head/revision transition
+  seal and both canonical empty summaries, then validates the exact prior head/revision transition
   and removes that head, requiring no Asset proof or synthetic empty set; an
   unchanged nonempty set asserts the existing head and proof; and an unchanged marker-free set
   asserts absence. Syndic, not this package, decides unchanged versus changed from its authenticated
@@ -300,7 +304,7 @@ absorbing Syndic thread ownership.
   through bounded pages. The verification boundary returns bounded file-backed authority without
   reading or mapping the complete asset into memory.
 - Removing an owner head does not delete bytes or require proving that it was the final reference.
-- `AssetId` is the shared SHA-256-v1 digest plus exact nonzero `u64` byte length. Asset schema V2 has
+- `AssetId` is the shared SHA-256-v1 digest plus exact nonzero `u64` byte length. Asset schema V3 has
   no smaller whole-asset byte ceiling and retains an ASCII graphic media type of at most 127 bytes,
   optional nonzero dimensions, creation domain revision, committed-sidecar state, and metadata
   revision. Representable-length exhaustion is explicit; it is not a process-memory limit.
@@ -329,11 +333,12 @@ absorbing Syndic thread ownership.
   success. Missing, disagreeing, or unstaged Beryl-state media rejects this participant. A failed or
   incomplete repair leaves its staging records and prepared sidecars inert and unreachable; only a
   future home-wide garbage collector may reclaim them.
-- A nonempty mutable draft reference change streams every ordered marker page supplied during the
-  captured Syndic seal into one replacement set, then atomically swaps the draft owner head. A
+- A nonempty mutable draft reference change atomically couples every ordered marker/asset page append
+  with the matching captured Syndic seal advance, seals the replacement set against both final
+  summaries, then atomically swaps the draft owner head. A
   changed-to-empty reference instead removes the exact head through the no-proof branch above.
   Duplicate markers, label/asset disagreement, stale owner revision, count overflow, sequential-
-  summary mismatch, and digest mismatch reject publication.
+  summary mismatch, association-summary mismatch, and digest mismatch reject publication.
 - Owner-head removal retains asset metadata and the sidecar. There is no metadata deletion or
   byte-deletion command and no eager zero-reference proof.
 - Public entry reads clamp caller limits to the package's fixed page-item and stored-byte ceilings;
@@ -357,7 +362,7 @@ absorbing Syndic thread ownership.
   stored-byte, and decoded-byte totals. A configured read-limit failure remains direct typed
   home-store read provenance and is not semantic corruption.
 - Stored labels, paths, normalized search fields, failure evidence, setting values, and job payloads have schema-specific byte limits enforced before batch contribution.
-- Asset-owner-transfer footprint tests enumerate the maximum encoded Asset V2 owner-head keys and
+- Asset-owner-transfer footprint tests enumerate the maximum encoded Asset V3 owner-head keys and
   values for both transfer operations, cover the marker-free validation-only shape, and checked-sum
   their record and byte totals. An unrepresentable result is a package contract failure; the
   package never saturates, wraps, or accepts a caller-provided replacement estimate.

@@ -1,7 +1,7 @@
 use beryl_home_store::{RecordCodec, RecordVersion};
 use beryl_model::{
     AssetId, AssetReferenceSetDigest, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal,
-    SyndicDraftMarkerId,
+    OrderedMarkerAssetSummaryV1, SyndicDraftMarkerId,
 };
 
 use crate::encoding::{CodecError, Decoder, Encoder};
@@ -17,10 +17,9 @@ use super::{
 mod parts;
 
 use parts::{
-    decode_asset, decode_dimensions, decode_fixed_16, decode_image_label_option, decode_ordinal,
-    decode_owner, decode_sealed_proof, decode_summary, encode_asset, encode_dimensions,
-    encode_image_label_option, encode_owner, encode_sealed_proof, encode_summary, encoded_asset,
-    invalid, invalid_tag,
+    decode_asset, decode_dimensions, decode_fixed_16, decode_ordinal, decode_owner,
+    decode_sealed_proof, decode_summary, encode_asset, encode_dimensions, encode_owner,
+    encode_sealed_proof, encode_summary, encoded_asset, invalid, invalid_tag,
 };
 
 pub(super) struct AssetMetadataCodec;
@@ -31,7 +30,7 @@ impl RecordCodec<AssetDomain> for AssetMetadataCodec {
     type Error = CodecError;
 
     const FAMILY: &'static str = "metadata";
-    const VERSION: RecordVersion = RecordVersion::new(2);
+    const VERSION: RecordVersion = RecordVersion::new(3);
     const MAX_KEY_BYTES: usize = 41;
     const MAX_VALUE_BYTES: usize = ASSET_METADATA_LIMIT;
 
@@ -92,7 +91,7 @@ impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
     type Error = CodecError;
 
     const FAMILY: &'static str = "reference_set_manifests";
-    const VERSION: RecordVersion = RecordVersion::new(2);
+    const VERSION: RecordVersion = RecordVersion::new(3);
     const MAX_KEY_BYTES: usize = 16;
     const MAX_VALUE_BYTES: usize = ASSET_MANIFEST_LIMIT;
 
@@ -108,14 +107,13 @@ impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
         let mut encoder = Encoder::new();
         encoder.fixed(value.set_id.as_bytes());
-        encode_summary(&mut encoder, value.summary);
+        encode_summary(&mut encoder, value.sequential);
+        encoder.fixed_32(&value.ordered_assets.marker_asset_digest());
+        encoder.u64(value.ordered_assets.marker_count());
         encoder.u8(match value.lifecycle {
             AssetReferenceSetLifecycle::Building => 0,
             AssetReferenceSetLifecycle::Sealed => 1,
         });
-        encoder.u64(value.marker_count);
-        encoder.fixed_32(&value.marker_digest);
-        encode_image_label_option(&mut encoder, value.maximum_image_label);
         encoder.u64(value.entry_frontier);
         encoder.fixed_32(&value.asset_chain_digest.as_bytes());
         encoder.u64(value.revision.get());
@@ -125,26 +123,22 @@ impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
     fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
         let mut decoder = Decoder::new(encoded);
         let set_id = AssetReferenceSetId::from_bytes(decoder.fixed()?);
-        let summary = decode_summary(&mut decoder)?;
+        let sequential = decode_summary(&mut decoder)?;
+        let ordered_assets = OrderedMarkerAssetSummaryV1::new(decoder.fixed_32()?, decoder.u64()?);
         let lifecycle = match decoder.u8()? {
             0 => AssetReferenceSetLifecycle::Building,
             1 => AssetReferenceSetLifecycle::Sealed,
             tag => return Err(invalid_tag("asset reference-set lifecycle", tag)),
         };
-        let marker_count = decoder.u64()?;
-        let marker_digest = decoder.fixed_32()?;
-        let maximum_image_label = decode_image_label_option(&mut decoder)?;
         let entry_frontier = decoder.u64()?;
         let asset_chain_digest = AssetReferenceSetDigest::from_bytes(decoder.fixed_32()?);
         let revision = decoder.record_revision()?;
         decoder.finish()?;
         Ok(AssetReferenceSetManifest {
             set_id,
-            summary,
+            sequential,
+            ordered_assets,
             lifecycle,
-            marker_count,
-            marker_digest,
-            maximum_image_label,
             entry_frontier,
             asset_chain_digest,
             revision,
@@ -160,7 +154,7 @@ impl RecordCodec<AssetDomain> for AssetReferenceEntryCodec {
     type Error = CodecError;
 
     const FAMILY: &'static str = "reference_set_entries";
-    const VERSION: RecordVersion = RecordVersion::new(2);
+    const VERSION: RecordVersion = RecordVersion::new(3);
     const MAX_KEY_BYTES: usize = 24;
     const MAX_VALUE_BYTES: usize = ASSET_ENTRY_LIMIT;
 
@@ -234,7 +228,7 @@ impl RecordCodec<AssetDomain> for AssetReferenceMarkerCodec {
     type Error = CodecError;
 
     const FAMILY: &'static str = "reference_set_markers";
-    const VERSION: RecordVersion = RecordVersion::new(2);
+    const VERSION: RecordVersion = RecordVersion::new(3);
     const MAX_KEY_BYTES: usize = 32;
     const MAX_VALUE_BYTES: usize = ASSET_INDEX_LIMIT;
 
@@ -275,7 +269,7 @@ impl RecordCodec<AssetDomain> for AssetReferenceLabelFirstCodec {
     type Error = CodecError;
 
     const FAMILY: &'static str = "reference_set_label_first";
-    const VERSION: RecordVersion = RecordVersion::new(2);
+    const VERSION: RecordVersion = RecordVersion::new(3);
     const MAX_KEY_BYTES: usize = 24;
     const MAX_VALUE_BYTES: usize = ASSET_INDEX_LIMIT;
 
@@ -322,7 +316,7 @@ impl RecordCodec<AssetDomain> for AssetOwnerHeadCodec {
     type Error = CodecError;
 
     const FAMILY: &'static str = "owner_heads";
-    const VERSION: RecordVersion = RecordVersion::new(2);
+    const VERSION: RecordVersion = RecordVersion::new(3);
     const MAX_KEY_BYTES: usize = 17;
     const MAX_VALUE_BYTES: usize = ASSET_HEAD_LIMIT;
 

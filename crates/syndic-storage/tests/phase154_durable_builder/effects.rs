@@ -25,7 +25,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
                 DraftPieceMarkerInsertionV1::new(
                     1,
                     original,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(original),
                 ),
             ));
     session = complete_staged(
@@ -61,7 +61,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
         DraftPieceMarkerInsertionV1::new(
             1,
             occupied_order_marker,
-            DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+            DraftPieceMarkerEffectChargesV1::for_marker(occupied_order_marker),
         ),
     ));
     let (prepared, identity, _) = stage_replacement(
@@ -93,7 +93,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
                 DraftPieceMarkerInsertionV1::new(
                     4,
                     future,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(future),
                 ),
             ));
     let (prepared, identity, _) = stage_replacement(
@@ -152,7 +152,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
                 DraftPieceMarkerInsertionV1::new(
                     2,
                     original,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(original),
                 ),
             ));
     let (prepared, identity, _) = stage_replacement(
@@ -192,7 +192,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
                 insertion: DraftPieceMarkerInsertionV1::new(
                     2,
                     original,
-                    DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                    DraftPieceMarkerEffectChargesV1::for_marker(original),
                 ),
             });
     let (prepared, identity, fragment) = stage_replacement(
@@ -296,7 +296,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
         insertion: DraftPieceMarkerInsertionV1::new(
             2,
             relabeled_order,
-            DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+            DraftPieceMarkerEffectChargesV1::for_marker(relabeled_order),
         ),
     });
     session = complete_staged(
@@ -320,7 +320,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
                     DraftCompositePositionV1::new(2, DraftCompositeGapWitnessV1::BeforeAll),
                     final_occurrence,
                 ),
-                charges: DraftPieceMarkerEffectChargesV1::canonical_single_marker(),
+                charges: DraftPieceMarkerEffectChargesV1::for_marker(relabeled_order),
             });
     session = complete_staged(
         &storage,

@@ -90,17 +90,23 @@ Provide shared pure-data identities and values used across Beryl packages withou
 - `SequentialMarkerSummaryV1` is the separate content-neutral pure value holding the established
   sequential SHA-256-style digest, exact count, and optional maximum label over exact ordered
   marker-id/label pairs.
+- `OrderedMarkerAssetSummaryV1` is the separate pure value holding an independently domain-
+  separated ordered digest and exact count over marker id, label, and the complete versioned
+  `AssetId`. It is shared only as cross-domain evidence between an opaque Syndic draft-marker seal
+  proof and an opaque sealed Asset reference-set proof.
 - `SealedContentMarkerSummary` binds exact Syndic content identity and full digest to one embedded
   `SequentialMarkerSummaryV1`. It remains the content-bound summary used by sealed `ComposerV1`; it
-  is not a draft-tree root commitment or an Asset-set identity.
+  is not a draft-tree root commitment, marker/asset association summary, or Asset-set identity.
 - `DraftMarkerCommitmentV1` is a separate versioned pure value containing one marker-only tree-root
   digest, exact count, and optional maximum label. It is compact evidence, not persistence or
-  publication authority. Its digest commits the exact persisted tree structure, so separately
-  shaped trees with the same ordered marker semantics need not have equal commitments.
+  publication authority. Its digest commits the exact persisted marker-id/label/asset tree
+  structure, so separately shaped trees with the same ordered marker semantics need not have equal
+  commitments.
 - `AssetReferenceSetId` and `AssetReferenceSetDigest` are shared pure values.
   `SealedAssetReferenceSetProof` is opaque sealed evidence issued by the Asset owner and adds exact
-  set identity, entry frontier, and asset-chain digest to one `SequentialMarkerSummaryV1`; it binds
-  no Syndic content identity or full content digest.
+  set identity, entry frontier, Asset-set-local chain digest, and
+  `OrderedMarkerAssetSummaryV1` to one `SequentialMarkerSummaryV1`; all three counts must agree. It
+  binds no Syndic content identity or full content digest.
   A summary, commitment, set identity, or digest alone authorizes no staging, owner mutation,
   storage read, path access, or byte access.
 - Asset identity exposes only its version, digest, and length as pure identity fields; it encodes no

@@ -2,7 +2,7 @@ use super::support::*;
 
 #[test]
 fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
-    let names = syndic_v5_family_names();
+    let names = syndic_v6_family_names();
     assert_eq!(names.len(), 80);
     assert_eq!(names[10], "draft-marker-order-commitments");
     assert_eq!(names[11], "draft-marker-seals");

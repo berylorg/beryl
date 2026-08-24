@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn asset_chain_digest_is_content_neutral_and_sensitive_to_asset_set_evidence() {
+fn asset_chain_digest_v3_is_content_neutral_and_sensitive_to_asset_set_evidence() {
     let vectors = [
         digest_vector(49, 50, 51, 1, ImageLabelOrdinal::FIRST, b"golden-asset-a"),
         digest_vector(50, 50, 51, 1, ImageLabelOrdinal::FIRST, b"golden-asset-a"),

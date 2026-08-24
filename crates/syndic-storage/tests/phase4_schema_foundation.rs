@@ -70,6 +70,7 @@ fn canonical_user_input_retains_one_complete_asset_reference_proof() {
     let proof = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([3; 16]),
         source.sequential(),
+        beryl_model::OrderedMarkerAssetSummaryV1::new([5; 32], source.sequential().marker_count()),
         source.sequential().marker_count(),
         AssetReferenceSetDigest::from_bytes([4; 32]),
     )

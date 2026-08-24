@@ -2,8 +2,8 @@ use std::num::NonZeroU64;
 
 use beryl_model::{
     AssetId, AssetIdentityVersion, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
-    SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, SyndicAcceptedInputId, SyndicDraftId,
-    SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
+    OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof, SequentialMarkerSummaryV1,
+    SyndicAcceptedInputId, SyndicDraftId, SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
 };
 
 use crate::encoding::{CodecError, Decoder, Encoder};
@@ -82,7 +82,9 @@ pub(super) fn decode_summary(
 
 pub(super) fn encode_sealed_proof(encoder: &mut Encoder, proof: SealedAssetReferenceSetProof) {
     encoder.fixed(proof.set_id().as_bytes());
-    encode_summary(encoder, proof.summary());
+    encode_summary(encoder, proof.sequential());
+    encoder.fixed_32(&proof.ordered_assets().marker_asset_digest());
+    encoder.u64(proof.ordered_assets().marker_count());
     encoder.u64(proof.entry_frontier());
     encoder.fixed_32(&proof.asset_chain_digest().as_bytes());
 }
@@ -93,6 +95,7 @@ pub(super) fn decode_sealed_proof(
     SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes(decoder.fixed()?),
         decode_summary(decoder)?,
+        OrderedMarkerAssetSummaryV1::new(decoder.fixed_32()?, decoder.u64()?),
         decoder.u64()?,
         AssetReferenceSetDigest::from_bytes(decoder.fixed_32()?),
     )

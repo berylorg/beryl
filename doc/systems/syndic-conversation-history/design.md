@@ -101,9 +101,10 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - An idle-thread submission first flushes the active editor candidate session, then requires one
   sealed `ComposerV1` materialization proven to come from the exact published combined root selected
   by that flush. Its atomic publication independently validates that root-bound materialization's
-  exact content identity/full digest through Syndic and requires the embedded
-  `SequentialMarkerSummaryV1` to equal the sealed Asset proof's content-neutral summary; it never
-  compares the Asset proof with a combined-root sequence digest. It then selects the then-current committed tail as the
+  exact content identity/full digest and opaque draft-marker seal proof through Syndic and requires
+  the embedded `SequentialMarkerSummaryV1` and the seal proof's ordered association summary to equal
+  the sealed Asset proof's respective summaries; it never compares the Asset proof with a combined-
+  root sequence digest. It then selects the then-current committed tail as the
   ordinary turn's parent under the exact thread,
   draft, root, and input-gate revisions. It transitions the same draft identity to a submitted
   turn, creates one typed canonical user-input item referencing the sealed content and set proof,
@@ -968,15 +969,18 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   Equality performs no marker scan: nonempty state validation-asserts and reuses the existing exact
   Asset head and proof, while empty state validates head absence. Inequality starts or resumes a
   bounded Syndic-owned seal over the captured exact root/marker-order tree. Its durable cursor and
-  compact incremental state stream every ordered marker once and issue opaque
+  compact sequential and marker/asset states stream every authenticated ordered marker-id/label/
+  asset triple once, atomically pairing each cursor advance with its Asset append, and issue opaque
   `DraftMarkerSealProofV1` only after exact EOF/frontier/count/maximum/commitment/root/build
-  agreement, binding that source to `SequentialMarkerSummaryV1`. Undo/redo adopts historical roots
+  agreement, binding that source to `SequentialMarkerSummaryV1` and
+  `OrderedMarkerAssetSummaryV1`. Undo/redo adopts historical roots
   directly and never replays history for this seal.
 - Final publication atomically pairs the Syndic selector/root/history and session published-pair
   advance with exactly one Asset participant. A changed nonempty commitment requires the completed
-  draft seal plus a new sealed Asset set proof whose `SequentialMarkerSummaryV1` matches; Asset
+  draft seal plus a new sealed Asset set proof whose sequential and ordered marker/asset summaries
+  match; Asset
   swaps the exact single `CurrentDraft(draft id)` head. Changed-to-empty requires the completed seal
-  proving the exact empty sequential summary, and Asset removes the exact prior head with no Asset
+  proving both canonical empty summaries, and Asset removes the exact prior head with no Asset
   proof or synthetic empty set. Syndic validates the empty seal/root/commitment and requires this
   removal branch; Asset validates the exact head transition. The command contains one mutating
   Syndic participant and one Asset participant, never a second same-domain Syndic validator. Rejected,
@@ -1031,8 +1035,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   sealed exact result remains reusable by other canonical consumers naming that root, while a later
   draft root requires a distinct result.
 - Submission validates that the active candidate session is clean at the same published root used
-  by its materialization, independently validates the sealed content identity/full digest, requires
-  the embedded `SequentialMarkerSummaryV1` to equal the Asset proof's content-neutral summary, and
+  by its materialization, independently validates the sealed content identity/full digest and
+  root-bound opaque draft-marker seal proof, requires the embedded `SequentialMarkerSummaryV1` and
+  the seal proof's ordered association summary to equal the Asset proof's respective summaries, and
   validates that its published and newest root/history pairs are equal and that it has
   no active-operation custody. Only the atomic accepted send-and-clear transition disposes that session
   and atomically closes its durable edit-history frontier only after the same local canonical head/

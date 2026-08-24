@@ -1,6 +1,9 @@
 use beryl_home_store::{CursorDirection, DomainReader, SidecarByteLimit, SidecarVerifier};
 use beryl_model::{
-    ImageLabelOrdinal, advance_sequential_marker_digest, sequential_marker_digest_seed,
+    ImageLabelOrdinal, OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof,
+    SequentialMarkerSummaryV1, advance_ordered_marker_asset_digest,
+    advance_sequential_marker_digest, ordered_marker_asset_digest_seed,
+    sequential_marker_digest_seed,
 };
 
 use super::{
@@ -91,7 +94,9 @@ fn validate_manifests(reader: &DomainReader<'_, AssetDomain>) -> Result<(), Asse
             if entry.key() != &entry.value().set_id {
                 return invariant("asset reference-set manifest key disagrees with its identity");
             }
-            if entry.value().marker_count != entry.value().entry_frontier {
+            if entry.value().sequential.marker_count() != entry.value().entry_frontier
+                || entry.value().ordered_assets.marker_count() != entry.value().entry_frontier
+            {
                 return invariant("asset reference-set count disagrees with its entry frontier");
             }
             validate_manifest_entries(reader, entry.value())?;
@@ -112,8 +117,9 @@ fn validate_manifest_entries(
 ) -> Result<(), AssetValidationError> {
     let mut after = None;
     let mut count = 0_u64;
-    let mut chain_digest = digest::seed(manifest.set_id, manifest.summary);
+    let mut chain_digest = digest::seed(manifest.set_id);
     let mut marker_digest = sequential_marker_digest_seed();
+    let mut ordered_marker_asset_digest = ordered_marker_asset_digest_seed();
     let mut maximum_image_label = None;
     loop {
         let page = reader.cursor::<AssetReferenceEntryCodec>(
@@ -207,6 +213,12 @@ fn validate_manifest_entries(
             }
             marker_digest =
                 advance_sequential_marker_digest(marker_digest, entry.marker_id, entry.label);
+            ordered_marker_asset_digest = advance_ordered_marker_asset_digest(
+                ordered_marker_asset_digest,
+                entry.marker_id,
+                entry.label,
+                entry.asset_id,
+            );
             maximum_image_label = Some(
                 maximum_image_label.map_or(entry.label, |maximum: ImageLabelOrdinal| {
                     maximum.max(entry.label)
@@ -222,19 +234,25 @@ fn validate_manifest_entries(
             return invariant("asset entry cursor reported more without a record");
         }
     }
-    if count != manifest.marker_count
-        || count != manifest.entry_frontier
-        || marker_digest != manifest.marker_digest
-        || maximum_image_label != manifest.maximum_image_label
+    if count != manifest.entry_frontier
+        || manifest.sequential
+            != SequentialMarkerSummaryV1::new(marker_digest, count, maximum_image_label)
+                .expect("replayed sequential marker summary is valid")
+        || manifest.ordered_assets
+            != OrderedMarkerAssetSummaryV1::new(ordered_marker_asset_digest, count)
         || chain_digest != manifest.asset_chain_digest
     {
         return invariant("asset reference-set manifest does not match its entry chain");
     }
     if manifest.lifecycle == AssetReferenceSetLifecycle::Sealed
-        && (manifest.marker_count != manifest.summary.marker_count()
-            || manifest.marker_digest != manifest.summary.marker_digest()
-            || manifest.maximum_image_label != manifest.summary.maximum_image_label()
-            || manifest.sealed_proof().is_none())
+        && SealedAssetReferenceSetProof::new(
+            manifest.set_id,
+            manifest.sequential,
+            manifest.ordered_assets,
+            manifest.entry_frontier,
+            manifest.asset_chain_digest,
+        )
+        .is_err()
     {
         return invariant(
             "sealed asset reference-set does not match its sequential marker summary",
@@ -372,7 +390,15 @@ fn validate_owner_heads(
                     "asset owner head names a missing reference set",
                 ))?;
             if manifest.lifecycle != AssetReferenceSetLifecycle::Sealed
-                || manifest.sealed_proof() != Some(head.set)
+                || SealedAssetReferenceSetProof::new(
+                    manifest.set_id,
+                    manifest.sequential,
+                    manifest.ordered_assets,
+                    manifest.entry_frontier,
+                    manifest.asset_chain_digest,
+                )
+                .ok()
+                    != Some(head.set)
             {
                 return invariant("asset owner head does not select its exact sealed set proof");
             }

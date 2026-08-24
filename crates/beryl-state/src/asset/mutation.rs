@@ -2,8 +2,10 @@ use beryl_home_store::{
     DomainMutation, DomainReader, MutationBuilder, PointReadLimit, ReconciliationReservation,
 };
 use beryl_model::{
-    AssetId, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal, SequentialMarkerSummaryV1,
-    SyndicDraftMarkerId, advance_sequential_marker_digest, sequential_marker_digest_seed,
+    AssetId, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal, OrderedMarkerAssetSummaryV1,
+    SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, SyndicDraftMarkerId,
+    advance_ordered_marker_asset_digest, advance_sequential_marker_digest,
+    ordered_marker_asset_digest_seed, sequential_marker_digest_seed,
 };
 
 use crate::RecordRevision;
@@ -105,13 +107,12 @@ impl DomainMutation<AssetDomain> for PublishAssetMetadata {
 /// Starts one unpublished owner-neutral reference-set build.
 pub struct BeginAssetReferenceSet {
     set_id: AssetReferenceSetId,
-    summary: SequentialMarkerSummaryV1,
 }
 
 impl BeginAssetReferenceSet {
     #[must_use]
-    pub const fn new(set_id: AssetReferenceSetId, summary: SequentialMarkerSummaryV1) -> Self {
-        Self { set_id, summary }
+    pub const fn new(set_id: AssetReferenceSetId) -> Self {
+        Self { set_id }
     }
 
     /// Returns the only public authority that can inspect this unpublished build.
@@ -119,7 +120,6 @@ impl BeginAssetReferenceSet {
     pub const fn staging_authority(&self) -> AssetReferenceSetStagingAuthority {
         AssetReferenceSetStagingAuthority {
             set_id: self.set_id,
-            summary: self.summary,
         }
     }
 }
@@ -151,13 +151,19 @@ impl DomainMutation<AssetDomain> for BeginAssetReferenceSet {
             &self.set_id,
             &AssetReferenceSetManifest {
                 set_id: self.set_id,
-                summary: self.summary,
+                sequential: SequentialMarkerSummaryV1::new(
+                    sequential_marker_digest_seed(),
+                    0,
+                    None,
+                )
+                .expect("canonical empty sequential marker summary is valid"),
+                ordered_assets: OrderedMarkerAssetSummaryV1::new(
+                    ordered_marker_asset_digest_seed(),
+                    0,
+                ),
                 lifecycle: AssetReferenceSetLifecycle::Building,
-                marker_count: 0,
-                marker_digest: sequential_marker_digest_seed(),
-                maximum_image_label: None,
                 entry_frontier: 0,
-                asset_chain_digest: digest::seed(self.set_id, self.summary),
+                asset_chain_digest: digest::seed(self.set_id),
                 revision: RecordRevision::INITIAL,
             },
         )?;
@@ -367,19 +373,33 @@ impl AppendAssetReferencePage {
                 chain_digest,
             });
             manifest.entry_frontier = next;
-            manifest.marker_count = manifest
-                .marker_count
+            let marker_count = manifest
+                .sequential
+                .marker_count()
                 .checked_add(1)
                 .ok_or(AssetMutationError::CountOverflow)?;
-            manifest.marker_digest = advance_sequential_marker_digest(
-                manifest.marker_digest,
+            let marker_digest = advance_sequential_marker_digest(
+                manifest.sequential.marker_digest(),
                 requested.marker_id,
                 requested.label,
             );
-            manifest.maximum_image_label = Some(
+            let maximum_image_label = Some(
                 manifest
-                    .maximum_image_label
+                    .sequential
+                    .maximum_image_label()
                     .map_or(requested.label, |maximum| maximum.max(requested.label)),
+            );
+            manifest.sequential =
+                SequentialMarkerSummaryV1::new(marker_digest, marker_count, maximum_image_label)
+                    .expect("incrementally derived sequential marker summary is valid");
+            manifest.ordered_assets = OrderedMarkerAssetSummaryV1::new(
+                advance_ordered_marker_asset_digest(
+                    manifest.ordered_assets.marker_asset_digest(),
+                    requested.marker_id,
+                    requested.label,
+                    requested.asset_id,
+                ),
+                marker_count,
             );
             manifest.asset_chain_digest = chain_digest;
         }
@@ -398,16 +418,36 @@ impl AppendAssetReferencePage {
 /// Seals an exact staged set without rewriting any entry or index record.
 pub struct SealAssetReferenceSet {
     expected: AssetReferenceSetBuildProof,
-    summary: SequentialMarkerSummaryV1,
+    sequential: SequentialMarkerSummaryV1,
+    ordered_assets: OrderedMarkerAssetSummaryV1,
+    sealed: SealedAssetReferenceSetProof,
 }
 
 impl SealAssetReferenceSet {
     #[must_use]
-    pub const fn new(
+    pub fn new(
         expected: AssetReferenceSetBuildProof,
-        summary: SequentialMarkerSummaryV1,
-    ) -> Self {
-        Self { expected, summary }
+        sequential: SequentialMarkerSummaryV1,
+        ordered_assets: OrderedMarkerAssetSummaryV1,
+    ) -> Result<Self, beryl_model::AssetProofError> {
+        let sealed = SealedAssetReferenceSetProof::new(
+            expected.set_id(),
+            sequential,
+            ordered_assets,
+            expected.entry_frontier(),
+            expected.asset_chain_digest(),
+        )?;
+        Ok(Self {
+            expected,
+            sequential,
+            ordered_assets,
+            sealed,
+        })
+    }
+
+    #[must_use]
+    pub const fn sealed_proof(&self) -> SealedAssetReferenceSetProof {
+        self.sealed
     }
 }
 
@@ -417,7 +457,7 @@ impl DomainMutation<AssetDomain> for SealAssetReferenceSet {
     fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
         let manifest = require_manifest(reader, self.expected.set_id)?;
         require_build_proof(&manifest, self.expected)?;
-        require_complete_marker_summary(&manifest, self.summary)
+        require_complete_marker_summaries(&manifest, self.sequential, self.ordered_assets)
     }
 
     fn reserve_reconciliation(
@@ -435,7 +475,7 @@ impl DomainMutation<AssetDomain> for SealAssetReferenceSet {
     ) -> Result<(), Self::Error> {
         let mut manifest = require_manifest(reader, self.expected.set_id)?;
         require_build_proof(&manifest, self.expected)?;
-        require_complete_marker_summary(&manifest, self.summary)?;
+        require_complete_marker_summaries(&manifest, self.sequential, self.ordered_assets)?;
         manifest.lifecycle = AssetReferenceSetLifecycle::Sealed;
         manifest.revision = manifest
             .revision
@@ -459,15 +499,14 @@ fn require_build_proof(
     Ok(())
 }
 
-fn require_complete_marker_summary(
+fn require_complete_marker_summaries(
     manifest: &AssetReferenceSetManifest,
-    summary: SequentialMarkerSummaryV1,
+    sequential: SequentialMarkerSummaryV1,
+    ordered_assets: OrderedMarkerAssetSummaryV1,
 ) -> Result<(), AssetMutationError> {
-    if manifest.summary != summary
-        || manifest.marker_count != summary.marker_count()
-        || manifest.entry_frontier != summary.marker_count()
-        || manifest.marker_digest != summary.marker_digest()
-        || manifest.maximum_image_label != summary.maximum_image_label()
+    if manifest.sequential != sequential
+        || manifest.ordered_assets != ordered_assets
+        || manifest.entry_frontier != sequential.marker_count()
     {
         return Err(AssetMutationError::MarkerSummaryMismatch(manifest.set_id));
     }
