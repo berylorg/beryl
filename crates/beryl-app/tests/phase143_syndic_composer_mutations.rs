@@ -1,3 +1,5 @@
+#![cfg(feature = "test-faults")]
+
 #[path = "phase141_syndic_composer_host/support.rs"]
 mod support;
 
@@ -278,7 +280,7 @@ fn reactivate(
         Box::new([]),
     );
     let ComposerHostActivationOutcome::Activated { binding, .. } = host
-        .activate(store, request, &CommandCancellation::new())
+        .test_activate(store, request, &CommandCancellation::new())
         .unwrap()
     else {
         panic!("activation did not yield a composer binding");

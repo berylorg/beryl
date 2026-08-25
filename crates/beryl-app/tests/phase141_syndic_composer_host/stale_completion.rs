@@ -24,7 +24,7 @@ fn assert_stale_request_after_service_replacement(
         binding: old_binding,
         ..
     } = host
-        .activate(
+        .test_activate(
             store,
             activation(thread, old_session, old_operation, Vec::new()),
             &CommandCancellation::new(),
@@ -43,7 +43,7 @@ fn assert_stale_request_after_service_replacement(
         binding: current_binding,
         ..
     } = host
-        .activate(
+        .test_activate(
             store,
             activation(thread, new_session, new_operation, Vec::new()),
             &CommandCancellation::new(),

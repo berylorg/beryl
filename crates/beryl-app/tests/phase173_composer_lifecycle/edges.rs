@@ -20,7 +20,7 @@ fn activation_cannot_erase_an_admitted_publication_or_disposal_barrier() {
     let (flush, state) = started_flush(&mut host, ComposerHostFlushPurpose::ThreadSwitch);
     assert_eq!(state, ComposerHostFlushState::CaptureRequired);
     assert!(matches!(
-        host.activate(
+        host.test_activate(
             &store,
             activation_request(thread, 114, 115),
             &CommandCancellation::new(),
@@ -45,7 +45,7 @@ fn activation_cannot_erase_an_admitted_publication_or_disposal_barrier() {
     let (flush, state) = started_flush(&mut host, ComposerHostFlushPurpose::Release);
     assert_eq!(state, ComposerHostFlushState::DisposalRequired);
     assert!(matches!(
-        host.activate(
+        host.test_activate(
             &store,
             activation_request(thread, 120, 121),
             &CommandCancellation::new(),
@@ -453,7 +453,7 @@ fn assert_activation_blocked(
 ) {
     let diagnostics = host.lifecycle_diagnostics();
     assert!(matches!(
-        host.activate(
+        host.test_activate(
             store,
             activation_request(thread, session, operation),
             &CommandCancellation::new(),

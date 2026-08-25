@@ -55,7 +55,7 @@ pub fn submit_atoms(
         Box::new([]),
     );
     let ComposerHostActivationOutcome::Activated { binding, .. } = host
-        .activate(store, request, &CommandCancellation::new())
+        .test_activate(store, request, &CommandCancellation::new())
         .unwrap()
     else {
         panic!("submission fixture activation did not produce a binding")

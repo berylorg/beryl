@@ -1,3 +1,5 @@
+#![cfg(feature = "test-faults")]
+
 #[path = "phase10_projection/syndic.rs"]
 mod syndic;
 

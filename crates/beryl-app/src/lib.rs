@@ -186,6 +186,7 @@ pub mod conversation_tools;
 mod dynamic_tool_namespace;
 pub mod input_admission;
 mod lifecycle_dynamic_tools;
+pub mod main_window;
 pub mod theme_runtime;
 
 pub use branch_discussion_dynamic_tools::{

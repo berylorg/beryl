@@ -7,7 +7,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
     let mut host = SyndicComposerHost::new(storage);
     let initial = activation(thread, 70, 71, Vec::new());
     let first = host
-        .activate(&store, initial.clone(), &CommandCancellation::new())
+        .test_activate(&store, initial.clone(), &CommandCancellation::new())
         .unwrap();
     let ComposerHostActivationOutcome::Activated {
         disposition: ComposerHostOpenDisposition::Opened,
@@ -21,7 +21,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
     cancelled.cancel();
     let mut cancelled_host = SyndicComposerHost::new(storage);
     assert!(matches!(
-        cancelled_host.activate(&store, activation(thread, 72, 73, Vec::new()), &cancelled,),
+        cancelled_host.test_activate(&store, activation(thread, 72, 73, Vec::new()), &cancelled,),
         Ok(ComposerHostActivationOutcome::Cancelled)
     ));
     assert_eq!(host.binding(), Some(first_binding));
@@ -36,7 +36,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
         .collect();
     let mut invalid_host = SyndicComposerHost::new(storage);
     assert!(matches!(
-        invalid_host.activate(
+        invalid_host.test_activate(
             &store,
             activation(thread, 72, 74, too_many),
             &CommandCancellation::new(),
@@ -58,7 +58,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
     );
     let mut failing_host = SyndicComposerHost::new(storage);
     assert!(matches!(
-        failing_host.activate(&store, failing, &CommandCancellation::new()),
+        failing_host.test_activate(&store, failing, &CommandCancellation::new()),
         Err(ComposerHostError::Range(
             DraftPieceRangeSourceErrorV1::Malformed(DraftPieceMalformedRangeRequestV1::Limit)
         ))
@@ -67,7 +67,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
 
     let mut collision_host = SyndicComposerHost::new(storage);
     assert!(matches!(
-        collision_host.activate(
+        collision_host.test_activate(
             &store,
             activation(thread, 70, 76, Vec::new()),
             &CommandCancellation::new(),
@@ -115,7 +115,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
         Box::new([]),
     );
     let replay = host
-        .activate(&store, replay_request, &CommandCancellation::new())
+        .test_activate(&store, replay_request, &CommandCancellation::new())
         .unwrap();
     let ComposerHostActivationOutcome::Activated {
         disposition: ComposerHostOpenDisposition::ExactReplay,

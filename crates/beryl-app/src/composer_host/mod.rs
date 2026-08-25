@@ -11,7 +11,10 @@ mod submission;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use syndic_storage::{DraftEditorCandidateActivationBindingV1, SyndicStorage};
+use syndic_storage::{
+    DraftEditorCandidateActivationBindingV1, DraftEditorCandidateSessionDisposeRequestV1,
+    DraftPieceOperationIdV1, DraftRootHistoryPairV1, SyndicStorage,
+};
 
 pub use error::ComposerHostError;
 pub use history::{ComposerHostHistoryStatus, ComposerHostRetainedHistoryIntent};
@@ -28,6 +31,7 @@ pub use submission::*;
 struct ActiveComposerHost {
     binding: ComposerHostBinding,
     storage_candidate: DraftEditorCandidateActivationBindingV1,
+    activation_candidate: DraftEditorCandidateActivationBindingV1,
     thread_id: beryl_model::SyndicThreadId,
     initial_responses: Vec<ComposerHostResponse>,
     unavailable: bool,
@@ -59,6 +63,9 @@ pub struct SyndicComposerHost {
     submission: submission::ComposerHostSubmissionCoordinator,
     #[cfg(feature = "test-faults")]
     activation_after_selector_fault:
+        Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    activation_after_open_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
     mutation_before_execute_fault:
@@ -115,6 +122,8 @@ impl SyndicComposerHost {
             #[cfg(feature = "test-faults")]
             activation_after_selector_fault: None,
             #[cfg(feature = "test-faults")]
+            activation_after_open_fault: None,
+            #[cfg(feature = "test-faults")]
             mutation_before_execute_fault: None,
             #[cfg(feature = "test-faults")]
             history_before_execute_fault: None,
@@ -136,6 +145,39 @@ impl SyndicComposerHost {
     pub const fn binding(&self) -> Option<ComposerHostBinding> {
         match &self.active {
             Some(active) => Some(active.binding),
+            None => None,
+        }
+    }
+
+    pub(crate) fn fresh_abandonment_request(
+        &self,
+        operation_id: DraftPieceOperationIdV1,
+    ) -> Option<DraftEditorCandidateSessionDisposeRequestV1> {
+        let active = self.active.as_ref()?;
+        if active.unavailable
+            || active.session_disposed
+            || self.live_operation_pending()
+            || self.publication.lane.is_some()
+            || self.lifecycle.has_barrier()
+            || active.storage_candidate != active.activation_candidate
+        {
+            return None;
+        }
+        Some(DraftEditorCandidateSessionDisposeRequestV1::new(
+            active.storage_candidate.draft_id(),
+            active.storage_candidate.session_id(),
+            operation_id,
+            active.storage_candidate.session_generation(),
+            DraftRootHistoryPairV1::new(
+                active.storage_candidate.root(),
+                active.storage_candidate.history(),
+            ),
+        ))
+    }
+
+    pub(crate) const fn active_thread_id(&self) -> Option<beryl_model::SyndicThreadId> {
+        match &self.active {
+            Some(active) => Some(active.thread_id),
             None => None,
         }
     }
@@ -214,6 +256,15 @@ impl SyndicComposerHost {
     ) {
         assert!(self.activation_after_selector_fault.is_none());
         self.activation_after_selector_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_activation_after_open_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send + 'static,
+    ) {
+        assert!(self.activation_after_open_fault.is_none());
+        self.activation_after_open_fault = Some(Box::new(fault));
     }
 
     #[cfg(feature = "test-faults")]

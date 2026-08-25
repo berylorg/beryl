@@ -8,7 +8,7 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
     let mut host = SyndicComposerHost::new(storage);
     let request = activation(thread, 82, 83, Vec::new());
     let ComposerHostActivationOutcome::Activated { binding, .. } = host
-        .activate(&store, request.clone(), &CommandCancellation::new())
+        .test_activate(&store, request.clone(), &CommandCancellation::new())
         .unwrap()
     else {
         panic!("fixture activation failed");
@@ -24,7 +24,7 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
     host.dispose_composer_service(&store).unwrap();
     let mut replacement = SyndicComposerHost::new(storage);
     assert!(matches!(
-        replacement.activate(&store, request, &CommandCancellation::new()),
+        replacement.test_activate(&store, request, &CommandCancellation::new()),
         Ok(ComposerHostActivationOutcome::StaleDisposed(_))
     ));
     assert_eq!(host.binding(), None);
@@ -34,7 +34,7 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
     populate(storage, &store, thread, 85);
     let mut host = SyndicComposerHost::new(storage);
     let ComposerHostActivationOutcome::Activated { binding, .. } = host
-        .activate(
+        .test_activate(
             &store,
             activation(thread, 85, 95, Vec::new()),
             &CommandCancellation::new(),
@@ -93,7 +93,7 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
         run_transaction(storage, &store, &build, 2);
         let mut host = SyndicComposerHost::new(storage);
         let ComposerHostActivationOutcome::Activated { binding, .. } = host
-            .activate(
+            .test_activate(
                 &store,
                 activation(thread, 91 + case as u8, 93 + case as u8, Vec::new()),
                 &CommandCancellation::new(),
@@ -164,7 +164,7 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
         ));
     });
     assert!(matches!(
-        host.activate(
+        host.test_activate(
             &store,
             activation(thread, 104, 105, Vec::new()),
             &CommandCancellation::new(),

@@ -29,25 +29,19 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 176: Abandon Fresh Unpublished Composer Candidates (finished)
+# Phase 177: Provide The Live Main-Window Composer Slot (finished)
 
-Syndic storage now exposes a first-class prepare, execute, and targeted-reconciliation boundary that
-atomically abandons only the exact authenticated pristine candidate head. It preserves selectors and
-immutable roots, normalizes the unopened history fork to the published frontier, records disposal
-through the existing bounded representation, returns typed terminal outcomes, and leaves only inert
-future-GC residue without scans, payload collection, or a schema change.
+`beryl-app` now owns a first-class bounded main-window composer slot with one authoritative selected
+host and at most one exact pending activation. It preserves the prior host through target
+preparation, publishes only after the prior ThreadSwitch barrier settles, abandons proven pristine
+unpublished targets through the Phase 176 exact boundary, and retains only bounded reconciliation
+custody after ambiguous retirement. Production activation and selected-host mutation cannot bypass
+the slot; GUI mounting and editor realization remain deferred to Phase 178.
 
-Locked focused verification passed all nine abandonment cases, the combined candidate-session,
-history, publication, and disposal regressions passed, package checks and formatting passed, and an
-independent persistence/concurrency review accepted both serialized race orderings with no remaining
-finding.
-
-# Phase 177: Provide The Live Main-Window Composer Slot (pending)
-
-Establish the live `beryl-app` ownership required to host `main-window.user-input-panel` without
-reviving path-mounted prototypes or mounting unrelated multi-window behavior. Publish the exact
-selected-thread composer host boundary and activation-pending handoff, using Phase 176 abandonment
-for every proven pre-publication terminal cut.
+The seven focused activation, race, reconciliation, and disposal cases and 72 retained composer,
+history, and lifecycle regressions passed under nextest. Locked production and test-fault checks,
+formatting, static boundary scans, and source-size checks passed. Independent persistence/concurrency
+review accepted the slot after the two identified public bypasses were removed.
 
 # Phase 178: Mount Conversation Composer And Editable Image Markers (pending)
 

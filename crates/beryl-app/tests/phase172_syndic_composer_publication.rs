@@ -1,3 +1,5 @@
+#![cfg(feature = "test-faults")]
+
 use beryl_app::{
     composer_host::{
         ComposerHostError, ComposerHostFlushAdmission, ComposerHostFlushAdvance,

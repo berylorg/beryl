@@ -31,7 +31,7 @@ pub fn populate(
     let right = marker(session_seed.wrapping_add(2), 2);
     let mut host = SyndicComposerHost::new(storage);
     let ComposerHostActivationOutcome::Activated { binding, .. } = host
-        .activate(
+        .test_activate(
             store,
             ComposerHostActivationRequest::new(
                 thread,

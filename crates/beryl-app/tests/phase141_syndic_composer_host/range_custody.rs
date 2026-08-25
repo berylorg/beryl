@@ -7,7 +7,7 @@ fn activation_and_bounded_range_custody_are_exact() {
     let first_marker_demand = marker_demand(None, 1, 65_536);
     let mut host = SyndicComposerHost::new(storage);
     let activation = host
-        .activate(
+        .test_activate(
             &store,
             activation(
                 thread,

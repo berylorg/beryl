@@ -1,3 +1,5 @@
+#![cfg(feature = "test-faults")]
+
 #[path = "phase141_syndic_composer_host/support.rs"]
 mod support;
 

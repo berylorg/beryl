@@ -49,7 +49,7 @@ pub fn reactivate(
         Box::new([]),
     );
     let ComposerHostActivationOutcome::Activated { binding, .. } = host
-        .activate(store, request, &CommandCancellation::new())
+        .test_activate(store, request, &CommandCancellation::new())
         .unwrap()
     else {
         panic!("activation did not yield a composer binding")
