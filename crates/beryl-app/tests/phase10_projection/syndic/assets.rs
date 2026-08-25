@@ -7,6 +7,14 @@ use beryl_state::{
     AssetOwnerHeadUpdate, AssetReferencePageEntry, BeginAssetReferenceSet, PublishAssetMetadata,
     SealAssetReferenceSet, UpdateAssetOwnerHeads,
 };
+use gpui_text_input::{
+    BindingId, ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor,
+    InlineObjectOrder, LogicalExtent, MutationBeginRequest, MutationCommitRequest, MutationCursor,
+    MutationFinishInput, MutationIdentity, MutationKey, MutationKind, MutationLane, MutationPage,
+    MutationPageItem, MutationPageKey, MutationPageRequest, MutationPositions, MutationProposal,
+    MutationStreamFinish, MutationTotals, SourcePosition, SourceRange, SourceRevision,
+    SuccessorObject,
+};
 
 use super::*;
 
@@ -48,61 +56,20 @@ impl Fixture {
         assets: &[(AssetId, PathBuf)],
         atoms: &[Result<&str, (ImageLabelOrdinal, usize)>],
     ) -> SubmittedTurn {
-        let draft = {
-            let command_home = self.store.live_home_command().unwrap();
-            self.storage
-                .current_draft(command_home.home(), self.thread, point_limit())
-                .unwrap()
-                .unwrap()
-                .draft()
-                .id()
+        assert!(atoms.iter().any(Result::is_err));
+        let owned_atoms = atoms.to_vec();
+        let owned_assets = assets.iter().map(|(asset, _)| *asset).collect::<Vec<_>>();
+        let (kind, source_draft) =
+            self.submit_via_composer(self.thread, move |host, home, binding| {
+                commit_atoms(host, home, binding, &owned_atoms, &owned_assets)
+            });
+        let FirstAcceptanceKind::Idle { user_item_id } = kind else {
+            panic!("fixture image submission expected an idle thread")
         };
-        let mut payload_atoms = Vec::with_capacity(atoms.len());
-        let mut references = Vec::new();
-        for atom in atoms {
-            match *atom {
-                Ok(text) => {
-                    payload_atoms.push(ComposerAtom::text(text).unwrap());
-                }
-                Err((label, asset_index)) => {
-                    let marker_id = marker_id(draft, u64::try_from(references.len() + 1).unwrap());
-                    let (asset, _) = assets
-                        .get(asset_index)
-                        .expect("image atom must select a published fixture asset");
-                    payload_atoms.push(ComposerAtom::image_marker(marker_id, label));
-                    references.push(AssetReferencePageEntry::new(marker_id, label, *asset));
-                }
-            }
+        SubmittedTurn {
+            turn: source_draft.submitted_turn_id(),
+            user_item: user_item_id,
         }
-        assert!(!references.is_empty());
-        let payload = ComposerPayload::new(payload_atoms).unwrap();
-        let base = self.prepare_submission_on(self.thread, payload, None);
-        let proof = self.seal_reference_set(
-            draft,
-            base.expected_content()
-                .sealed_marker_summary()
-                .unwrap()
-                .sequential(),
-            references,
-        );
-        let submission = IdleSubmission::new(
-            base.thread_id(),
-            base.expected_thread_revision(),
-            base.draft_id(),
-            base.expected_draft_revision(),
-            base.expected_content(),
-            base.expected_gate_revision(),
-            base.next_draft_id(),
-            base.user_item_id(),
-            Some(proof),
-            base.admitted_at(),
-        );
-        let turn = submission.submitted_turn_id();
-        let user_item = submission.user_item_id();
-        self.store
-            .execute_idle_submission(self.state.assets(), submission)
-            .unwrap();
-        SubmittedTurn { turn, user_item }
     }
 
     pub fn publish_asset_metadata(&mut self, bytes: &[u8]) -> (AssetId, PathBuf) {
@@ -165,7 +132,10 @@ impl Fixture {
         let command_home = self.store.live_home_command().unwrap();
         let home = command_home.home();
         let begin =
-            BeginAssetReferenceSet::new(AssetReferenceSetId::from_bytes(*draft.as_bytes()), source);
+            BeginAssetReferenceSet::new(beryl_state::AssetReferenceSetStagingAuthority::new(
+                AssetReferenceSetId::from_bytes(*draft.as_bytes()),
+                [draft.as_bytes()[0]; 32],
+            ));
         let staging = begin.staging_authority();
         execute(
             home,
@@ -225,7 +195,10 @@ impl Fixture {
         let command_home = self.store.live_home_command().unwrap();
         let home = command_home.home();
         let begin =
-            BeginAssetReferenceSet::new(AssetReferenceSetId::from_bytes(*draft.as_bytes()), source);
+            BeginAssetReferenceSet::new(beryl_state::AssetReferenceSetStagingAuthority::new(
+                AssetReferenceSetId::from_bytes(*draft.as_bytes()),
+                [draft.as_bytes()[0]; 32],
+            ));
         let staging = begin.staging_authority();
         execute(
             home,
@@ -291,4 +264,144 @@ pub(super) fn marker_id(draft: SyndicDraftId, ordinal: u64) -> SyndicDraftMarker
     let mut bytes = *draft.as_bytes();
     bytes[8..].copy_from_slice(&ordinal.to_be_bytes());
     SyndicDraftMarkerId::from_bytes(bytes)
+}
+
+fn commit_atoms(
+    host: &mut beryl_app::composer_host::SyndicComposerHost,
+    store: &HomeStore,
+    binding: beryl_app::composer_host::ComposerHostBinding,
+    atoms: &[Result<&str, (ImageLabelOrdinal, usize)>],
+    assets: &[AssetId],
+) -> beryl_app::composer_host::ComposerHostBinding {
+    let key = MutationKey::new(
+        BindingId::new(binding.host_generation().get()),
+        SourceRevision::new(binding.candidate().candidate_generation()),
+        gpui_text_input::OperationId::new(1),
+    );
+    let origin = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::NoObjects);
+    host.begin_mutation(
+        store,
+        binding,
+        MutationBeginRequest::new(
+            MutationProposal::new(
+                key,
+                MutationKind::Edit,
+                MutationPositions::collapsed(origin),
+                SourceRange::new(origin, origin).unwrap(),
+                0,
+            ),
+            MutationCursor::new(0),
+            MutationCursor::new(0),
+        ),
+    )
+    .unwrap();
+
+    let mut items = Vec::with_capacity(atoms.len());
+    let mut metadata = Vec::new();
+    let mut text_bytes = 0_u64;
+    let mut line_count = 1_u64;
+    let mut last_neighbor = None;
+    for atom in atoms {
+        match *atom {
+            Ok(text) => {
+                items.push(MutationPageItem::Utf8 {
+                    inserted_offset: text_bytes,
+                    text: text.into(),
+                });
+                text_bytes = text_bytes
+                    .checked_add(u64::try_from(text.len()).unwrap())
+                    .unwrap();
+                line_count = line_count
+                    .checked_add(
+                        u64::try_from(text.bytes().filter(|byte| *byte == b'\n').count()).unwrap(),
+                    )
+                    .unwrap();
+            }
+            Err((label, asset_index)) => {
+                let ordinal = u64::try_from(metadata.len() + 1).unwrap();
+                let marker = marker_id(binding.candidate().draft_id(), ordinal);
+                let object = InlineObjectId::new(u128::from_be_bytes(*marker.as_bytes()));
+                let order = InlineObjectOrder::new(u128::from(ordinal));
+                let asset = *assets
+                    .get(asset_index)
+                    .expect("image atom must select a published fixture asset");
+                items.push(MutationPageItem::Object(
+                    gpui_text_input::ObjectChange::Insert {
+                        object: SuccessorObject::new(
+                            object,
+                            ByteOffset::new(text_bytes),
+                            order,
+                            17,
+                            5,
+                        ),
+                    },
+                ));
+                metadata.push(
+                    beryl_app::composer_host::ComposerHostImageMarkerMetadata::new(
+                        object, label, asset,
+                    ),
+                );
+                last_neighbor = Some(InlineObjectNeighbor::new(object, order));
+            }
+        }
+    }
+    let page = MutationPage::new(
+        MutationPageKey::new(
+            key,
+            MutationLane::Proposal,
+            MutationCursor::new(0),
+            0,
+            MutationIdentity::ROOT,
+        ),
+        MutationCursor::new(1),
+        items,
+    )
+    .unwrap();
+    let proposal_finish = MutationStreamFinish {
+        next_cursor: page.next_cursor(),
+        next_ordinal: 1,
+        cumulative_identity: page.cumulative_identity(),
+        totals: page.totals(),
+    };
+    host.stage_mutation_page(
+        store,
+        MutationPageRequest::new(page),
+        metadata.into_boxed_slice(),
+    )
+    .unwrap();
+    let caret = SourcePosition::new(
+        ByteOffset::new(text_bytes),
+        last_neighbor.map_or(InlineObjectGap::NoObjects, InlineObjectGap::after),
+    );
+    host.finish_mutation_input(
+        store,
+        MutationFinishInput::new(
+            key,
+            MutationStreamFinish {
+                next_cursor: MutationCursor::new(0),
+                next_ordinal: 0,
+                cumulative_identity: MutationIdentity::ROOT,
+                totals: MutationTotals::default(),
+            },
+            proposal_finish,
+            LogicalExtent::new(text_bytes, line_count),
+            MutationPositions::collapsed(caret),
+        ),
+    )
+    .unwrap();
+    for _ in 0..32 {
+        match host.execute_mutation(
+            store,
+            MutationCommitRequest::new(key, MutationIdentity::ROOT),
+            &CommandCancellation::new(),
+        ) {
+            Ok(beryl_app::composer_host::ComposerHostMutationOutcome::Committed {
+                binding,
+                ..
+            }) => return binding,
+            Err(beryl_app::composer_host::ComposerHostError::MutationWorkPending) => {}
+            other => panic!("image composer mutation did not commit: {other:?}"),
+        }
+    }
+    panic!("image composer mutation did not converge")
 }

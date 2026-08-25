@@ -98,6 +98,9 @@ impl SyndicComposerHost {
         if self.lifecycle.freezes_admission() {
             return Err(ComposerHostError::LifecycleBlocked);
         }
+        if self.submission_pending() {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
         if self.live_operation_pending() {
             return Err(if self.pending_history.is_some() {
                 ComposerHostError::HistoryPending

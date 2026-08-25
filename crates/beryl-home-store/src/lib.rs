@@ -313,9 +313,9 @@ pub use sidecar::{
 pub use store::HomeOwnershipTestSeam;
 pub use store::{HomeDurabilityTier, HomeOpenOptions, HomeStore};
 pub use successor::{
-    SuccessorCorrelation, SuccessorObservation, SuccessorPointRead, SuccessorPointReader,
-    SuccessorPointRecord, SuccessorProtocol, SuccessorReadRejection, SuccessorReadReservation,
-    SuccessorSource, SuccessorWitness,
+    FirstAcceptancePromotionProtocolV1, SuccessorCorrelation, SuccessorObservation,
+    SuccessorPointRead, SuccessorPointReader, SuccessorPointRecord, SuccessorProtocol,
+    SuccessorReadRejection, SuccessorReadReservation, SuccessorSource, SuccessorWitness,
 };
 pub use theme::{
     StableThemeFileId, StableThemeFileIdError, ThemeCommitEvidence, ThemeFileIdentity,

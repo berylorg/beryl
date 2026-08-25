@@ -2,10 +2,14 @@
 
 #[path = "syndic/assets.rs"]
 mod assets;
+#[path = "../phase166_syndic_composer_history/support.rs"]
+mod composer_support;
 #[path = "syndic/exact.rs"]
 mod exact;
 #[path = "syndic/history.rs"]
 mod history;
+#[path = "../phase172_syndic_composer_publication/support.rs"]
+mod publication_support;
 #[path = "syndic/support.rs"]
 mod support;
 
@@ -16,15 +20,17 @@ use beryl_app::{
         ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryExecutionProvider,
         ScheduledOrdinaryExecutionUnavailable,
     },
-    input_admission::prepare_accepted_input_admission,
+    composer_host::{ComposerHostSubmissionAdvance, ComposerHostSubmissionRequest},
 };
-use beryl_home_store::{CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandCancellation, CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     CasItemId, SealedAssetReferenceSetProof, SyndicAcceptedInputId, SyndicDraftId,
     SyndicDraftMarkerId, SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
 use beryl_state::{AssetState, BerylState};
-use support::{execute, project_item, stage_prepared_content};
+use support::{execute, project_item};
 use syndic_storage::*;
 
 #[allow(unused_imports)]
@@ -45,7 +51,7 @@ pub fn correlate_captured_user_item(
 #[derive(Clone, Copy)]
 pub struct SubmittedTurn {
     pub turn: SyndicTurnId,
-    user_item: SyndicItemId,
+    pub(crate) user_item: SyndicItemId,
 }
 
 struct UnavailableScheduledOrdinaryProvider;
@@ -184,6 +190,7 @@ impl Fixture {
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
                     execution_binding(),
                     SyndicTimestamp::from_unix_millis(1),
+                    history_policy(),
                 ),
             ),
         );
@@ -229,178 +236,117 @@ impl Fixture {
     }
 
     pub fn submit_text_on(&mut self, thread: SyndicThreadId, text: &str) -> SubmittedTurn {
-        let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
-        let submission = self.prepare_submission_on(thread, payload, None);
-        self.execute_submission(submission)
+        let (kind, source_draft) = self.submit_text_via_composer(thread, text);
+        let FirstAcceptanceKind::Idle { user_item_id } = kind else {
+            panic!("fixture text submission expected an idle thread")
+        };
+        SubmittedTurn {
+            turn: source_draft.submitted_turn_id(),
+            user_item: user_item_id,
+        }
     }
 
     pub fn accept_text(&mut self, text: &str) -> SyndicAcceptedInputId {
-        let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
-        let content = PreparedContent::composer(&payload).unwrap();
-        let update_at = self.tick();
-        let admitted_at = self.tick();
-        let (accepted_input_id, prepared) = {
-            let command_home = self.store.live_home_command().unwrap();
-            let home = command_home.home();
-            stage_prepared_content(home, self.storage, &content);
-            let current = self
-                .storage
-                .current_draft(home, self.thread, point_limit())
-                .unwrap()
-                .unwrap();
-            let DraftPayloadUpdateDecision::Update(update) =
-                DraftPayloadUpdate::prepare(&current, &content, update_at).unwrap()
-            else {
-                panic!("fixture accepted input must change the draft")
-            };
-            execute(
-                home,
-                self.storage
-                    .update_draft_payload(self.storage.revision(home).unwrap(), update),
-            );
-            let current = self
-                .storage
-                .current_draft(home, self.thread, point_limit())
-                .unwrap()
-                .unwrap();
-            let gate = self
-                .storage
-                .input_gate(home, self.thread, point_limit())
-                .unwrap()
-                .unwrap();
-            let next_draft = SyndicDraftId::from_bytes([self.next_draft; 16]);
-            self.next_draft = self.next_draft.checked_add(1).unwrap();
-            let admission = AcceptedInputAdmission::new(
-                self.thread,
-                current.thread().revision(),
-                current.draft().id(),
-                current.draft().revision(),
-                current.draft().content(),
-                gate.revision(),
-                next_draft,
-                None,
-                admitted_at,
-            );
-            let accepted_input_id = admission.accepted_input_id();
-            let prepared = prepare_accepted_input_admission(
-                home,
-                self.storage,
-                self.state.assets(),
-                admission,
-            )
-            .unwrap();
-            (accepted_input_id, prepared)
+        let (kind, source_draft) = self.submit_text_via_composer(self.thread, text);
+        let FirstAcceptanceKind::Accepted = kind else {
+            panic!("fixture accepted input expected a busy thread")
         };
-        self.store
-            .execute_accepted_input_admission(prepared)
-            .unwrap();
-        accepted_input_id
+        source_draft.accepted_input_id()
     }
 
-    pub fn submit_reference_on(
+    fn submit_text_via_composer(
         &mut self,
         thread: SyndicThreadId,
-        content: ContentReference,
-        asset_reference_set: Option<SealedAssetReferenceSetProof>,
-    ) -> SubmittedTurn {
-        let updated_at = self.tick();
-        {
-            let command_home = self.store.live_home_command().unwrap();
-            let home = command_home.home();
-            let current = self
-                .storage
-                .current_draft(home, thread, point_limit())
-                .unwrap()
-                .unwrap();
-            let DraftPayloadUpdateDecision::Update(update) =
-                DraftPayloadUpdate::prepare_reference(&current, content, updated_at).unwrap()
-            else {
-                panic!("fixture submission must change the draft")
-            };
-            execute(
+        text: &str,
+    ) -> (FirstAcceptanceKind, SyndicDraftId) {
+        self.submit_via_composer(thread, |host, home, binding| {
+            composer_support::commit_text(
+                host,
                 home,
-                self.storage
-                    .update_draft_payload(self.storage.revision(home).unwrap(), update),
-            );
-        }
-        let submission = self.prepare_current_submission_on(thread, asset_reference_set);
-        self.execute_submission(submission)
+                binding,
+                1,
+                0,
+                0,
+                text,
+                u64::try_from(text.len()).unwrap(),
+                u64::try_from(text.lines().count()).unwrap(),
+            )
+        })
     }
 
-    fn execute_submission(&self, submission: IdleSubmission) -> SubmittedTurn {
-        let turn = submission.submitted_turn_id();
-        let user_item = submission.user_item_id();
-        self.store
-            .execute_idle_submission(self.state.assets(), submission)
-            .unwrap();
-        SubmittedTurn { turn, user_item }
-    }
-
-    fn prepare_submission_on(
+    pub(crate) fn submit_via_composer(
         &mut self,
         thread: SyndicThreadId,
-        payload: ComposerPayload,
-        asset_reference_set: Option<SealedAssetReferenceSetProof>,
-    ) -> IdleSubmission {
-        let content = PreparedContent::composer(&payload).unwrap();
-        let updated_at = self.tick();
-        {
-            let command_home = self.store.live_home_command().unwrap();
-            let home = command_home.home();
-            stage_prepared_content(home, self.storage, &content);
-            let current = self
-                .storage
-                .current_draft(home, thread, point_limit())
-                .unwrap()
-                .unwrap();
-            let DraftPayloadUpdateDecision::Update(update) =
-                DraftPayloadUpdate::prepare(&current, &content, updated_at).unwrap()
-            else {
-                panic!("fixture submission must change the draft")
-            };
-            execute(
-                home,
-                self.storage
-                    .update_draft_payload(self.storage.revision(home).unwrap(), update),
-            );
-        }
-        self.prepare_current_submission_on(thread, asset_reference_set)
-    }
-
-    fn prepare_current_submission_on(
-        &mut self,
-        thread: SyndicThreadId,
-        asset_reference_set: Option<SealedAssetReferenceSetProof>,
-    ) -> IdleSubmission {
-        let submitted_at = self.tick();
-        let command_home = self.store.live_home_command().unwrap();
-        let home = command_home.home();
-        let current = self
-            .storage
-            .current_draft(home, thread, point_limit())
-            .unwrap()
-            .unwrap();
-        let gate = self
-            .storage
-            .input_gate(home, thread, point_limit())
-            .unwrap()
-            .unwrap();
+        edit: impl FnOnce(
+            &mut beryl_app::composer_host::SyndicComposerHost,
+            &HomeStore,
+            beryl_app::composer_host::ComposerHostBinding,
+        ) -> beryl_app::composer_host::ComposerHostBinding,
+    ) -> (FirstAcceptanceKind, SyndicDraftId) {
+        let seed = self.next_draft;
         let next_draft = SyndicDraftId::from_bytes([self.next_draft; 16]);
         self.next_draft = self.next_draft.checked_add(1).unwrap();
         let user_item = SyndicItemId::from_bytes([self.next_item; 16]);
         self.next_item = self.next_item.checked_add(1).unwrap();
-        IdleSubmission::new(
-            thread,
-            current.thread().revision(),
-            current.draft().id(),
-            current.draft().revision(),
-            current.draft().content(),
-            gate.revision(),
-            next_draft,
-            user_item,
-            asset_reference_set,
-            submitted_at,
+        let admitted_at = self.tick();
+        let command_home = self.store.live_home_command().unwrap();
+        let home = command_home.home();
+        let assets = self.state.assets();
+        let (mut host, binding) =
+            composer_support::activated(self.storage, home, thread, seed, seed.wrapping_add(1));
+        let edited = edit(&mut host, home, binding);
+        let source_draft = edited.candidate().draft_id();
+        let seals = publication_support::service(home, self.storage, assets, 1, 1);
+        let ticket = host
+            .begin_submission(ComposerHostSubmissionRequest::new(
+                next_draft,
+                user_item,
+                DraftComposerMaterializationOperationIdV1::from_bytes([seed.wrapping_add(2); 16]),
+                DraftPieceOperationIdV1::from_bytes([seed.wrapping_add(3); 16]),
+                admitted_at,
+                Self::submission_admission_requirement(),
+            ))
+            .unwrap();
+        for _ in 0..16_384 {
+            match host
+                .advance_submission(
+                    home,
+                    ticket,
+                    assets,
+                    &seals,
+                    composer_support::operation_id(u64::from(seed) + 1_000),
+                    None,
+                    admitted_at,
+                    &CommandCancellation::new(),
+                )
+                .unwrap()
+            {
+                ComposerHostSubmissionAdvance::Progress(_)
+                | ComposerHostSubmissionAdvance::ReconciliationPending => {}
+                ComposerHostSubmissionAdvance::ExactSuccess(kind) => return (kind, source_draft),
+                outcome => panic!("fixture submission did not commit exactly: {outcome:?}"),
+            }
+        }
+        panic!("fixture submission did not converge")
+    }
+
+    fn submission_admission_requirement() -> beryl_home_store::TurnStartAdmissionRequirement {
+        beryl_app::cas_projection::ProjectionServiceConfig::try_new(
+            1,
+            4,
+            beryl_home_store::MinimumTurnCaptureReserve::try_new(1).unwrap(),
         )
+        .unwrap()
+        .turn_start_admission_requirement()
+    }
+
+    pub fn submitted_content(&self, submitted: SubmittedTurn) -> ContentReference {
+        self.storage
+            .canonical_item(&*self.home(), submitted.user_item, point_limit())
+            .unwrap()
+            .unwrap()
+            .presentation_content()
+            .expect("submitted user fixture must retain its sealed composer content")
     }
 
     pub fn selected_path(&self, thread: SyndicThreadId) -> SelectedPathProof {
@@ -502,6 +448,7 @@ impl Fixture {
                     child,
                     SyndicDraftId::from_bytes([221; 16]),
                     created_at,
+                    history_policy(),
                     tail,
                 )
                 .unwrap(),
@@ -532,6 +479,7 @@ impl Fixture {
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
                     execution_binding(),
                     created_at,
+                    history_policy(),
                 ),
             ),
         );
@@ -550,6 +498,7 @@ impl Fixture {
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
                     execution_binding(),
                     SyndicTimestamp::from_unix_millis(50_000 + u64::from(seed)),
+                    history_policy(),
                 ),
             ),
         );
@@ -568,4 +517,8 @@ impl Fixture {
 
 pub fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
+}
+
+fn history_policy() -> DraftEditHistoryPolicyV1 {
+    DraftEditHistoryPolicyV1::new(64 * 1024 * 1024, 1).unwrap()
 }

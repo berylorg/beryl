@@ -14,24 +14,18 @@ use beryl_home_store::{
     SidecarNamespace,
 };
 use beryl_model::{
-    AssetId, AssetReferenceSetId, CasItemId, CasNativeTurnCount, CasProcessGeneration, CasThreadId,
-    CasTurnId, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
-    SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicExecutionSnapshotId,
+    AssetId, CasItemId, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId,
+    ExecutionBinding, ImageLabelOrdinal, PathFlavor, RootId, RuntimeId, RuntimeMode,
+    RuntimeNativePath, SyndicAcceptedInputId, SyndicDraftId, SyndicExecutionSnapshotId,
     SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
-use beryl_state::{
-    AppendAssetReferencePage, AssetMediaType, AssetOwner, AssetOwnerHeadUpdate,
-    AssetReferencePageEntry, BeginAssetReferenceSet, BerylState, PublishAssetMetadata,
-    SealAssetReferenceSet, UpdateAssetOwnerHeads,
-};
+use beryl_state::{AssetMediaType, BerylState, PublishAssetMetadata};
 use syndic_storage::{
-    empty_selected_path_digest, AcceptedInputAdmission, AcceptedInputLifecycle,
-    AcceptedRouteEffectiveState, AcceptedRouteLeafState, ActivateBinding,
-    BeginAcceptedInputDelivery, BindingState, CasLineageProof, CasRepresentedPrefixProof,
-    ComposerAtom, ComposerPayload, ContentAppend, ContentBuild, CreateThread, DraftPayloadUpdate,
-    DraftPayloadUpdateDecision, IdleSubmission, ImageLabelOrdinal, NativeCasLineage,
-    NextTurnReason, PreparedContent, PublishActiveCasTurn, PublishValidBinding,
-    RetryAcceptedInputDelivery, SelectedPathProof, SyndicCurrentDraft,
+    empty_selected_path_digest, AcceptedInputLifecycle, AcceptedRouteEffectiveState,
+    AcceptedRouteLeafState, ActivateBinding, BeginAcceptedInputDelivery, BindingState,
+    CasLineageProof, CasRepresentedPrefixProof, CreateThread, DraftEditHistoryPolicyV1,
+    FirstAcceptanceKind, NativeCasLineage, NextTurnReason, PublishActiveCasTurn,
+    PublishValidBinding, RetryAcceptedInputDelivery, SelectedPathProof,
     SyndicDeliveringSteeringInput, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
     TurnIncompleteReason,
 };
@@ -52,8 +46,8 @@ use crate::{
         PendingTurnActivation,
     },
     conversation_tools::ConversationToolRegistry,
-    input_admission::{build_accepted_input_command, idle_submission_command},
 };
+use super::submission_fixture::{submit_atoms, Atom};
 
 const POINT_READ_BYTES: usize = 1_000_000;
 const EXECUTION_ROOT: &str = r"C:\work\beryl-steering-user-test";
@@ -124,38 +118,25 @@ impl SteeringFixture {
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
                     execution_binding(runtime_id, seed),
                     timestamp(1),
+                    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
                 ),
             ),
         );
 
-        publish_text(&home, storage, thread_id, "initial turn", timestamp(2));
-        let current = storage
-            .current_draft(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
-        let gate = storage
-            .input_gate(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
-        let submission = IdleSubmission::new(
+        let initial_item = SyndicItemId::from_bytes([seed.wrapping_add(3); 16]);
+        let (kind, source_draft) = submit_atoms(
+            &home,
+            storage,
+            state.assets(),
             thread_id,
-            current.thread().revision(),
-            current.draft().id(),
-            current.draft().revision(),
-            current.draft().content(),
-            gate.revision(),
             SyndicDraftId::from_bytes([seed.wrapping_add(2); 16]),
-            SyndicItemId::from_bytes([seed.wrapping_add(3); 16]),
-            None,
+            initial_item,
+            &[Atom::Text("initial turn")],
+            seed.wrapping_add(20),
             timestamp(3),
         );
-        let turn_id = submission.submitted_turn_id();
-        match home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap()) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("steering-user submitted-turn command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("steering-user submitted-turn command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user submitted-turn command was indeterminate: {outcome:?}"),
-        }
+        assert!(matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == initial_item));
+        let turn_id = source_draft.submitted_turn_id();
 
         let selected = selected_path(&home, storage, thread_id);
         let process_generation = CasProcessGeneration::new(52_000 + u64::from(seed)).unwrap();
@@ -265,44 +246,39 @@ impl SteeringFixture {
             ),
         );
 
-        let (asset_reference_set, image_path) = match fixture_input {
-            FixtureInput::Text => {
-                publish_text(&home, storage, thread_id, STEERING_TEXT, timestamp(6));
-                (None, None)
-            }
+        let (atoms, image_path) = match fixture_input {
+            FixtureInput::Text => (vec![Atom::Text(STEERING_TEXT)], None),
             FixtureInput::Image => {
-                let (proof, path) = publish_image_input(&home, storage, &state, thread_id, seed);
-                (Some(proof), Some(path))
+                let asset = publish_image_asset(&home, &state);
+                let verified = state.assets().verify_sidecar(&home, asset).unwrap();
+                let path = verified
+                    .path()
+                    .to_str()
+                    .expect("test sidecar path is Unicode")
+                    .into();
+                drop(verified);
+                (
+                    vec![
+                        Atom::Text("image steering "),
+                        Atom::Image(ImageLabelOrdinal::FIRST, asset),
+                    ],
+                    Some(path),
+                )
             }
         };
-        let current = storage
-            .current_draft(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
-        let gate = storage
-            .input_gate(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
-        let admission = AcceptedInputAdmission::new(
+        let (kind, source_draft) = submit_atoms(
+            &home,
+            storage,
+            state.assets(),
             thread_id,
-            current.thread().revision(),
-            current.draft().id(),
-            current.draft().revision(),
-            current.draft().content(),
-            gate.revision(),
             SyndicDraftId::from_bytes([seed.wrapping_add(6); 16]),
-            asset_reference_set,
+            SyndicItemId::from_bytes([seed.wrapping_add(7); 16]),
+            &atoms,
+            seed.wrapping_add(40),
             timestamp(7),
         );
-        let accepted_input_id = admission.accepted_input_id();
-        match home.execute(
-            build_accepted_input_command(&home, storage, state.assets(), admission).unwrap(),
-        ) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("steering-user admission command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("steering-user admission command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user admission command was indeterminate: {outcome:?}"),
-        }
+        assert_eq!(kind, FirstAcceptanceKind::Accepted);
+        let accepted_input_id = source_draft.accepted_input_id();
 
         let gate = storage
             .input_gate(&home, thread_id, point_limit())
@@ -739,44 +715,6 @@ impl SteeringFixture {
     }
 }
 
-fn publish_image_input(
-    home: &HomeStore,
-    storage: SyndicStorage,
-    state: &BerylState,
-    thread_id: SyndicThreadId,
-    seed: u8,
-) -> (beryl_model::SealedAssetReferenceSetProof, Box<str>) {
-    let current = storage
-        .current_draft(home, thread_id, point_limit())
-        .unwrap()
-        .unwrap();
-    let marker = marker_id(current.draft().id(), 1);
-    let label = ImageLabelOrdinal::FIRST;
-    let prepared = PreparedContent::composer(
-        &ComposerPayload::new(vec![
-            ComposerAtom::text("image steering ").unwrap(),
-            ComposerAtom::image_marker(marker, label),
-        ])
-        .unwrap(),
-    )
-    .unwrap();
-    replace_current_payload(home, storage, thread_id, &prepared, timestamp(6));
-    let current = storage
-        .current_draft(home, thread_id, point_limit())
-        .unwrap()
-        .unwrap();
-    let asset = publish_image_asset(home, state);
-    let proof = seal_image_reference_set(home, state, &current, marker, label, asset, seed);
-    let verified = state.assets().verify_sidecar(home, asset).unwrap();
-    let path = verified
-        .path()
-        .to_str()
-        .expect("test sidecar path is Unicode")
-        .into();
-    drop(verified);
-    (proof, path)
-}
-
 fn publish_image_asset(home: &HomeStore, state: &BerylState) -> AssetId {
     let sidecar = home
         .admit_sidecar(
@@ -812,131 +750,6 @@ fn publish_image_asset(home: &HomeStore, state: &BerylState) -> AssetId {
         outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user image metadata command was indeterminate: {outcome:?}"),
     }
     asset
-}
-
-fn seal_image_reference_set(
-    home: &HomeStore,
-    state: &BerylState,
-    current: &SyndicCurrentDraft,
-    marker: SyndicDraftMarkerId,
-    label: ImageLabelOrdinal,
-    asset: AssetId,
-    seed: u8,
-) -> beryl_model::SealedAssetReferenceSetProof {
-    let source = current.draft().content().sealed_marker_summary().unwrap();
-    let assets = state.assets();
-    let begin = BeginAssetReferenceSet::new(
-        AssetReferenceSetId::from_bytes([seed.wrapping_add(10); 16]),
-        source.sequential(),
-    );
-    let staging = begin.staging_authority();
-    execute(
-        home,
-        assets.begin_reference_set(assets.revision(home).unwrap(), begin),
-    );
-    let build = assets
-        .staged_reference_set_manifest(home, staging)
-        .unwrap()
-        .build_proof();
-    execute(
-        home,
-        assets.append_reference_page(
-            assets.revision(home).unwrap(),
-            AppendAssetReferencePage::new(
-                build,
-                vec![AssetReferencePageEntry::new(marker, label, asset)].into_boxed_slice(),
-            )
-            .unwrap(),
-        ),
-    );
-    let build = assets
-        .staged_reference_set_manifest(home, staging)
-        .unwrap()
-        .build_proof();
-    let ordered_assets = build.ordered_assets();
-    let seal = SealAssetReferenceSet::new(build, source.sequential(), ordered_assets).unwrap();
-    let proof = seal.sealed_proof();
-    execute(
-        home,
-        assets.seal_reference_set(assets.revision(home).unwrap(), seal),
-    );
-    execute(
-        home,
-        assets.update_owner_heads(
-            assets.revision(home).unwrap(),
-            UpdateAssetOwnerHeads::new(
-                vec![AssetOwnerHeadUpdate::replace(
-                    AssetOwner::CurrentDraft(current.draft().id()),
-                    None,
-                    Some(proof),
-                )]
-                .into_boxed_slice(),
-            )
-            .unwrap(),
-        ),
-    );
-    proof
-}
-
-fn publish_text(
-    home: &HomeStore,
-    storage: SyndicStorage,
-    thread_id: SyndicThreadId,
-    text: &str,
-    updated_at: SyndicTimestamp,
-) {
-    let prepared = PreparedContent::composer(
-        &ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap(),
-    )
-    .unwrap();
-    replace_current_payload(home, storage, thread_id, &prepared, updated_at);
-}
-
-fn replace_current_payload(
-    home: &HomeStore,
-    storage: SyndicStorage,
-    thread_id: SyndicThreadId,
-    prepared: &PreparedContent,
-    updated_at: SyndicTimestamp,
-) {
-    stage_prepared_content(home, storage, &prepared);
-    let current = storage
-        .current_draft(home, thread_id, point_limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) =
-        DraftPayloadUpdate::prepare(&current, &prepared, updated_at).unwrap()
-    else {
-        panic!("fixture text must replace the current payload")
-    };
-    execute(
-        home,
-        storage.update_draft_payload(storage.revision(home).unwrap(), update),
-    );
-}
-
-fn marker_id(draft: SyndicDraftId, ordinal: u64) -> SyndicDraftMarkerId {
-    let mut bytes = *draft.as_bytes();
-    bytes[8..].copy_from_slice(&ordinal.to_be_bytes());
-    SyndicDraftMarkerId::from_bytes(bytes)
-}
-
-fn stage_prepared_content(home: &HomeStore, storage: SyndicStorage, content: &PreparedContent) {
-    execute(
-        home,
-        storage.begin_content(
-            storage.revision(home).unwrap(),
-            ContentBuild::from_prepared(content),
-        ),
-    );
-    let mut manifest = content.building_manifest();
-    while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
-        manifest = append.next_manifest().clone();
-        execute(
-            home,
-            storage.append_content(storage.revision(home).unwrap(), append),
-        );
-    }
 }
 
 fn selected_path(

@@ -120,7 +120,8 @@ pub(super) fn command_selection(
                 beryl_home_store::ReconciliationResolution::ExactNew { .. } => {
                     StagingCommandResult::Target
                 }
-                beryl_home_store::ReconciliationResolution::Collision => {
+                beryl_home_store::ReconciliationResolution::ExactSuccessor { .. }
+                | beryl_home_store::ReconciliationResolution::Collision => {
                     StagingCommandResult::Terminal
                 }
             })

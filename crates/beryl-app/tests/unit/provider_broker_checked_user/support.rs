@@ -27,14 +27,13 @@ use crate::{
         },
     },
     conversation_tools::ConversationToolRegistry,
-    input_admission::idle_submission_command,
 };
 use beryl_backend::{
     CheckedUserMessage, OrderedTurnStreamCompletion, OrderedTurnStreamOperation,
     OrderedTurnStreamSink, UserMessageEchoLifecycle, lifecycle_test_support::checked_user_message,
 };
 use beryl_home_store::{
-    CommandOutcome, CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::FaultController,
 };
 use beryl_model::{
@@ -45,17 +44,18 @@ use beryl_model::{
 use beryl_state::BerylState;
 use syndic_storage::{
     ActivateBinding, BindingState, CanonicalItemKind, CasLineageProof, CasRepresentedPrefixProof,
-    ComposerAtom, ComposerPayload, ContentAppend, ContentBuild, ContentReference, CreateThread,
-    DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission, NativeCasLineage,
-    PreparedContent, ProviderFrameOrdinalV1, ProviderItemFrameV1, ProviderItemLifecycle,
-    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1, PublishValidBinding,
-    SelectedPathProof, SourceEventRecord, SourceEventSequence, SyndicPointReadLimit, SyndicStorage,
-    SyndicTimestamp, TurnItemOrdinal, empty_selected_path_digest,
+    ContentReference, CreateThread, DraftEditHistoryPolicyV1, FirstAcceptanceKind,
+    NativeCasLineage, ProviderFrameOrdinalV1, ProviderItemFrameV1, ProviderItemLifecycle,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
+    PublishValidBinding, SelectedPathProof, SourceEventRecord, SourceEventSequence,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnItemOrdinal,
+    empty_selected_path_digest,
 };
 
 pub(super) use frame::{assert_user_message_frame, read_provider_frame};
 pub(super) use storage::point_limit;
-use storage::{execute, execution_binding, selected_path, stage_prepared_content};
+use storage::{execute, execution_binding, selected_path};
+use super::submission_fixture::{Atom, submit_atoms};
 
 const POINT_READ_BYTES: usize = 1_000_000;
 const EXECUTION_ROOT: &str = r"C:\work\beryl-checked-user-test";
@@ -121,58 +121,24 @@ impl CheckedUserFixture {
                     initial_draft_id,
                     execution_binding(runtime_id, seed),
                     SyndicTimestamp::from_unix_millis(1),
+                    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
                 ),
             ),
         );
-
-        let prepared = PreparedContent::composer(
-            &ComposerPayload::new(vec![ComposerAtom::text("checked submitted user").unwrap()])
-                .unwrap(),
-        )
-        .unwrap();
-        stage_prepared_content(&home, storage, &prepared);
-        let current = storage
-            .current_draft(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
-        let DraftPayloadUpdateDecision::Update(update) =
-            DraftPayloadUpdate::prepare(&current, &prepared, SyndicTimestamp::from_unix_millis(2))
-                .unwrap()
-        else {
-            panic!("checked-user fixture must replace the initial empty draft")
-        };
-        execute(
-            &home,
-            storage.update_draft_payload(storage.revision(&home).unwrap(), update),
-        );
-        let current = storage
-            .current_draft(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
-        let gate = storage
-            .input_gate(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
         let item_id = SyndicItemId::from_bytes([seed.wrapping_add(2); 16]);
-        let submission = IdleSubmission::new(
+        let (kind, source_draft) = submit_atoms(
+            &home,
+            storage,
+            state.assets(),
             thread_id,
-            current.thread().revision(),
-            current.draft().id(),
-            current.draft().revision(),
-            current.draft().content(),
-            gate.revision(),
             SyndicDraftId::from_bytes([seed.wrapping_add(3); 16]),
             item_id,
-            None,
+            &[Atom::Text("checked submitted user")],
+            seed.wrapping_add(20),
             SyndicTimestamp::from_unix_millis(3),
         );
-        let turn_id = submission.submitted_turn_id();
-        match home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap()) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("checked-user submitted-turn command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("checked-user submitted-turn command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("checked-user submitted-turn command was indeterminate: {outcome:?}"),
-        }
+        assert!(matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == item_id));
+        let turn_id = source_draft.submitted_turn_id();
 
         let item = storage
             .canonical_item(&home, item_id, point_limit())

@@ -245,15 +245,8 @@ fn checked_next(value: u64) -> Result<u64, DraftComposerMaterializationErrorV1> 
         .ok_or(DraftComposerMaterializationErrorV1::LengthOverflow)
 }
 
-fn content_id_for(
-    key: DraftComposerBuildKeyV1,
-) -> Result<SyndicContentId, DraftComposerMaterializationErrorV1> {
-    let encoded = DraftComposerBuildsFamily::encode_key(&key)
-        .map_err(|_| DraftComposerMaterializationErrorV1::InvalidBuild)?;
-    let mut digest = Sha256::new();
-    digest.update(b"syndic-draft-composer-output-v1\0");
-    digest.update(encoded);
-    Ok(SyndicContentId::from_digest(digest.finalize().into()))
+fn content_id_for_summary(summary: ContentSummary) -> SyndicContentId {
+    SyndicContentId::from_digest(*summary.digest().as_bytes())
 }
 
 fn point<F: Family>(
@@ -499,7 +492,7 @@ impl SyndicStorage {
             {
                 return Err(DraftComposerMaterializationErrorV1::InvalidBuild);
             }
-            let content_id = content_id_for(build.key())?;
+            let content_id = content_id_for_summary(summary);
             let revision = ContentRevision::new(1)
                 .map_err(|_| DraftComposerMaterializationErrorV1::LengthOverflow)?;
             let reference =
@@ -1350,7 +1343,7 @@ fn validate_build_identity(
     }
     match (build.output(), build.output_revision()) {
         (Some(output), Some(revision)) => {
-            if output.id() != content_id_for(key)?
+            if output.id() != content_id_for_summary(output.summary())
                 || output.revision() != revision
                 || output.encoding() != ContentEncoding::ComposerV1
                 || output.summary().atom_count() != key.source().summary().piece_count()
@@ -1548,7 +1541,7 @@ fn validate_sealed_mapping_closure(
     validate_output_frontier_records(storage, store, &origin)?;
     if origin.lifecycle() != &DraftComposerBuildLifecycleV1::Sealed(mapping.content())
         || origin.output() != Some(mapping.content())
-        || mapping.content().id() != content_id_for(origin_key)?
+        || mapping.content().id() != content_id_for_summary(mapping.content().summary())
     {
         return Err(DraftComposerMaterializationErrorV1::InvalidBuild);
     }
@@ -1768,7 +1761,7 @@ fn validate_mapping_for_mutation(
     if validate_build_identity(origin_key, &origin).is_err()
         || origin.lifecycle() != &DraftComposerBuildLifecycleV1::Sealed(mapping.content())
         || origin.output() != Some(mapping.content())
-        || content_id_for(origin_key).ok() != Some(mapping.content().id())
+        || content_id_for_summary(mapping.content().summary()) != mapping.content().id()
     {
         return Err(SyndicMutationError::IdentityCollision);
     }

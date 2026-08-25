@@ -13,6 +13,8 @@ use super::super::{
 };
 use super::require_manifest;
 
+mod successor;
+
 /// One exact optional-state assertion or transition in an atomic owner-head contribution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AssetOwnerHeadUpdate {
@@ -201,6 +203,12 @@ impl DomainMutation<AssetDomain> for UpdateAssetOwnerHeads {
             .filter(|update| update.mutates())
             .count();
         reservation.reserve_records::<AssetOwnerHeadCodec>(count)?;
+        if let Some(witness) = successor::first_acceptance_witness(&self.updates) {
+            reservation.reserve_successor_witness::<
+                beryl_home_store::FirstAcceptancePromotionProtocolV1,
+                _,
+            >(witness)?;
+        }
         Ok(())
     }
 

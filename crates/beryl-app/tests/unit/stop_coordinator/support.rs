@@ -13,9 +13,10 @@ use beryl_model::{
     SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
 use syndic_storage::{
-    ContentAppend, ContentBuild, CreateThread, PreparedContent, SourceEventPayload,
-    StopAdmissionIneligibility, StopAdmissionRead, StopCause, StopOperationTarget,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnStateRevision,
+    ContentAppend, ContentBuild, CreateThread, DraftEditHistoryPolicyV1, PreparedContent,
+    SourceEventPayload, StopAdmissionIneligibility, StopAdmissionRead, StopCause,
+    StopOperationTarget, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    TurnStateRevision,
 };
 
 use super::*;
@@ -107,6 +108,7 @@ impl StopFixture {
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
                     exact_cas::execution_binding(),
                     timestamp(1),
+                    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
                 ),
             ),
         );

@@ -6,6 +6,7 @@ mod model;
 mod mutation;
 mod publication;
 mod request;
+mod submission;
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -22,6 +23,7 @@ pub use mutation::{
     ComposerHostRetainedMutationIntent,
 };
 pub use publication::*;
+pub use submission::*;
 
 struct ActiveComposerHost {
     binding: ComposerHostBinding,
@@ -54,6 +56,7 @@ pub struct SyndicComposerHost {
     last_history_outcome: Option<Box<gpui_text_input::RangeHistoryOutcome>>,
     publication: publication::ComposerHostPublicationCoordinator,
     lifecycle: lifecycle::ComposerHostLifecycleCoordinator,
+    submission: submission::ComposerHostSubmissionCoordinator,
     #[cfg(feature = "test-faults")]
     activation_after_selector_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
@@ -69,6 +72,11 @@ pub struct SyndicComposerHost {
     #[cfg(feature = "test-faults")]
     publication_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    submission_before_execute_fault:
+        Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    submission_transition_fault: Option<submission::ComposerHostSubmissionFaultPoint>,
     #[cfg(feature = "test-faults")]
     mutation_transition_limit: usize,
     #[cfg(feature = "test-faults")]
@@ -103,6 +111,7 @@ impl SyndicComposerHost {
             last_history_outcome: None,
             publication: publication::ComposerHostPublicationCoordinator::new(),
             lifecycle: lifecycle::ComposerHostLifecycleCoordinator::new(),
+            submission: submission::ComposerHostSubmissionCoordinator::new(),
             #[cfg(feature = "test-faults")]
             activation_after_selector_fault: None,
             #[cfg(feature = "test-faults")]
@@ -113,6 +122,10 @@ impl SyndicComposerHost {
             history_after_commit_fault: None,
             #[cfg(feature = "test-faults")]
             publication_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            submission_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            submission_transition_fault: None,
             #[cfg(feature = "test-faults")]
             mutation_transition_limit: mutation::COMPOSER_HOST_MAX_MUTATION_TRANSITIONS,
             #[cfg(feature = "test-faults")]
@@ -158,6 +171,10 @@ impl SyndicComposerHost {
 
     fn live_operation_pending(&self) -> bool {
         self.pending_mutation.is_some() || self.pending_history.is_some()
+    }
+
+    fn submission_pending(&self) -> bool {
+        self.submission.pending.is_some()
     }
 
     fn reserve_settlement_custody(&self) -> Result<(), ComposerHostError> {
@@ -238,6 +255,24 @@ impl SyndicComposerHost {
     ) {
         assert!(self.publication_before_execute_fault.is_none());
         self.publication_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_submission_before_execute_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send + 'static,
+    ) {
+        assert!(self.submission_before_execute_fault.is_none());
+        self.submission_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_submission_transition_fault(
+        &mut self,
+        point: ComposerHostSubmissionFaultPoint,
+    ) {
+        assert!(self.submission_transition_fault.is_none());
+        self.submission_transition_fault = Some(point);
     }
 
     #[cfg(feature = "test-faults")]

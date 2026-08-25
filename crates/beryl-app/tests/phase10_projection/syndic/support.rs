@@ -25,28 +25,6 @@ pub(super) fn execute(store: &HomeStore, contribution: beryl_home_store::Mutatio
     }
 }
 
-pub(super) fn stage_prepared_content(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    content: &PreparedContent,
-) {
-    execute(
-        store,
-        storage.begin_content(
-            storage.revision(store).unwrap(),
-            ContentBuild::from_prepared(content),
-        ),
-    );
-    let mut manifest = content.building_manifest();
-    while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
-        manifest = append.next_manifest().clone();
-        execute(
-            store,
-            storage.append_content(storage.revision(store).unwrap(), append),
-        );
-    }
-}
-
 pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
     let canonical = storage
         .canonical_item(store, item, point_limit())

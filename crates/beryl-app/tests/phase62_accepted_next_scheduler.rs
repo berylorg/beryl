@@ -17,25 +17,20 @@ use std::{
 };
 
 use beryl_app::cas_projection::{
-    DURABLE_START_ADMISSION_BUDGET_BYTES, MinimumTurnCaptureReserve, ProjectionConnectionService,
-    ProjectionServiceConfig,
+    DURABLE_START_ADMISSION_BUDGET_BYTES,
     test_faults::{
         install_scheduled_promotion_barrier, install_scheduled_promotion_reservation_barrier,
     },
 };
 use beryl_backend::ManagedBackendClientConnector;
-use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    test_faults::{FaultController, FreeSpaceTestObservation},
-};
-use beryl_model::{CasProcessGeneration, RuntimeId};
-use syndic_storage::{AcceptedRouteEffectiveState, SyndicReadError, SyndicStorage, TurnLifecycle};
+use beryl_home_store::test_faults::{FaultController, FreeSpaceTestObservation};
+use beryl_model::CasProcessGeneration;
+use syndic_storage::{AcceptedRouteEffectiveState, SyndicStorage, TurnLifecycle};
 
 use support::{
-    NormalTerminalServer, SessionSlot, TIMEOUT, UnavailableProvider, accepted_route_state,
-    admit_runtime_next_input, current_cas_thread_id, execution_binding, install_next_records,
-    open_registered_home, ready_provider, seed_runtime_next_input_without_wake,
-    try_accepted_route_state, wait_until,
+    NormalTerminalServer, SessionSlot, TIMEOUT, accepted_route_state, admit_runtime_next_input,
+    admit_runtime_next_input_after_direct_setup, current_cas_thread_id, ready_provider,
+    seed_runtime_next_input_without_wake, wait_until,
 };
 
 #[test]
@@ -83,12 +78,15 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     slot.replace(session);
 
     let required = DURABLE_START_ADMISSION_BUDGET_BYTES + 1;
-    faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
-        available_bytes: required,
-        total_free_bytes: required,
-        total_bytes: required,
+    let mut free_space_before_scheduler = 0;
+    let ids = admit_runtime_next_input_after_direct_setup(&mut fixture, 162, || {
+        free_space_before_scheduler = faults.free_space_observation_count();
+        faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
+            available_bytes: required,
+            total_free_bytes: required,
+            total_bytes: required,
+        });
     });
-    let ids = admit_runtime_next_input(&mut fixture, 162);
     let service = &fixture.store;
 
     let promoted = wait_until("accepted-input promotion", || {
@@ -146,7 +144,10 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     assert!(!diagnostics.next_retained_source_cursor());
     assert!(!diagnostics.next_retained_candidate_cursor());
     assert!(!diagnostics.fatal());
-    assert_eq!(faults.free_space_observation_count(), 1);
+    assert_eq!(
+        faults.free_space_observation_count(),
+        free_space_before_scheduler + 1
+    );
 
     let (directory, service) = fixture.into_service();
     service.close().unwrap();
@@ -157,35 +158,24 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
 
 #[test]
 fn unavailable_execution_authority_leaves_the_durable_candidate_unpromoted() {
-    let (directory, home, storage, _state) = open_registered_home();
-    let ids = install_next_records(
-        &home,
-        storage,
-        163,
-        execution_binding(RuntimeId::from_bytes([163; 16])),
-    );
-    let service = ProjectionConnectionService::new(
-        home,
-        storage,
-        ProjectionServiceConfig::try_new(128, 8, MinimumTurnCaptureReserve::try_new(1).unwrap())
-            .unwrap(),
-        Box::new(UnavailableProvider),
-    )
-    .unwrap();
-    service.notify_scheduled_ordinary_execution_ready();
+    let mut fixture = syndic::Fixture::new(163);
+    let storage = fixture.storage;
+    let ids = seed_runtime_next_input_without_wake(&mut fixture, 163);
+    fixture.store.notify_scheduled_ordinary_execution_ready();
     wait_until("execution-unavailable scheduler observation", || {
-        (service
+        (fixture
+            .store
             .accepted_input_scheduler_diagnostics()
             .next_execution_unavailable()
             >= 1)
             .then_some(())
     });
     {
-        let command_home = service.live_home_command().unwrap();
+        let command_home = fixture.store.live_home_command().unwrap();
         let home = command_home.home();
         assert_eq!(
             accepted_route_state(home, storage, &ids),
-            AcceptedRouteEffectiveState::NextTurn(syndic_storage::NextTurnReason::PendingTurn)
+            AcceptedRouteEffectiveState::NextTurn(syndic_storage::NextTurnReason::UnknownTerminal)
         );
         assert!(
             storage
@@ -195,6 +185,7 @@ fn unavailable_execution_authority_leaves_the_durable_candidate_unpromoted() {
         );
     }
 
+    let (directory, service) = fixture.into_service();
     service.close().unwrap();
     drop(directory);
 }
@@ -252,8 +243,11 @@ fn turn_start_reserve_denials_park_queued_candidate_without_dispatch() {
         server.wait_for_admission();
 
         let barrier = install_scheduled_promotion_barrier(thread_id);
-        faults.push_free_space_observation(observation);
-        let ids = admit_runtime_next_input(&mut fixture, seed);
+        let mut free_space_before_scheduler = 0;
+        let ids = admit_runtime_next_input_after_direct_setup(&mut fixture, seed, || {
+            free_space_before_scheduler = faults.free_space_observation_count();
+            faults.push_free_space_observation(observation);
+        });
         let (before, route_before) = {
             let home = fixture.store.live_home_command().unwrap();
             (
@@ -272,7 +266,10 @@ fn turn_start_reserve_denials_park_queued_candidate_without_dispatch() {
             (diagnostics.workers_active() == 0 && diagnostics.workers_joined() == 1)
                 .then_some(diagnostics)
         });
-        assert_eq!(faults.free_space_observation_count(), 1);
+        assert_eq!(
+            faults.free_space_observation_count(),
+            free_space_before_scheduler + 1
+        );
         let home = fixture.store.live_home_command().unwrap();
         assert_eq!(
             storage
@@ -343,12 +340,15 @@ fn queued_turn_start_threshold_requires_the_same_composed_total() {
     server.wait_for_admission();
 
     let barrier = install_scheduled_promotion_barrier(thread_id);
-    faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
-        available_bytes: required - 1,
-        total_free_bytes: required - 1,
-        total_bytes: required,
+    let mut free_space_before_scheduler = 0;
+    let ids = admit_runtime_next_input_after_direct_setup(&mut fixture, 175, || {
+        free_space_before_scheduler = faults.free_space_observation_count();
+        faults.push_free_space_observation(FreeSpaceTestObservation::Observed {
+            available_bytes: required - 1,
+            total_free_bytes: required - 1,
+            total_bytes: required,
+        });
     });
-    let ids = admit_runtime_next_input(&mut fixture, 175);
     assert!(barrier.wait_until_paused(TIMEOUT));
     barrier.release();
     wait_until("queued threshold denial", || {
@@ -356,7 +356,10 @@ fn queued_turn_start_threshold_requires_the_same_composed_total() {
         (diagnostics.workers_active() == 0 && diagnostics.workers_joined() == 1)
             .then_some(diagnostics)
     });
-    assert_eq!(faults.free_space_observation_count(), 1);
+    assert_eq!(
+        faults.free_space_observation_count(),
+        free_space_before_scheduler + 1
+    );
     {
         let home = fixture.store.live_home_command().unwrap();
         assert!(matches!(

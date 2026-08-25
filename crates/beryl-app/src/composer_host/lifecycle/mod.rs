@@ -348,7 +348,7 @@ impl ComposerHostLifecycleCoordinator {
             && health.generation() == Some(binding.home_generation())
     }
 
-    fn clear_runtime(&mut self) {
+    pub(super) fn clear_runtime(&mut self) {
         self.timer = None;
         self.barrier = None;
         self.autosave = None;

@@ -16,6 +16,7 @@ use crate::{
 
 mod accepted;
 mod activity;
+mod admission;
 mod admission_helpers;
 mod binding;
 mod compaction;
@@ -35,6 +36,7 @@ pub use accepted::{
     SteeringRejection,
 };
 pub use activity::PublishActivityChildHandoff;
+pub use admission::{FirstAcceptance, FirstAcceptanceKind, FirstAcceptanceStatus};
 #[cfg(feature = "test-faults")]
 pub(crate) use binding::active_cas_turn_fault_scope;
 pub use binding::{

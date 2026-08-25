@@ -4,32 +4,29 @@ use std::{
     time::{Duration, Instant},
 };
 
-use beryl_app::{
-    cas_projection::{
-        CasProjectionCoordinator, CasProjectionRequest, OrdinaryDynamicToolHandlers,
-        OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest,
-    },
-    input_admission::prepare_accepted_input_admission,
+use beryl_app::cas_projection::{
+    CasProjectionCoordinator, CasProjectionRequest, OrdinaryDynamicToolHandlers,
+    OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest,
 };
 use beryl_backend::{ManagedBackendClientConnector, ThreadStartOptions, TurnStartOptions};
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
-use beryl_model::{CasProcessGeneration, SyndicAcceptedInputId, SyndicDraftId, SyndicTurnId};
+use beryl_model::{
+    CasProcessGeneration, SyndicAcceptedInputId, SyndicDraftId, SyndicItemId, SyndicTurnId,
+};
 use syndic_storage::{
-    AcceptedInputAdmission, AcceptedRouteEffectiveState, BindingState, ComposerAtom,
-    ComposerPayload, ContentAppend, ContentBuild, DraftPayloadUpdate, DraftPayloadUpdateDecision,
-    InputGateState, PreparedContent, SyndicTimestamp, TurnIncompleteReason, TurnLifecycle,
+    AcceptedRouteEffectiveState, BindingState, InputGateState, SyndicTimestamp,
+    TurnIncompleteReason, TurnLifecycle,
 };
 
 use super::{
     EXECUTION_ROOT, NoopBranch, NoopLifecycle,
     server::{AUTHORIZATION, NormalTerminalServer, SteeringFailureTrigger, TIMEOUT},
+    submission_fixture::{Atom, submit_atoms},
     syndic::{Fixture, execution_binding, point_limit},
 };
 
 pub fn run() {
     let mut fixture = Fixture::new(152);
     let submitted = fixture.submit_text(super::server::SUBMITTED_TEXT);
-    prepare_steering_draft(&fixture);
     let server = NormalTerminalServer::spawn_steering_correlation_loss();
     let trigger = server.steering_failure_trigger();
 
@@ -102,44 +99,12 @@ pub fn run() {
 
 const STEERING_TEXT: &str = "phase52 production steering";
 
-fn prepare_steering_draft(fixture: &Fixture) {
-    let prepared = PreparedContent::composer(
-        &ComposerPayload::new(vec![ComposerAtom::text(STEERING_TEXT).unwrap()]).unwrap(),
-    )
-    .unwrap();
-    stage_prepared_content(&*fixture.home(), fixture.storage, &prepared);
-    let current = fixture
-        .storage
-        .current_draft(&*fixture.home(), fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) = DraftPayloadUpdate::prepare(
-        &current,
-        &prepared,
-        SyndicTimestamp::from_unix_millis(52_001),
-    )
-    .unwrap() else {
-        panic!("the steering fixture draft must change")
-    };
-    execute(
-        &*fixture.home(),
-        fixture
-            .storage
-            .update_draft_payload(fixture.storage.revision(&*fixture.home()).unwrap(), update),
-    );
-}
-
 fn admit_claim_and_trigger(
     fixture: &Fixture,
     turn: SyndicTurnId,
     trigger: SteeringFailureTrigger,
 ) -> SyndicAcceptedInputId {
     wait_for_steerable_gate(fixture, turn);
-    let current = fixture
-        .storage
-        .current_draft(&*fixture.home(), fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
     let gate = fixture
         .storage
         .input_gate(&*fixture.home(), fixture.thread, point_limit())
@@ -154,29 +119,19 @@ fn admit_claim_and_trigger(
         matches!(gate.state(), InputGateState::Steerable(actual) if *actual == turn),
         "ordinary activation must expose the exact turn as steerable"
     );
-    let admission = AcceptedInputAdmission::new(
-        fixture.thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
-        SyndicDraftId::from_bytes([154; 16]),
-        None,
-        turn_state.updated_at().max(current.draft().updated_at()),
-    );
-    let accepted_input = admission.accepted_input_id();
-    let prepared = prepare_accepted_input_admission(
-        &*fixture.home(),
+    let (_, source_draft) = submit_atoms(
+        &fixture.home(),
         fixture.storage,
         fixture.state.assets(),
-        admission,
-    )
-    .unwrap();
-    fixture
-        .store
-        .execute_accepted_input_admission(prepared)
-        .unwrap();
+        fixture.thread,
+        SyndicDraftId::from_bytes([154; 16]),
+        SyndicItemId::from_bytes([155; 16]),
+        &[Atom::Text(STEERING_TEXT)],
+        156,
+        turn_state.updated_at(),
+    );
+    let accepted_input = source_draft.accepted_input_id();
+    beryl_app::cas_projection::test_faults::signal_accepted_ready(&fixture.store);
 
     wait_for_delivering_input(fixture, accepted_input);
     trigger.send(correlation(accepted_input));
@@ -293,47 +248,4 @@ fn assert_projection_loss(
         state.incomplete_reason(),
         Some(TurnIncompleteReason::StreamLost)
     );
-}
-
-fn stage_prepared_content(
-    store: &HomeStore,
-    storage: syndic_storage::SyndicStorage,
-    content: &PreparedContent,
-) {
-    execute(
-        store,
-        storage.begin_content(
-            storage.revision(store).unwrap(),
-            ContentBuild::from_prepared(content),
-        ),
-    );
-    let mut manifest = content.building_manifest();
-    while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
-        manifest = append.next_manifest().clone();
-        execute(
-            store,
-            storage.append_content(storage.revision(store).unwrap(), append),
-        );
-    }
-}
-
-fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
-    match store.execute(command) {
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        outcome @ CommandOutcome::NotCommitted { .. } => {
-            panic!("expected committed command, got {outcome:?}")
-        }
-        outcome @ CommandOutcome::Committed {
-            later_failure: Some(_),
-            ..
-        } => panic!("expected no later failure, got {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => {
-            panic!("expected committed command, got {outcome:?}")
-        }
-    }
 }

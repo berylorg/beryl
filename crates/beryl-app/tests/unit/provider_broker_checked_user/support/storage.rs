@@ -11,28 +11,6 @@ pub(super) fn execute(home: &HomeStore, contribution: beryl_home_store::Mutation
     }
 }
 
-pub(super) fn stage_prepared_content(
-    home: &HomeStore,
-    storage: SyndicStorage,
-    content: &PreparedContent,
-) {
-    execute(
-        home,
-        storage.begin_content(
-            storage.revision(home).unwrap(),
-            ContentBuild::from_prepared(content),
-        ),
-    );
-    let mut manifest = content.building_manifest();
-    while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
-        manifest = append.next_manifest().clone();
-        execute(
-            home,
-            storage.append_content(storage.revision(home).unwrap(), append),
-        );
-    }
-}
-
 pub(super) fn selected_path(
     home: &HomeStore,
     storage: SyndicStorage,

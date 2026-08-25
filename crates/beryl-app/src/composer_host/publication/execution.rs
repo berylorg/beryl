@@ -75,7 +75,8 @@ impl SyndicComposerHost {
                 receipt,
                 later_failure: None,
             },
-            ReconciliationResolution::Collision => {
+            ReconciliationResolution::ExactSuccessor { .. }
+            | ReconciliationResolution::Collision => {
                 self.make_publication_terminal(
                     ticket,
                     ComposerHostPublicationUnavailable::ReconciliationCollision,

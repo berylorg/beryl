@@ -1,13 +1,22 @@
-use std::{convert::Infallible, mem, path::PathBuf};
+use std::{mem, path::PathBuf};
 
-use beryl_home_store::{CommandOutcome, HomeCommand};
+use beryl_app::composer_host::{
+    ComposerHostBinding, ComposerHostError, ComposerHostImageMarkerMetadata,
+    ComposerHostMutationOutcome, SyndicComposerHost,
+};
+use beryl_home_store::{CommandCancellation, HomeStore};
 use beryl_model::{AssetId, ContentRevision, ImageLabelOrdinal, SyndicDraftId, SyndicThreadId};
+use gpui_text_input::{
+    BindingId, ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor,
+    InlineObjectOrder, LogicalExtent, MutationBeginRequest, MutationCommitRequest, MutationCursor,
+    MutationFinishInput, MutationIdentity, MutationKey, MutationKind, MutationLane, MutationPage,
+    MutationPageItem, MutationPageKey, MutationPageRequest, MutationPositions, MutationProposal,
+    MutationStreamFinish, MutationTotals, ObjectChange, OperationId, SourcePosition, SourceRange,
+    SourceRevision, SuccessorObject,
+};
 use syndic_storage::{
-    ContentEncoding, ContentLifecycle, ContentManifestRecord, ContentReference,
-    test_faults::{
-        ComposerV1AtomWriter, ComposerV1FoldError, ComposerV1RecordSink, FixtureBatch,
-        FixtureRecord, fold_composer_v1, plan_composer_v1,
-    },
+    ContentEncoding, ContentReference,
+    test_faults::{ComposerV1AtomWriter, ComposerV1FoldError, plan_composer_v1},
 };
 
 use crate::{
@@ -15,7 +24,6 @@ use crate::{
     wire::{InputSpec, TEXT_PATTERN},
 };
 
-const FIXTURE_BATCH_RECORDS: usize = 64;
 const SHARED_IMAGE_BYTES: &[u8] = b"\x89PNG\r\n\x1a\nphase38-bounded-sidecar";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,10 +60,6 @@ impl LogicalInput {
                 .and_then(|count| count.checked_add(1))
                 .expect("synthetic composer atom frontier must fit u64"),
         }
-    }
-
-    pub fn descriptor_count(self) -> u64 {
-        self.atom_count()
     }
 
     pub fn authored_logical_text_bytes(self) -> u64 {
@@ -167,97 +171,256 @@ fn write_repeated_text<E>(
     writer.end_text()
 }
 
-struct DurableRecordSink<'a> {
-    fixture: &'a Fixture,
-    batch: FixtureBatch,
-    records: usize,
+const COMPOSER_MUTATION_PAGE_ITEMS: usize = 64;
+
+fn commit_logical_input(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    binding: ComposerHostBinding,
+    shape: LogicalInput,
+    assets: &[AssetId],
+) -> ComposerHostBinding {
+    let key = MutationKey::new(
+        BindingId::new(binding.host_generation().get()),
+        SourceRevision::new(binding.candidate().candidate_generation()),
+        OperationId::new(1),
+    );
+    let origin = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::NoObjects);
+    host.begin_mutation(
+        store,
+        binding,
+        MutationBeginRequest::new(
+            MutationProposal::new(
+                key,
+                MutationKind::Edit,
+                MutationPositions::collapsed(origin),
+                SourceRange::new(origin, origin).unwrap(),
+                0,
+            ),
+            MutationCursor::new(0),
+            MutationCursor::new(0),
+        ),
+    )
+    .unwrap();
+
+    let mut stream = StreamedMutation::new(key);
+    match shape {
+        LogicalInput::MarkerFree { repetitions } => {
+            stream.push_repeated_text(host, store, repetitions);
+        }
+        LogicalInput::AlternatingImages {
+            marker_count,
+            repetitions_per_text,
+        } => {
+            for segment in 0..=marker_count {
+                stream.push_repeated_text(host, store, repetitions_per_text);
+                if segment < marker_count {
+                    let ordinal = segment.checked_add(1).unwrap();
+                    stream.push_image(
+                        host,
+                        store,
+                        binding.candidate().draft_id(),
+                        ImageLabelOrdinal::new(ordinal).unwrap(),
+                        *assets
+                            .first()
+                            .expect("marker-aware input requires one asset"),
+                    );
+                }
+            }
+        }
+    }
+    stream.flush(host, store);
+    let proposal_finish = stream.finish();
+    let caret = SourcePosition::new(
+        ByteOffset::new(stream.text_bytes),
+        stream
+            .last_neighbor
+            .map_or(InlineObjectGap::NoObjects, InlineObjectGap::after),
+    );
+    host.finish_mutation_input(
+        store,
+        MutationFinishInput::new(
+            key,
+            MutationStreamFinish {
+                next_cursor: MutationCursor::new(0),
+                next_ordinal: 0,
+                cumulative_identity: MutationIdentity::ROOT,
+                totals: MutationTotals::default(),
+            },
+            proposal_finish,
+            LogicalExtent::new(stream.text_bytes, stream.line_count),
+            MutationPositions::collapsed(caret),
+        ),
+    )
+    .unwrap();
+
+    let maximum_steps = usize::try_from(stream.totals.pages)
+        .unwrap()
+        .saturating_mul(4)
+        .saturating_add(32);
+    for _ in 0..maximum_steps {
+        match host.execute_mutation(
+            store,
+            MutationCommitRequest::new(key, MutationIdentity::ROOT),
+            &CommandCancellation::new(),
+        ) {
+            Ok(ComposerHostMutationOutcome::Committed { binding, .. }) => return binding,
+            Err(ComposerHostError::MutationWorkPending) => {}
+            other => panic!("streamed fixture mutation did not commit: {other:?}"),
+        }
+    }
+    panic!("streamed fixture mutation remained pending")
 }
 
-impl<'a> DurableRecordSink<'a> {
-    fn new(fixture: &'a Fixture) -> Self {
+struct StreamedMutation {
+    key: MutationKey,
+    cursor: MutationCursor,
+    ordinal: u64,
+    prior: MutationIdentity,
+    totals: MutationTotals,
+    items: Vec<MutationPageItem>,
+    metadata: Vec<ComposerHostImageMarkerMetadata>,
+    text_bytes: u64,
+    line_count: u64,
+    last_neighbor: Option<InlineObjectNeighbor>,
+}
+
+impl StreamedMutation {
+    fn new(key: MutationKey) -> Self {
         Self {
-            fixture,
-            batch: FixtureBatch::new(),
-            records: 0,
+            key,
+            cursor: MutationCursor::new(0),
+            ordinal: 0,
+            prior: MutationIdentity::ROOT,
+            totals: MutationTotals::default(),
+            items: Vec::with_capacity(COMPOSER_MUTATION_PAGE_ITEMS),
+            metadata: Vec::new(),
+            text_bytes: 0,
+            line_count: 1,
+            last_neighbor: None,
         }
     }
 
-    fn reserve(&mut self, records: usize) {
-        assert!(records <= FIXTURE_BATCH_RECORDS);
-        if self.records.checked_add(records).unwrap() > FIXTURE_BATCH_RECORDS {
-            self.flush();
+    fn push_repeated_text(
+        &mut self,
+        host: &mut SyndicComposerHost,
+        store: &HomeStore,
+        repetitions: u64,
+    ) {
+        for _ in 0..repetitions {
+            self.items.push(MutationPageItem::Utf8 {
+                inserted_offset: self.text_bytes,
+                text: TEXT_PATTERN.into(),
+            });
+            self.text_bytes = self
+                .text_bytes
+                .checked_add(u64::try_from(TEXT_PATTERN.len()).unwrap())
+                .unwrap();
+            self.line_count = self
+                .line_count
+                .checked_add(
+                    u64::try_from(TEXT_PATTERN.bytes().filter(|byte| *byte == b'\n').count())
+                        .unwrap(),
+                )
+                .unwrap();
+            self.flush_if_full(host, store);
         }
     }
 
-    fn put(&mut self, record: FixtureRecord) {
-        self.batch.put(record).unwrap();
-        self.records = self.records.checked_add(1).unwrap();
+    fn push_image(
+        &mut self,
+        host: &mut SyndicComposerHost,
+        store: &HomeStore,
+        draft: SyndicDraftId,
+        label: ImageLabelOrdinal,
+        asset: AssetId,
+    ) {
+        let marker = Fixture::draft_marker_id(draft, label.get());
+        let object = InlineObjectId::new(u128::from_be_bytes(*marker.as_bytes()));
+        let order = InlineObjectOrder::new(u128::from(label.get()));
+        self.items
+            .push(MutationPageItem::Object(ObjectChange::Insert {
+                object: SuccessorObject::new(
+                    object,
+                    ByteOffset::new(self.text_bytes),
+                    order,
+                    17,
+                    5,
+                ),
+            }));
+        self.metadata
+            .push(ComposerHostImageMarkerMetadata::new(object, label, asset));
+        self.last_neighbor = Some(InlineObjectNeighbor::new(object, order));
+        self.flush_if_full(host, store);
     }
 
-    fn flush(&mut self) {
-        if self.records == 0 {
+    fn flush_if_full(&mut self, host: &mut SyndicComposerHost, store: &HomeStore) {
+        if self.items.len() == COMPOSER_MUTATION_PAGE_ITEMS {
+            self.flush(host, store);
+        }
+    }
+
+    fn flush(&mut self, host: &mut SyndicComposerHost, store: &HomeStore) {
+        if self.items.is_empty() {
             return;
         }
-        let batch = mem::take(&mut self.batch);
-        let home = self.fixture.home();
-        let contribution = self
-            .fixture
-            .storage
-            .fixture_contribution(self.fixture.storage.revision(&home).unwrap(), batch);
-        let mut command = HomeCommand::new(home.home_revision().unwrap());
-        command.add(contribution).unwrap();
-        match home.execute(command) {
-            CommandOutcome::Committed {
-                later_failure: None,
-                ..
-            } => {}
-            outcome @ CommandOutcome::NotCommitted { .. } => {
-                panic!("expected committed content mutation, got {outcome:?}")
-            }
-            outcome @ CommandOutcome::Committed {
-                later_failure: Some(_),
-                ..
-            } => panic!("expected no later failure, got {outcome:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => {
-                panic!("expected committed content mutation, got {outcome:?}")
-            }
+        let next_cursor = MutationCursor::new(self.cursor.get().checked_add(1).unwrap());
+        let page = MutationPage::new(
+            MutationPageKey::new(
+                self.key,
+                MutationLane::Proposal,
+                self.cursor,
+                self.ordinal,
+                self.prior,
+            ),
+            next_cursor,
+            mem::take(&mut self.items),
+        )
+        .unwrap();
+        self.totals = add_totals(self.totals, page.totals());
+        self.cursor = page.next_cursor();
+        self.ordinal = self.ordinal.checked_add(1).unwrap();
+        self.prior = page.cumulative_identity();
+        host.stage_mutation_page(
+            store,
+            MutationPageRequest::new(page),
+            mem::take(&mut self.metadata).into_boxed_slice(),
+        )
+        .unwrap();
+    }
+
+    fn finish(&self) -> MutationStreamFinish {
+        MutationStreamFinish {
+            next_cursor: self.cursor,
+            next_ordinal: self.ordinal,
+            cumulative_identity: self.prior,
+            totals: self.totals,
         }
-        self.records = 0;
     }
 }
 
-impl ComposerV1RecordSink for DurableRecordSink<'_> {
-    type Error = Infallible;
-
-    fn chunk(
-        &mut self,
-        chunk: syndic_storage::ContentChunkRecord,
-        span: syndic_storage::ContentByteSpanRecord,
-    ) -> Result<(), Self::Error> {
-        self.reserve(2);
-        self.put(FixtureRecord::ContentChunk(chunk));
-        self.put(FixtureRecord::ContentByteSpan(span));
-        Ok(())
-    }
-
-    fn text_piece(
-        &mut self,
-        span: syndic_storage::ContentTextSpanRecord,
-        piece: syndic_storage::ContentPieceRecord,
-    ) -> Result<(), Self::Error> {
-        self.reserve(2);
-        self.put(FixtureRecord::ContentTextSpan(span));
-        self.put(FixtureRecord::ContentPiece(piece));
-        Ok(())
-    }
-
-    fn image_piece(
-        &mut self,
-        piece: syndic_storage::ContentPieceRecord,
-    ) -> Result<(), Self::Error> {
-        self.reserve(1);
-        self.put(FixtureRecord::ContentPiece(piece));
-        Ok(())
+fn add_totals(left: MutationTotals, right: MutationTotals) -> MutationTotals {
+    MutationTotals {
+        pages: left.pages.checked_add(right.pages).unwrap(),
+        items: left.items.checked_add(right.items).unwrap(),
+        retained_bytes: left
+            .retained_bytes
+            .checked_add(right.retained_bytes)
+            .unwrap(),
+        inserted_bytes: left
+            .inserted_bytes
+            .checked_add(right.inserted_bytes)
+            .unwrap(),
+        inserted_line_breaks: left
+            .inserted_line_breaks
+            .checked_add(right.inserted_line_breaks)
+            .unwrap(),
+        objects: left.objects.checked_add(right.objects).unwrap(),
+        object_bytes: left.object_bytes.checked_add(right.object_bytes).unwrap(),
+        presentation_bytes: left
+            .presentation_bytes
+            .checked_add(right.presentation_bytes)
+            .unwrap(),
     }
 }
 
@@ -279,52 +442,30 @@ pub fn seed_submitted_input(
         drive_atom(shape, draft, index, writer)
     })
     .unwrap();
-    let (reference, maximum_buffer_bytes) = {
-        let mut sink = DurableRecordSink::new(fixture);
-        let outcome = fold_composer_v1(plan, &mut sink, |index, writer| {
-            drive_atom(shape, draft, index, writer)
-        })
-        .unwrap();
-        sink.flush();
-        assert_eq!(outcome.content_id(), plan.content_id());
-        assert_eq!(outcome.summary(), plan.summary());
-        assert_eq!(outcome.max_buffer_bytes(), plan.max_buffer_bytes());
-        assert!(outcome.max_buffer_bytes() <= syndic_storage::CONTENT_CHUNK_MAX_BYTES);
+    let maximum_buffer_bytes = plan.max_buffer_bytes();
+    assert!(maximum_buffer_bytes <= syndic_storage::CONTENT_CHUNK_MAX_BYTES);
+    let planned_reference = ContentReference::new(
+        plan.content_id(),
+        ContentRevision::new(1).unwrap(),
+        ContentEncoding::ComposerV1,
+        plan.summary(),
+    );
 
-        let summary = outcome.summary();
-        let revision = ContentRevision::new(1).unwrap();
-        let reference = ContentReference::new(
-            outcome.content_id(),
-            revision,
-            ContentEncoding::ComposerV1,
-            summary,
-        );
-        let manifest = ContentManifestRecord::new(
-            reference.id(),
-            revision,
-            reference.encoding(),
-            ContentLifecycle::Sealed,
-            summary.chunk_count(),
-            summary.encoded_bytes(),
-            summary.digest(),
-            summary,
-        );
-        sink.reserve(1);
-        sink.put(FixtureRecord::ContentManifest(manifest));
-        sink.flush();
-        (reference, outcome.max_buffer_bytes())
-    };
-
-    let asset_reference_set = match shape.marker_count() {
+    let _asset_reference_set = match shape.marker_count() {
         None => None,
         Some(marker_count) => {
             let image = shared_image.expect("marker-aware input requires the shared image");
-            Some(fixture.seal_repeated_asset_reference_set(
-                draft,
-                reference.sealed_marker_summary().unwrap().sequential(),
-                marker_count,
-                image.asset,
-            ))
+            Some(
+                fixture.seal_repeated_asset_reference_set(
+                    draft,
+                    planned_reference
+                        .sealed_marker_summary()
+                        .unwrap()
+                        .sequential(),
+                    marker_count,
+                    image.asset,
+                ),
+            )
         }
     };
     let runtime_path = shared_image.map(|image| {
@@ -334,12 +475,25 @@ pub fn seed_submitted_input(
             .expect("fixture sidecar path must be Unicode")
     });
     let wire = shape.wire_spec(runtime_path);
-    let submitted = fixture.submit_reference_on(thread, reference, asset_reference_set);
+    let assets = shared_image
+        .map(|image| vec![image.asset])
+        .unwrap_or_default();
+    let (kind, source_draft) = fixture.submit_via_composer(thread, move |host, home, binding| {
+        commit_logical_input(host, home, binding, shape, &assets)
+    });
+    let syndic_storage::FirstAcceptanceKind::Idle { user_item_id } = kind else {
+        panic!("submitted-content fixture expected an idle thread")
+    };
+    let submitted = SubmittedTurn {
+        turn: source_draft.submitted_turn_id(),
+        user_item: user_item_id,
+    };
+    let reference = fixture.submitted_content(submitted);
     SeededInput {
         submitted,
         content: reference,
         wire,
-        descriptor_count: shape.descriptor_count(),
+        descriptor_count: reference.summary().atom_count(),
         authored_logical_text_bytes: shape.authored_logical_text_bytes(),
         composer_max_buffer_bytes: maximum_buffer_bytes,
     }

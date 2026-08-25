@@ -4,33 +4,29 @@ use beryl_backend::{
     ManagedBackendClientConnector, NonIdempotentRequestOutcome, ThreadStartOptions,
     TurnStartOptions,
 };
-use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{
-    CasProcessGeneration, RuntimeId, SyndicAcceptedInputId, SyndicDraftId,
+    CasProcessGeneration, ImageLabelOrdinal, RuntimeId, SyndicAcceptedInputId, SyndicDraftId,
     SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId,
 };
 use beryl_state::BerylState;
 use syndic_storage::{
-    AcceptedInputAdmission, AcceptedInputLifecycle, AcceptedRouteEffectiveState, ActivateBinding,
-    BindingState, CreateThread, IdleSubmission, InputGateRecord, SyndicReadySteeringInput,
-    SyndicStorage,
+    AcceptedInputLifecycle, AcceptedRouteEffectiveState, ActivateBinding, BindingState,
+    CreateThread, DraftEditHistoryPolicyV1, FirstAcceptanceKind, InputGateRecord,
+    SyndicReadySteeringInput, SyndicStorage,
 };
 
 use crate::{
     cas_projection::{
-        AcceptedInputAdmissionExecutionError, AcceptedInputSchedulerDiagnostics,
-        ActiveSteeringDeliveryError, ActiveSteeringDeliveryOutcome, ActiveSteeringRetryState,
-        AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest, LiveEventTarget,
+        AcceptedInputSchedulerDiagnostics, ActiveSteeringDeliveryError,
+        ActiveSteeringDeliveryOutcome, ActiveSteeringRetryState, AdmittedProjectionSession,
+        CasProjectionCoordinator, CasProjectionRequest, LiveEventTarget, MinimumTurnCaptureReserve,
         PendingTurnActivation, ProjectionCancellationToken, ProjectionConnectionService,
         ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
         ProjectionServiceConfig, ProjectionWorkerPoolDiagnostics, ScheduledOrdinaryAdmission,
         ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
         ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
-        MinimumTurnCaptureReserve,
         input_replay::{InputReplayContext, InputReplayFactory, InputReplayRecord},
-    },
-    input_admission::{
-        build_accepted_input_command, idle_submission_command, prepare_accepted_input_admission,
     },
 };
 
@@ -39,6 +35,7 @@ use crate::cas_projection::OrdinaryInputReplayDiagnostics;
 
 use super::super::test_support::{DeliveryPause, install_delivery_pause};
 use super::server::{AUTHORIZATION, CAS_THREAD_ID, CAS_TURN_ID, SteeringServer, TIMEOUT};
+use super::submission_fixture::{submit_atoms, Atom};
 
 mod image {
     include!(concat!(
@@ -55,10 +52,10 @@ mod storage {
 }
 
 use self::{
-    image::prepare_repeated_image,
+    image::publish_image_asset,
     storage::{
-        execute, execution_binding, point_limit, replace_current_text, route_entry,
-        route_state_for, selected_path, timestamp,
+        execute, execution_binding, point_limit, route_entry, route_state_for, selected_path,
+        timestamp,
     },
 };
 
@@ -150,49 +147,25 @@ fn admit_second_scheduled_input(
 ) -> SyndicAcceptedInputId {
     let live_home = service.live_home_command().unwrap();
     let home = live_home.home();
-    let current = storage
-        .current_draft(home, thread_id, point_limit())
-        .unwrap()
-        .expect("first admission creates a replacement draft");
-    let updated_at = timestamp(
-        current
-            .draft()
-            .updated_at()
-            .unix_millis()
-            .checked_add(1)
-            .expect("fixture timestamps remain below the timestamp ceiling"),
-    );
-    replace_current_text(home, storage, thread_id, SECOND_STEERING_TEXT, updated_at);
-    let current = storage
-        .current_draft(home, thread_id, point_limit())
-        .unwrap()
-        .expect("second steering payload remains current");
-    let gate = storage
-        .input_gate(home, thread_id, point_limit())
-        .unwrap()
-        .expect("active thread retains its input gate");
     let active_turn_state = storage
         .turn_state(home, active_turn_id, point_limit())
         .unwrap()
         .expect("active ordinary turn remains available");
-    let admission = AcceptedInputAdmission::new(
+    let (kind, source_draft) = submit_atoms(
+        home,
+        storage,
+        state.assets(),
         thread_id,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
         SyndicDraftId::from_bytes([seed.wrapping_add(8); 16]),
-        None,
-        active_turn_state
-            .updated_at()
-            .max(current.draft().updated_at()),
+        SyndicItemId::from_bytes([seed.wrapping_add(9); 16]),
+        &[Atom::Text(SECOND_STEERING_TEXT)],
+        seed.wrapping_add(60),
+        active_turn_state.updated_at(),
     );
-    let input_id = admission.accepted_input_id();
-    let prepared =
-        prepare_accepted_input_admission(home, storage, state.assets(), admission).unwrap();
+    assert_eq!(kind, FirstAcceptanceKind::Accepted);
+    let input_id = source_draft.accepted_input_id();
     drop(live_home);
-    service.execute_accepted_input_admission(prepared).unwrap();
+    service.signal_accepted_ready_for_test();
     input_id
 }
 
@@ -323,38 +296,24 @@ impl DeliveryFixture {
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
                     execution_binding(runtime_id, seed),
                     timestamp(1),
+                    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
                 ),
             ),
         );
-        replace_current_text(&home, storage, thread_id, SUBMITTED_TEXT, timestamp(2));
-        let current = storage
-            .current_draft(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
-        let gate = storage
-            .input_gate(&home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
         let submitted_item_id = SyndicItemId::from_bytes([seed.wrapping_add(3); 16]);
-        let submission = IdleSubmission::new(
+        let (kind, source_draft) = submit_atoms(
+            &home,
+            storage,
+            state.assets(),
             thread_id,
-            current.thread().revision(),
-            current.draft().id(),
-            current.draft().revision(),
-            current.draft().content(),
-            gate.revision(),
             SyndicDraftId::from_bytes([seed.wrapping_add(2); 16]),
             submitted_item_id,
-            None,
+            &[Atom::Text(SUBMITTED_TEXT)],
+            seed.wrapping_add(20),
             timestamp(3),
         );
-        let submitted_turn_id = submission.submitted_turn_id();
-        match home.execute(idle_submission_command(&home, storage, state.assets(), submission).unwrap()) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("active-steering submitted-turn command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("active-steering submitted-turn command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("active-steering submitted-turn command was indeterminate: {outcome:?}"),
-        }
+        assert!(matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == submitted_item_id));
+        let submitted_turn_id = source_draft.submitted_turn_id();
 
         let config = ProjectionServiceConfig::try_new(
             16,
@@ -503,23 +462,19 @@ impl DeliveryFixture {
 
         let live_home = service.live_home_command().unwrap();
         let home = live_home.home();
-        let asset_reference_set = match input {
-            FixtureInput::Text(steering_text) => {
-                replace_current_text(home, storage, thread_id, steering_text, timestamp(7));
-                None
+        let atoms = match input {
+            FixtureInput::Text(steering_text) => vec![Atom::Text(steering_text)],
+            FixtureInput::RepeatedImage => {
+                let asset = publish_image_asset(home, &state);
+                vec![
+                    Atom::Text(IMAGE_LEADING_TEXT),
+                    Atom::Image(ImageLabelOrdinal::FIRST, asset),
+                    Atom::Text(" between "),
+                    Atom::Image(ImageLabelOrdinal::FIRST, asset),
+                    Atom::Text(" after"),
+                ]
             }
-            FixtureInput::RepeatedImage => Some(prepare_repeated_image(
-                home, storage, &state, thread_id, seed,
-            )),
         };
-        let current = storage
-            .current_draft(home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
-        let gate = storage
-            .input_gate(home, thread_id, point_limit())
-            .unwrap()
-            .unwrap();
         let active_turn_state = storage
             .turn_state(home, submitted_turn_id, point_limit())
             .unwrap()
@@ -531,20 +486,19 @@ impl DeliveryFixture {
                     .map(|_| service.acquire_steering_worker_for_test().unwrap())
                     .collect::<Vec<_>>()
             });
-        let admission = AcceptedInputAdmission::new(
+        let (kind, source_draft) = submit_atoms(
+            home,
+            storage,
+            state.assets(),
             thread_id,
-            current.thread().revision(),
-            current.draft().id(),
-            current.draft().revision(),
-            current.draft().content(),
-            gate.revision(),
             SyndicDraftId::from_bytes([seed.wrapping_add(6); 16]),
-            asset_reference_set,
-            active_turn_state
-                .updated_at()
-                .max(current.draft().updated_at()),
+            SyndicItemId::from_bytes([seed.wrapping_add(7); 16]),
+            &atoms,
+            seed.wrapping_add(40),
+            active_turn_state.updated_at().max(timestamp(7)),
         );
-        let accepted_input_id = admission.accepted_input_id();
+        assert_eq!(kind, FirstAcceptanceKind::Accepted);
+        let accepted_input_id = source_draft.accepted_input_id();
         drop(live_home);
         let mut delivery_pause = matches!(
             admission_mode,
@@ -555,58 +509,24 @@ impl DeliveryFixture {
         )
         .then(|| install_delivery_pause(accepted_input_id, DeliveryPause::BeforeLifecycleArm));
         match admission_mode {
-            AdmissionMode::Manual => {
-                let live_home = service.live_home_command().unwrap();
-                let home = live_home.home();
-                match home.execute(
-                    build_accepted_input_command(home, storage, state.assets(), admission).unwrap(),
-                ) {
-                    CommandOutcome::Committed { later_failure: None, .. } => {}
-                    outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("manual active-steering admission committed with later failure: {outcome:?}"),
-                    CommandOutcome::NotCommitted { evidence } => panic!("manual active-steering admission was not committed: {evidence:?}"),
-                    outcome @ CommandOutcome::Indeterminate { .. } => panic!("manual active-steering admission was indeterminate: {outcome:?}"),
-                }
-            }
+            AdmissionMode::Manual => {}
             AdmissionMode::ScheduledDescendantReconciliation => {
-                let prepared = {
-                    let live_home = service.live_home_command().unwrap();
-                    prepare_accepted_input_admission(
-                        live_home.home(),
-                        storage,
-                        state.assets(),
-                        admission,
-                    )
-                    .unwrap()
-                };
-                let reconciliation = service
-                    .pause_admission_reconciliation_after_dispatch_for_test(accepted_input_id);
                 let delivery = delivery_pause
                     .take()
                     .expect("descendant race installs a delivery pause");
-                let result = thread::scope(|scope| {
-                    let admission =
-                        scope.spawn(|| service.execute_accepted_input_admission(prepared));
-                    reconciliation.wait_until_paused(TIMEOUT);
-                    service.signal_accepted_ready_for_test();
-                    delivery.wait_until_paused(TIMEOUT);
-                    let route = {
-                        let live_home = service.live_home_command().unwrap();
-                        route_entry(live_home.home(), storage, thread_id, accepted_input_id)
-                    };
-                    assert_eq!(
-                        route,
-                        (
-                            AcceptedRouteEffectiveState::Delivering,
-                            AcceptedInputLifecycle::Delivering,
-                        ),
-                        "the legal delivery descendant commits before reconciliation",
-                    );
-                    reconciliation.release();
-                    admission.join().unwrap()
-                });
-                assert!(
-                    result.is_ok(),
-                    "the durable receipt must reconcile across a legal descendant: {result:?}",
+                service.signal_accepted_ready_for_test();
+                delivery.wait_until_paused(TIMEOUT);
+                let route = {
+                    let live_home = service.live_home_command().unwrap();
+                    route_entry(live_home.home(), storage, thread_id, accepted_input_id)
+                };
+                assert_eq!(
+                    route,
+                    (
+                        AcceptedRouteEffectiveState::Delivering,
+                        AcceptedInputLifecycle::Delivering,
+                    ),
+                    "the legal delivery descendant commits before scheduler observation",
                 );
                 delivery.release();
             }
@@ -614,18 +534,7 @@ impl DeliveryFixture {
             | AdmissionMode::ScheduledPair
             | AdmissionMode::ScheduledCancelled
             | AdmissionMode::ScheduledCancelledAndRenewed => {
-                let prepared = {
-                    let live_home = service.live_home_command().unwrap();
-                    prepare_accepted_input_admission(
-                        live_home.home(),
-                        storage,
-                        state.assets(),
-                        admission,
-                    )
-                    .unwrap()
-                };
-                let result = service.execute_accepted_input_admission(prepared);
-                result.unwrap();
+                service.signal_accepted_ready_for_test();
             }
         }
         let second_accepted_input_id = if matches!(admission_mode, AdmissionMode::ScheduledPair) {

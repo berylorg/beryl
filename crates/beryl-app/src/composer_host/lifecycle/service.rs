@@ -12,6 +12,7 @@ impl SyndicComposerHost {
         store: &HomeStore,
     ) -> Result<ComposerHostServiceDisposalCompletion, ComposerHostError> {
         self.lifecycle.service_disposed = true;
+        self.dispose_pending_submission(store)?;
         self.lifecycle.clear_runtime();
         self.lifecycle.dirty_adoption_seen = false;
         self.lifecycle.last_publication_completion = None;

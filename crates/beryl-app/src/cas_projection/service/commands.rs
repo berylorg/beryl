@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+use beryl_model::SyndicAcceptedInputId;
 
 enum PreparedStop {
     Exact {

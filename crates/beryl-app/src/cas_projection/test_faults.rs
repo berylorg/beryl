@@ -44,6 +44,10 @@ pub use terminal_history::{
     TerminalHistoryBarrierController, TerminalHistoryBarrierStage, install_terminal_history_barrier,
 };
 
+pub fn signal_accepted_ready(service: &super::ProjectionConnectionService) {
+    service.signal_accepted_ready_for_test();
+}
+
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 static APPROVAL_INSTALL_BARRIER: OnceLock<Mutex<Option<ApprovalInstallBarrier>>> = OnceLock::new();
 static APPROVAL_SUBMIT_BARRIER: OnceLock<Mutex<Option<ApprovalSubmitBarrier>>> = OnceLock::new();

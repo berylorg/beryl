@@ -3,7 +3,9 @@ use std::{fmt, num::NonZeroU64};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{SyndicContentDigest, SyndicContentId, SyndicDraftMarkerId};
+use crate::{
+    SyndicAcceptedInputId, SyndicContentDigest, SyndicContentId, SyndicDraftMarkerId, SyndicItemId,
+};
 
 /// Exact digest algorithm and identity-layout version for a durable asset.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -353,6 +355,43 @@ impl SealedAssetReferenceSetProof {
     #[must_use]
     pub const fn asset_chain_digest(self) -> AssetReferenceSetDigest {
         self.asset_chain_digest
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct FirstAcceptancePromotionSuccessorV1 {
+    accepted_input_id: SyndicAcceptedInputId,
+    submitted_item_id: SyndicItemId,
+    asset_reference_set: Option<SealedAssetReferenceSetProof>,
+}
+
+impl FirstAcceptancePromotionSuccessorV1 {
+    #[must_use]
+    pub const fn new(
+        accepted_input_id: SyndicAcceptedInputId,
+        submitted_item_id: SyndicItemId,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
+    ) -> Self {
+        Self {
+            accepted_input_id,
+            submitted_item_id,
+            asset_reference_set,
+        }
+    }
+
+    #[must_use]
+    pub const fn accepted_input_id(self) -> SyndicAcceptedInputId {
+        self.accepted_input_id
+    }
+
+    #[must_use]
+    pub const fn submitted_item_id(self) -> SyndicItemId {
+        self.submitted_item_id
+    }
+
+    #[must_use]
+    pub const fn asset_reference_set(self) -> Option<SealedAssetReferenceSetProof> {
+        self.asset_reference_set
     }
 }
 

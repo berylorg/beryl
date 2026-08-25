@@ -3,6 +3,25 @@
 #[path = "phase10_projection/syndic.rs"]
 mod syndic;
 
+mod cas_projection {
+    pub use beryl_app::cas_projection::*;
+}
+
+mod composer_host {
+    pub use beryl_app::composer_host::*;
+}
+
+mod composer_marker_seal {
+    pub use beryl_app::composer_marker_seal::*;
+}
+
+mod submission_fixture {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/submission_fixture.rs"
+    ));
+}
+
 #[path = "phase37_normal_terminal/loss.rs"]
 mod loss;
 #[path = "phase37_normal_terminal/server.rs"]

@@ -6,13 +6,17 @@ use beryl_app::input_admission::{
     accepted_input_promotion_command, accepted_input_promotion_status,
 };
 use beryl_home_store::{
-    CommandError, CommandOutcome, HomeCommand, HomeHealthState,
+    CommandError, CommandOutcome, HomeHealthState,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{SyndicDraftId, SyndicItemId};
 use beryl_state::AssetOwner;
-use syndic_storage::{AcceptedInputAdmission, AcceptedInputPromotionStatus, SyndicTimestamp};
+use syndic_storage::AcceptedInputPromotionStatus;
 
+#[path = "phase166_syndic_composer_history/support.rs"]
+mod composer_support;
+#[path = "phase172_syndic_composer_publication/support.rs"]
+mod publication_support;
 #[path = "phase58_accepted_promotion/support.rs"]
 mod support;
 
@@ -245,51 +249,7 @@ fn cross_domain_promotion_status_survives_later_pending_admission() {
         }
     }
 
-    let current = fixture
-        .syndic
-        .current_draft(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = fixture
-        .syndic
-        .input_gate(&fixture.store, fixture.thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let admission = AcceptedInputAdmission::new(
-        fixture.thread,
-        current.thread().revision(),
-        current.draft().id(),
-        current.draft().revision(),
-        current.draft().content(),
-        gate.revision(),
-        SyndicDraftId::from_bytes([96; 16]),
-        None,
-        SyndicTimestamp::from_unix_millis(21),
-    );
-    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
-    command
-        .add(
-            fixture
-                .syndic
-                .admit_accepted_input(fixture.syndic.revision(&fixture.store).unwrap(), admission),
-        )
-        .unwrap();
-    match fixture.store.execute(command) {
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        } => {}
-        CommandOutcome::NotCommitted { evidence } => {
-            panic!("expected committed accepted-input admission, got not committed: {evidence:?}")
-        }
-        outcome @ CommandOutcome::Committed {
-            later_failure: Some(_),
-            ..
-        } => panic!("expected no later failure: {outcome:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => {
-            panic!("expected committed accepted-input admission, got indeterminate: {outcome:?}")
-        }
-    }
+    fixture.admit_later_input(SyndicDraftId::from_bytes([96; 16]), 96);
 
     assert_eq!(
         accepted_input_promotion_status(

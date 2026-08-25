@@ -12,6 +12,13 @@ mod support {
     ));
 }
 
+mod submission_fixture {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/submission_fixture.rs"
+    ));
+}
+
 use std::{thread, time::Instant};
 
 use beryl_backend::{JsonRpcErrorVerdict, JsonRpcTurnKind, ManagedBackendError};

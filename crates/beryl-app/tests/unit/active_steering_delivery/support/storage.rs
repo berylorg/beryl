@@ -6,9 +6,8 @@ use beryl_model::{
     SyndicAcceptedInputId, SyndicThreadId,
 };
 use syndic_storage::{
-    AcceptedInputLifecycle, AcceptedRouteEffectiveState, ComposerAtom, ComposerPayload,
-    ContentAppend, ContentBuild, DraftPayloadUpdate, DraftPayloadUpdateDecision, PreparedContent,
-    SelectedPathProof, SyndicPointReadLimit, SyndicReadError, SyndicStorage, SyndicTimestamp,
+    AcceptedInputLifecycle, AcceptedRouteEffectiveState, SelectedPathProof, SyndicPointReadLimit,
+    SyndicReadError, SyndicStorage, SyndicTimestamp,
 };
 
 use super::{EXECUTION_ROOT, POINT_READ_BYTES, TIMEOUT};
@@ -73,55 +72,6 @@ pub(super) fn route_entry(
             .find(|entry| entry.input().id() == input_id)
             .expect("permanent accepted order retains the tested input");
         return (entry.effective_state(), entry.leaf().lifecycle());
-    }
-}
-
-pub(super) fn replace_current_text(
-    home: &HomeStore,
-    storage: SyndicStorage,
-    thread_id: SyndicThreadId,
-    text: &str,
-    updated_at: SyndicTimestamp,
-) {
-    let prepared = PreparedContent::composer(
-        &ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap(),
-    )
-    .unwrap();
-    stage_prepared_content(home, storage, &prepared);
-    let current = storage
-        .current_draft(home, thread_id, point_limit())
-        .unwrap()
-        .unwrap();
-    let DraftPayloadUpdateDecision::Update(update) =
-        DraftPayloadUpdate::prepare(&current, &prepared, updated_at).unwrap()
-    else {
-        panic!("fixture text must replace the current draft payload")
-    };
-    execute(
-        home,
-        storage.update_draft_payload(storage.revision(home).unwrap(), update),
-    );
-}
-
-pub(super) fn stage_prepared_content(
-    home: &HomeStore,
-    storage: SyndicStorage,
-    content: &PreparedContent,
-) {
-    execute(
-        home,
-        storage.begin_content(
-            storage.revision(home).unwrap(),
-            ContentBuild::from_prepared(content),
-        ),
-    );
-    let mut manifest = content.building_manifest();
-    while let Some(append) = ContentAppend::prepare(&manifest, content).unwrap() {
-        manifest = append.next_manifest().clone();
-        execute(
-            home,
-            storage.append_content(storage.revision(home).unwrap(), append),
-        );
     }
 }
 

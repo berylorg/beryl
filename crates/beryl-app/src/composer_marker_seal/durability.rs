@@ -40,7 +40,8 @@ pub(super) fn settle_command(
             match store.reconcile(&handle)? {
                 ReconciliationResolution::ExactOld => Ok(DurableCommandResult::ExactOld),
                 ReconciliationResolution::ExactNew { .. } => Ok(DurableCommandResult::ExactNew),
-                ReconciliationResolution::Collision => {
+                ReconciliationResolution::ExactSuccessor { .. }
+                | ReconciliationResolution::Collision => {
                     Err(DraftMarkerSealServiceError::ReconciliationCollision)
                 }
             }

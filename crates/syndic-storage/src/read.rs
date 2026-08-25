@@ -1,6 +1,7 @@
 mod accepted_delivery;
 mod accepted_next;
 mod accepted_ready;
+mod admission;
 mod binding;
 mod capture;
 mod capture_text;

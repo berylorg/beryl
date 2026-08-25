@@ -29,21 +29,6 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 173: Coordinate Autosave, Flush Barriers, And Lifecycle Release (finished)
-
-The composer host now owns one generation-qualified autosave scheduler and one joined lifecycle
-flush barrier with constant-size process-local custody. Disposing barriers freeze new edit and
-history admission while draining already-admitted work; publication, ambiguous reconciliation,
-marker noncommit, cancellation, stale callbacks, supersession, and service disposal converge through
-typed lifecycle cuts without retaining waiter collections, payloads, marker sets, inverse edits,
-root graphs, or history-sized RAM. Exact-clean disposal releases every session, publication, marker-
-flight, timer, barrier, pending operation, and last-outcome identity.
-
-Locked verification passed 28 Phase 173 cases, 10 Phase 166 ordinary-stack cases, 43 Phase 171/172
-regressions, 34 affected Phase 141/143 cases, and the lower HomeStore ExactOld reconciliation proof.
-Package checks, formatting, scoped hygiene, and the fresh independent adversarial review passed with
-no findings.
-
 # Phase 174: Reconcile Authorized Durable Successors (finished)
 
 HomeStore now owns one optional statically typed successor protocol inside its existing targeted-
@@ -62,51 +47,22 @@ and module-size findings and accepted the phase with no remaining finding. A bro
 separately exposed one unrelated pre-existing theme-watcher coalescing failure after all successor
 cases passed; it did not affect this acceptance boundary.
 
-# Phase 175: Materialize Exact Draft Roots For Submission (pending)
+# Phase 175: Materialize Exact Draft Roots For Submission (finished)
 
-Replace whole-payload submission preparation with one production command that joins the Phase 173
-submission flush, captures the exact published draft root and asset proof, streams that root through
-the accepted `ComposerV1` materializer, and admits idle or accepted-next input only when the atomic
-Syndic mutation still matches that exact proof. Keep materializer cursors, pages, staged records,
-command custody, and reconciliation evidence explicitly bounded; neither the command nor its tests
-may retain a whole draft, marker collection, inverse history, root graph, or history-sized queue.
+The composer host now joins its lifecycle flush, captures one exact published draft root, streams
+bounded `ComposerV1` and Asset staging, and atomically admits idle or accepted-next input through the
+same production command. First-acceptance reconciliation uses one fixed pure Syndic source and an
+image-bearing Asset witness to accept valid promoted successors without an application reread or
+extra mutation; marker-free submission remains source-only. Exact rejection, cancellation,
+indeterminate custody, same-home recovery, service disposal, stale tickets, free-space denial, and
+true route collision preserve or release the exact draft, history, materializer, and reconciliation
+state required by their terminal classification without whole-draft or history-sized RAM.
 
-On exact success, publish the submitted input and fresh empty draft together and release all
-submission-only materialization state. Rejection or proven noncommit must preserve the exact draft
-without clearing it or starting model work; indeterminate outcomes must reconcile to exact success,
-exact noncommit, or terminal collision without repeat external submission. Prove that autosaves and
-edits admitted after root capture cannot change submitted content, that replay is idempotent, and
-that busy-thread queueing and accepted-next ordering use the same exact-root command boundary.
-
-Restore the deferred Phase 65/68/72 default queued-input and accepted-next cases and the Phase 75
-submitted-content catalog case through this production command. Remove the 37 direct ordinary
-`beryl-app` whole-payload fixture call sites, excluding imports, type annotations, raw fault fixtures,
-and the intentional negative-residue assertion; rename the three obsolete `beryl-home-store`
-submission-footprint labels without promoting raw fault fixtures into ordinary evidence. Run
-focused locked nextest coverage for the new command and affected
-submission, queueing, lifecycle, catalog, materializer, and HomeStore contracts; run package checks,
-formatting, scoped hygiene, and a fresh independent adversarial completion review.
-
-Completion review corrections: preserve exact stage and custody across every fallible flush,
-materializer, and pre/post-attempt acceptance edge; reconcile image-bearing accepted-next success
-through a valid later promotion descendant; carry and query the same opaque turn-start free-space
-requirement immediately before direct idle acceptance, preserving the exact draft for every non-
-sufficient result; replace validation-only replay commands with an explicit already-accepted
-outcome; and split the oversized submission state machine without changing its public boundary.
-Add focused fault, restart, promotion, free-space, retry, and bounded-custody proofs for these cuts.
-
-Repeated-review corrections: retain and explicitly reconcile every indeterminate HomeStore writer
-custody for materializer and acceptance commands before any reread, retry, publication, or release;
-join live submission custody into composer-service disposal and fence disposed-service tickets;
-honor the caller cancellation through capture, materialization, free-space admission, and the final
-HomeCommand; and require the permanent exact accepted route leaf in ExactNew reconciliation.
-Prove zero retained reconciliation scopes, no post-disposal or post-cancellation send, exact release,
-and route-leaf collision behavior.
-
-Resumable milestone: custody, disposal, cancellation, and route-leaf corrections compile. The
-fault-enabled exact-root submission target remains at 10 passing and 3 failing until the Phase 174
-successor protocol is integrated into first acceptance and promotion; no application reread or
-closed-scope acknowledgement may substitute.
+Locked verification passed 20 Phase 175 submission cases, 28 lifecycle regressions, 13 HomeStore
+successor cases, 19 Syndic admission/promotion cases, 17 Asset cases, five footprint cases, and the
+migrated Phase 37 workflow. Package checks, formatting, scoped hygiene, the zero ordinary whole-
+payload fixture baseline, and independent adversarial completion and correction review passed with
+no remaining finding.
 
 # Phase 176: Provide The Live Main-Window Composer Slot (pending)
 

@@ -1,5 +1,12 @@
 use super::*;
 
+mod submission_fixture {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/submission_fixture.rs"
+    ));
+}
+
 mod fixture {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),

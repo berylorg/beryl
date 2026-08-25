@@ -1,6 +1,13 @@
 #[path = "provider_broker_steering_user/support.rs"]
 mod support;
 
+mod submission_fixture {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/submission_fixture.rs"
+    ));
+}
+
 use std::time::Duration;
 
 use beryl_backend::{

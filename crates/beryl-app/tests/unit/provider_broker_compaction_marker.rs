@@ -15,8 +15,9 @@ use syndic_storage::{
     CasLineageProof, CasRepresentedPrefixProof, ClaimCompactionDispatch, CompactionAdmissionRead,
     CompactionAttemptNonce, CompactionMarkerLifecycle, CompactionOperationId,
     CompactionOperationNonce, CompactionProviderEvent, CompactionProviderSequence,
-    CompactionThreadStatus, CreateThread, NativeCasLineage, PublishValidBinding, SelectedPathProof,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, empty_selected_path_digest,
+    CompactionThreadStatus, CreateThread, DraftEditHistoryPolicyV1, NativeCasLineage,
+    PublishValidBinding, SelectedPathProof, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    empty_selected_path_digest,
 };
 
 use crate::{
@@ -75,6 +76,7 @@ impl Fixture {
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
                     execution_binding(runtime_id, seed),
                     SyndicTimestamp::from_unix_millis(1),
+                    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
                 ),
             ),
         );

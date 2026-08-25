@@ -290,13 +290,13 @@ impl ProjectionConnectionService {
             .renew_cancellation_lifecycle();
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     pub(in crate::cas_projection) fn signal_accepted_ready_for_test(&self) {
         self.scheduler_signal
             .wake(AcceptedInputWakeReason::AcceptedReady);
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     pub(in crate::cas_projection) fn signal_accepted_next_ready_for_test(&self) {
         self.scheduler_signal
             .wake(AcceptedInputWakeReason::AcceptedNextReady);

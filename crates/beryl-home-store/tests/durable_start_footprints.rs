@@ -8,7 +8,7 @@ use syndic_storage::{accepted_input_promotion_max_footprint, idle_submission_max
 #[test]
 fn owner_derived_maxima_compose_to_the_direct_and_queued_envelopes() {
     let direct = DurableStartFootprint::compose(
-        idle_submission_max_footprint().expect("idle footprint"),
+        idle_submission_max_footprint().expect("first-acceptance footprint"),
         Some(
             draft_to_submitted_item_owner_transfer_max_footprint()
                 .expect("draft transfer footprint"),
@@ -40,7 +40,7 @@ fn owner_derived_maxima_compose_to_the_direct_and_queued_envelopes() {
 #[test]
 fn composition_rejects_wrong_participant_kind() {
     let error = DurableStartFootprint::compose(
-        idle_submission_max_footprint().expect("idle footprint"),
+        idle_submission_max_footprint().expect("first-acceptance footprint"),
         Some(
             accepted_input_to_submitted_item_owner_transfer_max_footprint()
                 .expect("promotion transfer footprint"),
@@ -56,7 +56,7 @@ fn composition_rejects_wrong_participant_kind() {
 #[test]
 fn no_image_start_omits_the_asset_participant() {
     let direct = DurableStartFootprint::compose(
-        idle_submission_max_footprint().expect("idle footprint"),
+        idle_submission_max_footprint().expect("first-acceptance footprint"),
         None,
     )
     .expect("marker-free direct composition");

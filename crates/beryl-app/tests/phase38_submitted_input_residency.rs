@@ -81,3 +81,20 @@ fn submitted_input_failures_preserve_taxonomy_and_release() {
     let _guard = PHASE38_TEST_LOCK.lock().unwrap();
     failure::run();
 }
+
+#[test]
+fn submitted_content_fixture_uses_exact_root_first_acceptance() {
+    let _guard = PHASE38_TEST_LOCK.lock().unwrap();
+    let mut fixture = syndic::Fixture::new(201);
+    let thread = fixture.create_ordinary(202);
+    let seeded = content::seed_submitted_input(
+        &mut fixture,
+        thread,
+        content::LogicalInput::marker_free(2),
+        None,
+    );
+    assert_eq!(fixture.submitted_content(seeded.submitted), seeded.content);
+    assert!(seeded.composer_max_buffer_bytes <= syndic_storage::CONTENT_CHUNK_MAX_BYTES);
+    let (_directory, service) = fixture.into_service();
+    let _ = service.close().unwrap();
+}

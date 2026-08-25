@@ -1,6 +1,13 @@
 #[path = "provider_broker_checked_user/support.rs"]
 mod support;
 
+mod submission_fixture {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/submission_fixture.rs"
+    ));
+}
+
 use beryl_backend::{
     NormalTurnTerminalStatus, OrderedTurnStreamRejection, OrderedTurnStreamSubmitCause,
     UserMessageEchoLifecycle,
