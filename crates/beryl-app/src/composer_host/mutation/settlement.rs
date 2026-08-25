@@ -1,6 +1,6 @@
 use syndic_storage::{
     DraftMutationStagingTerminalEvidenceV1, DraftPieceSettlementClosureV1,
-    DraftPieceSettlementOutcomeV1, DraftPieceSettlementProofV1, DraftPieceTransactionOutcomeV1,
+    DraftPieceSettlementOutcomeV1, DraftPieceSettlementV1,
 };
 
 use super::*;
@@ -42,24 +42,19 @@ impl SyndicComposerHost {
         let contribution = self
             .storage
             .cancel_draft_piece_edit(self.storage.revision(store)?, prepared.clone());
-        match self.run_build_command(store, prepared, contribution)? {
+        match self.run_build_command(store, pending, prepared, contribution)? {
             BuildCommandResult::Pending(_) => Err(ComposerHostError::MutationWorkPending),
-            BuildCommandResult::Terminal(outcome) => {
-                self.finish_build_mutation(store, pending, outcome)
-            }
+            BuildCommandResult::Terminal(outcome) => Ok(outcome),
         }
     }
 
-    pub(super) fn finish_build_mutation(
+    pub(super) fn finish_build_settlement(
         &mut self,
-        _store: &HomeStore,
         pending: &mut ComposerHostMutationCoordinator,
-        outcome: DraftPieceTransactionOutcomeV1,
+        settlement: DraftPieceSettlementV1,
     ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
-        let result = match outcome {
-            DraftPieceTransactionOutcomeV1::Committed(DraftPieceSettlementProofV1::Settlement(
-                settlement,
-            )) => {
+        let result = match settlement.outcome() {
+            DraftPieceSettlementOutcomeV1::Committed { .. } => {
                 let became_dirty = !self.is_dirty();
                 let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure()
                 else {
@@ -92,13 +87,10 @@ impl SyndicComposerHost {
                         .ok_or(ComposerHostError::MutationMalformed)?,
                 }
             }
-            DraftPieceTransactionOutcomeV1::Rejected(_) => ComposerHostMutationOutcome::Rejected,
-            DraftPieceTransactionOutcomeV1::Conflict(_) => ComposerHostMutationOutcome::Conflict,
-            DraftPieceTransactionOutcomeV1::Cancelled(_) => ComposerHostMutationOutcome::Cancelled,
-            DraftPieceTransactionOutcomeV1::Error(_) => ComposerHostMutationOutcome::Error,
-            DraftPieceTransactionOutcomeV1::Committed(_) => {
-                return Err(ComposerHostError::MutationMalformed);
-            }
+            DraftPieceSettlementOutcomeV1::Rejected(_) => ComposerHostMutationOutcome::Rejected,
+            DraftPieceSettlementOutcomeV1::Conflict { .. } => ComposerHostMutationOutcome::Conflict,
+            DraftPieceSettlementOutcomeV1::Cancelled => ComposerHostMutationOutcome::Cancelled,
+            DraftPieceSettlementOutcomeV1::Error(_) => ComposerHostMutationOutcome::Error,
         };
         Ok(result)
     }
@@ -126,27 +118,5 @@ pub(super) fn command_selection(
                 }
             })
         }
-    }
-}
-
-pub(super) fn settlement_outcome(
-    settlement: syndic_storage::DraftPieceSettlementV1,
-) -> DraftPieceTransactionOutcomeV1 {
-    let outcome = settlement.outcome().clone();
-    let proof = DraftPieceSettlementProofV1::Settlement(settlement);
-    match outcome {
-        DraftPieceSettlementOutcomeV1::Committed { .. } => {
-            DraftPieceTransactionOutcomeV1::Committed(proof)
-        }
-        DraftPieceSettlementOutcomeV1::Rejected(_) => {
-            DraftPieceTransactionOutcomeV1::Rejected(proof)
-        }
-        DraftPieceSettlementOutcomeV1::Conflict { .. } => {
-            DraftPieceTransactionOutcomeV1::Conflict(proof)
-        }
-        DraftPieceSettlementOutcomeV1::Cancelled => {
-            DraftPieceTransactionOutcomeV1::Cancelled(proof)
-        }
-        DraftPieceSettlementOutcomeV1::Error(_) => DraftPieceTransactionOutcomeV1::Error(proof),
     }
 }

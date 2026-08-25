@@ -10,6 +10,8 @@ use crate::{SyndicMutationError, SyndicStorage};
 
 use super::*;
 
+mod settlement;
+
 #[derive(Clone)]
 pub struct PreparedDraftPieceEditV1 {
     header: DraftPieceEditHeaderV1,
@@ -2103,155 +2105,7 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
         reader: &DomainReader<'_, SyndicDomain>,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if point::<DraftPieceSettlementsFamily>(reader, &settlement_key(&self.prepared))?.is_some()
-        {
-            return Ok(());
-        }
-        let build = required_build(reader, &settlement_key(&self.prepared))?;
-        let current = session_head(reader, build.draft_id(), build.session_id())?;
-        if current.active_operation() != Some(&custody_for(&build)) {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let source_receipt =
-            required::<DraftPieceBuildProgressFamily>(reader, &build.progress_receipt().key())?;
-        let key = settlement_key(&self.prepared);
-        let successor = build
-            .successor()
-            .ok_or(SyndicMutationError::IdentityCollision)?;
-        let root = DraftPieceRootRecordV1::new(successor);
-        let observed_history = authenticated_history_frontier(reader, current.newest_history())?;
-        let append_history = if matches!(
-            observed_history.reference().key(),
-            DraftEditHistoryFrontierKeyV1::Publication { .. }
-        ) {
-            observed_history
-                .fork_session(current.session_id())
-                .ok_or(SyndicMutationError::IdentityCollision)?
-        } else {
-            observed_history.clone()
-        };
-        let (outcome, closure, lifecycle, target_session) = if current.lifecycle()
-            == DraftEditorCandidateSessionLifecycleV1::Active
-            && current.newest_candidate_generation() == build.predecessor_candidate_generation()
-            && current.newest_root() == build.predecessor_root()
-            && current.newest_history() == build.predecessor_history()
-        {
-            match append_ordinary_draft_edit_history_with_retention_v1(
-                reader,
-                &append_history,
-                current
-                    .newest_candidate_generation()
-                    .checked_add(1)
-                    .ok_or(SyndicMutationError::IdentityCollision)?,
-                successor,
-                build.predecessor_caret(),
-                build.predecessor_selection(),
-                build.caret(),
-                build.selection(),
-                build.operation_id(),
-            ) {
-                Ok((transition, adopted_history)) => {
-                    let next = current
-                        .adopted(successor, adopted_history.reference())
-                        .ok_or(SyndicMutationError::IdentityCollision)?;
-                    mutations.put::<DraftPieceRootsCodec>(&successor.key(), &root)?;
-                    mutations
-                        .put::<DraftEditHistoryTransitionsCodec>(&transition.key(), &transition)?;
-                    mutations.put::<DraftEditHistoryFrontiersCodec>(
-                        &adopted_history.reference().key(),
-                        &adopted_history,
-                    )?;
-                    (
-                        DraftPieceSettlementOutcomeV1::Committed {
-                            candidate_generation: next.newest_candidate_generation(),
-                            successor,
-                            history: adopted_history.reference(),
-                            caret: build.caret(),
-                            selection: build.selection(),
-                        },
-                        Box::new(DraftPieceSettlementClosureV1::Committed(
-                            DraftPieceCommittedAdoptionV1::new(
-                                current.clone(),
-                                next.clone(),
-                                root,
-                                observed_history,
-                                transition,
-                                adopted_history,
-                            ),
-                        )),
-                        DraftPieceBuildLifecycleV1::Committed,
-                        next,
-                    )
-                }
-                Err(DraftEditHistoryRetentionErrorV1::CapacityUnavailable) => {
-                    let cleared = current
-                        .clear_active_operation(&custody_for(&build))
-                        .ok_or(SyndicMutationError::IdentityCollision)?;
-                    (
-                        DraftPieceSettlementOutcomeV1::Error(
-                            DraftPieceErrorReasonV1::HistoryCapacityUnavailable,
-                        ),
-                        Box::new(DraftPieceSettlementClosureV1::Noncommit(
-                            DraftPieceNoncommitClosureV1::new(
-                                cleared.clone(),
-                                observed_history,
-                                build.successor(),
-                            ),
-                        )),
-                        DraftPieceBuildLifecycleV1::Error,
-                        cleared,
-                    )
-                }
-                Err(DraftEditHistoryRetentionErrorV1::Invalid) => {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-        } else {
-            let cleared = current
-                .clear_active_operation(&custody_for(&build))
-                .ok_or(SyndicMutationError::IdentityCollision)?;
-            (
-                DraftPieceSettlementOutcomeV1::Conflict {
-                    current_candidate_generation: current.newest_candidate_generation(),
-                    current_root: current.newest_root(),
-                    current_history: current.newest_history(),
-                },
-                Box::new(DraftPieceSettlementClosureV1::Noncommit(
-                    DraftPieceNoncommitClosureV1::new(
-                        cleared.clone(),
-                        observed_history,
-                        build.successor(),
-                    ),
-                )),
-                DraftPieceBuildLifecycleV1::Conflict,
-                cleared,
-            )
-        };
-        let (terminal, receipt) =
-            terminal_build(&build, lifecycle, source_receipt.fragment_endpoint())?;
-        let settlement = DraftPieceSettlementV1::new_boxed(
-            key,
-            build.proposal_digest(),
-            build.predecessor_candidate_generation(),
-            build.predecessor_root(),
-            build.predecessor_history(),
-            build.fragment_count(),
-            build.fragment_chain(),
-            build.predecessor_caret(),
-            build.predecessor_selection(),
-            build.caret(),
-            build.selection(),
-            build.build_digest(),
-            build.canonical_header().to_vec(),
-            Some(build.clone()),
-            receipt.reference(),
-            outcome,
-            closure,
-        );
-        put_session_head(mutations, &target_session)?;
-        mutations.put::<DraftPieceSettlementsCodec>(&key, &settlement)?;
-        put_build_transition(mutations, &terminal, &receipt)?;
-        Ok(())
+        settlement::contribute(&self.prepared, reader, mutations)
     }
 }
 

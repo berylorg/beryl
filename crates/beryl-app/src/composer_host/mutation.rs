@@ -13,7 +13,7 @@ use syndic_storage::{
     DraftEditorCandidateSessionV1, DraftMutationBeginV1, DraftMutationFinishInputV1,
     DraftMutationOperationIdV1, DraftMutationStagingHeadV1, DraftMutationStagingIdentityV1,
     DraftMutationStagingLaneV1, DraftPieceBuildProgressReceiptReferenceV1, DraftPieceDigestV1,
-    DraftPieceTransactionOutcomeV1, PreparedDraftMutationStagingBatchV1, PreparedDraftPieceEditV1,
+    PreparedDraftMutationStagingBatchV1, PreparedDraftPieceEditV1,
 };
 
 use super::request::validate_store;
@@ -372,7 +372,7 @@ enum StagingCommandResult {
 
 enum BuildCommandResult {
     Pending(DraftPieceBuildProgressReceiptReferenceV1),
-    Terminal(DraftPieceTransactionOutcomeV1),
+    Terminal(ComposerHostMutationOutcome),
 }
 
 mod drive;
