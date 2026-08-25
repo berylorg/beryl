@@ -11,7 +11,7 @@ use syndic_storage::{
 use super::*;
 
 impl SyndicComposerHost {
-    pub fn execute_publication(
+    pub(in crate::composer_host) fn execute_publication_lane(
         &mut self,
         store: &HomeStore,
         ticket: ComposerHostPublicationTicket,
@@ -54,7 +54,7 @@ impl SyndicComposerHost {
         }
     }
 
-    pub fn reconcile_publication(
+    pub(in crate::composer_host) fn reconcile_publication_lane(
         &mut self,
         store: &HomeStore,
         ticket: ComposerHostPublicationTicket,
@@ -80,7 +80,7 @@ impl SyndicComposerHost {
                     ticket,
                     ComposerHostPublicationUnavailable::ReconciliationCollision,
                 )?;
-                return Ok(ComposerHostPublicationCompletion::OccupiedIdentityCollision);
+                return Ok(ComposerHostPublicationCompletion::ReconciliationCollision);
             }
         };
         self.settle_publication(store, ticket, binding, prepared, outcome)

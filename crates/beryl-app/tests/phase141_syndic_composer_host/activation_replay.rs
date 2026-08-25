@@ -19,8 +19,9 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
 
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
+    let mut cancelled_host = SyndicComposerHost::new(storage);
     assert!(matches!(
-        host.activate(&store, activation(thread, 72, 73, Vec::new()), &cancelled,),
+        cancelled_host.activate(&store, activation(thread, 72, 73, Vec::new()), &cancelled,),
         Ok(ComposerHostActivationOutcome::Cancelled)
     ));
     assert_eq!(host.binding(), Some(first_binding));
@@ -33,8 +34,9 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
             max_bytes: 4,
         })
         .collect();
+    let mut invalid_host = SyndicComposerHost::new(storage);
     assert!(matches!(
-        host.activate(
+        invalid_host.activate(
             &store,
             activation(thread, 72, 74, too_many),
             &CommandCancellation::new(),
@@ -54,16 +56,18 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
             max_bytes: 3,
         }],
     );
+    let mut failing_host = SyndicComposerHost::new(storage);
     assert!(matches!(
-        host.activate(&store, failing, &CommandCancellation::new()),
+        failing_host.activate(&store, failing, &CommandCancellation::new()),
         Err(ComposerHostError::Range(
             DraftPieceRangeSourceErrorV1::Malformed(DraftPieceMalformedRangeRequestV1::Limit)
         ))
     ));
     assert_eq!(host.binding(), Some(first_binding));
 
+    let mut collision_host = SyndicComposerHost::new(storage);
     assert!(matches!(
-        host.activate(
+        collision_host.activate(
             &store,
             activation(thread, 70, 76, Vec::new()),
             &CommandCancellation::new(),
@@ -100,8 +104,18 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
         Err(ComposerHostError::RequestNotPending)
     ));
 
+    host.dispose_composer_service(&store).unwrap();
+    host = SyndicComposerHost::new(storage);
+    let replay_request = ComposerHostActivationRequest::new(
+        thread,
+        syndic_storage::DraftEditorCandidateSessionIdV1::from_bytes([70; 16]),
+        syndic_storage::DraftPieceOperationIdV1::from_bytes([71; 16]),
+        std::num::NonZeroU64::new(2).unwrap(),
+        None,
+        Box::new([]),
+    );
     let replay = host
-        .activate(&store, initial, &CommandCancellation::new())
+        .activate(&store, replay_request, &CommandCancellation::new())
         .unwrap();
     let ComposerHostActivationOutcome::Activated {
         disposition: ComposerHostOpenDisposition::ExactReplay,
@@ -110,7 +124,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
     else {
         panic!("identical active session did not replay");
     };
-    assert!(replay_binding.host_generation().get() > first_binding.host_generation().get());
+    assert_ne!(replay_binding, first_binding);
     assert_eq!(replay_binding.root(), first_binding.root());
     assert!(matches!(
         host.complete_request(late_execution),
@@ -173,6 +187,6 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
         Err(ComposerHostError::PendingRequestLimit)
     ));
     assert_eq!(host.pending_request_count(), 64);
-    assert!(host.release().unwrap());
+    host.dispose_composer_service(&store).unwrap();
     assert_eq!(host.pending_request_count(), 0);
 }

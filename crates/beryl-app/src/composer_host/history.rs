@@ -38,13 +38,13 @@ impl ComposerHostRetainedHistoryIntent {
 
 pub(super) enum ComposerHostPendingHistory {
     Prepared(Box<ComposerHostHistoryCoordinator>),
-    Terminal {
-        binding: ComposerHostBinding,
-        key: MutationKey,
-        outcome: RangeHistoryOutcome,
-        detached: bool,
-    },
-    Unavailable(ComposerHostRetainedHistoryIntent),
+    Terminal(Box<ComposerHostTerminalHistory>),
+    Unavailable(Box<ComposerHostRetainedHistoryIntent>),
+}
+
+pub(super) struct ComposerHostTerminalHistory {
+    key: MutationKey,
+    outcome: RangeHistoryOutcome,
 }
 
 #[derive(Clone)]
@@ -59,16 +59,8 @@ impl ComposerHostPendingHistory {
     fn key(&self) -> MutationKey {
         match self {
             Self::Prepared(pending) => pending.intent.key(),
-            Self::Terminal { key, .. } => *key,
+            Self::Terminal(terminal) => terminal.key,
             Self::Unavailable(intent) => intent.intent.key(),
-        }
-    }
-
-    fn detach(&mut self) {
-        match self {
-            Self::Prepared(pending) => pending.detached = true,
-            Self::Terminal { detached, .. } => *detached = true,
-            Self::Unavailable(_) => {}
         }
     }
 
@@ -103,6 +95,9 @@ impl SyndicComposerHost {
         binding: ComposerHostBinding,
         intent: RangeHistoryIntent,
     ) -> Result<(), ComposerHostError> {
+        if self.lifecycle.freezes_admission() {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
         if self.live_operation_pending() {
             return Err(if self.pending_history.is_some() {
                 ComposerHostError::HistoryPending
@@ -115,36 +110,38 @@ impl SyndicComposerHost {
         if active.binding != binding {
             return Err(ComposerHostError::OldBinding);
         }
-        if active.unavailable {
+        if active.unavailable || active.session_disposed {
             return Err(ComposerHostError::HistoryUnavailable);
         }
         validate_store(binding, store)?;
         validate_history_intent(binding, intent)?;
-        if let Some((last_binding, last_intent)) = self.last_history_identity
-            && last_binding == binding
+        if let Some((last_binding, last_intent)) = self.last_history_identity.as_deref()
+            && *last_binding == binding
         {
             let operation = intent.key().operation().get();
             let last_operation = last_intent.key().operation().get();
             if operation < last_operation {
                 return Err(ComposerHostError::StaleRequestIdentity);
             }
-            if operation == last_operation && intent != last_intent {
+            if operation == last_operation && intent != *last_intent {
                 return Err(ComposerHostError::MutationIdentityCollision);
             }
             if operation == last_operation {
                 let outcome = self
                     .last_history_outcome
+                    .as_deref()
+                    .copied()
                     .ok_or(ComposerHostError::StaleRequestIdentity)?;
-                self.pending_history = Some(ComposerHostPendingHistory::Terminal {
-                    binding,
-                    key: intent.key(),
-                    outcome,
-                    detached: false,
-                });
+                self.pending_history = Some(ComposerHostPendingHistory::Terminal(Box::new(
+                    ComposerHostTerminalHistory {
+                        key: intent.key(),
+                        outcome,
+                    },
+                )));
                 return Ok(());
             }
         }
-        self.last_history_identity = Some((binding, intent));
+        self.last_history_identity = Some(Box::new((binding, intent)));
         self.last_history_outcome = None;
 
         let direction = match intent.kind() {
@@ -170,19 +167,15 @@ impl SyndicComposerHost {
                 }))
             }
             Ok(DraftHistoricalRootSelectionV1::Unavailable) => {
-                ComposerHostPendingHistory::Terminal {
-                    binding,
+                ComposerHostPendingHistory::Terminal(Box::new(ComposerHostTerminalHistory {
                     key: intent.key(),
                     outcome: RangeHistoryOutcome::Rejected,
-                    detached: false,
-                }
+                }))
             }
-            Err(_) => ComposerHostPendingHistory::Terminal {
-                binding,
+            Err(_) => ComposerHostPendingHistory::Terminal(Box::new(ComposerHostTerminalHistory {
                 key: intent.key(),
                 outcome: RangeHistoryOutcome::Error,
-                detached: false,
-            },
+            })),
         });
         Ok(())
     }
@@ -222,9 +215,10 @@ impl SyndicComposerHost {
     fn record_history_outcome(&mut self, key: MutationKey, outcome: RangeHistoryOutcome) {
         if self
             .last_history_identity
+            .as_deref()
             .is_some_and(|(_, intent)| intent.key() == key)
         {
-            self.last_history_outcome = Some(outcome);
+            self.last_history_outcome = Some(Box::new(outcome));
         }
     }
 
@@ -257,24 +251,14 @@ impl SyndicComposerHost {
         pending: ComposerHostPendingHistory,
     ) -> Result<RangeHistoryOutcome, (ComposerHostError, ComposerHostPendingHistory)> {
         match pending {
-            ComposerHostPendingHistory::Terminal {
-                binding,
-                key: expected,
-                outcome,
-                detached,
-            } => {
-                if key != expected {
+            ComposerHostPendingHistory::Terminal(terminal) => {
+                if key != terminal.key {
                     return Err((
                         ComposerHostError::RequestMismatch,
-                        ComposerHostPendingHistory::Terminal {
-                            binding,
-                            key: expected,
-                            outcome,
-                            detached,
-                        },
+                        ComposerHostPendingHistory::Terminal(terminal),
                     ));
                 }
-                Ok(outcome)
+                Ok(terminal.outcome)
             }
             ComposerHostPendingHistory::Unavailable(intent) => Err((
                 ComposerHostError::HistoryUnavailable,
@@ -347,7 +331,7 @@ impl SyndicComposerHost {
                 self.mark_active_unavailable(pending.binding);
                 (
                     ComposerHostError::HistoryReconciliation(error),
-                    ComposerHostPendingHistory::Unavailable(intent),
+                    ComposerHostPendingHistory::Unavailable(Box::new(intent)),
                 )
             })?;
         match reconciliation {
@@ -363,7 +347,7 @@ impl SyndicComposerHost {
                 self.mark_active_unavailable(pending.binding);
                 Err((
                     ComposerHostError::HistoryUnavailable,
-                    ComposerHostPendingHistory::Unavailable(intent),
+                    ComposerHostPendingHistory::Unavailable(Box::new(intent)),
                 ))
             }
             DraftHistoricalRootAdoptionReconciliationV1::ExactNew(outcome) => {
@@ -378,6 +362,7 @@ impl SyndicComposerHost {
         pending: Box<ComposerHostHistoryCoordinator>,
         outcome: DraftHistoricalRootAdoptionOutcomeV1,
     ) -> Result<RangeHistoryOutcome, (ComposerHostError, ComposerHostPendingHistory)> {
+        let became_dirty = !self.is_dirty();
         let proof = match outcome {
             DraftHistoricalRootAdoptionOutcomeV1::Committed(proof) => proof,
             DraftHistoricalRootAdoptionOutcomeV1::Rejected(_) => {
@@ -441,6 +426,7 @@ impl SyndicComposerHost {
             && active.binding == binding
         {
             active.unavailable = false;
+            self.lifecycle.adopted(binding, became_dirty);
         }
         Ok(RangeHistoryOutcome::Committed(RangeHistoryCommit::new(
             binding.range_binding(),
@@ -451,18 +437,6 @@ impl SyndicComposerHost {
             },
             binding.range_history_frontier(),
         )))
-    }
-
-    pub(super) fn detach_pending_history(&mut self) -> Result<(), ComposerHostError> {
-        let Some(mut pending) = self.pending_history.take() else {
-            return Ok(());
-        };
-        if matches!(pending, ComposerHostPendingHistory::Unavailable(_)) {
-            return Ok(());
-        }
-        pending.detach();
-        self.detached_history.push(pending);
-        Ok(())
     }
 }
 
@@ -511,7 +485,7 @@ fn history_unavailable(
 ) -> (ComposerHostError, ComposerHostPendingHistory) {
     (
         ComposerHostError::HistoryUnavailable,
-        ComposerHostPendingHistory::Unavailable(retained_intent(pending)),
+        ComposerHostPendingHistory::Unavailable(Box::new(retained_intent(pending))),
     )
 }
 
@@ -526,6 +500,6 @@ fn history_old_binding(
 ) -> (ComposerHostError, ComposerHostPendingHistory) {
     (
         ComposerHostError::OldBinding,
-        ComposerHostPendingHistory::Unavailable(retained_intent(pending)),
+        ComposerHostPendingHistory::Unavailable(Box::new(retained_intent(pending))),
     )
 }

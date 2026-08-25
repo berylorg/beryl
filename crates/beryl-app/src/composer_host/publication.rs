@@ -124,6 +124,7 @@ pub enum ComposerHostPublicationCompletion {
     DurableBaseConflict,
     SessionDisposed,
     OccupiedIdentityCollision,
+    ReconciliationCollision,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,6 +137,7 @@ pub enum ComposerHostDisposalCompletion {
     CancelledBeforeAdmission,
     DirtyConflict,
     OccupiedIdentityCollision,
+    ReconciliationCollision,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -149,7 +151,7 @@ pub enum ComposerHostPublicationUnavailable {
 
 pub(super) struct ComposerHostPublicationCoordinator {
     lane_generation: u64,
-    pub(super) lane: Option<ComposerHostPublicationLane>,
+    pub(super) lane: Option<Box<ComposerHostPublicationLane>>,
     #[cfg(feature = "test-faults")]
     convergence_read_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, syndic_storage::SyndicStorage) + Send>>,
@@ -183,12 +185,22 @@ struct PublicationIntent {
 }
 
 pub(super) struct PendingPublication {
-    ticket: ComposerHostPublicationTicket,
+    pub(super) ticket: ComposerHostPublicationTicket,
     intent: PublicationIntent,
-    stage: PublicationStage,
+    pub(super) stage: PublicationStage,
 }
 
-enum PublicationStage {
+impl PendingPublication {
+    pub(super) const fn binding(&self) -> ComposerHostBinding {
+        self.intent.binding
+    }
+
+    pub(super) fn is_cancelled(&self) -> bool {
+        self.intent.cancellation.is_cancelled()
+    }
+}
+
+pub(super) enum PublicationStage {
     Sealing {
         service: DraftMarkerSealService,
         flight: DraftMarkerSealFlight,
@@ -211,7 +223,7 @@ enum PublicationStage {
 }
 
 #[derive(Clone)]
-struct PreparedPublication {
+pub(super) struct PreparedPublication {
     syndic: PreparedDraftEditorCandidatePublicationV1,
     asset: PublicationAssetPlan,
 }
@@ -234,11 +246,11 @@ enum PublicationAssetPlan {
 }
 
 pub(super) struct PendingDisposal {
-    ticket: ComposerHostDisposalTicket,
+    pub(super) ticket: ComposerHostDisposalTicket,
     binding: ComposerHostBinding,
     prepared: PreparedDraftEditorCandidateSessionDisposeV1,
     cancellation: CommandCancellation,
-    reconciliation: Option<ReconciliationHandle>,
+    pub(super) reconciliation: Option<ReconciliationHandle>,
     terminal: Option<ComposerHostPublicationUnavailable>,
 }
 

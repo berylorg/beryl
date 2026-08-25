@@ -253,17 +253,22 @@ fn activated(
     operation: u8,
 ) -> (SyndicComposerHost, ComposerHostBinding) {
     let mut host = SyndicComposerHost::new(storage);
-    let binding = reactivate(&mut host, store, thread, session, operation);
+    let binding = reactivate(&mut host, storage, store, thread, session, operation);
     (host, binding)
 }
 
 fn reactivate(
     host: &mut SyndicComposerHost,
+    storage: SyndicStorage,
     store: &beryl_home_store::HomeStore,
     thread: beryl_model::SyndicThreadId,
     session: u8,
     operation: u8,
 ) -> ComposerHostBinding {
+    if host.binding().is_some() {
+        host.dispose_composer_service(store).unwrap();
+        *host = SyndicComposerHost::new(storage);
+    }
     let request = ComposerHostActivationRequest::new(
         thread,
         DraftEditorCandidateSessionIdV1::from_bytes([session; 16]),

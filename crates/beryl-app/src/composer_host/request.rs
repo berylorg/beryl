@@ -239,6 +239,9 @@ impl SyndicComposerHost {
         if key.binding() != active.binding {
             return Err(ComposerHostError::OldBinding);
         }
+        if active.unavailable || active.session_disposed {
+            return Err(ComposerHostError::PublicationUnavailable);
+        }
         Ok(active)
     }
 }

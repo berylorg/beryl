@@ -60,6 +60,7 @@ impl SyndicComposerHost {
             DraftPieceTransactionOutcomeV1::Committed(DraftPieceSettlementProofV1::Settlement(
                 settlement,
             )) => {
+                let became_dirty = !self.is_dirty();
                 let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure()
                 else {
                     return Err(ComposerHostError::MutationMalformed);
@@ -82,6 +83,7 @@ impl SyndicComposerHost {
                     active.storage_candidate = candidate;
                     self.pending.clear();
                     self.last_request_id = 0;
+                    self.lifecycle.adopted(binding, became_dirty);
                 }
                 ComposerHostMutationOutcome::Committed {
                     binding,

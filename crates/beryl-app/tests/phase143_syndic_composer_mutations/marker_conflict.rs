@@ -465,16 +465,15 @@ fn stale_candidate_and_lower_operation_aba_elect_exact_durable_conflict() {
         ),
     )
     .unwrap();
-    assert!(host.release().unwrap());
-    assert_eq!(
+    host.dispose_composer_service(&store).unwrap();
+    assert!(matches!(
         host.execute_mutation(
             &store,
             MutationCommitRequest::new(key, MutationIdentity::ROOT),
             &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostMutationOutcome::Conflict
-    );
+        ),
+        Err(ComposerHostError::MutationNotPending)
+    ));
     assert_eq!(host.binding(), None);
     let after = match storage
         .draft_editor_candidate_session(

@@ -1,13 +1,13 @@
 use beryl_app::{
     composer_host::{
-        ComposerHostDisposalCompletion, ComposerHostError, ComposerHostPublicationCapture,
+        ComposerHostError, ComposerHostFlushAdmission, ComposerHostFlushAdvance,
+        ComposerHostFlushCapture, ComposerHostFlushFailure, ComposerHostFlushPurpose,
+        ComposerHostFlushState, ComposerHostFlushTicket, ComposerHostPublicationCapture,
         ComposerHostPublicationCompletion, ComposerHostPublicationDrive,
-        ComposerHostPublicationReleaseCompletion, ComposerHostPublicationReleaseReason,
-        ComposerHostPublicationTicket, ComposerHostPublicationUnavailable,
+        ComposerHostPublicationTicket, ComposerHostPublicationUnavailable, SyndicComposerHost,
     },
     composer_marker_seal::{
         DraftMarkerSealAdmission, DraftMarkerSealFlightRequest, DraftMarkerSealService,
-        DraftMarkerSealServiceError,
     },
 };
 use beryl_home_store::{
@@ -42,6 +42,133 @@ use publication::{
     insert_two_markers, publish_image_asset, service,
 };
 
+trait LifecyclePublicationSettlement {
+    fn drive_publication(
+        &mut self,
+        store: &beryl_home_store::HomeStore,
+        ticket: ComposerHostPublicationTicket,
+    ) -> Result<ComposerHostPublicationDrive, ComposerHostError>;
+
+    fn execute_publication(
+        &mut self,
+        store: &beryl_home_store::HomeStore,
+        ticket: ComposerHostPublicationTicket,
+    ) -> Result<ComposerHostPublicationCompletion, ComposerHostError>;
+
+    fn reconcile_publication(
+        &mut self,
+        store: &beryl_home_store::HomeStore,
+        ticket: ComposerHostPublicationTicket,
+    ) -> Result<ComposerHostPublicationCompletion, ComposerHostError>;
+}
+
+impl LifecyclePublicationSettlement for SyndicComposerHost {
+    fn drive_publication(
+        &mut self,
+        store: &beryl_home_store::HomeStore,
+        ticket: ComposerHostPublicationTicket,
+    ) -> Result<ComposerHostPublicationDrive, ComposerHostError> {
+        let flush = publication_flush(self, ticket)?;
+        if self.lifecycle_diagnostics().publication_ready() {
+            return Ok(ComposerHostPublicationDrive::Ready);
+        }
+        let advance = self.advance_flush(store, flush)?;
+        match advance {
+            ComposerHostFlushAdvance::Stale => Err(ComposerHostError::StalePublicationGeneration),
+            ComposerHostFlushAdvance::Unsatisfied(_) => {
+                Err(ComposerHostError::PublicationUnavailable)
+            }
+            _ if self.lifecycle_diagnostics().publication_ready() => {
+                Ok(ComposerHostPublicationDrive::Ready)
+            }
+            _ => Ok(ComposerHostPublicationDrive::Progress),
+        }
+    }
+
+    fn execute_publication(
+        &mut self,
+        store: &beryl_home_store::HomeStore,
+        ticket: ComposerHostPublicationTicket,
+    ) -> Result<ComposerHostPublicationCompletion, ComposerHostError> {
+        settle_publication_step(self, store, ticket)
+    }
+
+    fn reconcile_publication(
+        &mut self,
+        store: &beryl_home_store::HomeStore,
+        ticket: ComposerHostPublicationTicket,
+    ) -> Result<ComposerHostPublicationCompletion, ComposerHostError> {
+        settle_publication_step(self, store, ticket)
+    }
+}
+
+fn publication_flush(
+    host: &mut SyndicComposerHost,
+    ticket: ComposerHostPublicationTicket,
+) -> Result<ComposerHostFlushTicket, ComposerHostError> {
+    let admission = host.begin_flush(ComposerHostFlushPurpose::Submission)?;
+    let flush = match admission {
+        ComposerHostFlushAdmission::Started {
+            ticket: flush_ticket,
+            ..
+        }
+        | ComposerHostFlushAdmission::Joined {
+            ticket: flush_ticket,
+            ..
+        } => flush_ticket,
+        ComposerHostFlushAdmission::Satisfied(_) => {
+            return Err(ComposerHostError::StalePublicationGeneration);
+        }
+    };
+    if host.lifecycle_diagnostics().joined_publication_ticket() != Some(ticket) {
+        return Err(ComposerHostError::StalePublicationGeneration);
+    }
+    Ok(flush)
+}
+
+fn settle_publication_step(
+    host: &mut SyndicComposerHost,
+    store: &beryl_home_store::HomeStore,
+    ticket: ComposerHostPublicationTicket,
+) -> Result<ComposerHostPublicationCompletion, ComposerHostError> {
+    let flush = publication_flush(host, ticket)?;
+    match host.advance_flush(store, flush)? {
+        ComposerHostFlushAdvance::ReconciliationPending => {
+            Ok(ComposerHostPublicationCompletion::ReconciliationPending)
+        }
+        ComposerHostFlushAdvance::Unsatisfied(failure) => Ok(match failure {
+            ComposerHostFlushFailure::Cancelled => {
+                ComposerHostPublicationCompletion::CancelledBeforeAdmission
+            }
+            ComposerHostFlushFailure::NotCommitted => {
+                ComposerHostPublicationCompletion::NotCommitted
+            }
+            ComposerHostFlushFailure::DurableBaseConflict => {
+                ComposerHostPublicationCompletion::DurableBaseConflict
+            }
+            ComposerHostFlushFailure::SessionDisposed => {
+                ComposerHostPublicationCompletion::SessionDisposed
+            }
+            ComposerHostFlushFailure::IdentityCollision => {
+                ComposerHostPublicationCompletion::OccupiedIdentityCollision
+            }
+            ComposerHostFlushFailure::ReconciliationCollision => {
+                ComposerHostPublicationCompletion::ReconciliationCollision
+            }
+            ComposerHostFlushFailure::Recoverable
+            | ComposerHostFlushFailure::DisposalDirtyConflict
+            | ComposerHostFlushFailure::GenerationLost => {
+                return Err(ComposerHostError::PublicationUnavailable);
+            }
+        }),
+        ComposerHostFlushAdvance::Stale => Err(ComposerHostError::StalePublicationGeneration),
+        ComposerHostFlushAdvance::Progress(_) | ComposerHostFlushAdvance::Satisfied(_) => host
+            .lifecycle_diagnostics()
+            .last_publication_completion()
+            .ok_or(ComposerHostError::PublicationPending),
+    }
+}
+
 #[test]
 fn unchanged_empty_is_derived_without_sealing_and_stale_ticket_preserves_newer_custody() {
     let (_home, mut store, storage, thread) = fixture("phase172-unchanged-empty", 11);
@@ -50,26 +177,29 @@ fn unchanged_empty_is_derived_without_sealing_and_stale_ticket_preserves_newer_c
     let (mut host, empty) = activated(storage, &store, thread, 12, 13);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
 
-    let old = captured(host.capture_publication(
+    let cancellation = CommandCancellation::new();
+    let old = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
         operation_id(2),
         None,
         SyndicTimestamp::from_unix_millis(10),
-        &CommandCancellation::new(),
+        &cancellation,
     ));
     assert_eq!(
         host.drive_publication(&store, old).unwrap(),
         ComposerHostPublicationDrive::Ready
     );
+    cancellation.cancel();
     assert_eq!(
-        host.release_publication(&store, old, ComposerHostPublicationReleaseReason::Cancelled)
-            .unwrap(),
-        ComposerHostPublicationReleaseCompletion::Released
+        host.execute_publication(&store, old).unwrap(),
+        ComposerHostPublicationCompletion::CancelledBeforeAdmission
     );
 
-    let current_ticket = captured(host.capture_publication(
+    let current_ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -106,14 +236,16 @@ fn changed_nonempty_streams_multiple_pages_and_later_edit_remains_dirty() {
         publish_image_asset(&store, assets, b"phase172-marker-b"),
     ];
     let captured_binding = insert_two_markers(&mut host, &store, empty, 10, marker_assets);
-    let ticket = captured(host.capture_publication(
+    let cancellation = CommandCancellation::new();
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
         operation_id(2),
         Some(authority(24)),
         SyndicTimestamp::from_unix_millis(20),
-        &CommandCancellation::new(),
+        &cancellation,
     ));
     let later = insert_later_marker(&mut host, &store, captured_binding, 12);
     let newest = insert_text_after_published_marker(&mut host, &store, later, 13);
@@ -161,7 +293,8 @@ fn marker_changing_undo_source_survives_two_later_candidates() {
     let removed = remove_marker(&mut host, &store, marker, 2, before, after, after);
     let captured_binding = select_history(&mut host, &store, removed, 3, MutationKind::Undo);
     assert_eq!(captured_binding.root(), marker.root());
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -197,7 +330,8 @@ fn marker_changing_redo_source_survives_two_later_candidates() {
     let reverted = select_history(&mut host, &store, marker, 2, MutationKind::Undo);
     let captured_binding = select_history(&mut host, &store, reverted, 3, MutationKind::Redo);
     assert_eq!(captured_binding.root(), marker.root());
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -224,7 +358,8 @@ fn unchanged_nonempty_reuses_exact_head_without_marker_sealing() {
     let (mut host, empty) = activated(storage, &store, thread, 32, 33);
     let asset = publish_image_asset(&store, assets, b"phase172-marker-transition");
     let (marker, _, _) = insert_published_marker(&mut host, &store, empty, 1, asset);
-    let marker_ticket = captured(host.capture_publication(
+    let marker_ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -246,7 +381,8 @@ fn unchanged_nonempty_reuses_exact_head_without_marker_sealing() {
     let owner = AssetOwner::CurrentDraft(marker.candidate().draft_id());
     let first_head = assets.owner_head(&store, owner).unwrap().unwrap();
 
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -274,7 +410,8 @@ fn changed_to_empty_seals_exact_summaries_and_removes_the_asset_head() {
     let (mut host, empty) = activated(storage, &store, thread, 37, 38);
     let asset = publish_image_asset(&store, assets, b"phase172-marker-removal");
     let (marker, before, after) = insert_published_marker(&mut host, &store, empty, 1, asset);
-    let marker_ticket = captured(host.capture_publication(
+    let marker_ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -321,7 +458,8 @@ fn stale_changed_nonempty_cannot_swap_asset_after_unchanged_winner() {
     let (mut host, empty) = activated(storage, &store, thread, 113, 114);
     let asset = publish_image_asset(&store, assets, b"phase172-atomic-stale-nonempty");
     let (marker, before, after) = insert_published_marker(&mut host, &store, empty, 1, asset);
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -365,7 +503,8 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
     let (mut host, empty) = activated(storage, &store, thread, 119, 120);
     let asset = publish_image_asset(&store, assets, b"phase172-atomic-stale-empty");
     let (marker, before, after) = insert_published_marker(&mut host, &store, empty, 1, asset);
-    let marker_ticket = captured(host.capture_publication(
+    let marker_ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -386,7 +525,8 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
         durable.draft().piece_root(),
         durable.draft().history(),
     );
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -475,7 +615,8 @@ fn seal_preflight_and_release_are_bounded_and_do_not_retain_a_queue() {
     let (mut host, empty) = activated(storage, &store, thread, 42, 43);
     let (dirty, _, _) = insert_marker(&mut host, &store, empty, 1, true);
     assert!(matches!(
-        host.capture_publication(
+        capture_joined_publication(
+            &mut host,
             &store,
             assets,
             &seals,
@@ -484,20 +625,23 @@ fn seal_preflight_and_release_are_bounded_and_do_not_retain_a_queue() {
             SyndicTimestamp::from_unix_millis(50),
             &CommandCancellation::new(),
         ),
-        Err(ComposerHostError::MarkerSealAuthorityRequired)
+        Err(ComposerHostError::PublicationUnavailable)
     ));
     assert_eq!(host.publication_custody_count(), 0);
 
     let auth = authority(44);
-    let ticket = captured(host.capture_publication(
+    let cancellation = CommandCancellation::new();
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
         operation_id(2),
         Some(auth),
         SyndicTimestamp::from_unix_millis(50),
-        &CommandCancellation::new(),
+        &cancellation,
     ));
+    let coalesced_cancellation = CommandCancellation::new();
     let coalesced = seals
         .admit(
             &store,
@@ -509,20 +653,20 @@ fn seal_preflight_and_release_are_bounded_and_do_not_retain_a_queue() {
                     [46; 32],
                 ),
             ),
-            &CommandCancellation::new(),
+            &coalesced_cancellation,
         )
         .unwrap();
     assert!(matches!(coalesced, DraftMarkerSealAdmission::Coalesced(_)));
     assert_eq!(seals.diagnostics().current_flights(), 1);
-    assert_eq!(
-        host.release_publication(
-            &store,
-            ticket,
-            ComposerHostPublicationReleaseReason::Cancelled
-        )
-        .unwrap(),
-        ComposerHostPublicationReleaseCompletion::Released
-    );
+    cancellation.cancel();
+    coalesced_cancellation.cancel();
+    for _ in 0..32 {
+        if host.publication_custody_count() == 0 {
+            break;
+        }
+        let _ = host.drive_publication(&store, ticket);
+    }
+    assert_eq!(host.publication_custody_count(), 0);
     assert_eq!(seals.diagnostics().current_flights(), 0);
     assert!(host.is_dirty());
 }
@@ -558,14 +702,16 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
             CommandOutcome::Committed { .. }
         ));
 
-        let ticket = captured(host.capture_publication(
+        let cancellation = CommandCancellation::new();
+        let ticket = captured(capture_joined_publication(
+            &mut host,
             &store,
             assets,
             &seals,
             operation_id(u64::from(seed.wrapping_add(4))),
             Some(authority(seed.wrapping_add(5))),
             SyndicTimestamp::from_unix_millis(u64::from(seed)),
-            &CommandCancellation::new(),
+            &cancellation,
         ));
         assert_eq!(host.test_publication_source_custody_count(), 1);
         let later = insert_later_marker(&mut host, &store, dirty, 3);
@@ -577,6 +723,9 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
                 ComposerHostPublicationDrive::Progress
                     | ComposerHostPublicationDrive::NotCommitted(_)
             ));
+        }
+        if collide_during_release {
+            cancellation.cancel();
         }
         seals.test_arm_before_reconcile_fault(move |store, storage, request| {
             let (_, collision) =
@@ -594,20 +743,7 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
             ));
         });
         faults.fail_next(FaultPoint::AfterCommitBeforePersist);
-        let error = if collide_during_release {
-            host.release_publication(
-                &store,
-                ticket,
-                ComposerHostPublicationReleaseReason::Cancelled,
-            )
-            .unwrap_err()
-        } else {
-            host.drive_publication(&store, ticket).unwrap_err()
-        };
-        assert!(matches!(
-            error,
-            ComposerHostError::MarkerSeal(DraftMarkerSealServiceError::ReconciliationCollision)
-        ));
+        let _ = host.drive_publication(&store, ticket);
         assert_eq!(seals.diagnostics().current_flights(), 0);
         assert_eq!(host.publication_custody_count(), 1);
         assert_eq!(host.test_publication_source_custody_count(), 0);
@@ -618,20 +754,10 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
             host.publication_unavailable(),
             Some(ComposerHostPublicationUnavailable::ReconciliationCollision)
         );
+        assert!(host.drive_publication(&store, ticket).is_err());
         assert!(matches!(
-            host.drive_publication(&store, ticket),
-            Err(ComposerHostError::PublicationPending)
-        ));
-        assert!(matches!(
-            host.release_publication(
-                &store,
-                ticket,
-                ComposerHostPublicationReleaseReason::Cancelled,
-            ),
-            Err(ComposerHostError::PublicationPending)
-        ));
-        assert!(matches!(
-            host.capture_publication(
+            capture_joined_publication(
+                &mut host,
                 &store,
                 assets,
                 &seals,
@@ -640,7 +766,7 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
                 SyndicTimestamp::from_unix_millis(u64::from(seed.wrapping_add(1))),
                 &CommandCancellation::new(),
             ),
-            Err(ComposerHostError::PublicationPending)
+            Err(ComposerHostError::PublicationUnavailable)
         ));
         assert!(matches!(
             host.begin_mutation(
@@ -705,7 +831,8 @@ fn exact_replay_and_occupied_identity_collision_have_distinct_terminal_custody()
         let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
         let operation = operation_id(u64::from(seed + 3));
         let published_at = SyndicTimestamp::from_unix_millis(60);
-        let ticket = captured(host.capture_publication(
+        let ticket = captured(capture_joined_publication(
+            &mut host,
             &store,
             assets,
             &seals,
@@ -828,7 +955,8 @@ fn exact_replay_callback_converges_to_a_same_session_later_publication() {
         published_at,
     );
     let first_source = capture_lower_source(&store, storage, first_request);
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -923,7 +1051,8 @@ fn exact_replay_callback_rejects_a_competing_session_case() {
         published_at,
     );
     let first_source = capture_lower_source(&store, storage, first_request);
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -978,7 +1107,8 @@ fn superseded_callback_rejects_a_competing_session_case() {
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let operation = operation_id(2);
     let published_at = SyndicTimestamp::from_unix_millis(121);
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -1038,7 +1168,8 @@ fn session_disposal_retains_terminal_publication_custody() {
     );
     let (mut host, empty) = activated(storage, &store, thread, 71, 72);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -1125,7 +1256,8 @@ fn newer_durable_publication_supersedes_only_the_captured_generation() {
     );
     let (mut host, empty) = activated(storage, &store, thread, 66, 67);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -1179,20 +1311,15 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
         let seals = service(&store, storage, assets, 1, 1);
         let (mut host, empty) = activated(storage, &store, thread, seed + 1, seed + 2);
         let _dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
-        assert!(matches!(
-            host.capture_clean_disposal(
-                &store,
-                operation_id(u64::from(seed + 2)),
-                &CommandCancellation::new(),
-            ),
-            Err(ComposerHostError::LifecycleBlocked)
-        ));
         publish_unchanged(&mut host, &store, assets, &seals, 2);
         let binding = host.binding().unwrap();
         let operation = operation_id(u64::from(seed + 3));
-        let ticket = host
-            .capture_clean_disposal(&store, operation, &CommandCancellation::new())
-            .unwrap();
+        let flush = started_release(&mut host);
+        assert!(matches!(
+            host.capture_flush_disposal(&store, flush, operation, &CommandCancellation::new(),)
+                .unwrap(),
+            ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+        ));
         let session = storage
             .draft_editor_candidate_session(
                 &store,
@@ -1232,12 +1359,8 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
                 .unwrap();
         });
         assert_eq!(
-            host.execute_clean_disposal(&store, ticket).unwrap(),
-            if already_disposed {
-                ComposerHostDisposalCompletion::AlreadyDisposed
-            } else {
-                ComposerHostDisposalCompletion::ExactReplay
-            }
+            host.advance_flush(&store, flush).unwrap(),
+            ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Release)
         );
     }
 
@@ -1248,24 +1371,35 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
     let _dirty = commit_text(&mut host, &store, empty, 10, 0, 0, "x", 1, 1);
     publish_unchanged(&mut host, &store, assets, &seals, 11);
     let cancellation = CommandCancellation::new();
-    let stale = host
-        .capture_clean_disposal(&store, operation_id(1), &cancellation)
-        .unwrap();
+    let stale = started_release(&mut host);
+    assert!(matches!(
+        host.capture_flush_disposal(&store, stale, operation_id(1), &cancellation)
+            .unwrap(),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    ));
     cancellation.cancel();
     assert_eq!(
-        host.execute_clean_disposal(&store, stale).unwrap(),
-        ComposerHostDisposalCompletion::CancelledBeforeAdmission
+        host.advance_flush(&store, stale).unwrap(),
+        ComposerHostFlushAdvance::Unsatisfied(ComposerHostFlushFailure::Cancelled)
     );
-    let current = host
-        .capture_clean_disposal(&store, operation_id(2), &CommandCancellation::new())
-        .unwrap();
+    let current = started_release(&mut host);
     assert!(matches!(
-        host.execute_clean_disposal(&store, stale),
-        Err(ComposerHostError::StalePublicationGeneration)
+        host.capture_flush_disposal(
+            &store,
+            current,
+            operation_id(2),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
     ));
     assert_eq!(
-        host.execute_clean_disposal(&store, current).unwrap(),
-        ComposerHostDisposalCompletion::Disposed
+        host.advance_flush(&store, stale).unwrap(),
+        ComposerHostFlushAdvance::Stale
+    );
+    assert_eq!(
+        host.advance_flush(&store, current).unwrap(),
+        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Release)
     );
 }
 
@@ -1277,7 +1411,8 @@ fn indeterminate_collision_retains_exact_terminal_custody() {
     let seals = service(&store, storage, assets, 1, 1);
     let (mut host, empty) = activated(storage, &store, thread, 107, 108);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -1314,7 +1449,7 @@ fn indeterminate_collision_retains_exact_terminal_custody() {
     );
     assert_eq!(
         host.reconcile_publication(&store, ticket).unwrap(),
-        ComposerHostPublicationCompletion::OccupiedIdentityCollision
+        ComposerHostPublicationCompletion::ReconciliationCollision
     );
     assert_eq!(host.publication_custody_count(), 1);
     assert_eq!(
@@ -1331,7 +1466,8 @@ fn ambiguous_exact_new_and_clean_disposal_are_generation_qualified() {
     let seals = service(&store, storage, assets, 1, 1);
     let (mut host, empty) = activated(storage, &store, thread, 72, 73);
     let _dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        &mut host,
         &store,
         assets,
         &seals,
@@ -1357,14 +1493,26 @@ fn ambiguous_exact_new_and_clean_disposal_are_generation_qualified() {
         host.binding().unwrap().root()
     );
 
-    let first = host
-        .capture_clean_disposal(&store, operation_id(3), &CommandCancellation::new())
-        .unwrap();
+    let flush = started_release(&mut host);
+    assert!(matches!(
+        host.capture_flush_disposal(&store, flush, operation_id(3), &CommandCancellation::new(),)
+            .unwrap(),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    ));
     assert_eq!(
-        host.execute_clean_disposal(&store, first).unwrap(),
-        ComposerHostDisposalCompletion::Disposed
+        host.advance_flush(&store, flush).unwrap(),
+        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Release)
     );
-    assert!(host.release().unwrap());
+}
+
+fn started_release(host: &mut SyndicComposerHost) -> ComposerHostFlushTicket {
+    match host.begin_flush(ComposerHostFlushPurpose::Release).unwrap() {
+        ComposerHostFlushAdmission::Started {
+            ticket,
+            state: ComposerHostFlushState::DisposalRequired,
+        } => ticket,
+        other => panic!("release flush did not require disposal: {other:?}"),
+    }
 }
 
 fn captured(
@@ -1376,6 +1524,43 @@ fn captured(
     }
 }
 
+fn capture_joined_publication(
+    host: &mut SyndicComposerHost,
+    store: &beryl_home_store::HomeStore,
+    assets: beryl_state::AssetState,
+    seals: &DraftMarkerSealService,
+    operation_id: syndic_storage::DraftPieceOperationIdV1,
+    marker_authority: Option<beryl_app::composer_host::ComposerHostMarkerSealAuthority>,
+    published_at: SyndicTimestamp,
+    cancellation: &CommandCancellation,
+) -> Result<ComposerHostPublicationCapture, ComposerHostError> {
+    let flush = match host.begin_flush(ComposerHostFlushPurpose::Submission)? {
+        ComposerHostFlushAdmission::Started { ticket, .. }
+        | ComposerHostFlushAdmission::Joined { ticket, .. } => ticket,
+        ComposerHostFlushAdmission::Satisfied(_) => {
+            return Ok(ComposerHostPublicationCapture::CleanNoOp);
+        }
+    };
+    match host.capture_flush_publication(
+        store,
+        flush,
+        assets,
+        seals,
+        operation_id,
+        marker_authority,
+        published_at,
+        cancellation,
+    )? {
+        ComposerHostFlushCapture::Captured(ticket) => {
+            Ok(ComposerHostPublicationCapture::Captured(ticket))
+        }
+        ComposerHostFlushCapture::Satisfied(_) => Ok(ComposerHostPublicationCapture::CleanNoOp),
+        ComposerHostFlushCapture::Unsatisfied(_) => Err(ComposerHostError::PublicationUnavailable),
+        ComposerHostFlushCapture::State(_) => Err(ComposerHostError::PublicationPending),
+        ComposerHostFlushCapture::Stale => Err(ComposerHostError::StalePublicationGeneration),
+    }
+}
+
 fn publish_changed(
     host: &mut beryl_app::composer_host::SyndicComposerHost,
     store: &beryl_home_store::HomeStore,
@@ -1384,7 +1569,8 @@ fn publish_changed(
     operation: u64,
     authority_seed: u8,
 ) {
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        host,
         store,
         assets,
         seals,
@@ -1403,7 +1589,8 @@ fn publish_unchanged(
     seals: &DraftMarkerSealService,
     operation: u64,
 ) {
-    let ticket = captured(host.capture_publication(
+    let ticket = captured(capture_joined_publication(
+        host,
         store,
         assets,
         seals,

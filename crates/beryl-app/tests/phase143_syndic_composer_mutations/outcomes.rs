@@ -27,22 +27,19 @@ fn detached_late_commit_is_stale_conflict_and_cannot_block_or_adopt_into_fresh_b
     let (mut host, old_binding) = activated(storage, &store, thread, 98, 99);
     let (old_key, old_finish) = stage_text(&mut host, &store, old_binding, 7, 0, 0, "old", 3, 1);
     host.finish_mutation_input(&store, old_finish).unwrap();
-    assert!(host.release().unwrap());
-
-    let fresh = reactivate(&mut host, &store, thread, 100, 101);
+    let fresh = reactivate(&mut host, storage, &store, thread, 100, 101);
     let fresh = commit_text(&mut host, &store, fresh, 7, 0, 0, "fresh", 5, 1);
     assert_eq!(host.binding(), Some(fresh));
     assert_eq!(candidate_text(storage, &store, fresh), b"fresh");
 
-    assert_eq!(
+    assert!(matches!(
         host.execute_mutation(
             &store,
             MutationCommitRequest::new(old_key, MutationIdentity::ROOT),
             &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostMutationOutcome::Conflict
-    );
+        ),
+        Err(ComposerHostError::MutationNotPending)
+    ));
     assert_eq!(host.binding(), Some(fresh));
     assert_eq!(candidate_text(storage, &store, fresh), b"fresh");
     assert!(matches!(
@@ -104,19 +101,16 @@ fn detached_late_terminal_conflict_cannot_make_fresh_binding_unavailable() {
         ),
     )
     .unwrap();
-    assert!(host.release().unwrap());
-
-    let fresh = reactivate(&mut host, &store, thread, 106, 107);
+    let fresh = reactivate(&mut host, storage, &store, thread, 106, 107);
     let fresh = commit_text(&mut host, &store, fresh, 8, 0, 0, "fresh", 5, 1);
-    assert_eq!(
+    assert!(matches!(
         host.execute_mutation(
             &store,
             MutationCommitRequest::new(old_key, MutationIdentity::ROOT),
             &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostMutationOutcome::Conflict
-    );
+        ),
+        Err(ComposerHostError::MutationNotPending)
+    ));
     assert_eq!(host.binding(), Some(fresh));
     let fresh = commit_text(&mut host, &store, fresh, 1, 5, 5, "!", 6, 1);
     assert_eq!(candidate_text(storage, &store, fresh), b"fresh!");
@@ -144,20 +138,18 @@ fn detached_late_cancellation_is_stale_conflict_and_leaves_fresh_slot_usable() {
         ),
     )
     .unwrap();
-    assert!(host.release().unwrap());
-    let fresh = reactivate(&mut host, &store, thread, 111, 112);
+    let fresh = reactivate(&mut host, storage, &store, thread, 111, 112);
     let fresh = commit_text(&mut host, &store, fresh, 9, 0, 0, "fresh", 5, 1);
     let cancellation = CommandCancellation::new();
     cancellation.cancel();
-    assert_eq!(
+    assert!(matches!(
         host.execute_mutation(
             &store,
             MutationCommitRequest::new(old_key, MutationIdentity::ROOT),
             &cancellation,
-        )
-        .unwrap(),
-        ComposerHostMutationOutcome::Conflict
-    );
+        ),
+        Err(ComposerHostError::MutationNotPending)
+    ));
     assert_eq!(host.binding(), Some(fresh));
     let fresh = commit_text(&mut host, &store, fresh, 1, 5, 5, "!", 6, 1);
     assert_eq!(candidate_text(storage, &store, fresh), b"fresh!");
@@ -441,19 +433,18 @@ fn released_finished_cancellation_settles_as_stale_conflict_without_adoption() {
     let (mut host, base) = activated(storage, &store, thread, 62, 63);
     let (key, finish) = stage_text(&mut host, &store, base, 64, 0, 0, "cancel", 6, 1);
     host.finish_mutation_input(&store, finish).unwrap();
-    assert!(host.release().unwrap());
+    host.dispose_composer_service(&store).unwrap();
     assert_eq!(host.binding(), None);
     let cancellation = CommandCancellation::new();
     cancellation.cancel();
-    assert_eq!(
+    assert!(matches!(
         host.execute_mutation(
             &store,
             MutationCommitRequest::new(key, MutationIdentity::ROOT),
             &cancellation
-        )
-        .unwrap(),
-        ComposerHostMutationOutcome::Conflict
-    );
+        ),
+        Err(ComposerHostError::MutationNotPending)
+    ));
     assert_eq!(host.mutation_status(), None);
     let fresh = activated(storage, &store, thread, 65, 66).1;
     assert_eq!(fresh.root(), base.root());

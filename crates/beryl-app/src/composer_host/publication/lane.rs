@@ -18,7 +18,7 @@ impl SyndicComposerHost {
 
     #[cfg(feature = "test-faults")]
     pub fn test_publication_source_custody_count(&self) -> usize {
-        match self.publication.lane.as_ref() {
+        match self.publication.lane.as_deref() {
             Some(ComposerHostPublicationLane::Publication(pending)) => {
                 usize::from(pending.intent.source.is_some())
             }
@@ -40,7 +40,7 @@ impl SyndicComposerHost {
     }
 
     pub fn publication_unavailable(&self) -> Option<ComposerHostPublicationUnavailable> {
-        match self.publication.lane.as_ref() {
+        match self.publication.lane.as_deref() {
             Some(ComposerHostPublicationLane::Publication(pending)) => match &pending.stage {
                 PublicationStage::Terminal { reason, .. } => Some(*reason),
                 _ => None,
@@ -51,7 +51,7 @@ impl SyndicComposerHost {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn capture_publication(
+    pub(in crate::composer_host) fn capture_lifecycle_publication(
         &mut self,
         store: &HomeStore,
         assets: AssetState,
@@ -151,17 +151,17 @@ impl SyndicComposerHost {
         };
 
         self.publication.lane_generation = lane_generation;
-        self.publication.lane = Some(ComposerHostPublicationLane::Publication(
+        self.publication.lane = Some(Box::new(ComposerHostPublicationLane::Publication(
             PendingPublication {
                 ticket,
                 intent,
                 stage,
             },
-        ));
+        )));
         Ok(ComposerHostPublicationCapture::Captured(ticket))
     }
 
-    pub fn drive_publication(
+    pub(in crate::composer_host) fn drive_publication_lane(
         &mut self,
         store: &HomeStore,
         ticket: ComposerHostPublicationTicket,
@@ -255,7 +255,7 @@ impl SyndicComposerHost {
         }
     }
 
-    pub fn release_publication(
+    pub(in crate::composer_host) fn release_publication_lane(
         &mut self,
         store: &HomeStore,
         ticket: ComposerHostPublicationTicket,
@@ -377,7 +377,7 @@ impl SyndicComposerHost {
         &self,
         ticket: ComposerHostPublicationTicket,
     ) -> Result<&PendingPublication, ComposerHostError> {
-        match self.publication.lane.as_ref() {
+        match self.publication.lane.as_deref() {
             Some(ComposerHostPublicationLane::Publication(pending))
                 if pending.ticket == ticket
                     && ticket.host_generation == pending.intent.binding.host_generation() =>
@@ -393,7 +393,7 @@ impl SyndicComposerHost {
         &mut self,
         ticket: ComposerHostPublicationTicket,
     ) -> Result<&mut PendingPublication, ComposerHostError> {
-        match self.publication.lane.as_mut() {
+        match self.publication.lane.as_deref_mut() {
             Some(ComposerHostPublicationLane::Publication(pending)) if pending.ticket == ticket => {
                 Ok(pending)
             }

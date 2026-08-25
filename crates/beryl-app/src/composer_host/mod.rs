@@ -1,6 +1,7 @@
 mod activation;
 mod error;
 mod history;
+mod lifecycle;
 mod model;
 mod mutation;
 mod publication;
@@ -13,6 +14,7 @@ use syndic_storage::{DraftEditorCandidateActivationBindingV1, SyndicStorage};
 
 pub use error::ComposerHostError;
 pub use history::{ComposerHostHistoryStatus, ComposerHostRetainedHistoryIntent};
+pub use lifecycle::*;
 pub use model::*;
 use mutation::ComposerHostPendingMutation;
 pub use mutation::{
@@ -37,7 +39,7 @@ const DEFAULT_SETTLEMENT_CUSTODY_CAPACITY: usize = 4;
 
 pub struct SyndicComposerHost {
     storage: SyndicStorage,
-    active: Option<ActiveComposerHost>,
+    active: Option<Box<ActiveComposerHost>>,
     last_generation: Option<ComposerHostGeneration>,
     last_request_id: u64,
     pending: BTreeMap<u64, ComposerHostPendingRequest>,
@@ -46,10 +48,12 @@ pub struct SyndicComposerHost {
     pending_history: Option<history::ComposerHostPendingHistory>,
     detached_history: Vec<history::ComposerHostPendingHistory>,
     settlement_custody_capacity: usize,
-    last_mutation_identity: Option<(ComposerHostBinding, mutation::ComposerHostMutationIdentity)>,
-    last_history_identity: Option<(ComposerHostBinding, gpui_text_input::RangeHistoryIntent)>,
-    last_history_outcome: Option<gpui_text_input::RangeHistoryOutcome>,
+    last_mutation_identity:
+        Option<Box<(ComposerHostBinding, mutation::ComposerHostMutationIdentity)>>,
+    last_history_identity: Option<Box<(ComposerHostBinding, gpui_text_input::RangeHistoryIntent)>>,
+    last_history_outcome: Option<Box<gpui_text_input::RangeHistoryOutcome>>,
     publication: publication::ComposerHostPublicationCoordinator,
+    lifecycle: lifecycle::ComposerHostLifecycleCoordinator,
     #[cfg(feature = "test-faults")]
     activation_after_selector_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
@@ -98,6 +102,7 @@ impl SyndicComposerHost {
             last_history_identity: None,
             last_history_outcome: None,
             publication: publication::ComposerHostPublicationCoordinator::new(),
+            lifecycle: lifecycle::ComposerHostLifecycleCoordinator::new(),
             #[cfg(feature = "test-faults")]
             activation_after_selector_fault: None,
             #[cfg(feature = "test-faults")]
@@ -138,35 +143,6 @@ impl SyndicComposerHost {
 
     pub fn pending_request_count(&self) -> usize {
         self.pending.len()
-    }
-
-    pub fn release(&mut self) -> Result<bool, ComposerHostError> {
-        if self.publication.lane.is_some() {
-            return Err(ComposerHostError::LifecycleBlocked);
-        }
-        self.detach_live_operation()?;
-        let released = self.active.take().is_some();
-        self.pending.clear();
-        self.last_request_id = 0;
-        Ok(released)
-    }
-
-    fn detach_live_operation(&mut self) -> Result<(), ComposerHostError> {
-        self.detach_pending_history()?;
-        if matches!(
-            self.pending_mutation,
-            Some(ComposerHostPendingMutation::Unavailable(_))
-        ) {
-            self.pending_mutation = None;
-            return Ok(());
-        }
-        if self.pending_mutation.is_none() {
-            return Ok(());
-        }
-        let mut pending = self.pending_mutation.take().unwrap();
-        pending.detach();
-        self.detached_mutations.push(pending);
-        Ok(())
     }
 
     pub const fn settlement_custody_capacity(&self) -> usize {
@@ -262,6 +238,13 @@ impl SyndicComposerHost {
     ) {
         assert!(self.publication_before_execute_fault.is_none());
         self.publication_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_last_settlement_identity_custody_count(&self) -> usize {
+        usize::from(self.last_mutation_identity.is_some())
+            + usize::from(self.last_history_identity.is_some())
+            + usize::from(self.last_history_outcome.is_some())
     }
 
     fn next_generation(&self) -> Result<ComposerHostGeneration, ComposerHostError> {

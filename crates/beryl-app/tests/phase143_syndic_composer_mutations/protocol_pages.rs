@@ -347,12 +347,10 @@ fn operation_highwater_and_lane_receipts_reset_on_rebind_release_and_fresh_sessi
     let (mut host, base) = activated(storage, &store, thread, 62, 63);
     begin_then_cancel(&mut host, &store, base, 100);
 
-    assert!(host.release().unwrap());
-    let rebound = reactivate(&mut host, &store, thread, 62, 63);
+    let rebound = reactivate(&mut host, storage, &store, thread, 62, 63);
     begin_then_cancel(&mut host, &store, rebound, 1);
 
-    assert!(host.release().unwrap());
-    let fresh = reactivate(&mut host, &store, thread, 65, 66);
+    let fresh = reactivate(&mut host, storage, &store, thread, 65, 66);
     begin_then_cancel(&mut host, &store, fresh, 1);
 }
 

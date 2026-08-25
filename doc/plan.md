@@ -29,30 +29,20 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 172: Publish And Reconcile Captured Draft Candidates (finished)
+# Phase 173: Coordinate Autosave, Flush Barriers, And Lifecycle Release (finished)
 
-Composer publication now uses one generation-qualified lane and a first-class opaque Syndic
-capture-then-prepare source. The bounded process-local source authenticates ordinary or historical
-candidate adoption before marker work, survives later N+k adoption without reconstruction, and is
-consumed beside internally derived marker evidence. Unchanged and streamed changed-marker branches
-use the existing final canonical request/receipt and one atomic Syndic/Asset command; replay,
-supersession, collision, disposal, generation loss, and terminal release retain only exact bounded
-custody. Revision-fenced callback convergence accepts coherent same-session descendants, rejects
-external durable-base advance, and cannot reinstall an older selector.
+The composer host now owns one generation-qualified autosave scheduler and one joined lifecycle
+flush barrier with constant-size process-local custody. Disposing barriers freeze new edit and
+history admission while draining already-admitted work; publication, ambiguous reconciliation,
+marker noncommit, cancellation, stale callbacks, supersession, and service disposal converge through
+typed lifecycle cuts without retaining waiter collections, payloads, marker sets, inverse edits,
+root graphs, or history-sized RAM. Exact-clean disposal releases every session, publication, marker-
+flight, timer, barrier, pending operation, and last-outcome identity.
 
-Locked verification passed 19 Phase 172 app cases, 12 lower publication cases, 6 migrated marker-
-summary/evidence cases, and 24 Phase 171 regressions; default checks, formatting, scoped hygiene,
-and the final independent adversarial review passed with no findings. The accepted correction is
-recorded in `doc/failures/composer-captured-publication-frontier.md`.
-
-# Phase 173: Coordinate Autosave, Flush Barriers, And Lifecycle Release (pending)
-
-Arm the first clean-to-dirty deadline without edit debounce, apply settings and recoverable-failure
-rearm rules, and reject stale timer/settings completions. Join multiple dependent flush waiters to
-one admitted publication, repeat superseded work to the newest eligible frontier, and leave ordinary
-failures or terminal unavailability unsatisfied. Require successful flush and exact clean disposal
-before switch, close, Exit, submission handoff, or ordinary release; reject post-disposal work and
-release all timer, barrier, publication, session, and generation ownership on every terminal path.
+Locked verification passed 28 Phase 173 cases, 10 Phase 166 ordinary-stack cases, 43 Phase 171/172
+regressions, 34 affected Phase 141/143 cases, and the lower HomeStore ExactOld reconciliation proof.
+Package checks, formatting, scoped hygiene, and the fresh independent adversarial review passed with
+no findings.
 
 # Phase 174: Materialize Exact Draft Roots For Submission (pending)
 

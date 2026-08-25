@@ -45,6 +45,8 @@ fn sequential_undo_redo_branching_and_fresh_activation_use_compact_durable_autho
     );
     assert_eq!(host.binding(), Some(branched));
 
+    host.dispose_composer_service(&store).unwrap();
+    host = SyndicComposerHost::new(storage);
     let fresh = reactivate(&mut host, &store, thread, 44, 45);
     assert_eq!(candidate_text(storage, &store, fresh), b"");
     drop(store);
@@ -52,7 +54,8 @@ fn sequential_undo_redo_branching_and_fresh_activation_use_compact_durable_autho
     let (mut restarted, fresh) = activated(storage, &store, thread, 46, 47);
     assert_eq!(candidate_text(storage, &store, fresh), b"");
     assert!(!fresh.range_history_frontier().undo_available);
-    assert!(!restarted.release().unwrap_or(false) || restarted.binding().is_none());
+    restarted.dispose_composer_service(&store).unwrap();
+    assert!(restarted.binding().is_none());
 }
 
 #[test]
@@ -165,36 +168,33 @@ fn identical_retry_replays_pre_admission_cancel_without_reissuing_adoption() {
 }
 
 #[test]
-fn rebind_release_late_completion_and_shared_custody_are_generation_exact() {
+fn service_replacement_cuts_late_history_completion_and_custody_exactly() {
     let (_home, store, storage, thread) = fixture("phase166_lifecycle", 61);
     let mut host = SyndicComposerHost::with_settlement_custody_capacity(storage, NonZeroUsize::MIN);
     let empty = reactivate(&mut host, &store, thread, 62, 63);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let intent = history_intent(a, 2, MutationKind::Undo, position(1));
     host.begin_history_selection(&store, a, intent).unwrap();
+    host.dispose_composer_service(&store).unwrap();
+    assert_eq!(host.settlement_custody_in_use(), 0);
+    assert!(matches!(
+        host.execute_history_selection(&store, intent.key(), &CommandCancellation::new()),
+        Err(ComposerHostError::HistoryNotPending)
+    ));
+    host = SyndicComposerHost::with_settlement_custody_capacity(storage, NonZeroUsize::MIN);
     let replacement = reactivate(&mut host, &store, thread, 64, 65);
-    assert_eq!(host.settlement_custody_in_use(), 1);
-    let blocked = history_intent(replacement, 3, MutationKind::Undo, position(0));
-    assert!(matches!(
-        host.begin_history_selection(&store, replacement, blocked),
-        Err(ComposerHostError::SettlementCustodyLimit)
-    ));
-    assert!(matches!(
-        host.execute_history_selection(&store, intent.key(), &CommandCancellation::new())
-            .unwrap(),
-        RangeHistoryOutcome::Committed(_)
-    ));
     assert_eq!(host.binding(), Some(replacement));
     assert_eq!(host.settlement_custody_in_use(), 0);
 
     let pending = history_intent(replacement, 4, MutationKind::Undo, position(0));
     host.begin_history_selection(&store, replacement, pending)
         .unwrap();
-    assert!(host.release().unwrap());
+    host.dispose_composer_service(&store).unwrap();
     assert_eq!(host.binding(), None);
-    let _ = host
-        .execute_history_selection(&store, pending.key(), &CommandCancellation::new())
-        .unwrap();
+    assert!(matches!(
+        host.execute_history_selection(&store, pending.key(), &CommandCancellation::new()),
+        Err(ComposerHostError::HistoryNotPending)
+    ));
     assert_eq!(host.binding(), None);
     assert_eq!(host.settlement_custody_in_use(), 0);
 }

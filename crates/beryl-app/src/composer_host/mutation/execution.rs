@@ -42,6 +42,9 @@ impl SyndicComposerHost {
         binding: ComposerHostBinding,
         request: MutationBeginRequest,
     ) -> Result<(), ComposerHostError> {
+        if self.lifecycle.freezes_admission() {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
         if self.pending_history.is_some() {
             return Err(ComposerHostError::HistoryPending);
         }
@@ -58,7 +61,7 @@ impl SyndicComposerHost {
         if active.binding != binding {
             return Err(ComposerHostError::OldBinding);
         }
-        if active.unavailable {
+        if active.unavailable || active.session_disposed {
             return Err(ComposerHostError::HistoryUnavailable);
         }
         validate_store(binding, store)?;
@@ -119,18 +122,18 @@ impl SyndicComposerHost {
             ) {
                 return Err(ComposerHostError::MutationWorkPending);
             }
-            self.last_mutation_identity = Some((binding, identity));
-            self.pending_mutation = Some(ComposerHostPendingMutation::Terminal(
+            self.last_mutation_identity = Some(Box::new((binding, identity)));
+            self.pending_mutation = Some(ComposerHostPendingMutation::Terminal(Box::new(
                 ComposerHostTerminalMutation {
                     binding,
                     key: proposal.key(),
                     outcome: ComposerHostMutationOutcome::Conflict,
                     detached: false,
                 },
-            ));
+            )));
             return Ok(());
         }
-        if let Some((last_binding, last)) = &self.last_mutation_identity
+        if let Some((last_binding, last)) = self.last_mutation_identity.as_deref()
             && *last_binding == binding
         {
             match identity.operation().cmp(&last.operation()) {
@@ -153,7 +156,7 @@ impl SyndicComposerHost {
             .cloned()
             .ok_or(ComposerHostError::MutationMalformed)?;
         let head = prepared.target_head().clone();
-        self.last_mutation_identity = Some((binding, identity));
+        self.last_mutation_identity = Some(Box::new((binding, identity)));
         self.pending_mutation = Some(ComposerHostPendingMutation::Active(Box::new(
             ComposerHostMutationCoordinator {
                 binding,
@@ -373,8 +376,9 @@ impl SyndicComposerHost {
             | Ok(ComposerHostMutationOutcome::Error) => {}
             Ok(ComposerHostMutationOutcome::Conflict)
             | Err(ComposerHostError::MutationUnavailable) => {
-                self.pending_mutation =
-                    Some(ComposerHostPendingMutation::Unavailable(pending.intent()));
+                self.pending_mutation = Some(ComposerHostPendingMutation::Unavailable(Box::new(
+                    pending.intent(),
+                )));
             }
             Err(_) => self.restore_active_mutation(pending),
         }

@@ -343,8 +343,8 @@ impl SyndicComposerHost {
 
 pub(super) enum ComposerHostPendingMutation {
     Active(Box<ComposerHostMutationCoordinator>),
-    Terminal(ComposerHostTerminalMutation),
-    Unavailable(ComposerHostRetainedMutationIntent),
+    Terminal(Box<ComposerHostTerminalMutation>),
+    Unavailable(Box<ComposerHostRetainedMutationIntent>),
 }
 
 impl ComposerHostPendingMutation {
@@ -353,14 +353,6 @@ impl ComposerHostPendingMutation {
             Self::Active(pending) => pending.begin.proposal().key(),
             Self::Terminal(terminal) => terminal.key,
             Self::Unavailable(intent) => intent.begin.proposal().key(),
-        }
-    }
-
-    pub(super) fn detach(&mut self) {
-        match self {
-            Self::Active(pending) => pending.detached = true,
-            Self::Terminal(terminal) => terminal.detached = true,
-            Self::Unavailable(_) => {}
         }
     }
 }

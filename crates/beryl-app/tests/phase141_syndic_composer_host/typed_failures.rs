@@ -21,11 +21,14 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
             binding.candidate().session_id(),
         ),
     ));
+    host.dispose_composer_service(&store).unwrap();
+    let mut replacement = SyndicComposerHost::new(storage);
     assert!(matches!(
-        host.activate(&store, request, &CommandCancellation::new()),
+        replacement.activate(&store, request, &CommandCancellation::new()),
         Ok(ComposerHostActivationOutcome::StaleDisposed(_))
     ));
-    assert_eq!(host.binding(), Some(binding));
+    assert_eq!(host.binding(), None);
+    assert_eq!(replacement.binding(), None);
 
     let (_home, store, storage, thread) = fixture("missing-root", 84);
     populate(storage, &store, thread, 85);

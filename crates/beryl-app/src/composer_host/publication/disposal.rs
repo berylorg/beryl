@@ -6,7 +6,7 @@ use syndic_storage::{
 use super::*;
 
 impl SyndicComposerHost {
-    pub fn capture_clean_disposal(
+    pub(in crate::composer_host) fn capture_clean_disposal(
         &mut self,
         store: &HomeStore,
         operation_id: DraftPieceOperationIdV1,
@@ -39,18 +39,20 @@ impl SyndicComposerHost {
             lane_generation,
         };
         self.publication.lane_generation = lane_generation;
-        self.publication.lane = Some(ComposerHostPublicationLane::Disposal(PendingDisposal {
-            ticket,
-            binding: active.binding,
-            prepared,
-            cancellation: cancellation.clone(),
-            reconciliation: None,
-            terminal: None,
-        }));
+        self.publication.lane = Some(Box::new(ComposerHostPublicationLane::Disposal(
+            PendingDisposal {
+                ticket,
+                binding: active.binding,
+                prepared,
+                cancellation: cancellation.clone(),
+                reconciliation: None,
+                terminal: None,
+            },
+        )));
         Ok(ticket)
     }
 
-    pub fn execute_clean_disposal(
+    pub(in crate::composer_host) fn execute_clean_disposal(
         &mut self,
         store: &HomeStore,
         ticket: ComposerHostDisposalTicket,
@@ -87,7 +89,7 @@ impl SyndicComposerHost {
         }
     }
 
-    pub fn reconcile_clean_disposal(
+    pub(in crate::composer_host) fn reconcile_clean_disposal(
         &mut self,
         store: &HomeStore,
         ticket: ComposerHostDisposalTicket,
@@ -117,7 +119,7 @@ impl SyndicComposerHost {
                     ticket,
                     ComposerHostPublicationUnavailable::ReconciliationCollision,
                 )?;
-                return Ok(ComposerHostDisposalCompletion::OccupiedIdentityCollision);
+                return Ok(ComposerHostDisposalCompletion::ReconciliationCollision);
             }
         };
         self.settle_disposal(store, ticket, binding, prepared, outcome)
@@ -196,7 +198,7 @@ impl SyndicComposerHost {
         &self,
         ticket: ComposerHostDisposalTicket,
     ) -> Result<&PendingDisposal, ComposerHostError> {
-        match self.publication.lane.as_ref() {
+        match self.publication.lane.as_deref() {
             Some(ComposerHostPublicationLane::Disposal(pending))
                 if pending.ticket == ticket
                     && ticket.host_generation == pending.binding.host_generation() =>
@@ -212,7 +214,7 @@ impl SyndicComposerHost {
         &mut self,
         ticket: ComposerHostDisposalTicket,
     ) -> Result<&mut PendingDisposal, ComposerHostError> {
-        match self.publication.lane.as_mut() {
+        match self.publication.lane.as_deref_mut() {
             Some(ComposerHostPublicationLane::Disposal(pending)) if pending.ticket == ticket => {
                 Ok(pending)
             }

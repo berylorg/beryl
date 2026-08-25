@@ -4,36 +4,56 @@ use super::*;
 fn stale_same_id_completion_and_cancellation_are_inert_across_rebind_and_release() {
     let (_home, store, storage, thread) = fixture("same-id-aba", 75);
     populate(storage, &store, thread, 76);
+    assert_stale_request_after_service_replacement(storage, &store, thread, 77, 78, 79, 80, 1);
+    assert_stale_request_after_service_replacement(storage, &store, thread, 81, 82, 83, 84, 2);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assert_stale_request_after_service_replacement(
+    storage: syndic_storage::SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    thread: beryl_model::SyndicThreadId,
+    old_session: u8,
+    old_operation: u8,
+    new_session: u8,
+    new_operation: u8,
+    request_id: u64,
+) {
     let mut host = SyndicComposerHost::new(storage);
-    let original_activation = activation(thread, 77, 78, Vec::new());
     let ComposerHostActivationOutcome::Activated {
-        binding: original_binding,
+        binding: old_binding,
         ..
     } = host
         .activate(
-            &store,
-            original_activation.clone(),
+            store,
+            activation(thread, old_session, old_operation, Vec::new()),
             &CommandCancellation::new(),
         )
         .unwrap()
     else {
         panic!("fixture activation failed");
     };
-    let old_key = key(original_binding, 1);
+    let old_key = key(old_binding, request_id);
     let old_pending = host.begin_request(old_key, text_request()).unwrap();
-    let old_execution = host.execute_pending(&store, old_pending);
+    let old_execution = host.execute_pending(store, old_pending);
 
+    host.dispose_composer_service(store).unwrap();
+    let mut host = SyndicComposerHost::new(storage);
     let ComposerHostActivationOutcome::Activated {
-        disposition: ComposerHostOpenDisposition::ExactReplay,
-        binding: rebound_binding,
+        binding: current_binding,
+        ..
     } = host
-        .activate(&store, original_activation, &CommandCancellation::new())
+        .activate(
+            store,
+            activation(thread, new_session, new_operation, Vec::new()),
+            &CommandCancellation::new(),
+        )
         .unwrap()
     else {
-        panic!("fixture session did not rebind by exact replay");
+        panic!("fixture session did not rebind after service replacement");
     };
-    let rebound_key = key(rebound_binding, 1);
-    let rebound_pending = host.begin_request(rebound_key, text_request()).unwrap();
+    let current_key = key(current_binding, request_id);
+    let current_pending = host.begin_request(current_key, text_request()).unwrap();
     assert!(matches!(
         host.complete_request(old_execution),
         Err(ComposerHostError::RequestMismatch)
@@ -41,42 +61,10 @@ fn stale_same_id_completion_and_cancellation_are_inert_across_rebind_and_release
     assert_eq!(host.pending_request_count(), 1);
     assert!(!host.cancel_request(old_key));
     assert_eq!(host.pending_request_count(), 1);
-    let rebound_execution = host.execute_pending(&store, rebound_pending);
+    let current_execution = host.execute_pending(store, current_pending);
     assert!(matches!(
-        host.complete_request(rebound_execution),
-        Ok(response) if response.key() == rebound_key
-    ));
-
-    let release_old_key = key(rebound_binding, 2);
-    let release_old_pending = host.begin_request(release_old_key, text_request()).unwrap();
-    let release_old_execution = host.execute_pending(&store, release_old_pending);
-    assert!(host.release().unwrap());
-    let ComposerHostActivationOutcome::Activated {
-        binding: released_binding,
-        ..
-    } = host
-        .activate(
-            &store,
-            activation(thread, 79, 80, Vec::new()),
-            &CommandCancellation::new(),
-        )
-        .unwrap()
-    else {
-        panic!("fixture did not reactivate after release");
-    };
-    let released_key = key(released_binding, 2);
-    let released_pending = host.begin_request(released_key, text_request()).unwrap();
-    assert!(matches!(
-        host.complete_request(release_old_execution),
-        Err(ComposerHostError::RequestMismatch)
-    ));
-    assert_eq!(host.pending_request_count(), 1);
-    assert!(!host.cancel_request(release_old_key));
-    assert_eq!(host.pending_request_count(), 1);
-    let released_execution = host.execute_pending(&store, released_pending);
-    assert!(matches!(
-        host.complete_request(released_execution),
-        Ok(response) if response.key() == released_key
+        host.complete_request(current_execution),
+        Ok(response) if response.key() == current_key
     ));
     assert_eq!(host.pending_request_count(), 0);
 }

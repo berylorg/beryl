@@ -15,7 +15,13 @@ impl SyndicComposerHost {
         request: ComposerHostActivationRequest,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
-        if self.publication.lane.is_some() {
+        if self.lifecycle.is_service_disposed() {
+            return Err(ComposerHostError::PublicationUnavailable);
+        }
+        if self.active.is_some() {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
+        if self.publication.lane.is_some() || self.lifecycle.has_barrier() {
             return Err(ComposerHostError::LifecycleBlocked);
         }
         if request.first_demands().len() > COMPOSER_HOST_MAX_INITIAL_DEMANDS {
@@ -164,8 +170,7 @@ impl SyndicComposerHost {
                 actual: after.generation(),
             });
         }
-        self.detach_live_operation()?;
-        self.active = Some(ActiveComposerHost {
+        self.active = Some(Box::new(ActiveComposerHost {
             binding,
             storage_candidate: binding.candidate(),
             thread_id: request.thread_id(),
@@ -178,7 +183,8 @@ impl SyndicComposerHost {
                 head.published_history(),
             ),
             session_disposed: false,
-        });
+        }));
+        self.lifecycle.activate();
         self.last_generation = Some(host_generation);
         self.last_request_id = request
             .first_demands()
