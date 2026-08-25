@@ -1187,7 +1187,8 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
                 || request.expected_pair()
                     != DraftRootHistoryPairV1::new(before.newest_root(), before.newest_history())
                 || frontier.reference() != before.newest_history()
-                || before.disposed(request.operation_id()).as_ref() != Some(&after)
+                || (before.disposed(request.operation_id()).as_ref() != Some(&after)
+                    && before.abandoned_fresh(request.operation_id()).as_ref() != Some(&after))
             {
                 return Err(CodecError::InvalidLength("candidate disposal receipt"));
             }
@@ -1211,6 +1212,28 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
     };
     d.finish()?;
     Ok(value)
+}
+
+#[cfg(feature = "test-faults")]
+pub fn test_candidate_disposal_receipt_codec_accepts(
+    request: DraftEditorCandidateSessionDisposeRequestV1,
+    before: DraftEditorCandidateSessionV1,
+    after: DraftEditorCandidateSessionV1,
+    frontier: DraftEditHistoryFrontierV1,
+) -> bool {
+    let record = DraftEditorCandidateSessionRecordV1::OpenReceipt(
+        DraftEditorCandidateSessionOpenReceiptV1::from_disposal(
+            DraftEditorCandidateSessionDisposeReceiptV1::new(
+                canonical_candidate_disposal_request_bytes(request),
+                before,
+                after,
+                frontier,
+            ),
+        ),
+    );
+    encode_session_record(&record)
+        .and_then(|bytes| decode_session_record(&bytes))
+        .is_ok()
 }
 
 fn enc_current_selector(e: &mut Encoder, value: DraftEditorCurrentSelectorV1) {

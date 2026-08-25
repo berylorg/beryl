@@ -104,6 +104,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   codecs, and their existing three staging families plus the candidate-session family. It adds no
   persisted family, record tag, command kind, schema version, widget-page identity, compatibility
   adapter, or operation-wide durable history.
+- The public `abandon_fresh_draft_editor_candidate_session` boundary is a distinct preparation,
+  execution, and reconciliation family for releasing one authenticated never-mutated,
+  never-published editor-candidate session. Preparation point-reads only the exact session head,
+  immutable open receipt, and natural disposal-receipt identity named by the canonical bounded
+  request and returns one opaque bounded source/target closure. Execution contributes that
+  closure as one short Syndic mutation. Reconciliation consumes the same prepared closure through
+  the home-store targeted-reconciliation boundary; no path scans a session, history, root, or
+  payload collection.
 - The public post-finish builder boundary accepts only the exact draft/session/operation identity,
   authenticated current build endpoint, and one bounded command ceiling no greater than 256
   physical staging pages/items, 256 fragments, and 65,536 inserted UTF-8 bytes. Preparation derives
@@ -2286,6 +2294,28 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   Fresh activation may use a new session identity without scanning that old live session, and an
   already-disposed old session's never-admitted orphan records are session-qualified and inert.
   Disposal deletes no root, settlement, progress receipt, fragment, or asset record.
+- `DraftEditorCandidateSessionAbandonFreshOutcomeV1` is `Abandoned(head)`,
+  `ExactReplay(receipt)`, `NotFresh(head)`, `AlreadyDisposed(head)`, or
+  `OccupiedIdentityCollision(proof)`. `abandon_fresh_draft_editor_candidate_session` accepts only
+  the exact draft, session, open-operation, disposal-operation, and canonical request identities
+  whose current active head is canonically byte-equal to the head retained by its authenticated
+  immutable open receipt. That head must have no active-operation custody, no disposal-operation
+  identity, `dirty_generation == 0`, the
+  unchanged opening durable base and published selector/root/history checkpoint, the opening
+  newest candidate generation and root, and exactly the open receipt's authenticated forked newest-
+  history frontier. Any mutation or publication descendant, identity or head drift, or other
+  nonfresh state returns `NotFresh` without mutation.
+- The fresh-abandonment command revalidates that complete old closure under the serialized writer
+  and atomically leaves the current-draft selector and every immutable root and history-frontier
+  record unchanged, replaces only the session head's newest-history reference with its published-
+  history reference, increments the session generation exactly once, marks the session `Disposed`,
+  records the disposal operation identity, and writes or exactly reuses the existing bounded
+  `DraftEditorCandidateSessionDisposeRequestV1` and disposal-receipt representation. A concurrent
+  exact winner is observed as replay or already disposed; a byte-disagreeing reuse is collision.
+  `Indeterminate` retains the ordinary bounded reconciliation custody, and targeted reconciliation
+  classifies only the exact prepared old and new closures as `ExactOld`, `ExactNew`, or `Collision`.
+  The opening fork remains fixed-size noncanonical durable residue for future garbage collection;
+  abandonment does not delete it or any root, frontier, transition, or payload record.
 - `ComposerV1` materialization binds its operation and deterministic output content identity to one
   exact immutable combined root and format version. Each bounded step advances the sequence input
   cursor and content-output frontier together while retaining the content-bound

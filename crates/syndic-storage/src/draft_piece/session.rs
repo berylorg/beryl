@@ -374,15 +374,17 @@ pub(super) fn candidate_session_closure_is_exact_in_store(
     let Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt)) = receipt else {
         return Ok(false);
     };
-    if !receipt_matches_head(&receipt, head)
-        || !candidate_session_adoption_is_exact(storage, store, head)?
-    {
+    if !receipt_matches_head(&receipt, head) {
         return Ok(false);
     }
-    Ok(
-        head.lifecycle() != DraftEditorCandidateSessionLifecycleV1::Disposed
-            || publication::candidate_session_disposal_is_exact_in_store(storage, store, head)?,
-    )
+    match head.lifecycle() {
+        DraftEditorCandidateSessionLifecycleV1::Active => {
+            candidate_session_adoption_is_exact(storage, store, head)
+        }
+        DraftEditorCandidateSessionLifecycleV1::Disposed => {
+            publication::candidate_session_disposal_is_exact_in_store(storage, store, head)
+        }
+    }
 }
 
 fn active_operation_custody_is_exact(

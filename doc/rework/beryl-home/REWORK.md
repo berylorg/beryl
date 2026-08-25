@@ -203,6 +203,8 @@
 - [x] Established bounded exact-root ComposerV1 materialization in `syndic-storage`.
 - [x] Added bounded typed valid-successor HomeStore reconciliation before exact-root composer
   submission can complete.
+- [x] Added exact bounded abandonment for authenticated pristine unpublished composer candidates,
+  including typed replay, rejection, collision, and crash reconciliation.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.

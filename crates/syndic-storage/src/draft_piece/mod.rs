@@ -26,7 +26,8 @@ pub use publication::{
     CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidatePublicationCommandErrorV1,
     DraftEditorCandidatePublicationSourceCaptureRequestV1,
     DraftEditorCandidatePublicationSourcePreparationErrorV1,
-    PreparedDraftEditorCandidatePublicationV1, PreparedDraftEditorCandidateSessionDisposeV1,
+    PreparedDraftEditorCandidatePublicationV1, PreparedDraftEditorCandidateSessionAbandonFreshV1,
+    PreparedDraftEditorCandidateSessionDisposeV1,
 };
 pub use read::DraftPieceCommandReconciliationErrorV1;
 pub use session::{
@@ -44,6 +45,11 @@ pub use tree::{
     canonical_empty_marker_digest_v1, canonical_empty_root_digest_v1,
     draft_piece_fragment_chain_link_v1,
 };
+
+#[cfg(feature = "test-faults")]
+pub use codec::test_candidate_disposal_receipt_codec_accepts;
+#[cfg(feature = "test-faults")]
+pub use publication::test_abandon_fresh_reconciliation_resolution;
 
 pub(crate) use codec::*;
 pub(crate) use history::{

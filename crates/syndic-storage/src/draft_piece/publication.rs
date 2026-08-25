@@ -23,6 +23,12 @@ use crate::{
 
 use super::*;
 
+mod abandon_fresh;
+
+pub use abandon_fresh::PreparedDraftEditorCandidateSessionAbandonFreshV1;
+#[cfg(feature = "test-faults")]
+pub use abandon_fresh::test_abandon_fresh_reconciliation_resolution;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DraftEditorCandidatePublicationSourceCaptureRequestV1 {
     selector: DraftEditorCurrentSelectorV1,
@@ -150,6 +156,8 @@ impl PreparedDraftEditorCandidateSessionDisposeV1 {
 pub enum DraftEditorCandidatePublicationCommandErrorV1 {
     Read(SyndicReadError),
     Reconciliation(ReconciliationFailure),
+    ReconciliationCollision,
+    UnauthorizedReconciliationSuccessor,
     NotCommitted,
     ActiveOperation,
     Invariant,
@@ -160,6 +168,12 @@ impl fmt::Display for DraftEditorCandidatePublicationCommandErrorV1 {
         match self {
             Self::Read(e) => e.fmt(f),
             Self::Reconciliation(e) => e.fmt(f),
+            Self::ReconciliationCollision => {
+                f.write_str("candidate command reconciliation collided")
+            }
+            Self::UnauthorizedReconciliationSuccessor => {
+                f.write_str("candidate command reconciliation found an unauthorized successor")
+            }
             Self::NotCommitted => f.write_str("candidate command was not committed"),
             Self::ActiveOperation => f.write_str("candidate session has active operation custody"),
             Self::Invariant => f.write_str("invalid candidate publication or disposal closure"),
@@ -891,39 +905,72 @@ fn disposal_request_matches_head(
     request: DraftEditorCandidateSessionDisposeRequestV1,
     head: &DraftEditorCandidateSessionV1,
 ) -> bool {
-    head.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active
+    disposal_request_names_head(request, head)
         && head.published_candidate_generation() == head.newest_candidate_generation()
         && head.published_root() == head.newest_root()
         && head.published_history() == head.newest_history()
+}
+
+fn disposal_request_names_head(
+    request: DraftEditorCandidateSessionDisposeRequestV1,
+    head: &DraftEditorCandidateSessionV1,
+) -> bool {
+    head.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active
+        && head.disposal_operation_id().is_none()
+        && request.draft_id() == head.draft_id()
+        && request.session_id() == head.session_id()
         && head.session_generation() == request.expected_session_generation()
         && request.expected_pair()
             == DraftRootHistoryPairV1::new(head.newest_root(), head.newest_history())
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DisposalTransitionKind {
+    Ordinary,
+    FreshAbandonment,
+}
+
 fn disposal_receipt_parts(
     receipt: &DraftEditorCandidateSessionDisposeReceiptV1,
-) -> Option<DraftEditorCandidateSessionDisposeRequestV1> {
+) -> Option<(
+    DraftEditorCandidateSessionDisposeRequestV1,
+    DisposalTransitionKind,
+)> {
     let request = decode_candidate_disposal_request_bytes(receipt.request_bytes()).ok()?;
     let before = receipt.before_head();
+    let transition = if before.disposed(request.operation_id()).as_ref()
+        == Some(receipt.after_head())
+    {
+        DisposalTransitionKind::Ordinary
+    } else if before.abandoned_fresh(request.operation_id()).as_ref() == Some(receipt.after_head())
+    {
+        DisposalTransitionKind::FreshAbandonment
+    } else {
+        return None;
+    };
     if canonical_candidate_disposal_request_bytes(request) != receipt.request_bytes()
         || request.draft_id() != before.draft_id()
         || request.session_id() != before.session_id()
-        || !disposal_request_matches_head(request, before)
-        || before.active_operation().is_some()
+        || match transition {
+            DisposalTransitionKind::Ordinary => !disposal_request_matches_head(request, before),
+            DisposalTransitionKind::FreshAbandonment => {
+                !disposal_request_names_head(request, before)
+            }
+        }
         || receipt.frontier().reference() != before.newest_history()
-        || before.disposed(request.operation_id()).as_ref() != Some(receipt.after_head())
         || receipt.after_head().disposal_operation_id() != Some(request.operation_id())
     {
         return None;
     }
-    Some(request)
+    Some((request, transition))
 }
 
 fn validate_disposal_receipt(
     reader: &DomainReader<'_, SyndicDomain>,
     receipt: &DraftEditorCandidateSessionDisposeReceiptV1,
 ) -> Result<(), SyndicMutationError> {
-    let request = disposal_receipt_parts(receipt).ok_or(SyndicMutationError::IdentityCollision)?;
+    let (request, transition) =
+        disposal_receipt_parts(receipt).ok_or(SyndicMutationError::IdentityCollision)?;
     let stored =
         required::<DraftEditHistoryFrontiersFamily>(reader, &receipt.frontier().reference().key())?;
     let open = required::<DraftEditorCandidateSessionsFamily>(
@@ -948,11 +995,17 @@ fn validate_disposal_receipt(
     else {
         return Err(SyndicMutationError::IdentityCollision);
     };
-    if stored != *receipt.frontier()
-        || head != *receipt.after_head()
-        || !session::receipt_matches_head(&open, receipt.before_head())
-        || !candidate_session_publication_is_exact(reader, receipt.before_head())?
-    {
+    let source_is_exact = match transition {
+        DisposalTransitionKind::Ordinary => {
+            session::receipt_matches_head(&open, receipt.before_head())
+                && candidate_session_publication_is_exact(reader, receipt.before_head())?
+        }
+        DisposalTransitionKind::FreshAbandonment => {
+            abandon_fresh::request_matches_head_and_open(request, receipt.before_head(), &open)
+                && abandon_fresh::history_is_exact(reader, receipt.before_head(), &stored)?
+        }
+    };
+    if stored != *receipt.frontier() || head != *receipt.after_head() || !source_is_exact {
         return Err(SyndicMutationError::IdentityCollision);
     }
     authenticate_draft_edit_history_frontier_v1(reader, &stored)
@@ -963,8 +1016,8 @@ fn validate_disposal_receipt_in_store(
     store: &HomeStore,
     receipt: &DraftEditorCandidateSessionDisposeReceiptV1,
 ) -> Result<bool, SyndicReadError> {
-    let request = match disposal_receipt_parts(receipt) {
-        Some(request) => request,
+    let (request, transition) = match disposal_receipt_parts(receipt) {
+        Some(parts) => parts,
         None => return Ok(false),
     };
     let frontier = storage.point::<DraftEditHistoryFrontiersFamily>(
@@ -992,11 +1045,42 @@ fn validate_disposal_receipt_in_store(
     let Some(DraftEditorCandidateSessionRecordV1::Head(head)) = head else {
         return Ok(false);
     };
-    Ok(frontier.as_ref() == Some(receipt.frontier())
-        && draft_edit_history_frontier_is_authenticated_v1(storage, store, receipt.frontier())?
-        && session::receipt_matches_head(&open, receipt.before_head())
-        && candidate_session_publication_is_exact_in_store(storage, store, receipt.before_head())?
-        && head == *receipt.after_head())
+    let Some(frontier) = frontier.as_ref() else {
+        return Ok(false);
+    };
+    let source_is_exact = match transition {
+        DisposalTransitionKind::Ordinary => {
+            session::receipt_matches_head(&open, receipt.before_head())
+                && candidate_session_publication_is_exact_in_store(
+                    storage,
+                    store,
+                    receipt.before_head(),
+                )?
+        }
+        DisposalTransitionKind::FreshAbandonment => {
+            let durable = storage.point::<DraftEditHistoryFrontiersFamily>(
+                store,
+                receipt.before_head().durable_base_history().key(),
+                point_limit(),
+            )?;
+            abandon_fresh::request_matches_head_and_open(request, receipt.before_head(), &open)
+                && durable.as_ref().is_some_and(|durable| {
+                    durable.reference() == receipt.before_head().durable_base_history()
+                        && durable
+                            .fork_session(receipt.before_head().session_id())
+                            .as_ref()
+                            == Some(frontier)
+                })
+                && draft_edit_history_frontier_is_authenticated_v1(storage, store, frontier)?
+                && match durable.as_ref() {
+                    Some(durable) => {
+                        draft_edit_history_frontier_is_authenticated_v1(storage, store, durable)?
+                    }
+                    None => false,
+                }
+        }
+    };
+    Ok(frontier == receipt.frontier() && source_is_exact && head == *receipt.after_head())
 }
 
 pub(super) fn candidate_session_disposal_is_exact_in_store(
@@ -1020,10 +1104,9 @@ pub(super) fn candidate_session_disposal_is_exact_in_store(
     let Some(receipt) = record.disposal() else {
         return Ok(false);
     };
-    Ok(
-        receipt.after_head() == head
-            && validate_disposal_receipt_in_store(storage, store, receipt)?,
-    )
+    Ok(receipt.after_head() == head
+        && validate_disposal_receipt_in_store(storage, store, receipt)?
+        && session::candidate_session_adoption_is_exact(storage, store, receipt.before_head())?)
 }
 
 impl DomainMutation<SyndicDomain> for PublicationMutation {

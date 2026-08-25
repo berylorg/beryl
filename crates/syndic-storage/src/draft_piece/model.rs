@@ -908,6 +908,29 @@ impl DraftEditorCandidateSessionV1 {
         Some(next)
     }
 
+    pub(crate) fn abandoned_fresh(&self, operation_id: DraftPieceOperationIdV1) -> Option<Self> {
+        if self.lifecycle != DraftEditorCandidateSessionLifecycleV1::Active
+            || self.disposal_operation_id.is_some()
+            || self.active_operation.is_some()
+            || self.dirty_generation != 0
+            || self.durable_base_selector_revision != self.published_selector_revision
+            || self.durable_base_root != self.published_root
+            || self.durable_base_history != self.published_history
+            || self.published_candidate_generation != self.newest_candidate_generation
+            || self.published_root != self.newest_root
+            || self.newest_history.key().session_id() != Some(self.session_id)
+            || operation_id == self.open_operation_id
+        {
+            return None;
+        }
+        let mut next = self.clone();
+        next.session_generation = next.session_generation.checked_add(1)?;
+        next.newest_history = next.published_history;
+        next.lifecycle = DraftEditorCandidateSessionLifecycleV1::Disposed;
+        next.disposal_operation_id = Some(operation_id);
+        Some(next)
+    }
+
     pub(crate) fn is_coherent(&self) -> bool {
         let generations_are_ordered = self.published_candidate_generation
             <= self.newest_candidate_generation
@@ -1224,6 +1247,15 @@ pub enum DraftEditorCandidateSessionDisposeOutcomeV1 {
     Disposed(DraftEditorCandidateSessionV1),
     ExactReplay(DraftEditorCandidateSessionDisposeReceiptV1),
     DirtyConflict(DraftEditorCandidateSessionV1),
+    AlreadyDisposed(DraftEditorCandidateSessionV1),
+    OccupiedIdentityCollision(DraftEditorCandidateSessionDisposeCollisionProofV1),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DraftEditorCandidateSessionAbandonFreshOutcomeV1 {
+    Abandoned(DraftEditorCandidateSessionV1),
+    ExactReplay(DraftEditorCandidateSessionDisposeReceiptV1),
+    NotFresh(DraftEditorCandidateSessionV1),
     AlreadyDisposed(DraftEditorCandidateSessionV1),
     OccupiedIdentityCollision(DraftEditorCandidateSessionDisposeCollisionProofV1),
 }

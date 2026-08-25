@@ -67,7 +67,18 @@ Keep independent main-window presentation responsive while process-wide services
   bundle containing the target claim, durable draft selector, fresh candidate-session head,
   transcript seed, and window-local projection facts. It atomically replaces the controller's prior
   bundle or leaves the complete prior bundle and session frontier unchanged on cancellation,
-  failure, conflict, or ambiguity.
+  failure, conflict, or ambiguity. The prior coherent composer host remains selected-thread
+  authority until that complete replacement bundle is published.
+- Selected-thread activation owns at most one unpublished target candidate session. At every proven
+  pre-publication terminal cut, including cancellation, preparation failure, stale or conflicting
+  completion, target rejection, and activation retirement, it releases that exact target through
+  Syndic's `abandon_fresh_draft_editor_candidate_session` boundary before releasing target custody.
+  An ambiguous command outcome retains only its bounded home-store reconciliation custody and keeps
+  the prior coherent composer host authoritative until `ExactOld`, `ExactNew`, or `Collision`
+  classification completes. Activation never applies fresh abandonment to a target with an admitted
+  mutation, changed candidate or history generation, nonzero dirty generation, publication, or any
+  other departure from its authenticated open receipt; such a target remains under its ordinary
+  mutation, publication, or disposal lifecycle.
 - The [main-windows](../../../doc/features/main-windows/design.md) and
   [conversation-threads](../../../doc/features/conversation-threads/design.md) features own startup
   and activation behavior; [GUI integration](../../../doc/gui/integration.md) owns the window
