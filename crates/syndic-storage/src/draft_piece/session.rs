@@ -701,7 +701,8 @@ impl SyndicStorage {
                 {
                     ReconciliationResolution::ExactNew { .. } => true,
                     ReconciliationResolution::ExactOld => false,
-                    ReconciliationResolution::Collision => {
+                    ReconciliationResolution::ExactSuccessor { .. }
+                    | ReconciliationResolution::Collision => {
                         return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
                     }
                 }

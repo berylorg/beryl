@@ -326,6 +326,14 @@ absorbing Syndic thread ownership.
 - Durable next-turn promotion atomically removes the exact accepted-input owner head and publishes
   the exact fresh submitted-turn-item head over the same sealed set. Marker-free promotion asserts
   both heads absent, and neither form reads or mutates the current-draft owner head.
+- The draft-to-accepted-input participant in first acceptance reserves the Asset witness role for
+  the typed `FirstAcceptancePromotionSuccessorV1` protocol. After Syndic authenticates that
+  correlation, the witness proves the descriptor intended the same current-draft-to-accepted owner
+  transfer, both original owner heads are absent, and the correlation-derived submitted-turn-item
+  head selects exactly the same sealed set. Wrong item, set, owner, retained accepted head,
+  restored draft head, missing successor head, duplicate destination, or conflicting destination is
+  collision. Marker-free first acceptance has no mutable Asset reconciliation descriptor and needs
+  no witness or synthetic Asset mutation.
 - First metadata publication requires the matching admitted `images` sidecar authority. Digest,
   length, namespace, and media facts must agree before metadata publication; a crash may leave
   unreferenced metadata or a sealed reference set, but no owner head can select missing bytes.
@@ -391,6 +399,9 @@ absorbing Syndic thread ownership.
   with the receipt facts needed for reconstruction, or `Collision`. A mixed old/new observation or
   one matching neither exact side is `Collision`; the hook never scans the domain, guesses or
   merges state, requests a whole-home scrub, clears writer poison, or treats CAS as authority.
+- Asset successor-witness reconciliation uses only the command-declared, quota-enforced point read
+  derived from the source-authenticated correlation. It cannot create a correlation, inspect Syndic
+  records, scan owner heads, or turn an independently plausible Asset state into command success.
 - Repair-media staging reconciliation observes only the target turn/item/resource natural identity,
   inert prepared-asset record, and exact sidecar commitment. Final repair publication
   reconciliation observes that evidence plus the canonical asset metadata, reference, and resource

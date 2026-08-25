@@ -2329,6 +2329,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   and creates at most one immutable
   local origin span. Per-marker validation already completed through bounded set-staging pages;
   later delivery disposition changes never rescan or rewrite label authority.
+- First acceptance reserves the unique source role for the typed
+  `FirstAcceptancePromotionSuccessorV1` protocol. If its immediate exact-new state has been
+  superseded by valid promotion, Syndic authenticates the permanent accepted-input and accepted-
+  order records plus the exact promoted route-leaf witness and emits the accepted-input identity,
+  promoted submitted-turn-item identity, and original sealed-set proof as one fixed-size
+  correlation. Missing or conflicting acceptance, order, leaf, lineage, revision, sealed proof,
+  reused successor, or incompatible descendant is collision; the hook never consults Asset state.
 - Every thread creation also publishes its initial idle input gate. Active-or-queued submission
   requires the exact gate and selected route-generation head revisions, advances its accepted-order
   high-water mark and checked `u64` live counters atomically, and never scans retained accepted
@@ -2776,6 +2783,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   exact across later valid route, gate, draft, delivery, rejection, activation, terminal, promotion,
   or projection-loss descendants. `Collision` means the durable receipt or permanent membership
   disagrees and authorizes neither replay nor success.
+- The same permanent `ExactAccepted` proof is the source authority for HomeStore successor-aware
+  reconciliation after promotion. Later compatible route, gate, delivery, terminal, and projection
+  descendants preserve it; only the exact authenticated promotion successor may name the shared
+  correlation. Application rereads and caller-supplied promotion facts cannot resolve installed
+  first-acceptance custody.
 - Live event ingestion stages an arbitrarily large typed provider frame, applicable append-only
   narrative spans, and any completion-equality comparison through bounded resumable commands while
   published authority remains unchanged. Its final command writes the sealed frame reference,

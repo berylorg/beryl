@@ -44,6 +44,12 @@ Provide shared pure-data identities and values used across Beryl packages withou
   no separate queued-input identity type. Later promotion retains that accepted identity as
   history but uses caller-supplied fresh turn and canonical-item identities; its terminal Syndic
   witness links the distinct predecessor and successor identities.
+- `FirstAcceptancePromotionSuccessorV1` is the fixed-size pure correlation used only when an
+  indeterminate first-acceptance command is reconciled after valid promotion. It carries the exact
+  accepted-input identity, promoted submitted-turn-item owner identity, and complete compact sealed-
+  asset-set proof needed by both domain owners. It carries no storage key, hook, reader, receipt,
+  reconciliation handle, or authority; Syndic authenticates it from permanent acceptance and
+  promotion records, while Beryl-state only validates its Asset-owned witness.
 - Shared values may identify a Syndic thread, its execution binding, generated title, automatic
   branch-discussion archive state, exact usage observation, activity timestamp, parent-thread
   lineage summary, current Beryl window claim, and catalog availability without making this crate

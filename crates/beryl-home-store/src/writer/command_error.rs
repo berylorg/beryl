@@ -83,6 +83,7 @@ pub(super) fn command_failure_severity(error: &CommandError) -> Option<FailureSe
         | CommandError::ReconciliationCapacity
         | CommandError::ReconciliationDescriptorTooLarge { .. }
         | CommandError::ReconciliationReservationMismatch { .. }
+        | CommandError::InvalidSuccessorProtocol
         | CommandError::RevisionExhausted { .. }
         | CommandError::Metadata { .. } => None,
         CommandError::ContributorAccess { source, .. } => callback_failure_severity(source),

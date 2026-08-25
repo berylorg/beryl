@@ -134,7 +134,7 @@ fn decode_key<D: StorageDomain, R: RecordCodec<D>>(encoded: &[u8]) -> Result<R::
     Ok(key)
 }
 
-fn decode_value<D: StorageDomain, R: RecordCodec<D>>(
+pub(crate) fn decode_value<D: StorageDomain, R: RecordCodec<D>>(
     encoded: &[u8],
 ) -> Result<R::Value, ReadError> {
     let version: [u8; 4] = encoded

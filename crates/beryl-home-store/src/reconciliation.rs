@@ -14,9 +14,10 @@ use crate::{
     domain::callback::ErasedCallbackError,
     health::{ClassifiedFjallError, FailureSeverity},
     store::HomeStore,
+    successor::{DerivedReadFact, SuccessorExecution, SuccessorRoleKind, SuccessorRoleResult},
 };
 
-mod reader;
+pub(crate) mod reader;
 mod registry;
 pub use reader::{DomainReconciliation, ReconciliationReader, ReconciliationRecord};
 pub(crate) use registry::{ReconciliationRegistry, ReconciliationSlot};
@@ -38,6 +39,7 @@ pub(crate) enum ReconciliationReservationError {
 pub enum ReconciliationResolution {
     ExactOld,
     ExactNew { receipt: CommitReceipt },
+    ExactSuccessor { receipt: CommitReceipt },
     Collision,
 }
 
@@ -137,6 +139,7 @@ struct SealedCollision {
     _domains: Vec<SealedDomain>,
     _receipt_revision: u64,
     charged_bytes: usize,
+    _successor: Option<SealedSuccessor>,
 }
 struct SealedDomain {
     _domain_slot: usize,
@@ -149,6 +152,24 @@ struct SealedRecord {
     _key: Box<[u8]>,
     _old_digest: Option<[u8; 32]>,
     _new_digest: Option<[u8; 32]>,
+}
+struct SealedSuccessor {
+    _protocol: &'static str,
+    _correlation_digest: Option<[u8; 32]>,
+    _roles: Vec<SealedSuccessorRole>,
+}
+struct SealedSuccessorRole {
+    _domain_slot: usize,
+    _kind: SuccessorRoleKind,
+    _result: SuccessorRoleResult,
+    _correlation_digest: Option<[u8; 32]>,
+    _derived: Vec<DerivedReadFact>,
+}
+
+struct ReconciliationExecution {
+    sides: Vec<DomainReconciliation>,
+    successor: Option<SuccessorExecution>,
+    receipt: CommitReceipt,
 }
 
 impl HomeStore {
@@ -217,7 +238,7 @@ impl HomeStore {
         &self,
         handle: &ReconciliationHandle,
         inner: &Arc<RegistryInner>,
-    ) -> Result<(Vec<DomainReconciliation>, CommitReceipt), ReconciliationFailure> {
+    ) -> Result<ReconciliationExecution, ReconciliationFailure> {
         let admission = self.health.admit().map_err(|error| {
             failure(ReconciliationFailureInner::HookAccess {
                 domain: "home",
@@ -256,10 +277,32 @@ impl HomeStore {
                 .map_err(|error| map_hook_failure(domain.name, error, &admission))?;
             sides.push(side);
         }
+        let unanimous_exact_side = sides
+            .iter()
+            .all(|side| *side == DomainReconciliation::ExactOld)
+            || sides
+                .iter()
+                .all(|side| *side == DomainReconciliation::ExactNew);
+        let successor = match descriptor.successor.as_ref() {
+            None => None,
+            Some(_) if unanimous_exact_side => None,
+            Some(successor) if !descriptor_sides_admit_successor(&descriptor, &sides) => {
+                Some(successor.unrun_collision())
+            }
+            Some(successor) => Some(
+                successor
+                    .execute(&snapshot, &generation.registry, &descriptor.domains)
+                    .map_err(|(domain, error)| map_hook_failure(domain, error, &admission))?,
+            ),
+        };
         admission.confirm_database(&generation.database, |source| {
             failure(ReconciliationFailureInner::Snapshot(Box::new(source)))
         })?;
-        Ok((sides, descriptor.receipt.clone()))
+        Ok(ReconciliationExecution {
+            sides,
+            successor,
+            receipt: descriptor.receipt.clone(),
+        })
     }
 }
 
@@ -293,19 +336,33 @@ fn acquire_worker(
 fn finish_worker(
     inner: &Arc<RegistryInner>,
     handle: &ReconciliationHandle,
-    execution: Result<(Vec<DomainReconciliation>, CommitReceipt), ReconciliationFailure>,
+    execution: Result<ReconciliationExecution, ReconciliationFailure>,
 ) -> SharedResult {
     let mut state = inner.lock_state();
     let outcome = match execution {
         Err(error) => Err(error),
-        Ok((sides, receipt)) => {
+        Ok(execution) => {
+            let ReconciliationExecution {
+                sides,
+                successor,
+                receipt,
+            } = execution;
             let all_old = sides
                 .iter()
                 .all(|side| *side == DomainReconciliation::ExactOld);
             let all_new = sides
                 .iter()
                 .all(|side| *side == DomainReconciliation::ExactNew);
-            if all_old || all_new {
+            let exact_successor = successor.as_ref().is_some_and(|successor| {
+                successor.resolved
+                    && match &state.scopes[handle.index] {
+                        ScopeState::Verifying { descriptor, .. } => {
+                            descriptor_sides_admit_successor(descriptor, &sides)
+                        }
+                        _ => false,
+                    }
+            });
+            if all_old || all_new || exact_successor {
                 let charged_bytes = match &state.scopes[handle.index] {
                     ScopeState::Verifying {
                         token,
@@ -319,8 +376,10 @@ fn finish_worker(
                 release_retained_core_if_idle(&mut state);
                 if all_old {
                     Ok(ReconciliationResolution::ExactOld)
-                } else {
+                } else if all_new {
                     Ok(ReconciliationResolution::ExactNew { receipt })
+                } else {
+                    Ok(ReconciliationResolution::ExactSuccessor { receipt })
                 }
             } else {
                 let (descriptor, charged_bytes, flight) = match &state.scopes[handle.index] {
@@ -334,7 +393,7 @@ fn finish_worker(
                     }
                     _ => return release_worker_with_stale(inner, state),
                 };
-                let facts = seal_collision(&descriptor, &sides);
+                let facts = seal_collision(&descriptor, &sides, successor.as_ref());
                 debug_assert!(facts.charged_bytes <= charged_bytes);
                 state.reserved_bytes = state
                     .reserved_bytes
@@ -407,6 +466,7 @@ fn signal_structural(
 fn seal_collision(
     descriptor: &RetainedReconciliationDescriptor,
     sides: &[DomainReconciliation],
+    successor: Option<&SuccessorExecution>,
 ) -> SealedCollision {
     let mut charged_bytes = 32usize;
     let domains = descriptor
@@ -441,11 +501,60 @@ fn seal_collision(
             }
         })
         .collect();
+    let successor = successor.map(|successor| {
+        charged_bytes = charged_bytes
+            .checked_add(128)
+            .and_then(|bytes| bytes.checked_add(successor.identity.name.len()))
+            .expect("reserved successor collision charge arithmetic");
+        let roles = successor
+            .roles
+            .iter()
+            .map(|role| {
+                charged_bytes = charged_bytes
+                    .checked_add(160)
+                    .and_then(|bytes| bytes.checked_add(role.derived.len().saturating_mul(96)))
+                    .expect("reserved successor role charge arithmetic");
+                SealedSuccessorRole {
+                    _domain_slot: role.domain_slot,
+                    _kind: role.kind,
+                    _result: role.result,
+                    _correlation_digest: role.correlation_digest,
+                    _derived: role.derived.clone(),
+                }
+            })
+            .collect();
+        SealedSuccessor {
+            _protocol: successor.identity.name,
+            _correlation_digest: successor.correlation_digest,
+            _roles: roles,
+        }
+    });
     SealedCollision {
         _domains: domains,
         _receipt_revision: descriptor.receipt.home_revision().get(),
         charged_bytes,
+        _successor: successor,
     }
+}
+
+fn descriptor_sides_admit_successor(
+    descriptor: &RetainedReconciliationDescriptor,
+    sides: &[DomainReconciliation],
+) -> bool {
+    let Some(successor) = &descriptor.successor else {
+        return false;
+    };
+    descriptor.domains.iter().zip(sides).all(|(domain, side)| {
+        if successor
+            .roles
+            .iter()
+            .any(|role| role.domain_slot == domain.domain_slot)
+        {
+            *side != DomainReconciliation::ExactOld
+        } else {
+            *side == DomainReconciliation::ExactNew
+        }
+    })
 }
 
 fn digest(bytes: &[u8]) -> [u8; 32] {

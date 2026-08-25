@@ -16,6 +16,10 @@ use crate::{
     read::{read_domain_metadata, read_home_revision},
     reconciliation::{ReconciliationReservationError, ReconciliationSlot},
     store::{HomeStore, StoreGeneration},
+    successor::{
+        SuccessorDescriptor, SuccessorProtocolIdentity, SuccessorRoleDescriptor,
+        SuccessorRoleReservation,
+    },
 };
 
 mod batch;
@@ -85,7 +89,17 @@ struct PreparedMutation<'a> {
 struct CommandReservation {
     slot: ReconciliationSlot,
     declarations: Vec<ReconciliationReservationOutput>,
-    materialized: Option<(Vec<MaterializedDomainDescriptor>, CommitReceipt)>,
+    successor: Option<SuccessorReservation>,
+    materialized: Option<(
+        Vec<MaterializedDomainDescriptor>,
+        CommitReceipt,
+        Option<SuccessorDescriptor>,
+    )>,
+}
+
+struct SuccessorReservation {
+    identity: SuccessorProtocolIdentity,
+    roles: Vec<(usize, SuccessorRoleReservation)>,
 }
 
 enum ExecutionOutcome {
@@ -203,8 +217,9 @@ impl HomeStore {
 
     fn reserve_reconciliation(
         &self,
-        declarations: Vec<ReconciliationReservationOutput>,
+        mut declarations: Vec<ReconciliationReservationOutput>,
     ) -> Result<CommandReservation, CommandError> {
+        let successor = collect_successor_reservation(&mut declarations)?;
         let descriptor_bytes = declarations.iter().fold(0usize, |total, declaration| {
             total.saturating_add(declaration.descriptor_bytes)
         });
@@ -220,6 +235,7 @@ impl HomeStore {
         Ok(CommandReservation {
             slot,
             declarations,
+            successor,
             materialized: None,
         })
     }
@@ -761,7 +777,21 @@ fn materialize_reservation(
             records,
         });
     }
-    reservation.materialized = Some((domains, receipt));
+    let successor = reservation
+        .successor
+        .take()
+        .map(|successor| SuccessorDescriptor {
+            identity: successor.identity,
+            roles: successor
+                .roles
+                .into_iter()
+                .map(|(participant_index, role)| SuccessorRoleDescriptor {
+                    domain_slot: prepared[participant_index].participant.slot(),
+                    role,
+                })
+                .collect(),
+        });
+    reservation.materialized = Some((domains, receipt, successor));
     Ok(())
 }
 
@@ -802,14 +832,45 @@ fn finalize_outcome(outcome: ExecutionOutcome, reservation: CommandReservation) 
             let CommandReservation {
                 slot, materialized, ..
             } = reservation;
-            let (domains, receipt) = materialized
+            let (domains, receipt, successor) = materialized
                 .expect("every indeterminate mutation materialized its descriptor before Fjall");
             CommandOutcome::Indeterminate {
                 failure,
-                reconciliation: ReconciliationCustody::new(slot, domains, receipt),
+                reconciliation: ReconciliationCustody::new(slot, domains, receipt, successor),
             }
         }
     }
+}
+
+fn collect_successor_reservation(
+    declarations: &mut [ReconciliationReservationOutput],
+) -> Result<Option<SuccessorReservation>, CommandError> {
+    let mut identity = None;
+    let mut source_count = 0usize;
+    let mut roles = Vec::new();
+    for (participant_index, declaration) in declarations.iter_mut().enumerate() {
+        let Some(role) = declaration.successor.take() else {
+            continue;
+        };
+        let role_identity = role.identity();
+        if identity
+            .is_some_and(|identity: SuccessorProtocolIdentity| !identity.matches(role_identity))
+        {
+            return Err(CommandError::InvalidSuccessorProtocol);
+        }
+        identity = Some(role_identity);
+        if role.is_source() {
+            source_count += 1;
+        }
+        roles.push((participant_index, role));
+    }
+    let Some(identity) = identity else {
+        return Ok(None);
+    };
+    if source_count != 1 {
+        return Err(CommandError::InvalidSuccessorProtocol);
+    }
+    Ok(Some(SuccessorReservation { identity, roles }))
 }
 
 fn conflict_name(conflict: &RevisionConflict) -> &'static str {

@@ -261,6 +261,7 @@ mod recovery;
 mod scrub;
 mod sidecar;
 mod store;
+mod successor;
 mod theme;
 mod turn_start_admission;
 mod writer;
@@ -311,6 +312,11 @@ pub use sidecar::{
 #[cfg(feature = "test-faults")]
 pub use store::HomeOwnershipTestSeam;
 pub use store::{HomeDurabilityTier, HomeOpenOptions, HomeStore};
+pub use successor::{
+    SuccessorCorrelation, SuccessorObservation, SuccessorPointRead, SuccessorPointReader,
+    SuccessorPointRecord, SuccessorProtocol, SuccessorReadRejection, SuccessorReadReservation,
+    SuccessorSource, SuccessorWitness,
+};
 pub use theme::{
     StableThemeFileId, StableThemeFileIdError, ThemeCommitEvidence, ThemeFileIdentity,
     ThemeFileRange, ThemeFileSelector, ThemeMutationOutcome, ThemeOperationLimits,

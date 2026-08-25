@@ -75,6 +75,7 @@ struct PendingReconciliationCustody {
     slot: crate::reconciliation::ReconciliationSlot,
     domains: Vec<crate::command::MaterializedDomainDescriptor>,
     receipt: CommitReceipt,
+    successor: Option<crate::successor::SuccessorDescriptor>,
 }
 
 impl fmt::Debug for ReconciliationCustody {
@@ -97,12 +98,14 @@ impl ReconciliationCustody {
         slot: crate::reconciliation::ReconciliationSlot,
         domains: Vec<crate::command::MaterializedDomainDescriptor>,
         receipt: CommitReceipt,
+        successor: Option<crate::successor::SuccessorDescriptor>,
     ) -> Self {
         Self {
             pending: Some(PendingReconciliationCustody {
                 slot,
                 domains,
                 receipt,
+                successor,
             }),
         }
     }
@@ -131,6 +134,7 @@ impl ReconciliationCustody {
         Some(pending.slot.install(RetainedReconciliationDescriptor {
             domains: pending.domains,
             receipt: pending.receipt,
+            successor: pending.successor,
         }))
     }
 }
@@ -144,6 +148,7 @@ impl Drop for ReconciliationCustody {
 pub(crate) struct RetainedReconciliationDescriptor {
     pub(crate) domains: Vec<crate::command::MaterializedDomainDescriptor>,
     pub(crate) receipt: CommitReceipt,
+    pub(crate) successor: Option<crate::successor::SuccessorDescriptor>,
 }
 
 /// Exact durable-state classification for one executed command.
@@ -446,6 +451,8 @@ pub enum CommandError {
         /// Admitted pending record count.
         actual: usize,
     },
+    #[error("command successor roles do not declare exactly one matching typed source protocol")]
+    InvalidSuccessorProtocol,
     /// A required home or domain revision is exhausted.
     #[error("cannot advance {scope} revision: {source}")]
     RevisionExhausted {

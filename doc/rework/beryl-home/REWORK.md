@@ -201,6 +201,8 @@
 - [x] Established immutable build-transition receipts and bounded session-qualified candidate-only
   edit adoption with exact replay, custody, crash reconciliation, and fail-closed corruption.
 - [x] Established bounded exact-root ComposerV1 materialization in `syndic-storage`.
+- [x] Added bounded typed valid-successor HomeStore reconciliation before exact-root composer
+  submission can complete.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.

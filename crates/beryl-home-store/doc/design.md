@@ -38,6 +38,11 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - Logical domains register private record families, exact codecs, exhaustive validation hooks,
   operation-scoped natural-record reconciliation hooks, typed reads, typed mutation contributors,
   and typed validation-only command participants through package-owned traits.
+- A command participant may also register its typed role in one command-scoped successor protocol.
+  The package exposes typed source and witness reservation builders plus a quota-enforcing
+  successor point reader, and erases those hooks only after their protocol, correlation, owner,
+  family, count, and byte bounds are fixed. `HomeStore::reconcile` remains the only execution
+  boundary; the package exposes no post-hoc proof or scope-release API.
 - Registration never gives a domain a raw database or keyspace handle.
 - Each live domain blueprint, handle, command contribution, and reacquired recovery registration carries the exact process-local Rust owner type. Each family likewise carries the exact process-local codec type. Stable names and schemas remain durable compatibility facts, but cannot impersonate either live Rust owner; neither `TypeId` is persisted.
 - Stable domain and family identifiers are bounded lowercase ASCII components. The persistent registry records the exact domain schema, complete sorted family declaration, exact family schemas, physical family names, and current domain revision; reopening rejects missing families or any incompatible declaration instead of creating or guessing it.
@@ -132,6 +137,9 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   typed failure, no receipt, and one move-only custody value containing the sole opaque
   operation-scoped reconciliation descriptor together with its already-reserved registry slot and
   byte charge; it cannot authorize publication.
+- `ReconciliationResolution` returns exactly `ExactOld`, `ExactNew { receipt }`,
+  `ExactSuccessor { receipt }`, or `Collision`. Both receipt-bearing variants return the descriptor's
+  exact original-generation receipt rather than constructing a current-generation substitute.
 - Receipt-bound domain revision access is admitted only against the exact current healthy store generation and matching typed domain handle. It returns `None` for an unaffected domain and a typed stale-or-foreign error for an obsolete generation rather than allowing revision values alone to authorize publication.
 - Read APIs require explicit item, byte, or range bounds unless the result is a documented exact fixed-size record set such as the active session header.
 - Cursor reads require two finite typed endpoints, materialize at most one caller-bounded page, report cumulative stored-byte cost and whether more matching records exist, and never return a Fjall iterator or guard.
@@ -213,6 +221,23 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   reservation before batch construction or any Fjall mutation. The package rejects a budget above
   the configured ceiling as
   `NotCommitted { evidence: ReconciliationDescriptorTooLarge }`.
+- A mutation may reserve one optional statically typed successor protocol with exactly one source
+  participant and zero or more witness participants. Public registration binds the protocol,
+  correlation, role, and hook types to the participating live domain owners; internal type erasure
+  cannot weaken that registration. Before writer admission the reservation charges the resolver's
+  complete retained state, maximum fixed-size correlation, every correlation-derived point-read
+  codec family and count, maximum key/stored/decoded bytes, and maximum extended collision facts.
+  The source hook alone may emit the correlation from descriptor-bound records. Each witness
+  receives a quota-enforcing typed reader that derives keys only through its registered protocol
+  function and rejects undeclared families, counts, or byte bounds before acquisition.
+- Source, witness, and correlation values are fixed inline `Copy` values. The package checks their
+  complete type sizes against their declared charges before admission, so they cannot hide a
+  scope-owned heap graph behind a shallow pointer-sized value.
+- The reservation charges four complete correlation widths for the maximum simultaneous source
+  typed/encoded and one witness typed/encoded representations. Witness agreement uses the typed
+  correlation's equality; its encoding supplies only bounded diagnostic digest input. Every
+  declared witness reserves and consumes at least one derived point read. A protocol that needs no
+  witness declares no witness role.
 - Such a mutation must then obtain one move-only reservation for one of the home registry's 1,024
   scope slots and its complete
   conservative byte charge under the 256-MiB aggregate ceiling before it may acquire writer
@@ -229,10 +254,25 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   an unconsumed custody value performs the same infallible registry installation as a fail-closed
   fallback; it cannot release the slot, descriptor, or charge.
 - Reconciliation invokes each participating domain hook through the descriptor's bounded typed
-  reader and returns exactly `ExactOld`, `ExactNew` with the reconstructed exact receipt, or
-  `Collision`. All participants must prove the same exact side. Any participant-level collision,
-  mixed old/new classifications, or observation matching neither exact side is command-level
-  `Collision` and keeps that operation scope closed.
+  reader and returns exactly `ExactOld`, `ExactNew` with the reconstructed exact receipt,
+  `ExactSuccessor` with that same receipt, or `Collision`. Ordinary unanimous exact-side
+  classification is unchanged and takes precedence. `ExactSuccessor` is considered only after
+  that unanimity fails and requires the declared source and every declared witness to agree on
+  one correlation in one snapshot while every participant without a successor role is
+  `ExactNew`. Within that mixed successor candidate, an `ExactOld` participant, missing source or witness, protocol or correlation
+  mismatch, quota violation, invalid derived record, passive non-new participant, unresolved
+  observation, or hook collision is command-level `Collision` and keeps that operation scope
+  closed.
+- Unanimous ordinary sides and mixed sides that already violate successor eligibility bypass every
+  successor hook. Invalid or oversized derived keys and expected values become typed successor
+  rejection before snapshot point acquisition and therefore seal collision. Current point size,
+  acquisition, envelope, decode, and I/O failures retain their typed access or structural
+  classification. Expected typed/encoded values are bounded and dropped before current acquisition,
+  so each declared stored-plus-decoded read envelope covers the actual sequential peak.
+- `HomeStore::reconcile` is the sole public trigger. The descriptor owns all resolver authority;
+  no caller can submit a correlation or proof, acknowledge a collision, reset a closed scope,
+  request release, or resolve custody through an application reread. Successor classification runs
+  before collision sealing in the existing single-flight worker.
 - Reconciliation never guesses, merges, clears or crosses the old writer, scans unrelated natural
   records, or invokes whole-home validation. A `Collision` is not filesystem path collision and is
   not by itself structural store-failure evidence.
@@ -276,7 +316,7 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   `verifying` is never a structural lifecycle state.
 - Every state-dependent read, write, domain registration or reacquisition, and sidecar operation is
   generation-aware. Accepting an `Indeterminate` custody value moves only its exact operation scope to `verifying`;
-  `ExactOld` or `ExactNew` reopens it and `Collision` closes it. Malformed records, invalid trusted
+  `ExactOld`, `ExactNew`, or `ExactSuccessor` reopens it and `Collision` closes it. Malformed records, invalid trusted
   contracts, poisoned current authority, and other separately proven structural disagreement move
   the store to `failed`. Domain-owned semantic mutation rejection and reconciliation collision do
   not change structural health.
@@ -321,14 +361,22 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - One home runs at most four reconciliation workers and at most one per exact scope. When all four
   permits are held, another registered gate remains closed and awaits a worker without duplicating
   its descriptor.
-- `ExactOld` and `ExactNew` remove the gate and release its registry slot, complete retained byte
-  charge, descriptor, worker permit, typed reader, snapshot, pages, and hook state. `Collision`
+- Duplicate ordinary or successor-aware triggers join one retained flight and add no second read,
+  resolver, correlation, descriptor, worker, or queue item. Caller cancellation after writer
+  admission or custody installation cannot discard the flight. Recovery invokes retained protocol
+  hooks only through freshly reacquired typed domain handles; stale, foreign-store, and prior-
+  generation handles remain rejected.
+- `ExactOld`, `ExactNew`, and `ExactSuccessor` remove the gate and release its registry slot,
+  complete retained byte charge, descriptor, successor resolver and correlation state, worker
+  permit, typed reader, snapshot, pages, and hook state. `Collision`
   compacts its evidence into only its configured-byte-bounded sealed old/new identities, revisions,
   digests, and collision facts. In the same registry transition it replaces the descriptor's
   conservative retained-byte charge with the sealed facts' exact encoded-byte charge, discards the
   descriptor, retains the closed gate, slot, and replacement charge, and drops the worker permit
-  plus every transient reader, snapshot, page, and hook allocation. The sealed-fact schema maximum
-  is included in the pre-writer reservation, so this transition never needs new registry capacity.
+  plus every transient reader, snapshot, page, and hook allocation. Successor disagreements add
+  only bounded protocol identity, correlation digest, per-domain role/result, and derived-record
+  current/expected digests. The sealed-fact schema maximum is included in the pre-writer
+  reservation, so this transition never needs new registry capacity.
   A typed worker failure also drops all transient execution state while retaining at most the one
   bounded descriptor and its original retained-byte charge in that gate.
 - Registry or descriptor saturation returns the exact typed pre-writer `NotCommitted` result. It
@@ -452,13 +500,15 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   owner and codec identity, bounded command work, writer-reentry rejection, whole-home scrub
   behavior, ordinary-read fail-closed classification, stale-read publication rejection, all three
   command-result payload contracts, exact-old and receipt-reconstructing exact-new reconciliation,
-  mixed-and-neither collision closure, and obsolete-generation rejection. Capacity tests fill all
+  source-only and source-plus-witness exact-successor reconciliation, incomplete or mismatched
+  protocol collision closure, derived-read quota rejection, mixed-and-neither collision closure,
+  and obsolete-generation rejection. Capacity tests fill all
   1,024 retained scopes and the aggregate byte budget independently, prove the next potentially
   indeterminate mutation returns pre-writer `NotCommitted` without disturbing admitted work,
   reject a descriptor above 64 MiB, join duplicate
   triggers without duplicate queue work, and prove immediate reservation release for directly
-  classified `NotCommitted` and `Committed` plus gate and slot release for `ExactOld` and
-  `ExactNew`. Collision tests prove opaque-descriptor disposal, one bounded sealed-fact set and its
+  classified `NotCommitted` and `Committed` plus gate and slot release for `ExactOld`, `ExactNew`,
+  and `ExactSuccessor`. Collision tests prove opaque-descriptor disposal, one bounded sealed-fact set and its
   closed slot remain, and every transient worker resource is released. Open tests prove that no
   candidate application discovery is available before complete typed-stack publication.
 - Durable-start footprint tests independently compose both allowed typed participant pairs, prove

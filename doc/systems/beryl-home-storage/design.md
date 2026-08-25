@@ -100,10 +100,27 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Every live logical-domain blueprint, handle, and command contribution is bound to its exact Rust owner type in addition to the durable stable name and schema. Every declared record family is bound to one exact codec type. These process-local identities are not persisted, and a same-name/schema type or alternate same-name codec cannot reacquire another live owner's authority.
 - Routine open, reopen, and handle reacquisition validate those exact live types, durable
   declarations, required families, and generation without scanning every application record.
-- Every mutation domain also registers a separate bounded natural-record reconciliation hook. That
-  hook can read only the exact operation identities admitted by the command's pre-writer
-  descriptor reservation and materialized under the serialized writer before physical mutation;
-  it cannot be substituted by the domain's exhaustive validator.
+- Every mutation domain also registers a separate bounded natural-record reconciliation hook. Its
+  ordinary exact-side classification can read only the exact operation identities admitted by the
+  command's pre-writer descriptor reservation and materialized under the serialized writer before
+  physical mutation; it cannot be substituted by the domain's exhaustive validator.
+- An operation may additionally declare one statically typed successor protocol while materializing
+  that descriptor. Exactly one participating domain is its source and zero or more participating
+  domains are witnesses. The source alone may authenticate one fixed-size correlation from
+  descriptor-bound natural records. A witness may then perform only the correlation-derived typed
+  point reads whose codec families, counts, maximum key and stored-value bytes, and maximum decoded
+  bytes were declared and charged before writer admission. This is not arbitrary key construction:
+  the source hook owns the correlation type and derivation, every witness is registered by its live
+  domain owner, and the reader rejects undeclared families or exhausted quotas before acquisition.
+  Participants without a successor role receive no derived-read authority.
+- Source, witness, and correlation values retained in a scope are fixed inline `Copy` values. Their
+  complete type sizes are checked against their declarations and charged before admission; they
+  cannot retain a scope-owned `Vec`, `Box`, `Arc`, string, or another hidden heap graph.
+- The reservation conservatively charges four complete correlation widths for the maximum
+  simultaneous source typed/encoded and one witness typed/encoded representations. Witness
+  agreement uses typed equality; encoding is diagnostic digest input and need not define equality.
+  A declared witness reserves and consumes at least one derived point read. Declaring no witness
+  role is the only zero-read witness shape.
 - Only registration at a schema-validation boundary, an explicit whole-home scrub, background
   maintenance, or corruption-evidence investigation may use the store-owned exhaustive validation
   path. It streams
@@ -189,10 +206,20 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   natural-record identities, revisions, and values needed by those hooks plus the intended exact
   new state and receipt facts; it is not a raw keyspace reader or general recovery capability.
 - Targeted reconciliation returns exactly `ExactOld`, `ExactNew` with the reconstructed exact
-  durable receipt, or `Collision`. `ExactOld` proves the operation did not become authoritative.
-  `ExactNew` proves the complete intended atomic state and reconstructs the same receipt a direct
-  `Committed` result would have carried. Any mixed old/new state or state matching neither exact
-  side is `Collision`.
+  durable receipt, `ExactSuccessor` with that same receipt, or `Collision`. `ExactOld` proves the
+  operation did not become authoritative. `ExactNew` proves the complete intended atomic state.
+  `ExactSuccessor` is considered only after ordinary unanimous exact-old and exact-new
+  classification fails. It requires the one declared source and every declared witness to
+  authenticate the same correlation in one snapshot while every participant without a successor
+  role is `ExactNew`. Within that mixed successor candidate, an `ExactOld` participant, missing role, unresolved observation, mismatched
+  correlation, invalid derived record, passive non-new participant, or hook collision is
+  `Collision`. Both success variants reconstruct the exact receipt a direct `Committed` result
+  would have carried; a resolver cannot fabricate a later-generation receipt.
+- Ordinary unanimous or already-ineligible mixed sides are decided before successor hooks run, so
+  a hook failure cannot override known `ExactOld`, `ExactNew`, or `Collision` evidence. Invalid or
+  oversized derived keys and expected values reject the successor proof before current point
+  acquisition and become collision facts. Current stored-envelope, decode, and I/O failures remain
+  typed access or structural failures rather than being relabeled as semantic collision.
 - An indeterminate result closes publication and further admission only for its exact operation
   scope. `Collision` leaves that scope closed; it never guesses, merges records, invokes a
   whole-home scrub, clears or crosses the old writer, or turns CAS into storage authority.
@@ -211,7 +238,10 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   admission, every mutation that could become indeterminate obtains one move-only reservation and
   proves from its
   command-owned identities plus declared schema limits that its conservative descriptor-byte
-  budget fits that ceiling. After writer admission, the command materializes the exact old state,
+  budget fits that ceiling. A declared successor protocol includes in that proof its protocol and
+  role identities, resolver state, maximum correlation, each derived-read codec family and count,
+  maximum key/stored/decoded bytes, and the extended sealed-collision facts; none of those charges
+  may be discovered after admission. After writer admission, the command materializes the exact old state,
   intended new state, and intended receipt facts from the admitted snapshot into that reserved
   budget before batch construction or any Fjall mutation. Scope saturation returns
   `NotCommitted { evidence: ReconciliationCapacity }`; an oversized descriptor returns the
@@ -251,6 +281,11 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Installing custody closes the exact publication scope but authorizes no reread, retry, rollback,
   publication, or reconciliation execution. A separately admitted targeted-reconciliation trigger
   may later consume that retained scope under the worker and natural-record-hook rules below.
+- `HomeStore::reconcile` remains the sole reconciliation trigger. The original descriptor is the
+  sole source of successor protocol authority; callers cannot supply a proof or correlation,
+  acknowledge a collision, reset a closed scope, request slot release, or resolve custody through
+  application rereads. Successor classification occurs before collision sealing in the same
+  single-flight worker and snapshot as ordinary exact-side classification.
 - Registry installation is also the lifetime cut for process-local command continuations. The
   caller may release its old operation or stager after handoff; a domain hook reconstructs any
   `ExactNew` successor, permitted same-live-owner `ExactOld` continuation, or terminal `Collision`
@@ -377,14 +412,23 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - One home runs at most four targeted reconciliation workers and at most one worker for any exact
   scope. When all four worker permits are held, a registered scope remains gated and awaits a
   permit without duplicating its descriptor.
-- `ExactOld` and `ExactNew` remove the scope and release its registry slot, complete retained byte
-  charge, descriptor, worker permit, snapshot, reader, pages, and hook state. `Collision` compacts
+- Duplicate ordinary or successor-aware triggers join the same retained flight and add no read,
+  resolver, correlation, descriptor, worker, or queue item. Caller cancellation after admission or
+  custody installation cannot retract the flight. Same-home recovery reacquires fresh exact typed
+  domain handles before invoking retained hooks; stale, foreign-store, and prior-generation handles
+  remain unusable. Process termination publishes no acknowledgement, and a later process relies on
+  durable natural replay rather than reconstructing a process-local scope.
+- `ExactOld`, `ExactNew`, and `ExactSuccessor` remove the scope and release its registry slot,
+  complete retained byte charge, descriptor, successor resolver and correlation state, worker
+  permit, snapshot, reader, pages, and hook state. `Collision` compacts
   its evidence into only the configured-byte-bounded sealed old/new identities, revisions, digests,
   and collision facts. In the same registry transition it replaces the descriptor's conservative
   retained-byte charge with the sealed facts' exact encoded-byte charge, discards the descriptor,
   retains that closed scope, slot, and replacement charge, and releases the worker permit plus every
-  transient reader, snapshot, page, and hook allocation. The sealed-fact schema maximum is included
-  in the pre-writer reservation, so this transition never needs new registry capacity. A typed
+  transient reader, snapshot, page, and hook allocation. Collision facts additionally retain only
+  the bounded protocol identity, correlation digest, per-domain role/result, and derived-record
+  current/expected digests required to explain successor disagreement. Their schema maximum is
+  included in the pre-writer reservation, so this transition never needs new registry capacity. A typed
   reconciliation failure likewise releases all transient worker state while leaving at most the one
   bounded descriptor and its original retained-byte charge in the gated scope.
 - Registry or descriptor-capacity saturation fails the new mutation closed through its typed
