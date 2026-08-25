@@ -8,7 +8,7 @@ use beryl_model::DomainRevision;
 
 use crate::{codec::*, draft_piece::*, error::SyndicValidationError};
 
-const V6_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
+const V7_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<ThreadsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ThreadExecutionsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ThreadAttributesCodec>(KeyspaceSchemaVersion::new(1)),
@@ -90,19 +90,19 @@ const V6_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<CasTurnIndexCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ProviderObservationChunksCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 80] = [(); V6_FAMILIES.len()];
+const _: [(); 80] = [(); V7_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
-pub(crate) fn v6_family_names() -> impl Iterator<Item = &'static str> {
-    V6_FAMILIES.iter().map(RecordFamily::name)
+pub(crate) fn v7_family_names() -> impl Iterator<Item = &'static str> {
+    V7_FAMILIES.iter().map(RecordFamily::name)
 }
 
 pub(crate) struct SyndicDomain;
 
 impl StorageDomain for SyndicDomain {
     const NAME: &'static str = "syndic";
-    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(6);
-    const FAMILIES: &'static [RecordFamily<Self>] = V6_FAMILIES;
+    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(7);
+    const FAMILIES: &'static [RecordFamily<Self>] = V7_FAMILIES;
     type ValidationError = SyndicValidationError;
 
     fn validate(

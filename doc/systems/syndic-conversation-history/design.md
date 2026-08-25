@@ -543,36 +543,52 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   successor-relative composite coordinates and order so they may target newly inserted text. No
   whole-operation fragment collection or hardcoded cumulative fragment count is transaction
   authority, and no marker effect has a designated first-page position.
-- Two empty replacement ranges at the same composite position are invalid. Callers coalesce their
-  inserted fragments into one replacement before staging; storage never invents a tie-breaker or
-  lets fragment arrival order choose the successor. Other adjacent non-overlapping ranges remain
-  valid.
+- Repeated empty replacement ranges at the same composite position are invalid when either item is
+  markerless. Callers coalesce their inserted UTF-8 fragments into one replacement before staging;
+  storage never invents a tie-breaker or lets fragment arrival order choose the successor. Repeated
+  empty ranges are valid only when every item carries one distinct closed marker effect whose
+  stable identity and same-anchor order key establish canonical order; one item cannot coalesce
+  several effects. Identity or order-key reuse still rejects. Other adjacent non-overlapping ranges
+  remain valid.
 - Every proposal staging item that changes a marker carries one closed marker effect. An insert
-  carries only the accepted successor UTF-8 anchor, stable id, final label, same-anchor order key, and
-  checked logical/marker/encoded-byte charges. A removal carries the stable id, label, order key,
-  predecessor composite position and gap witness, and predecessor marker-leaf identity and digest.
-  A move or same-id replacement carries both sets in that one item, including byte-equal stable
-  identity and label; it carries no caller-selected successor gap or immediate-neighbor witness and
-  never points to an earlier removal fragment or depends on a later insertion fragment. Splitting one
-  marker effect across proposal pages is invalid.
-- When that item is reached, storage authenticates the removal half against both the predecessor root
-  and the current working identity index and performs the bounded predecessor-sequence descent. After
-  deriving the removal-applied working view, storage descends that current sequence/index at the
-  accepted successor anchor and order key, derives and authenticates the exact immediate insertion
-  gap and neighboring leaves itself, checks the supplied charges, and proves the required id absence
-  in one bounded marker-effect admission. That atomic transition either completes the bounded path copies immediately or
-  stores one fixed-size pending effect bound to the exact working roots and validated source/
-  destination proofs. While pending, no later proposal effect is admitted; bounded path-copy commands
-  create only unreachable working records, and one final transition atomically installs the new
-  sequence, identity-index, and marker-order-commitment working roots and clears the pending effect. An insert omits
-  only the removal checks and instead proves predecessor and working-index absence. A removal omits
-  only successor insertion. The destination may address text already applied in canonical proposal
-  order, including text on earlier pages. An anchor beyond the current working logical extent or
-  construction frontier is a future dependency and rejects at that natural page. An occupied
-  `(anchor, order key)` owned by a different id, an id already present when absence is required, or
-  disagreeing checked charges is a collision. A marker introduced on a later page is not a required
-  witness: when reached, storage independently derives its then-current neighbors from canonical
-  order. No semantic reorder, widget pre-scan, prior-page buffer, or operation-wide marker map is used.
+  carries the accepted successor logical UTF-8 anchor, stable id, final label, same-anchor order key,
+  and checked logical/marker/encoded-byte charges. A removal carries the stable id, label, order key,
+  exact predecessor logical UTF-8 anchor, and predecessor marker-leaf identity and digest. A move or
+  same-id replacement carries both sets in that one item, including byte-equal stable identity and
+  label. Source and successor anchors remain fixed logical UTF-8 frontiers; no field carries an
+  accumulated per-marker delta, caller-selected successor gap, or immediate-neighbor witness, points
+  to another fragment, or splits one marker effect across pages.
+- A proposal item without a marker effect may replace only a range that contains no marker
+  occurrence in the authenticated removal-applied working roots. Encountering any marker in that
+  range rejects the fragment; text replacement never removes a marker implicitly or advances roots
+  without the matching effect count and chain step. The caller must stage each required marker
+  removal as its own closed effect before the text-range fragment.
+- Immutable canonical fragment records are the only effect collection. After fragment staging is
+  complete, successor construction performs one canonical fragment-ordinal fold; it does not run a
+  global marker-effect reconciliation prepass or retain the first encountered effect while scanning
+  later fragments. The durable marker-effect scan frontier stores the exact next fragment and
+  authenticated scanned-prefix endpoint, completed effect count, and domain-separated cumulative
+  effect chain. Each effect-chain step commits the fragment identity and canonical digest together
+  with the post-effect sequence, identity-index, and marker-order-commitment root digest.
+- The fold admits at most one fixed-size active effect. It binds the exact fragment identity and
+  digest, source roots, unreachable working roots, fixed source/successor logical-mapping frontiers,
+  and one bounded removal, range-application, or optional-insertion subphase. A fragment with an
+  effect may start only while this slot is empty. Storage authenticates removal against the
+  predecessor occurrence and current working index, applies the removal, then derives marker gap and
+  order from the removal-applied current roots and index before optional insertion. Bounded path-copy
+  steps expose no working root. One atomic transition installs all three post-effect working roots,
+  advances the scan frontier, completed count, and effect chain, and clears the active slot; only
+  then may the next fragment be scanned. A fragment without an effect advances the authenticated
+  scan frontier without changing the effect count or chain. Later effects remain solely in immutable
+  cursor-addressed fragment records, never in a vector, queue, registry, continuation list, or
+  accumulated mapping-delta state. Live and mutable continuation state is therefore `O(1)` in marker
+  count; immutable staged input and unreachable working/final tree records may scale through cursor
+  pages with the logical edit.
+- The fold supports adjacent, sparse, and same-anchor markers because each effect derives its gap and
+  ordering from the current removal-applied roots. An anchor beyond the current logical construction
+  frontier, occupied `(anchor, order key)` owned by another id, repeated id when absence is required,
+  wrong source occurrence, or disagreeing checked charge rejects at that fragment. No semantic
+  reorder, widget pre-scan, prior-page buffer, or operation-wide marker map is used.
 - Proposal ranges remain strictly ordered across page boundaries by the predecessor end and
   successor anchor/order effect frontier committed in the build receipt. An out-of-order,
   overlapping, future-dependent anchor, duplicate same-anchor order key, charge mismatch, or second semantic
@@ -616,8 +632,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   endpoint key and canonical fragment digest plus its chain; the exact staging identity and finished-
   head/receipt reference; current phase and relational cursors; consumed source- and proposal-lane
   staging frontiers; working sequence, identity-index, and marker-order-commitment roots with their complete summaries; source
-  and successor structure frontiers; changed-occurrence count/digest frontier; bounded pending
-  marker-effect state when one path-copy quantum cannot finish it; next record ordinal;
+  and successor structure frontiers; fixed marker-effect scan frontier, completed effect count and
+  cumulative chain; optional fixed-size active marker effect when one path-copy quantum cannot
+  finish it; next record ordinal;
   optional successor root and build digest; lifecycle; and a domain-separated receipt digest that
   commits every preceding field. A mutable build head or digest detached from this receipt closure
   is not progress authority.
@@ -643,6 +660,11 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   replacement, a fork, a build head ahead of its receipt endpoint, or a staged-fragment or effect
   frontier ahead of the authenticated head is corruption or stale authority and fails closed; no
   command repairs such a split or reports it successful.
+- Marker-fold replay additionally requires the same next-fragment/scanned-prefix endpoint, fragment
+  identity and digest, completed effect count and cumulative chain, pre/post three-root digests,
+  and byte-equal active-effect state. A skipped, repeated, or decreasing fragment ordinal; wrong
+  identity, count, chain, digest, or root; active-slot mismatch; malformed codec; or checked-
+  arithmetic overflow fails closed without partial root installation or frontier advance.
 - Build-head and operation-status reads, reconciliation, candidate-session validation, candidate
   adoption, and settlement closure authenticate the selected endpoint receipt, its immediate
   predecessor when present, their referenced roots and records, and the session head's custody slot
@@ -664,15 +686,19 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   lane frontiers must equal the frozen final frontiers byte for byte and the derived fragment count,
   endpoint, and chain must equal the finish-derived proposal header. Final three-structure closure then
   requires the exact completed structure frontiers, equal sequence-marker/index/commitment counts
-  and maximum labels, and changed-
-  occurrence agreement. Those cumulative authenticated checkpoints prove source/target closure after
+  and maximum labels, and marker-effect count/chain agreement. Those cumulative authenticated checkpoints prove source/target closure after
   restart without rereading prior pages or fragments.
 - Each marker-effect transition incrementally commits exact cross-structure occurrence agreement and
-  advances the changed-occurrence count/digest frontier. Before candidate adoption, the completed
+  advances the completed effect count and domain-separated chain. Before candidate adoption, the completed
   sequence, identity-index, and marker-order-commitment successors must have equal marker count and
   maximum label, matching authenticated reused-subtree commitments, and summaries equal to that
   final frontier. The final command never rescans
-  prior marker effects. The final revision-checked candidate-adoption command
+  prior marker effects. Cross-validation begins only at authenticated fragment EOF with no active
+  effect and requires the scan frontier to equal the exact staging endpoint, the completed effect
+  count and chain to equal the proposal closure, and the three working roots and summaries to equal
+  that effect chain and final structure frontiers. Premature EOF, any attempt to cross-validate
+  while an effect is active, or disagreement among staging, effect-chain, and root authority fails
+  closed. The final revision-checked candidate-adoption command
   atomically writes the combined successor root and summary, immutable settlement proof and history
   transition, and the matching editor session's next candidate revision and newest candidate/
   history pair. It does not advance the durable current-draft selector or published root/history
@@ -696,9 +722,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - The staging-page, staging-progress, build, build-fragment, build-progress, marker-order-
   commitment, and marker-seal families are
   sufficient for this continuation. Their canonical build-head and build-progress record shapes must
-  carry the lane-consumption, finished-staging, fragment-chain, changed-occurrence, and bounded
-  pending-effect fields above; no further secondary index, page-history family, or operation-wide
-  marker map is part of the architecture.
+  carry the lane-consumption, finished-staging, fragment-chain, marker-effect scan/count/chain, and
+  optional active-effect fields above; no further secondary index, page-history family, marker-
+  continuation list, or operation-wide marker map is part of the architecture.
 - Each current draft selects an immutable published edit-history reference: the deterministic
   canonical-empty reference, a named session/frontier publication snapshot, or a fresh-baseline
   snapshot created with an atomic sealed-content import. Every form binds one exact selected root,

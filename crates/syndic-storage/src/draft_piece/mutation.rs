@@ -222,10 +222,7 @@ impl SyndicStorage {
             return Ok(None);
         }
         let fragment = match build.frontier() {
-            DraftPieceBuildFrontierV1::ReconcilingMoves {
-                fragment_ordinal, ..
-            }
-            | DraftPieceBuildFrontierV1::Planning { fragment_ordinal }
+            DraftPieceBuildFrontierV1::Planning { fragment_ordinal }
             | DraftPieceBuildFrontierV1::Removing {
                 fragment_ordinal, ..
             }
@@ -267,7 +264,7 @@ impl SyndicStorage {
                 DraftPieceRejectedReasonV1::TreeLimit,
             ));
         }
-        let (published_roots, target_continuation) = marker_continuation_transition(
+        let (published_roots, marker_effect_continuation) = marker_continuation_transition(
             &build,
             fragment.as_ref(),
             quantum.roots,
@@ -288,7 +285,7 @@ impl SyndicStorage {
                 DraftPieceBuildLifecycleV1::Open
             },
             fragment_endpoint,
-            target_continuation,
+            marker_effect_continuation,
         )
         .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
         let next_session = expected_session
@@ -474,6 +471,15 @@ fn authenticate_progress_receipt_from_store(
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
         authenticate_progress_receipt_effects_from_store(storage, store, &stored)?;
+        if !super::read::progress_receipt_transition_is_exact(
+            storage,
+            store,
+            &stored,
+            receipt,
+            point_limit(),
+        )? {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
     }
     authenticate_progress_receipt_effects_from_store(storage, store, receipt)
 }
@@ -491,12 +497,47 @@ fn authenticate_progress_receipt_effects_from_store(
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
     }
-    let roots = receipt.working_roots();
+    authenticate_build_roots_from_store(
+        storage,
+        store,
+        receipt.key().draft_id(),
+        receipt.working_roots(),
+    )?;
+    if let Some(active) = receipt.marker_effect_continuation().active() {
+        let fragment = storage
+            .point::<DraftPieceBuildFragmentsFamily>(store, active.fragment_key(), point_limit())?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        let endpoint = canonical_fragment_endpoint(&fragment);
+        if endpoint.digest() != active.fragment_digest()
+            || fragment.replacement().marker_effect() != Some(active.effect())
+            || active.source_roots() != receipt.working_roots()
+        {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+        authenticate_build_roots_from_store(
+            storage,
+            store,
+            receipt.key().draft_id(),
+            active.working_roots(),
+        )?;
+    }
+    Ok(())
+}
+
+fn authenticate_build_roots_from_store(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    draft_id: SyndicDraftId,
+    roots: DraftPieceBuildRootsV1,
+) -> Result<(), DraftPiecePrepareErrorV1> {
+    if !draft_piece_build_roots_are_locally_exact_v1(roots) {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
     if let Some(id) = roots.sequence_root() {
         let node = storage
             .point::<DraftPieceNodesFamily>(
                 store,
-                DraftPieceRecordKeyV1::new(receipt.key().draft_id(), id),
+                DraftPieceRecordKeyV1::new(draft_id, id),
                 point_limit(),
             )?
             .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
@@ -509,7 +550,7 @@ fn authenticate_progress_receipt_effects_from_store(
             .point::<DraftMarkerIdentityIndexFamily>(
                 store,
                 DraftMarkerIdentityRecordKeyV1::new(
-                    receipt.key().draft_id(),
+                    draft_id,
                     DraftMarkerIdentityRecordKindV1::Internal,
                     id,
                 ),
@@ -518,6 +559,22 @@ fn authenticate_progress_receipt_effects_from_store(
             .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
         validate_index_root_record(record, roots.marker_index_summary())?;
     } else if roots.marker_index_summary().record_count() != 0 {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    if let Some(id) = roots.marker_order_root() {
+        let record = storage
+            .point::<DraftMarkerOrderCommitmentsFamily>(
+                store,
+                DraftMarkerOrderRecordKeyV1::new(
+                    draft_id,
+                    DraftMarkerOrderRecordKindV1::Internal,
+                    id,
+                ),
+                point_limit(),
+            )?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        validate_marker_order_root_record(record, roots)?;
+    } else if roots.marker_commitment().marker_count() != 0 {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
     Ok(())
@@ -561,7 +618,6 @@ fn build_record(
                 next_ordinal: 1,
                 chain: canonical_empty_draft_piece_fragment_chain_v1(),
             },
-            DraftPieceDigestV1::from_bytes([0; 32]),
             DraftPieceBuildProgressReceiptReferenceV1::new(
                 DraftPieceBuildProgressReceiptKeyV1::new(
                     header.draft_id(),
@@ -656,7 +712,6 @@ pub(super) fn initial_build_for_staging(
             origin,
             1,
             initial_frontier,
-            DraftPieceDigestV1::from_bytes([0; 32]),
             DraftPieceBuildProgressReceiptReferenceV1::new(
                 DraftPieceBuildProgressReceiptKeyV1::new(
                     header.draft_id(),
@@ -713,7 +768,6 @@ fn terminal_first_build(
                 next_ordinal: 1,
                 chain: canonical_empty_draft_piece_fragment_chain_v1(),
             },
-            DraftPieceDigestV1::from_bytes([0; 32]),
             DraftPieceBuildProgressReceiptReferenceV1::new(
                 DraftPieceBuildProgressReceiptKeyV1::new(
                     header.draft_id(),
@@ -763,13 +817,13 @@ fn build_from_progress_receipt(
         receipt.successor_frontier(),
         receipt.next_record_ordinal(),
         receipt.frontier(),
-        receipt.state_digest(),
         receipt.reference(),
         receipt.successor(),
         receipt.build_digest(),
         receipt.lifecycle(),
     )
-    .with_durable_continuation(receipt.durable_continuation());
+    .with_durable_continuation(receipt.durable_continuation())
+    .with_marker_effect_continuation(receipt.marker_effect_continuation());
     if progress_receipt_matches_build(receipt, &build) && build_record_is_exact(&build) {
         Ok(build)
     } else {
@@ -801,9 +855,8 @@ fn stage_transition(
         if staged == 0 {
             DraftPieceBuildFrontierV1::CrossValidating
         } else {
-            DraftPieceBuildFrontierV1::ReconcilingMoves {
+            DraftPieceBuildFrontierV1::Planning {
                 fragment_ordinal: 1,
-                next_move: 0,
             }
         }
     } else {
@@ -837,7 +890,6 @@ fn stage_transition(
             build.successor_frontier(),
             build.next_record_ordinal(),
             frontier,
-            DraftPieceDigestV1::from_bytes([0; 32]),
             build.progress_receipt(),
             None,
             None,
@@ -925,9 +977,8 @@ pub(super) fn staged_page_transition(
         if chain != build.fragment_chain() {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        DraftPieceBuildFrontierV1::ReconcilingMoves {
+        DraftPieceBuildFrontierV1::Planning {
             fragment_ordinal: 1,
-            next_move: 0,
         }
     } else {
         DraftPieceBuildFrontierV1::Receiving {
@@ -961,7 +1012,6 @@ pub(super) fn staged_page_transition(
             build.successor_frontier(),
             build.next_record_ordinal(),
             frontier,
-            DraftPieceDigestV1::from_bytes([0; 32]),
             build.progress_receipt(),
             None,
             None,
@@ -1024,105 +1074,177 @@ fn marker_continuation_transition(
     fragment: Option<&DraftPieceBuildFragmentV1>,
     active_roots: DraftPieceBuildRootsV1,
     next_frontier: DraftPieceBuildFrontierV1,
-) -> Result<
-    (
-        DraftPieceBuildRootsV1,
-        Option<DraftPieceDurableBuildContinuationV1>,
-    ),
-    DraftPiecePrepareErrorV1,
-> {
-    let Some(continuation) = build.durable_continuation() else {
-        if fragment.is_some_and(|fragment| fragment.replacement().marker_effect().is_some()) {
+) -> Result<(DraftPieceBuildRootsV1, DraftPieceMarkerEffectContinuationV1), DraftPiecePrepareErrorV1>
+{
+    let continuation = build.marker_effect_continuation();
+    let scan = continuation.scan();
+    let existing = continuation.active();
+    if fragment.is_none() {
+        let expected_next = build
+            .fragment_count()
+            .checked_add(1)
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        let endpoint_matches = match (scan.scanned_endpoint(), build.fragment_count()) {
+            (None, 0) => true,
+            (Some(endpoint), count) => {
+                endpoint.key().ordinal() == count
+                    && endpoint.chain() == build.fragment_chain()
+                    && endpoint.key().draft_id() == build.draft_id()
+                    && endpoint.key().session_id() == build.session_id()
+                    && endpoint.key().operation_id() == build.operation_id()
+            }
+            _ => false,
+        };
+        if existing.is_some() || scan.next_fragment_ordinal() != expected_next || !endpoint_matches
+        {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
-        return Ok((active_roots, None));
-    };
-    let effect = fragment.and_then(|fragment| fragment.replacement().marker_effect());
-    let starting = matches!(
-        build.frontier(),
-        DraftPieceBuildFrontierV1::ReconcilingMoves { next_move: 0, .. }
-    ) && effect.is_some();
+        return Ok((active_roots, continuation));
+    }
+    let fragment = fragment.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    let endpoint = canonical_fragment_endpoint(fragment);
+    let effect = fragment.replacement().marker_effect();
+    let starting = matches!(build.frontier(), DraftPieceBuildFrontierV1::Planning { .. });
     let completing = matches!(
         build.frontier(),
         DraftPieceBuildFrontierV1::Inserting { .. }
-    ) && effect.is_some()
-        && !matches!(next_frontier, DraftPieceBuildFrontierV1::Inserting { .. });
-    let existing = continuation.pending_marker_effect();
-    if existing.is_some_and(|pending| effect.is_some_and(|effect| effect != pending.effect()))
-        || existing.is_some()
-            && effect.is_some()
-            && matches!(
-                build.frontier(),
-                DraftPieceBuildFrontierV1::ReconcilingMoves { next_move: 0, .. }
-            )
+    ) && !matches!(next_frontier, DraftPieceBuildFrontierV1::Inserting { .. });
+    if scan.next_fragment_ordinal() != fragment.key().ordinal()
+        || existing.is_some_and(|active| {
+            active.fragment_key() != fragment.key()
+                || active.fragment_digest() != endpoint.digest()
+                || Some(active.effect()) != effect
+        })
+        || starting && existing.is_some()
+        || !starting && effect.is_some() && existing.is_none()
     {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
-    let (published_roots, pending, changed_occurrences) = if completing {
-        let pending = existing.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-        let count = continuation
-            .changed_occurrences()
-            .count()
-            .checked_add(1)
-            .ok_or(DraftPiecePrepareErrorV1::Rejected(
-                DraftPieceRejectedReasonV1::AggregateOverflow,
-            ))?;
-        let digest = draft_piece_changed_occurrence_chain_link_v1(
-            continuation.changed_occurrences().digest(),
-            count,
-            pending.effect(),
-            active_roots,
-        );
+    let (published_roots, active, marker_effect_scan) = if completing {
+        let (count, chain) = if existing.is_some() {
+            let count = scan.completed_effect_count().checked_add(1).ok_or(
+                DraftPiecePrepareErrorV1::Rejected(DraftPieceRejectedReasonV1::AggregateOverflow),
+            )?;
+            (
+                count,
+                draft_piece_marker_effect_chain_link_v1(
+                    scan.effect_chain(),
+                    fragment.key(),
+                    endpoint.digest(),
+                    count,
+                    active_roots,
+                ),
+            )
+        } else {
+            (scan.completed_effect_count(), scan.effect_chain())
+        };
+        let next_fragment_ordinal =
+            fragment
+                .key()
+                .ordinal()
+                .checked_add(1)
+                .ok_or(DraftPiecePrepareErrorV1::Rejected(
+                    DraftPieceRejectedReasonV1::AggregateOverflow,
+                ))?;
         (
             active_roots,
             None,
-            DraftPieceChangedOccurrenceFrontierV1::new(count, digest),
+            DraftPieceMarkerEffectScanFrontierV1::new(
+                next_fragment_ordinal,
+                Some(endpoint),
+                count,
+                chain,
+            ),
         )
-    } else if starting || existing.is_some() {
-        let effect = existing
-            .map(DraftPiecePendingMarkerEffectV1::effect)
-            .or(effect)
-            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-        let source_roots = existing.map_or(build.working_roots(), |pending| pending.source_roots());
+    } else if let Some(effect) = effect {
+        let source_roots = existing.map_or(build.working_roots(), |active| active.source_roots());
+        let source_frontier = existing.map_or(continuation.source_logical_frontier(), |active| {
+            active.source_frontier()
+        });
+        let successor_frontier = existing
+            .map_or(continuation.successor_logical_frontier(), |active| {
+                active.successor_frontier()
+            });
         let phase = match next_frontier {
-            DraftPieceBuildFrontierV1::ReconcilingMoves { .. }
-            | DraftPieceBuildFrontierV1::Planning { .. }
-            | DraftPieceBuildFrontierV1::Removing { .. } => {
-                DraftPiecePendingMarkerPhaseV1::Removing
-            }
+            DraftPieceBuildFrontierV1::Planning { .. }
+            | DraftPieceBuildFrontierV1::Removing { .. } => DraftPieceActiveMarkerPhaseV1::Removing,
             DraftPieceBuildFrontierV1::Applying { .. } => {
-                DraftPiecePendingMarkerPhaseV1::DerivingInsertionGap
+                DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap
             }
-            DraftPieceBuildFrontierV1::Inserting { .. } => {
-                DraftPiecePendingMarkerPhaseV1::Inserting
-            }
-            _ => DraftPiecePendingMarkerPhaseV1::Publishing,
+            DraftPieceBuildFrontierV1::Inserting { .. } => DraftPieceActiveMarkerPhaseV1::Inserting,
+            _ => DraftPieceActiveMarkerPhaseV1::Publishing,
         };
         (
             source_roots,
-            Some(DraftPiecePendingMarkerEffectV1::new(
+            Some(DraftPieceActiveMarkerEffectV1::new(
+                fragment.key(),
+                endpoint.digest(),
                 effect,
                 source_roots,
                 active_roots,
+                source_frontier,
+                successor_frontier,
                 phase,
             )),
-            continuation.changed_occurrences(),
+            scan,
         )
     } else {
-        (active_roots, None, continuation.changed_occurrences())
+        (active_roots, None, scan)
     };
-    let target = DraftPieceDurableBuildContinuationV1::new(
-        continuation.finished(),
-        continuation.source(),
-        continuation.proposal(),
-        continuation.phase(),
-        changed_occurrences,
-        pending,
+    let target = DraftPieceMarkerEffectContinuationV1::new(
+        if completing {
+            if fragment.replacement().is_continuation() {
+                continuation.source_logical_frontier()
+            } else {
+                fragment.replacement().end().utf8_offset()
+            }
+        } else {
+            continuation.source_logical_frontier()
+        },
+        if completing {
+            let successor_start = if fragment.replacement().is_continuation() {
+                continuation.successor_logical_frontier()
+            } else {
+                fragment
+                    .replacement()
+                    .start()
+                    .utf8_offset()
+                    .checked_sub(continuation.source_logical_frontier())
+                    .and_then(|offset| {
+                        continuation
+                            .successor_logical_frontier()
+                            .checked_add(offset)
+                    })
+                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
+            };
+            fragment
+                .replacement()
+                .inserted()
+                .iter()
+                .try_fold(successor_start, |frontier, piece| {
+                    let bytes = match piece {
+                        DraftPieceV1::Text(text) => u64::try_from(text.len()).ok()?,
+                        DraftPieceV1::Marker(_) => 0,
+                    };
+                    frontier.checked_add(bytes)
+                })
+                .ok_or(DraftPiecePrepareErrorV1::Rejected(
+                    DraftPieceRejectedReasonV1::AggregateOverflow,
+                ))?
+        } else {
+            continuation.successor_logical_frontier()
+        },
+        marker_effect_scan,
+        active,
     );
-    if !target.is_locally_exact() {
+    if !target.is_locally_exact(DraftPieceSettlementKeyV1::new(
+        build.draft_id(),
+        build.session_id(),
+        build.operation_id(),
+    )) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
-    Ok((published_roots, Some(target)))
+    Ok((published_roots, target))
 }
 
 fn next_build_record(
@@ -1136,7 +1258,7 @@ fn next_build_record(
     build_digest: Option<DraftPieceDigestV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
-    durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
+    marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
 ) -> Result<(DraftPieceBuildRecordV1, DraftPieceBuildProgressReceiptV1), SyndicMutationError> {
     authenticated_build_transition(
         DraftPieceBuildRecordV1::new(
@@ -1161,13 +1283,13 @@ fn next_build_record(
             successor_frontier,
             next_record_ordinal,
             frontier,
-            DraftPieceDigestV1::from_bytes([0; 32]),
             build.progress_receipt(),
             successor,
             build_digest,
             lifecycle,
         )
-        .with_durable_continuation(durable_continuation),
+        .with_durable_continuation(build.durable_continuation())
+        .with_marker_effect_continuation(marker_effect_continuation),
         Some(build.progress_receipt()),
         fragment_endpoint,
     )
@@ -1190,7 +1312,7 @@ fn terminal_build(
         build.build_digest(),
         lifecycle,
         fragment_endpoint,
-        build.durable_continuation(),
+        build.marker_effect_continuation(),
     )
 }
 
@@ -1313,6 +1435,17 @@ pub(super) fn authenticate_progress_receipt(
             return Err(SyndicMutationError::IdentityCollision);
         }
         authenticate_progress_receipt_effects(reader, &stored)?;
+        let scan_endpoint = receipt
+            .marker_effect_continuation()
+            .scan()
+            .scanned_endpoint();
+        let scanned_fragment = scan_endpoint
+            .map(|endpoint| required::<DraftPieceBuildFragmentsFamily>(reader, &endpoint.key()))
+            .transpose()?;
+        if !marker_effect_progress_transition_is_exact(&stored, receipt, scanned_fragment.as_ref())
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
     }
     authenticate_progress_receipt_effects(reader, receipt)
 }
@@ -1327,12 +1460,32 @@ fn authenticate_progress_receipt_effects(
             return Err(SyndicMutationError::IdentityCollision);
         }
     }
-    let roots = receipt.working_roots();
+    authenticate_build_roots(reader, receipt.key().draft_id(), receipt.working_roots())?;
+    if let Some(active) = receipt.marker_effect_continuation().active() {
+        let fragment = required::<DraftPieceBuildFragmentsFamily>(reader, &active.fragment_key())?;
+        let endpoint = canonical_fragment_endpoint(&fragment);
+        if endpoint.digest() != active.fragment_digest()
+            || fragment.replacement().marker_effect() != Some(active.effect())
+            || active.source_roots() != receipt.working_roots()
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        authenticate_build_roots(reader, receipt.key().draft_id(), active.working_roots())?;
+    }
+    Ok(())
+}
+
+fn authenticate_build_roots(
+    reader: &DomainReader<'_, SyndicDomain>,
+    draft_id: SyndicDraftId,
+    roots: DraftPieceBuildRootsV1,
+) -> Result<(), SyndicMutationError> {
+    if !draft_piece_build_roots_are_locally_exact_v1(roots) {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
     if let Some(id) = roots.sequence_root() {
-        let node = required::<DraftPieceNodesFamily>(
-            reader,
-            &DraftPieceRecordKeyV1::new(receipt.key().draft_id(), id),
-        )?;
+        let node =
+            required::<DraftPieceNodesFamily>(reader, &DraftPieceRecordKeyV1::new(draft_id, id))?;
         validate_sequence_root_node(node, roots.sequence_summary())
             .map_err(|_| SyndicMutationError::IdentityCollision)?;
     } else if roots.sequence_summary().piece_count() != 0 {
@@ -1342,7 +1495,7 @@ fn authenticate_progress_receipt_effects(
         let record = required::<DraftMarkerIdentityIndexFamily>(
             reader,
             &DraftMarkerIdentityRecordKeyV1::new(
-                receipt.key().draft_id(),
+                draft_id,
                 DraftMarkerIdentityRecordKindV1::Internal,
                 id,
             ),
@@ -1350,6 +1503,16 @@ fn authenticate_progress_receipt_effects(
         validate_index_root_record(record, roots.marker_index_summary())
             .map_err(|_| SyndicMutationError::IdentityCollision)?;
     } else if roots.marker_index_summary().record_count() != 0 {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    if let Some(id) = roots.marker_order_root() {
+        let record = required::<DraftMarkerOrderCommitmentsFamily>(
+            reader,
+            &DraftMarkerOrderRecordKeyV1::new(draft_id, DraftMarkerOrderRecordKindV1::Internal, id),
+        )?;
+        validate_marker_order_root_record(record, roots)
+            .map_err(|_| SyndicMutationError::IdentityCollision)?;
+    } else if roots.marker_commitment().marker_count() != 0 {
         return Err(SyndicMutationError::IdentityCollision);
     }
     Ok(())

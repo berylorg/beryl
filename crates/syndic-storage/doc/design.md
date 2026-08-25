@@ -121,11 +121,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   restart request, prefix proof, or app-built edit reconstruction. Status and same-home resume return
   the authenticated current endpoint or terminal settlement and use the same preparation boundary.
   Window acquisition has at most two page/receipt reads per physical page plus the exact fixed nine-
-  endpoint allowance and the checked 34,144,256-byte complete encoded-value ceiling defined under V6
+  endpoint allowance and the checked 34,144,256-byte complete encoded-value ceiling defined under V7
   bounds; item-specific structure reads remain under their separate tree/index limits.
 - The package exposes checked maximum mutation-footprint descriptors for exactly two public durable-
   start operations: idle draft submission and accepted-input promotion. Each descriptor derives
-  its maximum record count and encoded key-plus-value bytes from the operation's package-owned V6
+  its maximum record count and encoded key-plus-value bytes from the operation's package-owned V7
   record shapes and declared field bounds with checked arithmetic. It is stable for a given schema
   contract and is testable without opening a home or constructing caller payloads.
 - A Syndic footprint describes only the records contributed by that Syndic operation. It does not
@@ -458,7 +458,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `Staging`-to-`None` `Conflict` fails closed without mutation. Neither reachable form may claim the
   other's transition. It creates no
   `DraftPieceEditHeaderV1`, draft-piece build, candidate root, edit-history transition, or
-  `DraftPieceSettlementV1`. After finish-to-build transfer, the existing draft-piece settlement
+  `DraftPieceSettlementV1`. After finish-to-build transfer, the draft-piece settlement
   family is the sole terminal authority. `DraftPieceTransactionOutcomeV1` accepts exactly one of
   those mutually exclusive terminal closures and still exposes only `Committed`, `Rejected`,
   `Conflict`, `Cancelled`, or `Error`; only the draft-piece closure may produce `Committed`.
@@ -574,7 +574,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   or content and performs no root or content copy; physical
   reclamation remains unavailable until the future explicit garbage-collection design accounts for
   every current-draft, candidate-session, materialization, submission, and history reference.
-- Each candidate edit or sealed-composer import has one `draft-piece-builds` record keyed by exact
+- Each candidate edit or sealed-composer import has one `DraftPieceBuildRecordV1` record in
+  `draft-piece-builds`, keyed by exact
   draft, session, and caller-owned operation identity, with a closed edit-successor or sealed-
   composer-import kind. An edit build is created only by the authenticated finish-to-build custody
   transfer. It retains the exact staging identity and finished staging-head/receipt reference,
@@ -582,8 +583,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   canonical proposal-header bytes and
   digest, cumulative checked replacement, move, item, and byte counts, authenticated consumed
   source- and proposal-lane frontiers, explicit finish-input identity, sequence-path, identity- and
-  marker-commitment removal/insertion, changed-occurrence count/digest, bounded pending marker-
-  effect, and cross-validation frontiers,
+  marker-commitment removal/insertion, fixed marker-effect scan frontier, completed effect count and
+  cumulative chain, optional fixed-size active marker effect, and cross-validation frontiers,
   compact checked summaries, and intended
   successor-position digest. A sealed-composer-import build additionally retains the exact sealed `ComposerV1` reference,
   canonical proposal-header bytes and digest, bounded canonical
@@ -611,11 +612,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   naming its one-based key and canonical fragment digest plus its chain; the exact staging identity
   and finished staging-head/receipt reference; current phase and relational cursors; authenticated
   consumed source- and proposal-lane staging frontiers; working sequence, marker-index, and marker-
-  order-commitment roots with their complete summaries; source and successor structure frontiers; changed-occurrence count/
-  digest frontier; bounded pending marker-effect state; next record ordinal; optional successor root
+  order-commitment roots with their complete summaries; source and successor structure frontiers;
+  fixed marker-effect next-fragment/scanned-prefix frontier, completed effect count and cumulative
+  chain, optional fixed-size active marker effect; next record ordinal; optional successor root
   and build digest; lifecycle; and its
   domain-separated receipt digest. The digest is SHA-256 over the exact ASCII domain
-  `syndic/draft-piece-build-progress-receipt/v1`, the canonical key, and every preceding canonical
+  `syndic/draft-piece-build-progress-receipt/v3`, the canonical key, and every preceding canonical
   value field. It is a commitment, not a substitute for point-reading the referenced closure.
 - Every build-transition request separately names its exact expected source receipt, with `None`
   valid exactly for transition ordinal one, and its exact target receipt, target build head, exact
@@ -633,7 +635,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   chain commitment, exact predecessor candidate generation/combined root and history frontier,
   optional exact build digest, terminal
   outcome, settlement-command source basis, terminal progress-receipt key and digest, that receipt's
-  immediate-predecessor/root closure, and complete outcome-specific proof. `Committed`
+  immediate-predecessor/root closure, complete outcome-specific proof, and domain-separated
+  settlement digest. `Committed`
   stores a closed edit-adoption or sealed-import-selection proof. Edit adoption stores the successor
   candidate generation/combined root and history frontier, complete combined-root summaries including
   marker commitment, logical extent,
@@ -659,9 +662,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Replacement ranges are half-open, strictly ordered, and non-overlapping in the exact predecessor
   composite order. Adjacent ranges are valid. Every replacement is interpreted against the same
   predecessor combined root, never against a partially edited successor, and each range's start must be at
-  or after the prior range's end. Two empty ranges at the same exact composite position are rejected; the
-  caller must coalesce their inserted pieces into one range and one canonical fragment order before
-  begin. Each non-move insert or reinsert proves absence in the predecessor identity index. Each removal
+  or after the prior range's end. Repeated empty ranges at one exact composite position are rejected
+  when either item lacks a marker effect; callers coalesce inserted UTF-8 before begin. They are
+  valid only when every item carries one distinct closed marker effect whose stable identity and
+  same-anchor order key establish canonical order. Each non-move insert or reinsert proves absence
+  in the predecessor identity index. Each removal
   supplies its exact predecessor composite position or anchor witness, proves index presence, and verifies
   order, label, marker-leaf identity, digest, and occurrence through one bounded predecessor-sequence
   descent. Marker moves name one removal and one insertion position for the same identity in the
@@ -1167,20 +1172,25 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   is optional resumable work rather than selected authority; losing it requires rebuilding that
   generation but does not corrupt canonical history or a published set.
 
-## V6 Domain Schema
+## V7 Domain Schema
 
-- The stable logical domain name is `syndic` at domain schema V6. Every family uses keyspace schema
+- The stable logical domain name is `syndic` at domain schema V7. Every family uses keyspace schema
   V1 and one exact package-owned record version selected per family. `source-events`,
   and `accepted-inputs` use record V3; `accepted-route-leaves` uses record V4; `input-gates` uses
   record V5;
   `accepted-route-generations` and `turns` use record V3; `threads`, `drafts`, `turn-states`,
   `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2.
   `draft-mutation-staging-pages`, `draft-piece-build-fragments`, `draft-piece-leaves`,
-  `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-piece-builds`,
-  `draft-piece-build-progress`, `draft-piece-settlements`, `draft-marker-seals`, and
-  `draft-editor-candidate-sessions` also use record V2; every other V6 family uses record V1. V6 is a clean replacement
-  schema: no prior-record decoder, migration path, or compatibility adapter exists.
-- The 61 primary V6 families are `threads`, `thread-executions`, `thread-attributes`,
+  `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`, and
+  `draft-editor-candidate-sessions` also use record V2. `draft-piece-builds`,
+  `draft-piece-build-progress`, and `draft-piece-settlements` use replacement record V3; every other
+  V7 family uses record V1. V7 is one clean incompatible schema: V6 domain values and V2 records in
+  those three replaced families are not accepted, migrated, dual-written, or adapted.
+- The Rust boundary values remain `DraftPieceBuildRecordV1`,
+  `DraftPieceBuildProgressReceiptV1`, and `DraftPieceSettlementV1`. Those suffixes name their
+  semantic API shapes; the enclosing family codec version is V3 and the digest domains are
+  `/v3`.
+- The 61 primary V7 families are `threads`, `thread-executions`, `thread-attributes`,
   `thread-usage`, `thread-catalog-summaries`, `drafts`, `draft-piece-roots`,
   `draft-piece-nodes`, `draft-piece-leaves`, `draft-marker-identity-index`,
   `draft-marker-order-commitments`, `draft-marker-seals`,
@@ -1209,19 +1219,20 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
   `draft-mutation-staging-progress`,
   `draft-piece-build-progress`, `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
-  and `draft-historical-root-adoptions` are distinct V6 primary families. The marker index uses tagged
+  and `draft-historical-root-adoptions` are distinct V7 primary families. The marker index uses tagged
   internal-node and leaf records, and the candidate-session family uses tagged head and immutable
   receipt records. Marker-order commitments use tagged immutable internal-node and leaf records;
   marker seals use compact durable cursor/lifecycle records. Build progress instead requires its own append-only family so canonical proposal
   fragments remain the only values in `draft-piece-build-fragments`.
-- The 23 index V6 families are `draft-by-thread`, `thread-parent-index`,
+- The 23 index V7 families are `draft-by-thread`, `thread-parent-index`,
   `image-label-origin-spans`, `turn-children`, `accepted-order`, `accepted-route-generations`,
   `accepted-ready-sources`, `accepted-next-sources`, `turn-items`, `activity-query-entries`,
   `activity-query-sources`, `item-source-events`, `cas-item-index`, `transcript-path-turns`,
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V6 inventory is exactly 61 primary plus 23 index families, or 84 total. A release
+- The complete V7 inventory is exactly 61 primary plus 23 index families, or 84 total. Family names,
+  natural key encodings, and the complete primary/index inventory are unchanged. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
 - `draft-piece-roots` and `draft-piece-nodes` use immutable V1 codecs. Marker-bearing
@@ -1346,15 +1357,16 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   successor candidate/history frontiers when committed. It is the only direct-root candidate
   adoption schema. A missing transition, root outside the same-draft retained lineage, stale
   frontier, disagreeing replay, collision, or no-change result that names a successor is invalid.
-- `draft-piece-builds` is keyed by the exact 48-byte draft/session/operation identity. Its V1
-  value repeats the closed edit-successor or sealed-composer-import kind. An edit-successor repeats
+- `draft-piece-builds` is keyed by the exact 48-byte draft/session/operation identity. Its
+  `DraftPieceBuildRecordV1` value repeats the closed edit-successor or sealed-composer-import kind. An edit-successor repeats
   the exact staging identity and authenticated finish receipt, finish-derived canonical proposal-
   header bytes and digest, predecessor candidate generation and exact combined root; an import has
   no staging identity. The record also retains any optional exact sealed
   content source,
   compact declared counts and digests, finished-staging reference, consumed source/proposal staging
-  frontiers, ordered fragment, sequence-path, identity-index, marker-order-commitment, changed-occurrence count/digest,
-  bounded pending-marker-effect, and cross-validation frontiers, proposed successor candidate
+  frontiers, ordered fragment, sequence-path, identity-index, marker-order-commitment, fixed marker-
+  effect scan frontier, completed effect count and cumulative chain, optional fixed-size active
+  effect, and cross-validation frontiers, proposed successor candidate
   generation/combined root, complete canonical combined-root summaries, and
   exactly `Open`, `Complete`, `Committed(settlement)`,
   `Rejected(settlement)`, `Conflict(settlement)`, `Cancelled(settlement)`, or `Error(settlement)`
@@ -1367,17 +1379,19 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   authenticated staged proposal window. The source receipt's fragment endpoint/chain authenticates
   the already consumed prefix, which is never compared again or reconstructed from caller bytes;
   equal header, fragment, or chain digests alone are insufficient.
-  Fragment gaps, overlaps, reorderings, duplicate empty ranges at one composite position, unknown
+  Fragment gaps, overlaps, reorderings, repeated empty ranges at one composite position when either
+  item lacks a distinct closed marker effect, unknown
   position-witness tags, and a terminal declaration that disagrees with the accumulated counts or
   digest are invalid. This family has no tag or value shape for a progress receipt.
 - `draft-piece-build-progress` is keyed by the exact 56-byte draft/session/operation/one-based-
-  transition-ordinal identity. Each immutable V1 value repeats that key and the exact prior receipt
+  transition-ordinal identity. Each immutable `DraftPieceBuildProgressReceiptV1` value repeats that key and the exact prior receipt
   key and digest, with `None` valid only at ordinal one; the exact authenticated canonical-fragment
   endpoint, canonically empty before any fragment and otherwise naming its one-based key and
   canonical fragment digest plus its chain; exact staging identity and finished-head/receipt
   reference; current phase and relational cursors; consumed source/proposal staging-lane frontiers;
   working sequence, identity-index, and marker-order-commitment roots and complete summaries; source and successor structure
-  frontiers; changed-occurrence count/digest frontier; bounded pending marker-effect state; next
+  frontiers; fixed marker-effect next-fragment/scanned-prefix frontier, completed effect count and
+  cumulative chain, optional fixed-size active marker effect; next
   record ordinal; optional
   successor root and build digest; lifecycle; and the domain-separated receipt digest defined
   above. A non-one ordinal without the exact immediately preceding key/digest, any skipped or
@@ -1385,17 +1399,20 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   selects the preceding receipt, this receipt's key must be absent; occupied bytes in that state are
   a corrupt split even when equal. Once the build head selects this receipt, it can prove replay only
   together with byte equality of the complete same-command closure.
-- These existing V1 build, fragment, and progress record shapes own the durable continuation fields;
+- The V3 family encodings of `DraftPieceBuildRecordV1` and
+  `DraftPieceBuildProgressReceiptV1`, together with the immutable fragment value shape, own
+  the durable continuation fields;
   no further secondary index, operation-page history, or marker-effect map is required beyond the
   declared marker-order-commitment and marker-seal families. A build endpoint locates its next staging page by one natural-key point read from the
   retained staging identity, selected lane, and next lane ordinal, which is `O(1)` in operation
   length.
-- `draft-piece-settlements` is keyed by the exact 48-byte draft/session/operation identity. Its immutable V1
+- `draft-piece-settlements` is keyed by the exact 48-byte draft/session/operation identity. Its immutable `DraftPieceSettlementV1`
   value repeats the key, canonical proposal-header bytes and digest, declared fragment count and
   terminal fragment-chain commitment, predecessor candidate generation/combined-root/history pair,
   optional build digest, terminal
   outcome, source basis, terminal progress-receipt key/digest and immediate-predecessor/root closure,
-  and the complete outcome-specific proof defined above. Unknown or
+  the complete outcome-specific proof defined above, followed by its domain-separated settlement
+  digest. Unknown or
   incomplete outcomes, a no-change outcome naming an adopted successor, a committed outcome
   missing its exact combined-root/history/build/session-head adoption or direct-selection closure, a terminal build without its agreeing
   progress receipt and settlement, a settlement disagreed with by the candidate, receipt closure, or
@@ -1405,6 +1422,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   request's canonical header and bounded fragment bytes to equal the settlement's retained proposal
   and referenced build fragments; the stored settlement itself must pass canonical decoding and
   exact closure validation. Equal digests are not sufficient for either check.
+- The replacement record digests use exact ASCII domains
+  `syndic/draft-piece-build/v3`, `syndic/draft-piece-build-progress-receipt/v3`, and
+  `syndic/draft-piece-settlement/v3`. The marker-effect chain begins from its one canonical empty
+  value under `syndic/draft-marker-effect-chain/v1`; each completed step hashes the prior chain,
+  exact fragment natural identity and canonical digest, completed effect count, and post-effect
+  sequence/index/commitment root digest. No prior build, progress, settlement, or effect-chain domain
+  is valid under V7.
 - `draft-marker-seals` stores one V2 durable resumable seal record keyed by exact draft, captured
   combined-root/build identity, exact `DraftMarkerCommitmentV1`, and caller-owned seal-operation
   identity. It retains only the next marker-order-tree cursor, completed marker frontier,
@@ -1454,7 +1478,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `doc/systems/cas-live-syndic-transcript/design.md`. This package contributes only its Syndic
   participant and cannot independently assert whole-command success or make partial repair media
   canonical.
-- A V6 `input-gates` value canonically stores the exact stopping variant—blocked Syndic turn plus
+- A V7 `input-gates` value canonically stores the exact stopping variant—blocked Syndic turn plus
   16-byte stop-operation nonce—the compacting variant naming its parentless provider-operation
   turn plus 16-byte compaction-operation nonce, and the distinct awaiting-terminal variant naming
   its unknown-terminal turn. Its distinct `RepairRequired` variant stores the exact target Syndic
@@ -1467,7 +1491,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   encoding rather than an incomplete default. A V3
   `accepted-route-generations` value adds the
   `AwaitingTerminal(exact prior steering target)` authority. V4 route leaves add the closed
-  `UnknownTerminal` next-turn reason. There are no predecessor record decoders because the V6
+  `UnknownTerminal` next-turn reason. There are no predecessor record decoders because the V7
   domain is replacement authority.
 - `stop-operations` is a primary family keyed by the exact 32-byte concatenation of Syndic thread
   identity and stop-operation nonce. Its V1 value repeats both key fields and stores the immutable
@@ -1542,13 +1566,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   candidate, not visible membership. Any reachable membership, set, head, transcript entry, or
   context envelope still requires its complete exact reverse agreement.
 
-## V6 Bounds And Canonical Encoding
+## V7 Bounds And Canonical Encoding
 
 - Persisted integer ordering uses unsigned big-endian encoding. Composite index keys order first by their owning identity and then by one-based ordinal or revision. Cursor-only lower or upper sentinels are rejected as stored keys.
 - Stable Beryl and Syndic identities use their exact 16-byte payloads. Digests use exact 32-byte values. External CAS identities retain validated UTF-8 and remain bounded by `beryl-model`.
 - One terminal-repair build admits at most 262,144 ordered items, 268,435,456 exact encoded item/
   content/media bytes, and 65,536 staged pages across all three staging families. Each page admits at
-  most 256 entries and 65,536 encoded bytes. These are hard V6 codec and mutation ceilings, not
+  most 256 entries and 65,536 encoded bytes. These are hard V7 codec and mutation ceilings, not
   caller-selected budgets: exceeding any count, byte, field, or page limit rejects the repair
   without truncation or partial publication. Normal live-capture terminal-audit page, resident-item,
   and already-admitted-source limits do not lower this independent repair ceiling.
@@ -1569,7 +1593,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   truncation.
 - One content chunk carries at most 65,536 encoded bytes, and one staged append command carries a
   fixed bounded chunk count. Content manifests use `u64` counts and lengths; no smaller whole-draft,
-  whole-submitted-input, or whole-provider-item byte ceiling is encoded in V6.
+  whole-submitted-input, or whole-provider-item byte ceiling is encoded in V7.
 - Every draft combined-root, sequence node/leaf, tagged marker-identity-index internal/leaf, tagged
   marker-order-commitment internal/leaf, marker-seal record, build,
   mutation-staging head, canonical staging page, immutable staging-progress receipt, canonical
@@ -1673,6 +1697,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   cumulative identity are durable or exact target reconciliation proves that closure. Later build
   and reconciliation read those staged records in bounded pages rather than asking the caller to
   retain or resupply them.
+- Mutable and live continuation state remains `O(1)` in marker count: one fixed scan frontier,
+  completed count and chain, one optional fixed-size active effect, and fixed structure cursors.
+  Immutable staged fragment records and unreachable working/final tree records may scale through
+  cursor pages with the logical edit.
 - Independently, one post-finish staging-window command consumes at most 256 consecutive physical
   staging pages and therefore at most 256 one-item page records. Window acquisition performs at most
   two point reads per page, one page plus its staging-progress receipt, and has an exact allowance of
@@ -1762,7 +1790,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   lifecycle. Unknown tags,
   noncanonical cursors or maxima, key/value disagreement, trailing bytes, or a seal selecting a
   different root or commitment are invalid encodings.
-- Every V6 exact-replay classification at an occupied natural key requires equality between the
+- Every V7 exact-replay classification at an occupied natural key requires equality between the
   request's canonical identity bytes and the corresponding canonical request bytes retained by the
   occupied record; a command that proposes the whole record requires complete canonical key/value-
   byte equality. These equalities are necessary but not sufficient for build-transition replay:
@@ -2025,6 +2053,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   head that equals neither source nor target, or any
   partial target closure fails closed; the package never repairs a predecessor-head/occupied-next
   split or reports it successful.
+- Marker-fold replay additionally requires byte equality of the next-fragment/scanned-prefix
+  endpoint, active-effect state, completed effect count and chain, fragment identity/digest, and
+  pre/post three-root digests. Skipped, repeated, or decreasing fragment ordinal; wrong identity,
+  count, chain, digest, or roots; active-state mismatch; malformed codec; checked overflow;
+  premature EOF; or early cross-validation fails closed without partially installing a root or
+  advancing a frontier.
 - Build-head reads, operation status, reconciliation, candidate-session and candidate-frontier
   validation, and settlement closure point-read the selected endpoint receipt and its immediate
   predecessor when present, plus their referenced root and record closure and the session custody
@@ -2040,62 +2074,69 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   be at or after the prior end, each start must be at or before its own end, and both endpoints must
   carry exact UTF-8 and same-anchor gap authority for that root. All replacements consume the
   unchanged predecessor coordinate space; staging never offsets a later range by earlier inserted
-  or removed bytes. Two empty ranges with the same start/end position are rejected, and the caller
-  must coalesce their inserted fragments before begin. The build receipt retains the prior range end
+  or removed bytes. Repeated empty ranges with the same start/end position are rejected when either
+  item lacks a marker effect, and callers must coalesce inserted UTF-8 before begin. They are valid
+  only when every item carries one distinct closed marker effect with canonical identity and same-
+  anchor order. The build receipt retains the prior range end
   and successor anchor/order effect frontier, so a later page must continue that exact order without an
   earlier-page buffer. No range or uniqueness validation enumerates the full sequence or index.
-- A proposal page's marker insert, removal, move, or same-id replacement is one self-contained
-  staging item. Insert facts are accepted successor UTF-8 anchor, stable id, final label, same-anchor
-  order key, and checked logical/marker/encoded-byte charges. Removal facts are stable id, label,
-  order key, predecessor
-  composite position/gap witness, and exact predecessor marker-leaf identity and digest. Move and
-  same-id replacement contain both sets with one byte-equal stable id and label. No successor field
-  contains a caller-selected gap or immediate-neighbor witness, and no field points to
-  a removal on an earlier fragment or insertion on a later fragment. A split effect is invalid.
-- When a marker effect is reached, one bounded build transition authenticates any removal against the
-  immutable predecessor root and current working identity-index mapping, verifies the exact occurrence
-  through one predecessor-sequence descent, and derives the removal-applied successor view. Storage
-  then descends its current working sequence/index at the accepted successor anchor and order key,
-  derives and authenticates the immediate insertion gap and neighboring leaves, validates the
-  supplied charges, and proves the required stable-id absence. The same atomic admission either completes the bounded path copies or stores one
-  fixed-size pending effect bound to the exact working roots and validated source/destination proofs.
-  While it is pending, no later proposal item advances; bounded continuation commands write only
-  unreachable working records, and one final effect command atomically installs the new sequence,
-  identity-index, and marker-order-commitment working roots, updates the mapping, and clears the
-  pending effect. A pure insert omits the removal half and
-  proves absence in both the predecessor and working index; a
-  pure removal omits insertion. Destinations may address text already introduced by earlier canonical
-  proposal effects. An anchor beyond the current working logical extent or construction frontier is
-  a future dependency; an occupied `(anchor, order key)` owned by a different id, an id present when
-  absence is required, or disagreeing charges is a collision. Invalid range order, predecessor gap
-  witness, source-target, label, leaf identity/digest, future dependency, or collision rejects at the
-  natural page rather than pre-scanning, reordering, or retaining prior pages. A later marker is not
-  a required witness because its own effect derives neighbors from the then-current working roots.
+- A proposal page's marker insert, removal, move, or same-id replacement becomes one self-contained
+  canonical fragment effect. Insert facts are the accepted successor logical UTF-8 anchor, stable
+  id, final label, same-anchor order key, and checked logical/marker/encoded-byte charges. Removal
+  facts are stable id, label, order key, exact predecessor logical UTF-8 anchor, and predecessor
+  marker-leaf identity and digest. Move and same-id replacement contain both sets with one byte-
+  equal stable id and label. No field contains a caller-selected successor gap, immediate-neighbor
+  witness, or per-marker delta; points to a removal or insertion in another fragment; or permits a
+  split effect. A pure insert proves absence in the predecessor and working index, while a pure
+  removal omits successor insertion. Destinations may address text introduced by earlier canonical
+  fragments. Invalid range order, source-target, label, leaf identity/digest, future dependency,
+  collision, or disagreeing charges rejects at the natural fragment.
 - A stable marker id has at most one semantic effect in an edit. After removal the working mapping is
   absent; after move or same-id replacement it names the new successor leaf rather than the exact
   predecessor occurrence. A later occurrence of that id therefore cannot revalidate its required
   predecessor source and is rejected in bounded index/descent work. Byte-equal target replay of the
-  original command is not a second effect. This existing working identity index, plus one bounded
-  pending-effect field in the build receipt/head while path-copy work is incomplete, replaces any
-  operation-wide marker map or effect collection.
-- Successor construction is a bounded resumable copy-on-write fold over all three structures in canonical
-  proposal order. A text edit that leaves marker occurrences unchanged reuses the complete identity-
-  index and marker-order-commitment roots even when all following absolute anchors shift. A marker
-  insert, remove, move, or same-id replacement path-copies only bounded-height paths in the marker
-  commitment tree as well as the affected sequence/index paths. The build head retains only counts,
-  proposal digests, staging/structure frontiers, bounded pending-effect state, and its latest progress-
-  receipt key/digest, never the whole edit or payload.
-- Each completed marker effect advances a changed-occurrence count/digest frontier that commits its
-  sequence/index/commitment agreement. Completion requires balanced sequence, identity-index, and
-  marker-order-commitment roots whose summaries and digests agree with the build head, equal marker/
-  index/commitment counts and maximum labels, the final
-  changed-occurrence frontier, and reused authenticated subtree commitments; it does not reread prior
-  marker-effect pages. It rejects
+  original command is not a second effect. The working identity index and one fixed-size active-
+  effect field replace any operation-wide marker map or effect collection.
+- Successor construction is a bounded resumable canonical fragment-ordinal fold over all three
+  structures. Immutable `draft-piece-build-fragments` records are the sole collection of effects;
+  there is no global all-effects prepass and no first pending effect retained while later fragments
+  are scanned. The fixed marker-effect scan frontier names the exact next fragment and authenticated
+  scanned-prefix endpoint and carries a checked completed-effect count plus the cumulative
+  `syndic/draft-marker-effect-chain/v1` digest. A fragment without an effect advances that frontier
+  without changing the count or chain.
+- A fragment with an effect starts only when the one optional active slot is empty. The slot contains
+  exactly that fragment's identity and canonical digest, source roots, unreachable working roots,
+  fixed logical UTF-8 source and successor mapping frontiers, and one bounded removal, range-
+  application, or optional-insertion subphase. Storage authenticates and applies removal first, then
+  derives the actual marker gap and order from the removal-applied current sequence and index; it
+  never accumulates per-marker coordinate deltas. Bounded continuation writes only unreachable path
+  records. One atomic transition installs the resulting sequence, identity-index, and marker-order-
+  commitment roots, advances fragment frontier, effect count, and chain, and clears the slot. Only
+  then may the next fragment be read, so later effects remain solely in immutable cursor-addressed
+  fragment records rather than a vector, queue, registry, or marker continuation list. Adjacent,
+  sparse, and same-anchor effects use the same derivation.
+- A fragment without a marker effect may replace only a range containing no marker occurrence in
+  the authenticated removal-applied working roots. Encountering a marker rejects before any root or
+  effect frontier advances; text replacement never deletes a marker implicitly. Every marker in a
+  replaced range must first be removed through its own closed effect fragment.
+- A text edit that leaves marker occurrences unchanged reuses the complete identity-index and
+  marker-order-commitment roots even when all following absolute anchors shift. A marker insert,
+  remove, move, or same-id replacement path-copies only bounded-height paths in the marker
+  commitment tree and affected sequence/index paths. The build head retains only counts, proposal
+  digests, staging/structure frontiers, the fixed scan/count/chain frontier, optional active effect,
+  and latest progress-receipt key/digest, never the whole edit or payload.
+- Each completed marker effect advances the count and domain-separated chain with its exact fragment
+  identity/digest and post-effect three-root digest. Completion requires balanced sequence,
+  identity-index, and marker-order-commitment roots whose summaries and digests agree with the build
+  head, equal marker/index/commitment counts and maximum labels, the final effect frontier and chain,
+  and reused authenticated subtree commitments; it does not reread prior marker-effect fragments. It rejects
   duplicate same-anchor order keys on each affected sequence path, shares unaffected immutable subtrees, and
   checks every aggregate with `u64` arithmetic. Both consumed staging-lane frontiers must equal the
   frozen finish declarations, and the canonical fragment count/endpoint/chain must equal the
-  finish-derived header before completion. Global marker uniqueness follows from the keyed index; it
-  is never inferred by scanning sequence leaves.
+  finish-derived header before completion. Cross-validation runs only at authenticated fragment EOF
+  with no active effect and requires exact staging endpoint, effect count/chain, and root coherence.
+  Premature EOF or cross-validation while active fails closed. Global marker uniqueness follows from
+  the keyed index; it is never inferred by scanning sequence leaves.
 - Final candidate adoption requires the settlement absent, an active session with the exact
   predecessor root/history pair as its newest checkpoint and the exact matching active-operation custody, a
   complete matching build, the exact matching edit-history frontier, and the exact per-session
@@ -2113,6 +2154,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   writes the immutable `Committed`
   settlement bound to that terminal receipt and
   predecessor/root closure; terminalizes the build to that settlement; and clears the custody slot.
+  Candidate, history, session, and settlement authority therefore publish through this one
+  HomeStore atomic command. Per-effect progress remains unreachable durable builder state and is
+  never a sequential candidate, draft, history, or current-selector commit.
   Eligible eviction that makes the successor fit never blocks ordinary editing. Only a required
   non-evictable closure that cannot fit produces the typed history-capacity-unavailable terminal
   error without writing a transition, successor frontier, paired candidate/history root, or
@@ -2677,8 +2721,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   records in `draft-piece-build-fragments`; each bounded work quantum appends one fixed-size
   immutable `draft-piece-build-progress` receipt and atomically advances the compact build head to
   that receipt. The receipt endpoint, its immediate predecessor/root closure, finished staging
-  reference, consumed source/proposal lane frontiers, canonical fragment endpoint/chain, bounded
-  pending marker effect, and sequence, index, candidate/history, and published root/history frontiers
+  reference, consumed source/proposal lane frontiers, canonical fragment endpoint/chain, fixed
+  marker-effect scan/count/chain frontier, optional active effect, and sequence, index,
+  candidate/history, and published root/history frontiers
   are the durable progress authority. The next bounded staging window is derived only from those
   fields and durable staging custody; no app reconstruction or operation-prefix scan participates.
   Work and writes for an edit are proportional to its inserted fragments, affected base ranges, and
@@ -3191,7 +3236,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   successor case or settled idle state. It never manufactures a retry decision from absence,
   rewrites a terminal accepted-input lifecycle, or scans every accepted leaf to authenticate the
   constant-size projection-loss witness.
-- An explicit V6 schema-validation boundary, scrub, background-maintenance pass, or
+- An explicit V7 schema-validation boundary, scrub, background-maintenance pass, or
   corruption-evidence investigation may exhaustively validate current-draft uniqueness,
   thread/draft ownership, append-only draft-build progress-receipt continuity and absence of
   deletion, replacement, or forks, one-way draft-to-turn identity consumption with no live raw-payload

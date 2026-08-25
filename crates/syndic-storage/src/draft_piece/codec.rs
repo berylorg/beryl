@@ -4,6 +4,7 @@ use beryl_model::{
     OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof, SequentialMarkerSummaryV1,
     SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId, ThreadRevision,
 };
+use sha2::{Digest, Sha256};
 use std::num::NonZeroU64;
 
 use crate::codec::parts::{Decoder, Encoder, dec_timestamp, enc_timestamp};
@@ -363,14 +364,6 @@ fn enc_build_frontier(e: &mut Encoder, frontier: DraftPieceBuildFrontierV1) {
             e.u64(next_ordinal);
             enc_digest(e, chain);
         }
-        DraftPieceBuildFrontierV1::ReconcilingMoves {
-            fragment_ordinal,
-            next_move,
-        } => {
-            e.u8(7);
-            e.u64(fragment_ordinal);
-            e.u64(next_move);
-        }
         DraftPieceBuildFrontierV1::Planning { fragment_ordinal } => {
             e.u8(1);
             e.u64(fragment_ordinal);
@@ -457,10 +450,6 @@ fn dec_build_frontier(d: &mut Decoder<'_>) -> Result<DraftPieceBuildFrontierV1, 
         }),
         5 => Ok(DraftPieceBuildFrontierV1::CrossValidating),
         6 => Ok(DraftPieceBuildFrontierV1::Complete),
-        7 => Ok(DraftPieceBuildFrontierV1::ReconcilingMoves {
-            fragment_ordinal: d.u64()?,
-            next_move: d.u64()?,
-        }),
         tag => Err(CodecError::InvalidTag {
             kind: "draft-piece build frontier",
             tag,
@@ -1591,7 +1580,7 @@ fn encode_build(value: &DraftPieceBuildRecordV1) -> Result<Vec<u8>, CodecError> 
     e.u64(value.next_record_ordinal());
     enc_build_frontier(&mut e, value.frontier());
     enc_durable_continuation(&mut e, value.durable_continuation());
-    enc_digest(&mut e, value.progress_digest());
+    enc_marker_effect_continuation(&mut e, value.marker_effect_continuation());
     enc_progress_reference(&mut e, value.progress_receipt());
     match value.successor() {
         Some(root) => {
@@ -1635,7 +1624,7 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
     let next_record_ordinal = d.u64()?;
     let frontier = dec_build_frontier(&mut d)?;
     let durable_continuation = dec_durable_continuation(&mut d)?;
-    let progress_digest = dec_digest(&mut d)?;
+    let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
     let progress_receipt = dec_progress_reference(&mut d)?;
     let successor = match d.u8()? {
         0 => None,
@@ -1694,13 +1683,13 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
         successor_frontier,
         next_record_ordinal,
         frontier,
-        progress_digest,
         progress_receipt,
         successor,
         build_digest,
         lifecycle,
     )
-    .with_durable_continuation(durable_continuation);
+    .with_durable_continuation(durable_continuation)
+    .with_marker_effect_continuation(marker_effect_continuation);
     d.finish()?;
     if !build_record_is_exact(&value) {
         return Err(CodecError::InvalidLength("draft-piece build record"));
@@ -1754,13 +1743,13 @@ fn encode_progress_receipt(
         }
         None => e.u8(0),
     }
-    enc_digest(&mut e, receipt.state_digest());
     enc_build_roots(&mut e, receipt.working_roots());
     enc_build_boundary(&mut e, receipt.base_frontier());
     enc_build_boundary(&mut e, receipt.successor_frontier());
     e.u64(receipt.next_record_ordinal());
     enc_build_frontier(&mut e, receipt.frontier());
     enc_durable_continuation(&mut e, receipt.durable_continuation());
+    enc_marker_effect_continuation(&mut e, receipt.marker_effect_continuation());
     match receipt.successor() {
         Some(successor) => {
             e.u8(1);
@@ -1806,13 +1795,13 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
             });
         }
     };
-    let state_digest = dec_digest(&mut d)?;
     let working_roots = dec_build_roots(&mut d)?;
     let base_frontier = dec_build_boundary(&mut d)?;
     let successor_frontier = dec_build_boundary(&mut d)?;
     let next_record_ordinal = d.u64()?;
     let frontier = dec_build_frontier(&mut d)?;
     let durable_continuation = dec_durable_continuation(&mut d)?;
+    let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
     let successor = match d.u8()? {
         0 => None,
         1 => Some(dec_root_reference(&mut d)?),
@@ -1853,7 +1842,6 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
         reference,
         previous,
         fragment_endpoint,
-        state_digest,
         working_roots,
         base_frontier,
         successor_frontier,
@@ -1863,7 +1851,8 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
         build_digest,
         lifecycle,
     )
-    .with_durable_continuation(durable_continuation);
+    .with_durable_continuation(durable_continuation)
+    .with_marker_effect_continuation(marker_effect_continuation);
     if !progress_receipt_is_exact(&receipt) {
         return Err(CodecError::InvalidLength("draft-piece progress receipt"));
     }
@@ -2049,6 +2038,13 @@ fn dec_occupied_identity_proof(
 }
 
 fn encode_settlement(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, CodecError> {
+    let payload = encode_settlement_payload(value)?;
+    let mut encoded = payload.clone();
+    encoded.extend_from_slice(settlement_digest_v3(&payload).as_bytes());
+    Ok(encoded)
+}
+
+fn encode_settlement_payload(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
     enc_settlement_key(&mut e, value.key());
     enc_digest(&mut e, value.proposal_digest());
@@ -2206,6 +2202,7 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
         }
     };
     let closure = decode_settlement_closure(&mut d)?;
+    let stored_digest = dec_digest(&mut d)?;
     let value = DraftPieceSettlementV1::new_boxed(
         key,
         proposal,
@@ -2226,10 +2223,24 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
         closure,
     );
     d.finish()?;
+    let payload = encode_settlement_payload(&value)?;
+    if stored_digest != settlement_digest_v3(&payload) {
+        return Err(CodecError::InvalidLength("draft-piece settlement digest"));
+    }
     if !settlement_closure_is_exact(&value) {
         return Err(CodecError::InvalidLength("draft-piece settlement closure"));
     }
     Ok(value)
+}
+
+fn settlement_digest_v3(payload: &[u8]) -> DraftPieceDigestV1 {
+    let domain = b"syndic/draft-piece-settlement/v3";
+    let mut digest = Sha256::new();
+    digest.update((domain.len() as u64).to_be_bytes());
+    digest.update(domain);
+    digest.update((payload.len() as u64).to_be_bytes());
+    digest.update(payload);
+    DraftPieceDigestV1::from_bytes(digest.finalize().into())
 }
 
 fn decode_settlement_closure(
@@ -2768,7 +2779,7 @@ family!(
     DraftPieceSettlementKeyV1,
     DraftPieceBuildRecordV1,
     "draft-piece-builds",
-    2,
+    3,
     48,
     8_192,
     encode_settlement_family_key,
@@ -2794,7 +2805,7 @@ family!(
     DraftPieceBuildProgressReceiptKeyV1,
     DraftPieceBuildProgressReceiptV1,
     "draft-piece-build-progress",
-    2,
+    3,
     56,
     8_192,
     encode_progress_family_key,
@@ -2807,7 +2818,7 @@ family!(
     DraftPieceSettlementKeyV1,
     DraftPieceSettlementV1,
     "draft-piece-settlements",
-    2,
+    3,
     48,
     65_536,
     encode_settlement_family_key,

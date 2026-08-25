@@ -173,6 +173,15 @@ Keep independent main-window presentation responsive while process-wide services
   later effect. No partial replacement is exposed to the widget,
   session head, history frontier, or current-draft selector, and no whole-operation fragment vector
   or hardcoded cumulative page cap exists.
+- Propagated Cut captures one immutable activation binding and logical selection range before
+  clipboard assembly. Only after the platform clipboard write succeeds does the host re-read that
+  exact captured binding and range through bounded text and object cursors and stream one logical
+  mutation. It retains one bounded proposal page, fixed cursor/digest/boundary state, and at most
+  the immediately previous, current, and lookahead marker facts; each completed page is submitted
+  immediately. It never retains all pages, selected targets, text items, or marker items. A stale
+  binding or range, cursor disagreement, clipboard-write failure, proposal rejection, conflict,
+  cancellation, error, or proven noncommit leaves the draft unchanged. A successful clipboard
+  write is not rolled back when the later draft mutation does not commit.
 - Before translation or durable admission, the host validates one widget page against its exact
   binding, operation and lane frontier: expected cursor, ordinal and prior cumulative identity;
   canonical page and cumulative identities; checked page and cumulative totals; a nonempty set of

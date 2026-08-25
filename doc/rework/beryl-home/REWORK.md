@@ -106,7 +106,7 @@
   because the target slice is absent, and admits no media-less fallback.
 - Large drafts and marker collections remain logically unbounded. Their final editor, storage, and
   presentation paths must be range-backed and paged; no whole-value compatibility path is allowed.
-- During the active cutover, Syndic V6 registers only implemented families; deferred materializer
+- During the active cutover, Syndic V7 registers only implemented families; deferred materializer
   and repair families join in their owning phases rather than existing as empty placeholders.
 
 # Reference Snapshot

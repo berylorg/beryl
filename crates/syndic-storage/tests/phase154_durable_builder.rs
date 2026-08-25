@@ -1,5 +1,10 @@
 include!("phase154_durable_builder/support.rs");
 include!("phase154_durable_builder/later_pages.rs");
+include!("phase154_durable_builder/continued_ranges.rs");
+include!("phase154_durable_builder/lifecycle.rs");
+include!("phase154_durable_builder/ordered_runs.rs");
+include!("phase154_durable_builder/marker_ranges.rs");
+include!("phase154_durable_builder/many_effects.rs");
 include!("phase154_durable_builder/replay_faults.rs");
 include!("phase154_durable_builder/effects.rs");
 include!("phase154_durable_builder/faults.rs");

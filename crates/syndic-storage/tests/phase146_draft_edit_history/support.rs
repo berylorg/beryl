@@ -40,7 +40,7 @@ pub(super) use syndic_storage::{
         inject_draft_piece_settlement_closure_corruption,
         occupy_canonical_empty_draft_edit_history, publish_draft_edit_history_pair,
         replace_draft_edit_history_frontier, replace_draft_edit_history_frontier_and_session,
-        replace_draft_edit_history_transition, syndic_v6_family_names,
+        replace_draft_edit_history_transition, syndic_v7_family_names,
     },
 };
 

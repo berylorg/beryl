@@ -16,6 +16,11 @@ use beryl_model::{
     ExecutionBinding, ImageLabelOrdinal, PathFlavor, RootId, RuntimeId, RuntimeMode,
     RuntimeNativePath, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
 };
+#[cfg(feature = "test-faults")]
+use syndic_storage::test_faults::{
+    DraftPieceBuildCorruption, DraftPieceProgressRootCorruption,
+    inject_draft_piece_build_corruption, inject_draft_piece_progress_root_corruption,
+};
 use syndic_storage::{
     CreateThread, DraftCompositeGapWitnessV1, DraftCompositePositionV1,
     DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionOpenOutcomeV1,
@@ -24,17 +29,15 @@ use syndic_storage::{
     DraftMutationBeginV1, DraftMutationFinishInputV1, DraftMutationOperationIdV1,
     DraftMutationStagingHeadV1, DraftMutationStagingIdentityV1, DraftMutationStagingLaneV1,
     DraftMutationStagingPageInputV1, DraftMutationStagingPageItemV1, DraftMutationStagingStatusV1,
-    DraftPieceDurableBuildWindowLimitsV1, DraftPieceMarkerAtV1, DraftPieceMarkerEffectChargesV1,
+    DraftPieceBuildFrontierV1, DraftPieceDurableBuildWindowLimitsV1, DraftPieceEditHeaderV1,
+    DraftPieceMarkerAtV1, DraftPieceMarkerEffectChargesV1, DraftPieceMarkerEffectContinuationV1,
     DraftPieceMarkerEffectV1, DraftPieceMarkerInsertionV1, DraftPieceMarkerRemovalProofV1,
     DraftPieceMarkerV1, DraftPieceOperationIdV1, DraftPieceOperationStatusV1,
     DraftPieceOperationVerificationV1, DraftPiecePrepareErrorV1, DraftPieceRejectedReasonV1,
     DraftPieceReplacementV1, DraftPieceV1, PreparedDraftMutationStagingBatchV1,
     PreparedDraftPieceEditV1, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    canonical_empty_draft_piece_fragment_chain_v1, draft_piece_fragment_chain_link_v1,
-};
-#[cfg(feature = "test-faults")]
-use syndic_storage::test_faults::{
-    DraftPieceBuildCorruption, inject_draft_piece_build_corruption,
+    canonical_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_fragment_chain_v1,
+    draft_piece_fragment_chain_link_v1,
 };
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
@@ -462,11 +465,14 @@ fn execute(store: &HomeStore, contribution: MutationContribution) -> CommandOutc
 }
 
 fn committed(outcome: CommandOutcome) {
-    assert!(matches!(
-        outcome,
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        }
-    ), "unexpected command outcome: {outcome:?}");
+    assert!(
+        matches!(
+            outcome,
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ),
+        "unexpected command outcome: {outcome:?}"
+    );
 }

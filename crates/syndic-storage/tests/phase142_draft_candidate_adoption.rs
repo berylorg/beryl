@@ -1245,7 +1245,7 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
         (
             "jump-cross-validating",
             DraftPieceBuildCorruption::StagedToCrossValidating,
-            0_u8,
+            1_u8,
         ),
         (
             "jump-next-piece",
@@ -1344,12 +1344,6 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
             let reached = matches!(
                 (target, build.frontier()),
                 (
-                    0,
-                    DraftPieceBuildFrontierV1::ReconcilingMoves {
-                        fragment_ordinal: 1,
-                        ..
-                    }
-                ) | (
                     1,
                     DraftPieceBuildFrontierV1::Planning {
                         fragment_ordinal: 1
@@ -1384,7 +1378,7 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
                     seeded.session_id(),
                     edit.prepared.header().operation_id(),
                 )
-                .unwrap()
+                .unwrap_or_else(|error| panic!("{case} failed before corruption: {error:?}"))
                 .unwrap();
             committed(execute(
                 &store,
@@ -1588,14 +1582,15 @@ fn immutable_progress_receipt_endpoint_closes_advance_status_and_settlement() {
             .draft_piece_operation_status_page(&store, &edit.prepared, 1, &[])
             .is_err()
     );
-    assert!(!matches!(
-        execute(
-            &store,
-            storage
-                .settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone(),),
-        ),
-        CommandOutcome::Committed { .. }
-    ));
+    if let Ok(revision) = storage.revision(&store) {
+        assert!(!matches!(
+            execute(
+                &store,
+                storage.settle_draft_piece_edit(revision, edit.prepared.clone()),
+            ),
+            CommandOutcome::Committed { .. }
+        ));
+    }
 }
 
 #[cfg(feature = "test-faults")]

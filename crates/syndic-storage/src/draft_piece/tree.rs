@@ -157,6 +157,88 @@ pub(crate) fn draft_piece_root_reference_is_locally_exact_v1(
             )
 }
 
+pub(crate) fn draft_piece_build_roots_are_locally_exact_v1(roots: DraftPieceBuildRootsV1) -> bool {
+    let sequence = roots.sequence_summary();
+    let index = roots.marker_index_summary();
+    let commitment = roots.marker_commitment();
+    let empty_sequence = DraftPieceSummaryV1::new(
+        0,
+        0,
+        0,
+        0,
+        0,
+        canonical_empty_marker_digest_v1(),
+        0,
+        canonical_empty_root_digest_v1(),
+    );
+    let empty_index = DraftMarkerIdentityIndexSummaryV1::new(
+        0,
+        0,
+        canonical_empty_marker_identity_index_digest_v1(),
+    );
+    sequence.text_summary().is_canonical()
+        && sequence.marker_count() == index.record_count()
+        && sequence.marker_count() == commitment.marker_count()
+        && (sequence.piece_count() == 0) == roots.sequence_root().is_none()
+        && (sequence.piece_count() != 0 || sequence == empty_sequence)
+        && (sequence.piece_count() == 0 || sequence.height() != 0)
+        && (sequence.marker_count() != 0
+            || sequence.marker_digest() == canonical_empty_marker_digest_v1())
+        && (index.record_count() == 0) == roots.marker_index_root().is_none()
+        && (index.record_count() != 0 || index == empty_index)
+        && (index.record_count() == 0 || index.height() != 0)
+        && (commitment.marker_count() == 0) == roots.marker_order_root().is_none()
+        && (commitment.marker_count() == 0) == commitment.maximum_image_label().is_none()
+        && (commitment.marker_count() != 0
+            || commitment == canonical_empty_draft_marker_commitment_v1())
+        && (commitment.marker_count() != 0 || roots.marker_order_height() == 0)
+        && (commitment.marker_count() == 0 || roots.marker_order_height() != 0)
+}
+
+pub(crate) fn validate_marker_order_root_record(
+    record: DraftMarkerOrderRecordV1,
+    roots: DraftPieceBuildRootsV1,
+) -> Result<(), DraftPiecePrepareErrorV1> {
+    let Some(root_id) = roots.marker_order_root() else {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    };
+    let commitment = roots.marker_commitment();
+    let DraftMarkerOrderRecordV1::Internal {
+        key,
+        height,
+        children,
+        digest,
+    } = record
+    else {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    };
+    if key.id() != root_id
+        || height != roots.marker_order_height()
+        || height == 0
+        || height > DRAFT_PIECE_MAX_HEIGHT
+        || children.is_empty()
+        || children.len() > DRAFT_PIECE_MAX_CHILDREN
+        || digest != marker_order_node_digest(height, &children)
+        || digest.as_bytes() != &commitment.tree_root_digest()
+    {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    let marker_count = children
+        .iter()
+        .try_fold(0_u64, |count, child| {
+            count.checked_add(child.marker_count())
+        })
+        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    let maximum = children
+        .iter()
+        .filter_map(|child| child.maximum_image_label())
+        .max();
+    if marker_count != commitment.marker_count() || maximum != commitment.maximum_image_label() {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    Ok(())
+}
+
 fn digest_bytes(domain: &[u8], parts: &[&[u8]]) -> DraftPieceDigestV1 {
     let mut digest = Sha256::new();
     digest.update(domain);
@@ -911,13 +993,13 @@ pub(crate) fn settlement_terminal_build_is_exact(
             source.successor_frontier(),
             source.next_record_ordinal(),
             source.frontier(),
-            DraftPieceDigestV1::from_bytes([0; 32]),
             stored.progress_receipt(),
             source.successor(),
             source.build_digest(),
             lifecycle,
         )
-        .with_durable_continuation(source.durable_continuation()),
+        .with_durable_continuation(source.durable_continuation())
+        .with_marker_effect_continuation(source.marker_effect_continuation()),
     );
     stored == &expected
         && stored.progress_receipt() == settlement.terminal_receipt()
@@ -1029,11 +1111,17 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         || build.successor_frontier().rank()
             > build.working_roots().sequence_summary().piece_count()
         || build.next_record_ordinal() == 0
-        || build.progress_digest() != draft_piece_build_progress_digest_v1(build)
         || build.progress_receipt().key().draft_id() != build.draft_id()
         || build.progress_receipt().key().session_id() != build.session_id()
         || build.progress_receipt().key().operation_id() != build.operation_id()
         || build.progress_receipt().key().transition_ordinal() == 0
+        || !build
+            .marker_effect_continuation()
+            .is_locally_exact(DraftPieceSettlementKeyV1::new(
+                build.draft_id(),
+                build.session_id(),
+                build.operation_id(),
+            ))
         || build.durable_continuation().is_some_and(|continuation| {
             let identity = continuation.finished().identity();
             !continuation.is_locally_exact()
@@ -1050,6 +1138,16 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         return false;
     }
     let complete_shape = build.frontier() == DraftPieceBuildFrontierV1::Complete;
+    let marker = build.marker_effect_continuation();
+    let scan = marker.scan();
+    if scan.completed_effect_count() > build.fragment_count()
+        || marker.active().is_some_and(|active| {
+            active.source_roots() != build.working_roots()
+                || active.fragment_key().ordinal() != scan.next_fragment_ordinal()
+        })
+    {
+        return false;
+    }
     match (build.successor(), build.build_digest(), complete_shape) {
         (Some(successor), Some(digest), true) => {
             if successor.key()
@@ -1072,17 +1170,15 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
             next_ordinal,
             chain,
         } => {
-            if next_ordinal != build.staged_fragment_count().saturating_add(1)
+            if marker != DraftPieceMarkerEffectContinuationV1::canonical_empty()
+                || next_ordinal != build.staged_fragment_count().saturating_add(1)
                 || chain != build.staged_fragment_chain()
                 || (!terminal_receiving && build.staged_fragment_count() >= build.fragment_count())
             {
                 return false;
             }
         }
-        DraftPieceBuildFrontierV1::ReconcilingMoves {
-            fragment_ordinal, ..
-        }
-        | DraftPieceBuildFrontierV1::Planning { fragment_ordinal }
+        DraftPieceBuildFrontierV1::Planning { fragment_ordinal }
         | DraftPieceBuildFrontierV1::Removing {
             fragment_ordinal, ..
         }
@@ -1092,7 +1188,10 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         | DraftPieceBuildFrontierV1::Inserting {
             fragment_ordinal, ..
         } => {
-            if build.staged_fragment_count() != build.fragment_count()
+            if fragment_ordinal != scan.next_fragment_ordinal()
+                || matches!(build.frontier(), DraftPieceBuildFrontierV1::Planning { .. })
+                    && marker.active().is_some()
+                || build.staged_fragment_count() != build.fragment_count()
                 || build.staged_fragment_chain() != build.fragment_chain()
                 || fragment_ordinal == 0
                 || fragment_ordinal > build.fragment_count()
@@ -1101,7 +1200,18 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
             }
         }
         DraftPieceBuildFrontierV1::CrossValidating | DraftPieceBuildFrontierV1::Complete => {
-            if build.staged_fragment_count() != build.fragment_count()
+            let exact_endpoint = match (scan.scanned_endpoint(), build.fragment_count()) {
+                (Some(endpoint), count) => {
+                    endpoint.key().ordinal() == count
+                        && endpoint.chain() == build.fragment_chain()
+                        && count.checked_add(1) == Some(scan.next_fragment_ordinal())
+                }
+                (None, 0) => scan.next_fragment_ordinal() == 1,
+                _ => false,
+            };
+            if marker.active().is_some()
+                || !exact_endpoint
+                || build.staged_fragment_count() != build.fragment_count()
                 || build.staged_fragment_chain() != build.fragment_chain()
             {
                 return false;
@@ -1123,8 +1233,7 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
 pub(crate) fn authenticated_build_record(
     build: DraftPieceBuildRecordV1,
 ) -> DraftPieceBuildRecordV1 {
-    let digest = draft_piece_build_progress_digest_v1(&build);
-    build.with_progress_digest(digest)
+    build
 }
 
 pub(crate) fn authenticated_build_transition(
@@ -1156,7 +1265,6 @@ pub(crate) fn authenticated_build_transition(
         reference,
         previous,
         fragment_endpoint,
-        build.progress_digest(),
         build.working_roots(),
         build.base_frontier(),
         build.successor_frontier(),
@@ -1166,7 +1274,8 @@ pub(crate) fn authenticated_build_transition(
         build.build_digest(),
         build.lifecycle(),
     )
-    .with_durable_continuation(build.durable_continuation());
+    .with_durable_continuation(build.durable_continuation())
+    .with_marker_effect_continuation(build.marker_effect_continuation());
     Ok((build, receipt))
 }
 
@@ -1177,7 +1286,7 @@ pub(crate) fn draft_piece_build_progress_receipt_digest_v1(
     key: DraftPieceBuildProgressReceiptKeyV1,
 ) -> DraftPieceDigestV1 {
     let mut digest = Sha256::new();
-    digest.update(b"syndic/draft-piece-build-progress-receipt/v1");
+    digest.update(b"syndic/draft-piece-build-progress-receipt/v3");
     digest.update(key.draft_id().as_bytes());
     digest.update(key.session_id().as_bytes());
     digest.update(key.operation_id().as_bytes());
@@ -1207,28 +1316,13 @@ pub(crate) fn draft_piece_build_progress_receipt_digest_v1(
         }
         None => digest.update([0]),
     }
-    digest.update(build.progress_digest().as_bytes());
-    let roots = build.working_roots();
-    hash_optional_record_id(&mut digest, roots.sequence_root());
-    let summary = roots.sequence_summary();
-    digest.update(summary.logical_utf8_bytes().to_be_bytes());
-    digest.update(summary.newline_count().to_be_bytes());
-    digest.update(summary.logical_line_count().to_be_bytes());
-    digest.update(summary.piece_count().to_be_bytes());
-    digest.update(summary.marker_count().to_be_bytes());
-    digest.update(summary.marker_digest().as_bytes());
-    digest.update([summary.height()]);
-    digest.update(summary.root_digest().as_bytes());
-    hash_optional_record_id(&mut digest, roots.marker_index_root());
-    let index = roots.marker_index_summary();
-    digest.update(index.record_count().to_be_bytes());
-    digest.update([index.height()]);
-    digest.update(index.root_digest().as_bytes());
+    hash_build_roots(&mut digest, build.working_roots());
     hash_build_boundary(&mut digest, build.base_frontier());
     hash_build_boundary(&mut digest, build.successor_frontier());
     digest.update(build.next_record_ordinal().to_be_bytes());
     hash_build_frontier(&mut digest, build.frontier());
     hash_durable_continuation(&mut digest, build.durable_continuation());
+    hash_marker_effect_continuation(&mut digest, build.marker_effect_continuation());
     match build.successor() {
         Some(root) => {
             digest.update([1]);
@@ -1295,6 +1389,13 @@ pub(crate) fn progress_receipt_is_exact(receipt: &DraftPieceBuildProgressReceipt
                 || identity.session_id() != key.session_id()
                 || identity.operation_id().as_piece_operation() != key.operation_id()
         })
+        || !receipt
+            .marker_effect_continuation()
+            .is_locally_exact(DraftPieceSettlementKeyV1::new(
+                key.draft_id(),
+                key.session_id(),
+                key.operation_id(),
+            ))
         || receipt.successor().is_some() != receipt.build_digest().is_some()
     {
         return false;
@@ -1307,7 +1408,7 @@ fn progress_receipt_digest_from_value(
 ) -> DraftPieceDigestV1 {
     let key = receipt.key();
     let mut digest = Sha256::new();
-    digest.update(b"syndic/draft-piece-build-progress-receipt/v1");
+    digest.update(b"syndic/draft-piece-build-progress-receipt/v3");
     digest.update(key.draft_id().as_bytes());
     digest.update(key.session_id().as_bytes());
     digest.update(key.operation_id().as_bytes());
@@ -1337,28 +1438,13 @@ fn progress_receipt_digest_from_value(
         }
         None => digest.update([0]),
     }
-    digest.update(receipt.state_digest().as_bytes());
-    let roots = receipt.working_roots();
-    hash_optional_record_id(&mut digest, roots.sequence_root());
-    let summary = roots.sequence_summary();
-    digest.update(summary.logical_utf8_bytes().to_be_bytes());
-    digest.update(summary.newline_count().to_be_bytes());
-    digest.update(summary.logical_line_count().to_be_bytes());
-    digest.update(summary.piece_count().to_be_bytes());
-    digest.update(summary.marker_count().to_be_bytes());
-    digest.update(summary.marker_digest().as_bytes());
-    digest.update([summary.height()]);
-    digest.update(summary.root_digest().as_bytes());
-    hash_optional_record_id(&mut digest, roots.marker_index_root());
-    let index = roots.marker_index_summary();
-    digest.update(index.record_count().to_be_bytes());
-    digest.update([index.height()]);
-    digest.update(index.root_digest().as_bytes());
+    hash_build_roots(&mut digest, receipt.working_roots());
     hash_build_boundary(&mut digest, receipt.base_frontier());
     hash_build_boundary(&mut digest, receipt.successor_frontier());
     digest.update(receipt.next_record_ordinal().to_be_bytes());
     hash_build_frontier(&mut digest, receipt.frontier());
     hash_durable_continuation(&mut digest, receipt.durable_continuation());
+    hash_marker_effect_continuation(&mut digest, receipt.marker_effect_continuation());
     match receipt.successor() {
         Some(root) => {
             digest.update([1]);
@@ -1389,7 +1475,6 @@ pub(crate) fn recompute_progress_receipt_digest(
         reference,
         receipt.previous(),
         receipt.fragment_endpoint(),
-        receipt.state_digest(),
         receipt.working_roots(),
         receipt.base_frontier(),
         receipt.successor_frontier(),
@@ -1399,6 +1484,8 @@ pub(crate) fn recompute_progress_receipt_digest(
         receipt.build_digest(),
         receipt.lifecycle(),
     )
+    .with_durable_continuation(receipt.durable_continuation())
+    .with_marker_effect_continuation(receipt.marker_effect_continuation())
 }
 
 pub(crate) fn progress_receipt_matches_build(
@@ -1409,13 +1496,13 @@ pub(crate) fn progress_receipt_matches_build(
         && receipt.key().session_id() == build.session_id()
         && receipt.key().operation_id() == build.operation_id()
         && receipt.reference() == build.progress_receipt()
-        && receipt.state_digest() == build.progress_digest()
         && receipt.working_roots() == build.working_roots()
         && receipt.base_frontier() == build.base_frontier()
         && receipt.successor_frontier() == build.successor_frontier()
         && receipt.next_record_ordinal() == build.next_record_ordinal()
         && receipt.frontier() == build.frontier()
         && receipt.durable_continuation() == build.durable_continuation()
+        && receipt.marker_effect_continuation() == build.marker_effect_continuation()
         && receipt.successor() == build.successor()
         && receipt.build_digest() == build.build_digest()
         && receipt.lifecycle() == build.lifecycle()
@@ -1449,53 +1536,99 @@ pub(crate) fn progress_receipt_matches_build(
         }
 }
 
-pub(crate) fn draft_piece_build_progress_digest_v1(
-    build: &DraftPieceBuildRecordV1,
-) -> DraftPieceDigestV1 {
-    let mut digest = Sha256::new();
-    digest.update(b"syndic/draft-piece-progress/v1");
-    digest.update(build.proposal_digest().as_bytes());
-    digest.update(build.staged_fragment_count().to_be_bytes());
-    digest.update(build.staged_fragment_chain().as_bytes());
-    let roots = build.working_roots();
-    hash_optional_record_id(&mut digest, roots.sequence_root());
-    let summary = roots.sequence_summary();
-    digest.update(summary.logical_utf8_bytes().to_be_bytes());
-    digest.update(summary.newline_count().to_be_bytes());
-    digest.update(summary.logical_line_count().to_be_bytes());
-    digest.update(summary.piece_count().to_be_bytes());
-    digest.update(summary.marker_count().to_be_bytes());
-    digest.update(summary.marker_digest().as_bytes());
-    digest.update([summary.height()]);
-    digest.update(summary.root_digest().as_bytes());
-    hash_optional_record_id(&mut digest, roots.marker_index_root());
-    let index = roots.marker_index_summary();
-    digest.update(index.record_count().to_be_bytes());
-    digest.update([index.height()]);
-    digest.update(index.root_digest().as_bytes());
-    for boundary in [build.base_frontier(), build.successor_frontier()] {
-        digest.update(boundary.rank().to_be_bytes());
-        digest.update(boundary.inner().to_be_bytes());
+pub(crate) fn marker_effect_progress_transition_is_exact(
+    previous: &DraftPieceBuildProgressReceiptV1,
+    current: &DraftPieceBuildProgressReceiptV1,
+    scanned_fragment: Option<&DraftPieceBuildFragmentV1>,
+) -> bool {
+    let previous_continuation = previous.marker_effect_continuation();
+    let current_continuation = current.marker_effect_continuation();
+    let previous_scan = previous_continuation.scan();
+    let current_scan = current_continuation.scan();
+    if current_scan == previous_scan {
+        return current_continuation.source_logical_frontier()
+            == previous_continuation.source_logical_frontier()
+            && current_continuation.successor_logical_frontier()
+                == previous_continuation.successor_logical_frontier();
     }
-    digest.update(build.next_record_ordinal().to_be_bytes());
-    hash_build_frontier(&mut digest, build.frontier());
-    hash_durable_continuation(&mut digest, build.durable_continuation());
-    match build.successor() {
-        Some(root) => {
-            digest.update([1]);
-            digest.update(root.combined_digest().as_bytes());
+    let Some(fragment) = scanned_fragment else {
+        return false;
+    };
+    let endpoint = canonical_fragment_endpoint(fragment);
+    if current_scan.scanned_endpoint() != Some(endpoint)
+        || fragment.key().ordinal() != previous_scan.next_fragment_ordinal()
+        || current_scan.next_fragment_ordinal()
+            != previous_scan
+                .next_fragment_ordinal()
+                .checked_add(1)
+                .unwrap_or(0)
+        || current_continuation.active().is_some()
+    {
+        return false;
+    }
+    let inserted_bytes =
+        fragment
+            .replacement()
+            .inserted()
+            .iter()
+            .try_fold(0_u64, |bytes, piece| match piece {
+                DraftPieceV1::Text(text) => u64::try_from(text.len())
+                    .ok()
+                    .and_then(|length| bytes.checked_add(length)),
+                DraftPieceV1::Marker(_) => Some(bytes),
+            });
+    let expected_source = if fragment.replacement().is_continuation() {
+        Some(previous_continuation.source_logical_frontier())
+    } else {
+        Some(fragment.replacement().end().utf8_offset())
+    };
+    let expected_successor_start = if fragment.replacement().is_continuation() {
+        Some(previous_continuation.successor_logical_frontier())
+    } else {
+        fragment
+            .replacement()
+            .start()
+            .utf8_offset()
+            .checked_sub(previous_continuation.source_logical_frontier())
+            .and_then(|offset| {
+                previous_continuation
+                    .successor_logical_frontier()
+                    .checked_add(offset)
+            })
+    };
+    if expected_source != Some(current_continuation.source_logical_frontier())
+        || expected_successor_start
+            .zip(inserted_bytes)
+            .and_then(|(start, bytes)| start.checked_add(bytes))
+            != Some(current_continuation.successor_logical_frontier())
+    {
+        return false;
+    }
+    match previous_continuation.active() {
+        Some(active) => {
+            let Some(count) = previous_scan.completed_effect_count().checked_add(1) else {
+                return false;
+            };
+            fragment.replacement().marker_effect() == Some(active.effect())
+                && active.fragment_key() == fragment.key()
+                && active.fragment_digest() == endpoint.digest()
+                && active.source_roots() == previous.working_roots()
+                && current_scan.completed_effect_count() == count
+                && current_scan.effect_chain()
+                    == draft_piece_marker_effect_chain_link_v1(
+                        previous_scan.effect_chain(),
+                        fragment.key(),
+                        endpoint.digest(),
+                        count,
+                        current.working_roots(),
+                    )
         }
-        None => digest.update([0]),
-    }
-    match build.build_digest() {
-        Some(value) => {
-            digest.update([1]);
-            digest.update(value.as_bytes());
+        None => {
+            fragment.replacement().marker_effect().is_none()
+                && current_scan.completed_effect_count() == previous_scan.completed_effect_count()
+                && current_scan.effect_chain() == previous_scan.effect_chain()
         }
-        None => digest.update([0]),
     }
-    digest.update([build.lifecycle() as u8]);
-    DraftPieceDigestV1::from_bytes(digest.finalize().into())
 }
 
 fn hash_optional_record_id(digest: &mut Sha256, value: Option<DraftPieceRecordIdV1>) {
@@ -1523,16 +1656,8 @@ fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
             digest.update(next_ordinal.to_be_bytes());
             digest.update(chain.as_bytes());
         }
-        DraftPieceBuildFrontierV1::ReconcilingMoves {
-            fragment_ordinal,
-            next_move,
-        } => {
-            digest.update([1]);
-            digest.update(fragment_ordinal.to_be_bytes());
-            digest.update(next_move.to_be_bytes());
-        }
         DraftPieceBuildFrontierV1::Planning { fragment_ordinal } => {
-            digest.update([2]);
+            digest.update([1]);
             digest.update(fragment_ordinal.to_be_bytes());
         }
         DraftPieceBuildFrontierV1::Removing {
@@ -1544,7 +1669,7 @@ fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
             successor_start,
             successor_end,
         } => {
-            digest.update([3]);
+            digest.update([2]);
             digest.update(fragment_ordinal.to_be_bytes());
             digest.update(next_rank.to_be_bytes());
             digest.update(end_rank.to_be_bytes());
@@ -1559,7 +1684,7 @@ fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
             successor_start,
             successor_end,
         } => {
-            digest.update([4]);
+            digest.update([3]);
             digest.update(fragment_ordinal.to_be_bytes());
             for boundary in [base_end, successor_start, successor_end] {
                 hash_build_boundary(digest, boundary);
@@ -1572,15 +1697,15 @@ fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
             base_end,
             successor_end,
         } => {
-            digest.update([5]);
+            digest.update([4]);
             digest.update(fragment_ordinal.to_be_bytes());
             digest.update(next_piece.to_be_bytes());
             digest.update(next_byte.to_be_bytes());
             hash_build_boundary(digest, base_end);
             hash_build_boundary(digest, successor_end);
         }
-        DraftPieceBuildFrontierV1::CrossValidating => digest.update([6]),
-        DraftPieceBuildFrontierV1::Complete => digest.update([7]),
+        DraftPieceBuildFrontierV1::CrossValidating => digest.update([5]),
+        DraftPieceBuildFrontierV1::Complete => digest.update([6]),
     }
 }
 
@@ -1608,6 +1733,18 @@ fn hash_build_roots(digest: &mut Sha256, roots: DraftPieceBuildRootsV1) {
     digest.update(index.record_count().to_be_bytes());
     digest.update([index.height()]);
     digest.update(index.root_digest().as_bytes());
+    hash_optional_record_id(digest, roots.marker_order_root());
+    digest.update([roots.marker_order_height()]);
+    let commitment = roots.marker_commitment();
+    digest.update(commitment.tree_root_digest());
+    digest.update(commitment.marker_count().to_be_bytes());
+    match commitment.maximum_image_label() {
+        Some(label) => {
+            digest.update([1]);
+            digest.update(label.get().to_be_bytes());
+        }
+        None => digest.update([0]),
+    }
 }
 
 fn hash_position(digest: &mut Sha256, position: DraftCompositePositionV1) {
@@ -1691,17 +1828,22 @@ fn hash_marker_effect(digest: &mut Sha256, effect: DraftPieceMarkerEffectV1) {
     }
 }
 
-pub(crate) fn draft_piece_changed_occurrence_chain_link_v1(
+pub(crate) fn draft_piece_marker_effect_chain_link_v1(
     prior: DraftPieceDigestV1,
+    fragment_key: DraftPieceBuildFragmentKeyV1,
+    fragment_digest: DraftPieceDigestV1,
     count: u64,
-    effect: DraftPieceMarkerEffectV1,
     roots: DraftPieceBuildRootsV1,
 ) -> DraftPieceDigestV1 {
     let mut digest = Sha256::new();
-    digest.update(b"syndic/draft-piece-changed-occurrence/v1");
+    digest.update(b"syndic/draft-marker-effect-chain/v1");
     digest.update(prior.as_bytes());
+    digest.update(fragment_key.draft_id().as_bytes());
+    digest.update(fragment_key.session_id().as_bytes());
+    digest.update(fragment_key.operation_id().as_bytes());
+    digest.update(fragment_key.ordinal().to_be_bytes());
+    digest.update(fragment_digest.as_bytes());
     digest.update(count.to_be_bytes());
-    hash_marker_effect(&mut digest, effect);
     hash_build_roots(&mut digest, roots);
     DraftPieceDigestV1::from_bytes(digest.finalize().into())
 }
@@ -1733,20 +1875,50 @@ fn hash_durable_continuation(
         DraftPieceBuildStagingPhaseV1::Proposal => 1,
         DraftPieceBuildStagingPhaseV1::Structure => 2,
     }]);
-    let changed = continuation.changed_occurrences();
-    digest.update(changed.count().to_be_bytes());
-    digest.update(changed.digest().as_bytes());
-    match continuation.pending_marker_effect() {
-        Some(pending) => {
+}
+
+fn hash_marker_effect_continuation(
+    digest: &mut Sha256,
+    continuation: DraftPieceMarkerEffectContinuationV1,
+) {
+    digest.update(continuation.source_logical_frontier().to_be_bytes());
+    digest.update(continuation.successor_logical_frontier().to_be_bytes());
+    let scan = continuation.scan();
+    digest.update(scan.next_fragment_ordinal().to_be_bytes());
+    match scan.scanned_endpoint() {
+        Some(endpoint) => {
             digest.update([1]);
-            hash_marker_effect(digest, pending.effect());
-            hash_build_roots(digest, pending.source_roots());
-            hash_build_roots(digest, pending.working_roots());
-            digest.update([match pending.phase() {
-                DraftPiecePendingMarkerPhaseV1::Removing => 0,
-                DraftPiecePendingMarkerPhaseV1::DerivingInsertionGap => 1,
-                DraftPiecePendingMarkerPhaseV1::Inserting => 2,
-                DraftPiecePendingMarkerPhaseV1::Publishing => 3,
+            let key = endpoint.key();
+            digest.update(key.draft_id().as_bytes());
+            digest.update(key.session_id().as_bytes());
+            digest.update(key.operation_id().as_bytes());
+            digest.update(key.ordinal().to_be_bytes());
+            digest.update(endpoint.digest().as_bytes());
+            digest.update(endpoint.chain().as_bytes());
+        }
+        None => digest.update([0]),
+    }
+    digest.update(scan.completed_effect_count().to_be_bytes());
+    digest.update(scan.effect_chain().as_bytes());
+    match continuation.active() {
+        Some(active) => {
+            digest.update([1]);
+            let key = active.fragment_key();
+            digest.update(key.draft_id().as_bytes());
+            digest.update(key.session_id().as_bytes());
+            digest.update(key.operation_id().as_bytes());
+            digest.update(key.ordinal().to_be_bytes());
+            digest.update(active.fragment_digest().as_bytes());
+            hash_marker_effect(digest, active.effect());
+            hash_build_roots(digest, active.source_roots());
+            hash_build_roots(digest, active.working_roots());
+            digest.update(active.source_frontier().to_be_bytes());
+            digest.update(active.successor_frontier().to_be_bytes());
+            digest.update([match active.phase() {
+                DraftPieceActiveMarkerPhaseV1::Removing => 0,
+                DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap => 1,
+                DraftPieceActiveMarkerPhaseV1::Inserting => 2,
+                DraftPieceActiveMarkerPhaseV1::Publishing => 3,
             }]);
         }
         None => digest.update([0]),
@@ -1757,7 +1929,7 @@ pub(crate) fn draft_piece_build_digest_v1(
     proposal_digest: DraftPieceDigestV1,
     successor: DraftPieceRootReferenceV1,
 ) -> DraftPieceDigestV1 {
-    let domain = b"syndic/draft-piece-build/v1";
+    let domain = b"syndic/draft-piece-build/v3";
     let mut digest = Sha256::new();
     digest.update((domain.len() as u64).to_be_bytes());
     digest.update(domain);

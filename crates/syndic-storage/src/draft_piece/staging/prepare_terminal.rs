@@ -212,11 +212,6 @@ impl SyndicStorage {
             source,
             proposal,
             phase,
-            DraftPieceChangedOccurrenceFrontierV1::new(
-                0,
-                canonical_empty_changed_occurrence_digest_v1(),
-            ),
-            None,
         );
         let (prepared_edit, build, build_receipt, target_session) =
             super::mutation::initial_build_for_staging(header, session, expected, continuation)

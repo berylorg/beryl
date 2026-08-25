@@ -61,17 +61,17 @@ pub use draft_piece_corruption::{
     DraftEditorCandidateOpenReceiptCorruption, DraftPieceBuildCorruption,
     DraftPieceCandidateRootCollision, DraftPieceDescendantCorruption, DraftPieceDescendantTarget,
     DraftPieceFragmentCorruption, DraftPieceImmutableDeletion, DraftPieceProgressReceiptCorruption,
-    delete_draft_piece_build_progress_receipt, delete_draft_piece_immutable_record,
-    delete_draft_piece_terminal_build, draft_piece_fragment_is_stored_exactly,
-    draft_piece_fragment_zero_ordinal_codec_rejections, draft_piece_position_record_count,
-    inject_draft_editor_candidate_open_receipt_corruption,
+    DraftPieceProgressRootCorruption, delete_draft_piece_build_progress_receipt,
+    delete_draft_piece_immutable_record, delete_draft_piece_terminal_build,
+    draft_piece_fragment_is_stored_exactly, draft_piece_fragment_zero_ordinal_codec_rejections,
+    draft_piece_position_record_count, inject_draft_editor_candidate_open_receipt_corruption,
     inject_draft_editor_candidate_session_published_beyond_newest,
     inject_draft_piece_build_corruption, inject_draft_piece_candidate_root_collision,
     inject_draft_piece_coordinated_stage_target_replacement,
     inject_draft_piece_custody_endpoint_corruption, inject_draft_piece_descendant_corruption,
     inject_draft_piece_fragment_ahead, inject_draft_piece_fragment_corruption,
     inject_draft_piece_occupied_stage_target, inject_draft_piece_progress_receipt_corruption,
-    inject_draft_piece_session_generation_inflation,
+    inject_draft_piece_progress_root_corruption, inject_draft_piece_session_generation_inflation,
     inject_draft_piece_settlement_closure_corruption, rekey_draft_piece_root_for_collision,
 };
 pub use draft_piece_current_drift::arm_draft_piece_current_read_fault;
@@ -116,8 +116,8 @@ pub use schema_history::{
     inject_awaiting_terminal_predecessor,
 };
 
-pub fn syndic_v6_family_names() -> Vec<&'static str> {
-    crate::domain::v6_family_names().collect()
+pub fn syndic_v7_family_names() -> Vec<&'static str> {
+    crate::domain::v7_family_names().collect()
 }
 
 pub fn roundtrip_draft_historical_root_adoption(

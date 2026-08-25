@@ -257,6 +257,10 @@ confusing current drafts with submitted transcript history or image identity.
 ## Image Clipboard Semantics
 
 - Copying or cutting a selection containing image markers writes explanatory fallback text such as `[Image A]` to the system clipboard.
+- An under-limit selection containing any representable number of image markers is cut as one
+  logical draft mutation, and only after the clipboard write succeeds. Failure or a proven
+  noncommit after that write leaves the copied clipboard content available and the draft unchanged;
+  no subset of the selected text or markers is removed.
 - While Beryl's private clipboard representation remains eligible, pasting it in the same
   conversation creates another reference to the same image with the same label. A stale
   representation that no longer identifies that label and image is rejected before draft mutation.

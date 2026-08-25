@@ -219,10 +219,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
             storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
         ));
         let build = open_build(&storage, &store, &prepared, &fragment);
-        if let Some(pending) = build
-            .durable_continuation()
-            .and_then(|continuation| continuation.pending_marker_effect())
-        {
+        if let Some(pending) = build.marker_effect_continuation().active() {
             assert_eq!(build.working_roots(), source_roots);
             assert_eq!(pending.source_roots(), source_roots);
             assert_ne!(pending.working_roots(), source_roots);
@@ -234,10 +231,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
     let reopened = open_build(&storage, &store, &prepared, &fragment);
-    let pending = reopened
-        .durable_continuation()
-        .and_then(|continuation| continuation.pending_marker_effect())
-        .unwrap();
+    let pending = reopened.marker_effect_continuation().active().unwrap();
     assert_eq!(reopened.working_roots(), source_roots);
     assert_ne!(pending.working_roots(), source_roots);
     while let Some(advance) = storage

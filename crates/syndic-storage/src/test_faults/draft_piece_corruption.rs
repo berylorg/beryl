@@ -11,6 +11,17 @@ use crate::{
 pub enum DraftPieceDescendantTarget {
     Sequence,
     MarkerIndex,
+    MarkerOrder,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DraftPieceProgressRootCorruption {
+    PublishedSequence,
+    PublishedMarkerIndex,
+    PublishedMarkerOrder,
+    ActiveSequence,
+    ActiveMarkerIndex,
+    ActiveMarkerOrder,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,7 +38,6 @@ pub enum DraftPieceBuildCorruption {
     OpenWithCompleteFrontier,
     CompleteWithoutSuccessor,
     TerminalLifecycle,
-    ReconcilingMovesNextMove,
     InsertingNextPiece,
     InsertingByteCursor,
     AdjacentPhaseBoundary,
@@ -38,6 +48,10 @@ pub enum DraftPieceBuildCorruption {
     RemovingToApplying,
     ApplyingToInserting,
     AdjacentFragmentJump,
+    MarkerScanNextOrdinal,
+    MarkerScanCount,
+    MarkerScanChain,
+    ActiveMarkerIdentity,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -261,23 +275,6 @@ pub fn inject_draft_piece_build_corruption(
                 DraftPieceBuildLifecycleV1::Cancelled
             },
         ),
-        DraftPieceBuildCorruption::ReconcilingMovesNextMove => {
-            let DraftPieceBuildFrontierV1::ReconcilingMoves {
-                fragment_ordinal, ..
-            } = build.frontier()
-            else {
-                panic!("fixture build is not reconciling moves")
-            };
-            (
-                DraftPieceBuildFrontierV1::ReconcilingMoves {
-                    fragment_ordinal,
-                    next_move: u64::MAX,
-                },
-                build.successor(),
-                build.build_digest(),
-                build.lifecycle(),
-            )
-        }
         DraftPieceBuildCorruption::InsertingNextPiece => {
             let DraftPieceBuildFrontierV1::Inserting {
                 fragment_ordinal,
@@ -482,6 +479,15 @@ pub fn inject_draft_piece_build_corruption(
                 build.lifecycle(),
             )
         }
+        DraftPieceBuildCorruption::MarkerScanNextOrdinal
+        | DraftPieceBuildCorruption::MarkerScanCount
+        | DraftPieceBuildCorruption::MarkerScanChain
+        | DraftPieceBuildCorruption::ActiveMarkerIdentity => (
+            build.frontier(),
+            build.successor(),
+            build.build_digest(),
+            build.lifecycle(),
+        ),
     };
     let corrupted = DraftPieceBuildRecordV1::new(
         build.draft_id(),
@@ -505,7 +511,6 @@ pub fn inject_draft_piece_build_corruption(
         build.successor_frontier(),
         build.next_record_ordinal(),
         frontier,
-        build.progress_digest(),
         build.progress_receipt(),
         successor,
         build_digest,
@@ -515,19 +520,180 @@ pub fn inject_draft_piece_build_corruption(
         (corruption != DraftPieceBuildCorruption::DropDurableContinuation)
             .then(|| build.durable_continuation())
             .flatten(),
-    );
+    )
+    .with_marker_effect_continuation(build.marker_effect_continuation());
+    let corrupted = match corruption {
+        DraftPieceBuildCorruption::MarkerScanNextOrdinal => {
+            let marker = build.marker_effect_continuation();
+            let scan = marker.scan();
+            corrupted.with_marker_effect_continuation(DraftPieceMarkerEffectContinuationV1::new(
+                marker.source_logical_frontier(),
+                marker.successor_logical_frontier(),
+                DraftPieceMarkerEffectScanFrontierV1::new(
+                    scan.next_fragment_ordinal().saturating_add(1),
+                    scan.scanned_endpoint(),
+                    scan.completed_effect_count(),
+                    scan.effect_chain(),
+                ),
+                marker.active(),
+            ))
+        }
+        DraftPieceBuildCorruption::MarkerScanCount => {
+            let marker = build.marker_effect_continuation();
+            let scan = marker.scan();
+            corrupted.with_marker_effect_continuation(DraftPieceMarkerEffectContinuationV1::new(
+                marker.source_logical_frontier(),
+                marker.successor_logical_frontier(),
+                DraftPieceMarkerEffectScanFrontierV1::new(
+                    scan.next_fragment_ordinal(),
+                    scan.scanned_endpoint(),
+                    scan.completed_effect_count().saturating_add(1),
+                    scan.effect_chain(),
+                ),
+                marker.active(),
+            ))
+        }
+        DraftPieceBuildCorruption::MarkerScanChain => {
+            let marker = build.marker_effect_continuation();
+            let scan = marker.scan();
+            corrupted.with_marker_effect_continuation(DraftPieceMarkerEffectContinuationV1::new(
+                marker.source_logical_frontier(),
+                marker.successor_logical_frontier(),
+                DraftPieceMarkerEffectScanFrontierV1::new(
+                    scan.next_fragment_ordinal(),
+                    scan.scanned_endpoint(),
+                    scan.completed_effect_count(),
+                    DraftPieceDigestV1::from_bytes([0xD4; 32]),
+                ),
+                marker.active(),
+            ))
+        }
+        DraftPieceBuildCorruption::ActiveMarkerIdentity => {
+            let marker = build.marker_effect_continuation();
+            let active = marker
+                .active()
+                .expect("fixture build has an active marker effect");
+            let key = active.fragment_key();
+            let active = DraftPieceActiveMarkerEffectV1::new(
+                DraftPieceBuildFragmentKeyV1::new(
+                    key.draft_id(),
+                    key.session_id(),
+                    key.operation_id(),
+                    key.ordinal().saturating_add(1),
+                ),
+                active.fragment_digest(),
+                active.effect(),
+                active.source_roots(),
+                active.working_roots(),
+                active.source_frontier(),
+                active.successor_frontier(),
+                active.phase(),
+            );
+            corrupted.with_marker_effect_continuation(DraftPieceMarkerEffectContinuationV1::new(
+                marker.source_logical_frontier(),
+                marker.successor_logical_frontier(),
+                marker.scan(),
+                Some(active),
+            ))
+        }
+        _ => corrupted,
+    };
     let corrupted = if matches!(
         corruption,
         DraftPieceBuildCorruption::StagedToCrossValidating
             | DraftPieceBuildCorruption::DropDurableContinuation
+            | DraftPieceBuildCorruption::MarkerScanNextOrdinal
+            | DraftPieceBuildCorruption::MarkerScanCount
+            | DraftPieceBuildCorruption::MarkerScanChain
+            | DraftPieceBuildCorruption::ActiveMarkerIdentity
     ) {
         authenticated_build_record(corrupted)
     } else {
         corrupted
     };
+    if matches!(
+        corruption,
+        DraftPieceBuildCorruption::MarkerScanCount | DraftPieceBuildCorruption::MarkerScanChain
+    ) && build
+        .marker_effect_continuation()
+        .scan()
+        .scanned_endpoint()
+        .is_some()
+    {
+        return coordinated_build_replacement(store, storage, key, corrupted);
+    }
     storage.handle.contribution(
         storage.revision(store).expect("fixture revision reads"),
         DescendantReplacement(Replacement::Build(key, corrupted)),
+    )
+}
+
+fn coordinated_build_replacement(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    key: DraftPieceSettlementKeyV1,
+    build: DraftPieceBuildRecordV1,
+) -> MutationContribution {
+    let limit = SyndicPointReadLimit::new(75_000).expect("fixture point bound is nonzero");
+    let receipt = storage
+        .point::<DraftPieceBuildProgressFamily>(store, build.progress_receipt().key(), limit)
+        .expect("fixture receipt reads")
+        .expect("fixture receipt exists");
+    let (build, receipt) =
+        authenticated_build_transition(build, receipt.previous(), receipt.fragment_endpoint())
+            .expect("fixture coordinated build transition is exact");
+    let session_key =
+        DraftEditorCandidateSessionRecordKeyV1::head(build.draft_id(), build.session_id());
+    let DraftEditorCandidateSessionRecordV1::Head(session) = storage
+        .point::<DraftEditorCandidateSessionsFamily>(store, session_key, limit)
+        .expect("fixture session reads")
+        .expect("fixture session exists")
+    else {
+        panic!("fixture record is not a session head")
+    };
+    let custody = session
+        .active_operation()
+        .copied()
+        .expect("fixture session has active-operation custody");
+    let session = DraftEditorCandidateSessionV1::from_parts(
+        session.thread_id(),
+        session.draft_id(),
+        session.session_id(),
+        session.open_operation_id(),
+        session.session_generation(),
+        session.durable_base_selector_revision(),
+        session.durable_base_root(),
+        session.durable_base_history(),
+        session.published_candidate_generation(),
+        session.published_selector_revision(),
+        session.published_root(),
+        session.published_history(),
+        session.newest_candidate_generation(),
+        session.newest_root(),
+        session.newest_history(),
+        session.dirty_generation(),
+        session.logical_extent(),
+        session.lifecycle(),
+        Some(DraftEditorActiveOperationV1::building(
+            custody.operation_id(),
+            custody
+                .proposal_digest()
+                .expect("fixture custody is building"),
+            custody.predecessor_candidate_generation(),
+            custody.predecessor_root(),
+            custody.predecessor_history(),
+            build.progress_receipt(),
+        )),
+    );
+    storage.handle.contribution(
+        storage.revision(store).expect("fixture revision reads"),
+        CoordinatedStageReplacement {
+            key,
+            build,
+            receipt,
+            session_key,
+            session: DraftEditorCandidateSessionRecordV1::Head(session),
+        },
     )
 }
 
@@ -573,9 +739,11 @@ pub fn inject_draft_piece_progress_receipt_corruption(
                 ),
                 receipt.previous(),
                 receipt.fragment_endpoint(),
-                DraftPieceDigestV1::from_bytes([0xE1; 32]),
                 receipt.working_roots(),
-                receipt.base_frontier(),
+                DraftPieceBuildBoundaryV1::new(
+                    receipt.base_frontier().rank().saturating_add(1),
+                    receipt.base_frontier().inner(),
+                ),
                 receipt.successor_frontier(),
                 receipt.next_record_ordinal(),
                 receipt.frontier(),
@@ -609,9 +777,11 @@ pub fn inject_draft_piece_progress_receipt_corruption(
                     ),
                     stored.previous(),
                     stored.fragment_endpoint(),
-                    DraftPieceDigestV1::from_bytes([0xE3; 32]),
                     stored.working_roots(),
-                    stored.base_frontier(),
+                    DraftPieceBuildBoundaryV1::new(
+                        stored.base_frontier().rank().saturating_add(1),
+                        stored.base_frontier().inner(),
+                    ),
                     stored.successor_frontier(),
                     stored.next_record_ordinal(),
                     stored.frontier(),
@@ -647,7 +817,6 @@ pub fn inject_draft_piece_progress_receipt_corruption(
                 build.successor_frontier(),
                 build.next_record_ordinal(),
                 build.frontier(),
-                build.progress_digest(),
                 DraftPieceBuildProgressReceiptReferenceV1::new(
                     DraftPieceBuildProgressReceiptKeyV1::new(
                         build.draft_id(),
@@ -686,9 +855,8 @@ pub fn inject_draft_piece_occupied_stage_target(
         .expect("fixture fragment count advances");
     let chain = fragment.chain_digest();
     let frontier = if staged == build.fragment_count() {
-        DraftPieceBuildFrontierV1::ReconcilingMoves {
+        DraftPieceBuildFrontierV1::Planning {
             fragment_ordinal: 1,
-            next_move: 0,
         }
     } else {
         DraftPieceBuildFrontierV1::Receiving {
@@ -719,7 +887,6 @@ pub fn inject_draft_piece_occupied_stage_target(
             build.successor_frontier(),
             build.next_record_ordinal(),
             frontier,
-            DraftPieceDigestV1::from_bytes([0; 32]),
             build.progress_receipt(),
             None,
             None,
@@ -910,7 +1077,6 @@ pub fn inject_draft_piece_coordinated_stage_target_replacement(
                 .checked_add(1)
                 .expect("fixture record ordinal advances"),
             build.frontier(),
-            DraftPieceDigestV1::from_bytes([0; 32]),
             build.progress_receipt(),
             build.successor(),
             build.build_digest(),
@@ -1245,12 +1411,169 @@ pub fn inject_draft_piece_descendant_corruption(
     let replacement = match target {
         DraftPieceDescendantTarget::Sequence => inject_sequence(store, storage, root, corruption),
         DraftPieceDescendantTarget::MarkerIndex => inject_index(store, storage, root, corruption),
+        DraftPieceDescendantTarget::MarkerOrder => inject_marker_order(
+            store,
+            storage,
+            root.key().draft_id(),
+            DraftPieceBuildRootsV1::from_root(root),
+        ),
     };
     storage.handle.contribution(
         storage
             .revision(store)
             .expect("fixture domain revision reads"),
         DescendantReplacement(replacement),
+    )
+}
+
+pub fn inject_draft_piece_progress_root_corruption(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    key: DraftPieceSettlementKeyV1,
+    corruption: DraftPieceProgressRootCorruption,
+) -> MutationContribution {
+    let build = storage
+        .point::<DraftPieceBuildsFamily>(
+            store,
+            key,
+            SyndicPointReadLimit::new(75_000).expect("fixture point bound is nonzero"),
+        )
+        .expect("fixture build reads")
+        .expect("fixture build exists");
+    let replacement = match corruption {
+        DraftPieceProgressRootCorruption::PublishedSequence => {
+            inject_root_sequence(store, storage, build.draft_id(), build.working_roots())
+        }
+        DraftPieceProgressRootCorruption::PublishedMarkerIndex => {
+            inject_root_index(store, storage, build.draft_id(), build.working_roots())
+        }
+        DraftPieceProgressRootCorruption::PublishedMarkerOrder => {
+            inject_marker_order(store, storage, build.draft_id(), build.working_roots())
+        }
+        target => {
+            let roots = build
+                .marker_effect_continuation()
+                .active()
+                .expect("fixture build has an active marker effect")
+                .working_roots();
+            match target {
+                DraftPieceProgressRootCorruption::ActiveSequence => {
+                    inject_root_sequence(store, storage, build.draft_id(), roots)
+                }
+                DraftPieceProgressRootCorruption::ActiveMarkerIndex => {
+                    inject_root_index(store, storage, build.draft_id(), roots)
+                }
+                DraftPieceProgressRootCorruption::ActiveMarkerOrder => {
+                    inject_marker_order(store, storage, build.draft_id(), roots)
+                }
+                DraftPieceProgressRootCorruption::PublishedSequence
+                | DraftPieceProgressRootCorruption::PublishedMarkerIndex
+                | DraftPieceProgressRootCorruption::PublishedMarkerOrder => unreachable!(),
+            }
+        }
+    };
+    storage.handle.contribution(
+        storage.revision(store).expect("fixture revision reads"),
+        DescendantReplacement(replacement),
+    )
+}
+
+fn inject_root_sequence(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    draft_id: beryl_model::SyndicDraftId,
+    roots: DraftPieceBuildRootsV1,
+) -> Replacement {
+    let id = roots.sequence_root().expect("fixture sequence root exists");
+    let key = DraftPieceRecordKeyV1::new(draft_id, id);
+    let record = storage
+        .point::<DraftPieceNodesFamily>(
+            store,
+            key,
+            SyndicPointReadLimit::new(65_536).expect("fixture point bound is nonzero"),
+        )
+        .expect("fixture sequence root reads")
+        .expect("fixture sequence root exists");
+    Replacement::Sequence(
+        key,
+        DraftPieceNodeRecordV1::new(
+            key,
+            record.height(),
+            record.children().to_vec(),
+            DraftPieceDigestV1::from_bytes([0xD6; 32]),
+        ),
+    )
+}
+
+fn inject_root_index(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    draft_id: beryl_model::SyndicDraftId,
+    roots: DraftPieceBuildRootsV1,
+) -> Replacement {
+    let id = roots
+        .marker_index_root()
+        .expect("fixture marker-index root exists");
+    let key = DraftMarkerIdentityRecordKeyV1::new(
+        draft_id,
+        DraftMarkerIdentityRecordKindV1::Internal,
+        id,
+    );
+    let record = storage
+        .point::<DraftMarkerIdentityIndexFamily>(
+            store,
+            key,
+            SyndicPointReadLimit::new(65_536).expect("fixture point bound is nonzero"),
+        )
+        .expect("fixture marker-index root reads")
+        .expect("fixture marker-index root exists");
+    Replacement::Index(
+        key,
+        DraftMarkerIdentityRecordV1::Internal {
+            key,
+            height: record.height(),
+            children: record
+                .children()
+                .expect("fixture marker-index root is internal")
+                .to_vec(),
+            digest: DraftPieceDigestV1::from_bytes([0xD7; 32]),
+        },
+    )
+}
+
+fn inject_marker_order(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    draft_id: beryl_model::SyndicDraftId,
+    roots: DraftPieceBuildRootsV1,
+) -> Replacement {
+    let id = roots
+        .marker_order_root()
+        .expect("fixture marker-order root exists");
+    let key =
+        DraftMarkerOrderRecordKeyV1::new(draft_id, DraftMarkerOrderRecordKindV1::Internal, id);
+    let record = storage
+        .point::<DraftMarkerOrderCommitmentsFamily>(
+            store,
+            key,
+            SyndicPointReadLimit::new(65_536).expect("fixture point bound is nonzero"),
+        )
+        .expect("fixture marker-order root reads")
+        .expect("fixture marker-order root exists");
+    let DraftMarkerOrderRecordV1::Internal {
+        height, children, ..
+    } = record
+    else {
+        panic!("fixture marker-order root is internal")
+    };
+    Replacement::MarkerOrder(
+        key,
+        DraftMarkerOrderRecordV1::Internal {
+            key,
+            height,
+            children,
+            digest: DraftPieceDigestV1::from_bytes([0xD8; 32]),
+        },
     )
 }
 
@@ -1730,6 +2053,7 @@ fn inject_index(
 enum Replacement {
     Sequence(DraftPieceRecordKeyV1, DraftPieceNodeRecordV1),
     Index(DraftMarkerIdentityRecordKeyV1, DraftMarkerIdentityRecordV1),
+    MarkerOrder(DraftMarkerOrderRecordKeyV1, DraftMarkerOrderRecordV1),
     Root(DraftPieceRootKeyV1, DraftPieceRootRecordV1),
     Build(DraftPieceSettlementKeyV1, DraftPieceBuildRecordV1),
     Fragment(DraftPieceBuildFragmentKeyV1, DraftPieceBuildFragmentV1),
@@ -1833,6 +2157,9 @@ impl DomainMutation<SyndicDomain> for DescendantReplacement {
             Replacement::Index(..) => {
                 reservation.reserve_records::<DraftMarkerIdentityIndexCodec>(1)?
             }
+            Replacement::MarkerOrder(..) => {
+                reservation.reserve_records::<DraftMarkerOrderCommitmentsCodec>(1)?
+            }
             Replacement::Root(..) => reservation.reserve_records::<DraftPieceRootsCodec>(1)?,
             Replacement::Build(..) => reservation.reserve_records::<DraftPieceBuildsCodec>(1)?,
             Replacement::Fragment(..) => {
@@ -1862,6 +2189,9 @@ impl DomainMutation<SyndicDomain> for DescendantReplacement {
             }
             Replacement::Index(key, record) => {
                 builder.put::<DraftMarkerIdentityIndexCodec>(key, record)?
+            }
+            Replacement::MarkerOrder(key, record) => {
+                builder.put::<DraftMarkerOrderCommitmentsCodec>(key, record)?
             }
             Replacement::Root(key, record) => builder.put::<DraftPieceRootsCodec>(key, record)?,
             Replacement::Build(key, record) => builder.put::<DraftPieceBuildsCodec>(key, record)?,

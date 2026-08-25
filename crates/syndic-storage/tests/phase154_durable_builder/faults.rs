@@ -1,6 +1,6 @@
 #[cfg(feature = "test-faults")]
 #[test]
-fn pending_marker_command_writer_cuts_recover_one_atomic_root_pair() {
+fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
     for (cut, fault_point) in [
         FaultPoint::BeforeCommit,
         FaultPoint::AfterCommitBeforePersist,
@@ -78,22 +78,32 @@ fn pending_marker_command_writer_cuts_recover_one_atomic_root_pair() {
                 ),
             ],
             DraftLogicalExtentV1::new(4, 1),
+            point(0),
         );
-        let source_roots =
-            open_build_fragments(&storage, &store, &prepared, &fragments).working_roots();
-        let preceding = storage
-            .prepare_draft_piece_build_advance(
+        let source_roots = loop {
+            let build = open_build_fragments(&storage, &store, &prepared, &fragments);
+            if matches!(
+                build.frontier(),
+                DraftPieceBuildFrontierV1::Planning {
+                    fragment_ordinal: 2
+                }
+            ) {
+                break build.working_roots();
+            }
+            let preceding = storage
+                .prepare_draft_piece_build_advance(
+                    &store,
+                    identity.draft_id(),
+                    identity.session_id(),
+                    identity.operation_id().as_piece_operation(),
+                )
+                .unwrap()
+                .unwrap();
+            committed(execute(
                 &store,
-                identity.draft_id(),
-                identity.session_id(),
-                identity.operation_id().as_piece_operation(),
-            )
-            .unwrap()
-            .unwrap();
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), preceding),
-        ));
+                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), preceding),
+            ));
+        };
         let advance = storage
             .prepare_draft_piece_build_advance(
                 &store,
@@ -150,9 +160,7 @@ fn pending_marker_command_writer_cuts_recover_one_atomic_root_pair() {
         };
         let recovered = open_build_fragments(&storage, &store, &prepared, &fragments);
         assert_eq!(recovered.working_roots(), source_roots);
-        let pending = recovered
-            .durable_continuation()
-            .and_then(|continuation| continuation.pending_marker_effect());
+        let pending = recovered.marker_effect_continuation().active();
         assert_eq!(
             pending.is_some(),
             committed_target,
@@ -178,15 +186,23 @@ fn pending_marker_command_writer_cuts_recover_one_atomic_root_pair() {
                 panic!(
                     "writer cut {fault_point:?} failed at {:?}, pending={:?}: {error:?}",
                     build.frontier(),
-                    build
-                        .durable_continuation()
-                        .and_then(|continuation| continuation.pending_marker_effect())
+                    build.marker_effect_continuation().active()
                 )
             })
         {
+            let replay = advance.clone();
             committed(execute(
                 &store,
                 storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            ));
+            assert!(matches!(
+                execute(
+                    &store,
+                    storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), replay),
+                ),
+                CommandOutcome::NotCommitted {
+                    evidence: CommandError::EmptyContribution { .. }
+                }
             ));
         }
         committed(execute(

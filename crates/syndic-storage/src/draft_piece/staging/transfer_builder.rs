@@ -196,8 +196,6 @@ impl SyndicStorage {
             source,
             proposal,
             phase,
-            continuation.changed_occurrences(),
-            continuation.pending_marker_effect(),
         );
         if !target_continuation.is_locally_exact() {
             return Err(DraftMutationStagingErrorV1::Invariant);

@@ -490,66 +490,26 @@ pub(super) fn progress_receipt_closure_is_exact(
         };
         if stored.reference() != previous
             || !progress_receipt_is_exact(&stored)
-            || !progress_receipt_effects_are_exact(storage, store, &stored)?
+            || !super::read::progress_receipt_effects_are_exact(
+                storage,
+                store,
+                &stored,
+                point_limit(),
+            )?
         {
             return Ok(false);
         }
-    }
-    progress_receipt_effects_are_exact(storage, store, receipt)
-}
-
-fn progress_receipt_effects_are_exact(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    receipt: &DraftPieceBuildProgressReceiptV1,
-) -> Result<bool, SyndicReadError> {
-    if let Some(endpoint) = receipt.fragment_endpoint() {
-        let fragment = storage.point::<DraftPieceBuildFragmentsFamily>(
+        if !super::read::progress_receipt_transition_is_exact(
+            storage,
             store,
-            endpoint.key(),
+            &stored,
+            receipt,
             point_limit(),
-        )?;
-        if fragment
-            .as_ref()
-            .is_none_or(|fragment| canonical_fragment_endpoint(fragment) != endpoint)
-        {
+        )? {
             return Ok(false);
         }
     }
-    let roots = receipt.working_roots();
-    if let Some(id) = roots.sequence_root() {
-        let node = storage.point::<DraftPieceNodesFamily>(
-            store,
-            DraftPieceRecordKeyV1::new(receipt.key().draft_id(), id),
-            point_limit(),
-        )?;
-        if node
-            .is_none_or(|node| validate_sequence_root_node(node, roots.sequence_summary()).is_err())
-        {
-            return Ok(false);
-        }
-    } else if roots.sequence_summary().piece_count() != 0 {
-        return Ok(false);
-    }
-    if let Some(id) = roots.marker_index_root() {
-        let record = storage.point::<DraftMarkerIdentityIndexFamily>(
-            store,
-            DraftMarkerIdentityRecordKeyV1::new(
-                receipt.key().draft_id(),
-                DraftMarkerIdentityRecordKindV1::Internal,
-                id,
-            ),
-            point_limit(),
-        )?;
-        if record.is_none_or(|record| {
-            validate_index_root_record(record, roots.marker_index_summary()).is_err()
-        }) {
-            return Ok(false);
-        }
-    } else if roots.marker_index_summary().record_count() != 0 {
-        return Ok(false);
-    }
-    Ok(true)
+    super::read::progress_receipt_effects_are_exact(storage, store, receipt, point_limit())
 }
 
 impl DomainMutation<SyndicDomain> for OpenSessionMutation {

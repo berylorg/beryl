@@ -1,7 +1,8 @@
 use beryl_model::DraftMarkerCommitmentV1;
 
 use super::{
-    builder_model::DraftPieceDurableBuildContinuationV1, marker_seal::DraftMarkerSealProofV1,
+    builder_model::{DraftPieceDurableBuildContinuationV1, DraftPieceMarkerEffectContinuationV1},
+    marker_seal::DraftMarkerSealProofV1,
     staging_model::DraftMutationStagingProgressReceiptReferenceV1,
 };
 use beryl_model::{
@@ -2568,10 +2569,6 @@ pub enum DraftPieceBuildFrontierV1 {
         next_ordinal: u64,
         chain: DraftPieceDigestV1,
     },
-    ReconcilingMoves {
-        fragment_ordinal: u64,
-        next_move: u64,
-    },
     Planning {
         fragment_ordinal: u64,
     },
@@ -2644,16 +2641,16 @@ pub struct DraftPieceBuildRecordV1 {
     successor_frontier: DraftPieceBuildBoundaryV1,
     next_record_ordinal: u64,
     frontier: DraftPieceBuildFrontierV1,
-    progress_digest: DraftPieceDigestV1,
     progress_receipt: DraftPieceBuildProgressReceiptReferenceV1,
     durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
+    marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
     successor: Option<DraftPieceRootReferenceV1>,
     build_digest: Option<DraftPieceDigestV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
 }
 
 impl DraftPieceBuildRecordV1 {
-    pub const fn new(
+    pub fn new(
         draft_id: SyndicDraftId,
         session_id: DraftEditorCandidateSessionIdV1,
         predecessor_candidate_generation: u64,
@@ -2675,7 +2672,6 @@ impl DraftPieceBuildRecordV1 {
         successor_frontier: DraftPieceBuildBoundaryV1,
         next_record_ordinal: u64,
         frontier: DraftPieceBuildFrontierV1,
-        progress_digest: DraftPieceDigestV1,
         progress_receipt: DraftPieceBuildProgressReceiptReferenceV1,
         successor: Option<DraftPieceRootReferenceV1>,
         build_digest: Option<DraftPieceDigestV1>,
@@ -2703,9 +2699,9 @@ impl DraftPieceBuildRecordV1 {
             successor_frontier,
             next_record_ordinal,
             frontier,
-            progress_digest,
             progress_receipt,
             durable_continuation: None,
+            marker_effect_continuation: DraftPieceMarkerEffectContinuationV1::canonical_empty(),
             successor,
             build_digest,
             lifecycle,
@@ -2775,13 +2771,6 @@ impl DraftPieceBuildRecordV1 {
     pub const fn frontier(&self) -> DraftPieceBuildFrontierV1 {
         self.frontier
     }
-    pub const fn progress_digest(&self) -> DraftPieceDigestV1 {
-        self.progress_digest
-    }
-    pub(crate) fn with_progress_digest(mut self, progress_digest: DraftPieceDigestV1) -> Self {
-        self.progress_digest = progress_digest;
-        self
-    }
     pub const fn progress_receipt(&self) -> DraftPieceBuildProgressReceiptReferenceV1 {
         self.progress_receipt
     }
@@ -2800,6 +2789,16 @@ impl DraftPieceBuildRecordV1 {
         durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
     ) -> Self {
         self.durable_continuation = durable_continuation;
+        self
+    }
+    pub const fn marker_effect_continuation(&self) -> DraftPieceMarkerEffectContinuationV1 {
+        self.marker_effect_continuation
+    }
+    pub(crate) fn with_marker_effect_continuation(
+        mut self,
+        marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
+    ) -> Self {
+        self.marker_effect_continuation = marker_effect_continuation;
         self
     }
     pub const fn successor(&self) -> Option<DraftPieceRootReferenceV1> {
@@ -2847,13 +2846,13 @@ pub struct DraftPieceBuildProgressReceiptV1 {
     reference: DraftPieceBuildProgressReceiptReferenceV1,
     previous: Option<DraftPieceBuildProgressReceiptReferenceV1>,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
-    state_digest: DraftPieceDigestV1,
     working_roots: DraftPieceBuildRootsV1,
     base_frontier: DraftPieceBuildBoundaryV1,
     successor_frontier: DraftPieceBuildBoundaryV1,
     next_record_ordinal: u64,
     frontier: DraftPieceBuildFrontierV1,
     durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
+    marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
     successor: Option<DraftPieceRootReferenceV1>,
     build_digest: Option<DraftPieceDigestV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
@@ -2861,11 +2860,10 @@ pub struct DraftPieceBuildProgressReceiptV1 {
 
 impl DraftPieceBuildProgressReceiptV1 {
     #[allow(clippy::too_many_arguments)]
-    pub const fn new(
+    pub fn new(
         reference: DraftPieceBuildProgressReceiptReferenceV1,
         previous: Option<DraftPieceBuildProgressReceiptReferenceV1>,
         fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
-        state_digest: DraftPieceDigestV1,
         working_roots: DraftPieceBuildRootsV1,
         base_frontier: DraftPieceBuildBoundaryV1,
         successor_frontier: DraftPieceBuildBoundaryV1,
@@ -2879,13 +2877,13 @@ impl DraftPieceBuildProgressReceiptV1 {
             reference,
             previous,
             fragment_endpoint,
-            state_digest,
             working_roots,
             base_frontier,
             successor_frontier,
             next_record_ordinal,
             frontier,
             durable_continuation: None,
+            marker_effect_continuation: DraftPieceMarkerEffectContinuationV1::canonical_empty(),
             successor,
             build_digest,
             lifecycle,
@@ -2903,9 +2901,6 @@ impl DraftPieceBuildProgressReceiptV1 {
     }
     pub const fn fragment_endpoint(&self) -> Option<DraftPieceCanonicalFragmentEndpointV1> {
         self.fragment_endpoint
-    }
-    pub const fn state_digest(&self) -> DraftPieceDigestV1 {
-        self.state_digest
     }
     pub const fn working_roots(&self) -> DraftPieceBuildRootsV1 {
         self.working_roots
@@ -2930,6 +2925,16 @@ impl DraftPieceBuildProgressReceiptV1 {
         durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
     ) -> Self {
         self.durable_continuation = durable_continuation;
+        self
+    }
+    pub const fn marker_effect_continuation(&self) -> DraftPieceMarkerEffectContinuationV1 {
+        self.marker_effect_continuation
+    }
+    pub(crate) fn with_marker_effect_continuation(
+        mut self,
+        marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
+    ) -> Self {
+        self.marker_effect_continuation = marker_effect_continuation;
         self
     }
     pub const fn successor(&self) -> Option<DraftPieceRootReferenceV1> {

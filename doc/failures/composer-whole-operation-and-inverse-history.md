@@ -2,128 +2,80 @@
 
 ## Invalidated Approach
 
-The large-composer design initially retained a complete logical mutation behind a finite fragment
-ceiling and reconstructed undo from copied inverse text and marker witnesses. Later corrections
-still assumed that SourceSelected custody could live only on the worker stack, that one global
-operation high-water could classify page reuse across binding changes, that the app could rebuild a
-post-finish proposal prefix, and that every move or same-id marker replacement could be forced into
-fragment one.
+The composer mutation path repeatedly treated a logically unbounded edit as if one process could
+retain its complete effects: first as whole-operation edit/inverse vectors, then as an app-owned Cut
+page/target/item collection, and later as a storage-wide marker prepass feeding one long-lived
+pending marker effect. That last correction could finish one marker but could not represent a
+second marker in the same atomic mutation without retaining a marker queue or publishing sequential
+draft commits.
 
-The first retention design then treated a draft-global cumulative seek plus immediate predecessor
-links as sufficient lineage authority. After sibling forks disproved that, the correction selected
-the floor directly from a 64-slot ancestor witness but overextended ordinary reads into recursively
-re-proving every committed skip derivation and root adjacency so they could detect coordinated
-digest-valid post-commit rewrites.
-
-The first app integration also translated one bounded widget page into separate physical storage-
-page commands and accepted older widget ordinals as replay without exact comparison. It passed the
-large by-value settlement closure through branch-heavy app and storage call chains, assuming the
-ordinary worker stack was sufficient.
+Related invalid assumptions were that caller replay could reconstruct a released proposal prefix,
+every move or same-id replacement could be forced into fragment one, global cumulative order could
+select history lineage, and recursive digest re-proof could establish integrity beyond the actual
+same-database trust boundary.
 
 ## Decisive Evidence
 
-A whole-operation collection makes edit and undo capacity depend on arbitrary fragment count and
-resident payload, while reconstruction loses immutable historical-root identity and cannot give one
-large undo a single exact settlement. The cursor protocol learns terminal totals only at
-authenticated finish, so pre-finish custody must be durable and independent of caller replay. After
-finish, a builder that lacks authenticated consumed-lane frontiers can find a late page only by
-restarting at ordinal one or accepting a caller-reconstructed prefix; neither is bounded restart
-authority.
-
-Independent editor sessions can fork one published frontier and append siblings at overlapping
-cumulative positions, so global order cannot select the chosen lineage. Head-origin binary lifting
-does select it when append admission constructed the canonical witness correctly.
-
-Recursive post-commit proof was not a sound bounded contract. A coordinated rewrite can replace the
-derivation source and its own lower derivation while recomputing every digest, so adding three reads
-per level merely moves the same question downward. When transition, frontier, session, and receipt
-anchors all come from the same database, they cannot promise detection of hostile replacement,
-cosmic bit flips, arbitrary I/O/media corruption, or another fully self-consistent digest-valid
-rewrite. That machinery complicated normal logic without strengthening the stated trust boundary.
-
-A widget page can split into as many as 257 physical storage pages. Separate commands can publish a
-durable prefix before local widget-frontier rejection, while released payload leaves the app unable
-to reconcile that prefix as one widget-page effect. Native first-chance debugging of the first
-one-fragment edit separately proved no recursion: oversized production frames exhausted the 2 MiB
-worker stack, led by app execution, storage status, and settlement decode frames of roughly 604 KiB,
-434 KiB, and 203 KiB. The test payload was not causal.
-
-SourceSelected means the exact physical-page target remains absent, not that the request may be
-retranslated or discarded from stack-only custody. A binding-independent high-water misclassifies
-stale ABA completions when a new activation/session/base reuses an operation or ordinal. Marker
-moves and same-id replacements may naturally occur on any proposal page; requiring fragment one
-either prescans/reorders the widget stream or buffers earlier pages. Splitting removal from later
-placement also loses the one bounded closure needed to validate the exact source occurrence and
-successor anchor/order together.
+- `DraftPieceDurableBuildContinuationV1` stored marker continuation as a single `Option`. The
+  `marker_continuation_transition` rejection and
+  `later_marker_effect_cannot_overtake_one_pending_effect` test fixed that one pending effect as a
+  global barrier rather than a bounded continuation for the current fragment.
+- The Phase 180 bounded two-marker `InvalidRoot` probe wrote the clipboard successfully, advanced
+  unreachable builder work for the first removal, and then rejected the second marker while the
+  draft stayed unchanged. Sequentially committing the removals would violate the required one
+  logical Cut and leave partial draft mutation possible.
+- Retaining every Cut proposal page, selected target, text item, or marker item makes app memory
+  proportional to selection size. Pre-scanning or reordering effects merely moves that unbounded
+  collection and breaks natural fragment order.
+- Whole-operation edit and inverse collections make edit/undo capacity depend on arbitrary fragment
+  count and resident payload. Caller-reconstructed post-finish prefixes cannot be durable restart or
+  replay authority after released pages.
+- Independent editor sessions can fork one history frontier at overlapping cumulative positions, so
+  global order cannot select the chosen lineage. The selected head's authenticated 64-level ancestor
+  witness can do so with fixed retained state.
+- One widget page can translate to 257 physical storage pages. Publishing those pages in separate
+  commands can leave an unreconcilable prefix after the widget payload is released. Separately,
+  measured large by-value settlement closures exhausted the ordinary 2 MiB worker stack; the test
+  payload itself was not causal.
 
 ## Accepted Correction
 
-Use the app-neutral cursor/session protocol with bounded source and proposal pages, durable two-lane
-staging custody, explicit finish, qualified app frontiers, and one terminal settlement. The app
-retains one current validated widget page and its one prepared atomic physical-page batch while
-SourceSelected remains possible. Only TargetSelected advances the widget frontier and releases that
-payload; exact pre-admission cancellation may discard it only after source selection with every
-target absent. Operation high-water is reset and qualified by the exact binding, candidate session,
-and base revision, so stale ABA completion conflicts rather than reinterpreting coordinates.
+The app keeps one validated widget page and its one prepared atomic physical-page batch until exact
+target selection, then releases it. Propagated Cut writes the clipboard first and re-reads the exact
+captured immutable binding/range through bounded text and object cursors. It carries one bounded
+proposal page, fixed cursor/digest/boundary state, and only previous/current/lookahead marker facts,
+submitting each page immediately rather than retaining the whole operation.
 
-Finish atomically transfers custody to the copy-on-write builder. The existing build and progress
-records carry the finished-staging reference, consumed source/proposal lane frontiers, canonical
-fragment endpoint/chain, structure frontiers, and at most one bounded pending marker effect. Storage
-therefore point-reads only the next durable staging window after restart and never scans from ordinal
-one, accepts caller bytes, or uses app-built prefix reconstruction. A window has at most 256 physical
-pages/items, two page/receipt reads per page, nine fixed endpoint-read slots, 521 total acquisition
-reads, and 34,144,256 complete encoded-value bytes. The independent limits remain 256 fragments and
-65,536 inserted UTF-8 bytes. Source-only windows durably advance even when they create no fragment.
-Per-command byte-equal source/target closure and cumulative authenticated checkpoints close replay
-without rescanning earlier pages.
+After finish, storage alone resumes from durable staging custody. Immutable canonical fragment
+records are the only effect collection. One fragment-ordered fold carries an `O(1)` marker-effect
+scan frontier—next fragment/scanned prefix, completed count, and cumulative effect chain—and at most
+one fixed-size active effect for that exact fragment. The active effect completes removal,
+range-application, optional insertion, and unreachable path copies before one atomic transition
+installs all three working roots, advances the frontier/count/chain, clears the slot, and permits the
+next fragment. Later effects remain in cursor-addressed immutable fragments; there is no global
+prepass, pending-effect queue, registry, or marker continuation list.
 
-Every marker insert, removal, move, or same-id replacement is one self-contained proposal item on
-its natural page. A move/replacement carries its exact predecessor occurrence facts and complete
-accepted successor anchor, identity, label, order, and checked charges. It carries no caller gap or
-neighbor witness. Storage derives the exact immediate insertion gap and neighbors from its removal-
-applied current working roots; future-anchor dependency, repeated identity, order collision, charge
-mismatch, source mismatch, or partial effect rejects without a widget pre-scan, semantic reorder,
-prior-page buffer, or operation-wide marker map.
+Composite mapping retains fixed logical UTF-8 source and successor frontiers. Storage derives each
+marker gap and order from the current removal-applied roots and index, so adjacent, sparse, and same-
+anchor markers need no per-marker delta accumulation. Byte-equal target closure is replay authority;
+malformed, skipped, repeated, decreasing, mismatched, premature-EOF, or partial state fails closed.
+Only authenticated EOF with no active effect and exact staging/effect/root coherence permits final
+cross-validation. Candidate, history, session, and settlement publication remains one HomeStore
+atomic command; per-effect progress is unreachable builder state, never sequential draft commits.
 
-Append admission fully validates the source frontier and head, exact immediate predecessor, same-
-draft roots and positions, cumulative and retained-byte accounting, and every derived slot in the
-canonical fixed 64-level witness before one atomic transition/frontier/session/settlement commit.
-Witness construction uses at most 64 transition point reads and fixed state. Replay and
-reconciliation prove the complete source-versus-target atomic publication and canonical bytes;
-missing, partial, stale, or colliding effects fail closed.
+Undo and redo retain immutable historical roots plus the selected-lineage fixed 64-level witness,
+not inverse payloads or global seeks. Physical page admission remains one prepared atomic batch, and
+large settlement closure state is heap-indirected or split across mutually exclusive execution
+branches without changing canonical durable bytes.
 
-After correct commit, ordinary retained-history reads trust immutable witness references that pass
-local key/value, codec, shape, and digest agreement. Direct selected-head lifting follows at most one
-target per level and chooses the cumulative-threshold floor in at most 64 transition point reads and
-fixed state. It does not recursively re-prove witness derivation or root adjacency. Siblings remain
-independent and cannot be selected; a global seek is at most a non-authoritative hint.
+## Affected Authority And Remaining Risks
 
-Digests retain identity, canonical replay, accidental-local-mismatch, and cheap fail-closed decode
-roles. Floor advancement remains logical-only and copies or physically deletes no transition, root,
-node, leaf, or content. No additional history proof field, history record, family, index, pin family,
-single-lineage restriction, or compatibility path is added.
+The correction is authoritative in `doc/features/composer/design.md`,
+`doc/systems/syndic-conversation-history/design.md`, `crates/syndic-storage/doc/design.md`, and
+`crates/beryl-app/doc/design.md`.
 
-One widget page is prevalidated before translation and admitted through one bounded atomic storage
-batch over the existing staging page, progress, head, and session families. Immediate exact replay
-uses the widget protocol's fixed last-page receipt; older pages are obsolete and differing reuse is
-a collision. SourceSelected retains the exact request and prepared command; caller payload is
-released only after complete batch acceptance or TargetSelected reconciliation.
-
-Large settlement closure state is heap-indirected without changing canonical durable bytes, and
-mutually exclusive execution or status branches are split only when measured frames still require
-it. Default-stack verification is required; increasing `RUST_MIN_STACK` or moving only fixture data
-is not an accepted correction.
-
-## Affected Authority
-
-The correction is authoritative in `doc/systems/syndic-conversation-history/design.md`,
-`crates/syndic-storage/doc/design.md`, and `crates/beryl-app/doc/design.md`. The composer feature
-behavior remains unchanged. Existing staging/build/progress families are sufficient; their build-
-head and progress-receipt shapes must carry the authenticated continuation and pending-effect fields,
-without adding a family or compatibility path.
-
-The remaining normal-logic risks are malformed witness construction at admission, partial atomic-
-closure classification, cumulative threshold/floor or staging-frontier off-by-one errors, allowing a
-global-order hint or sibling to influence selected-head lifting, accepting a stale binding-qualified
-high-water, partial physical-page batch publication, storage-derived gap/neighbor misvalidation
-across pages, and future by-value expansion of large settlement closures.
+Remaining implementation risks are fragment-frontier off-by-one errors, incorrect effect-chain or
+three-root binding, starting a later fragment while active state exists, premature EOF validation,
+adjacent or same-anchor gap derivation mistakes, stale binding-qualified Cut re-read, partial
+physical-page batch classification, malformed replacement-record decoding, selected-lineage witness
+construction errors, and future by-value growth of settlement closures.
