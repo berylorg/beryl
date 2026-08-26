@@ -13,7 +13,7 @@ impl MainWindowComposerSlot {
         self.ensure_receipt(receipt)?;
         if matches!(
             self.pending.as_ref().unwrap().stage,
-            PendingStage::Publishing(_)
+            PendingStage::Publishing(_) | PendingStage::AwaitingWidgetRelease
         ) {
             return Err(MainWindowComposerSlotError::TargetNotReady);
         }
@@ -64,9 +64,14 @@ impl MainWindowComposerSlot {
         match admission {
             ComposerHostFlushAdmission::Started { ticket, .. }
             | ComposerHostFlushAdmission::Joined { ticket, .. } => {
-                self.disposal_flush = Some(ticket)
+                self.disposal_stage = Some(DisposalStage::Flushing(ticket))
             }
-            ComposerHostFlushAdmission::Satisfied(_) => {}
+            ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::Release) => {
+                self.disposal_stage = Some(DisposalStage::AwaitingWidgetRelease)
+            }
+            ComposerHostFlushAdmission::Satisfied(_) => {
+                return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+            }
         }
         Ok(admission)
     }
@@ -75,16 +80,18 @@ impl MainWindowComposerSlot {
         &mut self,
         store: &HomeStore,
     ) -> Result<MainWindowComposerDisposalAdvance, MainWindowComposerSlotError> {
-        let ticket = self
-            .disposal_flush
-            .ok_or(MainWindowComposerSlotError::TargetNotReady)?;
-        match self
-            .selected
-            .as_mut()
-            .unwrap()
-            .host
-            .advance_flush(store, ticket)?
+        let ticket = match self
+            .disposal_stage
+            .ok_or(MainWindowComposerSlotError::TargetNotReady)?
         {
+            DisposalStage::Flushing(ticket) => ticket,
+            DisposalStage::AwaitingWidgetRelease => {
+                return Ok(MainWindowComposerDisposalAdvance::WidgetReleaseRequired(
+                    self.selected_identity().unwrap(),
+                ));
+            }
+        };
+        match self.advance_slot_flush(store, ticket)? {
             ComposerHostFlushAdvance::Progress(state) => {
                 Ok(MainWindowComposerDisposalAdvance::Progress(state))
             }
@@ -92,24 +99,47 @@ impl MainWindowComposerSlot {
                 Ok(MainWindowComposerDisposalAdvance::ReconciliationPending)
             }
             ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Release) => {
-                let mut selected = self.selected.take().unwrap();
-                match selected.host.dispose_composer_service(store)? {
-                    ComposerHostServiceDisposalCompletion::Disposed => {
-                        self.disposal_flush = None;
-                        self.disposed = true;
-                        Ok(MainWindowComposerDisposalAdvance::Disposed)
-                    }
-                    ComposerHostServiceDisposalCompletion::Pending => {
-                        self.selected = Some(selected);
-                        Ok(MainWindowComposerDisposalAdvance::ReconciliationPending)
-                    }
-                }
+                self.disposal_stage = Some(DisposalStage::AwaitingWidgetRelease);
+                Ok(MainWindowComposerDisposalAdvance::WidgetReleaseRequired(
+                    self.selected_identity().unwrap(),
+                ))
             }
             ComposerHostFlushAdvance::Unsatisfied(_) => {
                 Ok(MainWindowComposerDisposalAdvance::Failed)
             }
             ComposerHostFlushAdvance::Stale | ComposerHostFlushAdvance::Satisfied(_) => {
                 Err(MainWindowComposerSlotError::StaleActivationReceipt)
+            }
+        }
+    }
+
+    pub fn complete_disposal_after_widget_release(
+        &mut self,
+        store: &HomeStore,
+        release: &MainWindowComposerWidgetRelease,
+    ) -> Result<MainWindowComposerDisposalAdvance, MainWindowComposerSlotError> {
+        if !matches!(
+            self.disposal_stage,
+            Some(DisposalStage::AwaitingWidgetRelease)
+        ) || self.selected_identity() != Some(release.selection())
+        {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        match self
+            .selected
+            .as_mut()
+            .unwrap()
+            .host
+            .dispose_composer_service(store)?
+        {
+            ComposerHostServiceDisposalCompletion::Disposed => {
+                self.selected = None;
+                self.disposal_stage = None;
+                self.disposed = true;
+                Ok(MainWindowComposerDisposalAdvance::Disposed)
+            }
+            ComposerHostServiceDisposalCompletion::Pending => {
+                Ok(MainWindowComposerDisposalAdvance::ReconciliationPending)
             }
         }
     }

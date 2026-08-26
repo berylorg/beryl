@@ -268,8 +268,12 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
     );
     let inserted = marker(84, 7, 9);
     let replacements = vec![
-        DraftPieceReplacementV1::new(point(0), point(1), vec![DraftPieceV1::Text("A".to_owned())]),
-        DraftPieceReplacementV1::new(point(1), point(1), vec![DraftPieceV1::Marker(inserted)])
+        DraftPieceReplacementV1::new(
+            point(0),
+            point(2),
+            vec![DraftPieceV1::Text("AB".to_owned())],
+        ),
+        DraftPieceReplacementV1::new(point(2), point(2), vec![DraftPieceV1::Marker(inserted)])
             .with_marker_effect(DraftPieceMarkerEffectV1::Insert(
                 DraftPieceMarkerInsertionV1::new(
                     1,
@@ -327,7 +331,12 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
             identity.session_id(),
             identity.operation_id().as_piece_operation(),
         )
-        .unwrap()
+        .unwrap_or_else(|error| {
+            panic!(
+                "later interleaved marker advance failed from {:?}: {error:?}",
+                open_build_fragments(&storage, &store, &prepared, &fragments).frontier()
+            )
+        })
     {
         committed(execute(
             &store,
@@ -358,7 +367,7 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
             )
             .unwrap()
             .bytes(),
-        b"AbCd"
+        b"ABCd"
     );
 }
 

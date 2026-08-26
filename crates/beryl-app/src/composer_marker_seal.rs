@@ -47,6 +47,8 @@ struct ServiceState {
     lifecycle: ServiceLifecycle,
     command_fault: CommandFault,
     reconcile_fault: ReconcileFault,
+    #[cfg(feature = "test-faults")]
+    fail_next_drive_operationally: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -135,7 +137,15 @@ impl DraftMarkerSealService {
         store: &HomeStore,
         flight: DraftMarkerSealFlight,
     ) -> Result<DraftMarkerSealDriveOutcome, DraftMarkerSealServiceError> {
-        let (storage, assets, page_limit, phase, command_fault, reconcile_fault) = {
+        let (
+            storage,
+            assets,
+            page_limit,
+            phase,
+            command_fault,
+            reconcile_fault,
+            fail_operationally,
+        ) = {
             let mut state = lock_state(&self.inner);
             validate_store(&mut state, store)?;
             let storage = state.storage;
@@ -156,6 +166,10 @@ impl DraftMarkerSealService {
             let phase = current.phase;
             let command_fault = state.command_fault.take();
             let reconcile_fault = state.reconcile_fault.take();
+            #[cfg(feature = "test-faults")]
+            let fail_operationally = std::mem::take(&mut state.fail_next_drive_operationally);
+            #[cfg(not(feature = "test-faults"))]
+            let fail_operationally = false;
             (
                 storage,
                 assets,
@@ -163,38 +177,43 @@ impl DraftMarkerSealService {
                 phase,
                 command_fault,
                 reconcile_fault,
+                fail_operationally,
             )
         };
 
-        let update = match phase {
-            FlightPhase::PendingBegin => drive_begin(
-                store,
-                storage,
-                assets,
-                flight.request,
-                command_fault,
-                reconcile_fault,
-            ),
-            FlightPhase::Streaming { staging } => drive_page(
-                store,
-                storage,
-                assets,
-                flight.request,
-                staging,
-                page_limit,
-                command_fault,
-                reconcile_fault,
-            ),
-            FlightPhase::SealingAsset { staging, syndic } => drive_asset_seal(
-                store,
-                storage,
-                assets,
-                flight.request,
-                staging,
-                syndic,
-                command_fault,
-                reconcile_fault,
-            ),
+        let update = if fail_operationally {
+            Err(DraftMarkerSealServiceError::InjectedOperationalFailure)
+        } else {
+            match phase {
+                FlightPhase::PendingBegin => drive_begin(
+                    store,
+                    storage,
+                    assets,
+                    flight.request,
+                    command_fault,
+                    reconcile_fault,
+                ),
+                FlightPhase::Streaming { staging } => drive_page(
+                    store,
+                    storage,
+                    assets,
+                    flight.request,
+                    staging,
+                    page_limit,
+                    command_fault,
+                    reconcile_fault,
+                ),
+                FlightPhase::SealingAsset { staging, syndic } => drive_asset_seal(
+                    store,
+                    storage,
+                    assets,
+                    flight.request,
+                    staging,
+                    syndic,
+                    command_fault,
+                    reconcile_fault,
+                ),
+            }
         };
 
         let mut state = lock_state(&self.inner);
@@ -258,6 +277,13 @@ impl DraftMarkerSealService {
         let mut state = lock_state(&self.inner);
         assert!(state.reconcile_fault.0.is_none());
         state.reconcile_fault.0 = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_fail_next_drive_operationally(&self) {
+        let mut state = lock_state(&self.inner);
+        assert!(!state.fail_next_drive_operationally);
+        state.fail_next_drive_operationally = true;
     }
 
     pub fn diagnostics(&self) -> DraftMarkerSealServiceDiagnostics {
@@ -425,6 +451,8 @@ fn new_shared_home_state(
         lifecycle: ServiceLifecycle::Active,
         command_fault: CommandFault::default(),
         reconcile_fault: ReconcileFault::default(),
+        #[cfg(feature = "test-faults")]
+        fail_next_drive_operationally: false,
     }))
 }
 

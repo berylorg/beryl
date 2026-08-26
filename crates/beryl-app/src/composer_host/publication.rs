@@ -222,6 +222,18 @@ pub(super) enum PublicationStage {
     },
 }
 
+impl SyndicComposerHost {
+    pub(crate) fn publication_execution_ready(
+        &self,
+        ticket: ComposerHostPublicationTicket,
+    ) -> Result<bool, ComposerHostError> {
+        Ok(matches!(
+            self.pending_publication(ticket)?.stage,
+            PublicationStage::Ready(_)
+        ))
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct PreparedPublication {
     syndic: PreparedDraftEditorCandidatePublicationV1,

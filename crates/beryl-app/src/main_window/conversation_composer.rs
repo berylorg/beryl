@@ -1,0 +1,211 @@
+use gpui::{Context, Window};
+use gpui_text_input::{
+    RangeTextInput, RangeTextInputConfig, RangeTextInputError, TextInputAtomClipboardPolicy,
+    TextInputEnterKey, TextInputRichPastePolicy,
+};
+
+use super::{MainWindowComposerSelectionIdentity, MainWindowComposerSuccessorProofLimits};
+use crate::composer_host::ComposerHostBinding;
+use syndic_storage::{
+    DraftEditHistoryFrontierReferenceV1, DraftPieceRootReferenceV1, DraftRootHistoryPairV1,
+};
+
+pub struct MainWindowConversationComposerConfig {
+    selection: MainWindowComposerSelectionIdentity,
+    widget: RangeTextInputConfig,
+}
+
+impl MainWindowConversationComposerConfig {
+    pub fn new(
+        selection: MainWindowComposerSelectionIdentity,
+        widget: RangeTextInputConfig,
+    ) -> Result<Self, MainWindowConversationComposerConfigError> {
+        if widget.binding != selection.binding().range_binding() {
+            return Err(MainWindowConversationComposerConfigError::BindingMismatch);
+        }
+        if widget.presentation_generation.get()
+            != selection.binding().presentation_generation().get()
+        {
+            return Err(MainWindowConversationComposerConfigError::PresentationMismatch);
+        }
+        if widget.enter_key != TextInputEnterKey::Propagate
+            || widget.atom_clipboard_policy != TextInputAtomClipboardPolicy::Propagate
+            || widget.rich_paste_policy != TextInputRichPastePolicy::Propagate
+        {
+            return Err(MainWindowConversationComposerConfigError::PolicyMismatch);
+        }
+        Ok(Self { selection, widget })
+    }
+
+    pub const fn selection(&self) -> MainWindowComposerSelectionIdentity {
+        self.selection
+    }
+
+    pub const fn binding(&self) -> ComposerHostBinding {
+        self.selection.binding()
+    }
+
+    pub(super) const fn successor_proof_limits(&self) -> MainWindowComposerSuccessorProofLimits {
+        MainWindowComposerSuccessorProofLimits {
+            text: self.widget.residency_limits,
+            objects: self.widget.object_residency_limits,
+            presentation_generation: self.widget.presentation_generation,
+        }
+    }
+
+    pub(super) const fn clipboard_limits(&self) -> gpui_text_input::ClipboardLimits {
+        self.widget.clipboard_limits
+    }
+
+    pub(super) const fn mutation_limits(&self) -> gpui_text_input::MutationLimits {
+        self.widget.mutation_limits
+    }
+
+    pub fn mount(
+        self,
+        window: &mut Window,
+        cx: &mut Context<RangeTextInput>,
+    ) -> Result<RangeTextInput, RangeTextInputError> {
+        RangeTextInput::new(self.widget, window, cx)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum MainWindowConversationComposerConfigError {
+    #[error("composer widget binding does not match the selected host")]
+    BindingMismatch,
+    #[error("composer widget presentation generation does not match the selected host")]
+    PresentationMismatch,
+    #[error("composer widget must propagate Enter, atom clipboard, and rich paste")]
+    PolicyMismatch,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowComposerPublishedDraft {
+    candidate_generation: u64,
+    pair: DraftRootHistoryPairV1,
+}
+
+impl MainWindowComposerPublishedDraft {
+    pub const fn candidate_generation(self) -> u64 {
+        self.candidate_generation
+    }
+
+    pub const fn root(self) -> DraftPieceRootReferenceV1 {
+        self.pair.root()
+    }
+
+    pub const fn history(self) -> DraftEditHistoryFrontierReferenceV1 {
+        self.pair.history()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowComposerDraftState {
+    adopted: ComposerHostBinding,
+    published: MainWindowComposerPublishedDraft,
+}
+
+impl MainWindowComposerDraftState {
+    pub fn new(
+        adopted: ComposerHostBinding,
+        published_candidate_generation: u64,
+        published_pair: DraftRootHistoryPairV1,
+    ) -> Result<Self, MainWindowComposerDraftStateError> {
+        let published = MainWindowComposerPublishedDraft {
+            candidate_generation: published_candidate_generation,
+            pair: published_pair,
+        };
+        if !valid_published_draft(adopted, published) {
+            return Err(MainWindowComposerDraftStateError::Stale);
+        }
+        Ok(Self { adopted, published })
+    }
+
+    pub const fn adopted(self) -> ComposerHostBinding {
+        self.adopted
+    }
+
+    pub const fn published(self) -> MainWindowComposerPublishedDraft {
+        self.published
+    }
+
+    pub fn is_dirty(self) -> bool {
+        self.adopted.candidate().candidate_generation() != self.published.candidate_generation()
+            || self.adopted.root() != self.published.root()
+            || self.adopted.history() != self.published.history()
+    }
+
+    pub fn adopt(
+        &mut self,
+        predecessor: ComposerHostBinding,
+        successor: ComposerHostBinding,
+    ) -> Result<(), MainWindowComposerDraftStateError> {
+        if self.adopted != predecessor || !same_editor_session(predecessor, successor) {
+            return Err(MainWindowComposerDraftStateError::Stale);
+        }
+        self.adopted = successor;
+        Ok(())
+    }
+
+    pub fn publish(
+        &mut self,
+        captured: ComposerHostBinding,
+        adopted: ComposerHostBinding,
+        published_candidate_generation: u64,
+        published_pair: DraftRootHistoryPairV1,
+    ) -> Result<(), MainWindowComposerDraftStateError> {
+        let published = MainWindowComposerPublishedDraft {
+            candidate_generation: published_candidate_generation,
+            pair: published_pair,
+        };
+        if !same_adopted_candidate(self.adopted, adopted)
+            || (self.adopted.history() != adopted.history()
+                && !(published_candidate_generation == adopted.candidate().candidate_generation()
+                    && published.root() == adopted.root()
+                    && published.history() == adopted.history()))
+            || !same_editor_session(captured, adopted)
+            || captured.candidate().candidate_generation() > published_candidate_generation
+            || self.published.candidate_generation() > published_candidate_generation
+            || !valid_published_draft(adopted, published)
+        {
+            return Err(MainWindowComposerDraftStateError::Stale);
+        }
+        self.adopted = adopted;
+        self.published = published;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum MainWindowComposerDraftStateError {
+    #[error("composer draft state update is stale")]
+    Stale,
+}
+
+fn same_editor_session(left: ComposerHostBinding, right: ComposerHostBinding) -> bool {
+    left.home_id() == right.home_id()
+        && left.home_generation() == right.home_generation()
+        && left.host_generation() == right.host_generation()
+        && left.candidate().draft_id() == right.candidate().draft_id()
+        && left.candidate().session_id() == right.candidate().session_id()
+}
+
+fn same_adopted_candidate(left: ComposerHostBinding, right: ComposerHostBinding) -> bool {
+    same_editor_session(left, right)
+        && left.presentation_generation() == right.presentation_generation()
+        && left.candidate().candidate_generation() == right.candidate().candidate_generation()
+        && left.root() == right.root()
+        && left.logical_extent() == right.logical_extent()
+}
+
+fn valid_published_draft(
+    adopted: ComposerHostBinding,
+    published: MainWindowComposerPublishedDraft,
+) -> bool {
+    published.candidate_generation() <= adopted.candidate().candidate_generation()
+        && published.history().candidate_generation() == published.candidate_generation()
+        && published.history().root() == published.root()
+        && published.root().key().draft_id() == adopted.candidate().draft_id()
+        && published.history().key().draft_id() == adopted.candidate().draft_id()
+}

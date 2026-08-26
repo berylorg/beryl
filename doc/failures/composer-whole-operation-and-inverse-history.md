@@ -37,6 +37,12 @@ same-database trust boundary.
   commands can leave an unreconcilable prefix after the widget payload is released. Separately,
   measured large by-value settlement closures exhausted the ordinary 2 MiB worker stack; the test
   payload itself was not causal.
+- The durable fold remapped an already successor-relative marker anchor through the current source
+  and successor logical frontiers. A later proposal page targeting anchor 1 inside an earlier
+  `0..2 -> AB` fragment underflowed as `1 - 2 + 2` and returned `InvalidRoot`. Removing that remap
+  exposed the coupled physical-frontier error: splitting the earlier text for the marker left the
+  stored successor boundary before the remaining text, so a following fragment targeted the wrong
+  leaf.
 
 ## Accepted Correction
 
@@ -62,6 +68,12 @@ malformed, skipped, repeated, decreasing, mismatched, premature-EOF, or partial 
 Only authenticated EOF with no active effect and exact staging/effect/root coherence permits final
 cross-validation. Candidate, history, session, and settlement publication remains one HomeStore
 atomic command; per-effect progress is unreachable builder state, never sequential draft commits.
+
+Marker insertion, move, and same-id replacement anchors remain successor-relative exactly as
+staged. When insertion splits a leaf behind the physical successor boundary, the fold shifts that
+boundary across the split and inserted marker while preserving its logical coordinate. It does not
+reinterpret the marker anchor, buffer or reorder pages, or move the fragment's predecessor-relative
+replacement point.
 
 Undo and redo retain immutable historical roots plus the selected-lineage fixed 64-level witness,
 not inverse payloads or global seeks. Physical page admission remains one prepared atomic batch, and

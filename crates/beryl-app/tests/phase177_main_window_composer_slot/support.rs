@@ -41,6 +41,10 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new(name: &str, seed: u8) -> Self {
+        Self::with_history_budget(name, seed, 65_536)
+    }
+
+    pub fn with_history_budget(name: &str, seed: u8, history_byte_budget: u64) -> Self {
         let directory = tempfile::Builder::new()
             .prefix(&format!("phase177-{name}-"))
             .tempdir()
@@ -95,7 +99,7 @@ impl Fixture {
                         SyndicDraftId::from_bytes([draft; 16]),
                         ExecutionBinding::new(runtime_id, root_id, native_path(mode.clone(), path)),
                         SyndicTimestamp::from_unix_millis(3),
-                        DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+                        DraftEditHistoryPolicyV1::new(history_byte_budget, 1).unwrap(),
                     ),
                 ),
             );
@@ -125,6 +129,10 @@ impl Fixture {
         let recovery = self.store.recover_same_home().unwrap();
         let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
         (self._directory, recovery.publish(), storage)
+    }
+
+    pub fn into_store(self) -> (tempfile::TempDir, HomeStore, SyndicStorage) {
+        (self._directory, self.store, self.storage)
     }
 
     pub fn activated_host(

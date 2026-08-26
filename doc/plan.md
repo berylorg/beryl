@@ -45,7 +45,7 @@ independent semantic review accepted ordering, authentication, crash behavior, s
 and O(1)-in-effect-count mutable state with no findings. Sustained scale and performance acceptance
 remains in Phase 182.
 
-# Phase 181: Mount Conversation Composer And Editable Image Markers (pending)
+# Phase 181: Mount Conversation Composer And Editable Image Markers (finished)
 
 Mount one canonical `conversation composer` through the Phase 177 main-window slot and route its
 complete live widget request lifecycle through a selection-identity-qualified production boundary;
@@ -82,13 +82,14 @@ source documentation. Run focused nextest, locked checks, formatting, source-siz
 fresh independent semantic completion review. Phase 182 retains configured large-scale budget,
 pathological viewport, rapid-scroll, saturation, and sustained large-draft acceptance.
 
-Resumable milestone: the preserved uncommitted mount already supplies the slot-owned dispatcher,
-canonical GPUI owner, exact activation/menu/preview surface, production outcome routing, initial
-bounded-page publication, and singular mixed Cut. After Phase 180 is accepted, resume by replacing
-whole-selection Cut vectors with an exact post-write cursor re-read that retains one bounded
-proposal page plus fixed cursor/boundary and previous/current/lookahead marker facts, then close the
-remaining lifecycle and integration evidence. The unreferenced old `shell` input and preview files
-are not live implementation inputs.
+Completion evidence: the canonical slot-owned mount now streams bounded text, marker, mutation,
+history, clipboard/Cut, autosave, and flush work while preserving exact selection identity and
+adopted-versus-published state. The Beryl-owned `gpui-text-input` fork publishes exact inline-object
+retention and lifecycle state at revision `7bd30afec0fced4c070e72d0a236bbd82bfa2431`. Focused storage,
+application, and post-fix mount runs passed 22, 140, and 3 tests respectively; locked remote-pin
+metadata/check, formatting, source-size and forbidden-pattern scans, and fresh semantic completion
+review also passed with no remaining Phase 181 findings. Sustained scale acceptance remains in
+Phase 182.
 
 # Phase 182: Enforce And Accept Bounded Composer Integration At Large Scale (pending)
 

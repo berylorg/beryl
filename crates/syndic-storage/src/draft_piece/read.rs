@@ -151,7 +151,7 @@ impl SyndicStorage {
         )? {
             DraftEditorCandidateSessionReadOutcomeV1::Active(head) => head,
             DraftEditorCandidateSessionReadOutcomeV1::Disposed(head) => {
-                return Err(DraftPieceRangeSourceErrorV1::Disposed(head));
+                return Err(DraftPieceRangeSourceErrorV1::Disposed(Box::new(head)));
             }
             DraftEditorCandidateSessionReadOutcomeV1::Absent => {
                 return Err(DraftPieceRangeSourceErrorV1::Absent);
@@ -183,7 +183,7 @@ impl SyndicStorage {
         )? {
             DraftEditorCandidateSessionReadOutcomeV1::Active(after) if after == head => {}
             DraftEditorCandidateSessionReadOutcomeV1::Disposed(after) => {
-                return Err(DraftPieceRangeSourceErrorV1::Disposed(after));
+                return Err(DraftPieceRangeSourceErrorV1::Disposed(Box::new(after)));
             }
             DraftEditorCandidateSessionReadOutcomeV1::Absent => {
                 return Err(DraftPieceRangeSourceErrorV1::Absent);

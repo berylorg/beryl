@@ -12,8 +12,9 @@ use beryl_app::composer_host::{
 };
 use beryl_app::main_window::{
     MainWindowComposerActivationAdvance, MainWindowComposerDisposalAdvance,
-    MainWindowComposerPublishAdvance, MainWindowComposerRetirementAdvance, MainWindowComposerSlot,
-    MainWindowComposerSlotError,
+    MainWindowComposerMarkerMetadataAuthority, MainWindowComposerPublishAdvance,
+    MainWindowComposerRetirementAdvance, MainWindowComposerSlot, MainWindowComposerSlotError,
+    MainWindowComposerWidgetRelease,
 };
 use beryl_home_store::{CommandCancellation, test_faults::FaultPoint};
 use syndic_storage::{
@@ -31,9 +32,14 @@ fn prior_remains_authoritative_until_exact_target_publication() {
     let clean = selected.binding().unwrap();
     let _ = composer::commit_text(&mut selected, &fixture.store, clean, 20, 0, 0, "a", 1, 1);
     let selected_binding = selected.binding().unwrap();
-    let mut slot =
-        MainWindowComposerSlot::new(fixture.window_id, selected_claim, selected, fixture.storage)
-            .unwrap();
+    let mut slot = MainWindowComposerSlot::new(
+        fixture.window_id,
+        selected_claim,
+        selected,
+        fixture.storage,
+        MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
+    )
+    .unwrap();
 
     let ready = slot
         .begin_activation(
@@ -77,7 +83,19 @@ fn prior_remains_authoritative_until_exact_target_publication() {
             .unwrap(),
         ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
     ));
-    let published = slot.advance_publish(&fixture.store, receipt).unwrap();
+    let release_required = slot.advance_publish(&fixture.store, receipt).unwrap();
+    assert_eq!(
+        release_required,
+        MainWindowComposerPublishAdvance::WidgetReleaseRequired(slot.selected_identity().unwrap())
+    );
+    assert_eq!(
+        slot.selected_identity().unwrap().binding(),
+        selected_binding
+    );
+    let release = MainWindowComposerWidgetRelease::for_test(slot.selected_identity().unwrap());
+    let published = slot
+        .complete_publish_after_widget_release(&fixture.store, receipt, &release)
+        .unwrap();
     let MainWindowComposerPublishAdvance::Published(identity) = published else {
         panic!("target was not published: {published:?}")
     };
@@ -99,9 +117,14 @@ fn retirement_abandons_only_the_exact_pristine_pending_target() {
     let fixture = Fixture::new("retire", 41);
     let (selected_claim, target_claim) = fixture.claims();
     let selected = fixture.activated_host(fixture.selected_thread, 42, 43, 1);
-    let mut slot =
-        MainWindowComposerSlot::new(fixture.window_id, selected_claim, selected, fixture.storage)
-            .unwrap();
+    let mut slot = MainWindowComposerSlot::new(
+        fixture.window_id,
+        selected_claim,
+        selected,
+        fixture.storage,
+        MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
+    )
+    .unwrap();
     let MainWindowComposerActivationAdvance::Ready(receipt) = slot
         .begin_activation(
             &fixture.store,
@@ -175,9 +198,14 @@ fn post_open_cancellation_abandons_the_exact_target_before_returning() {
     let fixture = Fixture::new("post-open-cancel", 81);
     let (selected_claim, target_claim) = fixture.claims();
     let selected = fixture.activated_host(fixture.selected_thread, 82, 83, 1);
-    let mut slot =
-        MainWindowComposerSlot::new(fixture.window_id, selected_claim, selected, fixture.storage)
-            .unwrap();
+    let mut slot = MainWindowComposerSlot::new(
+        fixture.window_id,
+        selected_claim,
+        selected,
+        fixture.storage,
+        MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
+    )
+    .unwrap();
     let cancellation = CommandCancellation::new();
     let cut = cancellation.clone();
     slot.test_arm_activation_after_open_fault(move |_, _| cut.cancel());
@@ -212,9 +240,14 @@ fn indeterminate_abandonment_retains_one_prepared_custody_then_reconciles() {
     let fixture = Fixture::new("retained-retry", 91);
     let (selected_claim, target_claim) = fixture.claims();
     let selected = fixture.activated_host(fixture.selected_thread, 92, 93, 1);
-    let mut slot =
-        MainWindowComposerSlot::new(fixture.window_id, selected_claim, selected, fixture.storage)
-            .unwrap();
+    let mut slot = MainWindowComposerSlot::new(
+        fixture.window_id,
+        selected_claim,
+        selected,
+        fixture.storage,
+        MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
+    )
+    .unwrap();
     let MainWindowComposerActivationAdvance::Ready(receipt) = slot
         .begin_activation(
             &fixture.store,
@@ -259,9 +292,14 @@ fn target_departing_fresh_state_after_prepare_fails_closed() {
     let fixture = Fixture::new("not-fresh", 101);
     let (selected_claim, target_claim) = fixture.claims();
     let selected = fixture.activated_host(fixture.selected_thread, 102, 103, 1);
-    let mut slot =
-        MainWindowComposerSlot::new(fixture.window_id, selected_claim, selected, fixture.storage)
-            .unwrap();
+    let mut slot = MainWindowComposerSlot::new(
+        fixture.window_id,
+        selected_claim,
+        selected,
+        fixture.storage,
+        MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
+    )
+    .unwrap();
     let MainWindowComposerActivationAdvance::Ready(receipt) = slot
         .begin_activation(
             &fixture.store,
@@ -317,9 +355,14 @@ fn abandonment_winning_serial_order_rejects_late_publication() {
     let fixture = Fixture::new("abandon-first", 111);
     let (selected_claim, target_claim) = fixture.claims();
     let selected = fixture.activated_host(fixture.selected_thread, 112, 113, 1);
-    let mut slot =
-        MainWindowComposerSlot::new(fixture.window_id, selected_claim, selected, fixture.storage)
-            .unwrap();
+    let mut slot = MainWindowComposerSlot::new(
+        fixture.window_id,
+        selected_claim,
+        selected,
+        fixture.storage,
+        MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
+    )
+    .unwrap();
     let MainWindowComposerActivationAdvance::Ready(receipt) = slot
         .begin_activation(
             &fixture.store,
@@ -350,9 +393,14 @@ fn slot_disposal_retires_pending_then_exactly_releases_selected() {
     let mut selected = fixture.activated_host(fixture.selected_thread, 72, 73, 1);
     let clean = selected.binding().unwrap();
     let _ = composer::commit_text(&mut selected, &fixture.store, clean, 70, 0, 0, "a", 1, 1);
-    let mut slot =
-        MainWindowComposerSlot::new(fixture.window_id, selected_claim, selected, fixture.storage)
-            .unwrap();
+    let mut slot = MainWindowComposerSlot::new(
+        fixture.window_id,
+        selected_claim,
+        selected,
+        fixture.storage,
+        MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
+    )
+    .unwrap();
     assert!(matches!(
         slot.begin_activation(
             &fixture.store,
@@ -385,8 +433,16 @@ fn slot_disposal_retires_pending_then_exactly_releases_selected() {
             .unwrap(),
         ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
     ));
+    let advance = slot.advance_disposal(&fixture.store).unwrap();
+    let MainWindowComposerDisposalAdvance::WidgetReleaseRequired(selected_identity) = advance
+    else {
+        panic!("widget release was not required: {advance:?}")
+    };
+    assert_eq!(slot.selected_identity(), Some(selected_identity));
+    let release = MainWindowComposerWidgetRelease::for_test(selected_identity);
     assert_eq!(
-        slot.advance_disposal(&fixture.store).unwrap(),
+        slot.complete_disposal_after_widget_release(&fixture.store, &release)
+            .unwrap(),
         MainWindowComposerDisposalAdvance::Disposed
     );
     assert!(slot.selected_identity().is_none());

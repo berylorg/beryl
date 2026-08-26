@@ -1,6 +1,62 @@
 use super::*;
 
 #[test]
+fn leading_marker_removal_and_remaining_text_delete_share_one_atomic_mutation() {
+    let (_home, store, storage, thread) = fixture("phase180-leading-marker-delete", 61);
+    let (mut host, base) = activated(storage, &store, thread, 62, 63);
+    let text = commit_text(&mut host, &store, base, 64, 0, 0, "AB", 2, 1);
+    let id = InlineObjectId::new(0x8001);
+    let order = InlineObjectOrder::new(1);
+    let before = SourcePosition::new(
+        ByteOffset::new(0),
+        InlineObjectGap::before(InlineObjectNeighbor::new(id, order)),
+    );
+    let after = SourcePosition::new(
+        ByteOffset::new(0),
+        InlineObjectGap::after(InlineObjectNeighbor::new(id, order)),
+    );
+    let inserted = commit_items(
+        &mut host,
+        &store,
+        text,
+        65,
+        range(source_position(0), source_position(0)),
+        vec![MutationPageItem::Object(ObjectChange::Insert {
+            object: SuccessorObject::new(id, ByteOffset::new(0), order, 17, 5),
+        })],
+        MutationPositions::collapsed(before),
+        vec![ComposerHostImageMarkerMetadata::new(
+            id,
+            ImageLabelOrdinal::new(1).unwrap(),
+            asset_id_for_object(id),
+        )],
+        2,
+        1,
+    );
+    let target = ObjectTarget::new(range(before, after), id, order).unwrap();
+    let committed = commit_items(
+        &mut host,
+        &store,
+        inserted,
+        66,
+        range(before, source_position(1)),
+        vec![
+            MutationPageItem::Object(ObjectChange::Remove { target }),
+            MutationPageItem::Utf8 {
+                inserted_offset: 0,
+                text: "".into(),
+            },
+        ],
+        MutationPositions::collapsed(source_position(0)),
+        Vec::new(),
+        1,
+        1,
+    );
+    assert_eq!(candidate_text(storage, &store, committed), b"B");
+    assert_eq!(committed.root().summary().marker_count(), 0);
+}
+
+#[test]
 fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
     let (_home, store, storage, thread) = fixture("phase153-markers", 71);
     let (mut host, base) = activated(storage, &store, thread, 72, 73);
@@ -53,7 +109,7 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
             object: SuccessorObject::new(id, ByteOffset::new(1), order_two, 17, 5),
         })],
         MutationPositions::collapsed(after_two_at_one),
-        Vec::new(),
+        vec![ComposerHostImageMarkerMetadata::new(id, label, asset_id)],
         1,
         1,
     );
@@ -268,6 +324,72 @@ fn marker_insertions(
 
 fn bounded_marker_id(ordinal: u64) -> InlineObjectId {
     InlineObjectId::new(0xa100_0000_0000_0000_0000_0000_0000_0000_u128 + u128::from(ordinal))
+}
+
+#[test]
+fn pure_rightward_marker_move_persists_at_its_successor_anchor() {
+    let (_home, store, storage, thread) = fixture("phase181-rightward-marker-move", 85);
+    let (mut host, base) = activated(storage, &store, thread, 86, 87);
+    let text = commit_text(&mut host, &store, base, 88, 0, 0, "ab", 2, 1);
+    let id = InlineObjectId::new(0x8181);
+    let order = InlineObjectOrder::new(1);
+    let label = ImageLabelOrdinal::new(1).unwrap();
+    let asset_id = asset_id_for_object(id);
+    let at_zero = source_position(0);
+    let after_zero = SourcePosition::new(
+        ByteOffset::new(0),
+        InlineObjectGap::after(InlineObjectNeighbor::new(id, order)),
+    );
+    let inserted = commit_items(
+        &mut host,
+        &store,
+        text,
+        89,
+        range(at_zero, at_zero),
+        vec![MutationPageItem::Object(ObjectChange::Insert {
+            object: SuccessorObject::new(id, ByteOffset::new(0), order, 17, 5),
+        })],
+        MutationPositions::collapsed(after_zero),
+        vec![ComposerHostImageMarkerMetadata::new(id, label, asset_id)],
+        2,
+        1,
+    );
+    let before_zero = SourcePosition::new(
+        ByteOffset::new(0),
+        InlineObjectGap::before(InlineObjectNeighbor::new(id, order)),
+    );
+    let target = ObjectTarget::new(range(before_zero, after_zero), id, order).unwrap();
+    let after_two = SourcePosition::new(
+        ByteOffset::new(2),
+        InlineObjectGap::after(InlineObjectNeighbor::new(id, order)),
+    );
+    let moved = commit_items(
+        &mut host,
+        &store,
+        inserted,
+        90,
+        target.range(),
+        vec![MutationPageItem::Object(ObjectChange::Move {
+            target,
+            object: SuccessorObject::new(id, ByteOffset::new(2), order, 17, 5),
+        })],
+        MutationPositions::collapsed(after_two),
+        Vec::new(),
+        2,
+        1,
+    );
+
+    assert_eq!(candidate_text(storage, &store, moved), b"ab");
+    assert_marker(
+        storage,
+        &store,
+        moved,
+        SyndicDraftMarkerId::from_bytes(id.get().to_be_bytes()),
+        2,
+        1,
+        label,
+        asset_id,
+    );
 }
 
 #[test]

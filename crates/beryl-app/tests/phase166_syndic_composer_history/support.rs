@@ -195,6 +195,50 @@ pub fn insert_marker(
     (binding, before, after_position)
 }
 
+pub fn insert_markers(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    binding: ComposerHostBinding,
+    operation: u64,
+    count: u64,
+) -> (ComposerHostBinding, SourcePosition, SourcePosition) {
+    assert!(count > 0);
+    let mut items = Vec::with_capacity(count as usize);
+    let mut metadata = Vec::with_capacity(count as usize);
+    let mut first = None;
+    let mut last = None;
+    for ordinal in 1..=count {
+        let id =
+            InlineObjectId::new(0x9000_0000_0000_0000_0000_0000_0000_0000 + u128::from(ordinal));
+        let order = InlineObjectOrder::new(u128::from(ordinal));
+        let neighbor = InlineObjectNeighbor::new(id, order);
+        first.get_or_insert(neighbor);
+        last = Some(neighbor);
+        items.push(MutationPageItem::Object(ObjectChange::Insert {
+            object: SuccessorObject::new(id, ByteOffset::new(0), order, 17, 5),
+        }));
+        metadata.push(ComposerHostImageMarkerMetadata::new(
+            id,
+            ImageLabelOrdinal::new(ordinal).unwrap(),
+            asset_id_for_object(id),
+        ));
+    }
+    let before = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::before(first.unwrap()));
+    let after = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::after(last.unwrap()));
+    let binding = commit_items(
+        host,
+        store,
+        binding,
+        operation,
+        SourceRange::new(position(0), position(0)).unwrap(),
+        position(0),
+        items,
+        MutationPositions::collapsed(after),
+        metadata,
+    );
+    (binding, before, after)
+}
+
 fn asset_id_for_object(id: InlineObjectId) -> AssetId {
     let bytes = id.get().to_be_bytes();
     let mut digest = [0; 32];

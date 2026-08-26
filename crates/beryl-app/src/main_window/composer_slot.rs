@@ -1,29 +1,38 @@
 use beryl_home_store::{CommandCancellation, HomeStore};
 use beryl_model::WindowId;
-use beryl_state::WindowClaimSelection;
+use beryl_state::{AssetState, WindowClaimSelection};
 use syndic_storage::{DraftPieceOperationIdV1, SyndicStorage};
 
 use crate::composer_host::{
     ComposerHostActivationOutcome, ComposerHostActivationRequest, ComposerHostFlushAdmission,
-    ComposerHostFlushAdvance, ComposerHostFlushPurpose, ComposerHostFlushState,
-    ComposerHostFlushTicket, SyndicComposerHost,
+    ComposerHostFlushAdvance, ComposerHostFlushPurpose, ComposerHostFlushState, SyndicComposerHost,
 };
+use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 
+mod dispatch;
+mod lifecycle;
 mod model;
 mod retirement;
 mod state;
 
+pub use dispatch::*;
+pub(in crate::main_window) use dispatch::{
+    MainWindowComposerSuccessorProof, MainWindowComposerSuccessorProofLimits,
+    translate_initial_composer_response,
+};
+pub use lifecycle::MainWindowComposerAutosaveCaptureRequirement;
 pub use model::*;
-use state::{PendingComposer, PendingStage, SelectedComposer};
+use state::{DisposalStage, PendingComposer, PendingStage, SelectedComposer};
 
 pub struct MainWindowComposerSlot {
     window_id: WindowId,
     storage: SyndicStorage,
+    marker_authority: MainWindowComposerMarkerMetadataAuthority,
     selected: Option<SelectedComposer>,
     pending: Option<PendingComposer>,
     last_activation_generation: u64,
     disposed: bool,
-    disposal_flush: Option<ComposerHostFlushTicket>,
+    disposal_stage: Option<DisposalStage>,
     #[cfg(feature = "test-faults")]
     activation_after_open_fault:
         Option<Box<dyn FnOnce(&HomeStore, SyndicStorage) + Send + 'static>>,
@@ -33,11 +42,16 @@ pub struct MainWindowComposerSlot {
 }
 
 impl MainWindowComposerSlot {
+    pub(in crate::main_window) const fn assets(&self) -> AssetState {
+        self.marker_authority.assets()
+    }
+
     pub fn new(
         window_id: WindowId,
         claim: WindowClaimSelection,
         host: SyndicComposerHost,
         storage: SyndicStorage,
+        marker_authority: MainWindowComposerMarkerMetadataAuthority,
     ) -> Result<Self, MainWindowComposerSlotError> {
         let binding = host
             .binding()
@@ -45,21 +59,26 @@ impl MainWindowComposerSlot {
         if host.active_thread_id() != Some(claim.thread_id()) {
             return Err(MainWindowComposerSlotError::IdentityMismatch);
         }
+        let dispatcher = MainWindowComposerDispatcher::new(binding, &host);
+        let draft_state = draft_state_for_host(&host, binding)?;
         Ok(Self {
             window_id,
             storage,
+            marker_authority,
             selected: Some(SelectedComposer {
                 identity: MainWindowComposerSelectionIdentity {
                     window_id,
                     claim,
                     binding,
                 },
+                dispatcher,
+                draft_state,
                 host,
             }),
             pending: None,
             last_activation_generation: 0,
             disposed: false,
-            disposal_flush: None,
+            disposal_stage: None,
             #[cfg(feature = "test-faults")]
             activation_after_open_fault: None,
             #[cfg(feature = "test-faults")]
@@ -68,6 +87,15 @@ impl MainWindowComposerSlot {
     }
 
     pub fn selected_identity(&self) -> Option<MainWindowComposerSelectionIdentity> {
+        if matches!(
+            self.pending.as_ref().map(|pending| pending.stage),
+            Some(PendingStage::AwaitingWidgetRelease)
+        ) || matches!(
+            self.disposal_stage,
+            Some(DisposalStage::AwaitingWidgetRelease)
+        ) {
+            return self.selected.as_ref().map(|selected| selected.identity);
+        }
         self.selected.as_ref().and_then(|selected| {
             selected
                 .host
@@ -77,6 +105,36 @@ impl MainWindowComposerSlot {
                     ..selected.identity
                 })
         })
+    }
+
+    pub(in crate::main_window) fn release_selected_widget_work(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        requests: impl IntoIterator<Item = gpui_text_input::RangeTextInputRequest>,
+    ) -> Result<MainWindowComposerWidgetRelease, MainWindowComposerSlotError> {
+        let awaiting_release = matches!(
+            self.pending.as_ref().map(|pending| pending.stage),
+            Some(PendingStage::AwaitingWidgetRelease)
+        ) || matches!(
+            self.disposal_stage,
+            Some(DisposalStage::AwaitingWidgetRelease)
+        );
+        if !awaiting_release || self.selected_identity() != Some(selection) {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        if requests.into_iter().any(|request| {
+            !matches!(
+                request,
+                gpui_text_input::RangeTextInputRequest::CancelPage(_)
+                    | gpui_text_input::RangeTextInputRequest::ReleasePage(_)
+                    | gpui_text_input::RangeTextInputRequest::CancelObjectPage(_)
+                    | gpui_text_input::RangeTextInputRequest::ReleaseObjectPage(_)
+                    | gpui_text_input::RangeTextInputRequest::CancelClipboardWrite(_)
+            )
+        }) {
+            return Err(MainWindowComposerSlotError::WidgetReleaseIncomplete);
+        }
+        Ok(MainWindowComposerWidgetRelease::new(selection))
     }
 
     pub fn selected_host(&self) -> Option<&SyndicComposerHost> {
@@ -102,6 +160,9 @@ impl MainWindowComposerSlot {
                     .and_then(|selected| selected.host.flush_state(ticket).ok())
                     .unwrap_or(ComposerHostFlushState::DisposalRequired);
                 MainWindowComposerPendingStatus::Publishing(state)
+            }
+            PendingStage::AwaitingWidgetRelease => {
+                MainWindowComposerPendingStatus::WidgetReleaseRequired
             }
             PendingStage::Retiring => MainWindowComposerPendingStatus::RetirementPending,
             PendingStage::Reconciliation => MainWindowComposerPendingStatus::ReconciliationPending,
@@ -219,7 +280,7 @@ impl MainWindowComposerSlot {
 
     pub fn begin_publish(
         &mut self,
-        store: &HomeStore,
+        _store: &HomeStore,
         receipt: MainWindowComposerActivationReceipt,
     ) -> Result<ComposerHostFlushAdmission, MainWindowComposerSlotError> {
         self.ensure_receipt(receipt)?;
@@ -241,7 +302,7 @@ impl MainWindowComposerSlot {
                 self.pending.as_mut().unwrap().stage = PendingStage::Publishing(ticket);
             }
             ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch) => {
-                self.publish_target(store, receipt)?;
+                self.pending.as_mut().unwrap().stage = PendingStage::AwaitingWidgetRelease;
             }
             ComposerHostFlushAdmission::Satisfied(_) => {
                 return Err(MainWindowComposerSlotError::StaleActivationReceipt);
@@ -256,16 +317,16 @@ impl MainWindowComposerSlot {
         receipt: MainWindowComposerActivationReceipt,
     ) -> Result<MainWindowComposerPublishAdvance, MainWindowComposerSlotError> {
         self.ensure_receipt(receipt)?;
-        let PendingStage::Publishing(ticket) = self.pending.as_ref().unwrap().stage else {
-            return Err(MainWindowComposerSlotError::TargetNotReady);
+        let ticket = match self.pending.as_ref().unwrap().stage {
+            PendingStage::Publishing(ticket) => ticket,
+            PendingStage::AwaitingWidgetRelease => {
+                return Ok(MainWindowComposerPublishAdvance::WidgetReleaseRequired(
+                    self.selected_identity().unwrap(),
+                ));
+            }
+            _ => return Err(MainWindowComposerSlotError::TargetNotReady),
         };
-        match self
-            .selected
-            .as_mut()
-            .unwrap()
-            .host
-            .advance_flush(store, ticket)?
-        {
+        match self.advance_slot_flush(store, ticket)? {
             ComposerHostFlushAdvance::Progress(state) => {
                 Ok(MainWindowComposerPublishAdvance::Progress(state))
             }
@@ -273,7 +334,10 @@ impl MainWindowComposerSlot {
                 Ok(MainWindowComposerPublishAdvance::ReconciliationPending)
             }
             ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::ThreadSwitch) => {
-                self.publish_target(store, receipt)
+                self.pending.as_mut().unwrap().stage = PendingStage::AwaitingWidgetRelease;
+                Ok(MainWindowComposerPublishAdvance::WidgetReleaseRequired(
+                    self.selected_identity().unwrap(),
+                ))
             }
             ComposerHostFlushAdvance::Unsatisfied(_) => {
                 self.pending.as_mut().unwrap().stage = PendingStage::Retiring;
@@ -285,12 +349,21 @@ impl MainWindowComposerSlot {
         }
     }
 
-    fn publish_target(
+    pub fn complete_publish_after_widget_release(
         &mut self,
         store: &HomeStore,
         receipt: MainWindowComposerActivationReceipt,
+        release: &MainWindowComposerWidgetRelease,
     ) -> Result<MainWindowComposerPublishAdvance, MainWindowComposerSlotError> {
-        let pending = self.pending.take().unwrap();
+        self.ensure_receipt(receipt)?;
+        if !matches!(
+            self.pending.as_ref().unwrap().stage,
+            PendingStage::AwaitingWidgetRelease
+        ) || self.selected_identity() != Some(release.selection())
+        {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        let pending = self.pending.as_ref().unwrap();
         let binding = pending
             .host
             .binding()
@@ -298,22 +371,36 @@ impl MainWindowComposerSlot {
         if pending.host.active_thread_id() != Some(pending.claim.thread_id()) {
             return Err(MainWindowComposerSlotError::IdentityMismatch);
         }
-        let identity = MainWindowComposerSelectionIdentity {
+        let target_identity = MainWindowComposerSelectionIdentity {
             window_id: self.window_id,
             claim: pending.claim,
             binding,
         };
-        let mut prior = self.selected.replace(SelectedComposer {
-            identity,
-            host: pending.host,
-        });
-        if let Some(prior) = prior.as_mut() {
-            let _ = prior.host.dispose_composer_service(store);
-        }
         if receipt != pending.receipt {
             return Err(MainWindowComposerSlotError::StaleActivationReceipt);
         }
-        Ok(MainWindowComposerPublishAdvance::Published(identity))
+        let draft_state = draft_state_for_host(&pending.host, binding)?;
+        match self
+            .selected
+            .as_mut()
+            .unwrap()
+            .host
+            .dispose_composer_service(store)?
+        {
+            crate::composer_host::ComposerHostServiceDisposalCompletion::Pending => {
+                return Ok(MainWindowComposerPublishAdvance::ReconciliationPending);
+            }
+            crate::composer_host::ComposerHostServiceDisposalCompletion::Disposed => {}
+        }
+        let pending = self.pending.take().unwrap();
+        let dispatcher = MainWindowComposerDispatcher::new(binding, &pending.host);
+        self.selected = Some(SelectedComposer {
+            identity: target_identity,
+            dispatcher,
+            draft_state,
+            host: pending.host,
+        });
+        Ok(MainWindowComposerPublishAdvance::Published(target_identity))
     }
 
     fn ensure_live(&self) -> Result<(), MainWindowComposerSlotError> {
@@ -355,4 +442,19 @@ fn same_selected_host(
             && current.binding.presentation_generation()
                 == expected.binding.presentation_generation()
     })
+}
+
+fn draft_state_for_host(
+    host: &SyndicComposerHost,
+    binding: crate::composer_host::ComposerHostBinding,
+) -> Result<crate::main_window::MainWindowComposerDraftState, MainWindowComposerSlotError> {
+    let (published_candidate_generation, published_pair) = host
+        .published_draft()
+        .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
+    crate::main_window::MainWindowComposerDraftState::new(
+        binding,
+        published_candidate_generation,
+        published_pair,
+    )
+    .map_err(|_| MainWindowComposerSlotError::IdentityMismatch)
 }

@@ -13,6 +13,28 @@ pub struct MainWindowComposerSelectionIdentity {
     pub(super) binding: ComposerHostBinding,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowComposerWidgetRelease {
+    selection: MainWindowComposerSelectionIdentity,
+}
+
+impl MainWindowComposerWidgetRelease {
+    pub const fn selection(self) -> MainWindowComposerSelectionIdentity {
+        self.selection
+    }
+
+    pub(in crate::main_window) const fn new(
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Self {
+        Self { selection }
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub const fn for_test(selection: MainWindowComposerSelectionIdentity) -> Self {
+        Self::new(selection)
+    }
+}
+
 impl MainWindowComposerSelectionIdentity {
     pub const fn window_id(self) -> WindowId {
         self.window_id
@@ -68,6 +90,7 @@ impl MainWindowComposerActivationReceipt {
 pub enum MainWindowComposerPendingStatus {
     Ready,
     Publishing(ComposerHostFlushState),
+    WidgetReleaseRequired,
     RetirementPending,
     ReconciliationPending,
     DepartedFreshBoundary,
@@ -97,6 +120,7 @@ pub enum MainWindowComposerRetirementAdvance {
 pub enum MainWindowComposerPublishAdvance {
     Progress(ComposerHostFlushState),
     ReconciliationPending,
+    WidgetReleaseRequired(MainWindowComposerSelectionIdentity),
     Published(MainWindowComposerSelectionIdentity),
     PriorFlushFailed,
 }
@@ -105,6 +129,7 @@ pub enum MainWindowComposerPublishAdvance {
 pub enum MainWindowComposerDisposalAdvance {
     Progress(ComposerHostFlushState),
     ReconciliationPending,
+    WidgetReleaseRequired(MainWindowComposerSelectionIdentity),
     Disposed,
     Failed,
 }
@@ -127,6 +152,8 @@ pub enum MainWindowComposerSlotError {
     RecoveryHandleMismatch,
     #[error("the slot is disposed")]
     Disposed,
+    #[error("widget release contained work that was not locally releasable")]
+    WidgetReleaseIncomplete,
     #[error("composer host failed: {0}")]
     Host(#[from] ComposerHostError),
 }

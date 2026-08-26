@@ -287,6 +287,9 @@ impl DraftMarkerSealServiceDiagnostics {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DraftMarkerSealServiceError {
+    #[cfg(feature = "test-faults")]
+    #[error("injected marker seal operational failure")]
+    InjectedOperationalFailure,
     #[error("marker seal page limit {configured} exceeds the lower-layer maximum {maximum}")]
     InvalidPageLimit { configured: usize, maximum: usize },
     #[error("the marker seal service is disposed")]

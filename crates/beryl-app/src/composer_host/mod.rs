@@ -149,6 +149,15 @@ impl SyndicComposerHost {
         }
     }
 
+    pub(crate) const fn published_draft(
+        &self,
+    ) -> Option<(u64, syndic_storage::DraftRootHistoryPairV1)> {
+        match &self.active {
+            Some(active) => Some((active.published_candidate_generation, active.published_pair)),
+            None => None,
+        }
+    }
+
     pub(crate) fn fresh_abandonment_request(
         &self,
         operation_id: DraftPieceOperationIdV1,

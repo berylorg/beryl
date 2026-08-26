@@ -41,7 +41,14 @@ pub(super) fn validate_marker_metadata_intake(
         MutationLane::Proposal => page
             .items()
             .iter()
-            .filter(|item| matches!(item, MutationPageItem::Object(ObjectChange::Insert { .. })))
+            .filter(|item| {
+                matches!(
+                    item,
+                    MutationPageItem::Object(
+                        ObjectChange::Insert { .. } | ObjectChange::Replace { .. }
+                    )
+                )
+            })
             .count(),
     };
     if marker_metadata.len() != consuming_items {
@@ -193,7 +200,7 @@ fn translate_proposal_page(
                     | ObjectChange::Replace { target, .. }
                     | ObjectChange::Move { target, .. } => Some(target.range()),
                 };
-                let (pieces, effect, natural_point) = match *change {
+                let (pieces, effect, natural_point, use_natural_point) = match *change {
                     ObjectChange::Insert { object } => {
                         let marker = new_marker(&mut metadata, object)?;
                         let point = canonical_position(SourcePosition::new(
@@ -208,6 +215,7 @@ fn translate_proposal_page(
                                 DraftPieceMarkerEffectChargesV1::for_marker(marker),
                             )),
                             point,
+                            false,
                         )
                     }
                     ObjectChange::Remove { target } => {
@@ -222,6 +230,7 @@ fn translate_proposal_page(
                                 ),
                             },
                             target_start,
+                            false,
                         )
                     }
                     ObjectChange::Replace { target, object } => {
@@ -230,12 +239,12 @@ fn translate_proposal_page(
                         }
                         let target_marker = target_marker(storage, store, root, target)?;
                         let target_start = canonical_position(target.range().start())?;
-                        let marker = DraftPieceMarkerV1::new(
-                            target_marker.marker.marker().marker_id(),
-                            object_order(object.order())?,
-                            target_marker.marker.marker().label(),
-                            target_marker.marker.marker().asset_id(),
-                        );
+                        let marker = new_marker(&mut metadata, object)?;
+                        if marker.label() != target_marker.marker.marker().label()
+                            || marker.asset_id() != target_marker.marker.marker().asset_id()
+                        {
+                            return Err(ComposerHostError::MutationMalformed);
+                        }
                         (
                             vec![DraftPieceV1::Marker(marker)],
                             DraftPieceMarkerEffectV1::SameIdReplacement {
@@ -247,6 +256,7 @@ fn translate_proposal_page(
                                 ),
                             },
                             target_start,
+                            false,
                         )
                     }
                     ObjectChange::Move { target, object } => {
@@ -275,11 +285,16 @@ fn translate_proposal_page(
                                 ),
                             },
                             point,
+                            object.anchor() > target.range().start().byte_offset,
                         )
                     }
                 };
                 let point = if !envelope_applied {
-                    start
+                    if use_natural_point {
+                        natural_point
+                    } else {
+                        start
+                    }
                 } else if natural_point.utf8_offset() > end.utf8_offset() {
                     natural_point
                 } else {

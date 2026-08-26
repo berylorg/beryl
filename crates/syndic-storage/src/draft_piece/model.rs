@@ -3707,7 +3707,7 @@ pub enum DraftPieceRangeSourceErrorV1 {
     ConcurrentChange,
     StaleSession,
     StaleCandidate,
-    Disposed(DraftEditorCandidateSessionV1),
+    Disposed(Box<DraftEditorCandidateSessionV1>),
     Operational(crate::SyndicReadError),
     Invariant,
 }

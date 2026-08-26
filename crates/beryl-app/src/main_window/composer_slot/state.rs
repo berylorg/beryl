@@ -3,19 +3,31 @@ use syndic_storage::{DraftPieceOperationIdV1, PreparedDraftEditorCandidateSessio
 
 use crate::composer_host::{ComposerHostFlushTicket, SyndicComposerHost};
 
+use super::MainWindowComposerDispatcher;
 use super::{MainWindowComposerActivationReceipt, MainWindowComposerSelectionIdentity};
+use crate::main_window::MainWindowComposerDraftState;
 
 pub(super) struct SelectedComposer {
     pub(super) identity: MainWindowComposerSelectionIdentity,
+    pub(super) dispatcher: MainWindowComposerDispatcher,
+    pub(super) draft_state: MainWindowComposerDraftState,
     pub(super) host: SyndicComposerHost,
 }
 
+#[derive(Clone, Copy)]
 pub(super) enum PendingStage {
     Ready,
     Publishing(ComposerHostFlushTicket),
+    AwaitingWidgetRelease,
     Retiring,
     Reconciliation,
     Departed,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum DisposalStage {
+    Flushing(ComposerHostFlushTicket),
+    AwaitingWidgetRelease,
 }
 
 pub(super) struct PendingComposer {

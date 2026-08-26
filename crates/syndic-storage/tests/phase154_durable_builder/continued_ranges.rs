@@ -17,22 +17,22 @@ fn nonempty_replacement_continuations_consume_source_once_across_marker_effects_
     );
     let leading = marker(104, 7, 9);
     let trailing = marker(105, 8, 10);
-    let marker_insert = |anchor, marker| {
+    let marker_insert = |point_anchor, successor_anchor, marker| {
         DraftPieceReplacementV1::new(
-            point(anchor),
-            point(anchor),
+            point(point_anchor),
+            point(point_anchor),
             vec![DraftPieceV1::Marker(marker)],
         )
         .with_marker_effect(DraftPieceMarkerEffectV1::Insert(
             DraftPieceMarkerInsertionV1::new(
-                anchor,
+                successor_anchor,
                 marker,
                 DraftPieceMarkerEffectChargesV1::for_marker(marker),
             ),
         ))
     };
     let replacements = vec![
-        marker_insert(0, leading),
+        marker_insert(0, 0, leading),
         DraftPieceReplacementV1::new(point(1), point(5), vec![DraftPieceV1::Text("X".to_owned())]),
         DraftPieceReplacementV1::continuation(
             point(1),
@@ -44,7 +44,7 @@ fn nonempty_replacement_continuations_consume_source_once_across_marker_effects_
             point(5),
             vec![DraftPieceV1::Text("Z".to_owned())],
         ),
-        marker_insert(5, trailing),
+        marker_insert(5, 4, trailing),
     ];
     let (prepared, identity, fragments) = stage_interleaved_replacements(
         &storage,

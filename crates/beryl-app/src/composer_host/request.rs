@@ -306,7 +306,7 @@ pub(super) fn candidate_head(
         DraftEditorCandidateSessionReadOutcomeV1::Active(head) => head,
         DraftEditorCandidateSessionReadOutcomeV1::Disposed(head) => {
             return Err(ComposerHostError::Range(
-                DraftPieceRangeSourceErrorV1::Disposed(head),
+                DraftPieceRangeSourceErrorV1::Disposed(Box::new(head)),
             ));
         }
         DraftEditorCandidateSessionReadOutcomeV1::Absent => {
