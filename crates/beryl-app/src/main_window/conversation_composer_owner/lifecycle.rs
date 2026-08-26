@@ -29,7 +29,7 @@ impl MainWindowConversationComposer {
                     successor.binding().range_history_frontier(),
                 )
             })
-            .map_err(|error| error.to_string())
+            .map_err(|_| "composer input rebind was rejected".to_owned())
     }
 
     pub fn release_widget(
@@ -57,6 +57,9 @@ impl MainWindowConversationComposer {
         }
         self.phase = MainWindowConversationComposerPhase::Releasing;
         self.scheduled = false;
+        if let Some(clipboard) = self.propagated_clipboard.take() {
+            clipboard.cancel();
+        }
         self.propagated_cut = None;
         self.pending_marker_metadata = None;
         self.pending_marker_removal = None;
@@ -99,6 +102,9 @@ impl MainWindowConversationComposer {
         match self.phase {
             MainWindowConversationComposerPhase::Live => {
                 self.phase = MainWindowConversationComposerPhase::Fencing;
+                if let Some(clipboard) = self.propagated_clipboard.take() {
+                    clipboard.cancel();
+                }
                 self.image_surfaces.clear();
                 if let Some(attachment) = self.image_surface_attachment.take()
                     && let Err(error) = self.input.update(cx, |input, input_cx| {
@@ -111,7 +117,7 @@ impl MainWindowConversationComposer {
                     })
                     && !matches!(error, gpui_text_input::RangeTextInputError::Stale)
                 {
-                    return Err(error.to_string());
+                    return Err("composer marker surface dismissal was rejected".into());
                 }
                 self.input
                     .update(cx, |input, input_cx| input.set_enabled(false, input_cx));

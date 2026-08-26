@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use beryl_home_store::CommandCancellation;
 use beryl_state::WindowClaimSelection;
-use gpui::{AppContext, Context, Entity, Subscription, Window};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, Subscription, Window};
 use syndic_storage::DraftPieceOperationIdV1;
 
 use crate::composer_host::{
@@ -44,6 +44,19 @@ pub enum MainWindowConversationComposerMountDisposalAdvance {
     Disposed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MainWindowConversationComposerMountEvent {
+    ClipboardLimitExceeded {
+        selection: MainWindowComposerSelectionIdentity,
+    },
+    RichPastePropagated {
+        selection: MainWindowComposerSelectionIdentity,
+    },
+    SubmitPropagated {
+        selection: MainWindowComposerSelectionIdentity,
+    },
+}
+
 #[derive(Debug)]
 pub enum MainWindowConversationComposerMountFlushStart {
     WidgetFencePending(MainWindowComposerSelectionIdentity),
@@ -56,6 +69,11 @@ pub struct MainWindowConversationComposerMount {
     contribution: Option<Entity<MainWindowConversationComposer>>,
     autosave: autosave::MainWindowConversationComposerAutosave,
     contribution_subscription: Option<Subscription>,
+}
+
+impl EventEmitter<MainWindowConversationComposerMountEvent>
+    for MainWindowConversationComposerMount
+{
 }
 
 impl MainWindowConversationComposerMount {
@@ -99,6 +117,17 @@ impl MainWindowConversationComposerMount {
 
     pub fn selected_identity(&self) -> Option<MainWindowComposerSelectionIdentity> {
         self.service.selected_identity()
+    }
+
+    pub fn realization_diagnostics(
+        &self,
+        cx: &App,
+    ) -> Option<gpui_text_input::RangeRealizationDiagnostics> {
+        self.contribution.as_ref().map(|contribution| {
+            contribution.read_with(cx, |composer, composer_cx| {
+                composer.realization_diagnostics(composer_cx)
+            })
+        })
     }
 
     pub fn begin_activation(
@@ -371,16 +400,41 @@ impl MainWindowConversationComposerMount {
         self.contribution_subscription = Some(cx.subscribe_in(
             &contribution,
             window,
-            |this, _, event: &super::MainWindowConversationComposerEvent, window, cx| {
-                if let super::MainWindowConversationComposerEvent::SelectionAdvanced {
+            |this, _, event: &super::MainWindowConversationComposerEvent, window, cx| match *event {
+                super::MainWindowConversationComposerEvent::SelectionAdvanced {
                     previous,
                     current,
-                } = *event
-                    && let Err(error) =
+                } => {
+                    if let Err(error) =
                         this.autosave_selection_advanced(previous, current, window, cx)
-                {
-                    this.autosave.record_error(error);
+                    {
+                        this.autosave.record_error(error);
+                    }
                 }
+                super::MainWindowConversationComposerEvent::RichPastePropagated { selection }
+                    if this.service.selected_identity() == Some(selection) =>
+                {
+                    cx.emit(
+                        MainWindowConversationComposerMountEvent::RichPastePropagated { selection },
+                    );
+                }
+                super::MainWindowConversationComposerEvent::ClipboardLimitExceeded {
+                    selection,
+                } if this.service.selected_identity() == Some(selection) => {
+                    cx.emit(
+                        MainWindowConversationComposerMountEvent::ClipboardLimitExceeded {
+                            selection,
+                        },
+                    );
+                }
+                super::MainWindowConversationComposerEvent::SubmitPropagated { selection }
+                    if this.service.selected_identity() == Some(selection) =>
+                {
+                    cx.emit(MainWindowConversationComposerMountEvent::SubmitPropagated {
+                        selection,
+                    });
+                }
+                _ => {}
             },
         ));
         Ok(())

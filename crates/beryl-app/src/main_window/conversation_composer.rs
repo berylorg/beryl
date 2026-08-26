@@ -34,6 +34,22 @@ impl MainWindowConversationComposerConfig {
         {
             return Err(MainWindowConversationComposerConfigError::PolicyMismatch);
         }
+        if widget.limits.max_surface_bytes == 0
+            || widget.limits.max_surface_items == 0
+            || widget.limits.max_realization_work_per_frame == 0
+            || widget.limits.max_realized_block_extent <= gpui::Pixels::ZERO
+            || !f32::from(widget.limits.max_realized_block_extent).is_finite()
+            || widget.limits.page_bytes == 0
+            || widget.limits.platform_bytes == 0
+            || widget.limits.max_intra_anchor < gpui::Pixels::ZERO
+            || !f32::from(widget.limits.max_intra_anchor).is_finite()
+            || widget.viewport_extent <= gpui::Pixels::ZERO
+            || !f32::from(widget.viewport_extent).is_finite()
+            || widget.overscan < gpui::Pixels::ZERO
+            || !f32::from(widget.overscan).is_finite()
+        {
+            return Err(MainWindowConversationComposerConfigError::InvalidRealizationBudget);
+        }
         Ok(Self { selection, widget })
     }
 
@@ -78,6 +94,8 @@ pub enum MainWindowConversationComposerConfigError {
     PresentationMismatch,
     #[error("composer widget must propagate Enter, atom clipboard, and rich paste")]
     PolicyMismatch,
+    #[error("composer widget realization budgets must be nonzero")]
+    InvalidRealizationBudget,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

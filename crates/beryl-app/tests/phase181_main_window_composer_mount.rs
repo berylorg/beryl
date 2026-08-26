@@ -5,7 +5,7 @@ mod support;
 
 use std::{
     num::NonZeroU64,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -21,7 +21,7 @@ use beryl_app::{
         MainWindowComposerSlot, MainWindowConversationComposerAutosavePhase,
         MainWindowConversationComposerConfig, MainWindowConversationComposerMount,
         MainWindowConversationComposerMountDisposalAdvance,
-        MainWindowConversationComposerMountFlushStart,
+        MainWindowConversationComposerMountEvent, MainWindowConversationComposerMountFlushStart,
         MainWindowConversationComposerMountPublishAdvance, MainWindowConversationComposerService,
     },
 };
@@ -62,6 +62,107 @@ impl Render for MountRoot {
     ) -> impl IntoElement {
         div().children(self.mount.read(cx).contribution())
     }
+}
+
+#[gpui::test]
+fn mounted_commands_are_selection_qualified_and_shift_enter_stays_a_newline(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase183-mounted-commands", 21);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage);
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 22, 23, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        MountRoot { mount }
+    });
+    drive(cx, 16);
+
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    let selection = service.selected_identity().unwrap();
+    let contribution = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let mount_diagnostics = mount
+        .read_with(cx, |mount, app| mount.realization_diagnostics(app))
+        .unwrap();
+    let contribution_diagnostics =
+        contribution.read_with(cx, |composer, app| composer.realization_diagnostics(app));
+    assert_eq!(mount_diagnostics, contribution_diagnostics);
+    assert_eq!(mount_diagnostics.max_realized_block_extent, px(80.));
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let observed = events.clone();
+    let _subscription = cx.update(|window, app| {
+        window.subscribe(&mount, app, move |_, event, _, _| {
+            observed.lock().unwrap().push(*event);
+        })
+    });
+    let input = contribution.read_with(cx, |composer, _| composer.gpui_input());
+    cx.update(|window, app| input.update(app, |input, _| input.focus(window)));
+
+    cx.simulate_keystrokes("enter");
+    drive(cx, 4);
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        &[MainWindowConversationComposerMountEvent::SubmitPropagated { selection }]
+    );
+
+    cx.simulate_keystrokes("shift-enter");
+    drive(cx, 4);
+    assert_eq!(events.lock().unwrap().len(), 1);
+    let pasted_selection = service.selected_identity().unwrap();
+    assert_ne!(pasted_selection, selection);
+
+    cx.simulate_keystrokes("ctrl-v");
+    drive(cx, 4);
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        &[
+            MainWindowConversationComposerMountEvent::SubmitPropagated { selection },
+            MainWindowConversationComposerMountEvent::RichPastePropagated {
+                selection: pasted_selection,
+            },
+        ]
+    );
 }
 
 #[gpui::test]
@@ -1053,7 +1154,8 @@ fn widget_config(
         mutation_limits: MutationLimits::new(8, 256).unwrap(),
         clipboard_limits: ClipboardLimits::new(1024, 32).unwrap(),
         segmentation_limits: SegmentationLimits::new(32, 64).unwrap(),
-        limits: RangeTextInputLimits::new(2 * 1024 * 1024, 32768, 32, 32, px(16.)).unwrap(),
+        limits: RangeTextInputLimits::new(2 * 1024 * 1024, 32768, 32, px(80.), 32, 32, px(16.))
+            .unwrap(),
         settlement_coordinator: RangeSettlementCoordinator::new(4).unwrap(),
         viewport_extent: px(80.),
         overscan: px(32.),

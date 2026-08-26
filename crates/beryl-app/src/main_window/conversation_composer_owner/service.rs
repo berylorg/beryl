@@ -1,6 +1,12 @@
 #[cfg(feature = "test-faults")]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "test-faults")]
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll, Waker},
+};
 
 use beryl_home_store::HomeStore;
 use gpui_text_input::RangeTextInputRequest;
@@ -8,11 +14,53 @@ use gpui_text_input::RangeTextInputRequest;
 use super::{MainWindowComposerSelectionIdentity, MainWindowComposerWidgetRelease};
 use crate::main_window::MainWindowComposerSlot;
 
+#[cfg(feature = "test-faults")]
+#[derive(Clone)]
+pub struct MainWindowComposerCutPreparationTestRelease(Arc<Mutex<CutPreparationTestGateState>>);
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone)]
+pub(super) struct CutPreparationTestGate(Arc<Mutex<CutPreparationTestGateState>>);
+
+#[cfg(feature = "test-faults")]
+struct CutPreparationTestGateState {
+    released: bool,
+    waker: Option<Waker>,
+}
+
+#[cfg(feature = "test-faults")]
+impl MainWindowComposerCutPreparationTestRelease {
+    pub fn release(self) {
+        let mut state = self.0.lock().unwrap();
+        state.released = true;
+        if let Some(waker) = state.waker.take() {
+            waker.wake();
+        }
+    }
+}
+
+#[cfg(feature = "test-faults")]
+impl Future for CutPreparationTestGate {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut state = self.0.lock().unwrap();
+        if state.released {
+            Poll::Ready(())
+        } else {
+            state.waker = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
+
 pub struct MainWindowConversationComposerService {
     pub(super) store: Arc<HomeStore>,
     pub(super) slot: Mutex<MainWindowComposerSlot>,
     #[cfg(feature = "test-faults")]
     test_cancel_next_mutation_commit: AtomicBool,
+    #[cfg(feature = "test-faults")]
+    test_cut_preparation_gate: Mutex<Option<CutPreparationTestGate>>,
 }
 
 impl MainWindowConversationComposerService {
@@ -22,6 +70,8 @@ impl MainWindowConversationComposerService {
             slot: Mutex::new(slot),
             #[cfg(feature = "test-faults")]
             test_cancel_next_mutation_commit: AtomicBool::new(false),
+            #[cfg(feature = "test-faults")]
+            test_cut_preparation_gate: Mutex::new(None),
         }
     }
 
@@ -36,6 +86,25 @@ impl MainWindowConversationComposerService {
                 .test_cancel_next_mutation_commit
                 .swap(true, Ordering::SeqCst)
         );
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_block_next_cut_preparation(&self) -> MainWindowComposerCutPreparationTestRelease {
+        let state = Arc::new(Mutex::new(CutPreparationTestGateState {
+            released: false,
+            waker: None,
+        }));
+        let mut gate = self.test_cut_preparation_gate.lock().unwrap();
+        assert!(
+            gate.replace(CutPreparationTestGate(state.clone()))
+                .is_none()
+        );
+        MainWindowComposerCutPreparationTestRelease(state)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_cut_preparation_gate(&self) -> Option<CutPreparationTestGate> {
+        self.test_cut_preparation_gate.lock().ok()?.take()
     }
 
     #[cfg(feature = "test-faults")]
@@ -60,7 +129,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .selected_autosave_timer(selection)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn selected_autosave_publication(
@@ -71,7 +140,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .selected_autosave_publication(selection)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn autosave_capture_requirement(
@@ -82,7 +151,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .selected_autosave_capture_requirement(selection)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn publish_autosave_interval(
@@ -95,7 +164,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .publish_selected_autosave_interval(selection, settings_generation, interval)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -124,7 +193,7 @@ impl MainWindowConversationComposerService {
                 published_at,
                 cancellation,
             )
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn advance_autosave(
@@ -136,7 +205,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .advance_selected_autosave(&self.store, selection, ticket)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn autosave_publication_ready(
@@ -148,7 +217,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .selected_autosave_publication_ready(selection, ticket)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn begin_activation(
@@ -168,7 +237,7 @@ impl MainWindowConversationComposerService {
                 retirement_operation_id,
                 cancellation,
             )
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn retire_pending(
@@ -179,7 +248,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .retire_pending(&self.store, receipt)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn begin_publish(
@@ -190,7 +259,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .begin_publish(&self.store, receipt)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn publish_preflight(
@@ -218,7 +287,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .advance_publish(&self.store, receipt)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -247,7 +316,7 @@ impl MainWindowConversationComposerService {
                 published_at,
                 cancellation,
             )
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn capture_flush_disposal(
@@ -267,7 +336,7 @@ impl MainWindowConversationComposerService {
                 operation_id,
                 cancellation,
             )
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn complete_publish_after_widget_release(
@@ -279,7 +348,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .complete_publish_after_widget_release(&self.store, receipt, release)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn begin_disposal(
@@ -289,7 +358,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .begin_disposal(&self.store)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn disposal_preflight(
@@ -302,7 +371,7 @@ impl MainWindowConversationComposerService {
         if let Some(receipt) = slot.pending_receipt() {
             match slot
                 .retire_pending(&self.store, receipt)
-                .map_err(|error| error.to_string())?
+                .map_err(|_| "conversation composer service operation failed".to_owned())?
             {
                 super::MainWindowComposerRetirementAdvance::Retired => {}
                 super::MainWindowComposerRetirementAdvance::Pending => {
@@ -324,7 +393,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .advance_disposal(&self.store)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(in crate::main_window) fn complete_disposal_after_widget_release(
@@ -335,7 +404,7 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .complete_disposal_after_widget_release(&self.store, release)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(super) fn take_initial_presentation(
@@ -347,7 +416,7 @@ impl MainWindowConversationComposerService {
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .take_selected_initial_presentation(selection)
             .map(|presentation| presentation.into_responses())
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
     pub(super) fn release_widget_work(
@@ -359,6 +428,6 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .release_selected_widget_work(selection, requests)
-            .map_err(|error| error.to_string())
+            .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 }

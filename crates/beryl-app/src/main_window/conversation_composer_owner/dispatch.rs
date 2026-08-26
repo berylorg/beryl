@@ -38,7 +38,7 @@ impl MainWindowConversationComposer {
                 input.submit_history_session(gpui_text_input::RangeHistorySession::new(intent))
             })
         {
-            self.last_error = Some(format!("composer history admission was rejected: {error}"));
+            self.last_error = Some("composer history admission was rejected".into());
             return;
         }
         let cut_page_request = matches!(request, RangeTextInputRequest::MutationProposalPage(_))
@@ -59,7 +59,6 @@ impl MainWindowConversationComposer {
         let service = self.service.clone();
         let selection = self.selection;
         let proof_limits = self.proof_limits;
-        let request_diagnostic = format!("{request:?}");
         let marker_metadata = self.marker_metadata_for_request(&request);
         let cancellation = CommandCancellation::new();
         #[cfg(feature = "test-faults")]
@@ -81,9 +80,7 @@ impl MainWindowConversationComposer {
                     marker_metadata,
                     &cancellation,
                 )
-                .map_err(|error| {
-                    format!("composer dispatch failed for {request_diagnostic}: {error}")
-                })?;
+                .map_err(|_| "composer dispatch failed".to_owned())?;
             let proof = match &outcome {
                 MainWindowComposerDispatchOutcome::Mutation {
                     key,
@@ -100,7 +97,7 @@ impl MainWindowConversationComposer {
                             *positions,
                             proof_limits,
                         )
-                        .map_err(|error| format!("composer successor proof failed: {error}"))?,
+                        .map_err(|_| "composer successor proof failed".to_owned())?,
                     ))
                 }
                 _ => None,
@@ -214,7 +211,7 @@ impl MainWindowConversationComposer {
                 .map_err(|_| "conversation composer service lock failed".to_owned())?;
             let proof = slot
                 .build_selected_successor_proof(&service.store, selection, positions, limits)
-                .map_err(|error| error.to_string())?;
+                .map_err(|_| "composer successor proof failed".to_owned())?;
             Ok(Box::new(MainWindowConversationComposerDispatch {
                 initiating_selection: selection,
                 settled_selection: selection,
@@ -282,7 +279,7 @@ impl MainWindowConversationComposer {
                 .update(cx, |input, _| {
                     input.admit_edit_positions(&unique, &proof.text, &proof.objects)
                 })
-                .map_err(|error| format!("composer edit-position proof was rejected: {error}"))?;
+                .map_err(|_| "composer edit-position proof was rejected".to_owned())?;
             self.admitted_positions = Some(positions);
             return Ok(());
         }
@@ -312,7 +309,7 @@ impl MainWindowConversationComposer {
                     )?;
                     input.set_history_frontier(input.history_frontier(), history_frontier)
                 })
-                .map_err(|error| error.to_string())?;
+                .map_err(|_| "composer history frontier was rejected".to_owned())?;
             if self.pending_marker_removal == Some(key) {
                 self.pending_marker_removal = None;
                 self.image_surface_attachment = None;
@@ -330,18 +327,16 @@ impl MainWindowConversationComposer {
         match outcome {
             MainWindowComposerDispatchOutcome::Page(page) => input
                 .update(cx, |input, cx| input.deliver_page(page, window, cx))
-                .map_err(|error| format!("composer text page was rejected: {error}")),
+                .map_err(|_| "composer text page was rejected".to_owned()),
             MainWindowComposerDispatchOutcome::ObjectPage(page) => input
                 .update(cx, |input, cx| {
                     input.deliver_object_page_in_window(page, window, cx)
                 })
-                .map_err(|error| format!("composer marker page was rejected: {error}")),
+                .map_err(|_| "composer marker page was rejected".to_owned()),
             MainWindowComposerDispatchOutcome::MutationBegan(key) => {
                 input
                     .update(cx, |input, cx| input.accept_mutation_preflight(key, cx))
-                    .map_err(|error| {
-                        format!("composer mutation preflight was rejected: {error}")
-                    })?;
+                    .map_err(|_| "composer mutation preflight was rejected".to_owned())?;
                 self.submit_propagated_cut_page(key, cx)
             }
             MainWindowComposerDispatchOutcome::MutationPage { key, .. } => {
@@ -350,7 +345,7 @@ impl MainWindowConversationComposer {
             MainWindowComposerDispatchOutcome::Released => Ok(()),
             MainWindowComposerDispatchOutcome::MutationInputFinished(key) => input
                 .update(cx, |input, cx| input.accept_mutation_finish(key, cx))
-                .map_err(|error| format!("composer mutation finish was rejected: {error}")),
+                .map_err(|_| "composer mutation finish was rejected".to_owned()),
             MainWindowComposerDispatchOutcome::Mutation { key, outcome } => match outcome {
                 ComposerHostMutationOutcome::Committed { .. } => {
                     Err("committed composer mutation omitted successor proof".to_owned())
@@ -381,9 +376,7 @@ impl MainWindowConversationComposer {
                     .update(cx, |input, cx| {
                         input.settle_history(intent, outcome, window, cx)
                     })
-                    .map_err(|error| {
-                        format!("composer history settlement was rejected: {error}")
-                    })?;
+                    .map_err(|_| "composer history settlement was rejected".to_owned())?;
                 let previous = self.selection;
                 self.selection = result.settled_selection;
                 self.image_surfaces.selection_changed(self.selection);
@@ -405,7 +398,7 @@ impl MainWindowConversationComposer {
                         input.settle_clipboard_write(key, outcome, cx)
                     })
                     .map(|_| ())
-                    .map_err(|error| format!("composer clipboard settlement was rejected: {error}"))
+                    .map_err(|_| "composer clipboard settlement was rejected".to_owned())
             }
         }
     }
@@ -453,7 +446,7 @@ impl MainWindowConversationComposer {
             })
             && !matches!(error, gpui_text_input::RangeTextInputError::Stale)
         {
-            return Err(error.to_string());
+            return Err("composer marker surface dismissal was rejected".into());
         }
         self.input.update(cx, |input, _| input.focus(window));
         Ok(())
@@ -472,5 +465,5 @@ fn settle_mutation(
             input.settle_mutation(key, outcome, window, cx)
         })
         .map(|_| ())
-        .map_err(|error| error.to_string())
+        .map_err(|_| "composer mutation settlement was rejected".to_owned())
 }

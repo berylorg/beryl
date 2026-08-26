@@ -25,6 +25,7 @@ use beryl_app::{
         ComposerImagePresentationState, ComposerImagePreviewCommandState,
         MainWindowComposerMarkerMetadataAuthority, MainWindowComposerSlot,
         MainWindowConversationComposer, MainWindowConversationComposerConfig,
+        MainWindowConversationComposerConfigError, MainWindowConversationComposerEvent,
         MainWindowConversationComposerService,
     },
 };
@@ -102,15 +103,85 @@ fn production_owner_settles_committed_edit_and_failed_cut_through_widget(
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let selection = slot.selected_identity().unwrap();
+    let base_widget = widget_config(selection.binding().range_binding(), 1024);
+    let invalid_widgets = [
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.max_surface_bytes = 0;
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.max_surface_items = 0;
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.max_realization_work_per_frame = 0;
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.max_realized_block_extent = px(0.);
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.max_realized_block_extent = px(f32::NAN);
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.page_bytes = 0;
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.platform_bytes = 0;
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.max_intra_anchor = px(-1.);
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.limits.max_intra_anchor = px(f32::INFINITY);
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.viewport_extent = px(0.);
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.viewport_extent = px(f32::NAN);
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.overscan = px(-1.);
+            widget
+        },
+        {
+            let mut widget = base_widget.clone();
+            widget.overscan = px(f32::INFINITY);
+            widget
+        },
+    ];
+    for widget in invalid_widgets {
+        assert!(matches!(
+            MainWindowConversationComposerConfig::new(selection, widget),
+            Err(MainWindowConversationComposerConfigError::InvalidRealizationBudget)
+        ));
+    }
     let store = Arc::new(store);
     let service = Arc::new(MainWindowConversationComposerService::new(store, slot));
     let writes = Arc::new(AtomicUsize::new(0));
     let observed_writes = writes.clone();
-    let configuration = MainWindowConversationComposerConfig::new(
-        selection,
-        widget_config(selection.binding().range_binding(), 1024),
-    )
-    .unwrap();
+    let configuration = MainWindowConversationComposerConfig::new(selection, base_widget).unwrap();
     let (composer, cx) = cx.add_window_view(|window, cx| {
         let composer = MainWindowConversationComposer::new(
             configuration,
@@ -396,6 +467,13 @@ fn composite_clipboard_orders_markers_enforces_cap_and_cuts_only_after_write(
     });
     drive_owner(cx, 32);
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    let clipboard_events = Arc::new(Mutex::new(Vec::new()));
+    let observed_clipboard_events = clipboard_events.clone();
+    let _clipboard_subscription = cx.update(|window, app| {
+        window.subscribe(&composer, app, move |_, event, _, _| {
+            observed_clipboard_events.lock().unwrap().push(*event);
+        })
+    });
     cx.update(|window, app| input.update(app, |input, _| input.focus(window)));
     cx.update(|window, app| {
         input.update(app, |input, cx| {
@@ -417,6 +495,30 @@ fn composite_clipboard_orders_markers_enforces_cap_and_cuts_only_after_write(
     drive_owner(cx, 32);
     assert_eq!(writes.load(Ordering::SeqCst), 0);
     assert_eq!(service.selected_identity(), Some(selection));
+    assert_eq!(
+        clipboard_events.lock().unwrap().as_slice(),
+        &[MainWindowConversationComposerEvent::ClipboardLimitExceeded { selection }]
+    );
+
+    cx.simulate_keystrokes("ctrl-x");
+    let fence_started = cx.update(|window, app| {
+        composer.update(app, |composer, composer_cx| {
+            composer.begin_widget_release_fence(window, composer_cx)
+        })
+    });
+    assert!(fence_started.is_ok());
+    drive_owner(cx, 32);
+    assert_eq!(writes.load(Ordering::SeqCst), 0);
+    assert_eq!(service.selected_identity(), Some(selection));
+    composer.read_with(cx, |composer, _| assert_eq!(composer.last_error(), None));
+    assert!(
+        cx.update(|window, app| {
+            composer.update(app, |composer, composer_cx| {
+                composer.begin_widget_release_fence(window, composer_cx)
+            })
+        })
+        .unwrap()
+    );
 }
 
 #[gpui::test]
@@ -778,9 +880,7 @@ fn cancelled_marker_removal_releases_the_exact_surface_attachment(cx: &mut gpui:
 }
 
 #[gpui::test]
-fn multi_page_marker_cut_streams_after_one_successful_clipboard_write(
-    cx: &mut gpui::TestAppContext,
-) {
+fn late_cut_preparation_is_fenced_after_successful_clipboard_write(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
     let fixture = Fixture::new("phase181-streamed-cut", 121);
     let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
@@ -879,8 +979,9 @@ fn multi_page_marker_cut_streams_after_one_successful_clipboard_write(
     });
     drive_owner(cx, 16);
     composer.read_with(cx, |composer, _| assert_eq!(composer.last_error(), None));
+    let cut_preparation_gate = service.test_block_next_cut_preparation();
     cx.simulate_keystrokes("ctrl-x");
-    drive_owner(cx, 128);
+    drive_owner(cx, 32);
 
     let copied = writes.lock().unwrap();
     assert_eq!(
@@ -892,18 +993,36 @@ fn multi_page_marker_cut_streams_after_one_successful_clipboard_write(
     assert!(copied[0].starts_with("[Image A]"));
     assert!(copied[0].ends_with('Z'));
     drop(copied);
+    assert_eq!(service.selected_identity(), Some(selection));
+    let fence_started = cx.update(|window, app| {
+        composer.update(app, |composer, composer_cx| {
+            composer.begin_widget_release_fence(window, composer_cx)
+        })
+    });
+    assert!(matches!(fence_started, Ok(false)));
+    cut_preparation_gate.release();
+    let mut fence_ready = false;
+    for _ in 0..16 {
+        drive_owner(cx, 4);
+        fence_ready = cx
+            .update(|window, app| {
+                composer.update(app, |composer, composer_cx| {
+                    composer.begin_widget_release_fence(window, composer_cx)
+                })
+            })
+            .unwrap();
+        if fence_ready {
+            break;
+        }
+    }
+    assert!(fence_ready);
     let cut = service.selected_identity().unwrap();
     assert_eq!(
         cut.binding().candidate().candidate_generation(),
-        selection
-            .binding()
-            .candidate()
-            .candidate_generation()
-            .checked_add(1)
-            .unwrap()
+        selection.binding().candidate().candidate_generation()
     );
-    assert_eq!(cut.binding().logical_extent().logical_utf8_bytes(), 0);
-    assert_eq!(cut.binding().root().summary().marker_count(), 0);
+    assert_eq!(cut.binding().logical_extent().logical_utf8_bytes(), 1);
+    assert_eq!(cut.binding().root().summary().marker_count(), 9);
     composer.read_with(cx, |composer, _| assert_eq!(composer.last_error(), None));
 }
 
@@ -1135,7 +1254,8 @@ fn widget_config(
         mutation_limits: MutationLimits::new(8, 256).unwrap(),
         clipboard_limits: ClipboardLimits::new(clipboard_bytes, 32).unwrap(),
         segmentation_limits: SegmentationLimits::new(32, 64).unwrap(),
-        limits: RangeTextInputLimits::new(2 * 1024 * 1024, 32768, 32, 32, px(16.)).unwrap(),
+        limits: RangeTextInputLimits::new(2 * 1024 * 1024, 32768, 32, px(80.), 32, 32, px(16.))
+            .unwrap(),
         settlement_coordinator: RangeSettlementCoordinator::new(4).unwrap(),
         viewport_extent: px(80.),
         overscan: px(32.),

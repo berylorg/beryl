@@ -40,7 +40,15 @@ pub enum MainWindowConversationComposerEvent {
         previous: MainWindowComposerSelectionIdentity,
         current: MainWindowComposerSelectionIdentity,
     },
-    RichPastePropagated,
+    RichPastePropagated {
+        selection: MainWindowComposerSelectionIdentity,
+    },
+    ClipboardLimitExceeded {
+        selection: MainWindowComposerSelectionIdentity,
+    },
+    SubmitPropagated {
+        selection: MainWindowComposerSelectionIdentity,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -65,6 +73,7 @@ pub struct MainWindowConversationComposer {
     image_surface_focus: FocusHandle,
     image_surface_attachment: Option<InlineObjectSurfaceAttachment>,
     pending_marker_removal: Option<gpui_text_input::MutationKey>,
+    propagated_clipboard: Option<clipboard::ActivePropagatedClipboard>,
     propagated_cut: Option<clipboard::ActivePropagatedCut>,
     pending_marker_metadata: Option<(
         gpui_text_input::MutationKey,
@@ -87,6 +96,14 @@ impl MainWindowConversationComposer {
         self.last_error.as_deref()
     }
 
+    pub fn realization_diagnostics(
+        &self,
+        cx: &App,
+    ) -> gpui_text_input::RangeRealizationDiagnostics {
+        self.input
+            .read_with(cx, |input, _| input.realization_diagnostics())
+    }
+
     pub const fn marker_menu(&self) -> Option<ComposerMarkerMenu> {
         self.image_surfaces.menu()
     }
@@ -104,7 +121,7 @@ impl MainWindowConversationComposer {
         let disposition = self
             .image_surfaces
             .activate_marker(self.selection, activation)
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer marker activation was rejected".to_owned())?;
         if matches!(
             disposition,
             super::ComposerMarkerActivationDisposition::Opened
@@ -115,7 +132,7 @@ impl MainWindowConversationComposer {
                 Ok(attachment) => attachment,
                 Err(error) => {
                     self.image_surfaces.dismiss_menu(false, self.is_live());
-                    return Err(error.to_string());
+                    return Err("composer marker surface was rejected".into());
                 }
             };
             self.image_surface_attachment = Some(attachment);
@@ -133,7 +150,7 @@ impl MainWindowConversationComposer {
     ) -> Result<(), String> {
         self.image_surfaces
             .invoke_view(self.selection, state)
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer marker view was rejected".to_owned())?;
         self.image_surface_focus.focus(window);
         cx.notify();
         Ok(())
@@ -146,7 +163,7 @@ impl MainWindowConversationComposer {
         let anchor = self
             .image_surfaces
             .prepare_remove(self.selection)
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer marker removal was rejected".to_owned())?;
         let active = self
             .input
             .update(cx, |input, _| input.active_inline_object())
@@ -159,12 +176,12 @@ impl MainWindowConversationComposer {
             .update(cx, |input, input_cx| {
                 input.remove_active_inline_object(anchor, input_cx)
             })
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer marker mutation was rejected".to_owned())?;
         self.pending_marker_removal = Some(key);
         let removed = self
             .image_surfaces
             .invoke_remove(self.selection)
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer marker removal was rejected".to_owned())?;
         if removed != anchor {
             return Err("composer marker remove origin changed during admission".to_owned());
         }
@@ -192,7 +209,7 @@ impl MainWindowConversationComposer {
                     input_cx,
                 )
             })
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer marker metadata mutation was rejected".to_owned())?;
         self.pending_marker_metadata = Some((key, Box::new([metadata])));
         Ok(key)
     }
@@ -270,7 +287,7 @@ impl MainWindowConversationComposer {
                 input.dismiss_active_inline_object_surface(attachment, dismissal, window, input_cx)
             }) && !matches!(error, gpui_text_input::RangeTextInputError::Stale)
             {
-                return Err(error.to_string());
+                return Err("composer marker surface dismissal was rejected".into());
             }
         }
         if matches!(target, ComposerMarkerFocusTarget::ComposerEditor) {
@@ -304,89 +321,170 @@ impl MainWindowConversationComposer {
         };
         self.input
             .update(cx, |input, cx| input.set_enabled(false, cx));
-        let flight = match self.begin_flight() {
-            Ok(flight) => flight,
+        match clipboard::ActivePropagatedClipboard::new(
+            self.selection,
+            selected_range,
+            kind,
+            self.clipboard_limits,
+        ) {
+            Ok(clipboard) => {
+                self.propagated_clipboard = Some(clipboard);
+                self.drive_propagated_clipboard(selected_range, window, cx);
+            }
             Err(error) => {
+                self.input
+                    .update(cx, |input, cx| input.set_enabled(true, cx));
+                self.last_error = Some(error);
+            }
+        }
+    }
+
+    fn drive_propagated_clipboard(
+        &mut self,
+        selected_range: RangeSourceSelection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let action = match self
+            .propagated_clipboard
+            .as_mut()
+            .ok_or_else(|| "composer clipboard scan was released".to_owned())
+            .and_then(clipboard::ActivePropagatedClipboard::next_action)
+        {
+            Ok(action) => action,
+            Err(error) => {
+                self.finish_propagated_clipboard_without_cut(cx);
                 self.last_error = Some(error);
                 return;
             }
         };
-        let service = self.service.clone();
-        let selection = self.selection;
-        let limits = self.clipboard_limits;
-        let task = cx.background_executor().spawn(async move {
-            clipboard::collect(&service, selection, selected_range, kind, limits)
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            let result = task.await;
-            let _ = this.update_in(cx, |this, window, cx| {
-                if !this.settle_flight(flight) {
-                    return;
-                }
-                if let Err(error) =
-                    this.finish_propagated_clipboard(selected_range, result, window, cx)
-                {
-                    this.last_error = Some(error);
-                }
-                this.schedule_pump(window, cx);
-            });
-        })
-        .detach();
-    }
-
-    fn finish_propagated_clipboard(
-        &mut self,
-        selected_range: RangeSourceSelection,
-        result: Result<clipboard::PropagatedClipboardCollection, String>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Result<(), String> {
-        let result = match result {
-            Ok(result) => result,
-            Err(error) => {
-                self.input
-                    .update(cx, |input, cx| input.set_enabled(true, cx));
-                return Err(error);
+        match action {
+            clipboard::PropagatedClipboardAction::Request(request) => {
+                let flight = match self.begin_flight() {
+                    Ok(flight) => flight,
+                    Err(error) => {
+                        self.finish_propagated_clipboard_without_cut(cx);
+                        self.last_error = Some(error);
+                        return;
+                    }
+                };
+                let service = self.service.clone();
+                let selection = self.selection;
+                let cancellation = self
+                    .propagated_clipboard
+                    .as_ref()
+                    .expect("clipboard scan remains active")
+                    .cancellation();
+                let task = cx.background_executor().spawn(async move {
+                    let mut slot = service
+                        .slot
+                        .lock()
+                        .map_err(|_| "composer clipboard host lane is unavailable".to_owned())?;
+                    slot.dispatch_selected_request(
+                        &service.store,
+                        selection,
+                        request,
+                        Box::new([]),
+                        &cancellation,
+                    )
+                    .map_err(|_| "composer clipboard page request failed".to_owned())
+                });
+                cx.spawn_in(window, async move |this, cx| {
+                    let result = task.await;
+                    let _ = this.update_in(cx, |this, window, cx| {
+                        if !this.settle_flight(flight) {
+                            return;
+                        }
+                        if !this.is_live() {
+                            this.schedule_pump(window, cx);
+                            return;
+                        }
+                        if this.propagated_clipboard.is_none()
+                            || this.selection != selection
+                            || this.service.selected_identity() != Some(selection)
+                        {
+                            return;
+                        }
+                        match result.and_then(|outcome| {
+                            this.propagated_clipboard
+                                .as_mut()
+                                .ok_or_else(|| "composer clipboard scan is unavailable".to_owned())?
+                                .admit(outcome)
+                        }) {
+                            Ok(()) => this.drive_propagated_clipboard(selected_range, window, cx),
+                            Err(error) => {
+                                this.finish_propagated_clipboard_without_cut(cx);
+                                this.last_error = Some(error);
+                            }
+                        }
+                    });
+                })
+                .detach();
             }
-        };
-        let cut = match result {
-            clipboard::PropagatedClipboardCollection::Rejected => None,
-            clipboard::PropagatedClipboardCollection::Ready {
-                mut coordinator,
-                write,
-            } => {
+            clipboard::PropagatedClipboardAction::Write(write) => {
                 let key = write.key();
                 let outcome = (self.clipboard_writer)(write.text(), cx);
-                match coordinator
+                let completion = self
+                    .propagated_clipboard
+                    .as_mut()
+                    .expect("clipboard scan remains active")
                     .acknowledge_write(key, outcome)
-                    .map_err(|error| error.to_string())?
-                {
-                    ClipboardCompletion::Delete(deletion) => Some(deletion),
+                    .unwrap_or_else(|_| ClipboardCompletion::WriteFailed);
+                match completion {
+                    ClipboardCompletion::Delete(deletion) => {
+                        let expected = match selected_range.range() {
+                            Ok(expected) => expected,
+                            Err(_) => {
+                                self.finish_propagated_clipboard_without_cut(cx);
+                                self.last_error =
+                                    Some("composer cut selection was malformed".into());
+                                return;
+                            }
+                        };
+                        self.propagated_clipboard = None;
+                        if deletion.selection() != expected {
+                            self.input
+                                .update(cx, |input, cx| input.set_enabled(true, cx));
+                            self.last_error =
+                                Some("composer cut selection changed before deletion".into());
+                            return;
+                        }
+                        self.begin_cut_after_write(deletion, window, cx);
+                    }
                     ClipboardCompletion::Copied
                     | ClipboardCompletion::WriteFailed
-                    | ClipboardCompletion::Cancelled => None,
-                    completion => {
-                        return Err(format!(
-                            "composer clipboard write settled unexpectedly: {completion:?}"
-                        ));
+                    | ClipboardCompletion::Cancelled => {
+                        self.finish_propagated_clipboard_without_cut(cx)
+                    }
+                    _ => {
+                        self.finish_propagated_clipboard_without_cut(cx);
+                        self.last_error =
+                            Some("composer clipboard write terminated unexpectedly".into());
                     }
                 }
             }
-        };
-        let Some(deletion) = cut else {
+            clipboard::PropagatedClipboardAction::ContiguousLimitExceeded => {
+                self.finish_propagated_clipboard_without_cut(cx);
+                cx.emit(
+                    MainWindowConversationComposerEvent::ClipboardLimitExceeded {
+                        selection: self.selection,
+                    },
+                );
+            }
+            clipboard::PropagatedClipboardAction::Cancelled => {
+                self.finish_propagated_clipboard_without_cut(cx);
+            }
+        }
+    }
+
+    fn finish_propagated_clipboard_without_cut(&mut self, cx: &mut Context<Self>) {
+        if let Some(clipboard) = self.propagated_clipboard.take() {
+            clipboard.cancel();
+        }
+        if self.is_live() {
             self.input
                 .update(cx, |input, cx| input.set_enabled(true, cx));
-            return Ok(());
-        };
-        if deletion.selection()
-            != selected_range
-                .range()
-                .map_err(|error| format!("composer cut selection became malformed: {error:?}"))?
-        {
-            return Err("composer cut selection changed before deletion".into());
         }
-        self.begin_cut_after_write(deletion, window, cx);
-        Ok(())
     }
 
     fn begin_cut_after_write(
@@ -410,6 +508,10 @@ impl MainWindowConversationComposer {
         let proof_limits = self.proof_limits;
         let mutation_limits = self.mutation_limits;
         let task = cx.background_executor().spawn(async move {
+            #[cfg(feature = "test-faults")]
+            if let Some(gate) = service.take_test_cut_preparation_gate() {
+                gate.await;
+            }
             clipboard::prepare_cut_after_write(
                 &service,
                 selection,
@@ -422,6 +524,15 @@ impl MainWindowConversationComposer {
             let result = task.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 if !this.settle_flight(flight) {
+                    return;
+                }
+                if !this.is_live() {
+                    this.schedule_pump(window, cx);
+                    return;
+                }
+                if this.selection != selection
+                    || this.service.selected_identity() != Some(selection)
+                {
                     return;
                 }
                 this.input

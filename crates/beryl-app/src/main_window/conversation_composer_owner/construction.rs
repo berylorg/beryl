@@ -40,22 +40,17 @@ impl MainWindowConversationComposer {
                 }
                 break request;
             };
-            let request_diagnostic = format!("{request:?}");
             match super::super::translate_initial_composer_response(selection, request, response)
-                .map_err(|error| {
-                    format!(
-                        "{error}: initial request {request_diagnostic}, response {:?}",
-                        response.key()
-                    )
-                })? {
+                .map_err(|_| "initial composer response was rejected".to_owned())?
+            {
                 MainWindowComposerDispatchOutcome::Page(page) => input
                     .update(cx, |input, cx| input.deliver_page(page, window, cx))
-                    .map_err(|error| error.to_string())?,
+                    .map_err(|_| "initial composer text page was rejected".to_owned())?,
                 MainWindowComposerDispatchOutcome::ObjectPage(page) => input
                     .update(cx, |input, cx| {
                         input.deliver_object_page_in_window(page, window, cx)
                     })
-                    .map_err(|error| error.to_string())?,
+                    .map_err(|_| "initial composer marker page was rejected".to_owned())?,
                 _ => return Err("initial composer response was not a bounded page".to_owned()),
             }
         }
@@ -68,10 +63,8 @@ impl MainWindowConversationComposer {
                     RangeTextInputRequest::ReleasePage(_)
                     | RangeTextInputRequest::ReleaseObjectPage(_),
                 ) => {}
-                Some(request) => {
-                    return Err(format!(
-                        "initial composer pages did not satisfy widget request: {request:?}"
-                    ));
+                Some(_) => {
+                    return Err("initial composer pages did not satisfy widget request".into());
                 }
                 None => {
                     return Err("initial composer pages did not form a coherent surface".to_owned());
@@ -85,7 +78,7 @@ impl MainWindowConversationComposer {
                     selection.binding().range_history_frontier(),
                 )
             })
-            .map_err(|error| format!("initial composer history frontier was rejected: {error}"))?;
+            .map_err(|_| "initial composer history frontier was rejected".to_owned())?;
         let mut this = Self {
             input,
             service,
@@ -99,6 +92,7 @@ impl MainWindowConversationComposer {
             image_surface_focus: cx.focus_handle(),
             image_surface_attachment: None,
             pending_marker_removal: None,
+            propagated_clipboard: None,
             propagated_cut: None,
             pending_marker_metadata: None,
             admitted_positions: None,
@@ -125,11 +119,18 @@ impl MainWindowConversationComposer {
                     this.begin_propagated_clipboard(ClipboardKind::Cut, window, cx)
                 }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Paste) => {
-                    cx.emit(MainWindowConversationComposerEvent::RichPastePropagated);
+                    cx.emit(MainWindowConversationComposerEvent::RichPastePropagated {
+                        selection: this.selection,
+                    });
+                }
+                RangeTextInputEvent::CommandPropagated(TextInputCommand::Enter) => {
+                    cx.emit(MainWindowConversationComposerEvent::SubmitPropagated {
+                        selection: this.selection,
+                    });
                 }
                 RangeTextInputEvent::InlineObjectActivated(activation) => {
                     if let Err(error) = this.activate_marker(*activation, window, cx) {
-                        this.last_error = Some(error.to_string());
+                        this.last_error = Some("composer marker activation was rejected".into());
                     }
                 }
                 RangeTextInputEvent::InlineObjectRealizationLost(loss) => {

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use beryl_home_store::CommandCancellation;
 use gpui_text_input::{
     ByteRange, ClipboardCompletion, ClipboardId, ClipboardKind, ClipboardLimits, ClipboardProgress,
     ClipboardWriteRequest, InlineObjectGap, InlineObjectNeighbor, MutationBeginRequest,
@@ -22,7 +21,7 @@ use crate::main_window::{
 mod collection;
 mod paging;
 
-pub(super) use collection::{PropagatedClipboardCollection, collect};
+pub(super) use collection::{ActivePropagatedClipboard, PropagatedClipboardAction};
 use paging::{cursor_after_gap, deletion_caret, deletion_extent, read_cut_page};
 
 pub(super) struct ActivePropagatedCut {
@@ -108,7 +107,7 @@ pub(super) fn prepare_cut_after_write(
             &[replacement.start(), replacement.end()],
             proof_limits,
         )
-        .map_err(|error| format!("composer cut position proof failed: {error}"))?;
+        .map_err(|_| "composer cut position proof failed".to_owned())?;
     let mut scan = PropagatedCutScan::new(
         replacement,
         mutation_limits,
@@ -153,7 +152,7 @@ impl PreparedPropagatedCut {
         let replacement = deletion.selection();
         let proposal = deletion
             .proposal(operation, replacement)
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer cut proposal was rejected".to_owned())?;
         let intended_extent = deletion_extent(deletion)?;
         let intended = MutationPositions::collapsed(deletion_caret(replacement));
         let mut positions = Vec::with_capacity(5);
@@ -172,7 +171,7 @@ impl PreparedPropagatedCut {
             MutationBeginRequest::new(proposal, MutationCursor::new(0), MutationCursor::new(0));
         let key = input
             .begin_host_mutation(begin, &positions, &proof.text, &proof.objects, cx)
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer cut mutation start was rejected".to_owned())?;
         Ok(ActivePropagatedCut {
             key,
             scan,
@@ -216,7 +215,7 @@ impl ActivePropagatedCut {
                 MutationCursor::new(self.next_cursor.get().saturating_add(1)),
                 items,
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "composer cut mutation page was rejected".to_owned())?;
             self.object_count = self.object_count.saturating_add(object_count);
             self.item_count = self.item_count.saturating_add(item_count);
             self.next_cursor = page.next_cursor();
@@ -224,7 +223,7 @@ impl ActivePropagatedCut {
             self.cumulative_identity = page.cumulative_identity();
             input
                 .submit_mutation_page(page, cx)
-                .map_err(|error| error.to_string())?;
+                .map_err(|_| "composer cut mutation page submission was rejected".to_owned())?;
             if item_count == 0 {
                 return Err("composer cut prepared an empty mutation page".into());
             }
@@ -269,7 +268,7 @@ impl ActivePropagatedCut {
                 ),
                 cx,
             )
-            .map_err(|error| error.to_string())
+            .map_err(|_| "composer cut mutation finish was rejected".to_owned())
     }
 
     pub(super) fn next_page_request(&self) -> Option<PropagatedCutPageRequest> {

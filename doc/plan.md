@@ -29,36 +29,22 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 182: Enforce Bounded Range-Backed Widget Realization (finished)
+# Phase 183: Complete Composer Host Budgets And Streamed Commands (finished)
 
-The owned range widget now enforces validated nonzero retained-memory and one-unit-per-frame
-realization budgets with exact admission and high-water diagnostics. Priority, sparse logical
-extent, two-sided filler coverage, incremental same-anchor and alias traversal, typed response
-custody, last-wins intents, atomic preallocated transition queues, and lifecycle release remain
-bounded independently of viewport, draft, marker, or resident-page scale. The accepted fork is
-published and canonically pinned at `2e74f459953bc16f15826c51e165951e5b1f974b`.
+The Beryl composer host now validates every finite production realization budget, forwards typed
+content-free saturation and filler diagnostics without another scroll owner, and exposes
+selection-qualified mounted submit and rich-paste commands. Clipboard copy and cut advance through
+one lifecycle-cancellable bounded page flight at a time, reject contiguous over-limit values
+atomically, write before cut, and fence page and post-write preparation completions across
+activation, rebind, and unmount without payload-bearing failures. The owned widget's canonical
+empty-successor geometry correction is published and pinned at
+`e7561d75dd03219627ceed59d36ecc0684197d7f`.
 
-Completion evidence: fork formatting and locked all-target checks passed; the full serial nextest
-matrix passed 343/343, including the deterministic 2 MiB host, pathological finite viewport,
-same-anchor population beyond resident capacity, exact-fit and one-under ownership, incremental
-continuations, public response scheduling, atomic queue replacement, and disposal/late-response
-cases. Repeated independent adversarial reviews drove the final custody, accounting, filler,
-continuation, and liveness corrections; the final review accepted the complete candidate with no
-remaining Phase 182 blocker. Sustained mounted stress remains explicitly deferred to the Phase 185
-Operator AC-power gate.
-
-# Phase 183: Complete Composer Host Budgets And Streamed Commands (pending)
-
-Make the Beryl composer host own validated production realization budgets and content-free typed
-diagnostics, propagate the dependency's saturation/filler state without a second scroll surface,
-and classify expected stale or superseded work without a fatal payload-bearing error. Complete the
-selection-qualified mounted Enter/submission and rich-paste command paths. Replace synchronous
-mutex-held clipboard traversal with lifecycle-cancellable bounded quanta and a typed contiguous-
-clipboard-limit outcome, preserving exact cut-after-write and activation/unmount fencing.
-
-Verify nonzero configuration, command routing, bounded scheduling, rapid re-anchor, typed
-saturation, content-free failures, clipboard cancellation and release, activation, rebind, and
-unmount without whole draft, request payload, demand collection, or compatibility accounting.
+Completion evidence: the dependency's full serial nextest matrix passed 345/345 and its locked
+all-target check passed; canonical locked Cargo metadata and the focused app check passed; the two
+composer integration targets passed 9/9 against the exact-git pin. Independent semantic review
+accepted the lifecycle, payload, resource, routing, and zero-length geometry boundaries after
+corrections. Sustained mounted stress remains deferred to the Phase 185 Operator AC-power gate.
 
 # Phase 184: Accept Very-Large Draft Storage And History (pending)
 

@@ -11,7 +11,7 @@ pub(super) fn read_cut_page(
         request.selection.start().byte_offset,
         request.selection.end().byte_offset,
     )
-    .map_err(|error| format!("composer cut byte range is malformed: {error:?}"))?;
+    .map_err(|_| "composer cut byte range is malformed".to_owned())?;
     let demand = ObjectDemandEnvelope::range(
         range,
         request.cursor,
@@ -19,7 +19,7 @@ pub(super) fn read_cut_page(
         request.max_objects,
         request.max_retained_bytes,
     )
-    .map_err(|error| format!("composer cut object demand is malformed: {error:?}"))?;
+    .map_err(|_| "composer cut object demand is malformed".to_owned())?;
     let key = ObjectRequestKey::new(
         ObjectRequestId::new(request.request_id),
         binding.binding(),
@@ -28,10 +28,10 @@ pub(super) fn read_cut_page(
         ObjectPurpose::Clipboard,
         demand,
     )
-    .map_err(|error| format!("composer cut object request is malformed: {error:?}"))?;
+    .map_err(|_| "composer cut object request is malformed".to_owned())?;
     let page = slot
         .read_selected_predecessor_object_page(store, selection, ObjectRequest::new(key))
-        .map_err(|error| format!("composer cut object dispatch failed: {error}"))?;
+        .map_err(|_| "composer cut object dispatch failed".to_owned())?;
     prepare_cut_page(request, page)
 }
 
@@ -127,9 +127,9 @@ fn removal_target(
         SourcePosition::new(fact.anchor, start_gap),
         SourcePosition::new(fact.anchor, end_gap),
     )
-    .map_err(|error| format!("composer cut marker target is malformed: {error:?}"))?;
+    .map_err(|_| "composer cut marker target is malformed".to_owned())?;
     ObjectTarget::new(range, fact.id, fact.order)
-        .map_err(|error| format!("composer cut marker target was rejected: {error}"))
+        .map_err(|_| "composer cut marker target was rejected".to_owned())
 }
 
 impl PendingCutMarker {

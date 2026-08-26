@@ -294,14 +294,7 @@ fn translate_marker_result(
         result.requested_side_complete(),
         continuation,
     )
-    .map_err(|error| {
-        MainWindowComposerDispatchError::ObjectPage(format!(
-            "{error}; demand={:?}; objects={:?}; preceding={preceding:?}; following={following:?}; complete={}; continuation={continuation:?}",
-            key.demand(),
-            result.markers(),
-            result.requested_side_complete(),
-        ))
-    })
+    .map_err(|_| MainWindowComposerDispatchError::ObjectPage("object page was rejected".into()))
 }
 
 fn storage_cursor(
