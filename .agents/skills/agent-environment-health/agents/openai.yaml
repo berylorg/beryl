@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Environment Health"
+  short_description: "Keep agent-owned compute resources bounded"
+  default_prompt: "Use $agent-environment-health to keep task-created resources bounded and clean them up safely."
