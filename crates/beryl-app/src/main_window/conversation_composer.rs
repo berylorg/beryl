@@ -15,6 +15,158 @@ pub struct MainWindowConversationComposerConfig {
     widget: RangeTextInputConfig,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowComposerResidencyBound {
+    text_pages: usize,
+    text_bytes: usize,
+    object_pages: usize,
+    objects: usize,
+    object_bytes: usize,
+}
+
+impl MainWindowComposerResidencyBound {
+    fn from_widget(widget: &RangeTextInputConfig) -> Option<Self> {
+        Some(Self {
+            text_pages: widget
+                .residency_limits
+                .max_resident_pages()
+                .checked_add(widget.residency_limits.max_pending_requests())?,
+            text_bytes: widget
+                .residency_limits
+                .max_resident_bytes()
+                .checked_add(usize::try_from(widget.residency_limits.max_pending_bytes()).ok()?)?,
+            object_pages: widget
+                .object_residency_limits
+                .max_resident_pages()
+                .checked_add(widget.object_residency_limits.max_pending_requests())?,
+            objects: widget
+                .object_residency_limits
+                .max_resident_objects()
+                .checked_add(widget.object_residency_limits.max_pending_objects())?,
+            object_bytes: widget
+                .object_residency_limits
+                .max_resident_bytes()
+                .checked_add(widget.object_residency_limits.max_pending_bytes())?,
+        })
+    }
+
+    pub(super) fn checked_add(self, other: Self) -> Option<Self> {
+        Some(Self {
+            text_pages: self.text_pages.checked_add(other.text_pages)?,
+            text_bytes: self.text_bytes.checked_add(other.text_bytes)?,
+            object_pages: self.object_pages.checked_add(other.object_pages)?,
+            objects: self.objects.checked_add(other.objects)?,
+            object_bytes: self.object_bytes.checked_add(other.object_bytes)?,
+        })
+    }
+
+    pub const fn text_pages(self) -> usize {
+        self.text_pages
+    }
+
+    pub const fn text_bytes(self) -> usize {
+        self.text_bytes
+    }
+
+    pub const fn object_pages(self) -> usize {
+        self.object_pages
+    }
+
+    pub const fn objects(self) -> usize {
+        self.objects
+    }
+
+    pub const fn object_bytes(self) -> usize {
+        self.object_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowComposerActivationResidency {
+    bound: MainWindowComposerResidencyBound,
+    current_text_pages: usize,
+    current_text_bytes: usize,
+    current_objects: usize,
+    current_object_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct MainWindowComposerResidencyUsage {
+    text_pages: usize,
+    text_bytes: usize,
+    objects: usize,
+    object_bytes: usize,
+}
+
+impl MainWindowComposerResidencyUsage {
+    pub(super) fn from_current(
+        current: &gpui_text_input::RangeRealizationOwnership,
+    ) -> Option<Self> {
+        Some(Self {
+            text_pages: current
+                .resident_pages
+                .checked_add(current.pending_page_requests)?,
+            text_bytes: current
+                .resident_page_bytes
+                .checked_add(current.pending_page_bytes)?,
+            objects: current
+                .resident_objects
+                .checked_add(current.pending_object_requests)?,
+            object_bytes: current
+                .resident_object_bytes
+                .checked_add(current.pending_object_bytes)?,
+        })
+    }
+
+    pub(super) fn checked_add(self, other: Self) -> Option<Self> {
+        Some(Self {
+            text_pages: self.text_pages.checked_add(other.text_pages)?,
+            text_bytes: self.text_bytes.checked_add(other.text_bytes)?,
+            objects: self.objects.checked_add(other.objects)?,
+            object_bytes: self.object_bytes.checked_add(other.object_bytes)?,
+        })
+    }
+
+    pub(super) fn admit(
+        self,
+        bound: MainWindowComposerResidencyBound,
+    ) -> Option<MainWindowComposerActivationResidency> {
+        (self.text_pages <= bound.text_pages
+            && self.text_bytes <= bound.text_bytes
+            && self.objects <= bound.objects
+            && self.object_bytes <= bound.object_bytes)
+            .then_some(MainWindowComposerActivationResidency {
+                bound,
+                current_text_pages: self.text_pages,
+                current_text_bytes: self.text_bytes,
+                current_objects: self.objects,
+                current_object_bytes: self.object_bytes,
+            })
+    }
+}
+
+impl MainWindowComposerActivationResidency {
+    pub const fn bound(self) -> MainWindowComposerResidencyBound {
+        self.bound
+    }
+
+    pub const fn current_text_pages(self) -> usize {
+        self.current_text_pages
+    }
+
+    pub const fn current_text_bytes(self) -> usize {
+        self.current_text_bytes
+    }
+
+    pub const fn current_objects(self) -> usize {
+        self.current_objects
+    }
+
+    pub const fn current_object_bytes(self) -> usize {
+        self.current_object_bytes
+    }
+}
+
 impl MainWindowConversationComposerConfig {
     pub fn new(
         selection: MainWindowComposerSelectionIdentity,
@@ -75,6 +227,11 @@ impl MainWindowConversationComposerConfig {
 
     pub(super) const fn mutation_limits(&self) -> gpui_text_input::MutationLimits {
         self.widget.mutation_limits
+    }
+
+    pub(super) fn residency_bound(&self) -> Result<MainWindowComposerResidencyBound, String> {
+        MainWindowComposerResidencyBound::from_widget(&self.widget)
+            .ok_or_else(|| "composer residency bound overflowed".to_owned())
     }
 
     pub fn mount(

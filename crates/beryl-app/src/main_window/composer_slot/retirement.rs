@@ -5,6 +5,38 @@ use super::*;
 use crate::composer_host::ComposerHostServiceDisposalCompletion;
 
 impl MainWindowComposerSlot {
+    pub fn release_failed_pending(
+        &mut self,
+        store: &HomeStore,
+        receipt: MainWindowComposerActivationReceipt,
+    ) -> Result<MainWindowComposerRetirementAdvance, MainWindowComposerSlotError> {
+        self.ensure_receipt(receipt)?;
+        if !self.pending_source_is_current(store, receipt)? {
+            return self.dispose_failed_pending(store);
+        }
+        match self.retire_pending(store, receipt) {
+            Ok(advance) => Ok(advance),
+            Err(MainWindowComposerSlotError::TargetNotFresh) => self.dispose_failed_pending(store),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn dispose_failed_pending(
+        &mut self,
+        store: &HomeStore,
+    ) -> Result<MainWindowComposerRetirementAdvance, MainWindowComposerSlotError> {
+        let pending = self.pending.as_mut().unwrap();
+        match pending.host.dispose_composer_service(store)? {
+            ComposerHostServiceDisposalCompletion::Pending => {
+                Ok(MainWindowComposerRetirementAdvance::Pending)
+            }
+            ComposerHostServiceDisposalCompletion::Disposed => {
+                self.pending = None;
+                Ok(MainWindowComposerRetirementAdvance::Retired)
+            }
+        }
+    }
+
     pub fn retire_pending(
         &mut self,
         store: &HomeStore,
@@ -151,11 +183,17 @@ impl MainWindowComposerSlot {
         retirement_operation_id: DraftPieceOperationIdV1,
         host: SyndicComposerHost,
     ) {
+        let binding = host
+            .binding()
+            .expect("retiring composer host retains its activation binding");
+        let dispatcher = MainWindowComposerDispatcher::new(binding, &host);
         self.pending = Some(PendingComposer {
             receipt,
             claim,
             retirement_operation_id,
             host,
+            dispatcher,
+            source_selector: None,
             stage: PendingStage::Retiring,
             abandonment: None,
         });

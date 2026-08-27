@@ -9,6 +9,78 @@ impl MainWindowConversationComposer {
         self.selection
     }
 
+    pub fn is_pending_target(&self) -> bool {
+        matches!(self.route, MainWindowConversationComposerRoute::Pending(_))
+    }
+
+    pub fn pending_surface_ready(&self, cx: &App) -> bool {
+        self.is_pending_target()
+            && self.last_error.is_none()
+            && self
+                .input
+                .read_with(cx, |input, _| input.surface().is_some())
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_pending_seed_count(&self) -> usize {
+        self.initial_responses.len()
+    }
+
+    pub(in crate::main_window) const fn residency_bound(&self) -> MainWindowComposerResidencyBound {
+        self.residency_bound
+    }
+
+    pub(in crate::main_window) fn residency_usage(
+        &self,
+        cx: &App,
+    ) -> Result<MainWindowComposerResidencyUsage, String> {
+        let diagnostics = self
+            .input
+            .read_with(cx, |input, _| input.realization_diagnostics());
+        MainWindowComposerResidencyUsage::from_current(&diagnostics.current)
+            .ok_or_else(|| "composer residency usage overflowed".to_owned())
+    }
+
+    pub(in crate::main_window) fn attach_pending_realizer(
+        &mut self,
+        pending: &Entity<MainWindowConversationComposer>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.route != MainWindowConversationComposerRoute::Selected
+            || !pending.read(cx).is_pending_target()
+        {
+            return Err("pending composer realizer identity is stale".to_owned());
+        }
+        self.pending_realizer = Some(pending.downgrade());
+        cx.notify();
+        Ok(())
+    }
+
+    pub(in crate::main_window) fn promote_pending(
+        &mut self,
+        receipt: MainWindowComposerActivationReceipt,
+        selection: MainWindowComposerSelectionIdentity,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.route != MainWindowConversationComposerRoute::Pending(receipt)
+            || self.selection != selection
+            || self.service.selected_identity() != Some(selection)
+            || !self.pending_surface_ready(cx)
+        {
+            return Err("pending composer promotion was stale".to_owned());
+        }
+        self.initial_responses.clear();
+        self.route = MainWindowConversationComposerRoute::Selected;
+        self.input.update(cx, |input, input_cx| {
+            input.set_read_only(false, input_cx);
+            input.set_enabled(true, input_cx);
+        });
+        self.install_interactive_subscription(window, cx);
+        self.schedule_pump(window, cx);
+        Ok(())
+    }
+
     pub fn synchronize_lifecycle_selection(
         &mut self,
         expected: MainWindowComposerSelectionIdentity,

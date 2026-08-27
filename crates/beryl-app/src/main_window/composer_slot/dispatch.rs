@@ -78,6 +78,8 @@ pub enum MainWindowComposerDispatchError {
     StaleSelection,
     #[error("another composer request is being dispatched")]
     Busy,
+    #[error("an unpublished pending composer rejected an interactive request")]
+    PendingInteractionRejected,
     #[error("composer request cannot be represented by the bounded Syndic protocol")]
     Malformed,
     #[error("composer successor proof failed at {0}")]
@@ -94,7 +96,7 @@ pub enum MainWindowComposerDispatchError {
 
 pub(super) struct MainWindowComposerDispatcher {
     pub(super) binding: crate::composer_host::ComposerHostBinding,
-    last_host_request_id: u64,
+    pub(super) last_host_request_id: u64,
     in_dispatch: bool,
     mutation_begin: Option<(
         MutationKey,
@@ -156,6 +158,35 @@ impl MainWindowComposerSlot {
         Ok(MainWindowComposerInitialPresentation {
             selection,
             responses: selected.host.take_initial_responses().into_boxed_slice(),
+        })
+    }
+
+    pub fn take_pending_initial_presentation(
+        &mut self,
+        receipt: super::MainWindowComposerActivationReceipt,
+    ) -> Result<MainWindowComposerInitialPresentation, MainWindowComposerDispatchError> {
+        let pending = self
+            .pending
+            .as_mut()
+            .filter(|pending| pending.receipt == receipt)
+            .ok_or(MainWindowComposerDispatchError::StaleSelection)?;
+        let binding = pending
+            .host
+            .binding()
+            .ok_or(MainWindowComposerDispatchError::StaleSelection)?;
+        if pending.dispatcher.binding != binding
+            || pending.host.active_thread_id() != Some(pending.claim.thread_id())
+        {
+            return Err(MainWindowComposerDispatchError::StaleSelection);
+        }
+        let selection = MainWindowComposerSelectionIdentity {
+            window_id: self.window_id,
+            claim: pending.claim,
+            binding,
+        };
+        Ok(MainWindowComposerInitialPresentation {
+            selection,
+            responses: pending.host.take_initial_responses().into_boxed_slice(),
         })
     }
 
@@ -255,6 +286,59 @@ impl MainWindowComposerSlot {
             )
         });
         selected.dispatcher.in_dispatch = false;
+        result
+    }
+
+    pub fn dispatch_pending_request(
+        &mut self,
+        store: &HomeStore,
+        receipt: super::MainWindowComposerActivationReceipt,
+        selection: MainWindowComposerSelectionIdentity,
+        request: RangeTextInputRequest,
+        cancellation: &CommandCancellation,
+    ) -> Result<MainWindowComposerDispatchOutcome, MainWindowComposerDispatchError> {
+        if !matches!(
+            request,
+            RangeTextInputRequest::Page(_)
+                | RangeTextInputRequest::ObjectPage(_)
+                | RangeTextInputRequest::CancelPage(_)
+                | RangeTextInputRequest::ReleasePage(_)
+                | RangeTextInputRequest::CancelObjectPage(_)
+                | RangeTextInputRequest::ReleaseObjectPage(_)
+        ) {
+            return Err(MainWindowComposerDispatchError::PendingInteractionRejected);
+        }
+        let pending = self
+            .pending
+            .as_mut()
+            .filter(|pending| pending.receipt == receipt)
+            .ok_or(MainWindowComposerDispatchError::StaleSelection)?;
+        let binding = pending
+            .host
+            .binding()
+            .ok_or(MainWindowComposerDispatchError::StaleSelection)?;
+        let expected = MainWindowComposerSelectionIdentity {
+            window_id: self.window_id,
+            claim: pending.claim,
+            binding,
+        };
+        if selection != expected
+            || pending.dispatcher.binding != binding
+            || pending.host.active_thread_id() != Some(pending.claim.thread_id())
+            || pending.dispatcher.in_dispatch
+        {
+            return Err(MainWindowComposerDispatchError::StaleSelection);
+        }
+        pending.dispatcher.in_dispatch = true;
+        let result = dispatch(
+            &mut pending.host,
+            &mut pending.dispatcher,
+            store,
+            request,
+            Box::new([]),
+            cancellation,
+        );
+        pending.dispatcher.in_dispatch = false;
         result
     }
 }

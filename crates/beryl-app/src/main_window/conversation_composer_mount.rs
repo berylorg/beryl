@@ -13,13 +13,16 @@ use crate::composer_marker_seal::DraftMarkerSealService;
 
 use super::{
     MainWindowComposerActivationAdvance, MainWindowComposerActivationReceipt,
-    MainWindowComposerDisposalAdvance, MainWindowComposerPublishAdvance,
+    MainWindowComposerActivationResidency, MainWindowComposerDisposalAdvance,
+    MainWindowComposerPublishAdvance, MainWindowComposerResidencyBound,
     MainWindowComposerRetirementAdvance, MainWindowComposerSelectionIdentity,
-    MainWindowConversationComposer, MainWindowConversationComposerConfig,
-    MainWindowConversationComposerService,
+    MainWindowConversationComposer, MainWindowConversationComposerCompositeHit,
+    MainWindowConversationComposerConfig, MainWindowConversationComposerService,
+    MainWindowConversationComposerSurfaceSnapshot,
 };
 
 mod autosave;
+mod realization;
 
 pub use autosave::*;
 
@@ -59,6 +62,7 @@ pub enum MainWindowConversationComposerMountEvent {
 
 #[derive(Debug)]
 pub enum MainWindowConversationComposerMountFlushStart {
+    TargetPriming(MainWindowComposerActivationReceipt),
     WidgetFencePending(MainWindowComposerSelectionIdentity),
     Started(ComposerHostFlushAdmission),
 }
@@ -67,6 +71,8 @@ pub struct MainWindowConversationComposerMount {
     service: Arc<MainWindowConversationComposerService>,
     configurator: MainWindowConversationComposerConfigurator,
     contribution: Option<Entity<MainWindowConversationComposer>>,
+    pending: Option<Entity<MainWindowConversationComposer>>,
+    activation_residency_bound: Option<MainWindowComposerResidencyBound>,
     autosave: autosave::MainWindowConversationComposerAutosave,
     contribution_subscription: Option<Subscription>,
 }
@@ -103,6 +109,8 @@ impl MainWindowConversationComposerMount {
             service,
             configurator,
             contribution: Some(contribution),
+            pending: None,
+            activation_residency_bound: None,
             autosave: autosave::MainWindowConversationComposerAutosave::new(assets, marker_seals),
             contribution_subscription: None,
         };
@@ -113,6 +121,19 @@ impl MainWindowConversationComposerMount {
 
     pub fn contribution(&self) -> Option<Entity<MainWindowConversationComposer>> {
         self.contribution.clone()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_pending_contribution(&self) -> Option<Entity<MainWindowConversationComposer>> {
+        self.pending.clone()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_activation_residency(
+        &self,
+        cx: &App,
+    ) -> Option<MainWindowComposerActivationResidency> {
+        self.activation_residency(cx).ok().flatten()
     }
 
     pub fn selected_identity(&self) -> Option<MainWindowComposerSelectionIdentity> {
@@ -131,21 +152,40 @@ impl MainWindowConversationComposerMount {
     }
 
     pub fn begin_activation(
-        &self,
+        &mut self,
         claim: WindowClaimSelection,
         request: ComposerHostActivationRequest,
         retirement_operation_id: DraftPieceOperationIdV1,
         cancellation: &CommandCancellation,
     ) -> Result<MainWindowComposerActivationAdvance, String> {
+        if let Some(receipt) = self.service.pending_receipt() {
+            match self.service.retire_pending(receipt)? {
+                MainWindowComposerRetirementAdvance::Retired => {
+                    self.pending = None;
+                    self.activation_residency_bound = None;
+                }
+                MainWindowComposerRetirementAdvance::Pending => {
+                    return Err("superseded composer target is still retiring".to_owned());
+                }
+                MainWindowComposerRetirementAdvance::DepartedFreshBoundary => {
+                    return Err("superseded composer target departed fresh state".to_owned());
+                }
+            }
+        }
         self.service
             .begin_activation(claim, request, retirement_operation_id, cancellation)
     }
 
     pub fn retire_pending(
-        &self,
+        &mut self,
         receipt: MainWindowComposerActivationReceipt,
     ) -> Result<MainWindowComposerRetirementAdvance, String> {
-        self.service.retire_pending(receipt)
+        let advance = self.service.retire_pending(receipt)?;
+        if matches!(advance, MainWindowComposerRetirementAdvance::Retired) {
+            self.pending = None;
+            self.activation_residency_bound = None;
+        }
+        Ok(advance)
     }
 
     pub fn begin_publish(
@@ -154,7 +194,16 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountFlushStart, String> {
-        let expected = self.service.publish_preflight(receipt)?;
+        if !self.ensure_pending_composer(receipt, window, cx)? {
+            return Ok(MainWindowConversationComposerMountFlushStart::TargetPriming(receipt));
+        }
+        let expected = match self.service.publish_preflight(receipt) {
+            Ok(expected) => expected,
+            Err(error) => {
+                self.retire_failed_pending(receipt)?;
+                return Err(error);
+            }
+        };
         self.suspend_autosave()?;
         if !self.fence_contribution(expected, window, cx)? {
             return Ok(MainWindowConversationComposerMountFlushStart::WidgetFencePending(expected));
@@ -166,6 +215,7 @@ impl MainWindowConversationComposerMount {
             Err(error) => {
                 self.resume_contribution(window, cx)?;
                 self.refresh_autosave(window, cx)?;
+                self.retire_failed_pending(receipt)?;
                 Err(error)
             }
         }
@@ -215,17 +265,14 @@ impl MainWindowConversationComposerMount {
                 published,
             ));
         };
-        let config = (self.configurator)(selection)?;
-        let successor = cx.new(|composer_cx| {
-            MainWindowConversationComposer::new(
-                config,
-                self.service.clone(),
-                MainWindowConversationComposer::production_clipboard_writer(),
-                window,
-                composer_cx,
-            )
-            .expect("published composer contribution")
-        });
+        let successor = self
+            .pending
+            .take()
+            .ok_or_else(|| "published composer target is missing".to_owned())?;
+        self.activation_residency_bound = None;
+        successor.update(cx, |composer, composer_cx| {
+            composer.promote_pending(receipt, selection, window, composer_cx)
+        })?;
         self.contribution = Some(successor);
         self.subscribe_to_contribution(window, cx)?;
         self.initialize_autosave(window, cx)?;
@@ -274,6 +321,8 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountFlushStart, String> {
         let expected = self.service.disposal_preflight()?;
+        self.pending = None;
+        self.activation_residency_bound = None;
         self.suspend_autosave()?;
         if !self.fence_contribution(expected, window, cx)? {
             return Ok(MainWindowConversationComposerMountFlushStart::WidgetFencePending(expected));
@@ -336,6 +385,117 @@ impl MainWindowConversationComposerMount {
             }
             retained => Ok(MainWindowConversationComposerMountDisposalAdvance::Retained(retained)),
         }
+    }
+
+    fn ensure_pending_composer(
+        &mut self,
+        receipt: MainWindowComposerActivationReceipt,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        let selection = self
+            .service
+            .pending_identity(receipt)
+            .ok_or_else(|| "pending composer activation receipt is stale".to_owned())?;
+        if self.pending.is_none() {
+            let config = match (self.configurator)(selection) {
+                Ok(config) => config,
+                Err(error) => {
+                    self.activation_residency_bound = None;
+                    let _ = self.service.release_failed_pending(receipt)?;
+                    return Err(error);
+                }
+            };
+            let target_residency_bound = config.residency_bound()?;
+            let service = self.service.clone();
+            let selected_residency_bound = self
+                .contribution
+                .as_ref()
+                .ok_or_else(|| "selected composer contribution is missing".to_owned())?
+                .read(cx)
+                .residency_bound();
+            self.activation_residency_bound = Some(
+                selected_residency_bound
+                    .checked_add(target_residency_bound)
+                    .ok_or_else(|| "combined composer residency bound overflowed".to_owned())?,
+            );
+            self.pending = Some(cx.new(|composer_cx| {
+                MainWindowConversationComposer::new_pending(
+                    config,
+                    service,
+                    receipt,
+                    MainWindowConversationComposer::production_clipboard_writer(),
+                    window,
+                    composer_cx,
+                )
+                .expect("validated pending composer contribution")
+            }));
+            let pending = self.pending.as_ref().unwrap();
+            let contribution = self
+                .contribution
+                .as_ref()
+                .ok_or_else(|| "selected composer contribution is missing".to_owned())?;
+            contribution.update(cx, |composer, composer_cx| {
+                composer.attach_pending_realizer(pending, composer_cx)
+            })?;
+        }
+        let pending = self.pending.as_ref().unwrap();
+        if pending.read(cx).selection_identity() != selection
+            || !pending.read(cx).is_pending_target()
+        {
+            return Err("pending composer contribution identity is stale".to_owned());
+        }
+        if let Some(error) = pending.read(cx).last_error() {
+            let error = error.to_owned();
+            self.pending = None;
+            self.activation_residency_bound = None;
+            let _ = self.service.release_failed_pending(receipt)?;
+            return Err(error);
+        }
+        if self.activation_residency(cx)?.is_none() {
+            self.pending = None;
+            self.activation_residency_bound = None;
+            let _ = self.service.release_failed_pending(receipt)?;
+            return Err("combined composer residency exceeded its activation bound".to_owned());
+        }
+        Ok(pending.read(cx).pending_surface_ready(cx))
+    }
+
+    fn activation_residency(
+        &self,
+        cx: &App,
+    ) -> Result<Option<MainWindowComposerActivationResidency>, String> {
+        let Some(bound) = self.activation_residency_bound else {
+            return Ok(None);
+        };
+        let selected = self
+            .contribution
+            .as_ref()
+            .ok_or_else(|| "selected composer contribution is missing".to_owned())?
+            .read(cx)
+            .residency_usage(cx)?;
+        let pending = self
+            .pending
+            .as_ref()
+            .ok_or_else(|| "pending composer contribution is missing".to_owned())?
+            .read(cx)
+            .residency_usage(cx)?;
+        Ok(selected
+            .checked_add(pending)
+            .and_then(|usage| usage.admit(bound)))
+    }
+
+    fn retire_failed_pending(
+        &mut self,
+        receipt: MainWindowComposerActivationReceipt,
+    ) -> Result<(), String> {
+        if self.service.pending_receipt() != Some(receipt) {
+            return Ok(());
+        }
+        self.pending = None;
+        self.activation_residency_bound = None;
+        let _ = self.service.release_failed_pending(receipt)?;
+        Ok(())
     }
 
     fn fence_contribution(

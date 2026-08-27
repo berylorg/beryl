@@ -4,7 +4,10 @@ use gpui_text_input::{MutationOutcome, RangeTextInput, RangeTextInputRequest};
 
 use crate::composer_host::ComposerHostMutationOutcome;
 
-use super::{MainWindowComposerDispatchOutcome, MainWindowConversationComposer};
+use super::{
+    MainWindowComposerDispatchOutcome, MainWindowConversationComposer,
+    MainWindowConversationComposerRoute, MainWindowConversationComposerService,
+};
 
 struct MainWindowConversationComposerDispatch {
     initiating_selection: crate::main_window::MainWindowComposerSelectionIdentity,
@@ -28,6 +31,17 @@ impl MainWindowConversationComposer {
         let Some(request) = request else {
             self.pump_edit_proof(window, cx);
             return;
+        };
+        let request = match self.deliver_next_initial_response(request, window, cx) {
+            Ok(Some(request)) => request,
+            Ok(None) => {
+                self.schedule_pump(window, cx);
+                return;
+            }
+            Err(error) => {
+                self.last_error = Some(error);
+                return;
+            }
         };
         if let Err(error) = self.observe_operation(&request) {
             self.last_error = Some(error);
@@ -58,6 +72,7 @@ impl MainWindowConversationComposer {
         };
         let service = self.service.clone();
         let selection = self.selection;
+        let route = self.route;
         let proof_limits = self.proof_limits;
         let marker_metadata = self.marker_metadata_for_request(&request);
         let cancellation = CommandCancellation::new();
@@ -72,15 +87,26 @@ impl MainWindowConversationComposer {
                 .slot
                 .lock()
                 .map_err(|_| "conversation composer service lock failed".to_owned())?;
-            let outcome = slot
-                .dispatch_selected_request(
-                    &service.store,
-                    selection,
-                    request,
-                    marker_metadata,
-                    &cancellation,
-                )
-                .map_err(|_| "composer dispatch failed".to_owned())?;
+            let outcome = match route {
+                MainWindowConversationComposerRoute::Selected => slot
+                    .dispatch_selected_request(
+                        &service.store,
+                        selection,
+                        request,
+                        marker_metadata,
+                        &cancellation,
+                    )
+                    .map_err(|error| format!("composer dispatch failed: {error}"))?,
+                MainWindowConversationComposerRoute::Pending(receipt) => slot
+                    .dispatch_pending_request(
+                        &service.store,
+                        receipt,
+                        selection,
+                        request,
+                        &cancellation,
+                    )
+                    .map_err(|error| format!("pending composer dispatch failed: {error}"))?,
+            };
             let proof = match &outcome {
                 MainWindowComposerDispatchOutcome::Mutation {
                     key,
@@ -102,9 +128,13 @@ impl MainWindowConversationComposer {
                 }
                 _ => None,
             };
-            let settled_selection = slot
-                .selected_identity()
-                .ok_or_else(|| "composer selection disappeared after dispatch".to_owned())?;
+            let settled_selection = match route {
+                MainWindowConversationComposerRoute::Selected => slot.selected_identity(),
+                MainWindowConversationComposerRoute::Pending(receipt) => {
+                    slot.pending_identity(receipt)
+                }
+            }
+            .ok_or_else(|| "composer selection disappeared after dispatch".to_owned())?;
             drop(slot);
             let cut_page = cut_page_request
                 .map(|request| {
@@ -127,7 +157,7 @@ impl MainWindowConversationComposer {
                 if !this.settle_flight(flight) {
                     return;
                 }
-                if let Err(error) = this.finish(result, window, cx) {
+                if let Err(error) = this.finish(route, result, window, cx) {
                     this.last_error = Some(error);
                 }
                 this.schedule_pump(window, cx);
@@ -175,7 +205,7 @@ impl MainWindowConversationComposer {
     }
 
     fn pump_edit_proof(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.is_live() {
+        if !self.is_live() || !matches!(self.route, MainWindowConversationComposerRoute::Selected) {
             return;
         }
         let Some(positions) = self.input.update(cx, |input, _| {
@@ -228,7 +258,12 @@ impl MainWindowConversationComposer {
                 if !this.settle_flight(flight) {
                     return;
                 }
-                if let Err(error) = this.finish(result, window, cx) {
+                if let Err(error) = this.finish(
+                    MainWindowConversationComposerRoute::Selected,
+                    result,
+                    window,
+                    cx,
+                ) {
                     this.last_error = Some(error);
                 }
                 this.schedule_pump(window, cx);
@@ -239,17 +274,31 @@ impl MainWindowConversationComposer {
 
     fn finish(
         &mut self,
+        route: MainWindowConversationComposerRoute,
         result: Result<Box<MainWindowConversationComposerDispatch>, String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        let route_is_current = |service: &MainWindowConversationComposerService,
+                                route: MainWindowConversationComposerRoute,
+                                selection| match route {
+            MainWindowConversationComposerRoute::Selected => {
+                service.selected_identity() == Some(selection)
+            }
+            MainWindowConversationComposerRoute::Pending(receipt) => {
+                service.pending_identity(receipt) == Some(selection)
+            }
+        };
+        if route != self.route {
+            return Ok(());
+        }
         let result = match result {
             Ok(result) => result,
-            Err(_) if self.service.selected_identity() != Some(self.selection) => return Ok(()),
+            Err(_) if !route_is_current(&self.service, route, self.selection) => return Ok(()),
             Err(error) => return Err(error),
         };
         if result.initiating_selection != self.selection
-            || self.service.selected_identity() != Some(result.settled_selection)
+            || !route_is_current(&self.service, route, result.settled_selection)
         {
             return Ok(());
         }

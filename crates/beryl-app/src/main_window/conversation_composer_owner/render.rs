@@ -224,11 +224,29 @@ impl MainWindowConversationComposer {
 
 impl Render for MainWindowConversationComposer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let selected = !self.is_pending_target();
+        let pending_realizer = self
+            .pending_realizer
+            .as_ref()
+            .and_then(|pending| pending.upgrade());
         div()
-            .id("conversation-composer-root")
-            .debug_selector(|| "conversation-composer-root".to_owned())
+            .id(("conversation-composer-root", cx.entity_id()))
             .relative()
             .size_full()
+            .when(selected, |root| {
+                root.debug_selector(|| "conversation-composer-root".to_owned())
+            })
+            .children(pending_realizer.map(|pending| {
+                div().absolute().size_full().overflow_hidden().child(
+                    div()
+                        .debug_selector(|| "conversation-composer-pending-realization".to_owned())
+                        .absolute()
+                        .left_full()
+                        .size_full()
+                        .opacity(0.)
+                        .child(pending),
+                )
+            }))
             .child(self.input.clone())
             .children(
                 self.image_surfaces

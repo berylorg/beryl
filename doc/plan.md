@@ -38,7 +38,7 @@ the exact Phase 184 acquisition maximum passed their focused serial matrix; full
 13/13. Independent semantic review accepted the durable frontier ordering and confirmed that no
 validation, bound, receipt, reconciliation, durability, or publication rule was weakened.
 
-# Phase 186: Establish Pending Composer Activation Priming (pending)
+# Phase 186: Establish Pending Composer Activation Priming (wip)
 
 Replace synchronous-complete composer activation with one first-class receipt-qualified unpublished
 pending target. Seed it with the bounded initial responses, then route its ordinary text, object,
@@ -55,6 +55,14 @@ one pending target and make the initial-demand count a seed bound rather than a 
 Prove small and multi-page activation, predecessor edits before the fence, every terminal path,
 bounded combined residency, zero pending focus/hit/accessibility/event admission, and zero hidden
 selected contribution; close one fresh independent semantic review.
+
+Safe-stop milestone: small clean-generation activation, request-20 incremental priming with a real
+pre-fence predecessor edit, exact promotion, terminal release, source drift, noninteraction, Phase
+177, and both Phase 179 targets passed. The retained post-promotion edit proof now reaches selected
+dispatch but exposes one unfinished request-identity handoff: promotion currently rebuilds selected
+dispatch behind a later pending-flight request id, so the next request is rejected as duplicate or
+stale. Resume by transferring the exact pending dispatcher frontier with the promoted entity, then
+rerun Phase 186, Phase 181, focused regressions, final locked checks, and independent review.
 
 # Phase 187: Accept Mounted Composer Integration At Large Scale (pending)
 

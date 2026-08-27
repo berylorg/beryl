@@ -79,6 +79,36 @@ impl MainWindowConversationComposerService {
         self.slot.lock().ok()?.selected_identity()
     }
 
+    pub fn pending_identity(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+    ) -> Option<MainWindowComposerSelectionIdentity> {
+        self.slot.lock().ok()?.pending_identity(receipt)
+    }
+
+    pub fn pending_receipt(&self) -> Option<super::MainWindowComposerActivationReceipt> {
+        self.slot.lock().ok()?.pending_receipt()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_pending_host_request_id(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+    ) -> Option<u64> {
+        self.slot.lock().ok()?.test_pending_host_request_id(receipt)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_activation_after_open_fault(
+        &self,
+        fault: impl FnOnce(&HomeStore, syndic_storage::SyndicStorage) + Send + 'static,
+    ) {
+        self.slot
+            .lock()
+            .unwrap()
+            .test_arm_activation_after_open_fault(fault);
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn test_cancel_next_mutation_commit(&self) {
         assert!(
@@ -251,6 +281,17 @@ impl MainWindowConversationComposerService {
             .map_err(|_| "conversation composer service operation failed".to_owned())
     }
 
+    pub(in crate::main_window) fn release_failed_pending(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+    ) -> Result<super::MainWindowComposerRetirementAdvance, String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .release_failed_pending(&self.store, receipt)
+            .map_err(|_| "conversation composer service operation failed".to_owned())
+    }
+
     pub(in crate::main_window) fn begin_publish(
         &self,
         receipt: super::MainWindowComposerActivationReceipt,
@@ -266,17 +307,11 @@ impl MainWindowConversationComposerService {
         &self,
         receipt: super::MainWindowComposerActivationReceipt,
     ) -> Result<MainWindowComposerSelectionIdentity, String> {
-        let slot = self
-            .slot
+        self.slot
             .lock()
-            .map_err(|_| "conversation composer service lock failed".to_owned())?;
-        if slot.pending_receipt() != Some(receipt)
-            || slot.pending_status() != Some(super::MainWindowComposerPendingStatus::Ready)
-            || slot.selected_identity() != Some(receipt.expected_prior())
-        {
-            return Err("conversation composer publication preflight is stale".to_owned());
-        }
-        Ok(receipt.expected_prior())
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .publish_preflight(&self.store, receipt)
+            .map_err(|_| "conversation composer publication preflight is stale".to_owned())
     }
 
     pub(in crate::main_window) fn advance_publish(
@@ -417,6 +452,25 @@ impl MainWindowConversationComposerService {
             .take_selected_initial_presentation(selection)
             .map(|presentation| presentation.into_responses())
             .map_err(|_| "conversation composer service operation failed".to_owned())
+    }
+
+    pub(super) fn take_pending_initial_presentation(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+    ) -> Result<
+        (
+            MainWindowComposerSelectionIdentity,
+            Box<[crate::composer_host::ComposerHostResponse]>,
+        ),
+        String,
+    > {
+        let presentation = self
+            .slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .take_pending_initial_presentation(receipt)
+            .map_err(|_| "conversation composer service operation failed".to_owned())?;
+        Ok((presentation.selection(), presentation.into_responses()))
     }
 
     pub(super) fn release_widget_work(

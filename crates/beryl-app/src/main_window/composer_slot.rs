@@ -1,11 +1,14 @@
 use beryl_home_store::{CommandCancellation, HomeStore};
 use beryl_model::WindowId;
 use beryl_state::{AssetState, WindowClaimSelection};
-use syndic_storage::{DraftPieceOperationIdV1, SyndicStorage};
+use syndic_storage::{
+    DraftEditorCurrentSelectorV1, DraftPieceOperationIdV1, SyndicPointReadLimit, SyndicStorage,
+};
 
 use crate::composer_host::{
-    ComposerHostActivationOutcome, ComposerHostActivationRequest, ComposerHostFlushAdmission,
-    ComposerHostFlushAdvance, ComposerHostFlushPurpose, ComposerHostFlushState, SyndicComposerHost,
+    ComposerHostActivationOutcome, ComposerHostActivationRequest, ComposerHostError,
+    ComposerHostFlushAdmission, ComposerHostFlushAdvance, ComposerHostFlushPurpose,
+    ComposerHostFlushState, SyndicComposerHost,
 };
 use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 
@@ -150,6 +153,35 @@ impl MainWindowComposerSlot {
         self.pending.as_ref().map(|pending| pending.receipt)
     }
 
+    pub fn pending_identity(
+        &self,
+        receipt: MainWindowComposerActivationReceipt,
+    ) -> Option<MainWindowComposerSelectionIdentity> {
+        let pending = self
+            .pending
+            .as_ref()
+            .filter(|pending| pending.receipt == receipt)?;
+        let binding = pending.host.binding()?;
+        (pending.dispatcher.binding == binding
+            && pending.host.active_thread_id() == Some(pending.claim.thread_id()))
+        .then_some(MainWindowComposerSelectionIdentity {
+            window_id: self.window_id,
+            claim: pending.claim,
+            binding,
+        })
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_pending_host_request_id(
+        &self,
+        receipt: MainWindowComposerActivationReceipt,
+    ) -> Option<u64> {
+        self.pending
+            .as_ref()
+            .filter(|pending| pending.receipt == receipt)
+            .map(|pending| pending.dispatcher.last_host_request_id)
+    }
+
     pub fn pending_status(&self) -> Option<MainWindowComposerPendingStatus> {
         self.pending.as_ref().map(|pending| match pending.stage {
             PendingStage::Ready => MainWindowComposerPendingStatus::Ready,
@@ -213,6 +245,7 @@ impl MainWindowComposerSlot {
         let expected_prior = self
             .selected_identity()
             .ok_or(MainWindowComposerSlotError::Disposed)?;
+        let source_selector = current_selector(self.storage, store, request.thread_id())?;
         let generation = self
             .last_activation_generation
             .checked_add(1)
@@ -235,11 +268,17 @@ impl MainWindowComposerSlot {
         self.last_activation_generation = generation;
         match activation {
             Ok(ComposerHostActivationOutcome::Activated { .. }) => {
+                let binding = host
+                    .binding()
+                    .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
+                let dispatcher = MainWindowComposerDispatcher::new(binding, &host);
                 self.pending = Some(PendingComposer {
                     receipt,
                     claim,
                     retirement_operation_id,
                     host,
+                    dispatcher,
+                    source_selector: Some(source_selector),
                     stage: PendingStage::Ready,
                     abandonment: None,
                 });
@@ -280,7 +319,7 @@ impl MainWindowComposerSlot {
 
     pub fn begin_publish(
         &mut self,
-        _store: &HomeStore,
+        store: &HomeStore,
         receipt: MainWindowComposerActivationReceipt,
     ) -> Result<ComposerHostFlushAdmission, MainWindowComposerSlotError> {
         self.ensure_receipt(receipt)?;
@@ -289,6 +328,22 @@ impl MainWindowComposerSlot {
         }
         if !same_selected_host(self.selected_identity(), receipt.expected_prior) {
             return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        if !self.pending_source_is_current(store, receipt)? {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        if self
+            .selected
+            .as_ref()
+            .unwrap()
+            .host
+            .fresh_abandonment_request(receipt.open_operation_id)
+            .is_some()
+        {
+            self.pending.as_mut().unwrap().stage = PendingStage::AwaitingWidgetRelease;
+            return Ok(ComposerHostFlushAdmission::Satisfied(
+                ComposerHostFlushPurpose::ThreadSwitch,
+            ));
         }
         let admission = self
             .selected
@@ -309,6 +364,27 @@ impl MainWindowComposerSlot {
             }
         }
         Ok(admission)
+    }
+
+    pub fn publish_preflight(
+        &self,
+        store: &HomeStore,
+        receipt: MainWindowComposerActivationReceipt,
+    ) -> Result<MainWindowComposerSelectionIdentity, MainWindowComposerSlotError> {
+        self.ensure_receipt(receipt)?;
+        if !matches!(self.pending.as_ref().unwrap().stage, PendingStage::Ready) {
+            return Err(MainWindowComposerSlotError::TargetNotReady);
+        }
+        let current = self
+            .selected_identity()
+            .ok_or(MainWindowComposerSlotError::StaleActivationReceipt)?;
+        if !same_selected_host(Some(current), receipt.expected_prior) {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        if !self.pending_source_is_current(store, receipt)? {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        Ok(current)
     }
 
     pub fn advance_publish(
@@ -427,6 +503,38 @@ impl MainWindowComposerSlot {
             Ok(())
         }
     }
+
+    fn pending_source_is_current(
+        &self,
+        store: &HomeStore,
+        receipt: MainWindowComposerActivationReceipt,
+    ) -> Result<bool, MainWindowComposerSlotError> {
+        self.ensure_receipt(receipt)?;
+        let pending = self.pending.as_ref().unwrap();
+        let Some(expected) = pending.source_selector else {
+            return Ok(false);
+        };
+        if current_selector(self.storage, store, pending.claim.thread_id())? != expected {
+            return Ok(false);
+        }
+        let Some(binding) = pending.host.binding() else {
+            return Ok(false);
+        };
+        let head = self
+            .storage
+            .draft_editor_candidate_session(
+                store,
+                binding.candidate().draft_id(),
+                binding.candidate().session_id(),
+            )
+            .map_err(ComposerHostError::from)?;
+        Ok(matches!(
+            head,
+            syndic_storage::DraftEditorCandidateSessionReadOutcomeV1::Active(ref head)
+                if syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(head)
+                    == binding.candidate()
+        ))
+    }
 }
 
 fn same_selected_host(
@@ -457,4 +565,23 @@ fn draft_state_for_host(
         published_pair,
     )
     .map_err(|_| MainWindowComposerSlotError::IdentityMismatch)
+}
+
+fn current_selector(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    thread: beryl_model::SyndicThreadId,
+) -> Result<DraftEditorCurrentSelectorV1, MainWindowComposerSlotError> {
+    let current = storage
+        .current_draft(store, thread, SyndicPointReadLimit::new(65_536).unwrap())
+        .map_err(ComposerHostError::from)?
+        .ok_or(ComposerHostError::MissingCurrentDraft)?;
+    Ok(DraftEditorCurrentSelectorV1::new(
+        current.thread().id(),
+        current.thread().revision(),
+        current.draft().id(),
+        current.draft().revision(),
+        current.draft().piece_root(),
+        current.draft().history(),
+    ))
 }

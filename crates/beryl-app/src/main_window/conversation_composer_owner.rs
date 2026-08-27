@@ -1,6 +1,6 @@
 use gpui::{
     App, AppContext, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Subscription,
-    Window,
+    WeakEntity, Window,
 };
 use gpui_text_input::{
     ClipboardCompletion, ClipboardKind, ClipboardLimits, ClipboardWriteOutcome,
@@ -8,7 +8,7 @@ use gpui_text_input::{
     MutationLimits, OperationId, RangeSourceSelection, RangeTextInput, RangeTextInputEvent,
     RangeTextInputRequest, RealizedInlineObjectAnchor, TextInputCommand,
 };
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use crate::composer_host::ComposerHostImageMarkerMetadata;
 
@@ -17,18 +17,21 @@ use super::{
     ComposerMarkerMenu, MainWindowComposerActivationAdvance, MainWindowComposerActivationReceipt,
     MainWindowComposerAutosaveCaptureRequirement, MainWindowComposerDispatchOutcome,
     MainWindowComposerDisposalAdvance, MainWindowComposerImageSurfaces,
-    MainWindowComposerPendingStatus, MainWindowComposerPublishAdvance,
-    MainWindowComposerRetirementAdvance, MainWindowComposerSelectionIdentity,
-    MainWindowComposerWidgetRelease, MainWindowConversationComposerConfig,
+    MainWindowComposerPublishAdvance, MainWindowComposerResidencyBound,
+    MainWindowComposerResidencyUsage, MainWindowComposerRetirementAdvance,
+    MainWindowComposerSelectionIdentity, MainWindowComposerWidgetRelease,
+    MainWindowConversationComposerConfig,
 };
 
 mod clipboard;
 mod construction;
 mod dispatch;
 mod lifecycle;
+mod realization;
 mod render;
 mod service;
 
+pub use realization::*;
 pub use service::MainWindowConversationComposerService;
 
 pub type ComposerClipboardWriter =
@@ -60,10 +63,20 @@ enum MainWindowConversationComposerPhase {
     ReleaseFailed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MainWindowConversationComposerRoute {
+    Selected,
+    Pending(MainWindowComposerActivationReceipt),
+}
+
 pub struct MainWindowConversationComposer {
     input: Entity<RangeTextInput>,
     service: Arc<MainWindowConversationComposerService>,
     selection: MainWindowComposerSelectionIdentity,
+    route: MainWindowConversationComposerRoute,
+    pending_realizer: Option<WeakEntity<MainWindowConversationComposer>>,
+    residency_bound: MainWindowComposerResidencyBound,
+    initial_responses: VecDeque<crate::composer_host::ComposerHostResponse>,
     clipboard_writer: ComposerClipboardWriter,
     proof_limits: super::MainWindowComposerSuccessorProofLimits,
     clipboard_limits: ClipboardLimits,
