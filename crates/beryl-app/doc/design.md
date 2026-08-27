@@ -228,7 +228,7 @@ Keep independent main-window presentation responsive while process-wide services
   prefix, fragment bytes, or app-built reconstruction. It drives `syndic-storage` only by the exact
   `(draft, session, operation)` build endpoint while storage derives each next bounded staging
   window from durable custody. Each command consumes at most 256 physical pages/items under storage's
-  521-read and 34,144,256-byte acquisition ceilings, independently admits at most 256 fragments and
+  526-read and 34,471,936-byte acquisition ceilings, independently admits at most 256 fragments and
   65,536 inserted UTF-8 bytes, and advances a nonempty source-only window even when it produces no
   fragment. Storage completes the copy-on-write piece-tree, marker-identity-index, and marker-order-
   commitment successors and
@@ -370,10 +370,24 @@ Keep independent main-window presentation responsive while process-wide services
   success.
 - An in-flight save or reconciliation rearms autosave only while its captured timer generation remains current. A newer committed autosave-setting publication retains its interval, record revision, generation, and publication-time deadline anchor.
 - Thread activation keeps the prior coherent selection until the target claim, exact combined-root
-  binding, first required text and marker pages, and other activation facts are ready. It publishes
-  title, lineage, composer source, compact editor facts, composer-history scope, transcript seed,
-  runtime/root memory, and claim transition together; cancellation or failure leaves the prior
-  bundle authoritative.
+  binding, first coherent editor surface, and other activation facts are ready. Each window owns at
+  most one receipt-qualified unpublished target composer. Bounded initial responses only seed that
+  target; the same ordinary revision-qualified text, marker, geometry, cancellation, and release
+  requests continue incrementally under its configured credits without making the target selected
+  or interactive. Because canonical GPUI geometry realization advances through layout and
+  prepaint, the pending entity participates in one internal clipped transparent realization layer
+  sized to the target composer allocation. That layer is not a slot contribution, focus target,
+  hit-test target, accessibility surface, or input/event route. One explicit per-window activation
+  budget bounds the combined selected and pending editor residency, and the layer disappears on
+  every promotion, cancellation, failure, supersession, or disposal path. The prior composer
+  remains selected, visible, and writable until the final activation fence begins. Once the target
+  surface is coherent, the app fences and flushes the
+  predecessor, revalidates the pending receipt and source identities, then publishes title,
+  lineage, composer source, compact editor facts, composer-history scope, transcript seed,
+  runtime/root memory, claim transition, and pending-target promotion together. Cancellation,
+  failure, source drift, supersession, or disposal releases the unpublished target and leaves the
+  prior bundle authoritative; no hidden second selected composer or document-size initial-demand
+  threshold exists.
 - Lineage and activity snapshots are query generations with bounded resident pages, not complete
   ancestor or process-session collections. Composer history uses one fixed-capacity process pool of
   compact sealed Syndic input references and recalls content through range-backed copy-on-write

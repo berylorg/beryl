@@ -95,6 +95,18 @@ impl SyndicComposerHost {
             if cancellation.is_cancelled() {
                 return self.cancel_build_mutation(store, pending, &prepared);
             }
+            match self.advance_build_mutation(store, pending, &prepared)? {
+                Some(BuildCommandResult::Pending(next)) => {
+                    endpoint = next;
+                    pending.phase = ComposerHostMutationPhase::Building {
+                        prepared: prepared.clone(),
+                        endpoint,
+                    };
+                    continue;
+                }
+                Some(BuildCommandResult::Terminal(outcome)) => return Ok(outcome),
+                None => {}
+            }
             if let Some(next) = self.stage_next_build_window(store, pending, endpoint)? {
                 endpoint = next;
                 pending.phase = ComposerHostMutationPhase::Building {
@@ -103,7 +115,7 @@ impl SyndicComposerHost {
                 };
                 continue;
             }
-            match self.advance_build_mutation(store, pending, &prepared)? {
+            match self.settle_build_mutation(store, pending, &prepared)? {
                 BuildCommandResult::Pending(next) => {
                     endpoint = next;
                     pending.phase = ComposerHostMutationPhase::Building {
@@ -151,7 +163,7 @@ impl SyndicComposerHost {
         store: &HomeStore,
         pending: &mut ComposerHostMutationCoordinator,
         prepared: &PreparedDraftPieceEditV1,
-    ) -> Result<BuildCommandResult, ComposerHostError> {
+    ) -> Result<Option<BuildCommandResult>, ComposerHostError> {
         match self.storage.prepare_draft_piece_build_advance(
             store,
             prepared.header().draft_id(),
@@ -163,11 +175,12 @@ impl SyndicComposerHost {
                     .storage
                     .advance_draft_piece_edit(self.storage.revision(store)?, advance);
                 self.run_build_command(store, pending, prepared, contribution)
+                    .map(Some)
             }
-            Ok(None) => self.settle_build_mutation(store, pending, prepared),
-            Err(DraftPiecePrepareErrorV1::Rejected(reason)) => {
-                self.reject_build_mutation(store, pending, prepared, reason)
-            }
+            Ok(None) => Ok(None),
+            Err(DraftPiecePrepareErrorV1::Rejected(reason)) => self
+                .reject_build_mutation(store, pending, prepared, reason)
+                .map(Some),
             Err(error) => Err(error.into()),
         }
     }
