@@ -33,6 +33,9 @@ enum MainWindowConversationComposerFailureSettlement {
 
 enum MainWindowConversationComposerTaskError {
     RouteNotAdmitted,
+    CustodyNotDispatched {
+        settlement: Option<MainWindowConversationComposerFailureSettlement>,
+    },
     Exact {
         error: String,
         settlement: Option<MainWindowConversationComposerFailureSettlement>,
@@ -128,6 +131,12 @@ impl MainWindowConversationComposer {
             cancellation.cancel();
         }
         let task = cx.background_executor().spawn(async move {
+            #[cfg(feature = "test-faults")]
+            if matches!(route, MainWindowConversationComposerRoute::Pending(_))
+                && let Some(gate) = service.take_test_pending_dispatch_gate()
+            {
+                gate.await;
+            }
             let (outcome, proof, settled_selection) = {
                 let mut slot = service.slot.lock().map_err(|_| {
                     MainWindowConversationComposerTaskError::exact(
@@ -144,7 +153,11 @@ impl MainWindowConversationComposer {
                     }
                 };
                 if !admitted {
-                    return Err(MainWindowConversationComposerTaskError::RouteNotAdmitted);
+                    return Err(
+                        MainWindowConversationComposerTaskError::CustodyNotDispatched {
+                            settlement,
+                        },
+                    );
                 }
                 let outcome = match route {
                     MainWindowConversationComposerRoute::Selected => slot
@@ -407,13 +420,15 @@ impl MainWindowConversationComposer {
         let result = match result {
             Ok(result) => result,
             Err(MainWindowConversationComposerTaskError::RouteNotAdmitted) => return Ok(()),
-            Err(MainWindowConversationComposerTaskError::Exact { .. })
-                if !route_is_current(&self.service, route, self.route, self.selection) =>
-            {
+            Err(MainWindowConversationComposerTaskError::CustodyNotDispatched { settlement }) => {
+                self.settle_exact_dispatch_failure(settlement, cx)?;
                 return Ok(());
             }
             Err(MainWindowConversationComposerTaskError::Exact { error, settlement }) => {
                 self.settle_exact_dispatch_failure(settlement, cx)?;
+                if !route_is_current(&self.service, route, self.route, self.selection) {
+                    return Ok(());
+                }
                 return Err(error);
             }
         };

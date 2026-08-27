@@ -29,41 +29,14 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 185: Repair Composer Marker Staging Regression (finished)
+# Phase 186: Establish Pending Composer Activation Priming (finished)
 
-The composer host now advances available durable structural work before requesting another
-Receiving-only staging window and settles only when neither path can advance. Marker insert,
-replace, move, remove, later-page effects, noncommit, autosave, ordinary text, mounted autosave, and
-the exact Phase 184 acquisition maximum passed their focused serial matrix; full Phase 179 passed
-13/13. Independent semantic review accepted the durable frontier ordering and confirmed that no
-validation, bound, receipt, reconciliation, durability, or publication rule was weakened.
-
-# Phase 186: Establish Pending Composer Activation Priming (wip)
-
-Replace synchronous-complete composer activation with one first-class receipt-qualified unpublished
-pending target. Seed it with the bounded initial responses, then route its ordinary text, object,
-geometry, cancellation, and release requests incrementally under the same configured credits while
-the predecessor remains selected, visible, and interactive. Realize the pending target through one
-internal clipped transparent GPUI layout/prepaint layer that is absent from slot selection, focus,
-hit testing, accessibility, and input/event routing; enforce one combined per-window selected-plus-
-pending residency bound. The pending target accepts no user input. Once its first coherent surface
-is ready, fence and flush the predecessor, revalidate the
-activation receipt and source identities, atomically promote the pending target, then release the
-predecessor. Cancellation, stale receipt, source drift, failure, supersession, and disposal release
-all pending widget, page, request, and host custody without changing the predecessor. Keep exactly
-one pending target and make the initial-demand count a seed bound rather than a document-size gate.
-Prove small and multi-page activation, predecessor edits before the fence, every terminal path,
-bounded combined residency, zero pending focus/hit/accessibility/event admission, and zero hidden
-selected contribution; close one fresh independent semantic review.
-
-Safe-stop milestone: exact pending dispatcher promotion, post-promotion editing, held-flush target-
-drift rejection, final pre-release source validation, complete combined realization ownership
-accounting, typed exact-flight failure settlement, bounded asynchronous retirement, clean-generation
-activation, request-20 incremental priming, terminal release, and noninteraction are implemented.
-Phase 186 passed 5/5; Phases 177, 181, and both Phase 179 targets passed; the locked library check,
-metadata, formatting, and diff checks passed. The first independent review's three blocking
-lifecycle and resource findings are corrected. Resume with one fresh independent corrective review;
-if accepted, compact and finish Phase 186 without redoing the completed serial matrix.
+Composer activation now retains one selected interactive editor plus at most one receipt-qualified
+noninteractive pending target, incrementally realizes that target under a complete combined
+ownership bound, and atomically promotes its exact entity and dispatcher frontier after final source
+validation. Phase 186 passed 6/6; Phases 177, 181, and both Phase 179 targets, locked checks,
+formatting, and diff checks passed. Fresh independent corrective review accepted source-drift,
+residency, terminal-release, and pre-dispatch and post-dispatch flight-custody behavior.
 
 # Phase 187: Accept Mounted Composer Integration At Large Scale (pending)
 

@@ -26,6 +26,10 @@ pub struct MainWindowComposerPendingCompletionTestRelease(
 
 #[cfg(feature = "test-faults")]
 #[derive(Clone)]
+pub struct MainWindowComposerPendingDispatchTestRelease(Arc<Mutex<PendingCompletionTestGateState>>);
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone)]
 pub(super) struct CutPreparationTestGate(Arc<Mutex<CutPreparationTestGateState>>);
 
 #[cfg(feature = "test-faults")]
@@ -58,6 +62,21 @@ impl MainWindowComposerCutPreparationTestRelease {
 
 #[cfg(feature = "test-faults")]
 impl MainWindowComposerPendingCompletionTestRelease {
+    pub fn is_blocked(&self) -> bool {
+        self.0.lock().unwrap().entered
+    }
+
+    pub fn release(self) {
+        let mut state = self.0.lock().unwrap();
+        state.released = true;
+        if let Some(waker) = state.waker.take() {
+            waker.wake();
+        }
+    }
+}
+
+#[cfg(feature = "test-faults")]
+impl MainWindowComposerPendingDispatchTestRelease {
     pub fn is_blocked(&self) -> bool {
         self.0.lock().unwrap().entered
     }
@@ -111,6 +130,8 @@ pub struct MainWindowConversationComposerService {
     test_cut_preparation_gate: Mutex<Option<CutPreparationTestGate>>,
     #[cfg(feature = "test-faults")]
     test_pending_completion_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
+    test_pending_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
 }
 
 impl MainWindowConversationComposerService {
@@ -124,6 +145,8 @@ impl MainWindowConversationComposerService {
             test_cut_preparation_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_pending_completion_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_pending_dispatch_gate: Mutex::new(None),
         }
     }
 
@@ -225,6 +248,26 @@ impl MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     pub(super) fn take_test_pending_completion_gate(&self) -> Option<PendingCompletionTestGate> {
         self.test_pending_completion_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_block_next_pending_dispatch(&self) -> MainWindowComposerPendingDispatchTestRelease {
+        let state = Arc::new(Mutex::new(PendingCompletionTestGateState {
+            entered: false,
+            released: false,
+            waker: None,
+        }));
+        let mut gate = self.test_pending_dispatch_gate.lock().unwrap();
+        assert!(
+            gate.replace(PendingCompletionTestGate(state.clone()))
+                .is_none()
+        );
+        MainWindowComposerPendingDispatchTestRelease(state)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_pending_dispatch_gate(&self) -> Option<PendingCompletionTestGate> {
+        self.test_pending_dispatch_gate.lock().ok()?.take()
     }
 
     #[cfg(feature = "test-faults")]

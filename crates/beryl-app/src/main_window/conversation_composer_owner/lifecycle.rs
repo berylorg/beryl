@@ -22,6 +22,11 @@ impl MainWindowConversationComposer {
     }
 
     #[cfg(feature = "test-faults")]
+    pub fn test_has_active_flight(&self) -> bool {
+        self.active_flight.is_some()
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn test_pending_seed_count(&self) -> usize {
         self.initial_responses.len()
     }

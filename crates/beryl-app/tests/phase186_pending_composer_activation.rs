@@ -850,6 +850,214 @@ fn post_flush_target_drift_rejects_before_predecessor_widget_release(
 }
 
 #[gpui::test]
+fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usable(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase186-pending-predispatch", 188);
+    let window_id = fixture.window_id;
+    let selected_thread = fixture.selected_thread;
+    let target_thread = fixture.target_thread;
+    seed_activation_published_draft(&fixture, target_thread);
+    let (selected_claim, target_claim) = fixture.claims();
+    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    assert!(matches!(
+        selected_host
+            .test_activate(
+                &fixture.store,
+                activation(selected_thread, 101, 102, 1, 0),
+                &CommandCancellation::new(),
+            )
+            .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let slot = MainWindowComposerSlot::new(
+        window_id,
+        selected_claim,
+        selected_host,
+        storage,
+        marker_authority,
+    )
+    .unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    let mut widget = widget_config(
+                        selection.binding().range_binding(),
+                        selection.binding().presentation_generation(),
+                    );
+                    widget.viewport_extent = px(64.);
+                    widget.overscan = px(0.);
+                    MainWindowConversationComposerConfig::new(selection, widget)
+                        .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        MountRoot { mount }
+    });
+    drive(cx, 24);
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    let MainWindowComposerActivationAdvance::Ready(receipt) = mount
+        .update(cx, |mount, _| {
+            mount.begin_activation(
+                target_claim,
+                activation(target_thread, 103, 104, 2, ACTIVATION_DRAFT_BYTES),
+                operation_id(105),
+                &CommandCancellation::new(),
+            )
+        })
+        .unwrap()
+    else {
+        panic!("predispatch target did not open")
+    };
+    let mut pending = None;
+    let mut primed = false;
+    for _ in 0..64 {
+        match cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.begin_publish(receipt, window, mount_cx)
+                })
+            })
+            .unwrap()
+        {
+            MainWindowConversationComposerMountFlushStart::TargetPriming(_) => {}
+            MainWindowConversationComposerMountFlushStart::WidgetFencePending(_) => {}
+            other => panic!("unexpected predispatch priming advance: {other:?}"),
+        }
+        pending = mount.read_with(cx, |mount, _| mount.test_pending_contribution());
+        drive(cx, 1);
+        if pending.as_ref().is_some_and(|pending| {
+            pending.read_with(cx, |pending, app| pending.pending_surface_ready(app))
+        }) {
+            primed = true;
+            break;
+        }
+    }
+    assert!(
+        primed,
+        "predispatch pending surface did not become coherent"
+    );
+    let pending = pending
+        .or_else(|| mount.read_with(cx, |mount, _| mount.test_pending_contribution()))
+        .unwrap();
+    let pending_id = pending.entity_id();
+    let pending_input = pending.read_with(cx, |composer, _| composer.gpui_input());
+    let release = service.test_block_next_pending_dispatch();
+    pending_input
+        .update(cx, |input, input_cx| {
+            input.request_absolute_scroll(px(400.), input_cx)
+        })
+        .unwrap();
+    for _ in 0..32 {
+        if release.is_blocked() {
+            break;
+        }
+        drive(cx, 1);
+    }
+    assert!(
+        release.is_blocked(),
+        "pending dispatch gate was not entered"
+    );
+    assert!(pending.read_with(cx, |composer, _| composer.test_has_active_flight()));
+    let held = pending.read_with(cx, |composer, app| composer.realization_diagnostics(app));
+    assert_eq!(held.current.dispatched_page_requests, 1);
+
+    assert!(matches!(
+        cx.update(|window, app| {
+            mount.update(app, |mount, mount_cx| {
+                mount.begin_publish(receipt, window, mount_cx)
+            })
+        })
+        .unwrap(),
+        MainWindowConversationComposerMountFlushStart::Started(
+            ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch)
+        )
+    ));
+    let mut published = None;
+    for _ in 0..24 {
+        match cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.advance_publish(receipt, window, mount_cx)
+                })
+            })
+            .unwrap()
+        {
+            MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(_) => {
+                drive(cx, 1)
+            }
+            MainWindowConversationComposerMountPublishAdvance::Published(selection) => {
+                published = Some(selection);
+                break;
+            }
+            other => panic!("unexpected predispatch publication: {other:?}"),
+        }
+    }
+    let published = published.expect("predispatch pending entity was not promoted");
+    assert_eq!(service.selected_identity(), Some(published));
+    assert_eq!(
+        mount
+            .read_with(cx, |mount, _| mount.contribution())
+            .unwrap()
+            .entity_id(),
+        pending_id
+    );
+
+    release.release();
+    for _ in 0..64 {
+        drive(cx, 1);
+        if !pending.read_with(cx, |composer, _| composer.test_has_active_flight()) {
+            break;
+        }
+    }
+    assert!(!pending.read_with(cx, |composer, _| composer.test_has_active_flight()));
+    assert!(pending.read_with(cx, |composer, _| composer.last_error().is_none()));
+    let settled = pending.read_with(cx, |composer, app| composer.realization_diagnostics(app));
+    assert_eq!(settled.current.dispatched_page_requests, 0);
+    assert_eq!(settled.current.dispatched_object_requests, 0);
+    assert_eq!(settled.current.response_custody_count, 0);
+    assert_eq!(settled.current.response_processing_bytes, 0);
+    assert_eq!(settled.current.response_processing_items, 0);
+    assert_eq!(settled.current.deferred_response_bytes, 0);
+    assert_eq!(settled.current.deferred_response_items, 0);
+
+    let promoted_input = pending.read_with(cx, |composer, _| composer.gpui_input());
+    cx.update(|window, app| promoted_input.update(app, |input, _| input.focus(window)));
+    cx.update(|window, app| {
+        promoted_input.update(app, |input, input_cx| {
+            input.replace_and_mark_text_in_range(None, "z", None, window, input_cx)
+        })
+    });
+    let mut edited = published;
+    for _ in 0..128 {
+        drive(cx, 1);
+        edited = service.selected_identity().unwrap();
+        if edited != published {
+            break;
+        }
+    }
+    assert_ne!(edited, published);
+    drive(cx, 16);
+    assert!(pending.read_with(cx, |composer, _| composer.last_error().is_none()));
+    assert!(promoted_input.read_with(cx, |input, _| input.is_enabled()));
+}
+
+#[gpui::test]
 fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
     let fixture = Fixture::new("phase186-pending-flight-failure", 187);
