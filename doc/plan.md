@@ -29,33 +29,19 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 183: Complete Composer Host Budgets And Streamed Commands (finished)
+# Phase 184: Accept Very-Large Draft Storage And History (finished)
 
-The Beryl composer host now validates every finite production realization budget, forwards typed
-content-free saturation and filler diagnostics without another scroll owner, and exposes
-selection-qualified mounted submit and rich-paste commands. Clipboard copy and cut advance through
-one lifecycle-cancellable bounded page flight at a time, reject contiguous over-limit values
-atomically, write before cut, and fence page and post-write preparation completions across
-activation, rebind, and unmount without payload-bearing failures. The owned widget's canonical
-empty-successor geometry correction is published and pinned at
-`e7561d75dd03219627ceed59d36ecc0684197d7f`.
+Syndic staging-window acquisition now uses one operation-local charge-before-read budget across the
+complete nested authentication path, reports actual charged totals, and derives the exact
+526-read/34,471,936-byte maximum from named closure shapes. Deterministic fixtures stream a 3 MiB
+draft through localized edit, compact root undo/redo, publication/reopen, and bounded `ComposerV1`
+materialization, and stream multi-page same-anchor markers through exact directional order, edge
+proofs, restart, sealing, and materialization without whole expected values or registries.
 
-Completion evidence: the dependency's full serial nextest matrix passed 345/345 and its locked
-all-target check passed; canonical locked Cargo metadata and the focused app check passed; the two
-composer integration targets passed 9/9 against the exact-git pin. Independent semantic review
-accepted the lifecycle, payload, resource, routing, and zero-length geometry boundaries after
-corrections. Sustained mounted stress remains deferred to the Phase 185 Operator AC-power gate.
-
-# Phase 184: Accept Very-Large Draft Storage And History (pending)
-
-Correct storage scale accounting so staged tree-record diagnostics include marker-order records and
-the staging-window ceiling matches its authoritative nine fixed endpoint reads. Add deterministic
-functional fixtures that stream a multi-megabyte draft through staging, build, sparse traversal,
-localized edit, compact undo/redo root adoption, publication/reopen, and bounded `ComposerV1`
-materialization, plus a multi-page same-anchor marker population with exact forward/backward order,
-edge proofs, restart, sealing, and materialization. Assert every configured command, page, read,
-write, retained-byte, custody, and continuation bound without constructing a whole expected draft or
-marker registry.
+Completion evidence: the serial persistence/history/materialization matrix passed 72/72, the locked
+all-target package check and canonical metadata passed, and independent semantic review accepted
+the authority, charged-read closure, exact maximum, resource bounds, custody release, and cleanup.
+Sustained mounted stress remains deferred to the Phase 185 Operator AC-power gate.
 
 # Phase 185: Accept Mounted Composer Integration At Large Scale (pending)
 

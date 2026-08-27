@@ -139,6 +139,7 @@ pub struct PreparedDraftPieceStagingWindowV1 {
     fragments: Box<[DraftPieceBuildFragmentV1]>,
     inserted_utf8_bytes: usize,
     acquisition_read_count: usize,
+    acquisition_encoded_value_bytes: usize,
 }
 
 impl PreparedDraftPieceStagingWindowV1 {
@@ -166,7 +167,7 @@ impl PreparedDraftPieceStagingWindowV1 {
         self.acquisition_read_count
     }
     pub fn acquisition_encoded_value_byte_budget(&self) -> usize {
-        self.acquisition_read_count() * 65_536
+        self.acquisition_encoded_value_bytes
     }
     pub const fn target_endpoint(&self) -> DraftPieceBuildProgressReceiptReferenceV1 {
         self.target_build.progress_receipt()
@@ -248,6 +249,7 @@ struct StageDurableWindowMutation {
     prepared: PreparedDraftPieceStagingWindowV1,
 }
 
+mod acquisition;
 mod digest;
 mod integrity;
 mod mutations;
@@ -258,6 +260,7 @@ mod prepare_terminal;
 mod status;
 mod transfer_builder;
 
+pub(super) use acquisition::StagingWindowAcquisitionReader;
 use digest::*;
 use integrity::*;
 use terminal::*;

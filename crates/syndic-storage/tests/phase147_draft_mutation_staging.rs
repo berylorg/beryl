@@ -1348,8 +1348,8 @@ fn maximum_window_and_direct_late_continuation_reopen_exactly() {
     assert_eq!(prepared.page_count(), 256);
     assert_eq!(prepared.fragment_count(), 256);
     assert_eq!(prepared.inserted_utf8_bytes(), 256);
-    assert_eq!(prepared.acquisition_read_count(), 520);
-    assert_eq!(prepared.acquisition_encoded_value_byte_budget(), 34_078_720);
+    assert_eq!(prepared.acquisition_read_count(), 518);
+    assert_eq!(prepared.acquisition_encoded_value_byte_budget(), 33_947_648);
     #[cfg(feature = "test-faults")]
     {
         assert_eq!(syndic_point_read_count(), 518);
@@ -1380,7 +1380,8 @@ fn maximum_window_and_direct_late_continuation_reopen_exactly() {
     assert_eq!(prepared.last_page_ordinal(), 258);
     assert_eq!(prepared.page_count(), 2);
     assert_eq!(prepared.fragment_count(), 2);
-    assert_eq!(prepared.acquisition_read_count(), 12);
+    assert_eq!(prepared.acquisition_read_count(), 11);
+    assert_eq!(prepared.acquisition_encoded_value_byte_budget(), 720_896);
     #[cfg(feature = "test-faults")]
     {
         assert_eq!(syndic_point_read_count(), 11);

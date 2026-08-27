@@ -472,13 +472,18 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   authenticates their key, digest, immediate receipt closure, input cursor, prior cumulative
   identity, and before/after lane frontiers; and compares the result with the immutable finished
   declaration. One post-finish staging-window command consumes at most 256 consecutive physical
-  pages and their 256 one-item records. It uses at most two page/receipt point reads per page plus
-  exactly nine fixed endpoint-read slots: candidate-session head, staging head, finished staging
-  receipt, build head, selected build receipt, its immediate predecessor when present, working
-  sequence root, working identity-index root, and working marker-order-commitment root. The staging-
-  window acquisition closure therefore uses at most 521 point reads and 34,144,256 complete
-  encoded-value bytes, derived with checked arithmetic from 521 records at the existing 65,536-byte
-  per-value ceiling. Bounded structure
+  pages and their 256 one-item records. One operation-local acquisition budget charges every point
+  read before acquisition across the complete nested authentication path and exposes the actual
+  charged read and encoded-value totals. Its fixed maximum closure contains six heads or receipts:
+  candidate-session head, staging head, finished staging receipt, build head, selected build
+  receipt, and its immediate predecessor when present. The selected and predecessor receipts may
+  each additionally require one fragment endpoint plus their working sequence, identity-index, and
+  marker-order-commitment roots. A valid receiving build has no active marker-effect closure. The
+  fixed maximum is therefore 14 reads; together with at most two page/receipt reads for each of 256
+  pages, the staging-window acquisition closure uses at most 526 point reads and 34,471,936 complete
+  encoded-value bytes at the existing 65,536-byte per-value ceiling. The budget rejects an
+  acquisition before any read that would exceed either maximum, and no nested authentication read
+  may bypass it. Bounded structure
   descents and path-copy reads for applying an item remain governed separately by their existing
   height/record limits.
 - Thus a restart locates the next bounded staging window in `O(1)` work relative to operation length

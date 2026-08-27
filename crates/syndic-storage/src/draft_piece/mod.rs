@@ -77,7 +77,33 @@ pub const DRAFT_MUTATION_STAGING_BATCH_MAX_BYTES: usize = 16_842_752;
 pub const DRAFT_PIECE_STAGE_MAX_RECORDS: usize = 256;
 pub const DRAFT_PIECE_TEXT_LEAF_MAX_BYTES: usize = 32_768;
 pub const DRAFT_PIECE_BUILD_WINDOW_MAX_PAGES: usize = 256;
-pub const DRAFT_PIECE_BUILD_WINDOW_MAX_READS: usize = 520;
-pub const DRAFT_PIECE_BUILD_WINDOW_MAX_ENCODED_VALUE_BYTES: usize = 34_078_720;
+const DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_BASE_READS: usize = 6;
+const DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_RECEIPT_ENDPOINT_READS: usize = 1;
+const DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_RECEIPT_ROOT_READS: usize = 3;
+const DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_RECEIPT_READS: usize =
+    DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_RECEIPT_ENDPOINT_READS
+        .checked_add(DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_RECEIPT_ROOT_READS)
+        .expect("staging-window receipt acquisition shape fits usize");
+const DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_FIXED_READS: usize =
+    DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_BASE_READS
+        .checked_add(
+            DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_RECEIPT_READS
+                .checked_mul(2)
+                .expect("staging-window receipt count fits usize"),
+        )
+        .expect("staging-window fixed acquisition shape fits usize");
+const DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_PAGE_READS: usize = 2;
+pub const DRAFT_PIECE_BUILD_WINDOW_MAX_READS: usize =
+    DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_FIXED_READS
+        .checked_add(
+            DRAFT_PIECE_BUILD_WINDOW_ACQUISITION_PAGE_READS
+                .checked_mul(DRAFT_PIECE_BUILD_WINDOW_MAX_PAGES)
+                .expect("staging-window page acquisition shape fits usize"),
+        )
+        .expect("staging-window acquisition shape fits usize");
+pub const DRAFT_PIECE_BUILD_WINDOW_MAX_ENCODED_VALUE_BYTES: usize =
+    DRAFT_PIECE_BUILD_WINDOW_MAX_READS
+        .checked_mul(DRAFT_PIECE_PAGE_MAX_BYTES)
+        .expect("staging-window acquisition byte ceiling fits usize");
 pub const DRAFT_PIECE_BUILD_WINDOW_MAX_FRAGMENTS: usize = 256;
 pub const DRAFT_PIECE_BUILD_WINDOW_MAX_INSERTED_UTF8_BYTES: usize = 65_536;

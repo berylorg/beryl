@@ -64,7 +64,11 @@ impl PreparedDraftPieceAdvanceV1 {
     }
 
     pub fn staged_record_count(&self) -> usize {
-        self.leaves.len() + self.nodes.len() + self.index_records.len() + 1
+        self.leaves.len()
+            + self.nodes.len()
+            + self.index_records.len()
+            + self.marker_order_records.len()
+            + 1
     }
 
     pub const fn frontier(&self) -> DraftPieceBuildFrontierV1 {
@@ -415,33 +419,24 @@ pub(super) fn authenticated_staging_build_from_store(
 }
 
 pub(super) fn authenticated_staging_window_build_from_store(
-    storage: &SyndicStorage,
-    store: &HomeStore,
+    reader: &mut super::staging::StagingWindowAcquisitionReader<'_>,
     key: DraftPieceSettlementKeyV1,
 ) -> Result<
     Option<(DraftPieceBuildRecordV1, DraftEditorCandidateSessionV1)>,
     DraftPiecePrepareErrorV1,
 > {
-    let build = storage.point::<DraftPieceBuildsFamily>(store, key, point_limit())?;
+    let build = reader.point::<DraftPieceBuildsFamily>(key)?;
     let Some(build) = build else { return Ok(None) };
-    let receipt = storage
-        .point::<DraftPieceBuildProgressFamily>(
-            store,
-            build.progress_receipt().key(),
-            point_limit(),
-        )?
+    let receipt = reader
+        .point::<DraftPieceBuildProgressFamily>(build.progress_receipt().key())?
         .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
     if !progress_receipt_matches_build(&receipt, &build) || !progress_receipt_is_exact(&receipt) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
-    authenticate_progress_receipt_from_store(storage, store, &receipt)?;
+    authenticate_progress_receipt_from_acquisition(reader, &receipt)?;
     let session_key =
         DraftEditorCandidateSessionRecordKeyV1::head(build.draft_id(), build.session_id());
-    let session = match storage.point::<DraftEditorCandidateSessionsFamily>(
-        store,
-        session_key,
-        point_limit(),
-    )? {
+    let session = match reader.point::<DraftEditorCandidateSessionsFamily>(session_key)? {
         Some(DraftEditorCandidateSessionRecordV1::Head(head)) => head,
         Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(_)) | None => {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
@@ -453,6 +448,110 @@ pub(super) fn authenticated_staging_window_build_from_store(
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
     Ok(Some((build, session)))
+}
+
+fn authenticate_progress_receipt_from_acquisition(
+    reader: &mut super::staging::StagingWindowAcquisitionReader<'_>,
+    receipt: &DraftPieceBuildProgressReceiptV1,
+) -> Result<(), DraftPiecePrepareErrorV1> {
+    if !progress_receipt_is_exact(receipt) {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    let receipt_fragment = authenticate_progress_receipt_effects_from_acquisition(reader, receipt)?;
+    if let Some(previous) = receipt.previous() {
+        let stored = reader
+            .point::<DraftPieceBuildProgressFamily>(previous.key())?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        if stored.reference() != previous || !progress_receipt_is_exact(&stored) {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+        authenticate_progress_receipt_effects_from_acquisition(reader, &stored)?;
+        let scan_endpoint = receipt
+            .marker_effect_continuation()
+            .scan()
+            .scanned_endpoint();
+        let scan_fragment = match scan_endpoint {
+            None => None,
+            Some(endpoint) if Some(endpoint) == receipt.fragment_endpoint() => {
+                receipt_fragment.as_ref()
+            }
+            Some(_) => return Err(DraftPiecePrepareErrorV1::InvalidRoot),
+        };
+        if !marker_effect_progress_transition_is_exact(&stored, receipt, scan_fragment) {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+    }
+    Ok(())
+}
+
+fn authenticate_progress_receipt_effects_from_acquisition(
+    reader: &mut super::staging::StagingWindowAcquisitionReader<'_>,
+    receipt: &DraftPieceBuildProgressReceiptV1,
+) -> Result<Option<DraftPieceBuildFragmentV1>, DraftPiecePrepareErrorV1> {
+    if receipt.marker_effect_continuation().active().is_some() {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    let fragment = match receipt.fragment_endpoint() {
+        Some(endpoint) => {
+            let fragment = reader
+                .point::<DraftPieceBuildFragmentsFamily>(endpoint.key())?
+                .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+            if canonical_fragment_endpoint(&fragment) != endpoint {
+                return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+            }
+            Some(fragment)
+        }
+        None => None,
+    };
+    authenticate_build_roots_from_acquisition(
+        reader,
+        receipt.key().draft_id(),
+        receipt.working_roots(),
+    )?;
+    Ok(fragment)
+}
+
+fn authenticate_build_roots_from_acquisition(
+    reader: &mut super::staging::StagingWindowAcquisitionReader<'_>,
+    draft_id: SyndicDraftId,
+    roots: DraftPieceBuildRootsV1,
+) -> Result<(), DraftPiecePrepareErrorV1> {
+    if !draft_piece_build_roots_are_locally_exact_v1(roots) {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    if let Some(id) = roots.sequence_root() {
+        let node = reader
+            .point::<DraftPieceNodesFamily>(DraftPieceRecordKeyV1::new(draft_id, id))?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        validate_sequence_root_node(node, roots.sequence_summary())?;
+    } else if roots.sequence_summary().piece_count() != 0 {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    if let Some(id) = roots.marker_index_root() {
+        let record = reader
+            .point::<DraftMarkerIdentityIndexFamily>(DraftMarkerIdentityRecordKeyV1::new(
+                draft_id,
+                DraftMarkerIdentityRecordKindV1::Internal,
+                id,
+            ))?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        validate_index_root_record(record, roots.marker_index_summary())?;
+    } else if roots.marker_index_summary().record_count() != 0 {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    if let Some(id) = roots.marker_order_root() {
+        let record = reader
+            .point::<DraftMarkerOrderCommitmentsFamily>(DraftMarkerOrderRecordKeyV1::new(
+                draft_id,
+                DraftMarkerOrderRecordKindV1::Internal,
+                id,
+            ))?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        validate_marker_order_root_record(record, roots)?;
+    } else if roots.marker_commitment().marker_count() != 0 {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    Ok(())
 }
 
 fn authenticate_progress_receipt_from_store(

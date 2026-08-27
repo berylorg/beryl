@@ -120,9 +120,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   bounded source/target closure. It accepts no staging-page bytes, caller fragment, ordinal-one
   restart request, prefix proof, or app-built edit reconstruction. Status and same-home resume return
   the authenticated current endpoint or terminal settlement and use the same preparation boundary.
-  Window acquisition has at most two page/receipt reads per physical page plus the exact fixed nine-
-  endpoint allowance and the checked 34,144,256-byte complete encoded-value ceiling defined under V7
-  bounds; item-specific structure reads remain under their separate tree/index limits.
+  Window acquisition charges every point read through one operation-local budget, has at most two
+  page/receipt reads per physical page plus the exact fixed 14-read complete authentication closure,
+  and uses the checked 34,471,936-byte complete encoded-value ceiling defined under V7 bounds;
+  item-specific structure reads remain under their separate tree/index limits.
 - The package exposes checked maximum mutation-footprint descriptors for exactly two public durable-
   start operations: idle draft submission and accepted-input promotion. Each descriptor derives
   its maximum record count and encoded key-plus-value bytes from the operation's package-owned V7
@@ -1703,13 +1704,17 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   cursor pages with the logical edit.
 - Independently, one post-finish staging-window command consumes at most 256 consecutive physical
   staging pages and therefore at most 256 one-item page records. Window acquisition performs at most
-  two point reads per page, one page plus its staging-progress receipt, and has an exact allowance of
-  nine additional endpoint reads: candidate-session head, staging head, finished staging receipt,
-  build head, selected build receipt, its immediate predecessor when present, working sequence root,
-  working identity-index root, and working marker-order-commitment root. It therefore uses at most
-  521 staging-window point reads. At the
-  existing 65,536-byte ceiling for each complete encoded value, checked multiplication gives an exact
-  34,144,256-byte aggregate encoded-value ceiling for that 521-record acquisition closure. The
+  two point reads per page, one page plus its staging-progress receipt. One operation-local budget
+  charges each point read before acquisition across the complete nested authentication path and
+  exposes the actual charged totals. Its fixed maximum closure contains the candidate-session head,
+  staging head, finished staging receipt, build head, selected build receipt, and immediate
+  predecessor receipt, plus one fragment endpoint and the working sequence, identity-index, and
+  marker-order-commitment roots for each of the selected and predecessor receipts. A valid receiving
+  build has no active marker-effect closure, so the exact fixed maximum is 14 reads. It therefore
+  uses at most 526 staging-window point reads. At the existing 65,536-byte ceiling for each complete
+  encoded value, checked multiplication gives an exact 34,471,936-byte aggregate encoded-value
+  ceiling for that 526-record acquisition closure. The budget fails before a read that would exceed
+  either ceiling; no nested authentication read may bypass it. The
   separate bounded sequence/index/commitment descents and path-copy reads needed to apply an item retain their
   existing height, record-count, and 4,194,304-byte command limits.
 - The selected build receipt/head is the only continuation cursor. It retains the exact staging
@@ -1986,7 +1991,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `Staging` tag with `Building` in the same command. The build endpoint begins with the exact finished
   staging closure, both lanes' initial unconsumed frontiers, and the canonical empty fragment
   endpoint. Each advance derives only the next window of at most 256 physical pages/items from those
-  frontiers under the 521-read and 34,144,256-byte acquisition ceilings, validates or derives its
+  frontiers under the 526-read and 34,471,936-byte acquisition ceilings, validates or derives its
   separately bounded maximum of 256 fragments and 65,536 inserted UTF-8 bytes, and persists the
   successor lane and fragment checkpoints. A source-only window advances its durable lane frontier
   even when it creates no fragment. Reconciliation and same-home restart start

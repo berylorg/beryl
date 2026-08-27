@@ -17,8 +17,10 @@ impl SyndicStorage {
         current_endpoint: DraftPieceBuildProgressReceiptReferenceV1,
         limits: DraftPieceDurableBuildWindowLimitsV1,
     ) -> Result<Option<PreparedDraftPieceStagingWindowV1>, DraftMutationStagingErrorV1> {
-        let head = self
-            .draft_mutation_staging_head(store, identity)?
+        let mut acquisition = StagingWindowAcquisitionReader::new(self, store);
+        let head = acquisition
+            .point::<DraftMutationStagingHeadsFamily>(identity)
+            .map_err(|_| DraftMutationStagingErrorV1::Invariant)?
             .ok_or(DraftMutationStagingErrorV1::Invariant)?;
         if head.identity() != identity || !draft_mutation_staging_head_is_locally_exact(&head) {
             return Err(DraftMutationStagingErrorV1::Invariant);
@@ -32,12 +34,9 @@ impl SyndicStorage {
             head.receipt().transition_ordinal(),
         )
         .ok_or(DraftMutationStagingErrorV1::Invariant)?;
-        let staging_receipt = self
-            .point::<DraftMutationStagingProgressFamily>(
-                store,
-                receipt_key,
-                crate::SyndicPointReadLimit::new(65_536).expect("staging point limit is nonzero"),
-            )?
+        let staging_receipt = acquisition
+            .point::<DraftMutationStagingProgressFamily>(receipt_key)
+            .map_err(|_| DraftMutationStagingErrorV1::Invariant)?
             .ok_or(DraftMutationStagingErrorV1::Invariant)?;
         if !draft_mutation_staging_receipt_is_locally_exact(&staging_receipt)
             || !receipt_finish_digest_is_exact(&staging_receipt)
@@ -58,7 +57,7 @@ impl SyndicStorage {
             identity.operation_id().as_piece_operation(),
         );
         let (build, session) =
-            super::mutation::authenticated_staging_window_build_from_store(self, store, key)
+            super::mutation::authenticated_staging_window_build_from_store(&mut acquisition, key)
                 .map_err(|_| DraftMutationStagingErrorV1::Invariant)?
                 .ok_or(DraftMutationStagingErrorV1::Invariant)?;
         let current_key = build.progress_receipt().key();
@@ -110,8 +109,9 @@ impl SyndicStorage {
             let page_key =
                 DraftMutationStagingPageKeyV1::new(identity, lane, frontier.next_ordinal())
                     .ok_or(DraftMutationStagingErrorV1::Invariant)?;
-            let page = self
-                .draft_mutation_staging_page(store, page_key)?
+            let page = acquisition
+                .point::<DraftMutationStagingPagesFamily>(page_key)
+                .map_err(|_| DraftMutationStagingErrorV1::Invariant)?
                 .ok_or(DraftMutationStagingErrorV1::Invariant)?;
             acquired_pages = acquired_pages
                 .checked_add(1)
@@ -126,13 +126,9 @@ impl SyndicStorage {
             let receipt_key =
                 DraftMutationStagingProgressReceiptKeyV1::new(identity, page.transition_ordinal())
                     .ok_or(DraftMutationStagingErrorV1::Invariant)?;
-            let receipt = self
-                .point::<DraftMutationStagingProgressFamily>(
-                    store,
-                    receipt_key,
-                    crate::SyndicPointReadLimit::new(65_536)
-                        .expect("staging point limit is nonzero"),
-                )?
+            let receipt = acquisition
+                .point::<DraftMutationStagingProgressFamily>(receipt_key)
+                .map_err(|_| DraftMutationStagingErrorV1::Invariant)?
                 .ok_or(DraftMutationStagingErrorV1::Invariant)?;
             authenticate_staging_page_receipt_for_window(&head, &page, &receipt)?;
             let replacement = match (lane, &page.items()[0]) {
@@ -211,21 +207,6 @@ impl SyndicStorage {
                 target_continuation,
             )
             .map_err(|_| DraftMutationStagingErrorV1::Invalid)?;
-        let acquisition_read_count = 8usize
-            .checked_add(
-                acquired_pages
-                    .checked_mul(2)
-                    .ok_or(DraftMutationStagingErrorV1::Overflow)?,
-            )
-            .ok_or(DraftMutationStagingErrorV1::Overflow)?;
-        let acquisition_bytes = acquisition_read_count
-            .checked_mul(65_536)
-            .ok_or(DraftMutationStagingErrorV1::Overflow)?;
-        if acquisition_read_count > DRAFT_PIECE_BUILD_WINDOW_MAX_READS
-            || acquisition_bytes > DRAFT_PIECE_BUILD_WINDOW_MAX_ENCODED_VALUE_BYTES
-        {
-            return Err(DraftMutationStagingErrorV1::Invariant);
-        }
         Ok(Some(PreparedDraftPieceStagingWindowV1 {
             staging_head: head,
             staging_pages: pages.into_boxed_slice(),
@@ -236,7 +217,8 @@ impl SyndicStorage {
             target_session,
             fragments,
             inserted_utf8_bytes,
-            acquisition_read_count,
+            acquisition_read_count: acquisition.reads(),
+            acquisition_encoded_value_bytes: acquisition.encoded_value_bytes(),
         }))
     }
 
