@@ -87,10 +87,7 @@ impl MainWindowConversationComposer {
             cx,
         )?;
         if matches!(route, MainWindowConversationComposerRoute::Selected) {
-            if !initial_responses.is_empty() {
-                return Err("selected composer retained unused initial responses".to_owned());
-            }
-            while !input.update(cx, |input, _| input.surface().is_some()) {
+            while !input.update(cx, |input, _| input.is_surface_current_and_interactive()) {
                 match input.update(cx, |input, _| input.take_request()) {
                     Some(
                         RangeTextInputRequest::ReleasePage(_)
@@ -108,6 +105,7 @@ impl MainWindowConversationComposer {
                     }
                 }
             }
+            initial_responses.clear();
         }
         input
             .update(cx, |input, _| {

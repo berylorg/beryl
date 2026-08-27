@@ -13,12 +13,27 @@ impl MainWindowConversationComposer {
         matches!(self.route, MainWindowConversationComposerRoute::Pending(_))
     }
 
+    pub(in crate::main_window) fn matches_pending_target(
+        &self,
+        receipt: MainWindowComposerActivationReceipt,
+    ) -> bool {
+        self.route == MainWindowConversationComposerRoute::Pending(receipt)
+    }
+
     pub fn pending_surface_ready(&self, cx: &App) -> bool {
         self.is_pending_target()
             && self.last_error.is_none()
             && self
                 .input
-                .read_with(cx, |input, _| input.surface().is_some())
+                .read_with(cx, |input, _| input.is_surface_current_and_interactive())
+    }
+
+    pub(in crate::main_window) fn admit_pending_surface(&mut self, cx: &App) -> bool {
+        let ready = self.pending_surface_ready(cx);
+        if ready {
+            self.initial_responses.clear();
+        }
+        ready
     }
 
     #[cfg(feature = "test-faults")]
@@ -71,12 +86,17 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if self.route != MainWindowConversationComposerRoute::Pending(receipt)
-            || self.selection != selection
-            || self.service.selected_identity() != Some(selection)
-            || !self.pending_surface_ready(cx)
-        {
-            return Err("pending composer promotion was stale".to_owned());
+        if self.route != MainWindowConversationComposerRoute::Pending(receipt) {
+            return Err("pending composer promotion route was stale".to_owned());
+        }
+        if self.selection != selection {
+            return Err("pending composer promotion selection was stale".to_owned());
+        }
+        if self.service.selected_identity() != Some(selection) {
+            return Err("pending composer promotion service selection was stale".to_owned());
+        }
+        if !self.pending_surface_ready(cx) {
+            return Err("pending composer promotion surface was stale".to_owned());
         }
         self.initial_responses.clear();
         self.route = MainWindowConversationComposerRoute::Selected;
@@ -132,7 +152,8 @@ impl MainWindowConversationComposer {
         }
         if !self.widget_release_ready(cx) {
             return Err(
-                "conversation composer widget release is waiting for quiescence".to_owned(),
+                "conversation composer widget release is waiting for semantic quiescence"
+                    .to_owned(),
             );
         }
         self.phase = MainWindowConversationComposerPhase::Releasing;
@@ -219,7 +240,9 @@ impl MainWindowConversationComposer {
         matches!(self.phase, MainWindowConversationComposerPhase::Fencing)
             && self.active_flight.is_none()
             && self.last_error.is_none()
-            && self.input.update(cx, |input, _| input.is_quiescent())
+            && self
+                .input
+                .update(cx, |input, _| input.is_semantically_quiescent())
     }
 
     pub fn resume_after_widget_release_fence(

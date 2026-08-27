@@ -155,17 +155,21 @@ impl MainWindowComposerSlot {
             .as_ref()
             .filter(|pending| pending.receipt == receipt)
             .is_some_and(|pending| {
-                matches!(pending.stage, super::PendingStage::Ready)
-                    && pending.host.binding().is_some_and(|binding| {
-                        pending.dispatcher.binding == binding
-                            && pending.host.active_thread_id() == Some(pending.claim.thread_id())
-                            && selection
-                                == MainWindowComposerSelectionIdentity {
-                                    window_id: self.window_id,
-                                    claim: pending.claim,
-                                    binding,
-                                }
-                    })
+                matches!(
+                    pending.stage,
+                    super::PendingStage::Ready
+                        | super::PendingStage::Publishing(_)
+                        | super::PendingStage::AwaitingWidgetRelease
+                ) && pending.host.binding().is_some_and(|binding| {
+                    pending.dispatcher.binding == binding
+                        && pending.host.active_thread_id() == Some(pending.claim.thread_id())
+                        && selection
+                            == MainWindowComposerSelectionIdentity {
+                                window_id: self.window_id,
+                                claim: pending.claim,
+                                binding,
+                            }
+                })
             })
     }
 

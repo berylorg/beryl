@@ -1,7 +1,5 @@
-#[path = "../phase185_mounted_composer_scale/support.rs"]
-mod scale;
-
-pub use scale::fixture;
+#[path = "../phase177_main_window_composer_slot/support.rs"]
+pub mod fixture;
 
 use std::num::NonZeroU64;
 
@@ -178,6 +176,18 @@ pub fn seed_activation_published_draft(
     fixture: &fixture::Fixture,
     thread: beryl_model::SyndicThreadId,
 ) {
+    assert_eq!(
+        seed_activation_published_draft_chunks(fixture, thread, ACTIVATION_CHUNK_COUNT),
+        ACTIVATION_DRAFT_BYTES
+    );
+}
+
+pub fn seed_activation_published_draft_chunks(
+    fixture: &fixture::Fixture,
+    thread: beryl_model::SyndicThreadId,
+    chunk_count: usize,
+) -> u64 {
+    assert!(chunk_count > 0 && chunk_count < 199);
     let current = fixture
         .storage
         .current_draft(
@@ -188,7 +198,7 @@ pub fn seed_activation_published_draft(
         .unwrap()
         .unwrap();
     let mut session = open_activation_session(fixture.storage, &fixture.store, &current);
-    for chunk in 0..ACTIVATION_CHUNK_COUNT {
+    for chunk in 0..chunk_count {
         let offset = (chunk * ACTIVATION_CHUNK_BYTES) as u64;
         session = append_activation_chunk(
             fixture.storage,
@@ -245,6 +255,7 @@ pub fn seed_activation_published_draft(
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
+    (ACTIVATION_CHUNK_BYTES * chunk_count) as u64
 }
 
 fn open_activation_session(

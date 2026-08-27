@@ -13,6 +13,11 @@ Deferred terminal repair, outage capture, and completely fresh
 running-session same-home recovery remain explicitly unavailable until Checkpoint 5; no
 retained-service compatibility path may substitute.
 
+Before mounted large-scale composer integration can be accepted, the owned range-backed text input
+must publish a locally exact initial/current-checkpoint surface without waiting for its complete
+document-wide sparse geometry index; global totals may remain estimated while that bounded index
+continues independently.
+
 Hard resource rules apply to named Beryl-owned queues, pages, caches, workers, editor and transcript
 windows, image decoders, CPU surfaces, and GPU textures. The plan does not require a universal
 resource governor, exact allocator accounting, CAS-process memory accounting, GPU-driver residency,
@@ -29,16 +34,22 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 186: Establish Pending Composer Activation Priming (finished)
+# Phase 187: Establish Target-First Range Surface Realization (finished)
 
-Composer activation now retains one selected interactive editor plus at most one receipt-qualified
-noninteractive pending target, incrementally realizes that target under a complete combined
-ownership bound, and atomically promotes its exact entity and dispatcher frontier after final source
-validation. Phase 186 passed 6/6; Phases 177, 181, and both Phase 179 targets, locked checks,
-formatting, and diff checks passed. Fresh independent corrective review accepted source-drift,
-residency, terminal-release, and pre-dispatch and post-dispatch flight-custody behavior.
+The owned range widget now publishes an exact local target before its sparse whole-draft index,
+keeps estimated aggregate geometry separate from current-surface readiness, and distinguishes
+background index refinement from target, layout, presentation, and rebind replacement. Beryl now
+admits or promotes only the exact current surface, streams receipt-qualified pending geometry during
+publication, retires unused activation seed after local admission, drains render-boundary pull work,
+and treats only typed superseded page custody as nonfatal. Edit proofs are restricted to the current
+selected binding. Release now depends on first-class semantic quiescence, while fencing freezes the
+mechanical index lane and disposal cancels its exact remaining custody without forcing whole-draft
+completion. The accepted `gpui-text-input` chain ends at
+`bf4a538451945c1403065ae86766fa71d655f9df` and is pinned canonically. All 36 focused composer tests,
+the two focused widget semantic-release tests, locked metadata and library checks, formatting, and
+diff checks passed.
 
-# Phase 187: Accept Mounted Composer Integration At Large Scale (pending)
+# Phase 188: Accept Mounted Composer Integration At Large Scale (pending)
 
 Compose the accepted widget, host, and storage boundaries through component-atomic activation,
 pathological viewport and scripted rapid retargeting, large-draft traversal and localized editing,
@@ -49,7 +60,7 @@ deferred shell, transcript bundle, or native-lineage restoration. Sustained stre
 evidence remains behind the explicit Operator AC-power gate. Close one fresh independent semantic
 review.
 
-# Phase 188: Mount Bounded Rich Paste (pending)
+# Phase 189: Mount Bounded Rich Paste (pending)
 
 Connect propagated paste to one selection-qualified clipboard capture and cursor-paged logical edit
 with explicit pending, pre-admission cancellation, clipboard and private-marker validation,
@@ -57,7 +68,7 @@ contiguous clipboard limits, exact reconciliation, one undo transition, and comp
 release. Prove rejection and failure leave the coherent draft unchanged without a whole-payload
 host copy or duplicate inserted bytes.
 
-# Phase 189: Mount Exact Composer Submission (pending)
+# Phase 190: Mount Exact Composer Submission (pending)
 
 Connect propagated submission to the accepted exact-root coordinator through mutation fencing,
 newest-root flush, capacity pre-admission, bounded materialization, atomic accepted clear and history
@@ -65,21 +76,21 @@ reset, queued versus direct routing, exact noncommit/collision reconciliation, d
 and lifecycle release. Prove every rejected or uncertain pre-acceptance outcome preserves the
 coherent draft and that no executable-shell or transcript-renderer bootstrap is introduced.
 
-# Phase 190: Mount Native-Lineage Recovery And Editor Restoration (pending)
+# Phase 191: Mount Native-Lineage Recovery And Editor Restoration (pending)
 
 Mount the native-lineage recovery prompt and its accepted loading, unavailable, failure, and ready
 states. Unmount the composer coherently, retain only the Beryl-owned compact restoration seed, and
 validate revision, logical extent, caret, selection, scroll anchor, and target identity before
 rebind. Prove stale recovery, cancellation, window close, failed rebind, and whole-value release.
 
-# Phase 191: Build The Multi-Window Shell And Runtime Bootstrap (pending)
+# Phase 192: Build The Multi-Window Shell And Runtime Bootstrap (pending)
 
 Mount window claims and restoration, close versus Exit, progressive bootstrap, runtime/root and
 zero-runtime flows, exact activation, and the practical process window-count limit. Prove ordinary
 close and Exit across idle, active, compacting, unavailable, and failure states. Running-session
 same-home recovery remains explicitly unavailable rather than using retained-service authority.
 
-# Phase 192: Mount Paged Navigation And Settings (pending)
+# Phase 193: Mount Paged Navigation And Settings (pending)
 
 Mount revision-bound paged catalog, search, lineage, activity, model, composer-history, and settings
 sources with virtualized presentation. Mount each window's fixed-capacity navigation-history ring
@@ -87,21 +98,21 @@ directly into its Back and Forward controls without paging or virtualization. Pr
 rejection, focus and popover preservation, loading and failure states, bounded row residency, and
 page release.
 
-# Phase 193: Mount Main-Window Notices (pending)
+# Phase 194: Mount Main-Window Notices (pending)
 
 Mount the bounded notice queue, warned best-effort-home startup notice, exact soft-stop feedback,
 lifecycle-yield outcomes, and accepted disabled/error states. Repair and running-session recovery
 remain explicit unavailable states; mount no fabricated progress or retained-service fallback.
 Prove admission, priority, preemption, replacement, dismissal, overflow, close/Exit, and stale timers.
 
-# Phase 194: Implement Notification Audio Ownership (pending)
+# Phase 195: Implement Notification Audio Ownership (pending)
 
 Add bounded notification-audio admission, encoded and decoded capacity transfer, the single
 process-wide active/latest-waiting playback lane, cancellation, shutdown, and exact release. Prove
 replacement, decode and device failure, settings change, close/Exit, and fail-closed runtime behavior
 without changing turn semantics.
 
-# Phase 195: Mount Transcript Presentation (pending)
+# Phase 196: Mount Transcript Presentation (pending)
 
 Move the transcript prototype onto immutable shared pages without deep snapshot clones, then mount
 realized-frame rendering, semantic anchors, selection, nested widgets, resource demand, explicit
@@ -109,7 +120,7 @@ repair-required provenance, and local page/cache release proofs. Prove atomic au
 without whole-turn residency and release superseded resident state after handoff. Deferred repair
 dispatch remains unmounted.
 
-# Phase 196: Verify And Close The Useful GUI Checkpoint (pending)
+# Phase 197: Verify And Close The Useful GUI Checkpoint (pending)
 
 Verify multi-window lifecycle, activation, restoration, large drafts, logical marker scale, paged
 navigation and settings, notices and audio, long transcript traversal, local cache/page release,
@@ -117,7 +128,7 @@ configured working-set behavior, and explicit fail-closed repair/recovery states
 feature, system, package, and dependency authority, then close one fresh independent review before
 Checkpoint 5.
 
-# Phase 197: Prove The Exact 0.146.0 Terminal-Repair Surface (pending)
+# Phase 198: Prove The Exact 0.146.0 Terminal-Repair Surface (pending)
 
 Inspect exact commit-scoped 0.146.0 processor, reducer, and generated-schema evidence for
 `thread/turns/list`, both item-list spellings, the complete item union, history identity synthesis,
@@ -127,15 +138,15 @@ commit-scoped memory note with reproducible sources. Proceed only if the one des
 turn and complete semantic item view under the no-successor gate; otherwise stop and revise
 authority without implementing a fallback.
 
-# Phase 198: Implement The Private Terminal-Repair Adapter (pending)
+# Phase 199: Implement The Private Terminal-Repair Adapter (pending)
 
-Implement the private release-pinned adapter proven by Phase 197: one no-successor-gated
+Implement the private release-pinned adapter proven by Phase 198: one no-successor-gated
 `thread/turns/list` request, one matching terminal turn, and one bounded semantic-final-item stream
 with exact provenance and historical user-input correlation. Prove complete item coverage,
 backpressure, typed incomplete outcomes, cursor discard without traversal, and no adjacent-turn,
 item-history, whole-thread, general-history, or fabricated-live-event path.
 
-# Phase 199: Add Snapshot-Specific Syndic Repair Storage (pending)
+# Phase 200: Add Snapshot-Specific Syndic Repair Storage (pending)
 
 Add snapshot-specific paged Syndic records, codecs, reads, and one atomic repair mutation. It
 validates exact CAS/Syndic correlation, terminal outcome, complete ordered item identities and
@@ -147,7 +158,7 @@ identity and digest rejection, scoped reconciliation, zero partial publication, 
 and ordinary Syndic-only reads; image-bearing snapshots remain inadmissible until Checkpoint 7
 admits authenticated `savedPath` bytes.
 
-# Phase 200: Enforce Repair-Required Successor Gates (pending)
+# Phase 201: Enforce Repair-Required Successor Gates (pending)
 
 Keep same-thread successor, fork, replacement, rollback, and compaction gated from the first exact
 repair-required transition until coherent repaired or explicitly incomplete finalization releases
@@ -155,21 +166,21 @@ the gate. Other threads and structurally healthy unrelated work remain independe
 gated command family, concurrent joins, restart persistence, unrelated progress, and rejection of
 live-prefix, buffered-content, or GUI-state bypasses before any repair dispatch can be mounted.
 
-# Phase 201: Claim Terminal Repair Durably (pending)
+# Phase 202: Claim Terminal Repair Durably (pending)
 
 Implement the durable target-scoped Syndic repair-request claim and derive the only private backend
 capability from its consumed disposition. A consumed but unsettled claim survives process loss as
 terminal incomplete authority and can never authorize a second repair request. Keep runtime claim
-consumption and backend dispatch unmounted until Phase 211 installs cross-domain repair-media
+consumption and backend dispatch unmounted until Phase 212 installs cross-domain repair-media
 admission; every repair-required target remains gated with its claim unconsumed. Prove the unmounted
 boundary, concurrent admission, every dispatch crash cut, backend refusal, store loss, restart
 recovery, unrelated-thread progress, and permanent rejection of duplicate dispatch.
 
-# Phase 202: Integrate Atomic Terminal-Turn Repair (pending)
+# Phase 203: Integrate Atomic Terminal-Turn Repair (pending)
 
 Connect the private backend sink to snapshot staging and the one atomic Syndic replacement behind
 the unmounted runtime boundary. Once later mounted, a repair-required target consumes the
-no-successor proof and durable Phase 201 claim, then converges to exactly repaired or explicitly
+no-successor proof and durable Phase 202 claim, then converges to exactly repaired or explicitly
 incomplete. Both dispositions enter
 `FinalizingHistory`; repaired selects the complete snapshot while incomplete selects no replacement.
 Bounded durable work reaches a fixed point, publishes one coherent transcript generation, and only
@@ -177,7 +188,7 @@ then atomically releases the gate. Prove request/store-loss convergence, bounded
 generation-atomic presentation, same-thread exclusion, unrelated progress, and exactly-once
 repaired-or-incomplete release.
 
-# Phase 203: Add Bounded Outage Capture (pending)
+# Phase 204: Add Bounded Outage Capture (pending)
 
 Add the fixed-capacity prioritized outage buffer for already active exact targets. Identity,
 terminal outcome, final answer, narrative, user correlation, and generated-media handoff metadata
@@ -185,7 +196,7 @@ precede operational content. Any rejected, evicted, partial, or unrepresentable 
 the whole turn repair-required; buffered content is transient presentation only. Prove priority and
 hard limits, complete versus dropped capture, loss behavior, repair classification, and no replay.
 
-# Phase 204: Publish Entirely Fresh Same-Home Recovery (pending)
+# Phase 205: Publish Entirely Fresh Same-Home Recovery (pending)
 
 Rebuild running-session recovery as: fence new durable commands; close and dispose the failed
 service; recover the same home into a newer healthy generation with fresh writer and handles;
@@ -196,7 +207,7 @@ projection, loaded session, lease, candidate, scheduler, or worker crosses the b
 ordered fence, complete disposal, zero old-authority reuse, durable obligation convergence, atomic
 publication, post-publication reacquisition, and failure before publication.
 
-# Phase 205: Verify And Close The Repair And Recovery Checkpoint (pending)
+# Phase 206: Verify And Close The Repair And Recovery Checkpoint (pending)
 
 Run the complete functional storage, protocol, concurrency, restart, configured-limit, static-
 boundary, and source-residue gates. Factor proofs by Fjall, home-store, domain, sidecar, app, backend,
@@ -206,83 +217,83 @@ counters as observational evidence only.
 Reconcile API docs, memory/failure notes, and the tracker, then close a fresh independent review
 before Checkpoint 6. Sustained stress still requires the Operator's AC-power gate and proves
 configured correctness bounds rather than performance targets. Verify the declared runtime repair
-gap remains fail-closed: no target dispatches and no durable claim is consumed before Phase 211.
+gap remains fail-closed: no target dispatches and no durable claim is consumed before Phase 212.
 
-# Phase 206: Implement Branch Discussion Creation (pending)
+# Phase 207: Implement Branch Discussion Creation (pending)
 
 Implement immutable branch selection provenance, readonly context, durable child conversation
 creation, first submission, ordinary child conversation, inherited image-label authority, and exact
 branch-local label allocation. Prove creation failure leaves no runnable child or premature CAS work.
 
-# Phase 207: Implement Resolution Handoff (pending)
+# Phase 208: Implement Resolution Handoff (pending)
 
 Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent ordering,
 restart recovery, idempotency, retry, successful archive, and post-archive navigation outcomes.
 Prove no lost input, duplicate handoff, early archive, or parent-order violation.
 
-# Phase 208: Verify And Close Checkpoint 6 (pending)
+# Phase 209: Verify And Close Checkpoint 6 (pending)
 
 Verify child creation, inherited label authority, first submission, resolution ordering, restart,
 retry, archive, navigation, and failure states. Reconcile feature, system, package, GUI, and storage
 authority, then close a fresh independent review before Checkpoint 7.
 
-# Phase 209: Implement Asset Admission And Durable Ownership (pending)
+# Phase 210: Implement Asset Admission And Durable Ownership (pending)
 
 Implement Beryl-home image admission for paste and generated output, content-addressed sidecars,
 byte-for-byte collision verification, labels, references, Host/WSL projection, and generated-output
 ownership. Prove arbitrary-size streaming, cancellation, collision, and durable reopen behavior.
 
-# Phase 210: Implement Media Rendition Resources (pending)
+# Phase 211: Implement Media Rendition Resources (pending)
 
 Implement bounded file reads, header parsing, on-demand thumbnail and tile decode workers, CPU
 surfaces, upload staging, shared media identity, GPU residency, eviction, and device-loss recovery.
 Prove adversarial dimensions, concurrent windows, cancellation, and exact capacity release.
 
-# Phase 211: Implement Generated-Image Repair Media (pending)
+# Phase 212: Implement Generated-Image Repair Media (pending)
 
 Authenticate `savedPath`, stream admitted bytes into inert sidecar and asset staging, then publish
 the repaired Syndic snapshot and Beryl asset metadata through one atomic cross-domain cut. Missing,
 unusable, incomplete, or failed media remains inert and finalizes the owning turn incomplete; never
-retain inline base64. After this admission path is installed, mount the Phase 201 claim-consumption
-and Phase 202 repair-dispatch path for all eligible targets. Prove crash cuts, collision, orphan
+retain inline base64. After this admission path is installed, mount the Phase 202 claim-consumption
+and Phase 203 repair-dispatch path for all eligible targets. Prove crash cuts, collision, orphan
 invisibility, coherent publication, and no pre-admission claim consumption.
 
-# Phase 212: Mount Maintenance Presentation And Deferred Cleanup (pending)
+# Phase 213: Mount Maintenance Presentation And Deferred Cleanup (pending)
 
 Mount generated-title maintenance and successful branch-archive presentation through established
 Syndic authority and bounded Beryl projections. Preserve unreachable turns and resources until a
 separately designed future garbage-collection operation; add no graph-dependent semantic search.
 
-# Phase 213: Verify And Close Checkpoint 7 (pending)
+# Phase 214: Verify And Close Checkpoint 7 (pending)
 
 Verify arbitrary asset size, adversarial dimensions, concurrent windows, cancellation, collisions,
 generated-image repair, atomic cross-domain publication, device loss, cache eviction, and deferred
 cleanup boundaries. Reconcile authority and close a fresh independent review before Checkpoint 8.
 
-# Phase 214: Reconcile Final Live Authority (pending)
+# Phase 215: Reconcile Final Live Authority (pending)
 
 Reconcile root, feature, system, package, GUI, settings, hotkey, diagnostics, source, dependency,
 memory, failure, plan, and tracker authority against the implemented target state.
 
-# Phase 215: Remove Obsolete Surfaces (pending)
+# Phase 216: Remove Obsolete Surfaces (pending)
 
 Remove every remaining shim, obsolete export, test, key, diagnostic, role, archived-source
 membership edge, and forbidden API reference. Prove the live source graph exposes only target-state
 authority and no compatibility path.
 
-# Phase 216: Verify Named Resource Boundaries (pending)
+# Phase 217: Verify Named Resource Boundaries (pending)
 
 Verify every named Beryl-owned queue, cache, pool, page set, editor window, transcript window, media
 decoder, CPU surface cache, GPU texture cache, and worker set obeys its configured limit and releases
 or evicts after repetition. Treat RSS and renderer counters as observational diagnostics only.
 
-# Phase 217: Run End-To-End Functional Verification (pending)
+# Phase 218: Run End-To-End Functional Verification (pending)
 
 Run storage, runtime/CAS, multi-window, conversation, branch, asset, recovery, and Windows functional
 verification. Coordinate with the Operator before sustained stress or performance measurement so
 the laptop can remain on AC power.
 
-# Phase 218: Close The Rework (pending)
+# Phase 219: Close The Rework (pending)
 
 Obtain fresh independent architectural completion review, close every finding, compact and archive
 the rework tracker under the project convention, and leave no unresolved target-state authority.

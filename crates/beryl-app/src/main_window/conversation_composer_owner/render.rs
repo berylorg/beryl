@@ -224,6 +224,7 @@ impl MainWindowConversationComposer {
 
 impl Render for MainWindowConversationComposer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.schedule_pump(window, cx);
         let selected = !self.is_pending_target();
         let pending_realizer = self
             .pending_realizer

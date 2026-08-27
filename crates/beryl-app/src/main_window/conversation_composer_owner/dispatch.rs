@@ -2,14 +2,15 @@ use beryl_home_store::CommandCancellation;
 use gpui::{Context, Entity, Window};
 use gpui_text_input::{
     MutationOutcome, ObjectPageFailure, ObjectRequestKey, PageFailure, PageRequestKey,
-    RangeTextInput, RangeTextInputRequest,
+    RangeTextInput, RangeTextInputError, RangeTextInputRequest,
 };
 
 use crate::composer_host::ComposerHostMutationOutcome;
 
 use super::{
     MainWindowComposerDispatchOutcome, MainWindowConversationComposer,
-    MainWindowConversationComposerRoute, MainWindowConversationComposerService,
+    MainWindowConversationComposerPhase, MainWindowConversationComposerRoute,
+    MainWindowConversationComposerService,
 };
 
 struct MainWindowConversationComposerDispatch {
@@ -57,6 +58,13 @@ impl MainWindowConversationComposerTaskError {
 impl MainWindowConversationComposer {
     pub(super) fn pump_one(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.can_pump() || self.active_flight.is_some() || self.last_error.is_some() {
+            return;
+        }
+        if matches!(self.phase, MainWindowConversationComposerPhase::Fencing)
+            && self
+                .input
+                .update(cx, |input, _| input.is_semantically_quiescent())
+        {
             return;
         }
         if let MainWindowConversationComposerRoute::Pending(receipt) = self.route
@@ -317,15 +325,22 @@ impl MainWindowConversationComposer {
         if !self.is_live() || !matches!(self.route, MainWindowConversationComposerRoute::Selected) {
             return;
         }
+        let selection = self.selection;
         let Some(positions) = self.input.update(cx, |input, _| {
-            input.surface().map(|surface| {
-                let selection = surface.selection();
-                gpui_text_input::MutationPositions::new(
-                    surface.caret(),
-                    selection.anchor,
-                    selection.head,
-                )
-            })
+            input
+                .surface()
+                .filter(|surface| {
+                    input.is_surface_current_and_interactive()
+                        && surface.binding() == selection.binding().range_binding()
+                })
+                .map(|surface| {
+                    let selection = surface.selection();
+                    gpui_text_input::MutationPositions::new(
+                        surface.caret(),
+                        selection.anchor,
+                        selection.head,
+                    )
+                })
         }) else {
             return;
         };
@@ -341,7 +356,6 @@ impl MainWindowConversationComposer {
             }
         };
         let service = self.service.clone();
-        let selection = self.selection;
         let limits = self.proof_limits;
         let task = cx.background_executor().spawn(async move {
             let mut slot = service.slot.lock().map_err(|_| {
@@ -509,14 +523,20 @@ impl MainWindowConversationComposer {
         let outcome = result.outcome;
         let input = self.input.clone();
         match outcome {
-            MainWindowComposerDispatchOutcome::Page(page) => input
-                .update(cx, |input, cx| input.deliver_page(page, window, cx))
-                .map_err(|_| "composer text page was rejected".to_owned()),
-            MainWindowComposerDispatchOutcome::ObjectPage(page) => input
-                .update(cx, |input, cx| {
+            MainWindowComposerDispatchOutcome::Page(page) => {
+                match input.update(cx, |input, cx| input.deliver_page(page, window, cx)) {
+                    Ok(()) | Err(RangeTextInputError::PageResponseRejected(_)) => Ok(()),
+                    Err(_) => Err("composer text page was rejected".to_owned()),
+                }
+            }
+            MainWindowComposerDispatchOutcome::ObjectPage(page) => {
+                match input.update(cx, |input, cx| {
                     input.deliver_object_page_in_window(page, window, cx)
-                })
-                .map_err(|_| "composer marker page was rejected".to_owned()),
+                }) {
+                    Ok(()) | Err(RangeTextInputError::ObjectResponseRejected(_)) => Ok(()),
+                    Err(_) => Err("composer marker page was rejected".to_owned()),
+                }
+            }
             MainWindowComposerDispatchOutcome::MutationBegan(key) => {
                 input
                     .update(cx, |input, cx| input.accept_mutation_preflight(key, cx))

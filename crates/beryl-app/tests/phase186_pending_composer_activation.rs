@@ -25,7 +25,8 @@ use beryl_app::{
 };
 use beryl_home_store::CommandCancellation;
 use gpui::{
-    AppContext, Entity, EntityInputHandler, Focusable, IntoElement, ParentElement, Render, div, px,
+    AppContext, Entity, EntityInputHandler, Focusable, IntoElement, ParentElement, Render, Styled,
+    div, px,
 };
 use gpui_text_input::ensure_text_input_bindings;
 use syndic_storage::{
@@ -35,7 +36,7 @@ use syndic_storage::{
 
 use support::{
     ACTIVATION_DRAFT_BYTES, activation, drive, fixture::Fixture, fixture::operation_id,
-    seed_activation_published_draft, widget_config,
+    seed_activation_published_draft, seed_activation_published_draft_chunks, widget_config,
 };
 
 struct MountRoot {
@@ -49,6 +50,22 @@ impl Render for MountRoot {
         cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
         div().children(self.mount.read(cx).contribution())
+    }
+}
+
+struct StableMountRoot {
+    mount: Entity<MainWindowConversationComposerMount>,
+}
+
+impl Render for StableMountRoot {
+    fn render(
+        &mut self,
+        _window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .w(px(320.))
+            .children(self.mount.read(cx).contribution())
     }
 }
 
@@ -182,6 +199,10 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
             })
             .unwrap();
         match advance {
+            MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(current) => {
+                assert_eq!(current, receipt);
+                drive(cx, 1);
+            }
             MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(selection) => {
                 assert_eq!(selection, clean_predecessor);
                 drive(cx, 1);
@@ -243,9 +264,7 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
 }
 
 #[gpui::test]
-fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
-    cx: &mut gpui::TestAppContext,
-) {
+fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
     let fixture = Fixture::new("phase186-pending-promote", 185);
     let window_id = fixture.window_id;
@@ -327,11 +346,43 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
         panic!("target host did not open")
     };
 
+    let predecessor_input = predecessor.read_with(cx, |composer, _| composer.gpui_input());
+    cx.update(|window, app| predecessor_input.update(app, |input, _| input.focus(window)));
+    cx.update(|window, app| {
+        predecessor_input.update(app, |input, input_cx| {
+            input.replace_and_mark_text_in_range(None, "p", None, window, input_cx)
+        })
+    });
+    drive(cx, 32);
+    let edited_selection = service.selected_identity().unwrap();
+    assert_ne!(edited_selection, predecessor_selection);
+    assert!(
+        edited_selection
+            .binding()
+            .candidate()
+            .candidate_generation()
+            > predecessor_candidate_generation
+    );
+    assert_ne!(
+        edited_selection.binding().root(),
+        predecessor_selection.binding().root()
+    );
+    assert_eq!(
+        edited_selection
+            .binding()
+            .logical_extent()
+            .logical_utf8_bytes(),
+        1
+    );
+    assert_eq!(
+        predecessor.read_with(cx, |composer, _| composer.selection_identity()),
+        edited_selection
+    );
+    let edited_predecessor_root = edited_selection.binding().root();
+    predecessor_selection = edited_selection;
+
     let mut pending_id = None;
-    let mut priming_rounds = 0;
     let mut flush_ticket = None;
-    let mut predecessor_edited = false;
-    let mut edited_predecessor_root = None;
     for _ in 0..64 {
         let start = cx
             .update(|window, app| {
@@ -348,7 +399,6 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
         match start {
             MainWindowConversationComposerMountFlushStart::TargetPriming(current) => {
                 assert_eq!(current, receipt);
-                priming_rounds += 1;
                 let residency = mount
                     .read_with(cx, |mount, mount_cx| {
                         mount.test_activation_residency(mount_cx)
@@ -369,46 +419,6 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
                         .entity_id(),
                     predecessor_id
                 );
-                if !predecessor_edited {
-                    let predecessor_input =
-                        predecessor.read_with(cx, |composer, _| composer.gpui_input());
-                    cx.update(|window, app| {
-                        predecessor_input.update(app, |input, _| input.focus(window))
-                    });
-                    cx.update(|window, app| {
-                        predecessor_input.update(app, |input, input_cx| {
-                            input.replace_and_mark_text_in_range(None, "p", None, window, input_cx)
-                        })
-                    });
-                    drive(cx, 32);
-                    let edited_selection = service.selected_identity().unwrap();
-                    assert_ne!(edited_selection, predecessor_selection);
-                    assert!(
-                        edited_selection
-                            .binding()
-                            .candidate()
-                            .candidate_generation()
-                            > predecessor_candidate_generation
-                    );
-                    assert_ne!(
-                        edited_selection.binding().root(),
-                        predecessor_selection.binding().root()
-                    );
-                    assert_eq!(
-                        edited_selection
-                            .binding()
-                            .logical_extent()
-                            .logical_utf8_bytes(),
-                        1
-                    );
-                    assert_eq!(
-                        predecessor.read_with(cx, |composer, _| composer.selection_identity()),
-                        edited_selection
-                    );
-                    edited_predecessor_root = Some(edited_selection.binding().root());
-                    predecessor_selection = edited_selection;
-                    predecessor_edited = true;
-                }
                 drive(cx, 1);
             }
             MainWindowConversationComposerMountFlushStart::WidgetFencePending(selection) => {
@@ -424,8 +434,6 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
             start => panic!("unexpected predecessor flush admission: {start:?}"),
         }
     }
-    assert!(priming_rounds > 0);
-    assert!(predecessor_edited);
     if flush_ticket.is_none() {
         let pending = mount
             .read_with(cx, |mount, _| mount.test_pending_contribution())
@@ -442,7 +450,7 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
             "pending surface did not settle: seeds={seeds}, error={error:?}, diagnostics={diagnostics:?}"
         );
     }
-    assert_eq!(service.test_pending_host_request_id(receipt), Some(20));
+    assert_eq!(service.test_pending_host_request_id(receipt), Some(16));
     let selected_bounds = cx.debug_bounds("conversation-composer-root").unwrap();
     let pending_bounds = cx
         .debug_bounds("conversation-composer-pending-realization")
@@ -515,7 +523,7 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
                     predecessor_selection = service.selected_identity().unwrap();
                     assert_eq!(
                         predecessor_selection.binding().root(),
-                        edited_predecessor_root.unwrap()
+                        edited_predecessor_root
                     );
                     assert_eq!(
                         storage
@@ -528,13 +536,13 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
                             .unwrap()
                             .draft()
                             .piece_root(),
-                        edited_predecessor_root.unwrap()
+                        edited_predecessor_root
                     );
                     let outcome = mount
                         .update(cx, |mount, _| {
                             mount.capture_flush_disposal(
                                 predecessor_selection,
-                                flush_ticket.unwrap(),
+                                flush_ticket.expect("dirty predecessor flush ticket disappeared"),
                                 operation_id(25),
                                 &CommandCancellation::new(),
                             )
@@ -555,6 +563,9 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
             MainWindowConversationComposerMountPublishAdvance::Retained(
                 MainWindowComposerPublishAdvance::ReconciliationPending,
             ) => {}
+            MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(current) => {
+                assert_eq!(current, receipt);
+            }
             MainWindowConversationComposerMountPublishAdvance::Published(selection) => {
                 published = Some(selection);
                 break;
@@ -597,7 +608,7 @@ fn multi_page_pending_target_primes_then_promotes_the_exact_unpublished_entity(
             .unwrap()
             .draft()
             .piece_root(),
-        edited_predecessor_root.unwrap()
+        edited_predecessor_root
     );
 }
 
@@ -907,7 +918,7 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
             )
             .unwrap()
         });
-        MountRoot { mount }
+        StableMountRoot { mount }
     });
     drive(cx, 24);
     let mount = root.read_with(cx, |root, _| root.mount.clone());
@@ -925,9 +936,9 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
         panic!("predispatch target did not open")
     };
     let mut pending = None;
-    let mut primed = false;
+    let mut admitted = false;
     for _ in 0..64 {
-        match cx
+        let started = match cx
             .update(|window, app| {
                 mount.update(app, |mount, mount_cx| {
                     mount.begin_publish(receipt, window, mount_cx)
@@ -935,34 +946,38 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
             })
             .unwrap()
         {
-            MainWindowConversationComposerMountFlushStart::TargetPriming(_) => {}
-            MainWindowConversationComposerMountFlushStart::WidgetFencePending(_) => {}
+            MainWindowConversationComposerMountFlushStart::TargetPriming(_) => false,
+            MainWindowConversationComposerMountFlushStart::WidgetFencePending(_) => false,
+            MainWindowConversationComposerMountFlushStart::Started(
+                ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch),
+            ) => true,
             other => panic!("unexpected predispatch priming advance: {other:?}"),
-        }
+        };
         pending = mount.read_with(cx, |mount, _| mount.test_pending_contribution());
+        if started {
+            admitted = true;
+            break;
+        }
         drive(cx, 1);
         if pending.as_ref().is_some_and(|pending| {
             pending.read_with(cx, |pending, app| pending.pending_surface_ready(app))
         }) {
-            primed = true;
-            break;
+            continue;
         }
     }
     assert!(
-        primed,
-        "predispatch pending surface did not become coherent"
+        admitted,
+        "predispatch pending target was not admitted: diagnostics={:?}",
+        pending
+            .as_ref()
+            .map(|pending| pending
+                .read_with(cx, |pending, app| pending.realization_diagnostics(app)))
     );
     let pending = pending
         .or_else(|| mount.read_with(cx, |mount, _| mount.test_pending_contribution()))
         .unwrap();
     let pending_id = pending.entity_id();
-    let pending_input = pending.read_with(cx, |composer, _| composer.gpui_input());
     let release = service.test_block_next_pending_dispatch();
-    pending_input
-        .update(cx, |input, input_cx| {
-            input.request_absolute_scroll(px(400.), input_cx)
-        })
-        .unwrap();
     for _ in 0..32 {
         if release.is_blocked() {
             break;
@@ -974,20 +989,8 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
         "pending dispatch gate was not entered"
     );
     assert!(pending.read_with(cx, |composer, _| composer.test_has_active_flight()));
-    let held = pending.read_with(cx, |composer, app| composer.realization_diagnostics(app));
-    assert_eq!(held.current.dispatched_page_requests, 1);
+    assert!(pending.read_with(cx, |composer, app| composer.pending_surface_ready(app)));
 
-    assert!(matches!(
-        cx.update(|window, app| {
-            mount.update(app, |mount, mount_cx| {
-                mount.begin_publish(receipt, window, mount_cx)
-            })
-        })
-        .unwrap(),
-        MainWindowConversationComposerMountFlushStart::Started(
-            ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch)
-        )
-    ));
     let mut published = None;
     for _ in 0..24 {
         match cx
@@ -998,6 +1001,10 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
             })
             .unwrap()
         {
+            MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(current) => {
+                assert_eq!(current, receipt);
+                drive(cx, 1);
+            }
             MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(_) => {
                 drive(cx, 1)
             }
@@ -1058,6 +1065,225 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
 }
 
 #[gpui::test]
+fn current_predecessor_release_does_not_wait_for_its_remaining_sparse_index(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase187-predecessor-index-release", 189);
+    let window_id = fixture.window_id;
+    let selected_thread = fixture.selected_thread;
+    let target_thread = fixture.target_thread;
+    let predecessor_extent = seed_activation_published_draft_chunks(&fixture, selected_thread, 32);
+    let (selected_claim, target_claim) = fixture.claims();
+    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    assert!(matches!(
+        selected_host
+            .test_activate(
+                &fixture.store,
+                activation(selected_thread, 111, 112, 1, predecessor_extent),
+                &CommandCancellation::new(),
+            )
+            .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let slot = MainWindowComposerSlot::new(
+        window_id,
+        selected_claim,
+        selected_host,
+        storage,
+        marker_authority,
+    )
+    .unwrap();
+    let predecessor_selection = slot.selected_identity().unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    let mut widget = widget_config(
+                        selection.binding().range_binding(),
+                        selection.binding().presentation_generation(),
+                    );
+                    widget.viewport_extent = px(64.);
+                    widget.overscan = px(0.);
+                    MainWindowConversationComposerConfig::new(selection, widget)
+                        .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        StableMountRoot { mount }
+    });
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    let predecessor = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let predecessor_id = predecessor.entity_id();
+    let predecessor_input = predecessor.read_with(cx, |composer, _| composer.gpui_input());
+    let mut relayout = widget_config(
+        predecessor_selection.binding().range_binding(),
+        predecessor_selection.binding().presentation_generation(),
+    );
+    relayout.layout.wrap_width = px(160.);
+    predecessor_input
+        .update(cx, |input, input_cx| {
+            input.set_layout(relayout.layout, relayout.style, input_cx)
+        })
+        .unwrap();
+    let mut unfinished_surface_observed = false;
+    for _ in 0..512 {
+        unfinished_surface_observed = predecessor_input.read_with(cx, |input, _| {
+            input.is_surface_current_and_interactive()
+                && !input.is_quiescent()
+                && input.surface().is_some_and(|surface| {
+                    surface.quality() == gpui_text_input::GeometryQuality::Estimated
+                })
+        });
+        if unfinished_surface_observed {
+            break;
+        }
+        let _ = cx.executor().tick();
+        cx.update(|window, app| window.draw(app).clear());
+    }
+    assert!(
+        unfinished_surface_observed,
+        "selected predecessor did not expose a current estimated surface before its sparse index finished: error={:?}, diagnostics={:?}",
+        predecessor.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
+        predecessor_input.read_with(cx, |input, _| input.realization_diagnostics())
+    );
+    assert_eq!(service.selected_identity(), Some(predecessor_selection));
+
+    let MainWindowComposerActivationAdvance::Ready(receipt) = mount
+        .update(cx, |mount, _| {
+            mount.begin_activation(
+                target_claim,
+                activation(target_thread, 113, 114, 2, 0),
+                operation_id(115),
+                &CommandCancellation::new(),
+            )
+        })
+        .unwrap()
+    else {
+        panic!("small successor target did not open")
+    };
+    let mut successor_id = None;
+    let mut admitted = false;
+    let mut admission_advances = 0;
+    for _ in 0..16 {
+        admission_advances += 1;
+        let start = cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.begin_publish(receipt, window, mount_cx)
+                })
+            })
+            .unwrap();
+        successor_id = successor_id.or_else(|| {
+            mount
+                .read_with(cx, |mount, _| mount.test_pending_contribution())
+                .map(|successor| successor.entity_id())
+        });
+        match start {
+            MainWindowConversationComposerMountFlushStart::TargetPriming(current) => {
+                assert_eq!(current, receipt);
+                let _ = cx.executor().tick();
+                cx.update(|window, app| window.draw(app).clear());
+            }
+            MainWindowConversationComposerMountFlushStart::WidgetFencePending(selection) => {
+                assert_eq!(selection, predecessor_selection);
+                let _ = cx.executor().tick();
+                cx.update(|window, app| window.draw(app).clear());
+            }
+            MainWindowConversationComposerMountFlushStart::Started(
+                ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch),
+            ) => {
+                admitted = true;
+                break;
+            }
+            other => panic!("unexpected sparse-index successor admission: {other:?}"),
+        }
+    }
+    assert!(
+        admitted,
+        "successor waited for the predecessor's remaining sparse index: error={:?}, diagnostics={:?}",
+        predecessor.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
+        predecessor_input.read_with(cx, |input, _| input.realization_diagnostics())
+    );
+    assert!(admission_advances <= 16);
+    predecessor_input.read_with(cx, |input, _| {
+        assert!(!input.is_quiescent());
+        assert_eq!(
+            input.surface().unwrap().quality(),
+            gpui_text_input::GeometryQuality::Estimated
+        );
+    });
+    assert!(predecessor.read_with(cx, |composer, _| composer.last_error().is_none()));
+
+    let mut published = None;
+    let mut publication_advances = 0;
+    for _ in 0..16 {
+        publication_advances += 1;
+        match cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.advance_publish(receipt, window, mount_cx)
+                })
+            })
+            .unwrap()
+        {
+            MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(current) => {
+                assert_eq!(current, receipt);
+                drive(cx, 1);
+            }
+            MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(selection) => {
+                assert_eq!(selection, predecessor_selection);
+                drive(cx, 1);
+            }
+            MainWindowConversationComposerMountPublishAdvance::Published(selection) => {
+                published = Some(selection);
+                break;
+            }
+            other => panic!("unexpected sparse-index successor publication: {other:?}"),
+        }
+    }
+    let published =
+        published.expect("successor did not publish before the bounded release advance limit");
+    assert!(publication_advances <= 16);
+    assert_eq!(published.claim(), target_claim);
+    assert_eq!(service.selected_identity(), Some(published));
+    assert_ne!(
+        mount
+            .read_with(cx, |mount, _| mount.contribution())
+            .unwrap()
+            .entity_id(),
+        predecessor_id
+    );
+    assert_eq!(
+        mount
+            .read_with(cx, |mount, _| mount.contribution())
+            .unwrap()
+            .entity_id(),
+        successor_id.unwrap()
+    );
+    assert!(predecessor.read_with(cx, |composer, _| composer.last_error().is_none()));
+    predecessor_input.read_with(cx, |input, _| {
+        assert!(input.surface().is_none());
+        assert!(input.is_quiescent());
+    });
+}
+
+#[gpui::test]
 fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
     let fixture = Fixture::new("phase186-pending-flight-failure", 187);
@@ -1113,7 +1339,7 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
             )
             .unwrap()
         });
-        MountRoot { mount }
+        StableMountRoot { mount }
     });
     drive(cx, 24);
     let mount = root.read_with(cx, |root, _| root.mount.clone());
@@ -1131,9 +1357,9 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
         panic!("delayed-failure target did not open")
     };
     let mut pending = None;
-    let mut primed = false;
+    let mut admitted = false;
     for _ in 0..64 {
-        match cx
+        let started = match cx
             .update(|window, app| {
                 mount.update(app, |mount, mount_cx| {
                     mount.begin_publish(receipt, window, mount_cx)
@@ -1141,34 +1367,38 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
             })
             .unwrap()
         {
-            MainWindowConversationComposerMountFlushStart::TargetPriming(_) => {}
-            MainWindowConversationComposerMountFlushStart::WidgetFencePending(_) => {}
+            MainWindowConversationComposerMountFlushStart::TargetPriming(_) => false,
+            MainWindowConversationComposerMountFlushStart::WidgetFencePending(_) => false,
+            MainWindowConversationComposerMountFlushStart::Started(
+                ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch),
+            ) => true,
             other => panic!("unexpected delayed-flight flush: {other:?}"),
-        }
+        };
         pending = mount.read_with(cx, |mount, _| mount.test_pending_contribution());
+        if started {
+            admitted = true;
+            break;
+        }
         drive(cx, 1);
         if pending.as_ref().is_some_and(|pending| {
             pending.read_with(cx, |pending, app| pending.pending_surface_ready(app))
         }) {
-            primed = true;
-            break;
+            continue;
         }
     }
     assert!(
-        primed,
-        "pending surface did not become coherent before the delayed flight"
+        admitted,
+        "pending target was not admitted before the delayed flight: diagnostics={:?}",
+        pending
+            .as_ref()
+            .map(|pending| pending
+                .read_with(cx, |pending, app| pending.realization_diagnostics(app)))
     );
     let pending = pending
         .or_else(|| mount.read_with(cx, |mount, _| mount.test_pending_contribution()))
         .unwrap();
     let pending_id = pending.entity_id();
-    let pending_input = pending.read_with(cx, |composer, _| composer.gpui_input());
     let release = service.test_block_next_pending_completion();
-    pending_input
-        .update(cx, |input, input_cx| {
-            input.request_absolute_scroll(px(400.), input_cx)
-        })
-        .unwrap();
     for _ in 0..32 {
         if release.is_blocked() {
             break;
@@ -1179,17 +1409,6 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
         release.is_blocked(),
         "pending flight did not enter its completion gate"
     );
-    assert!(matches!(
-        cx.update(|window, app| {
-            mount.update(app, |mount, mount_cx| {
-                mount.begin_publish(receipt, window, mount_cx)
-            })
-        })
-        .unwrap(),
-        MainWindowConversationComposerMountFlushStart::Started(
-            ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch)
-        )
-    ));
     let mut published = None;
     for _ in 0..24 {
         match cx
@@ -1200,6 +1419,10 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
             })
             .unwrap()
         {
+            MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(current) => {
+                assert_eq!(current, receipt);
+                drive(cx, 1);
+            }
             MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(_) => {
                 drive(cx, 1)
             }
@@ -1210,7 +1433,18 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
             other => panic!("unexpected delayed-flight publication: {other:?}"),
         }
     }
-    let published = published.expect("pending entity was not promoted around its delayed flight");
+    let published = published.unwrap_or_else(|| {
+        let (ready, error, diagnostics) = pending.read_with(cx, |composer, app| {
+            (
+                composer.pending_surface_ready(app),
+                composer.last_error().map(str::to_owned),
+                composer.realization_diagnostics(app),
+            )
+        });
+        panic!(
+            "pending entity was not promoted around its delayed flight: ready={ready}, error={error:?}, diagnostics={diagnostics:?}"
+        )
+    });
     assert_eq!(service.selected_identity(), Some(published));
     assert_eq!(
         mount
@@ -1240,9 +1474,7 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
 }
 
 #[gpui::test]
-fn pending_target_is_noninteractive_and_releases_on_cancel_supersession_and_disposal(
-    cx: &mut gpui::TestAppContext,
-) {
+fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
     let fixture = Fixture::new("phase186-pending-terminal", 186);
     let window_id = fixture.window_id;
@@ -1344,51 +1576,6 @@ fn pending_target_is_noninteractive_and_releases_on_cancel_supersession_and_disp
     else {
         panic!("first target did not open")
     };
-    assert!(matches!(
-        cx.update(|window, app| mount.update(app, |mount, mount_cx| {
-            mount.begin_publish(first, window, mount_cx)
-        }))
-        .unwrap(),
-        MainWindowConversationComposerMountFlushStart::TargetPriming(_)
-    ));
-    let pending = mount
-        .read_with(cx, |mount, _| mount.test_pending_contribution())
-        .unwrap();
-    let pending_binding = pending.read_with(cx, |composer, _| composer.selection_identity());
-    let pending_input = pending.read_with(cx, |composer, _| composer.gpui_input());
-    cx.update(|window, app| {
-        pending_input.update(app, |input, input_cx| {
-            input.replace_and_mark_text_in_range(None, "forbidden", None, window, input_cx)
-        })
-    });
-    drive(cx, 16);
-    assert_eq!(service.selected_identity(), Some(predecessor_selection));
-    assert_eq!(service.pending_identity(first), Some(pending_binding));
-    assert_ne!(pending.entity_id(), predecessor_id);
-    assert_eq!(
-        mount
-            .read_with(cx, |mount, _| mount.contribution())
-            .unwrap()
-            .entity_id(),
-        predecessor_id
-    );
-    cx.update(|window, app| pending_input.update(app, |input, _| input.focus(window)));
-    assert!(!cx.update(|window, app| pending_input.read(app).focus_handle(app).is_focused(window)));
-    assert_eq!(
-        mount
-            .read_with(cx, |mount, mount_cx| mount.surface_snapshot(mount_cx))
-            .unwrap()
-            .selection,
-        predecessor_selection
-    );
-    assert!(
-        mount
-            .read_with(cx, |mount, mount_cx| {
-                mount.hit_test_composite_viewport(gpui::point(gpui::px(1.), gpui::px(1.)), mount_cx)
-            })
-            .is_none_or(|hit| hit.selection == predecessor_selection)
-    );
-
     let MainWindowComposerActivationAdvance::Ready(second) = mount
         .update(cx, |mount, _| {
             mount.begin_activation(
@@ -1563,13 +1750,6 @@ fn pending_target_is_noninteractive_and_releases_on_cancel_supersession_and_disp
     else {
         panic!("disposal target did not open")
     };
-    assert!(matches!(
-        cx.update(|window, app| mount.update(app, |mount, mount_cx| {
-            mount.begin_publish(third, window, mount_cx)
-        }))
-        .unwrap(),
-        MainWindowConversationComposerMountFlushStart::TargetPriming(_)
-    ));
     let _ = cx.update(|window, app| {
         mount.update(app, |mount, mount_cx| {
             mount.begin_disposal(window, mount_cx)

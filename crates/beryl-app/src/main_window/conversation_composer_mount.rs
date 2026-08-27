@@ -36,6 +36,7 @@ pub type MainWindowConversationComposerConfigurator = Box<
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MainWindowConversationComposerMountPublishAdvance {
     Retained(MainWindowComposerPublishAdvance),
+    TargetSurfacePending(MainWindowComposerActivationReceipt),
     WidgetReleasePending(MainWindowComposerSelectionIdentity),
     Published(MainWindowComposerSelectionIdentity),
 }
@@ -246,6 +247,31 @@ impl MainWindowConversationComposerMount {
                 advance,
             ));
         };
+        let successor = self
+            .pending
+            .as_ref()
+            .filter(|successor| successor.read(cx).matches_pending_target(receipt))
+            .cloned()
+            .ok_or_else(|| "published composer target is missing".to_owned())?;
+        if let Some(error) = successor.read(cx).last_error().map(str::to_owned) {
+            self.resume_contribution(window, cx)?;
+            self.refresh_autosave(window, cx)?;
+            self.retire_failed_pending(receipt, cx)?;
+            return Err(error);
+        }
+        if self.activation_residency(cx)?.is_none() {
+            self.resume_contribution(window, cx)?;
+            self.refresh_autosave(window, cx)?;
+            self.retire_failed_pending(receipt, cx)?;
+            return Err("combined composer residency exceeded its activation bound".to_owned());
+        }
+        if !successor.update(cx, |successor, successor_cx| {
+            successor.admit_pending_surface(successor_cx)
+        }) {
+            return Ok(
+                MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(receipt),
+            );
+        }
         let contribution = self
             .contribution
             .as_ref()
@@ -472,7 +498,9 @@ impl MainWindowConversationComposerMount {
             let _ = self.service.release_failed_pending(receipt)?;
             return Err("combined composer residency exceeded its activation bound".to_owned());
         }
-        Ok(pending.read(cx).pending_surface_ready(cx))
+        Ok(pending.update(cx, |pending, pending_cx| {
+            pending.admit_pending_surface(pending_cx)
+        }))
     }
 
     fn activation_residency(

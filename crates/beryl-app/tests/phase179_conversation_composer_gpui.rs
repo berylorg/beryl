@@ -209,8 +209,7 @@ fn production_owner_settles_committed_edit_and_failed_cut_through_widget(
             input.replace_and_mark_text_in_range(None, "x", None, window, cx)
         })
     });
-    drive_owner(cx, 24);
-    let committed = service.selected_identity().unwrap();
+    let committed = drive_selected_surface(&composer, &input, &service, selection, cx, 256);
     let owner_error =
         composer.read_with(cx, |composer, _| composer.last_error().map(str::to_owned));
     assert!(
@@ -231,8 +230,7 @@ fn production_owner_settles_committed_edit_and_failed_cut_through_widget(
     composer.read_with(cx, |composer, _| assert_eq!(composer.last_error(), None));
 
     cx.simulate_keystrokes("ctrl-z");
-    drive_owner(cx, 32);
-    let undone = service.selected_identity().unwrap();
+    let undone = drive_selected_surface(&composer, &input, &service, committed, cx, 256);
     assert_eq!(undone.binding().root(), selection.binding().root());
     assert_eq!(
         undone.binding().logical_extent(),
@@ -246,15 +244,14 @@ fn production_owner_settles_committed_edit_and_failed_cut_through_widget(
     composer.read_with(cx, |composer, _| assert_eq!(composer.last_error(), None));
 
     cx.simulate_keystrokes("ctrl-y");
-    drive_owner(cx, 32);
-    let redone = service.selected_identity().unwrap();
+    let redone = drive_selected_surface(&composer, &input, &service, undone, cx, 256);
     assert_eq!(redone.binding().root(), committed.binding().root());
     assert!(redone.binding().range_history_frontier().undo_available);
     assert!(!redone.binding().range_history_frontier().redo_available);
     composer.read_with(cx, |composer, _| assert_eq!(composer.last_error(), None));
 
     cx.simulate_keystrokes("ctrl-a");
-    drive_owner(cx, 12);
+    drive_current_surface(&composer, &input, cx, 256);
     cx.simulate_keystrokes("ctrl-x");
     drive_owner(cx, 24);
     assert_eq!(writes.load(Ordering::SeqCst), 1);
@@ -762,7 +759,7 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
             );
         })
     });
-    drive_owner(cx, 32);
+    let successor = drive_selected_surface(&composer, &input, &service, selection, cx, 256);
     assert_eq!(
         service
             .selected_identity()
@@ -774,7 +771,9 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         1
     );
     input.read_with(cx, |input, _| {
-        let markers = input.surface().unwrap().realized_objects();
+        let surface = input.surface().unwrap();
+        assert_eq!(surface.binding(), successor.binding().range_binding());
+        let markers = surface.realized_objects();
         assert_eq!(markers.len(), 1);
         assert_eq!(markers[0].id(), InlineObjectId::new(0x1001));
         assert_eq!(markers[0].order(), InlineObjectOrder::new(2));
@@ -1127,6 +1126,87 @@ fn drive_owner(cx: &mut gpui::VisualTestContext, rounds: usize) {
         cx.run_until_parked();
         cx.update(|window, app| window.draw(app).clear());
     }
+}
+
+fn drive_current_surface(
+    composer: &gpui::Entity<MainWindowConversationComposer>,
+    input: &gpui::Entity<gpui_text_input::RangeTextInput>,
+    cx: &mut gpui::VisualTestContext,
+    rounds: usize,
+) {
+    for _ in 0..rounds {
+        drive_owner(cx, 1);
+        if input.read_with(cx, |input, _| input.is_surface_current_and_interactive()) {
+            return;
+        }
+    }
+    let state = input.read_with(cx, |input, _| {
+        (
+            input.is_quiescent(),
+            input.surface().map(|surface| surface.binding()),
+            input.active_inline_object(),
+            input.surface().map(|surface| {
+                surface
+                    .realized_objects()
+                    .iter()
+                    .map(|object| (object.id(), object.order()))
+                    .collect::<Vec<_>>()
+            }),
+        )
+    });
+    let error = composer.read_with(cx, |composer, _| composer.last_error().map(str::to_owned));
+    panic!("composer surface did not become current: state={state:?}, error={error:?}")
+}
+
+fn drive_selected_surface(
+    composer: &gpui::Entity<MainWindowConversationComposer>,
+    input: &gpui::Entity<gpui_text_input::RangeTextInput>,
+    service: &MainWindowConversationComposerService,
+    previous: beryl_app::main_window::MainWindowComposerSelectionIdentity,
+    cx: &mut gpui::VisualTestContext,
+    rounds: usize,
+) -> beryl_app::main_window::MainWindowComposerSelectionIdentity {
+    for _ in 0..rounds {
+        drive_owner(cx, 1);
+        let selected = service.selected_identity().unwrap();
+        if selected != previous
+            && input.read_with(cx, |input, _| {
+                input.is_surface_current_and_interactive()
+                    && input.surface().is_some_and(|surface| {
+                        surface.binding() == selected.binding().range_binding()
+                    })
+            })
+        {
+            return selected;
+        }
+    }
+    let selected = service
+        .selected_identity()
+        .map(|selected| selected.binding().range_binding());
+    let state = input.read_with(cx, |input, _| {
+        (
+            input.is_quiescent(),
+            input.surface().map(|surface| surface.binding()),
+            input.active_inline_object(),
+            input.surface().map(|surface| {
+                surface
+                    .realized_objects()
+                    .iter()
+                    .map(|object| (object.id(), object.order()))
+                    .collect::<Vec<_>>()
+            }),
+        )
+    });
+    let owner = composer.read_with(cx, |composer, _| {
+        (
+            composer.last_error().map(str::to_owned),
+            composer.test_has_active_flight(),
+        )
+    });
+    let pending = cx.update(|_, app| input.update(app, |input, _| input.take_request()));
+    panic!(
+        "composer successor surface did not become current: selected={selected:?}, state={state:?}, owner={owner:?}, pending={pending:?}"
+    )
 }
 
 fn activate_with_initial_pages(
