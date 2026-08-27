@@ -5,10 +5,13 @@ use gpui::{
 use gpui_text_input::{
     ClipboardCompletion, ClipboardKind, ClipboardLimits, ClipboardWriteOutcome,
     InlineObjectActivation, InlineObjectSurfaceAttachment, InlineObjectSurfaceDismissal,
-    MutationLimits, OperationId, RangeSourceSelection, RangeTextInput, RangeTextInputEvent,
-    RangeTextInputRequest, RealizedInlineObjectAnchor, TextInputCommand,
+    MutationLimits, ObjectPurpose, OperationId, PagePurpose, RangeSourceSelection, RangeTextInput,
+    RangeTextInputEvent, RangeTextInputRequest, RealizedInlineObjectAnchor, TextInputCommand,
 };
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Weak},
+};
 
 use crate::composer_host::ComposerHostImageMarkerMetadata;
 
@@ -69,14 +72,29 @@ enum MainWindowConversationComposerRoute {
     Pending(MainWindowComposerActivationReceipt),
 }
 
+pub(in crate::main_window) enum MainWindowConversationComposerActivationSeed {
+    Page(crate::composer_host::ComposerHostResponse),
+    ObjectPage(crate::composer_host::ComposerHostResponse),
+}
+
+struct MainWindowConversationComposerPendingRealizer {
+    receipt: MainWindowComposerActivationReceipt,
+    composer: WeakEntity<MainWindowConversationComposer>,
+    lifetime: Weak<()>,
+}
+
+pub(in crate::main_window) struct MainWindowConversationComposerPendingRealizerToken {
+    _lifetime: Arc<()>,
+}
+
 pub struct MainWindowConversationComposer {
     input: Entity<RangeTextInput>,
     service: Arc<MainWindowConversationComposerService>,
     selection: MainWindowComposerSelectionIdentity,
     route: MainWindowConversationComposerRoute,
-    pending_realizer: Option<WeakEntity<MainWindowConversationComposer>>,
+    pending_realizer: Option<MainWindowConversationComposerPendingRealizer>,
     residency_bound: MainWindowComposerResidencyBound,
-    initial_responses: VecDeque<crate::composer_host::ComposerHostResponse>,
+    activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
     clipboard_writer: ComposerClipboardWriter,
     proof_limits: super::MainWindowComposerSuccessorProofLimits,
     clipboard_limits: ClipboardLimits,

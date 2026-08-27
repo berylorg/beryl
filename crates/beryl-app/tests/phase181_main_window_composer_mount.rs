@@ -337,11 +337,12 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
     cancelled.cancel();
     assert!(matches!(
         mount
-            .update(cx, |mount, _| mount.begin_activation(
+            .update(cx, |mount, mount_cx| mount.begin_activation(
                 target_claim,
                 activation(target_thread, 35, 36, 2, 0),
                 operation_id(37),
                 &cancelled,
+                mount_cx,
             ))
             .unwrap(),
         MainWindowComposerActivationAdvance::Cancelled
@@ -355,12 +356,13 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
     );
 
     let ready = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 38, 39, 2, 0),
                 operation_id(40),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap();
@@ -375,7 +377,9 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
         initial_entity
     );
     mount
-        .update(cx, |mount, _| mount.retire_pending(retired_receipt))
+        .update(cx, |mount, mount_cx| {
+            mount.retire_pending(retired_receipt, mount_cx)
+        })
         .unwrap();
     assert_eq!(
         mount
@@ -386,12 +390,13 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
     );
 
     let ready = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 41, 42, 2, 0),
                 operation_id(43),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap();

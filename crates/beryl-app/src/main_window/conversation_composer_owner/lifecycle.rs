@@ -31,7 +31,7 @@ impl MainWindowConversationComposer {
     pub(in crate::main_window) fn admit_pending_surface(&mut self, cx: &App) -> bool {
         let ready = self.pending_surface_ready(cx);
         if ready {
-            self.initial_responses.clear();
+            self.activation_seeds.clear();
         }
         ready
     }
@@ -43,7 +43,24 @@ impl MainWindowConversationComposer {
 
     #[cfg(feature = "test-faults")]
     pub fn test_pending_seed_count(&self) -> usize {
-        self.initial_responses.len()
+        self.activation_seeds.len()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_has_pending_realizer(&self) -> bool {
+        self.pending_realizer.as_ref().is_some_and(|realizer| {
+            realizer.lifetime.upgrade().is_some() && realizer.composer.upgrade().is_some()
+        })
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_has_pending_render_child(&self, cx: &App) -> bool {
+        self.pending_realizer.as_ref().is_some_and(|realizer| {
+            realizer.lifetime.upgrade().is_some()
+                && realizer.composer.upgrade().is_some_and(|composer| {
+                    composer.read(cx).matches_pending_target(realizer.receipt)
+                })
+        })
     }
 
     pub(in crate::main_window) const fn residency_bound(&self) -> MainWindowComposerResidencyBound {
@@ -66,15 +83,51 @@ impl MainWindowConversationComposer {
 
     pub(in crate::main_window) fn attach_pending_realizer(
         &mut self,
+        receipt: MainWindowComposerActivationReceipt,
         pending: &Entity<MainWindowConversationComposer>,
         cx: &mut Context<Self>,
-    ) -> Result<(), String> {
+    ) -> Result<MainWindowConversationComposerPendingRealizerToken, String> {
         if self.route != MainWindowConversationComposerRoute::Selected
-            || !pending.read(cx).is_pending_target()
+            || !pending.read(cx).matches_pending_target(receipt)
         {
             return Err("pending composer realizer identity is stale".to_owned());
         }
-        self.pending_realizer = Some(pending.downgrade());
+        if self
+            .pending_realizer
+            .as_ref()
+            .is_some_and(|realizer| realizer.lifetime.upgrade().is_some())
+        {
+            return Err("pending composer realizer is already attached".to_owned());
+        }
+        let lifetime = Arc::new(());
+        self.pending_realizer = Some(MainWindowConversationComposerPendingRealizer {
+            receipt,
+            composer: pending.downgrade(),
+            lifetime: Arc::downgrade(&lifetime),
+        });
+        cx.notify();
+        Ok(MainWindowConversationComposerPendingRealizerToken {
+            _lifetime: lifetime,
+        })
+    }
+
+    pub(in crate::main_window) fn detach_pending_realizer(
+        &mut self,
+        receipt: MainWindowComposerActivationReceipt,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let Some(realizer) = self.pending_realizer.as_ref() else {
+            return Ok(());
+        };
+        if realizer.lifetime.upgrade().is_none() {
+            self.pending_realizer = None;
+            cx.notify();
+            return Ok(());
+        }
+        if realizer.receipt != receipt {
+            return Err("pending composer realizer receipt is stale".to_owned());
+        }
+        self.pending_realizer = None;
         cx.notify();
         Ok(())
     }
@@ -98,7 +151,7 @@ impl MainWindowConversationComposer {
         if !self.pending_surface_ready(cx) {
             return Err("pending composer promotion surface was stale".to_owned());
         }
-        self.initial_responses.clear();
+        self.activation_seeds.clear();
         self.route = MainWindowConversationComposerRoute::Selected;
         self.input.update(cx, |input, input_cx| {
             input.set_read_only(false, input_cx);

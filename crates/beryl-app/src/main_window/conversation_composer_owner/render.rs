@@ -226,10 +226,13 @@ impl Render for MainWindowConversationComposer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.schedule_pump(window, cx);
         let selected = !self.is_pending_target();
-        let pending_realizer = self
-            .pending_realizer
-            .as_ref()
-            .and_then(|pending| pending.upgrade());
+        let pending_realizer = self.pending_realizer.as_ref().and_then(|pending| {
+            pending.lifetime.upgrade()?;
+            pending
+                .composer
+                .upgrade()
+                .filter(|composer| composer.read(cx).matches_pending_target(pending.receipt))
+        });
         div()
             .id(("conversation-composer-root", cx.entity_id()))
             .relative()

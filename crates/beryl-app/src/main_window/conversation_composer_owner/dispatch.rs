@@ -79,7 +79,7 @@ impl MainWindowConversationComposer {
             self.pump_edit_proof(window, cx);
             return;
         };
-        let request = match self.deliver_next_initial_response(request, window, cx) {
+        let request = match self.apply_next_activation_seed(request, window, cx) {
             Ok(Some(request)) => request,
             Ok(None) => {
                 self.schedule_pump(window, cx);
@@ -523,19 +523,9 @@ impl MainWindowConversationComposer {
         let outcome = result.outcome;
         let input = self.input.clone();
         match outcome {
-            MainWindowComposerDispatchOutcome::Page(page) => {
-                match input.update(cx, |input, cx| input.deliver_page(page, window, cx)) {
-                    Ok(()) | Err(RangeTextInputError::PageResponseRejected(_)) => Ok(()),
-                    Err(_) => Err("composer text page was rejected".to_owned()),
-                }
-            }
-            MainWindowComposerDispatchOutcome::ObjectPage(page) => {
-                match input.update(cx, |input, cx| {
-                    input.deliver_object_page_in_window(page, window, cx)
-                }) {
-                    Ok(()) | Err(RangeTextInputError::ObjectResponseRejected(_)) => Ok(()),
-                    Err(_) => Err("composer marker page was rejected".to_owned()),
-                }
+            MainWindowComposerDispatchOutcome::Page(_)
+            | MainWindowComposerDispatchOutcome::ObjectPage(_) => {
+                self.apply_page_or_object_outcome(outcome, window, cx)
             }
             MainWindowComposerDispatchOutcome::MutationBegan(key) => {
                 input
@@ -604,6 +594,34 @@ impl MainWindowConversationComposer {
                     .map(|_| ())
                     .map_err(|_| "composer clipboard settlement was rejected".to_owned())
             }
+        }
+    }
+
+    pub(super) fn apply_page_or_object_outcome(
+        &mut self,
+        outcome: MainWindowComposerDispatchOutcome,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        match outcome {
+            MainWindowComposerDispatchOutcome::Page(page) => {
+                match self
+                    .input
+                    .update(cx, |input, cx| input.deliver_page(page, window, cx))
+                {
+                    Ok(()) | Err(RangeTextInputError::PageResponseRejected(_)) => Ok(()),
+                    Err(_) => Err("composer text page was rejected".to_owned()),
+                }
+            }
+            MainWindowComposerDispatchOutcome::ObjectPage(page) => {
+                match self.input.update(cx, |input, cx| {
+                    input.deliver_object_page_in_window(page, window, cx)
+                }) {
+                    Ok(()) | Err(RangeTextInputError::ObjectResponseRejected(_)) => Ok(()),
+                    Err(_) => Err("composer marker page was rejected".to_owned()),
+                }
+            }
+            _ => Err("composer activation seed was not a bounded page".to_owned()),
         }
     }
 

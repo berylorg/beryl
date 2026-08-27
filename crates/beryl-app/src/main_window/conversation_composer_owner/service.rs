@@ -132,6 +132,8 @@ pub struct MainWindowConversationComposerService {
     test_pending_completion_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
     test_pending_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
+    test_append_impossible_pending_initial_response: AtomicBool,
 }
 
 impl MainWindowConversationComposerService {
@@ -147,6 +149,8 @@ impl MainWindowConversationComposerService {
             test_pending_completion_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_pending_dispatch_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_append_impossible_pending_initial_response: AtomicBool::new(false),
         }
     }
 
@@ -192,6 +196,15 @@ impl MainWindowConversationComposerService {
             .lock()
             .unwrap()
             .test_arm_activation_after_open_fault(fault);
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_append_impossible_pending_initial_response(&self) {
+        assert!(
+            !self
+                .test_append_impossible_pending_initial_response
+                .swap(true, Ordering::SeqCst)
+        );
     }
 
     #[cfg(feature = "test-faults")]
@@ -617,7 +630,30 @@ impl MainWindowConversationComposerService {
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .take_pending_initial_presentation(receipt)
             .map_err(|_| "conversation composer service operation failed".to_owned())?;
-        Ok((presentation.selection(), presentation.into_responses()))
+        let selection = presentation.selection();
+        let responses = presentation.into_responses().into_vec();
+        #[cfg(feature = "test-faults")]
+        let mut responses = responses;
+        #[cfg(feature = "test-faults")]
+        if self
+            .test_append_impossible_pending_initial_response
+            .swap(false, Ordering::SeqCst)
+        {
+            let (key, value) = responses
+                .iter()
+                .find_map(|response| match response.value() {
+                    crate::composer_host::ComposerHostResponseValue::CandidateText(candidate) => {
+                        Some((response.key(), candidate.value().clone()))
+                    }
+                    _ => None,
+                })
+                .expect("test activation includes candidate text");
+            responses.push(crate::composer_host::ComposerHostResponse::new(
+                key,
+                crate::composer_host::ComposerHostResponseValue::HistoricalText(value),
+            ));
+        }
+        Ok((selection, responses.into_boxed_slice()))
     }
 
     pub(super) fn release_widget_work(

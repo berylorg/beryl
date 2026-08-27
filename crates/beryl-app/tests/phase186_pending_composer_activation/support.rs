@@ -31,8 +31,8 @@ use syndic_storage::{
     DraftMutationStagingIdentityV1, DraftMutationStagingLaneV1, DraftMutationStagingPageInputV1,
     DraftMutationStagingPageItemV1, DraftMutationStagingStatusV1,
     DraftPieceDurableBuildWindowLimitsV1, DraftPieceMarkerDemandV1, DraftPieceMarkerDirectionV1,
-    DraftPieceMarkerScopeV1, DraftPieceOperationIdV1, DraftPieceReplacementV1,
-    DraftPieceTextDemandV1, DraftPieceV1, DraftRootHistoryPairV1,
+    DraftPieceMarkerEdgeProofRequestV1, DraftPieceMarkerScopeV1, DraftPieceOperationIdV1,
+    DraftPieceReplacementV1, DraftPieceTextDemandV1, DraftPieceV1, DraftRootHistoryPairV1,
     PreparedDraftMutationStagingBatchV1, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
     canonical_empty_draft_piece_fragment_chain_v1, draft_piece_fragment_chain_link_v1,
 };
@@ -74,6 +74,48 @@ pub fn activation(
             ),
         });
     }
+    ComposerHostActivationRequest::new(
+        thread,
+        syndic_storage::DraftEditorCandidateSessionIdV1::from_bytes([session; 16]),
+        fixture::operation_id(operation),
+        NonZeroU64::new(presentation).unwrap(),
+        None,
+        demands.into_boxed_slice(),
+    )
+}
+
+pub fn activation_with_marker_proof(
+    thread: beryl_model::SyndicThreadId,
+    session: u8,
+    operation: u8,
+    presentation: u64,
+    end: u64,
+) -> ComposerHostActivationRequest {
+    let demands = vec![
+        ComposerHostInitialDemand::Text {
+            request_id: ComposerHostRequestId::new(NonZeroU64::new(1).unwrap()),
+            purpose: ComposerHostRequestPurpose::Geometry,
+            demand: DraftPieceTextDemandV1::Forward(0),
+            max_bytes: ACTIVATION_PAGE_BYTES,
+        },
+        ComposerHostInitialDemand::MarkerProof {
+            request_id: ComposerHostRequestId::new(NonZeroU64::new(2).unwrap()),
+            purpose: ComposerHostRequestPurpose::Geometry,
+            request: DraftPieceMarkerEdgeProofRequestV1::Absence { anchor: 0 },
+            retained_byte_ceiling: 65_536,
+        },
+        ComposerHostInitialDemand::Markers {
+            request_id: ComposerHostRequestId::new(NonZeroU64::new(3).unwrap()),
+            purpose: ComposerHostRequestPurpose::Geometry,
+            demand: DraftPieceMarkerDemandV1::new(
+                DraftPieceMarkerScopeV1::Range { start: 0, end },
+                DraftPieceMarkerDirectionV1::Forward,
+                None,
+                48,
+                65_536,
+            ),
+        },
+    ];
     ComposerHostActivationRequest::new(
         thread,
         syndic_storage::DraftEditorCandidateSessionIdV1::from_bytes([session; 16]),

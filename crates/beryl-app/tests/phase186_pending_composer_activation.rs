@@ -7,7 +7,7 @@ mod support;
 
 use std::{
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use beryl_app::{
@@ -35,8 +35,9 @@ use syndic_storage::{
 };
 
 use support::{
-    ACTIVATION_DRAFT_BYTES, activation, drive, fixture::Fixture, fixture::operation_id,
-    seed_activation_published_draft, seed_activation_published_draft_chunks, widget_config,
+    ACTIVATION_DRAFT_BYTES, activation, activation_with_marker_proof, drive, fixture::Fixture,
+    fixture::operation_id, seed_activation_published_draft, seed_activation_published_draft_chunks,
+    widget_config,
 };
 
 struct MountRoot {
@@ -139,12 +140,13 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
         .unwrap()
         .entity_id();
     let MainWindowComposerActivationAdvance::Ready(receipt) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 3, 4, 2, 0),
                 operation_id(5),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -333,12 +335,13 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
         .candidate()
         .candidate_generation();
     let MainWindowComposerActivationAdvance::Ready(receipt) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 21, 22, 2, ACTIVATION_DRAFT_BYTES),
                 operation_id(23),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -450,7 +453,12 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
             "pending surface did not settle: seeds={seeds}, error={error:?}, diagnostics={diagnostics:?}"
         );
     }
-    assert_eq!(service.test_pending_host_request_id(receipt), Some(16));
+    assert!(
+        service
+            .test_pending_host_request_id(receipt)
+            .is_some_and(|request_id| request_id > 16),
+        "typed seed miss did not continue through ordinary pending dispatch"
+    );
     let selected_bounds = cx.debug_bounds("conversation-composer-root").unwrap();
     let pending_bounds = cx
         .debug_bounds("conversation-composer-pending-realization")
@@ -613,7 +621,7 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
 }
 
 #[gpui::test]
-fn post_flush_target_drift_rejects_before_predecessor_widget_release(
+fn prior_flush_failure_detaches_pending_presentation_while_retirement_is_pending(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
@@ -633,12 +641,15 @@ fn post_flush_target_drift_rejects_before_predecessor_widget_release(
             .unwrap(),
         ComposerHostActivationOutcome::Activated { .. }
     ));
+    selected_host.test_arm_publication_before_execute_fault(move |store, storage| {
+        composer_base::bump_home_revision(storage, store, 97);
+    });
     let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
     let assets = fixture.assets();
     let marker_seals = fixture.marker_seals();
     let (_directory, store, storage) = fixture.into_store();
     let durable_store = Arc::new(store);
-    let slot = MainWindowComposerSlot::new(
+    let mut slot = MainWindowComposerSlot::new(
         window_id,
         selected_claim,
         selected_host,
@@ -646,6 +657,9 @@ fn post_flush_target_drift_rejects_before_predecessor_widget_release(
         marker_authority,
     )
     .unwrap();
+    slot.test_arm_abandonment_before_execute_fault(move |store, storage| {
+        composer_base::bump_home_revision(storage, store, 98);
+    });
     let service = Arc::new(MainWindowConversationComposerService::new(
         durable_store.clone(),
         slot,
@@ -696,14 +710,30 @@ fn post_flush_target_drift_rejects_before_predecessor_widget_release(
         }
     }
     assert_ne!(predecessor_selection, original_predecessor);
+    let (predecessor_source_selection, predecessor_composition) =
+        predecessor_input.read_with(cx, |input, _| {
+            let surface = input.surface().unwrap();
+            (surface.source_selection(), surface.composition())
+        });
+    let durable_selected_root = storage
+        .current_draft(
+            &durable_store,
+            selected_thread,
+            SyndicPointReadLimit::new(65_536).unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+        .draft()
+        .piece_root();
 
     let MainWindowComposerActivationAdvance::Ready(receipt) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 93, 94, 2, 0),
                 operation_id(95),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -752,39 +782,6 @@ fn post_flush_target_drift_rejects_before_predecessor_widget_release(
         predecessor_id
     );
 
-    let current = storage
-        .current_draft(
-            &durable_store,
-            target_thread,
-            SyndicPointReadLimit::new(65_536).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let session = match storage
-        .draft_editor_candidate_session(
-            &durable_store,
-            current.draft().id(),
-            DraftEditorCandidateSessionIdV1::from_bytes([93; 16]),
-        )
-        .unwrap()
-    {
-        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
-        other => panic!("post-flush drift candidate was not active: {other:?}"),
-    };
-    let transaction = composer_base::transaction_for_session(
-        storage,
-        &durable_store,
-        session,
-        98,
-        vec![DraftPieceReplacementV1::new(
-            composer_base::point(0),
-            composer_base::point(0),
-            vec![DraftPieceV1::Text("d".to_owned())],
-        )],
-        composer_base::point(1),
-    );
-    composer_base::run_transaction(storage, &durable_store, &transaction, 1);
-
     assert!(matches!(
         mount
             .update(cx, |mount, _| {
@@ -800,26 +797,45 @@ fn post_flush_target_drift_rejects_before_predecessor_widget_release(
                 )
             })
             .unwrap(),
-        ComposerHostFlushCapture::Unsatisfied(_)
+        ComposerHostFlushCapture::Captured(_)
     ));
-
+    assert!(predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
     assert!(
-        cx.update(|window, app| {
-            mount.update(app, |mount, mount_cx| {
-                mount.advance_publish(receipt, window, mount_cx)
-            })
-        })
-        .is_err()
+        cx.debug_bounds("conversation-composer-pending-realization")
+            .is_some()
     );
-    for _ in 0..128 {
-        if service.pending_receipt().is_none() {
-            break;
-        }
-        cx.executor().advance_clock(Duration::from_millis(100));
-        drive(cx, 1);
-    }
+    let failure_advance = cx.update(|window, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.advance_publish(receipt, window, mount_cx)
+        })
+    });
+    assert!(
+        matches!(
+            failure_advance,
+            Ok(MainWindowConversationComposerMountPublishAdvance::Retained(
+                MainWindowComposerPublishAdvance::PriorFlushFailed
+            ))
+        ),
+        "unexpected prior flush failure advance: {failure_advance:?}"
+    );
+    assert_eq!(service.pending_receipt(), Some(receipt));
+    assert!(
+        mount
+            .read_with(cx, |mount, _| mount.test_pending_contribution())
+            .is_none()
+    );
+    assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
+    assert!(!predecessor.read_with(cx, |composer, app| {
+        composer.test_has_pending_render_child(app)
+    }));
+    assert!(
+        mount
+            .read_with(cx, |mount, mount_cx| mount
+                .test_activation_residency(mount_cx))
+            .is_none()
+    );
     assert_eq!(service.selected_identity(), Some(predecessor_selection));
-    assert!(service.pending_receipt().is_none());
+    assert_eq!(service.pending_receipt(), Some(receipt));
     assert!(
         mount
             .read_with(cx, |mount, _| mount.test_pending_contribution())
@@ -839,24 +855,27 @@ fn post_flush_target_drift_rejects_before_predecessor_widget_release(
         predecessor_id
     );
     assert!(predecessor_input.read_with(cx, |input, _| input.is_enabled()));
-    cx.update(|window, app| predecessor_input.update(app, |input, _| input.focus(window)));
-    cx.update(|window, app| {
-        predecessor_input.update(app, |input, input_cx| {
-            input.replace_and_mark_text_in_range(None, "b", None, window, input_cx)
-        })
+    predecessor_input.read_with(cx, |input, _| {
+        let surface = input.surface().unwrap();
+        assert_eq!(surface.source_selection(), predecessor_source_selection);
+        assert_eq!(surface.composition(), predecessor_composition);
     });
-    let mut resumed = predecessor_selection;
-    for _ in 0..128 {
-        drive(cx, 1);
-        resumed = service.selected_identity().unwrap();
-        if resumed != predecessor_selection {
-            break;
-        }
-    }
-    assert_ne!(resumed, predecessor_selection);
+    assert_eq!(
+        storage
+            .current_draft(
+                &durable_store,
+                selected_thread,
+                SyndicPointReadLimit::new(65_536).unwrap(),
+            )
+            .unwrap()
+            .unwrap()
+            .draft()
+            .piece_root(),
+        durable_selected_root
+    );
     assert_eq!(
         predecessor.read_with(cx, |composer, _| composer.selection_identity()),
-        resumed
+        predecessor_selection
     );
 }
 
@@ -923,12 +942,13 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
     drive(cx, 24);
     let mount = root.read_with(cx, |root, _| root.mount.clone());
     let MainWindowComposerActivationAdvance::Ready(receipt) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 103, 104, 2, ACTIVATION_DRAFT_BYTES),
                 operation_id(105),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -978,6 +998,15 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
         .unwrap();
     let pending_id = pending.entity_id();
     let release = service.test_block_next_pending_dispatch();
+    let pending_input = pending.read_with(cx, |composer, _| composer.gpui_input());
+    pending_input.update(cx, |input, input_cx| {
+        input
+            .platform_text_for_range(
+                0..usize::try_from(ACTIVATION_DRAFT_BYTES).unwrap(),
+                input_cx,
+            )
+            .unwrap()
+    });
     for _ in 0..32 {
         if release.is_blocked() {
             break;
@@ -1165,12 +1194,13 @@ fn current_predecessor_release_does_not_wait_for_its_remaining_sparse_index(
     assert_eq!(service.selected_identity(), Some(predecessor_selection));
 
     let MainWindowComposerActivationAdvance::Ready(receipt) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 113, 114, 2, 0),
                 operation_id(115),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -1344,12 +1374,13 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
     drive(cx, 24);
     let mount = root.read_with(cx, |root, _| root.mount.clone());
     let MainWindowComposerActivationAdvance::Ready(receipt) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 83, 84, 2, ACTIVATION_DRAFT_BYTES),
                 operation_id(85),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -1399,6 +1430,15 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
         .unwrap();
     let pending_id = pending.entity_id();
     let release = service.test_block_next_pending_completion();
+    let pending_input = pending.read_with(cx, |composer, _| composer.gpui_input());
+    pending_input.update(cx, |input, input_cx| {
+        input
+            .platform_text_for_range(
+                0..usize::try_from(ACTIVATION_DRAFT_BYTES).unwrap(),
+                input_cx,
+            )
+            .unwrap()
+    });
     for _ in 0..32 {
         if release.is_blocked() {
             break;
@@ -1542,16 +1582,67 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
         .unwrap();
     let predecessor_id = predecessor.entity_id();
     let predecessor_selection = service.selected_identity().unwrap();
+    service.test_append_impossible_pending_initial_response();
+    let MainWindowComposerActivationAdvance::Ready(malformed) = mount
+        .update(cx, |mount, mount_cx| {
+            mount.begin_activation(
+                target_claim,
+                activation_with_marker_proof(target_thread, 33, 34, 8, ACTIVATION_DRAFT_BYTES),
+                operation_id(35),
+                &CommandCancellation::new(),
+                mount_cx,
+            )
+        })
+        .unwrap()
+    else {
+        panic!("malformed-seed target did not open")
+    };
+    assert!(
+        cx.update(|window, app| mount.update(app, |mount, mount_cx| {
+            mount.begin_publish(malformed, window, mount_cx)
+        }))
+        .is_err()
+    );
+    assert!(service.pending_receipt().is_none());
+    assert!(
+        mount
+            .read_with(cx, |mount, _| mount.test_pending_contribution())
+            .is_none()
+    );
+    assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
+    assert!(!predecessor.read_with(cx, |composer, app| {
+        composer.test_has_pending_render_child(app)
+    }));
+    assert!(
+        mount
+            .read_with(cx, |mount, app| mount.test_activation_residency(app))
+            .is_none()
+    );
+    cx.refresh().unwrap();
+    drive(cx, 1);
+    assert!(
+        cx.debug_bounds("conversation-composer-pending-realization")
+            .is_none()
+    );
+    assert_eq!(service.selected_identity(), Some(predecessor_selection));
+    assert_eq!(
+        mount
+            .read_with(cx, |mount, _| mount.contribution())
+            .unwrap()
+            .entity_id(),
+        predecessor_id
+    );
     let cancellation = CommandCancellation::new();
     let activation_cut = cancellation.clone();
     service.test_arm_activation_after_open_fault(move |_, _| activation_cut.cancel());
     assert!(matches!(
         mount
-            .update(cx, |mount, _| mount.begin_activation(
+            .update(cx, |mount, mount_cx| mount.begin_activation(
                 target_claim,
                 activation(target_thread, 35, 36, 2, ACTIVATION_DRAFT_BYTES),
                 operation_id(37),
                 &cancellation,
+                mount_cx,
             ))
             .unwrap(),
         MainWindowComposerActivationAdvance::Cancelled
@@ -1564,12 +1655,13 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
     );
     assert_eq!(service.selected_identity(), Some(predecessor_selection));
     let MainWindowComposerActivationAdvance::Ready(first) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 41, 42, 2, ACTIVATION_DRAFT_BYTES),
                 operation_id(43),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -1577,12 +1669,13 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
         panic!("first target did not open")
     };
     let MainWindowComposerActivationAdvance::Ready(second) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 51, 52, 3, ACTIVATION_DRAFT_BYTES),
                 operation_id(53),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -1607,9 +1700,28 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
             .entity_id(),
         predecessor_id
     );
+    assert!(matches!(
+        cx.update(|window, app| mount.update(app, |mount, mount_cx| {
+            mount.begin_publish(second, window, mount_cx)
+        }))
+        .unwrap(),
+        MainWindowConversationComposerMountFlushStart::TargetPriming(current) if current == second
+    ));
+    assert!(predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
+    assert!(
+        mount
+            .read_with(cx, |mount, app| mount.test_activation_residency(app))
+            .is_some()
+    );
+    cx.refresh().unwrap();
+    drive(cx, 1);
+    assert!(
+        cx.debug_bounds("conversation-composer-pending-realization")
+            .is_some()
+    );
     assert_eq!(
         mount
-            .update(cx, |mount, _| mount.retire_pending(second))
+            .update(cx, |mount, mount_cx| mount.retire_pending(second, mount_cx))
             .unwrap(),
         beryl_app::main_window::MainWindowComposerRetirementAdvance::Retired
     );
@@ -1619,14 +1731,24 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
             .read_with(cx, |mount, _| mount.test_pending_contribution())
             .is_none()
     );
+    assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
+    assert!(!predecessor.read_with(cx, |composer, app| {
+        composer.test_has_pending_render_child(app)
+    }));
+    assert!(
+        mount
+            .read_with(cx, |mount, app| mount.test_activation_residency(app))
+            .is_none()
+    );
 
     let MainWindowComposerActivationAdvance::Ready(failed_priming) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 55, 56, 5, ACTIVATION_DRAFT_BYTES),
                 operation_id(57),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -1654,14 +1776,16 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
             .entity_id(),
         predecessor_id
     );
+    assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
 
     let MainWindowComposerActivationAdvance::Ready(source_drift) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 71, 72, 6, ACTIVATION_DRAFT_BYTES),
                 operation_id(74),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
@@ -1736,20 +1860,30 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
             .entity_id(),
         predecessor_id
     );
+    assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
 
     let MainWindowComposerActivationAdvance::Ready(third) = mount
-        .update(cx, |mount, _| {
+        .update(cx, |mount, mount_cx| {
             mount.begin_activation(
                 target_claim,
                 activation(target_thread, 61, 62, 4, ACTIVATION_DRAFT_BYTES),
                 operation_id(63),
                 &CommandCancellation::new(),
+                mount_cx,
             )
         })
         .unwrap()
     else {
         panic!("disposal target did not open")
     };
+    assert!(matches!(
+        cx.update(|window, app| mount.update(app, |mount, mount_cx| {
+            mount.begin_publish(third, window, mount_cx)
+        }))
+        .unwrap(),
+        MainWindowConversationComposerMountFlushStart::TargetPriming(current) if current == third
+    ));
+    assert!(predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
     let _ = cx.update(|window, app| {
         mount.update(app, |mount, mount_cx| {
             mount.begin_disposal(window, mount_cx)
@@ -1761,4 +1895,256 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
             .read_with(cx, |mount, _| mount.test_pending_contribution())
             .is_none()
     );
+    assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
+    assert!(
+        mount
+            .read_with(cx, |mount, app| mount.test_activation_residency(app))
+            .is_none()
+    );
+}
+
+#[gpui::test]
+fn primed_seed_retarget_uses_live_queue_then_final_target_publishes(cx: &mut gpui::TestAppContext) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase188-single-pending-authority", 190);
+    let window_id = fixture.window_id;
+    let selected_thread = fixture.selected_thread;
+    let target_thread = fixture.target_thread;
+    seed_activation_published_draft(&fixture, target_thread);
+    let (selected_claim, target_claim) = fixture.claims();
+    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    assert!(matches!(
+        selected_host
+            .test_activate(
+                &fixture.store,
+                activation(selected_thread, 81, 82, 1, 0),
+                &CommandCancellation::new(),
+            )
+            .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let slot = MainWindowComposerSlot::new(
+        window_id,
+        selected_claim,
+        selected_host,
+        storage,
+        marker_authority,
+    )
+    .unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        StableMountRoot { mount }
+    });
+    drive(cx, 32);
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    let predecessor = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let predecessor_id = predecessor.entity_id();
+    let predecessor_selection = service.selected_identity().unwrap();
+    let predecessor_surface = predecessor
+        .read_with(cx, |composer, app| composer.surface_snapshot(app))
+        .unwrap();
+
+    let MainWindowComposerActivationAdvance::Ready(first_receipt) = mount
+        .update(cx, |mount, mount_cx| {
+            mount.begin_activation(
+                target_claim,
+                activation(target_thread, 83, 84, 2, ACTIVATION_DRAFT_BYTES),
+                operation_id(85),
+                &CommandCancellation::new(),
+                mount_cx,
+            )
+        })
+        .unwrap()
+    else {
+        panic!("first pending target did not open")
+    };
+    assert!(matches!(
+        cx.update(|window, app| mount.update(app, |mount, mount_cx| {
+            mount.begin_publish(first_receipt, window, mount_cx)
+        }))
+        .unwrap(),
+        MainWindowConversationComposerMountFlushStart::TargetPriming(first)
+            if first == first_receipt
+    ));
+    let first_pending = mount
+        .read_with(cx, |mount, _| mount.test_pending_contribution())
+        .unwrap();
+    assert!(predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
+    assert!(
+        mount
+            .read_with(cx, |mount, app| mount.test_activation_residency(app))
+            .is_some()
+    );
+    assert!(first_pending.read_with(cx, |composer, _| composer.test_pending_seed_count()) > 0);
+    cx.update(|window, app| {
+        first_pending
+            .update(app, |composer, composer_cx| {
+                composer.request_absolute_scroll(px(16_000.), window, composer_cx)
+            })
+            .unwrap()
+    });
+    drive(cx, 64);
+    assert!(first_pending.read_with(cx, |composer, _| composer.last_error().is_none()));
+    assert!(
+        service
+            .test_pending_host_request_id(first_receipt)
+            .is_some_and(|request_id| request_id > 16),
+        "retargeted widget demand did not continue through ordinary pending dispatch"
+    );
+
+    let final_request = activation(target_thread, 87, 88, 3, ACTIVATION_DRAFT_BYTES);
+    let mut final_receipt = None;
+    for _ in 0..128 {
+        match mount.update(cx, |mount, mount_cx| {
+            mount.begin_activation(
+                target_claim,
+                final_request.clone(),
+                operation_id(89),
+                &CommandCancellation::new(),
+                mount_cx,
+            )
+        }) {
+            Ok(MainWindowComposerActivationAdvance::Ready(receipt)) => {
+                final_receipt = Some(receipt);
+                break;
+            }
+            Err(_) => drive(cx, 1),
+            Ok(other) => panic!("unexpected final activation outcome: {other:?}"),
+        }
+    }
+    let final_receipt = final_receipt.expect("primed target did not retire within its bound");
+    assert!(service.pending_identity(first_receipt).is_none());
+    assert_eq!(service.pending_receipt(), Some(final_receipt));
+    assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
+    assert!(
+        cx.update(|window, app| mount.update(app, |mount, mount_cx| {
+            mount.begin_publish(first_receipt, window, mount_cx)
+        }))
+        .is_err()
+    );
+    assert_eq!(service.pending_receipt(), Some(final_receipt));
+    assert_eq!(service.selected_identity(), Some(predecessor_selection));
+    assert!(
+        mount
+            .read_with(cx, |mount, app| mount.test_activation_residency(app))
+            .is_none()
+    );
+    assert_eq!(
+        predecessor.read_with(cx, |composer, app| composer.surface_snapshot(app)),
+        Some(predecessor_surface)
+    );
+    assert_eq!(
+        mount
+            .read_with(cx, |mount, _| mount.contribution())
+            .unwrap()
+            .entity_id(),
+        predecessor_id
+    );
+
+    let mut flush_started = false;
+    for _ in 0..128 {
+        match cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.begin_publish(final_receipt, window, mount_cx)
+                })
+            })
+            .unwrap()
+        {
+            MainWindowConversationComposerMountFlushStart::TargetPriming(receipt) => {
+                assert_eq!(receipt, final_receipt);
+                drive(cx, 1);
+            }
+            MainWindowConversationComposerMountFlushStart::WidgetFencePending(selection) => {
+                assert_eq!(selection, predecessor_selection);
+                drive(cx, 1);
+            }
+            MainWindowConversationComposerMountFlushStart::Started(
+                ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch),
+            ) => {
+                flush_started = true;
+                break;
+            }
+            other => panic!("unexpected final flush start: {other:?}"),
+        }
+    }
+    assert!(flush_started);
+    let pending_id = mount
+        .read_with(cx, |mount, _| mount.test_pending_contribution())
+        .unwrap()
+        .entity_id();
+    let mut published = None;
+    for _ in 0..128 {
+        match cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.advance_publish(final_receipt, window, mount_cx)
+                })
+            })
+            .unwrap()
+        {
+            MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(receipt) => {
+                assert_eq!(receipt, final_receipt);
+                drive(cx, 1);
+            }
+            MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(selection) => {
+                assert_eq!(selection, predecessor_selection);
+                drive(cx, 1);
+            }
+            MainWindowConversationComposerMountPublishAdvance::Published(selection) => {
+                published = Some(selection);
+                break;
+            }
+            other => panic!("unexpected final publication advance: {other:?}"),
+        }
+    }
+    let published = published.expect("final target did not publish within its bound");
+    assert_eq!(published.claim(), target_claim);
+    assert_eq!(service.selected_identity(), Some(published));
+    assert_eq!(
+        mount
+            .read_with(cx, |mount, _| mount.contribution())
+            .unwrap()
+            .entity_id(),
+        pending_id
+    );
+    assert!(
+        mount
+            .read_with(cx, |mount, _| mount.test_pending_contribution())
+            .is_none()
+    );
+    assert!(
+        mount
+            .read_with(cx, |mount, app| mount.test_activation_residency(app))
+            .is_none()
+    );
+    assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
 }
