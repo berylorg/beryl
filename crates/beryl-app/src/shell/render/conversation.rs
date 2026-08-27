@@ -13,7 +13,10 @@ use crate::shell::{
     ScrollbarRegion, ShellRenderFrame, ShellView, SurfaceNotice,
     composer_measurement::ComposerInputMeasurementKey,
     image_preview_popup, layout,
-    status_line::{self, StatusLineCellAction, StatusLineCellValueKind, StatusLineProjection},
+    status_line::{
+        self, StatusLineCellAction, StatusLineCellLayout, StatusLineCellValueKind,
+        StatusLineProjection,
+    },
     status_line::{StatusLineCellValueSegment, StatusLineCellValueSegmentKind},
     tool_activity::ToolActivityRowStatus,
 };
@@ -1373,6 +1376,7 @@ fn render_status_line(
             spec.label,
             spec.value_segments,
             value_color,
+            spec.layout,
             spec.enabled,
             spec.action,
             cx,
@@ -1387,6 +1391,7 @@ fn status_line_cell(
     label: &'static str,
     value_segments: Vec<StatusLineCellValueSegment>,
     value_color: Option<gpui::Rgba>,
+    layout: StatusLineCellLayout,
     enabled: bool,
     action: StatusLineCellAction,
     cx: &mut Context<ShellView>,
@@ -1400,7 +1405,6 @@ fn status_line_cell(
     });
     let mut cell = div()
         .h_full()
-        .w(relative(1.0 / 3.0))
         .min_w(px(0.0))
         .px_4()
         .bg(shell.role_background(
@@ -1434,6 +1438,12 @@ fn status_line_cell(
             value_segments,
             resolved_value_color,
         ));
+
+    cell = match layout {
+        StatusLineCellLayout::ContentSized => cell.flex_none(),
+        StatusLineCellLayout::FlexibleContext => cell.flex_1(),
+        StatusLineCellLayout::Turn => cell.flex_none().min_w(px(120.0)),
+    };
 
     if enabled {
         let theme = shell.secondary_button_theme();

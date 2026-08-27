@@ -12,7 +12,7 @@ use beryl_model::conversation::{
 };
 use beryl_model::workspace::WorkspaceId;
 use status_line::{
-    CancellableActiveTurn, CancellableActiveTurnKind, StatusLineCellAction,
+    CancellableActiveTurn, CancellableActiveTurnKind, StatusLineCellAction, StatusLineCellLayout,
     StatusLineCellValueKind, StatusLineCellValueSegmentKind, StatusLineProjection, StatusLineState,
     ThreadTurnDefaults,
 };
@@ -26,7 +26,7 @@ fn status_projection_uses_unknown_fallbacks() {
 
     assert_eq!(projection.model, "Unknown");
     assert_eq!(projection.reasoning_effort, "Unknown");
-    assert_eq!(projection.context_space_left, "Unknown");
+    assert_eq!(projection.context_space_left, "Unknown I: — IC: — O: —");
     assert_eq!(projection.last_turn_state, "Unknown");
 }
 
@@ -611,22 +611,123 @@ fn status_line_cell_specs_cover_three_cells_and_disabled_interactions() {
     );
 
     assert_eq!(specs.len(), 3);
-    assert_eq!(specs[0].label, "Model / Reasoning");
+    assert_eq!(specs[0].label, "M/R");
     assert_eq!(specs[0].value, "gpt-5.5 / high");
     assert_eq!(specs[0].action, StatusLineCellAction::ModelReasoning);
     assert_eq!(specs[0].value_kind, StatusLineCellValueKind::Default);
+    assert_eq!(specs[0].layout, StatusLineCellLayout::ContentSized);
     assert!(specs[0].enabled);
 
     assert_eq!(specs[1].label, "Context");
     assert_eq!(specs[1].value, "42%");
     assert_eq!(specs[1].action, StatusLineCellAction::Context);
     assert!(!specs[1].enabled);
+    assert_eq!(specs[1].layout, StatusLineCellLayout::FlexibleContext);
 
     assert_eq!(specs[2].label, "Turn");
     assert_eq!(specs[2].value, "compacting");
     assert_eq!(specs[2].action, StatusLineCellAction::None);
     assert_eq!(specs[2].value_kind, StatusLineCellValueKind::TurnState);
     assert!(!specs[2].enabled);
+    assert_eq!(specs[2].layout, StatusLineCellLayout::Turn);
+}
+
+#[test]
+fn compact_token_count_formats_base_1000_boundaries_without_overflow() {
+    for (value, expected) in [
+        (0, "0"),
+        (999, "999"),
+        (1_000, "1k"),
+        (1_450, "1.5k"),
+        (999_949, "999.9k"),
+        (999_950, "1M"),
+        (1_000_000, "1M"),
+        (1_050_000, "1.1M"),
+        (999_950_000, "1B"),
+        (1_000_000_000, "1B"),
+        (-1, "0"),
+        (i64::MAX, "9223372036.9B"),
+    ] {
+        assert_eq!(status_line::format_compact_token_count(value), expected);
+    }
+}
+
+#[test]
+fn context_status_appends_selected_thread_cumulative_token_counters_in_order() {
+    let mut state = StatusLineState::default();
+    assert!(state.apply_token_usage(
+        true,
+        "thread_1".to_string(),
+        "turn_1".to_string(),
+        token_usage_with_totals(250, 1_450, 450, 999_950, Some(1_000)),
+    ));
+    assert!(state.apply_account_rate_limits(rate_limits(Some((15, 1_440)), Some((55, 10_080)))));
+
+    let projection = state.projection(Some("thread_1"), "ok");
+    assert_eq!(
+        projection.context_space_left,
+        "75% Daily 85% Weekly 45% I: 1k IC: 450 O: 1M"
+    );
+    let specs = status_line::status_line_cell_specs(projection, true, true, true);
+    let segments = &specs[1].value_segments;
+    assert_eq!(
+        segments
+            .iter()
+            .map(|segment| segment.text.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "75%", "Daily", "85%", "Weekly", "45%", "I:", "1k", "IC:", "450", "O:", "1M"
+        ]
+    );
+}
+
+#[test]
+fn token_counters_use_totals_and_remain_independent_from_context_percentage() {
+    let mut state = StatusLineState::default();
+    assert!(state.apply_token_usage(
+        true,
+        "thread_1".to_string(),
+        "turn_1".to_string(),
+        token_usage_with_totals(250, 100, 175, -4, None),
+    ));
+
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "Unknown I: 0 IC: 175 O: 0"
+    );
+}
+
+#[test]
+fn token_counters_follow_selected_thread_and_restore_without_draft_inheritance() {
+    let mut state = StatusLineState::default();
+    assert!(state.apply_token_usage(
+        true,
+        "thread_a".to_string(),
+        "turn_a".to_string(),
+        token_usage_with_totals(10, 1_000, 200, 300, Some(100)),
+    ));
+    assert!(state.apply_token_usage_snapshot(
+        true,
+        "thread_b".to_string(),
+        &token_usage_snapshot("turn_b", 40, Some(100)),
+    ));
+
+    assert_eq!(
+        state.projection(Some("thread_a"), "ok").context_space_left,
+        "90% I: 800 IC: 200 O: 300"
+    );
+    assert_eq!(
+        state.projection(Some("thread_b"), "ok").context_space_left,
+        "60% I: 60 IC: 0 O: 11"
+    );
+    assert_eq!(
+        state.projection(None, "ok").context_space_left,
+        "Unknown I: — IC: — O: —"
+    );
+    assert_eq!(
+        state.projection(Some("thread_a"), "ok").context_space_left,
+        "90% I: 800 IC: 200 O: 300"
+    );
 }
 
 #[test]
@@ -671,7 +772,7 @@ fn context_percent_uses_selected_thread_last_input_tokens() {
 
     let projection = state.projection(Some("thread_1"), "ok");
 
-    assert_eq!(projection.context_space_left, "75%");
+    assert_eq!(projection.context_space_left, "75% I: 900 IC: 0 O: 0");
 }
 
 #[test]
@@ -687,7 +788,10 @@ fn context_status_appends_available_account_rate_limit_remaining_percentages() {
 
     let projection = state.projection(Some("thread_1"), "ok");
 
-    assert_eq!(projection.context_space_left, "75% Daily 85% Weekly 45%");
+    assert_eq!(
+        projection.context_space_left,
+        "75% Daily 85% Weekly 45% I: 0 IC: 0 O: 0"
+    );
 }
 
 #[test]
@@ -705,7 +809,7 @@ fn context_status_exposes_rate_limit_labels_as_value_segments() {
     let specs = status_line::status_line_cell_specs(projection, true, true, true);
     let segments = &specs[1].value_segments;
 
-    assert_eq!(segments.len(), 5);
+    assert_eq!(segments.len(), 11);
     assert_eq!(segments[0].kind, StatusLineCellValueSegmentKind::Value);
     assert_eq!(segments[0].text, "75%");
     assert_eq!(segments[1].kind, StatusLineCellValueSegmentKind::Label);
@@ -716,6 +820,12 @@ fn context_status_exposes_rate_limit_labels_as_value_segments() {
     assert_eq!(segments[3].text, "Weekly");
     assert_eq!(segments[4].kind, StatusLineCellValueSegmentKind::Value);
     assert_eq!(segments[4].text, "45%");
+    assert_eq!(segments[5].text, "I:");
+    assert_eq!(segments[6].text, "0");
+    assert_eq!(segments[7].text, "IC:");
+    assert_eq!(segments[8].text, "0");
+    assert_eq!(segments[9].text, "O:");
+    assert_eq!(segments[10].text, "0");
 }
 
 #[test]
@@ -735,14 +845,14 @@ fn account_rate_limit_read_uses_multi_bucket_view_and_notifications_are_partial(
 
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown Daily 85% Weekly 45%"
+        "Unknown Daily 85% Weekly 45% I: — IC: — O: —"
     );
 
     assert!(state.apply_account_rate_limits(rate_limits(None, Some((60, 10080)))));
 
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown Daily 85% Weekly 40%"
+        "Unknown Daily 85% Weekly 40% I: — IC: — O: —"
     );
 }
 
@@ -778,7 +888,10 @@ fn account_rate_limit_read_selects_main_bucket_and_renders_short_window_label() 
 
     let projection = state.projection(Some("thread_1"), "ok");
 
-    assert_eq!(projection.context_space_left, "Unknown 5h 91% Weekly 98%");
+    assert_eq!(
+        projection.context_space_left,
+        "Unknown 5h 91% Weekly 98% I: — IC: — O: —"
+    );
 }
 
 #[test]
@@ -813,7 +926,10 @@ fn account_rate_limit_read_selects_spark_bucket_for_spark_model() {
 
     let projection = state.projection(Some("thread_1"), "ok");
 
-    assert_eq!(projection.context_space_left, "Unknown 5h 75% Weekly 70%");
+    assert_eq!(
+        projection.context_space_left,
+        "Unknown 5h 75% Weekly 70% I: — IC: — O: —"
+    );
 }
 
 #[test]
@@ -823,7 +939,10 @@ fn account_rate_limit_segments_are_partial_and_independent_from_context_usage() 
 
     let projection = state.projection(Some("thread_1"), "ok");
 
-    assert_eq!(projection.context_space_left, "Unknown Daily 85%");
+    assert_eq!(
+        projection.context_space_left,
+        "Unknown Daily 85% I: — IC: — O: —"
+    );
 }
 
 #[test]
@@ -844,7 +963,10 @@ fn account_rate_limit_remaining_clamps_used_percent_and_requires_known_window() 
 
     let projection = state.projection(Some("thread_1"), "ok");
 
-    assert_eq!(projection.context_space_left, "100% Daily 100%");
+    assert_eq!(
+        projection.context_space_left,
+        "100% Daily 100% I: 0 IC: 0 O: 0"
+    );
 }
 
 #[test]
@@ -861,7 +983,7 @@ fn token_usage_for_unknown_thread_is_ignored() {
     assert_eq!(state.cached_thread_count(), 0);
 
     let projection = state.projection(Some("thread_2"), "ok");
-    assert_eq!(projection.context_space_left, "Unknown");
+    assert_eq!(projection.context_space_left, "Unknown I: — IC: — O: —");
 }
 
 #[test]
@@ -883,11 +1005,11 @@ fn cached_token_usage_is_selected_by_thread() {
 
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "75%"
+        "75% I: 0 IC: 0 O: 0"
     );
     assert_eq!(
         state.projection(Some("thread_2"), "ok").context_space_left,
-        "90%"
+        "90% I: 0 IC: 0 O: 0"
     );
 }
 
@@ -904,11 +1026,11 @@ fn cached_token_usage_survives_switching_away_and_back() {
 
     assert_eq!(
         state.projection(Some("thread_2"), "ok").context_space_left,
-        "Unknown"
+        "Unknown I: — IC: — O: —"
     );
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "75%"
+        "75% I: 0 IC: 0 O: 0"
     );
 }
 
@@ -926,7 +1048,7 @@ fn durable_snapshot_hydrates_context_for_selected_thread() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "75%"
+        "75% I: 70 IC: 0 O: 11"
     );
 }
 
@@ -949,19 +1071,19 @@ fn durable_snapshot_cache_is_selected_by_thread_after_switching() {
         state
             .projection(Some("thread_a"), "Idle")
             .context_space_left,
-        "75%"
+        "75% I: 70 IC: 0 O: 11"
     );
     assert_eq!(
         state
             .projection(Some("thread_b"), "Idle")
             .context_space_left,
-        "60%"
+        "60% I: 60 IC: 0 O: 11"
     );
     assert_eq!(
         state
             .projection(Some("thread_a"), "Idle")
             .context_space_left,
-        "75%"
+        "75% I: 70 IC: 0 O: 11"
     );
 }
 
@@ -973,7 +1095,7 @@ fn missing_durable_snapshot_keeps_context_unknown_after_restart_style_hydration(
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "Unknown"
+        "Unknown I: — IC: — O: —"
     );
 }
 
@@ -992,7 +1114,7 @@ fn durable_snapshot_for_unknown_thread_is_ignored() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "Unknown"
+        "Unknown I: — IC: — O: —"
     );
 }
 
@@ -1010,7 +1132,7 @@ fn durable_snapshot_missing_context_window_is_unknown() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "Unknown"
+        "Unknown I: 70 IC: 0 O: 11"
     );
 }
 
@@ -1028,7 +1150,7 @@ fn durable_snapshot_non_positive_context_window_is_unknown() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "Unknown"
+        "Unknown I: 70 IC: 0 O: 11"
     );
 }
 
@@ -1052,7 +1174,7 @@ fn durable_snapshot_does_not_overwrite_newer_notification_cache() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "80%"
+        "80% I: 0 IC: 0 O: 0"
     );
 }
 
@@ -1072,7 +1194,7 @@ fn restart_style_hydration_reads_workspace_conversation_state_snapshots() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "75%"
+        "75% I: 70 IC: 0 O: 11"
     );
 }
 
@@ -1087,10 +1209,13 @@ fn new_thread_projection_does_not_consume_cached_usage() {
         token_usage(250, 0, Some(1000)),
     ));
 
-    assert_eq!(state.projection(None, "ok").context_space_left, "Unknown");
+    assert_eq!(
+        state.projection(None, "ok").context_space_left,
+        "Unknown I: — IC: — O: —"
+    );
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "75%"
+        "75% I: 0 IC: 0 O: 0"
     );
 }
 
@@ -1105,7 +1230,7 @@ fn non_positive_context_window_is_unknown() {
     ));
 
     let projection = state.projection(Some("thread_1"), "ok");
-    assert_eq!(projection.context_space_left, "Unknown");
+    assert_eq!(projection.context_space_left, "Unknown I: 0 IC: 0 O: 0");
 }
 
 #[test]
@@ -1119,7 +1244,7 @@ fn missing_context_window_is_unknown() {
     ));
 
     let projection = state.projection(Some("thread_1"), "ok");
-    assert_eq!(projection.context_space_left, "Unknown");
+    assert_eq!(projection.context_space_left, "Unknown I: 0 IC: 0 O: 0");
 }
 
 fn token_usage(
@@ -1134,6 +1259,28 @@ fn token_usage(
         },
         total: TokenUsageBreakdown {
             input_tokens: total_input_tokens,
+            ..TokenUsageBreakdown::default()
+        },
+        model_context_window,
+    }
+}
+
+fn token_usage_with_totals(
+    last_input_tokens: i64,
+    total_input_tokens: i64,
+    total_cached_input_tokens: i64,
+    total_output_tokens: i64,
+    model_context_window: Option<i64>,
+) -> ThreadTokenUsage {
+    ThreadTokenUsage {
+        last: TokenUsageBreakdown {
+            input_tokens: last_input_tokens,
+            ..TokenUsageBreakdown::default()
+        },
+        total: TokenUsageBreakdown {
+            input_tokens: total_input_tokens,
+            cached_input_tokens: total_cached_input_tokens,
+            output_tokens: total_output_tokens,
             ..TokenUsageBreakdown::default()
         },
         model_context_window,

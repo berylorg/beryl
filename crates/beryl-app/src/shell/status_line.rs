@@ -13,6 +13,7 @@ const DAILY_RATE_LIMIT_WINDOW_MINS: i64 = 24 * 60;
 const WEEKLY_RATE_LIMIT_WINDOW_MINS: i64 = 7 * 24 * 60;
 const GENERAL_CODEX_LIMIT_ID: &str = "codex";
 const SPARK_LIMIT_TOKEN: &str = "spark";
+const TOKEN_COUNTER_UNAVAILABLE: &str = "—";
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct StatusLineState {
@@ -87,6 +88,7 @@ pub(crate) struct StatusLineCellSpec {
     pub(crate) value_segments: Vec<StatusLineCellValueSegment>,
     pub(crate) action: StatusLineCellAction,
     pub(crate) value_kind: StatusLineCellValueKind,
+    pub(crate) layout: StatusLineCellLayout,
     pub(crate) enabled: bool,
 }
 
@@ -130,6 +132,13 @@ pub(crate) enum StatusLineCellAction {
 pub(crate) enum StatusLineCellValueKind {
     Default,
     TurnState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StatusLineCellLayout {
+    ContentSized,
+    FlexibleContext,
+    Turn,
 }
 
 pub(crate) fn status_line_model_reasoning_available(
@@ -176,11 +185,12 @@ pub(crate) fn status_line_cell_specs(
     let last_turn_state_value = status.last_turn_state;
     [
         StatusLineCellSpec {
-            label: "Model / Reasoning",
+            label: "M/R",
             value: model_reasoning_value.clone(),
             value_segments: vec![StatusLineCellValueSegment::value(model_reasoning_value)],
             action: StatusLineCellAction::ModelReasoning,
             value_kind: StatusLineCellValueKind::Default,
+            layout: StatusLineCellLayout::ContentSized,
             enabled: model_reasoning_enabled,
         },
         StatusLineCellSpec {
@@ -189,6 +199,7 @@ pub(crate) fn status_line_cell_specs(
             value_segments: context_value_segments,
             action: StatusLineCellAction::Context,
             value_kind: StatusLineCellValueKind::Default,
+            layout: StatusLineCellLayout::FlexibleContext,
             enabled: context_enabled,
         },
         StatusLineCellSpec {
@@ -201,6 +212,7 @@ pub(crate) fn status_line_cell_specs(
                 StatusLineCellAction::None
             },
             value_kind: StatusLineCellValueKind::TurnState,
+            layout: StatusLineCellLayout::Turn,
             enabled: turn_operation_available && turn_operations_enabled,
         },
     ]
@@ -696,9 +708,41 @@ impl StatusLineState {
             )));
         }
 
+        let token_counters = self.token_counters(selected_thread_id);
+        for (label, value) in [
+            ("I:", token_counters.input),
+            ("IC:", token_counters.cached_input),
+            ("O:", token_counters.output),
+        ] {
+            plain_text.push_str(&format!(" {label} {value}"));
+            value_segments.push(StatusLineCellValueSegment::label(label));
+            value_segments.push(StatusLineCellValueSegment::value(value));
+        }
+
         ContextStatus {
             plain_text,
             value_segments,
+        }
+    }
+
+    fn token_counters(&self, selected_thread_id: Option<&str>) -> TokenCounters {
+        let Some(selected_thread_id) = selected_thread_id else {
+            return TokenCounters::unavailable();
+        };
+        let Some(total) = self
+            .token_usage_by_thread
+            .get(selected_thread_id)
+            .map(|usage| &usage.total)
+        else {
+            return TokenCounters::unavailable();
+        };
+
+        let input = total.input_tokens.max(0);
+        let cached_input = total.cached_input_tokens.max(0);
+        TokenCounters {
+            input: format_compact_token_count(input.saturating_sub(cached_input)),
+            cached_input: format_compact_token_count(cached_input),
+            output: format_compact_token_count(total.output_tokens.max(0)),
         }
     }
 
@@ -738,6 +782,49 @@ impl StatusLineState {
                 .reasoning_effort()
                 .or_else(|| self.effective_new_thread_defaults.reasoning_effort()),
         }
+    }
+}
+
+struct TokenCounters {
+    input: String,
+    cached_input: String,
+    output: String,
+}
+
+impl TokenCounters {
+    fn unavailable() -> Self {
+        Self {
+            input: TOKEN_COUNTER_UNAVAILABLE.to_string(),
+            cached_input: TOKEN_COUNTER_UNAVAILABLE.to_string(),
+            output: TOKEN_COUNTER_UNAVAILABLE.to_string(),
+        }
+    }
+}
+
+pub(crate) fn format_compact_token_count(value: i64) -> String {
+    const SCALES: [(u64, &str); 3] = [(1_000_000_000, "B"), (1_000_000, "M"), (1_000, "k")];
+
+    let value = value.max(0) as u64;
+    let Some(mut scale_index) = SCALES.iter().position(|(scale, _)| value >= *scale) else {
+        return value.to_string();
+    };
+
+    loop {
+        let (scale, suffix) = SCALES[scale_index];
+        let whole = value / scale;
+        let remainder = value % scale;
+        let tenths = whole * 10 + (remainder * 10 + scale / 2) / scale;
+        if tenths >= 10_000 && scale_index > 0 {
+            scale_index -= 1;
+            continue;
+        }
+
+        let whole = tenths / 10;
+        return if tenths % 10 == 0 {
+            format!("{whole}{suffix}")
+        } else {
+            format!("{whole}.{}{suffix}", tenths % 10)
+        };
     }
 }
 
