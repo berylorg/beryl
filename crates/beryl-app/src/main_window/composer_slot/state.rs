@@ -22,6 +22,7 @@ pub(super) enum PendingStage {
     Ready,
     Publishing(ComposerHostFlushTicket),
     AwaitingWidgetRelease,
+    Finalizing,
     Retiring,
     Reconciliation,
     Departed,

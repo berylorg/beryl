@@ -56,13 +56,14 @@ Prove small and multi-page activation, predecessor edits before the fence, every
 bounded combined residency, zero pending focus/hit/accessibility/event admission, and zero hidden
 selected contribution; close one fresh independent semantic review.
 
-Safe-stop milestone: small clean-generation activation, request-20 incremental priming with a real
-pre-fence predecessor edit, exact promotion, terminal release, source drift, noninteraction, Phase
-177, and both Phase 179 targets passed. The retained post-promotion edit proof now reaches selected
-dispatch but exposes one unfinished request-identity handoff: promotion currently rebuilds selected
-dispatch behind a later pending-flight request id, so the next request is rejected as duplicate or
-stale. Resume by transferring the exact pending dispatcher frontier with the promoted entity, then
-rerun Phase 186, Phase 181, focused regressions, final locked checks, and independent review.
+Safe-stop milestone: exact pending dispatcher promotion, post-promotion editing, held-flush target-
+drift rejection, final pre-release source validation, complete combined realization ownership
+accounting, typed exact-flight failure settlement, bounded asynchronous retirement, clean-generation
+activation, request-20 incremental priming, terminal release, and noninteraction are implemented.
+Phase 186 passed 5/5; Phases 177, 181, and both Phase 179 targets passed; the locked library check,
+metadata, formatting, and diff checks passed. The first independent review's three blocking
+lifecycle and resource findings are corrected. Resume with one fresh independent corrective review;
+if accepted, compact and finish Phase 186 without redoing the completed serial matrix.
 
 # Phase 187: Accept Mounted Composer Integration At Large Scale (pending)
 

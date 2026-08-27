@@ -37,8 +37,11 @@ impl MainWindowConversationComposer {
         let diagnostics = self
             .input
             .read_with(cx, |input, _| input.realization_diagnostics());
-        MainWindowComposerResidencyUsage::from_current(&diagnostics.current)
-            .ok_or_else(|| "composer residency usage overflowed".to_owned())
+        MainWindowComposerResidencyUsage::from_current(
+            &diagnostics.current,
+            diagnostics.max_resident_object_pages,
+        )
+        .ok_or_else(|| "composer residency usage overflowed".to_owned())
     }
 
     pub(in crate::main_window) fn attach_pending_realizer(

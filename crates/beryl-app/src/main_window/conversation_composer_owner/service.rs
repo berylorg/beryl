@@ -20,7 +20,17 @@ pub struct MainWindowComposerCutPreparationTestRelease(Arc<Mutex<CutPreparationT
 
 #[cfg(feature = "test-faults")]
 #[derive(Clone)]
+pub struct MainWindowComposerPendingCompletionTestRelease(
+    Arc<Mutex<PendingCompletionTestGateState>>,
+);
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone)]
 pub(super) struct CutPreparationTestGate(Arc<Mutex<CutPreparationTestGateState>>);
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone)]
+pub(super) struct PendingCompletionTestGate(Arc<Mutex<PendingCompletionTestGateState>>);
 
 #[cfg(feature = "test-faults")]
 struct CutPreparationTestGateState {
@@ -29,7 +39,29 @@ struct CutPreparationTestGateState {
 }
 
 #[cfg(feature = "test-faults")]
+struct PendingCompletionTestGateState {
+    entered: bool,
+    released: bool,
+    waker: Option<Waker>,
+}
+
+#[cfg(feature = "test-faults")]
 impl MainWindowComposerCutPreparationTestRelease {
+    pub fn release(self) {
+        let mut state = self.0.lock().unwrap();
+        state.released = true;
+        if let Some(waker) = state.waker.take() {
+            waker.wake();
+        }
+    }
+}
+
+#[cfg(feature = "test-faults")]
+impl MainWindowComposerPendingCompletionTestRelease {
+    pub fn is_blocked(&self) -> bool {
+        self.0.lock().unwrap().entered
+    }
+
     pub fn release(self) {
         let mut state = self.0.lock().unwrap();
         state.released = true;
@@ -54,6 +86,22 @@ impl Future for CutPreparationTestGate {
     }
 }
 
+#[cfg(feature = "test-faults")]
+impl Future for PendingCompletionTestGate {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut state = self.0.lock().unwrap();
+        state.entered = true;
+        if state.released {
+            Poll::Ready(())
+        } else {
+            state.waker = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
+
 pub struct MainWindowConversationComposerService {
     pub(super) store: Arc<HomeStore>,
     pub(super) slot: Mutex<MainWindowComposerSlot>,
@@ -61,6 +109,8 @@ pub struct MainWindowConversationComposerService {
     test_cancel_next_mutation_commit: AtomicBool,
     #[cfg(feature = "test-faults")]
     test_cut_preparation_gate: Mutex<Option<CutPreparationTestGate>>,
+    #[cfg(feature = "test-faults")]
+    test_pending_completion_gate: Mutex<Option<PendingCompletionTestGate>>,
 }
 
 impl MainWindowConversationComposerService {
@@ -72,6 +122,8 @@ impl MainWindowConversationComposerService {
             test_cancel_next_mutation_commit: AtomicBool::new(false),
             #[cfg(feature = "test-faults")]
             test_cut_preparation_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_pending_completion_gate: Mutex::new(None),
         }
     }
 
@@ -84,6 +136,16 @@ impl MainWindowConversationComposerService {
         receipt: super::MainWindowComposerActivationReceipt,
     ) -> Option<MainWindowComposerSelectionIdentity> {
         self.slot.lock().ok()?.pending_identity(receipt)
+    }
+
+    pub(in crate::main_window) fn pending_request_is_admitted(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> bool {
+        self.slot
+            .lock()
+            .is_ok_and(|slot| slot.pending_request_is_admitted(receipt, selection))
     }
 
     pub fn pending_receipt(&self) -> Option<super::MainWindowComposerActivationReceipt> {
@@ -141,6 +203,36 @@ impl MainWindowConversationComposerService {
     pub(super) fn take_test_mutation_commit_cancellation(&self) -> bool {
         self.test_cancel_next_mutation_commit
             .swap(false, Ordering::SeqCst)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_block_next_pending_completion(
+        &self,
+    ) -> MainWindowComposerPendingCompletionTestRelease {
+        let state = Arc::new(Mutex::new(PendingCompletionTestGateState {
+            entered: false,
+            released: false,
+            waker: None,
+        }));
+        let mut gate = self.test_pending_completion_gate.lock().unwrap();
+        assert!(
+            gate.replace(PendingCompletionTestGate(state.clone()))
+                .is_none()
+        );
+        MainWindowComposerPendingCompletionTestRelease(state)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_pending_completion_gate(&self) -> Option<PendingCompletionTestGate> {
+        self.test_pending_completion_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_advance_publish(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+    ) -> Result<super::MainWindowComposerPublishAdvance, String> {
+        self.advance_publish(receipt)
     }
 
     pub(in crate::main_window) fn assets(&self) -> Result<beryl_state::AssetState, String> {
@@ -340,7 +432,7 @@ impl MainWindowConversationComposerService {
         self.slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
-            .capture_selected_flush_publication(
+            .capture_activation_flush_publication(
                 &self.store,
                 selection,
                 flush,
@@ -384,6 +476,18 @@ impl MainWindowConversationComposerService {
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .complete_publish_after_widget_release(&self.store, receipt, release)
             .map_err(|_| "conversation composer service operation failed".to_owned())
+    }
+
+    pub(in crate::main_window) fn begin_final_publish(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+        expected: MainWindowComposerSelectionIdentity,
+    ) -> Result<(), String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .begin_final_publish(&self.store, receipt, expected)
+            .map_err(|_| "conversation composer final publication fence is stale".to_owned())
     }
 
     pub(in crate::main_window) fn begin_disposal(

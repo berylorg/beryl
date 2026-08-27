@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use beryl_home_store::CommandCancellation;
 use beryl_state::WindowClaimSelection;
@@ -200,7 +200,7 @@ impl MainWindowConversationComposerMount {
         let expected = match self.service.publish_preflight(receipt) {
             Ok(expected) => expected,
             Err(error) => {
-                self.retire_failed_pending(receipt)?;
+                self.retire_failed_pending(receipt, cx)?;
                 return Err(error);
             }
         };
@@ -215,7 +215,7 @@ impl MainWindowConversationComposerMount {
             Err(error) => {
                 self.resume_contribution(window, cx)?;
                 self.refresh_autosave(window, cx)?;
-                self.retire_failed_pending(receipt)?;
+                self.retire_failed_pending(receipt, cx)?;
                 Err(error)
             }
         }
@@ -227,7 +227,15 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountPublishAdvance, String> {
-        let advance = self.service.advance_publish(receipt)?;
+        let advance = match self.service.advance_publish(receipt) {
+            Ok(advance) => advance,
+            Err(error) => {
+                self.resume_contribution(window, cx)?;
+                self.refresh_autosave(window, cx)?;
+                self.retire_failed_pending(receipt, cx)?;
+                return Err(error);
+            }
+        };
         self.synchronize_contribution_selection(cx)?;
         if matches!(advance, MainWindowComposerPublishAdvance::PriorFlushFailed) {
             self.resume_contribution(window, cx)?;
@@ -253,6 +261,12 @@ impl MainWindowConversationComposerMount {
             return Ok(
                 MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(expected),
             );
+        }
+        if let Err(error) = self.service.begin_final_publish(receipt, expected) {
+            self.resume_contribution(window, cx)?;
+            self.refresh_autosave(window, cx)?;
+            self.retire_failed_pending(receipt, cx)?;
+            return Err(error);
         }
         let release = contribution.update(cx, |composer, composer_cx| {
             composer.release_widget(window, composer_cx)
@@ -488,13 +502,42 @@ impl MainWindowConversationComposerMount {
     fn retire_failed_pending(
         &mut self,
         receipt: MainWindowComposerActivationReceipt,
+        cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if self.service.pending_receipt() != Some(receipt) {
             return Ok(());
         }
         self.pending = None;
         self.activation_residency_bound = None;
-        let _ = self.service.release_failed_pending(receipt)?;
+        match self.service.release_failed_pending(receipt)? {
+            MainWindowComposerRetirementAdvance::Retired => return Ok(()),
+            MainWindowComposerRetirementAdvance::Pending => {}
+            MainWindowComposerRetirementAdvance::DepartedFreshBoundary => {
+                return Err("failed composer target departed fresh state".to_owned());
+            }
+        }
+        let service = self.service.clone();
+        let executor = cx.background_executor().clone();
+        let retirement_executor = executor.clone();
+        executor
+            .spawn(async move {
+                let mut delay = Duration::from_millis(1);
+                loop {
+                    retirement_executor.timer(delay).await;
+                    if service.pending_receipt() != Some(receipt) {
+                        return;
+                    }
+                    match service.release_failed_pending(receipt) {
+                        Ok(MainWindowComposerRetirementAdvance::Retired)
+                        | Ok(MainWindowComposerRetirementAdvance::DepartedFreshBoundary)
+                        | Err(_) => return,
+                        Ok(MainWindowComposerRetirementAdvance::Pending) => {
+                            delay = delay.saturating_mul(2).min(Duration::from_millis(100));
+                        }
+                    }
+                }
+            })
+            .detach();
         Ok(())
     }
 

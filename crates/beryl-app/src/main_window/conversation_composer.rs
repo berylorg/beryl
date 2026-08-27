@@ -17,6 +17,8 @@ pub struct MainWindowConversationComposerConfig {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MainWindowComposerResidencyBound {
+    owned_bytes: usize,
+    owned_items: usize,
     text_pages: usize,
     text_bytes: usize,
     object_pages: usize,
@@ -27,31 +29,40 @@ pub struct MainWindowComposerResidencyBound {
 impl MainWindowComposerResidencyBound {
     fn from_widget(widget: &RangeTextInputConfig) -> Option<Self> {
         Some(Self {
+            owned_bytes: widget.limits.max_surface_bytes,
+            owned_items: widget.limits.max_surface_items,
             text_pages: widget
                 .residency_limits
                 .max_resident_pages()
+                .checked_mul(2)?
                 .checked_add(widget.residency_limits.max_pending_requests())?,
             text_bytes: widget
                 .residency_limits
                 .max_resident_bytes()
+                .checked_mul(2)?
                 .checked_add(usize::try_from(widget.residency_limits.max_pending_bytes()).ok()?)?,
             object_pages: widget
                 .object_residency_limits
                 .max_resident_pages()
+                .checked_mul(2)?
                 .checked_add(widget.object_residency_limits.max_pending_requests())?,
             objects: widget
                 .object_residency_limits
                 .max_resident_objects()
+                .checked_mul(2)?
                 .checked_add(widget.object_residency_limits.max_pending_objects())?,
             object_bytes: widget
                 .object_residency_limits
                 .max_resident_bytes()
+                .checked_mul(2)?
                 .checked_add(widget.object_residency_limits.max_pending_bytes())?,
         })
     }
 
     pub(super) fn checked_add(self, other: Self) -> Option<Self> {
         Some(Self {
+            owned_bytes: self.owned_bytes.checked_add(other.owned_bytes)?,
+            owned_items: self.owned_items.checked_add(other.owned_items)?,
             text_pages: self.text_pages.checked_add(other.text_pages)?,
             text_bytes: self.text_bytes.checked_add(other.text_bytes)?,
             object_pages: self.object_pages.checked_add(other.object_pages)?,
@@ -62,6 +73,14 @@ impl MainWindowComposerResidencyBound {
 
     pub const fn text_pages(self) -> usize {
         self.text_pages
+    }
+
+    pub const fn owned_bytes(self) -> usize {
+        self.owned_bytes
+    }
+
+    pub const fn owned_items(self) -> usize {
+        self.owned_items
     }
 
     pub const fn text_bytes(self) -> usize {
@@ -84,16 +103,22 @@ impl MainWindowComposerResidencyBound {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MainWindowComposerActivationResidency {
     bound: MainWindowComposerResidencyBound,
+    current_owned_bytes: usize,
+    current_owned_items: usize,
     current_text_pages: usize,
     current_text_bytes: usize,
+    current_object_pages: usize,
     current_objects: usize,
     current_object_bytes: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct MainWindowComposerResidencyUsage {
+    owned_bytes: usize,
+    owned_items: usize,
     text_pages: usize,
     text_bytes: usize,
+    object_pages: usize,
     objects: usize,
     object_bytes: usize,
 }
@@ -101,17 +126,21 @@ pub(super) struct MainWindowComposerResidencyUsage {
 impl MainWindowComposerResidencyUsage {
     pub(super) fn from_current(
         current: &gpui_text_input::RangeRealizationOwnership,
+        resident_object_page_capacity: usize,
     ) -> Option<Self> {
         Some(Self {
+            owned_bytes: current.owned_bytes,
+            owned_items: current.owned_items,
             text_pages: current
                 .resident_pages
                 .checked_add(current.pending_page_requests)?,
             text_bytes: current
                 .resident_page_bytes
                 .checked_add(current.pending_page_bytes)?,
-            objects: current
-                .resident_objects
+            object_pages: resident_object_page_capacity
+                .checked_mul(2)?
                 .checked_add(current.pending_object_requests)?,
+            objects: current.resident_objects,
             object_bytes: current
                 .resident_object_bytes
                 .checked_add(current.pending_object_bytes)?,
@@ -120,8 +149,11 @@ impl MainWindowComposerResidencyUsage {
 
     pub(super) fn checked_add(self, other: Self) -> Option<Self> {
         Some(Self {
+            owned_bytes: self.owned_bytes.checked_add(other.owned_bytes)?,
+            owned_items: self.owned_items.checked_add(other.owned_items)?,
             text_pages: self.text_pages.checked_add(other.text_pages)?,
             text_bytes: self.text_bytes.checked_add(other.text_bytes)?,
+            object_pages: self.object_pages.checked_add(other.object_pages)?,
             objects: self.objects.checked_add(other.objects)?,
             object_bytes: self.object_bytes.checked_add(other.object_bytes)?,
         })
@@ -131,14 +163,20 @@ impl MainWindowComposerResidencyUsage {
         self,
         bound: MainWindowComposerResidencyBound,
     ) -> Option<MainWindowComposerActivationResidency> {
-        (self.text_pages <= bound.text_pages
+        (self.owned_bytes <= bound.owned_bytes
+            && self.owned_items <= bound.owned_items
+            && self.text_pages <= bound.text_pages
             && self.text_bytes <= bound.text_bytes
+            && self.object_pages <= bound.object_pages
             && self.objects <= bound.objects
             && self.object_bytes <= bound.object_bytes)
             .then_some(MainWindowComposerActivationResidency {
                 bound,
+                current_owned_bytes: self.owned_bytes,
+                current_owned_items: self.owned_items,
                 current_text_pages: self.text_pages,
                 current_text_bytes: self.text_bytes,
+                current_object_pages: self.object_pages,
                 current_objects: self.objects,
                 current_object_bytes: self.object_bytes,
             })
@@ -154,12 +192,24 @@ impl MainWindowComposerActivationResidency {
         self.current_text_pages
     }
 
+    pub const fn current_owned_bytes(self) -> usize {
+        self.current_owned_bytes
+    }
+
+    pub const fn current_owned_items(self) -> usize {
+        self.current_owned_items
+    }
+
     pub const fn current_text_bytes(self) -> usize {
         self.current_text_bytes
     }
 
     pub const fn current_objects(self) -> usize {
         self.current_objects
+    }
+
+    pub const fn current_object_pages(self) -> usize {
+        self.current_object_pages
     }
 
     pub const fn current_object_bytes(self) -> usize {

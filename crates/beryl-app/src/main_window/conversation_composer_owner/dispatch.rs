@@ -1,6 +1,9 @@
 use beryl_home_store::CommandCancellation;
 use gpui::{Context, Entity, Window};
-use gpui_text_input::{MutationOutcome, RangeTextInput, RangeTextInputRequest};
+use gpui_text_input::{
+    MutationOutcome, ObjectPageFailure, ObjectRequestKey, PageFailure, PageRequestKey,
+    RangeTextInput, RangeTextInputRequest,
+};
 
 use crate::composer_host::ComposerHostMutationOutcome;
 
@@ -22,9 +25,42 @@ struct MainWindowConversationComposerDispatch {
     cut_page_expected: bool,
 }
 
+#[derive(Clone, Copy)]
+enum MainWindowConversationComposerFailureSettlement {
+    Page(PageRequestKey),
+    ObjectPage(ObjectRequestKey),
+}
+
+enum MainWindowConversationComposerTaskError {
+    RouteNotAdmitted,
+    Exact {
+        error: String,
+        settlement: Option<MainWindowConversationComposerFailureSettlement>,
+    },
+}
+
+type MainWindowConversationComposerTaskResult =
+    Result<Box<MainWindowConversationComposerDispatch>, MainWindowConversationComposerTaskError>;
+
+impl MainWindowConversationComposerTaskError {
+    fn exact(
+        error: String,
+        settlement: Option<MainWindowConversationComposerFailureSettlement>,
+    ) -> Self {
+        Self::Exact { error, settlement }
+    }
+}
+
 impl MainWindowConversationComposer {
     pub(super) fn pump_one(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.can_pump() || self.active_flight.is_some() || self.last_error.is_some() {
+            return;
+        }
+        if let MainWindowConversationComposerRoute::Pending(receipt) = self.route
+            && !self
+                .service
+                .pending_request_is_admitted(receipt, self.selection)
+        {
             return;
         }
         let request = self.input.update(cx, |input, _| input.take_request());
@@ -73,6 +109,15 @@ impl MainWindowConversationComposer {
         let service = self.service.clone();
         let selection = self.selection;
         let route = self.route;
+        let settlement = match &request {
+            RangeTextInputRequest::Page(request) => Some(
+                MainWindowConversationComposerFailureSettlement::Page(request.key()),
+            ),
+            RangeTextInputRequest::ObjectPage(request) => Some(
+                MainWindowConversationComposerFailureSettlement::ObjectPage(request.key()),
+            ),
+            _ => None,
+        };
         let proof_limits = self.proof_limits;
         let marker_metadata = self.marker_metadata_for_request(&request);
         let cancellation = CommandCancellation::new();
@@ -83,64 +128,115 @@ impl MainWindowConversationComposer {
             cancellation.cancel();
         }
         let task = cx.background_executor().spawn(async move {
-            let mut slot = service
-                .slot
-                .lock()
-                .map_err(|_| "conversation composer service lock failed".to_owned())?;
-            let outcome = match route {
-                MainWindowConversationComposerRoute::Selected => slot
-                    .dispatch_selected_request(
-                        &service.store,
-                        selection,
-                        request,
-                        marker_metadata,
-                        &cancellation,
+            let (outcome, proof, settled_selection) = {
+                let mut slot = service.slot.lock().map_err(|_| {
+                    MainWindowConversationComposerTaskError::exact(
+                        "conversation composer service lock failed".to_owned(),
+                        settlement,
                     )
-                    .map_err(|error| format!("composer dispatch failed: {error}"))?,
-                MainWindowConversationComposerRoute::Pending(receipt) => slot
-                    .dispatch_pending_request(
-                        &service.store,
-                        receipt,
-                        selection,
-                        request,
-                        &cancellation,
-                    )
-                    .map_err(|error| format!("pending composer dispatch failed: {error}"))?,
-            };
-            let proof = match &outcome {
-                MainWindowComposerDispatchOutcome::Mutation {
-                    key,
-                    outcome: ComposerHostMutationOutcome::Committed { positions, .. },
-                } => {
-                    let successor = slot
-                        .selected_identity()
-                        .ok_or_else(|| "committed composer selection disappeared".to_owned())?;
-                    Some((
-                        *key,
-                        slot.build_selected_successor_proof(
+                })?;
+                let admitted = match route {
+                    MainWindowConversationComposerRoute::Selected => {
+                        slot.selected_identity() == Some(selection)
+                    }
+                    MainWindowConversationComposerRoute::Pending(receipt) => {
+                        slot.pending_request_is_admitted(receipt, selection)
+                    }
+                };
+                if !admitted {
+                    return Err(MainWindowConversationComposerTaskError::RouteNotAdmitted);
+                }
+                let outcome = match route {
+                    MainWindowConversationComposerRoute::Selected => slot
+                        .dispatch_selected_request(
                             &service.store,
-                            successor,
-                            *positions,
-                            proof_limits,
+                            selection,
+                            request,
+                            marker_metadata,
+                            &cancellation,
                         )
-                        .map_err(|_| "composer successor proof failed".to_owned())?,
-                    ))
+                        .map_err(|error| {
+                            MainWindowConversationComposerTaskError::exact(
+                                format!("composer dispatch failed: {error}"),
+                                settlement,
+                            )
+                        })?,
+                    MainWindowConversationComposerRoute::Pending(receipt) => slot
+                        .dispatch_pending_request(
+                            &service.store,
+                            receipt,
+                            selection,
+                            request,
+                            &cancellation,
+                        )
+                        .map_err(|error| {
+                            MainWindowConversationComposerTaskError::exact(
+                                format!("pending composer dispatch failed: {error}"),
+                                settlement,
+                            )
+                        })?,
+                };
+                let proof = match &outcome {
+                    MainWindowComposerDispatchOutcome::Mutation {
+                        key,
+                        outcome: ComposerHostMutationOutcome::Committed { positions, .. },
+                    } => {
+                        let successor = slot.selected_identity().ok_or_else(|| {
+                            MainWindowConversationComposerTaskError::exact(
+                                "committed composer selection disappeared".to_owned(),
+                                settlement,
+                            )
+                        })?;
+                        Some((
+                            *key,
+                            slot.build_selected_successor_proof(
+                                &service.store,
+                                successor,
+                                *positions,
+                                proof_limits,
+                            )
+                            .map_err(|_| {
+                                MainWindowConversationComposerTaskError::exact(
+                                    "composer successor proof failed".to_owned(),
+                                    settlement,
+                                )
+                            })?,
+                        ))
+                    }
+                    _ => None,
+                };
+                let settled_selection = match route {
+                    MainWindowConversationComposerRoute::Selected => slot.selected_identity(),
+                    MainWindowConversationComposerRoute::Pending(receipt) => {
+                        slot.pending_identity(receipt)
+                    }
                 }
-                _ => None,
+                .ok_or_else(|| {
+                    MainWindowConversationComposerTaskError::exact(
+                        "composer selection disappeared after dispatch".to_owned(),
+                        settlement,
+                    )
+                })?;
+                (outcome, proof, settled_selection)
             };
-            let settled_selection = match route {
-                MainWindowConversationComposerRoute::Selected => slot.selected_identity(),
-                MainWindowConversationComposerRoute::Pending(receipt) => {
-                    slot.pending_identity(receipt)
-                }
+            #[cfg(feature = "test-faults")]
+            if matches!(route, MainWindowConversationComposerRoute::Pending(_))
+                && let Some(gate) = service.take_test_pending_completion_gate()
+            {
+                gate.await;
+                return Err(MainWindowConversationComposerTaskError::exact(
+                    "pending composer dispatched completion failed".to_owned(),
+                    settlement,
+                ));
             }
-            .ok_or_else(|| "composer selection disappeared after dispatch".to_owned())?;
-            drop(slot);
             let cut_page = cut_page_request
                 .map(|request| {
                     super::clipboard::prepare_next_cut_page(&service, selection, request)
                 })
-                .transpose()?;
+                .transpose()
+                .map_err(|error| {
+                    MainWindowConversationComposerTaskError::exact(error, settlement)
+                })?;
             Ok(Box::new(MainWindowConversationComposerDispatch {
                 initiating_selection: selection,
                 settled_selection,
@@ -235,13 +331,23 @@ impl MainWindowConversationComposer {
         let selection = self.selection;
         let limits = self.proof_limits;
         let task = cx.background_executor().spawn(async move {
-            let mut slot = service
-                .slot
-                .lock()
-                .map_err(|_| "conversation composer service lock failed".to_owned())?;
+            let mut slot = service.slot.lock().map_err(|_| {
+                MainWindowConversationComposerTaskError::exact(
+                    "conversation composer service lock failed".to_owned(),
+                    None,
+                )
+            })?;
+            if slot.selected_identity() != Some(selection) {
+                return Err(MainWindowConversationComposerTaskError::RouteNotAdmitted);
+            }
             let proof = slot
                 .build_selected_successor_proof(&service.store, selection, positions, limits)
-                .map_err(|_| "composer successor proof failed".to_owned())?;
+                .map_err(|_| {
+                    MainWindowConversationComposerTaskError::exact(
+                        "composer successor proof failed".to_owned(),
+                        None,
+                    )
+                })?;
             Ok(Box::new(MainWindowConversationComposerDispatch {
                 initiating_selection: selection,
                 settled_selection: selection,
@@ -275,30 +381,44 @@ impl MainWindowConversationComposer {
     fn finish(
         &mut self,
         route: MainWindowConversationComposerRoute,
-        result: Result<Box<MainWindowConversationComposerDispatch>, String>,
+        result: MainWindowConversationComposerTaskResult,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         let route_is_current = |service: &MainWindowConversationComposerService,
-                                route: MainWindowConversationComposerRoute,
-                                selection| match route {
-            MainWindowConversationComposerRoute::Selected => {
-                service.selected_identity() == Some(selection)
-            }
-            MainWindowConversationComposerRoute::Pending(receipt) => {
-                service.pending_identity(receipt) == Some(selection)
-            }
+                                initiated: MainWindowConversationComposerRoute,
+                                current: MainWindowConversationComposerRoute,
+                                selection| match (initiated, current)
+        {
+            (
+                MainWindowConversationComposerRoute::Selected,
+                MainWindowConversationComposerRoute::Selected,
+            ) => service.selected_identity() == Some(selection),
+            (
+                MainWindowConversationComposerRoute::Pending(receipt),
+                MainWindowConversationComposerRoute::Pending(current_receipt),
+            ) if receipt == current_receipt => service.pending_identity(receipt) == Some(selection),
+            (
+                MainWindowConversationComposerRoute::Pending(_),
+                MainWindowConversationComposerRoute::Selected,
+            ) => service.selected_identity() == Some(selection),
+            _ => false,
         };
-        if route != self.route {
-            return Ok(());
-        }
         let result = match result {
             Ok(result) => result,
-            Err(_) if !route_is_current(&self.service, route, self.selection) => return Ok(()),
-            Err(error) => return Err(error),
+            Err(MainWindowConversationComposerTaskError::RouteNotAdmitted) => return Ok(()),
+            Err(MainWindowConversationComposerTaskError::Exact { .. })
+                if !route_is_current(&self.service, route, self.route, self.selection) =>
+            {
+                return Ok(());
+            }
+            Err(MainWindowConversationComposerTaskError::Exact { error, settlement }) => {
+                self.settle_exact_dispatch_failure(settlement, cx)?;
+                return Err(error);
+            }
         };
         if result.initiating_selection != self.selection
-            || !route_is_current(&self.service, route, result.settled_selection)
+            || !route_is_current(&self.service, route, self.route, result.settled_selection)
         {
             return Ok(());
         }
@@ -499,6 +619,26 @@ impl MainWindowConversationComposer {
         }
         self.input.update(cx, |input, _| input.focus(window));
         Ok(())
+    }
+
+    fn settle_exact_dispatch_failure(
+        &mut self,
+        settlement: Option<MainWindowConversationComposerFailureSettlement>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let Some(settlement) = settlement else {
+            return Ok(());
+        };
+        self.input
+            .update(cx, |input, input_cx| match settlement {
+                MainWindowConversationComposerFailureSettlement::Page(key) => {
+                    input.fail_page(key, PageFailure::Unavailable, input_cx)
+                }
+                MainWindowConversationComposerFailureSettlement::ObjectPage(key) => {
+                    input.fail_object_page(key, ObjectPageFailure::Unavailable, input_cx)
+                }
+            })
+            .map_err(|_| "composer failed request settlement was rejected".to_owned())
     }
 }
 

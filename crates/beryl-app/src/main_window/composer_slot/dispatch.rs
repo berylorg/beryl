@@ -146,6 +146,29 @@ impl MainWindowComposerDispatcher {
 }
 
 impl MainWindowComposerSlot {
+    pub(in crate::main_window) fn pending_request_is_admitted(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> bool {
+        self.pending
+            .as_ref()
+            .filter(|pending| pending.receipt == receipt)
+            .is_some_and(|pending| {
+                matches!(pending.stage, super::PendingStage::Ready)
+                    && pending.host.binding().is_some_and(|binding| {
+                        pending.dispatcher.binding == binding
+                            && pending.host.active_thread_id() == Some(pending.claim.thread_id())
+                            && selection
+                                == MainWindowComposerSelectionIdentity {
+                                    window_id: self.window_id,
+                                    claim: pending.claim,
+                                    binding,
+                                }
+                    })
+            })
+    }
+
     pub fn take_selected_initial_presentation(
         &mut self,
         selection: MainWindowComposerSelectionIdentity,
@@ -168,7 +191,9 @@ impl MainWindowComposerSlot {
         let pending = self
             .pending
             .as_mut()
-            .filter(|pending| pending.receipt == receipt)
+            .filter(|pending| {
+                pending.receipt == receipt && matches!(pending.stage, super::PendingStage::Ready)
+            })
             .ok_or(MainWindowComposerDispatchError::StaleSelection)?;
         let binding = pending
             .host

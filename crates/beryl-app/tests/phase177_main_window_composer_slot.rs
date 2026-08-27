@@ -92,7 +92,10 @@ fn prior_remains_authoritative_until_exact_target_publication() {
         slot.selected_identity().unwrap().binding(),
         selected_binding
     );
-    let release = MainWindowComposerWidgetRelease::for_test(slot.selected_identity().unwrap());
+    let expected = slot.selected_identity().unwrap();
+    slot.begin_final_publish(&fixture.store, receipt, expected)
+        .unwrap();
+    let release = MainWindowComposerWidgetRelease::for_test(expected);
     let published = slot
         .complete_publish_after_widget_release(&fixture.store, receipt, &release)
         .unwrap();

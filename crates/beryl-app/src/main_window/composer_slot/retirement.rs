@@ -26,11 +26,15 @@ impl MainWindowComposerSlot {
         store: &HomeStore,
     ) -> Result<MainWindowComposerRetirementAdvance, MainWindowComposerSlotError> {
         let pending = self.pending.as_mut().unwrap();
-        match pending.host.dispose_composer_service(store)? {
-            ComposerHostServiceDisposalCompletion::Pending => {
+        match pending.host.dispose_composer_service(store) {
+            Err(crate::composer_host::ComposerHostError::PublicationPending) => {
                 Ok(MainWindowComposerRetirementAdvance::Pending)
             }
-            ComposerHostServiceDisposalCompletion::Disposed => {
+            Err(error) => Err(error.into()),
+            Ok(ComposerHostServiceDisposalCompletion::Pending) => {
+                Ok(MainWindowComposerRetirementAdvance::Pending)
+            }
+            Ok(ComposerHostServiceDisposalCompletion::Disposed) => {
                 self.pending = None;
                 Ok(MainWindowComposerRetirementAdvance::Retired)
             }
@@ -45,7 +49,9 @@ impl MainWindowComposerSlot {
         self.ensure_receipt(receipt)?;
         if matches!(
             self.pending.as_ref().unwrap().stage,
-            PendingStage::Publishing(_) | PendingStage::AwaitingWidgetRelease
+            PendingStage::Publishing(_)
+                | PendingStage::AwaitingWidgetRelease
+                | PendingStage::Finalizing
         ) {
             return Err(MainWindowComposerSlotError::TargetNotReady);
         }
