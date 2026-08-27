@@ -10,11 +10,15 @@ Expose compact, exact conversation status and selected-thread controls without m
 
 # Decisions
 
+The normative GUI composition for this feature is [Status Line GUI](gui.md).
+
 ## Status Line Layout
 
 - The status line strip is fixed to the bottom edge of the main window between the user input panel and the OS window edge.
 - It uses the same edge-to-edge separator treatment as the main toolbar.
-- It contains three left-to-right cells: model/reasoning, context space left, and last-turn state.
+- It contains three left-to-right segments: `M/R` model/reasoning, Context, and Turn.
+- The outer `M/R` and Turn segments are content-sized. Context is the flexible segment and takes the remaining status-line width.
+- Turn accommodates its longest state label, `compacting`.
 - The strip is UI chrome and is not part of the backend conversation transcript.
 
 ## Model And Reasoning Cell
@@ -32,14 +36,20 @@ Expose compact, exact conversation status and selected-thread controls without m
 
 ## Context And Rate-Limit Cell
 
-- Context space displays a percentage only when the selected thread has exact token usage with a positive model context window.
+- The Context space percentage readout displays a percentage only when the selected thread has exact token usage with a positive model context window.
 - The percentage is computed from exact selected-thread token usage as `((modelContextWindow - last.inputTokens) / modelContextWindow) * 100`, clamped to `0..100`.
 - Exact token usage may come from selected-thread `thread/tokenUsage/updated` notifications, in-memory same-thread cache populated by those notifications, durable GUI-held last-known snapshots originally populated by notifications, or read-only app-server status metadata for the same thread.
-- If no exact same-thread usage is known, the model context window is missing, or the selected thread changes to one without known usage, the cell displays `Unknown`.
+- If no exact same-thread usage is known, the model context window is missing, or the selected thread changes to one without known usage, only the Context space percentage readout displays `Unknown`. This state is independent of the token-counter readouts.
 - Switching threads must not submit input, start backend turns, or mutate backend conversation history to fill this cell.
 - When exact account rate-limit status is available, the same cell appends the active-model short-window and weekly remaining percentages independently.
 - Rate-limit bucket identity such as `limitId` and `limitName` is preserved. Beryl selects the bucket matching the active model and avoids merging unrelated model-specific buckets.
 - Rate-limit segments are omitted independently when the exact window or active-model bucket is unavailable.
+- After the weekly rate-limit readout when present, Context appends the selected thread's cumulative token readouts in this order: `I: <uncached input> IC: <cached input> O: <output>`.
+- These counters apply only to the currently selected thread and never represent global or account-wide usage. `I` is `max(cumulative input count - cumulative cached-input count, 0)`, `IC` is the cumulative cached-input count, and `O` is the cumulative output count.
+- Beryl displays no counter value below zero; any negative count is displayed as `0`.
+- Counter formatting uses base-1000 thresholds. Values below `1000` display as integers. At or above a threshold, Beryl uses the largest applicable supported scale (`k`, `M`, then `B`) and rounds the scaled value to the nearest tenth, with halfway values rounding upward. When rounding reaches `1000` and a larger suffix exists, Beryl promotes the value to that suffix; `B` is the highest suffix. Beryl removes an unnecessary trailing `.0`.
+- When exact cumulative totals for the selected thread are unavailable, Context displays em dashes for all three counter values: `I: — IC: — O: —`.
+- Switching to a thread, including restoring one, replaces the counter readouts with that thread's retained exact totals when available. A pending new-thread draft does not inherit counters from another thread.
 - Activating the context cell opens the context operations popup only when a backend conversation thread is selected, idle, and backend-available.
 - With no selected thread, an active selected-thread turn, or a backend-unavailable selected runtime target, the cell is non-clickable.
 - The context operations popup initially contains `Compact`, which starts backend context compaction for the selected thread. Request acceptance is not compaction completion.
