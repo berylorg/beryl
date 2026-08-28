@@ -3047,7 +3047,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   preceding and following continuation or document-edge facts. A non-edge response that makes no
   progress, crosses the root extent, splits a scalar, exceeds its ceiling, or disagrees with the
   root summary is invariant failure.
-- An exact-root marker-page request names a bounded half-open byte interval or exact anchor,
+- An exact-root marker-page request names a bounded half-open byte interval, bounded inclusive byte
+  interval, or exact anchor,
   `Forward` or `Backward`, an optional exclusive authenticated composite search-key cursor, an
   object ceiling from 1 through 256, and a retained canonical response-byte ceiling from 1 through
   65,536. Direction selects the adjacent window, while the returned list always uses strict
@@ -3057,7 +3058,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   root edge facts. Requested-side completion is distinct from an exact continuation cursor.
   Arbitrarily many markers at one anchor therefore advance by the exclusive last or first returned
   composite key without consuming text bytes, retaining the complete anchor run, or constructing a
-  marker registry.
+  marker registry. The inclusive interval is a first-class adapter for consumers whose zero-width
+  object envelope owns both byte edges, including exact EOF; it uses the same single request,
+  cursor, direction, object ceiling, retained-byte ceiling, and canonical continuation rules rather
+  than widening the byte range or merging two reads. Half-open interval semantics remain unchanged
+  for callers that select them explicitly.
 - Exact-root marker-edge operations provide bounded authenticated proofs for no marker at an anchor,
   the first marker at an anchor, the last marker at an anchor, or one named adjacent ordered pair at
   an anchor. First proves the external before-all translation, last proves after-all, adjacent proves

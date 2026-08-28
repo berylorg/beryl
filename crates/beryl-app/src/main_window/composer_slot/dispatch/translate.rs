@@ -118,7 +118,7 @@ fn object_page_for_target(
     let envelope = key.demand();
     let (scope, cursor) = match envelope {
         ObjectDemandEnvelope::Range { range, cursor, .. } => (
-            DraftPieceMarkerScopeV1::Range {
+            DraftPieceMarkerScopeV1::InclusiveRange {
                 start: range.start().get(),
                 end: range.end().get(),
             },

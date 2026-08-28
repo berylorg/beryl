@@ -109,7 +109,6 @@ impl MainWindowConversationComposer {
             proof_limits,
             clipboard_limits,
             mutation_limits,
-            next_operation: 1,
             image_surfaces: MainWindowComposerImageSurfaces::default(),
             image_surface_focus: cx.focus_handle(),
             image_surface_attachment: None,
@@ -275,7 +274,7 @@ impl MainWindowConversationComposer {
                     max_objects,
                     max_retained_bytes,
                 } => (
-                    syndic_storage::DraftPieceMarkerScopeV1::Range {
+                    syndic_storage::DraftPieceMarkerScopeV1::InclusiveRange {
                         start: range.start().get(),
                         end: range.end().get(),
                     },

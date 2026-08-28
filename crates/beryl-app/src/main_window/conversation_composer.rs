@@ -266,6 +266,7 @@ impl MainWindowConversationComposerConfig {
     pub(super) const fn successor_proof_limits(&self) -> MainWindowComposerSuccessorProofLimits {
         MainWindowComposerSuccessorProofLimits {
             text: self.widget.residency_limits,
+            text_page_bytes: self.widget.limits.page_bytes,
             objects: self.widget.object_residency_limits,
             presentation_generation: self.widget.presentation_generation,
         }

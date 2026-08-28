@@ -5,7 +5,7 @@ use gpui::{
 use gpui_text_input::{
     ClipboardCompletion, ClipboardKind, ClipboardLimits, ClipboardWriteOutcome,
     InlineObjectActivation, InlineObjectSurfaceAttachment, InlineObjectSurfaceDismissal,
-    MutationLimits, ObjectPurpose, OperationId, PagePurpose, RangeSourceSelection, RangeTextInput,
+    MutationLimits, ObjectPurpose, PagePurpose, RangeSourceSelection, RangeTextInput,
     RangeTextInputEvent, RangeTextInputRequest, RealizedInlineObjectAnchor, TextInputCommand,
 };
 use std::{
@@ -99,7 +99,6 @@ pub struct MainWindowConversationComposer {
     proof_limits: super::MainWindowComposerSuccessorProofLimits,
     clipboard_limits: ClipboardLimits,
     mutation_limits: MutationLimits,
-    next_operation: u64,
     image_surfaces: MainWindowComposerImageSurfaces,
     image_surface_focus: FocusHandle,
     image_surface_attachment: Option<InlineObjectSurfaceAttachment>,
@@ -240,7 +239,7 @@ impl MainWindowConversationComposer {
                     input_cx,
                 )
             })
-            .map_err(|_| "composer marker metadata mutation was rejected".to_owned())?;
+            .map_err(|error| format!("composer marker metadata mutation was rejected: {error}"))?;
         self.pending_marker_metadata = Some((key, Box::new([metadata])));
         Ok(key)
     }
@@ -569,9 +568,8 @@ impl MainWindowConversationComposer {
                 this.input
                     .update(cx, |input, cx| input.set_enabled(true, cx));
                 match result.and_then(|prepared| {
-                    this.input.update(cx, |input, input_cx| {
-                        prepared.begin(OperationId::new(this.next_operation), input, input_cx)
-                    })
+                    this.input
+                        .update(cx, |input, input_cx| prepared.begin(input, input_cx))
                 }) {
                     Ok(active) => this.propagated_cut = Some(active),
                     Err(error) => this.last_error = Some(error),

@@ -138,6 +138,9 @@ Keep independent main-window presentation responsive while process-wide services
 - The selected composer host opens one exact Syndic editor-candidate session from the durable
   current-draft selector, binds the session's newest candidate root, and exposes it to the
   range-backed text input as revision-bound bounded text and zero-width-marker page sources. The
+  host maps the widget's boundary-inclusive object interval to one Syndic inclusive marker-page
+  scope with the same request identity, cursor, direction, and ceilings; it does not reinterpret
+  Syndic's separate half-open scope, widen EOF, or merge two storage reads. The
   window retains only configured visible and overscan pages, bounded edit and IME state, compact
   positions, resident marker facts, and source and presentation generations; it never owns or
   reconstructs the complete draft.
@@ -392,6 +395,9 @@ Keep independent main-window presentation responsive while process-wide services
   ancestor or process-session collections. Composer history uses one fixed-capacity process pool of
   compact sealed Syndic input references and recalls content through range-backed copy-on-write
   drafts rather than copied payloads.
+- The selected and pending composers share the widget settlement coordinator. That coordinator is
+  the sole host-operation allocator, retained-custody owner, and dispatch replay validator across
+  activation generations; the app adds no service-global last-seen sequence beside it.
 - The package registers only command adapters supplied by the
   [conversation-threads feature](../../../doc/features/conversation-threads/design.md) and its
   service boundaries; it invents no additional thread or catalog mutation command surface.

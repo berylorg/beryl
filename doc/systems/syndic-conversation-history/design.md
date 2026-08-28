@@ -962,7 +962,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   a scalar boundary from a coordinate inside a scalar without clamping or rounding. Every response
   repeats the exact root and range, checked byte and logical-line facts, authenticated preceding and
   following continuation or document-edge facts, and the source-selected UTF-8-safe edges.
-- Marker paging is bidirectional over one exact byte interval or anchor. Requests carry a positive
+- Marker paging is bidirectional over one exact half-open interval, inclusive interval, or anchor.
+  The inclusive form includes zero-width markers at both byte edges and therefore represents an
+  exact EOF edge without widening or a second read; the half-open form remains unchanged. Requests carry a positive
   object ceiling, positive retained-byte ceiling, and optional exclusive authenticated composite
   cursor. Direction selects the adjacent window, while returned markers always retain canonical
   `(anchor, order key, marker identity)` order. Each page repeats its exact root and covered range,

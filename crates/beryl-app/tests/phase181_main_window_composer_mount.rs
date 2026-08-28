@@ -262,12 +262,11 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
         initial.read_with(cx, |composer, _| composer.selection_identity()),
         initial_selection
     );
-    let marker = InlineObjectId::new(0x181);
     initial
         .update(cx, |composer, composer_cx| {
             composer.insert_authenticated_image_marker(
                 ComposerHostImageMarkerMetadata::new(
-                    marker,
+                    InlineObjectId::new(0x181),
                     ImageLabelOrdinal::new(1).unwrap(),
                     image_asset,
                 ),
@@ -634,6 +633,115 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
             .is_none()
     );
     assert_eq!(service.selected_identity(), None);
+}
+
+#[gpui::test]
+fn mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase191-terminal-anchor-marker-run", 71);
+    let (claim, _) = fixture.claims();
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let image_asset = publish_image_asset(&fixture, b"phase191-terminal-anchor-marker");
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage);
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 72, 73, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        MountRoot { mount }
+    });
+    drive(cx, 16);
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    let composer = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    cx.update(|window, app| input.update(app, |input, _| input.focus(window)));
+    cx.update(|window, app| {
+        input.update(app, |input, input_cx| {
+            input.replace_and_mark_text_in_range(None, "a", None, window, input_cx)
+        })
+    });
+    drive(cx, 32);
+
+    for (id, order) in [(0x191_u128, 1_u128), (0x192_u128, 2_u128)] {
+        composer
+            .update(cx, |composer, composer_cx| {
+                composer.insert_authenticated_image_marker(
+                    ComposerHostImageMarkerMetadata::new(
+                        InlineObjectId::new(id),
+                        ImageLabelOrdinal::new(1).unwrap(),
+                        image_asset,
+                    ),
+                    InlineObjectOrder::new(order),
+                    composer_cx,
+                )
+            })
+            .unwrap();
+        drive(cx, 48);
+        assert_eq!(
+            service
+                .selected_identity()
+                .unwrap()
+                .binding()
+                .root()
+                .summary()
+                .marker_count(),
+            order as u64
+        );
+        assert_eq!(
+            composer.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
+            None
+        );
+    }
+    input.read_with(cx, |input, _| {
+        assert!(input.is_surface_current_and_interactive());
+        assert!(input.is_quiescent());
+        let surface = input.surface().unwrap();
+        let resident = surface
+            .object_pages()
+            .iter()
+            .map(|page| page.objects().len())
+            .sum::<usize>();
+        assert!((1..=32).contains(&resident));
+    });
 }
 
 #[gpui::test]

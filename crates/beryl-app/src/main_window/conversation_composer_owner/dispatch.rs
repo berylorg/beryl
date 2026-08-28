@@ -90,7 +90,7 @@ impl MainWindowConversationComposer {
                 return;
             }
         };
-        if let Err(error) = self.observe_operation(&request) {
+        if let Err(error) = self.observe_operation(&request, cx) {
             self.last_error = Some(error);
             return;
         }
@@ -216,9 +216,9 @@ impl MainWindowConversationComposer {
                                 *positions,
                                 proof_limits,
                             )
-                            .map_err(|_| {
+                            .map_err(|error| {
                                 MainWindowConversationComposerTaskError::exact(
-                                    "composer successor proof failed".to_owned(),
+                                    format!("composer successor proof failed: {error}"),
                                     settlement,
                                 )
                             })?,
@@ -283,7 +283,11 @@ impl MainWindowConversationComposer {
         .detach();
     }
 
-    fn observe_operation(&mut self, request: &RangeTextInputRequest) -> Result<(), String> {
+    fn observe_operation(
+        &mut self,
+        request: &RangeTextInputRequest,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
         let operation = match request {
             RangeTextInputRequest::MutationBegin(begin) => Some(begin.proposal().key().operation()),
             RangeTextInputRequest::HistoryIntent(intent) => Some(intent.key().operation()),
@@ -292,14 +296,11 @@ impl MainWindowConversationComposer {
         let Some(operation) = operation else {
             return Ok(());
         };
-        if operation.get() != self.next_operation {
-            return Err("composer widget operation sequence became stale".into());
-        }
-        self.next_operation = self
-            .next_operation
-            .checked_add(1)
-            .ok_or_else(|| "composer widget operation identity exhausted".to_owned())?;
-        Ok(())
+        self.input
+            .update(cx, |input, _| {
+                input.admit_host_operation_dispatch(operation)
+            })
+            .map_err(|_| "composer widget operation dispatch became stale".to_owned())
     }
 
     fn marker_metadata_for_request(
@@ -369,9 +370,9 @@ impl MainWindowConversationComposer {
             }
             let proof = slot
                 .build_selected_successor_proof(&service.store, selection, positions, limits)
-                .map_err(|_| {
+                .map_err(|error| {
                     MainWindowConversationComposerTaskError::exact(
-                        "composer successor proof failed".to_owned(),
+                        format!("composer successor proof failed: {error}"),
                         None,
                     )
                 })?;
@@ -609,16 +610,24 @@ impl MainWindowConversationComposer {
                     .input
                     .update(cx, |input, cx| input.deliver_page(page, window, cx))
                 {
-                    Ok(()) | Err(RangeTextInputError::PageResponseRejected(_)) => Ok(()),
-                    Err(_) => Err("composer text page was rejected".to_owned()),
+                    Ok(())
+                    | Err(RangeTextInputError::PageResponseRejected(_))
+                    | Err(RangeTextInputError::Pending | RangeTextInputError::SurfaceCapacity) => {
+                        Ok(())
+                    }
+                    Err(error) => Err(format!("composer text page was rejected: {error}")),
                 }
             }
             MainWindowComposerDispatchOutcome::ObjectPage(page) => {
                 match self.input.update(cx, |input, cx| {
                     input.deliver_object_page_in_window(page, window, cx)
                 }) {
-                    Ok(()) | Err(RangeTextInputError::ObjectResponseRejected(_)) => Ok(()),
-                    Err(_) => Err("composer marker page was rejected".to_owned()),
+                    Ok(())
+                    | Err(RangeTextInputError::ObjectResponseRejected(_))
+                    | Err(RangeTextInputError::Pending | RangeTextInputError::SurfaceCapacity) => {
+                        Ok(())
+                    }
+                    Err(error) => Err(format!("composer marker page was rejected: {error}")),
                 }
             }
             _ => Err("composer activation seed was not a bounded page".to_owned()),

@@ -14,6 +14,7 @@ use super::{MainWindowComposerDispatchError, MainWindowComposerDispatcher, trans
 #[derive(Clone, Copy)]
 pub(in crate::main_window) struct MainWindowComposerSuccessorProofLimits {
     pub(in crate::main_window) text: ResidencyLimits,
+    pub(in crate::main_window) text_page_bytes: u64,
     pub(in crate::main_window) objects: ObjectResidencyLimits,
     pub(in crate::main_window) presentation_generation: PresentationGeneration,
 }
@@ -87,13 +88,14 @@ fn build_successor_proof(
     limits: MainWindowComposerSuccessorProofLimits,
 ) -> Result<MainWindowComposerSuccessorProof, MainWindowComposerDispatchError> {
     let binding = selection.binding().range_binding();
-    let text_page_bytes = u64::try_from(
+    let text_residency_bytes = u64::try_from(
         limits
             .text
             .max_resident_bytes()
             .min(usize::try_from(limits.text.max_pending_bytes()).unwrap_or(usize::MAX)),
     )
     .map_err(|_| MainWindowComposerDispatchError::Malformed)?;
+    let text_page_bytes = limits.text_page_bytes.min(text_residency_bytes);
     if text_page_bytes == 0 {
         return Err(MainWindowComposerDispatchError::Malformed);
     }
@@ -151,31 +153,38 @@ fn build_successor_proof(
                 .map_err(|_| MainWindowComposerDispatchError::SuccessorProof("object envelope"))?;
         let request_id =
             u64::try_from(index + 1).map_err(|_| MainWindowComposerDispatchError::Malformed)?;
-        let ObjectDemand::Requested(request) = objects
+        match objects
             .demand(
                 ObjectRequestId::new(request_id),
                 gpui_text_input::ObjectPurpose::MutationSuccessor,
                 demand,
             )
             .map_err(|_| MainWindowComposerDispatchError::SuccessorProof("object demand"))?
-        else {
-            return Err(MainWindowComposerDispatchError::SuccessorProof(
-                "object demand reuse",
-            ));
-        };
-        let page = translate::object_page(
-            host,
-            store,
-            selection.binding(),
-            dispatcher.allocate_host_request_id()?,
-            request,
-        )?;
-        let anchor_proofs = text
-            .prove_object_page_anchors(binding, &page)
-            .map_err(|_| MainWindowComposerDispatchError::SuccessorProof("object anchors"))?;
-        objects
-            .admit(page, anchor_proofs)
-            .map_err(|_| MainWindowComposerDispatchError::SuccessorProof("object admission"))?;
+        {
+            ObjectDemand::Resident(_) => {}
+            ObjectDemand::Coalesced(_) => {
+                return Err(MainWindowComposerDispatchError::SuccessorProof(
+                    "object demand coalesced",
+                ));
+            }
+            ObjectDemand::Requested(request) => {
+                let page = translate::object_page(
+                    host,
+                    store,
+                    selection.binding(),
+                    dispatcher.allocate_host_request_id()?,
+                    request,
+                )?;
+                let anchor_proofs =
+                    text.prove_object_page_anchors(binding, &page)
+                        .map_err(|_| {
+                            MainWindowComposerDispatchError::SuccessorProof("object anchors")
+                        })?;
+                objects.admit(page, anchor_proofs).map_err(|_| {
+                    MainWindowComposerDispatchError::SuccessorProof("object admission")
+                })?;
+            }
+        }
     }
     Ok(MainWindowComposerSuccessorProof {
         selection,

@@ -7,9 +7,8 @@ use gpui_text_input::{
     MutationPage, MutationPageItem, MutationPageKey, MutationPositions, MutationStreamFinish,
     MutationTotals, ObjectChange, ObjectCursor, ObjectDemandEnvelope, ObjectDirection, ObjectPage,
     ObjectPageEdgeFact, ObjectPurpose, ObjectRequest, ObjectRequestId, ObjectRequestKey,
-    ObjectTarget, OperationId, PageRequestId, RangeClipboardCoordinator, RangeSourceSelection,
-    RangeTextInput, RangeTextInputRequest, SourcePosition, SourceRange,
-    TextInputAtomClipboardPolicy,
+    ObjectTarget, PageRequestId, RangeClipboardCoordinator, RangeSourceSelection, RangeTextInput,
+    RangeTextInputRequest, SourcePosition, SourceRange, TextInputAtomClipboardPolicy,
 };
 
 use super::MainWindowConversationComposerService;
@@ -139,7 +138,6 @@ pub(super) fn prepare_next_cut_page(
 impl PreparedPropagatedCut {
     pub(super) fn begin(
         self,
-        operation: OperationId,
         input: &mut RangeTextInput,
         cx: &mut gpui::Context<RangeTextInput>,
     ) -> Result<ActivePropagatedCut, String> {
@@ -149,9 +147,12 @@ impl PreparedPropagatedCut {
             scan,
             prepared_items,
         } = self;
+        let operation = input
+            .lease_host_operation()
+            .map_err(|_| "composer cut operation lease was rejected".to_owned())?;
         let replacement = deletion.selection();
         let proposal = deletion
-            .proposal(operation, replacement)
+            .proposal(operation.operation(), replacement)
             .map_err(|_| "composer cut proposal was rejected".to_owned())?;
         let intended_extent = deletion_extent(deletion)?;
         let intended = MutationPositions::collapsed(deletion_caret(replacement));
@@ -170,7 +171,14 @@ impl PreparedPropagatedCut {
         let begin =
             MutationBeginRequest::new(proposal, MutationCursor::new(0), MutationCursor::new(0));
         let key = input
-            .begin_host_mutation(begin, &positions, &proof.text, &proof.objects, cx)
+            .begin_host_mutation(
+                operation,
+                begin,
+                &positions,
+                &proof.text,
+                &proof.objects,
+                cx,
+            )
             .map_err(|_| "composer cut mutation start was rejected".to_owned())?;
         Ok(ActivePropagatedCut {
             key,

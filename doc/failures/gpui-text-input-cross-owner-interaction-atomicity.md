@@ -67,6 +67,15 @@ scan. Response custody refunded and requeued every error whose key remained disp
 single retained retry scheduled no continuation. The layout-placement explanation was therefore
 invalid, and repeated full mounted runs were neither necessary nor diagnostic for this defect.
 
+The first Phase 191 acceptance run then reused that deliberately failing 2 MiB/32,768-item exact-
+geometry owner tier as its legitimate 3 MiB target configuration. Terminal response closure worked:
+each response and job released, the predecessor stayed coherent, settlement custody reached zero,
+and process memory remained approximately 54–55 MiB. However, each subsequent mounted priming
+advance still requested the unchanged desired target, so the fixture accumulated 4,096 fresh
+content-free `ExactGeometryCapacity` rejections before its outer finite bound failed. Committed
+geometry high-water values did not expose the failed candidate peak and therefore could not prove
+that this tier admitted the target.
+
 # Why It Failed
 
 The affected owners do not expose one shared prepare state or infallible commit boundary. Their
@@ -111,6 +120,13 @@ explicit retryable surface-capacity class may retain exact custody, and retainin
 continuation even when it is the sole item. Keep bounded content-free rejection class and stage
 diagnostics so a small public-delivery fixture can distinguish terminal closure from retry without
 retaining payload or requiring another multi-mebibyte run.
+
+Functional-scale acceptance must not reuse a configuration intentionally established as a terminal-
+capacity regression. Use the owned dependency's established multi-megabyte exact-geometry tier of
+4 MiB and 65,536 items while keeping streaming-layout component limits, page residency, surface
+capacity, work credits, and host demand admission independently low. Mounted priming fixtures must
+also fail on their first unexpected terminal geometry rejection instead of spending their complete
+outer settle bound reissuing a desired target that can never publish under that configuration.
 
 # Affected Work
 

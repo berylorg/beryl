@@ -1,3 +1,27 @@
+fn marker_page(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    session: &DraftEditorCandidateSessionV1,
+    scope: syndic_storage::DraftPieceMarkerScopeV1,
+    direction: syndic_storage::DraftPieceMarkerDirectionV1,
+    cursor: Option<syndic_storage::DraftCompositeSearchKeyV1>,
+    max_objects: usize,
+) -> syndic_storage::DraftPieceMarkerDemandResultV1 {
+    storage
+        .draft_piece_marker_demand(
+            store,
+            session.newest_root(),
+            syndic_storage::DraftPieceMarkerDemandV1::new(
+                scope,
+                direction,
+                cursor,
+                max_objects,
+                65_536,
+            ),
+        )
+        .unwrap()
+}
+
 fn assert_same_anchor_marker_order(
     storage: &SyndicStorage,
     store: &HomeStore,
@@ -5,19 +29,15 @@ fn assert_same_anchor_marker_order(
     anchor: u64,
     expected: &[DraftPieceMarkerV1],
 ) {
-    let result = storage
-        .draft_piece_marker_demand(
-            store,
-            session.newest_root(),
-            syndic_storage::DraftPieceMarkerDemandV1::new(
-                syndic_storage::DraftPieceMarkerScopeV1::ExactAnchor(anchor),
-                syndic_storage::DraftPieceMarkerDirectionV1::Forward,
-                None,
-                8,
-                65_536,
-            ),
-        )
-        .unwrap();
+    let result = marker_page(
+        storage,
+        store,
+        session,
+        syndic_storage::DraftPieceMarkerScopeV1::ExactAnchor(anchor),
+        syndic_storage::DraftPieceMarkerDirectionV1::Forward,
+        None,
+        8,
+    );
     let expected: Vec<_> = expected
         .iter()
         .copied()
@@ -135,6 +155,53 @@ fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
                 .unwrap()
         );
     }
+    let sparse_all = sparse
+        .iter()
+        .enumerate()
+        .map(|(index, marker)| DraftPieceMarkerAtV1::new([1, 3, 6][index], *marker))
+        .collect::<Vec<_>>();
+    let half_open = marker_page(
+        &storage,
+        &store,
+        &session,
+        syndic_storage::DraftPieceMarkerScopeV1::Range { start: 1, end: 6 },
+        syndic_storage::DraftPieceMarkerDirectionV1::Forward,
+        None,
+        8,
+    );
+    assert_eq!(half_open.markers(), &sparse_all[..2]);
+    let inclusive = marker_page(
+        &storage,
+        &store,
+        &session,
+        syndic_storage::DraftPieceMarkerScopeV1::InclusiveRange { start: 1, end: 6 },
+        syndic_storage::DraftPieceMarkerDirectionV1::Forward,
+        None,
+        8,
+    );
+    assert_eq!(inclusive.markers(), sparse_all);
+    assert!(inclusive.requested_side_complete());
+    let reverse = marker_page(
+        &storage,
+        &store,
+        &session,
+        syndic_storage::DraftPieceMarkerScopeV1::InclusiveRange { start: 1, end: 6 },
+        syndic_storage::DraftPieceMarkerDirectionV1::Backward,
+        None,
+        8,
+    );
+    assert_eq!(reverse.markers(), sparse_all);
+    assert!(reverse.requested_side_complete());
+    let terminal = marker_page(
+        &storage,
+        &store,
+        &session,
+        syndic_storage::DraftPieceMarkerScopeV1::InclusiveRange { start: 6, end: 6 },
+        syndic_storage::DraftPieceMarkerDirectionV1::Forward,
+        None,
+        8,
+    );
+    assert_eq!(terminal.markers(), &sparse_all[2..]);
 
     let (_same_home, store, storage, thread) = fixture("same-anchor-pages", 235);
     let same_current = current(storage, &store, thread);
@@ -211,6 +278,44 @@ fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
         );
     }
     assert_same_anchor_marker_order(&storage, &store, &session, 2, &same);
+    for direction in [
+        syndic_storage::DraftPieceMarkerDirectionV1::Forward,
+        syndic_storage::DraftPieceMarkerDirectionV1::Backward,
+    ] {
+        let first = marker_page(
+            &storage,
+            &store,
+            &session,
+            syndic_storage::DraftPieceMarkerScopeV1::InclusiveRange { start: 0, end: 2 },
+            direction,
+            None,
+            2,
+        );
+        assert_eq!(first.markers().len(), 2);
+        assert!(!first.requested_side_complete());
+        let second = marker_page(
+            &storage,
+            &store,
+            &session,
+            syndic_storage::DraftPieceMarkerScopeV1::InclusiveRange { start: 0, end: 2 },
+            direction,
+            first.continuation(),
+            2,
+        );
+        assert_eq!(second.markers().len(), 1);
+        assert!(second.requested_side_complete());
+        let mut paged = first.markers().to_vec();
+        paged.extend_from_slice(second.markers());
+        paged.sort_by_key(|marker| marker.marker().order_key());
+        assert_eq!(
+            paged,
+            same
+                .iter()
+                .copied()
+                .map(|marker| DraftPieceMarkerAtV1::new(2, marker))
+                .collect::<Vec<_>>()
+        );
+    }
 
     let occurrence = storage
         .draft_marker_identity(&store, session.newest_root(), same[0].marker_id())

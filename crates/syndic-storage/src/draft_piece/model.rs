@@ -3522,6 +3522,7 @@ pub enum DraftPieceMarkerDirectionV1 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DraftPieceMarkerScopeV1 {
     Range { start: u64, end: u64 },
+    InclusiveRange { start: u64, end: u64 },
     ExactAnchor(u64),
 }
 
@@ -3529,6 +3530,7 @@ impl DraftPieceMarkerScopeV1 {
     pub const fn bounds(self) -> (u64, u64, bool) {
         match self {
             Self::Range { start, end } => (start, end, false),
+            Self::InclusiveRange { start, end } => (start, end, true),
             Self::ExactAnchor(anchor) => (anchor, anchor, true),
         }
     }

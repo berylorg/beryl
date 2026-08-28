@@ -53,36 +53,24 @@ formatting, and diff checks. Independent semantic review closed an enabled-scrol
 finding and accepted the final boundary. `gpui-text-input` commit
 `d21bf52c8f5f8a7d76887bce87c5dbc1c6c8f2d3` is published and pinned.
 
-# Phase 191: Accept Mounted Composer Integration At Large Scale (pending)
+# Phase 191: Accept Mounted Composer Integration At Large Scale (finished)
 
-Accept one deterministic mounted-GPUI composition of the established widget, host, and storage
-boundaries through component-atomic prior-to-target activation, combined current-plus-pending
-admission, pathological viewport capacity, and scripted post-priming rapid retargeting while stale,
-cancelled, failed, or over-cap work cannot replace the last coherent publication.
+Accepted the deterministic mounted 3 MiB composer with 257 same-anchor markers through ordinary
+GPUI interaction, localized edit/history/autosave, exact publication reconciliation, and final
+disposal. Exact geometry now owns compact authenticated presentation for every retained object
+fragment; generic object pages remain bounded proof/edit authority, while exact composite
+interaction anchors stream through successor scans without page pinning. Beryl maps inclusive GPUI
+object envelopes to one first-class cursor-paged Syndic inclusive scope, including EOF, without
+changing half-open storage semantics. One shared `RangeSettlementCoordinator` owns allocation,
+custody, and replay validation across live and detached generations.
 
-Use the preserved functional-scale fixture to prove large logical draft traversal and localized
-edits without whole-value materialization; more than one marker page at one anchor with exact order,
-composite gaps, individual selection, and hit testing; durable undo/redo and redo clearing;
-dirty-only autosave; exact operation and publication reconciliation; compact quiescent lifecycle
-release; and content-free current, cap, high-water, denial/cancellation, and final-release evidence
-for editor, marker, demand, activation, and settlement ownership. Use low test capacities and
-preserve the prior coherent draft for every noncommit or uncertain outcome.
-
-Keep the full shell, transcript bundle, native-lineage restoration, rich paste, and submission
-unmounted. Run serial deterministic functional-scale checks only; sustained stress, benchmarks,
-and performance measurement remain behind the Operator AC-power gate. Close the complete focused
-composer test set, locked checks, formatting, diff checks, and one fresh independent semantic
-review. The preserved fixture already contains the 3 MiB draft, 257-marker, demand-boundary,
-operation/publication reconciliation, history, autosave, realization, and release proof structure.
-
-The required host-wide `RangeSettlementCoordinator` remains shared by the live predecessor and
-primed successor. Widget-local semantic quiescence excludes unrelated shared custody while
-host-wide final release still proves the coordinator empty; coordinators remain shared and the
-activation fence remains intact. Retain only ordinary mounted host/widget interactions. The earlier
-diagnostic mismatch manufactured dependency-private state and now exercises the Phase 189 invariant
-closure rather than a supported retarget transition. Phase 191 must prove the production 3 MiB path
-without force-setting a far caret, forcing visibility, weakening host activation, or otherwise
-manufacturing dependency-private state.
+The serial mounted acceptance passed in 1,384.5 seconds with sampled test-process working sets of
+58.0, 70.7, 82.4, and 93.8 MiB across its history path, then proved dynamic ownership release,
+empty settlement custody, and weak-handle reclamation. Thirty-six exact-geometry regressions, the
+terminal-EOF successive-edit case, and real mounted marker-menu surfaces passed; locked metadata,
+targeted checks, formatting, and diff checks passed in both repositories. Fresh independent review
+found no blocking, high, or medium findings. Published and pinned `gpui-text-input` commit
+`43235f0ad32c6521d2175f25d72b355604cfb1fd`.
 
 # Phase 192: Mount Bounded Rich Paste (pending)
 

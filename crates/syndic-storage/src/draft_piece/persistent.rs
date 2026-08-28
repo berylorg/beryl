@@ -2607,64 +2607,65 @@ fn derived_marker_insertion_boundary(
             DraftPieceRejectedReasonV1::OutOfOrder,
         ));
     }
+    let first_at_anchor = locate_search_key(
+        context,
+        sequence,
+        DraftCompositeSearchKeyV1::BeforeMarkers(insertion.anchor()),
+    )?;
+    let anchor_has_markers = match first_at_anchor {
+        Some(located) if located.anchor == insertion.anchor() => matches!(
+            context.load_sequence_leaf(located.link)?.value(),
+            DraftPieceLeafValueV1::Marker(_)
+        ),
+        _ => false,
+    };
+    if !anchor_has_markers {
+        return resolve_position(
+            context,
+            Some(sequence),
+            DraftCompositePositionV1::new(
+                insertion.anchor(),
+                DraftCompositeGapWitnessV1::Unambiguous,
+            ),
+        );
+    }
     let marker = insertion.marker();
     let target = DraftCompositeSearchKeyV1::Marker {
         anchor: insertion.anchor(),
         order_key: marker.order_key(),
         marker_id: beryl_model::SyndicDraftMarkerId::from_bytes([0; 16]),
     };
-    let Some(located) = locate_marker_insertion_target(context, sequence, target)? else {
-        return Ok(Boundary {
-            rank: sequence.link.piece_count(),
-            inner: 0,
-        });
-    };
-    let leaf = context.load_sequence_leaf(located.link)?;
-    match leaf.value() {
-        DraftPieceLeafValueV1::Marker(existing) if existing.order_key() == marker.order_key() => {
-            Err(DraftPiecePrepareErrorV1::Rejected(
-                DraftPieceRejectedReasonV1::DuplicateMarkerOrder,
-            ))
-        }
-        DraftPieceLeafValueV1::Text(text) => {
-            let inner = usize::try_from(
-                insertion
-                    .anchor()
-                    .checked_sub(located.anchor)
-                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
-            )
-            .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
-            if inner > text.len() {
+    if let Some(located) = locate_marker_insertion_target(context, sequence, target)? {
+        let leaf = context.load_sequence_leaf(located.link)?;
+        match leaf.value() {
+            DraftPieceLeafValueV1::Marker(existing)
+                if existing.order_key() == marker.order_key() =>
+            {
                 return Err(DraftPiecePrepareErrorV1::Rejected(
-                    DraftPieceRejectedReasonV1::InvalidUtf8Boundary,
+                    DraftPieceRejectedReasonV1::DuplicateMarkerOrder,
                 ));
             }
-            if !text.is_char_boundary(inner) {
-                return Err(DraftPiecePrepareErrorV1::Rejected(
-                    DraftPieceRejectedReasonV1::InvalidUtf8Boundary,
-                ));
-            }
-            if inner == text.len() {
+            DraftPieceLeafValueV1::Marker(existing)
+                if located.anchor == insertion.anchor()
+                    && existing.order_key() > marker.order_key() =>
+            {
                 return Ok(Boundary {
-                    rank: located
-                        .rank
-                        .checked_add(1)
-                        .ok_or(DraftPiecePrepareErrorV1::Rejected(
-                            DraftPieceRejectedReasonV1::AggregateOverflow,
-                        ))?,
+                    rank: located.rank,
                     inner: 0,
                 });
             }
-            Ok(Boundary {
-                rank: located.rank,
-                inner,
-            })
+            _ => {}
         }
-        DraftPieceLeafValueV1::Marker(_) => Ok(Boundary {
-            rank: located.rank,
-            inner: 0,
-        }),
     }
+    let after = locate_search_key(
+        context,
+        sequence,
+        DraftCompositeSearchKeyV1::AfterMarkers(insertion.anchor()),
+    )?;
+    Ok(Boundary {
+        rank: after.map_or(sequence.link.piece_count(), |located| located.rank),
+        inner: 0,
+    })
 }
 
 fn validate_marker_effect_charge(
@@ -4366,6 +4367,7 @@ fn marker_at_cursor(
 fn marker_in_scope(anchor: u64, scope: DraftPieceMarkerScopeV1) -> bool {
     match scope {
         DraftPieceMarkerScopeV1::Range { start, end } => start <= anchor && anchor < end,
+        DraftPieceMarkerScopeV1::InclusiveRange { start, end } => start <= anchor && anchor <= end,
         DraftPieceMarkerScopeV1::ExactAnchor(expected) => anchor == expected,
     }
 }
@@ -4416,10 +4418,10 @@ pub(crate) fn read_marker_demand(
     root: DraftPieceRootReferenceV1,
     demand: &DraftPieceMarkerDemandV1,
 ) -> Result<DraftPieceMarkerDemandResultV1, DraftPiecePrepareErrorV1> {
-    let (start, end, exact) = demand.scope().bounds();
+    let (start, end, inclusive_end) = demand.scope().bounds();
     if start > root.summary().logical_utf8_bytes()
         || end > root.summary().logical_utf8_bytes()
-        || (!exact && start > end)
+        || start > end
     {
         return Err(DraftPiecePrepareErrorV1::Rejected(
             DraftPieceRejectedReasonV1::InvalidGapWitness,
@@ -4507,8 +4509,8 @@ pub(crate) fn read_marker_demand(
                     None
                 }
             } else {
-                let target = if exact {
-                    DraftCompositeSearchKeyV1::AfterMarkers(start)
+                let target = if inclusive_end {
+                    DraftCompositeSearchKeyV1::AfterMarkers(end)
                 } else {
                     DraftCompositeSearchKeyV1::BeforeMarkers(end)
                 };
