@@ -48,6 +48,15 @@ passed under the prior formula. Final confirmation cleared production behavior a
 complete private rejection fingerprint, which was then expanded across geometry, residency,
 queues, dispatched sets, lifecycle transients, active-object, and scrollbar state.
 
+Later mounted-scale diagnosis appeared to show an ordinary terminal response repeatedly asking to
+retarget beyond its completed window. Source tracing established that the fixture itself had
+directly changed the private in-flight `SurfaceCandidate.desired`; normal construction, restoration,
+selection, scroll, layout, and presentation paths instead align or replace the geometry candidate.
+That private mutation made the unsupported terminal-retarget result reachable, but the captured
+loop did not distinguish it from another direct `IncompleteSurface` preparation failure. The
+claimed ordinary Beryl trigger was invalid evidence and must not justify production lifecycle
+conclusions.
+
 # Why It Failed
 
 The affected owners do not expose one shared prepare state or infallible commit boundary. Their
@@ -76,6 +85,14 @@ read-only exact-current-owner check as the final fallible gate, commit widget st
 or yield, perform the then-infallible exact owner replacement, and only afterward publish requests,
 events, drag cancellation, and notification. No GPUI or scrollbar API change is required because no
 observer or mutation can intervene between the read-only gate and those synchronous commits.
+
+Do not infer a production terminal-retarget requirement from the retained `IncompleteSurface` loop.
+Current public paths preserve candidate/geometry alignment, and the captured diagnostics did not
+distinguish mapped retarget from direct surface-preparation incompleteness. Any decision to support
+the otherwise unreachable private mismatch as a first-class composite is a separate defensive
+architecture choice with material complexity cost. Without that explicit choice, enforce the
+alignment invariant, settle an impossible mismatch without unchanged-response retry, and diagnose
+mounted Beryl only through ordinary public host/widget interactions.
 
 # Affected Work
 

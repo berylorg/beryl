@@ -563,7 +563,7 @@ dependencies = [
  "gpui",
  "gpui-scrollbar",
  "gpui-settings-window",
- "gpui-text-input 0.1.0 (git+https://github.com/berylorg/gpui-text-input.git?rev=bf4a538451945c1403065ae86766fa71d655f9df)",
+ "gpui-text-input 0.1.0 (git+https://github.com/berylorg/gpui-text-input.git?rev=6659d3599248dba3160f69023d753fc02ba8caec)",
  "gpui_sum_tree",
  "jsonc-parser",
  "rodio",
@@ -2515,7 +2515,7 @@ dependencies = [
 [[package]]
 name = "gpui-text-input"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/gpui-text-input.git?rev=bf4a538451945c1403065ae86766fa71d655f9df#bf4a538451945c1403065ae86766fa71d655f9df"
+source = "git+https://github.com/berylorg/gpui-text-input.git?rev=6659d3599248dba3160f69023d753fc02ba8caec#6659d3599248dba3160f69023d753fc02ba8caec"
 dependencies = [
  "gpui",
  "gpui-scrollbar",
