@@ -57,6 +57,16 @@ loop did not distinguish it from another direct `IncompleteSurface` preparation 
 claimed ordinary Beryl trigger was invalid evidence and must not justify production lifecycle
 conclusions.
 
+A later ordinary mounted-scale run exposed a different retained response. An initial theory blamed
+the offscreen pending-composer mount for suppressing prepaint, but GPUI source shows that clipped
+children are still prepainted. Removing that placement produced the same result in a second full
+run: memory remained approximately flat at 56 MiB while one response, dispatch, object request,
+geometry job, candidate, and index intent stayed retained. A focused dependency fixture then
+isolated the actual rejection as deterministic exact-layout component `CapacityExceeded` during
+scan. Response custody refunded and requeued every error whose key remained dispatched, while a
+single retained retry scheduled no continuation. The layout-placement explanation was therefore
+invalid, and repeated full mounted runs were neither necessary nor diagnostic for this defect.
+
 # Why It Failed
 
 The affected owners do not expose one shared prepare state or infallible commit boundary. Their
@@ -93,6 +103,14 @@ the otherwise unreachable private mismatch as a first-class composite is a separ
 architecture choice with material complexity cost. Without that explicit choice, enforce the
 alignment invariant, settle an impossible mismatch without unchanged-response retry, and diagnose
 mounted Beryl only through ordinary public host/widget interactions.
+
+Classify response rejection before deciding custody. Exact-layout component capacity under unchanged
+limits is deterministic and must use the existing prepared terminal-response failure boundary so
+candidate state, requests, dispatch, jobs, intents, and release effects close atomically. Only the
+explicit retryable surface-capacity class may retain exact custody, and retaining it must schedule a
+continuation even when it is the sole item. Keep bounded content-free rejection class and stage
+diagnostics so a small public-delivery fixture can distinguish terminal closure from retry without
+retaining payload or requiring another multi-mebibyte run.
 
 # Affected Work
 

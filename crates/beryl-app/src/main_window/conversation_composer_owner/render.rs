@@ -245,7 +245,6 @@ impl Render for MainWindowConversationComposer {
                     div()
                         .debug_selector(|| "conversation-composer-pending-realization".to_owned())
                         .absolute()
-                        .left_full()
                         .size_full()
                         .opacity(0.)
                         .child(pending),

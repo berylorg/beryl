@@ -137,15 +137,7 @@ impl DraftMarkerSealService {
         store: &HomeStore,
         flight: DraftMarkerSealFlight,
     ) -> Result<DraftMarkerSealDriveOutcome, DraftMarkerSealServiceError> {
-        let (
-            storage,
-            assets,
-            page_limit,
-            phase,
-            command_fault,
-            reconcile_fault,
-            fail_operationally,
-        ) = {
+        let (storage, assets, page_limit, phase, command_fault, reconcile_fault, injected_failure) = {
             let mut state = lock_state(&self.inner);
             validate_store(&mut state, store)?;
             let storage = state.storage;
@@ -167,9 +159,10 @@ impl DraftMarkerSealService {
             let command_fault = state.command_fault.take();
             let reconcile_fault = state.reconcile_fault.take();
             #[cfg(feature = "test-faults")]
-            let fail_operationally = std::mem::take(&mut state.fail_next_drive_operationally);
+            let injected_failure = std::mem::take(&mut state.fail_next_drive_operationally)
+                .then_some(DraftMarkerSealServiceError::InjectedOperationalFailure);
             #[cfg(not(feature = "test-faults"))]
-            let fail_operationally = false;
+            let injected_failure: Option<DraftMarkerSealServiceError> = None;
             (
                 storage,
                 assets,
@@ -177,12 +170,12 @@ impl DraftMarkerSealService {
                 phase,
                 command_fault,
                 reconcile_fault,
-                fail_operationally,
+                injected_failure,
             )
         };
 
-        let update = if fail_operationally {
-            Err(DraftMarkerSealServiceError::InjectedOperationalFailure)
+        let update = if let Some(error) = injected_failure {
+            Err(error)
         } else {
             match phase {
                 FlightPhase::PendingBegin => drive_begin(
