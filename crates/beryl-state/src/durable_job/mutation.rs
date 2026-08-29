@@ -39,8 +39,12 @@ impl AdmitBranchHandoffJob {
 
 impl DomainMutation<DurableJobDomain> for AdmitBranchHandoffJob {
     type Error = DurableJobMutationError;
+    type Prepared = BranchHandoffJobRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, DurableJobDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, DurableJobDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let job_id = self.admission.job_id();
         if let Some(existing) = read_request(reader, self.admission.request())? {
             return Err(DurableJobMutationError::RequestAlreadyAdmitted { existing });
@@ -77,7 +81,7 @@ impl DomainMutation<DurableJobDomain> for AdmitBranchHandoffJob {
                 actual: self.admission.attempt_ordinal(),
             });
         }
-        Ok(())
+        Ok(BranchHandoffJobRecord::initial(&self.admission))
     }
 
     fn reserve_reconciliation(
@@ -93,11 +97,9 @@ impl DomainMutation<DurableJobDomain> for AdmitBranchHandoffJob {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, DurableJobDomain>,
+        job: Self::Prepared,
         mutations: &mut MutationBuilder<'_, DurableJobDomain>,
     ) -> Result<(), Self::Error> {
-        let job = BranchHandoffJobRecord::initial(&self.admission);
         mutations.put::<JobRecordCodec>(&job.job_id, &job)?;
         mutations.put::<LiveJobIndexCodec>(&job.job_id, &job)?;
         mutations.put::<RequestIdempotencyIndexCodec>(

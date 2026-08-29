@@ -18,18 +18,14 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 200: Convert Catalog Mutation Preparation (finished)
+# Phase 201: Convert Durable-Job Mutation Preparation (finished)
 
-The two catalog production mutations and corruption-test mutation now prepare package-owned state
-once and contribute reader-free with unchanged row/index records, revisions, reservations,
-reconciliation identities, and typed failure provenance. Edition-2024 format, scoped diff, and
-structural checks passed; independent semantic review closed without findings. The intentional
-package compile gap remains through Phases 201-204.
-
-# Phase 201: Convert Durable-Job Mutation Preparation (pending)
-
-Convert durable-job admission, transition, and fault-support mutations to package-owned prepared
-state while preserving the exact indexed state-machine transitions and corruption-test boundary.
+Durable-job admission, all seven lifecycle transitions, and the corruption-test mutation now
+prepare package-owned state once and contribute reader-free with unchanged indexed transitions,
+revisions, reservations, natural records, and typed failure provenance. Edition-2024 format,
+scoped diff, and structural checks passed; independent semantic review closed after correcting one
+test-fixture prepared-type visibility defect. The intentional package compile gap remains through
+Phase 204.
 
 # Phase 202: Convert Settings Mutation Preparation (pending)
 

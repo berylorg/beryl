@@ -18,12 +18,37 @@ pub(super) struct CorruptFailureState {
     pub(super) retryable: bool,
 }
 
+pub(super) struct PreparedCorruptFailureState {
+    job: super::BranchHandoffJobRecord,
+    retryable: bool,
+}
+
 impl DomainMutation<DurableJobDomain> for CorruptFailureState {
     type Error = DurableJobMutationError;
+    type Prepared = PreparedCorruptFailureState;
 
-    fn validate(&self, reader: &DomainReader<'_, DurableJobDomain>) -> Result<(), Self::Error> {
-        let job = required_job(reader, self.job_id)?;
-        ensure_revision(self.expected_job_revision, job.revision)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, DurableJobDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let mut job = required_job(reader, self.job_id)?;
+        ensure_revision(self.expected_job_revision, job.revision)?;
+        job.state = if self.retryable {
+            BranchHandoffJobState::RetryableFailed {
+                resume: self.checkpoint,
+                evidence: self.evidence,
+            }
+        } else {
+            BranchHandoffJobState::TerminalFailed {
+                stopped_at: self.checkpoint,
+                evidence: self.evidence,
+            }
+        };
+        advance(&mut job)?;
+        Ok(PreparedCorruptFailureState {
+            job,
+            retryable: self.retryable,
+        })
     }
 
     fn reserve_reconciliation(
@@ -36,27 +61,13 @@ impl DomainMutation<DurableJobDomain> for CorruptFailureState {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, DurableJobDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, DurableJobDomain>,
     ) -> Result<(), Self::Error> {
-        let mut job = required_job(reader, self.job_id)?;
-        job.state = if self.retryable {
-            BranchHandoffJobState::RetryableFailed {
-                resume: self.checkpoint.clone(),
-                evidence: self.evidence.clone(),
-            }
+        if prepared.retryable {
+            put_live_transition(mutations, &prepared.job)
         } else {
-            BranchHandoffJobState::TerminalFailed {
-                stopped_at: self.checkpoint.clone(),
-                evidence: self.evidence.clone(),
-            }
-        };
-        advance(&mut job)?;
-        if self.retryable {
-            put_live_transition(mutations, &job)
-        } else {
-            put_terminal_transition(mutations, &job)
+            put_terminal_transition(mutations, &prepared.job)
         }
     }
 }
