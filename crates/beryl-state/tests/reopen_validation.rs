@@ -133,12 +133,13 @@ impl From<MutationBuildError> for FixtureMutationError {
 
 impl DomainMutation<IncompleteRuntimeDomain> for SeedRuntimeWithoutHomeRoot {
     type Error = FixtureMutationError;
+    type Prepared = (Vec<u8>, Vec<u8>, Vec<u8>);
 
-    fn validate(
-        &self,
+    fn prepare(
+        self,
         _reader: &DomainReader<'_, IncompleteRuntimeDomain>,
-    ) -> Result<(), Self::Error> {
-        Ok(())
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok((self.runtime_key, self.runtime_value, self.executable_key))
     }
 
     fn reserve_reconciliation(
@@ -151,12 +152,11 @@ impl DomainMutation<IncompleteRuntimeDomain> for SeedRuntimeWithoutHomeRoot {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, IncompleteRuntimeDomain>,
+        (runtime_key, runtime_value, executable_key): Self::Prepared,
         mutations: &mut MutationBuilder<'_, IncompleteRuntimeDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<RuntimeBytes>(&self.runtime_key, &self.runtime_value)?;
-        mutations.put::<ExecutableIndexBytes>(&self.executable_key, &self.runtime_key)?;
+        mutations.put::<RuntimeBytes>(&runtime_key, &runtime_value)?;
+        mutations.put::<ExecutableIndexBytes>(&executable_key, &runtime_key)?;
         Ok(())
     }
 }

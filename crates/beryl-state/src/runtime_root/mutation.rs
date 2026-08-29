@@ -34,19 +34,25 @@ impl CreateRuntimeWithHomeRoot {
 
 impl DomainMutation<RuntimeRootDomain> for CreateRuntimeWithHomeRoot {
     type Error = RuntimeRootMutationError;
+    type Prepared = (RuntimeRecord, RootRecord);
 
-    fn validate(&self, reader: &DomainReader<'_, RuntimeRootDomain>) -> Result<(), Self::Error> {
-        ensure_runtime_missing(reader, &self.runtime)?;
-        ensure_root_missing(reader, self.runtime.runtime_id, &self.home_root)?;
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, RuntimeRootDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let Self { runtime, home_root } = self;
+        ensure_runtime_missing(reader, &runtime)?;
+        ensure_root_missing(reader, runtime.runtime_id, &home_root)?;
         if reader
-            .point::<RuntimeHomeRootIndexCodec>(&self.runtime.runtime_id, point_limit(32))?
+            .point::<RuntimeHomeRootIndexCodec>(&runtime.runtime_id, point_limit(32))?
             .is_some()
         {
             return Err(RuntimeRootMutationError::RuntimeIdExists {
-                runtime_id: self.runtime.runtime_id,
+                runtime_id: runtime.runtime_id,
             });
         }
-        Ok(())
+        let root = RootRecord::initial(runtime.runtime_id, &home_root, true);
+        Ok((RuntimeRecord::initial(&runtime), root))
     }
 
     fn reserve_reconciliation(
@@ -63,12 +69,9 @@ impl DomainMutation<RuntimeRootDomain> for CreateRuntimeWithHomeRoot {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, RuntimeRootDomain>,
+        (runtime, root): Self::Prepared,
         mutations: &mut MutationBuilder<'_, RuntimeRootDomain>,
     ) -> Result<(), Self::Error> {
-        let runtime = RuntimeRecord::initial(&self.runtime);
-        let root = RootRecord::initial(self.runtime.runtime_id, &self.home_root, true);
         mutations.put::<RuntimeRecordCodec>(&runtime.runtime_id, &runtime)?;
         mutations.put::<ExecutableIndexCodec>(
             &ExecutableKey::new(runtime.canonical_executable.clone()),
@@ -101,13 +104,19 @@ impl AddConfiguredRoot {
 
 impl DomainMutation<RuntimeRootDomain> for AddConfiguredRoot {
     type Error = RuntimeRootMutationError;
+    type Prepared = RootRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, RuntimeRootDomain>) -> Result<(), Self::Error> {
-        let runtime = required_runtime(reader, self.runtime_id)?;
-        if self.root.canonical_path.mode() != &runtime.mode {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, RuntimeRootDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let Self { runtime_id, root } = self;
+        let runtime = required_runtime(reader, runtime_id)?;
+        if root.canonical_path.mode() != &runtime.mode {
             return Err(RuntimeRootMutationError::RuntimeModeMismatch);
         }
-        ensure_root_missing(reader, self.runtime_id, &self.root)
+        ensure_root_missing(reader, runtime_id, &root)?;
+        Ok(RootRecord::initial(runtime_id, &root, false))
     }
 
     fn reserve_reconciliation(
@@ -121,11 +130,9 @@ impl DomainMutation<RuntimeRootDomain> for AddConfiguredRoot {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, RuntimeRootDomain>,
+        root: Self::Prepared,
         mutations: &mut MutationBuilder<'_, RuntimeRootDomain>,
     ) -> Result<(), Self::Error> {
-        let root = RootRecord::initial(self.runtime_id, &self.root, false);
         mutations
             .put::<RootRecordCodec>(&RuntimeRootKey::new(root.runtime_id, root.root_id), &root)?;
         mutations.put::<RootIdIndexCodec>(&root.root_id, &root.runtime_id)?;
@@ -161,10 +168,22 @@ impl SetRuntimeAvailability {
 
 impl DomainMutation<RuntimeRootDomain> for SetRuntimeAvailability {
     type Error = RuntimeRootMutationError;
+    type Prepared = RuntimeRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, RuntimeRootDomain>) -> Result<(), Self::Error> {
-        let runtime = required_runtime(reader, self.runtime_id)?;
-        ensure_record_revision("runtime", self.expected_record_revision, runtime.revision)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, RuntimeRootDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let Self {
+            runtime_id,
+            expected_record_revision,
+            availability,
+        } = self;
+        let mut runtime = required_runtime(reader, runtime_id)?;
+        ensure_record_revision("runtime", expected_record_revision, runtime.revision)?;
+        runtime.availability = availability;
+        runtime.revision = runtime.revision.checked_next()?;
+        Ok(runtime)
     }
 
     fn reserve_reconciliation(
@@ -176,14 +195,10 @@ impl DomainMutation<RuntimeRootDomain> for SetRuntimeAvailability {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, RuntimeRootDomain>,
+        runtime: Self::Prepared,
         mutations: &mut MutationBuilder<'_, RuntimeRootDomain>,
     ) -> Result<(), Self::Error> {
-        let mut runtime = required_runtime(reader, self.runtime_id)?;
-        runtime.availability = self.availability;
-        runtime.revision = runtime.revision.checked_next()?;
-        mutations.put::<RuntimeRecordCodec>(&self.runtime_id, &runtime)?;
+        mutations.put::<RuntimeRecordCodec>(&runtime.runtime_id, &runtime)?;
         Ok(())
     }
 }
@@ -212,10 +227,22 @@ impl SetRootAvailability {
 
 impl DomainMutation<RuntimeRootDomain> for SetRootAvailability {
     type Error = RuntimeRootMutationError;
+    type Prepared = RootRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, RuntimeRootDomain>) -> Result<(), Self::Error> {
-        let root = required_root(reader, self.root_id)?;
-        ensure_record_revision("root", self.expected_record_revision, root.revision)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, RuntimeRootDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let Self {
+            root_id,
+            expected_record_revision,
+            availability,
+        } = self;
+        let mut root = required_root(reader, root_id)?;
+        ensure_record_revision("root", expected_record_revision, root.revision)?;
+        root.availability = availability;
+        root.revision = root.revision.checked_next()?;
+        Ok(root)
     }
 
     fn reserve_reconciliation(
@@ -227,13 +254,9 @@ impl DomainMutation<RuntimeRootDomain> for SetRootAvailability {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, RuntimeRootDomain>,
+        root: Self::Prepared,
         mutations: &mut MutationBuilder<'_, RuntimeRootDomain>,
     ) -> Result<(), Self::Error> {
-        let mut root = required_root(reader, self.root_id)?;
-        root.availability = self.availability;
-        root.revision = root.revision.checked_next()?;
         mutations
             .put::<RootRecordCodec>(&RuntimeRootKey::new(root.runtime_id, root.root_id), &root)?;
         Ok(())
@@ -264,17 +287,28 @@ impl RootActivityUpdate {
 
 impl DomainMutation<RuntimeRootDomain> for RootActivityUpdate {
     type Error = RuntimeRootMutationError;
+    type Prepared = RootRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, RuntimeRootDomain>) -> Result<(), Self::Error> {
-        let root = required_root(reader, self.root_id)?;
-        ensure_record_revision("root", self.expected_record_revision, root.revision)?;
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, RuntimeRootDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let Self {
+            root_id,
+            expected_record_revision,
+            last_activity_at,
+        } = self;
+        let mut root = required_root(reader, root_id)?;
+        ensure_record_revision("root", expected_record_revision, root.revision)?;
         if root
             .last_activity_at
-            .is_some_and(|current| self.last_activity_at <= current)
+            .is_some_and(|current| last_activity_at <= current)
         {
             return Err(RuntimeRootMutationError::RootActivityNotLater);
         }
-        Ok(())
+        root.last_activity_at = Some(last_activity_at);
+        root.revision = root.revision.checked_next()?;
+        Ok(root)
     }
 
     fn reserve_reconciliation(
@@ -286,13 +320,9 @@ impl DomainMutation<RuntimeRootDomain> for RootActivityUpdate {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, RuntimeRootDomain>,
+        root: Self::Prepared,
         mutations: &mut MutationBuilder<'_, RuntimeRootDomain>,
     ) -> Result<(), Self::Error> {
-        let mut root = required_root(reader, self.root_id)?;
-        root.last_activity_at = Some(self.last_activity_at);
-        root.revision = root.revision.checked_next()?;
         mutations
             .put::<RootRecordCodec>(&RuntimeRootKey::new(root.runtime_id, root.root_id), &root)?;
         Ok(())
