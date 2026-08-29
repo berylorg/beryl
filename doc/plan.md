@@ -35,13 +35,18 @@ restart ceiling of 64 heads, 65,536 associations, and 67,108,864 encoded bytes. 
 were compacted, the invalidated defensive-proof assumption was preserved, scoped checks passed, and
 fresh independent semantic review closed every applicable finding.
 
-# Phase 197: Simplify HomeStore Proof And Read Publication (pending)
+# Phase 197: Simplify HomeStore Proof And Read Publication (wip)
 
 Remove global writer serialization from read-only proof composition and narrow ordinary read
 publication to affected-slice health and generation guarantees. Preserve coherent Fjall snapshots,
 revision fencing, proof correlation, cancellation, and actual storage-access failure propagation.
 Prove concurrent proof/write outcomes and coherent reads across unrelated mutation-health changes
 with focused tests and independent semantic review.
+
+Resumable milestone: the implementation and four focused single-job nextest targets pass. Exact
+phase diffs are clean; owned files are formatted. Independent semantic completion review remains
+before phase acceptance and compaction. Workspace-wide formatting is currently obstructed only by
+pre-existing unowned import ordering in `src/proof/command.rs`.
 
 # Phase 198: Collapse Duplicate Mutation Preparation (pending)
 

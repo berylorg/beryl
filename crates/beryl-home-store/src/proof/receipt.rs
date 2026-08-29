@@ -195,11 +195,7 @@ impl crate::HomeStore {
         {
             return Err(ProofReceiptError::StaleOrForeign);
         }
-        admission.confirm_database(&generation.database, |source| {
-            ProofReceiptError::StorageHealth {
-                source: Box::new(source),
-            }
-        })?;
+        admission.confirm()?;
         Ok(())
     }
 

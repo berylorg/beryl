@@ -13,7 +13,7 @@ use crate::{
     health::FailureSeverity,
     read::{read_domain_metadata, read_home_revision},
     store::StoreGeneration,
-    writer::{ActiveWriter, FailClosedOnWriterPanic},
+    writer::ActiveWriter,
 };
 
 mod command;
@@ -36,6 +36,18 @@ pub trait HomeProofProtocol: Send + Sync + 'static {
     const PROTOCOL_ID: u64;
     const OPERATION_ID: u64;
     const CORRELATION_BYTES: usize;
+}
+
+pub struct FixedDigestHomeProofProtocol<const PROTOCOL_ID: u64, const OPERATION_ID: u64>;
+
+impl<const PROTOCOL_ID: u64, const OPERATION_ID: u64> HomeProofProtocol
+    for FixedDigestHomeProofProtocol<PROTOCOL_ID, OPERATION_ID>
+{
+    type Correlation = [u8; 32];
+
+    const PROTOCOL_ID: u64 = PROTOCOL_ID;
+    const OPERATION_ID: u64 = OPERATION_ID;
+    const CORRELATION_BYTES: usize = 32;
 }
 
 mod inline_correlation {
@@ -307,17 +319,10 @@ impl<D: StorageDomain> DomainHandle<D> {
 pub enum ProofCompositionError {
     #[error(transparent)]
     HealthGate(#[from] HealthGateError),
-    #[error("proof command was cancelled before writer admission")]
+    #[error("proof command was cancelled before proof admission")]
     CancelledBeforeAdmission,
     #[error("reentrant use of the same Beryl-home writer is forbidden")]
     ReentrantWriter,
-    #[error("the Beryl-home writer mutex is poisoned")]
-    WriterPoisoned,
-    #[error("proof composition could not confirm storage health: {source}")]
-    StorageHealth {
-        #[source]
-        source: Box<dyn Error + Send + Sync>,
-    },
     #[error("the Beryl-home generation lock is poisoned")]
     GenerationPoisoned,
     #[error("proof command belongs to another or obsolete Beryl-home generation")]
@@ -395,8 +400,6 @@ pub(crate) fn failure_severity(error: &ProofCompositionError) -> Option<FailureS
         ProofCompositionError::HealthGate(_)
         | ProofCompositionError::CancelledBeforeAdmission
         | ProofCompositionError::ReentrantWriter
-        | ProofCompositionError::WriterPoisoned
-        | ProofCompositionError::StorageHealth { .. }
         | ProofCompositionError::StaleGeneration
         | ProofCompositionError::ForeignDomain { .. }
         | ProofCompositionError::Conflict { .. }

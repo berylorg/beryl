@@ -32,14 +32,14 @@ fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStor
 
 fn put(
     store: &HomeStore,
-    domain: beryl_home_store::DomainHandle<AlphaDomain>,
+    domain: &beryl_home_store::DomainHandle<AlphaDomain>,
     key: u64,
     value: Vec<u8>,
 ) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(&domain).unwrap(),
+            store.domain_revision(domain).unwrap(),
             PutBytes::<AlphaDomain>::new(key, value),
         ))
         .unwrap();
@@ -172,7 +172,7 @@ fn persisted_corruption_seam_rejects_valid_or_empty_records() {
     ));
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &vec![0; usize::from(u16::MAX) + 1],
             &[],
         ),
@@ -188,7 +188,7 @@ fn persisted_corruption_seam_completes_a_durable_record_barrier() {
     let domain = store.register_domain::<AlphaDomain>().unwrap();
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &[0_u8; 9],
             &encoded_value(b"durable"),
         )
@@ -211,15 +211,43 @@ fn persisted_corruption_seam_completes_a_durable_record_barrier() {
 }
 
 #[test]
+fn admitted_coherent_point_read_publishes_across_unrelated_maintenance_terminal() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open_with_faults(directory.path(), faults.clone());
+    let domain = store.register_domain::<AlphaDomain>().unwrap();
+    put(&store, &domain, 1, b"coherent".to_vec());
+
+    let blocked = faults.block_next(FaultPoint::BeforeReadConfirmation);
+    let store = Arc::new(store);
+    let reading = Arc::clone(&store);
+    let read_domain = domain.clone();
+    let worker = thread::spawn(move || {
+        reading.read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
+            &read_domain,
+            &1,
+            PointReadLimit::new(2_048).unwrap(),
+        )
+    });
+    assert!(blocked.wait_until_reached(Duration::from_secs(10)));
+
+    store.inject_retained_maintenance_terminal();
+    blocked.release();
+
+    assert_eq!(worker.join().unwrap().unwrap(), Some(b"coherent".to_vec()));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+}
+
+#[test]
 fn admitted_success_rejects_after_concurrent_structural_read_failure() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
     let domain = store.register_domain::<AlphaDomain>().unwrap();
-    put(&store, domain, 1, b"coherent".to_vec());
+    put(&store, &domain, 1, b"coherent".to_vec());
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &2_u64.to_be_bytes(),
             &encoded_value(&vec![5; 1_025]),
         )
@@ -228,9 +256,10 @@ fn admitted_success_rejects_after_concurrent_structural_read_failure() {
     let blocked = faults.block_next(FaultPoint::BeforeReadConfirmation);
     let store = Arc::new(store);
     let reading = Arc::clone(&store);
+    let read_domain = domain.clone();
     let worker = thread::spawn(move || {
         reading.read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &read_domain,
             &1,
             PointReadLimit::new(2_048).unwrap(),
         )
@@ -239,7 +268,7 @@ fn admitted_success_rejects_after_concurrent_structural_read_failure() {
 
     assert!(matches!(
         store.read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &2,
             PointReadLimit::new(2_048).unwrap(),
         ),

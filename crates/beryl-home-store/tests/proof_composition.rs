@@ -8,6 +8,9 @@ use std::{
     },
 };
 
+#[cfg(feature = "test-faults")]
+use std::time::Duration;
+
 use beryl_home_store::{
     CommandCancellation, DomainHandle, DomainReader, DomainSchemaVersion,
     ExecutableHomeProofCommand, HomeCommand, HomeProofCommand, HomeProofProtocol, HomeStore,
@@ -303,13 +306,13 @@ fn generation(store: &HomeStore) -> beryl_home_store::HomeGeneration {
 
 fn command(
     store: &HomeStore,
-    alpha: DomainHandle<AlphaDomain>,
+    alpha: &DomainHandle<AlphaDomain>,
     source: Role<[u8; 16]>,
 ) -> HomeProofCommand<AgreementProtocol> {
     HomeProofCommand::new(
         generation(store),
         store.home_revision().unwrap(),
-        alpha.proof_source::<AgreementProtocol>(store.domain_revision(&alpha).unwrap(), source),
+        alpha.proof_source::<AgreementProtocol>(store.domain_revision(alpha).unwrap(), source),
     )
     .unwrap()
 }
@@ -548,7 +551,7 @@ fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutatin
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
     let beta_before = store.domain_revision(&beta).unwrap();
-    let mut disagreement = command(&store, alpha, Role::agreeing([1; 16]));
+    let mut disagreement = command(&store, &alpha, Role::agreeing([1; 16]));
     disagreement
         .add_witness(beta.proof_witness(beta_before, Role::agreeing([2; 16])))
         .unwrap();
@@ -558,7 +561,7 @@ fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutatin
     ));
 
     assert!(matches!(
-        compose(&store, command(&store, alpha, Role::rejecting([1; 16]))),
+        compose(&store, command(&store, &alpha, Role::rejecting([1; 16]))),
         Err(ProofCompositionError::Callback {
             domain: "alpha",
             ..
@@ -586,7 +589,7 @@ fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutatin
     committed(store.execute(advance_beta));
     let home_after_advance = store.home_revision().unwrap();
     let beta_after_advance = store.domain_revision(&beta).unwrap();
-    let mut stale_domain = command(&store, alpha, Role::agreeing([1; 16]));
+    let mut stale_domain = command(&store, &alpha, Role::agreeing([1; 16]));
     stale_domain
         .add_witness(beta.proof_witness(beta_before, Role::agreeing([1; 16])))
         .unwrap();
@@ -601,18 +604,18 @@ fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutatin
 }
 
 #[test]
-fn proof_callbacks_cannot_reenter_the_active_home_writer() {
+fn nested_independent_proofs_complete_without_writer_reentry() {
     let directory = tempdir().unwrap();
     let mut opened = open_home(directory.path());
     let alpha = opened.register_domain::<AlphaDomain>().unwrap();
     let store = Arc::new(opened);
-    let (nested, _nested_consumer) = command(&store, alpha, Role::agreeing([6; 16]))
+    let (nested, _nested_consumer) = command(&store, &alpha, Role::agreeing([6; 16]))
         .seal()
         .unwrap();
     let observed = Arc::new(Mutex::new(None));
     let outer = command(
         &store,
-        alpha,
+        &alpha,
         Role::agreeing([6; 16]).reentering(ProofReentry {
             store: Arc::clone(&store),
             command: Mutex::new(Some(nested)),
@@ -622,10 +625,56 @@ fn proof_callbacks_cannot_reenter_the_active_home_writer() {
     let (outer, consumer) = outer.seal().unwrap();
     let receipt = store.compose_proof(outer).unwrap();
     store.consume_proof_receipt(consumer, receipt).unwrap();
-    assert!(matches!(
-        observed.lock().unwrap().as_ref(),
-        Some(Err(ProofCompositionError::ReentrantWriter))
-    ));
+    assert!(matches!(observed.lock().unwrap().as_ref(), Some(Ok(()))));
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn proof_and_receipt_publish_across_unrelated_maintenance_terminal() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open_with_faults(directory.path(), faults);
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let proof = command(&store, &alpha, Role::agreeing([7; 16]));
+
+    store.inject_retained_maintenance_terminal();
+
+    let (receipt, consumer) = compose(&store, proof).unwrap();
+    store.consume_proof_receipt(consumer, receipt).unwrap();
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn proof_completes_while_a_writer_remains_blocked() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut opened = open_with_faults(directory.path(), faults.clone());
+    let alpha = opened.register_domain::<AlphaDomain>().unwrap();
+    let expected_home = opened.home_revision().unwrap();
+    let expected_domain = opened.domain_revision(&alpha).unwrap();
+    let blocked = faults.block_next(FaultPoint::BeforeCommit);
+    let store = Arc::new(opened);
+    let writing = Arc::clone(&store);
+    let writer_alpha = alpha.clone();
+    let writer = std::thread::spawn(move || {
+        let mut command = HomeCommand::new(expected_home);
+        command
+            .add(writer_alpha.contribution(
+                expected_domain,
+                PutBytes::<AlphaDomain>::new(1, b"blocked writer".to_vec()),
+            ))
+            .unwrap();
+        writing.execute(command)
+    });
+    assert!(blocked.wait_until_reached(Duration::from_secs(10)));
+
+    let proof = command(&store, &alpha, Role::agreeing([8; 16]));
+    let (receipt, consumer) = compose(&store, proof).unwrap();
+    store.consume_proof_receipt(consumer, receipt).unwrap();
+
+    blocked.release();
+    committed(writer.join().unwrap());
 }
 
 #[test]
@@ -646,7 +695,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
     let foreign_alpha = foreign.register_domain::<AlphaDomain>().unwrap();
     let revision = store.domain_revision(&alpha).unwrap();
 
-    let mut duplicate = command(&store, alpha, Role::agreeing([3; 16]));
+    let mut duplicate = command(&store, &alpha, Role::agreeing([3; 16]));
     assert!(matches!(
         duplicate.add_witness(alpha.proof_witness(revision, Role::agreeing([3; 16]))),
         Err(ProofCommandBuildError::DuplicateDomain { domain: "alpha" })
@@ -671,7 +720,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
     cancellation.cancel();
     let cancelled = command(
         &store,
-        alpha,
+        &alpha,
         Role::agreeing([3; 16]).tracking(Arc::clone(&called)),
     )
     .with_cancellation(cancellation);
@@ -682,7 +731,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
     assert!(!called.load(Ordering::SeqCst));
 
     let admitted_cancellation = CommandCancellation::new();
-    let mut admitted = command(&store, alpha, Role::agreeing([3; 16]));
+    let mut admitted = command(&store, &alpha, Role::agreeing([3; 16]));
     admitted
         .add_witness(beta.proof_witness(
             store.domain_revision(&beta).unwrap(),
@@ -729,7 +778,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
         })
     ));
 
-    let mut bounded = command(&store, alpha, Role::agreeing([4; 16]));
+    let mut bounded = command(&store, &alpha, Role::agreeing([4; 16]));
     bounded
         .add_witness(beta.proof_witness(
             store.domain_revision(&beta).unwrap(),
@@ -793,7 +842,7 @@ fn registration_invariant_fault_rejects_before_proof_callbacks() {
             &store,
             command(
                 &store,
-                alpha,
+                &alpha,
                 Role::agreeing([9; 16]).tracking(Arc::clone(&called)),
             ),
         ),
@@ -811,12 +860,12 @@ fn stale_executable_is_rejected_after_same_home_generation_recovery() {
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
-    let (stale, _consumer) = command(&store, alpha, Role::agreeing([11; 16]))
+    let (stale, _consumer) = command(&store, &alpha, Role::agreeing([11; 16]))
         .seal()
         .unwrap();
     faults.fail_next(FaultPoint::BeforeVerification);
     assert!(matches!(
-        compose(&store, command(&store, alpha, Role::agreeing([12; 16]))),
+        compose(&store, command(&store, &alpha, Role::agreeing([12; 16]))),
         Err(ProofCompositionError::DomainRegistrationInvariant { domain: "alpha" })
     ));
     let recovered = store.recover_same_home().unwrap().publish();

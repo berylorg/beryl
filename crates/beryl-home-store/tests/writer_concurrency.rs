@@ -109,7 +109,7 @@ fn writer_assembly_is_serialized_while_typed_reads_continue() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
-    seed(&store, alpha);
+    seed(&store, &alpha);
     let store = Arc::new(store);
     let expected_home = store.home_revision().unwrap();
     let alpha_revision = store.domain_revision(&alpha).unwrap();
@@ -120,10 +120,11 @@ fn writer_assembly_is_serialized_while_typed_reads_continue() {
     let first_store = Arc::clone(&store);
     let first_gate = Arc::clone(&gate);
     let first_tx = entered_tx.clone();
+    let first_alpha = alpha.clone();
     let first = std::thread::spawn(move || {
         let mut command = HomeCommand::new(expected_home);
         command
-            .add(alpha.contribution(
+            .add(first_alpha.contribution(
                 alpha_revision,
                 BlockingAssembly::<AlphaDomain>::new(first_gate, first_tx, "first", 2, true),
             ))
@@ -152,12 +153,13 @@ fn writer_assembly_is_serialized_while_typed_reads_continue() {
     assert!(entered_rx.recv_timeout(Duration::from_millis(150)).is_err());
     let (read_tx, read_rx) = mpsc::channel();
     let read_store = Arc::clone(&store);
+    let read_alpha = alpha.clone();
     std::thread::spawn(move || {
         read_tx
             .send(
                 read_store
                     .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-                        alpha,
+                        &read_alpha,
                         &1,
                         PointReadLimit::new(64).unwrap(),
                     )
@@ -250,11 +252,11 @@ fn cancellation_while_waiting_is_observed_before_writer_admission() {
     assert_eq!(store.home_revision().unwrap(), expected_home);
 }
 
-fn seed(store: &beryl_home_store::HomeStore, alpha: beryl_home_store::DomainHandle<AlphaDomain>) {
+fn seed(store: &beryl_home_store::HomeStore, alpha: &beryl_home_store::DomainHandle<AlphaDomain>) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(&alpha).unwrap(),
+            store.domain_revision(alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, b"seed".to_vec()),
         ))
         .unwrap();

@@ -14,17 +14,7 @@ impl crate::HomeStore {
         if ActiveWriter::already_active(self.writer_id) {
             return Err(ProofCompositionError::ReentrantWriter);
         }
-        let _writer = self
-            .acquire_writer()
-            .map_err(|_| ProofCompositionError::WriterPoisoned)?;
-        if cancellation.is_cancelled() {
-            return Err(ProofCompositionError::CancelledBeforeAdmission);
-        }
-        let _active = ActiveWriter::enter(self.writer_id);
         let admission = self.health.admit()?;
-        let _fail_closed_on_panic = FailClosedOnWriterPanic {
-            health: &self.health,
-        };
         let generation_guard = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {
@@ -47,11 +37,7 @@ impl crate::HomeStore {
                 return result;
             }
         }
-        admission.confirm_database(&generation.database, |source| {
-            ProofCompositionError::StorageHealth {
-                source: Box::new(source),
-            }
-        })?;
+        admission.confirm()?;
         result
     }
 

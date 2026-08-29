@@ -372,9 +372,7 @@ impl HomeStore {
             admission.fail(FailureSeverity::Structural);
             return Err(storage(ReadStage::Confirmation, source));
         }
-        admission.confirm_database(&generation.database, |source| {
-            storage(ReadStage::Confirmation, source)
-        })?;
+        admission.confirm()?;
         result
     }
 }

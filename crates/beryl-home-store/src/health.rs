@@ -388,7 +388,7 @@ impl HealthAdmission<'_> {
         self.generation
     }
 
-    fn confirm(&self) -> Result<(), HealthGateError> {
+    pub(crate) fn confirm(&self) -> Result<(), HealthGateError> {
         let inner = self
             .gate
             .inner
