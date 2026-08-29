@@ -18,19 +18,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 201: Convert Durable-Job Mutation Preparation (finished)
+# Phase 202: Convert Settings Mutation Preparation (finished)
 
-Durable-job admission, all seven lifecycle transitions, and the corruption-test mutation now
-prepare package-owned state once and contribute reader-free with unchanged indexed transitions,
-revisions, reservations, natural records, and typed failure provenance. Edition-2024 format,
-scoped diff, and structural checks passed; independent semantic review closed after correcting one
-test-fixture prepared-type visibility defect. The intentional package compile gap remains through
-Phase 204.
-
-# Phase 202: Convert Settings Mutation Preparation (pending)
-
-Convert the settings production mutation and schema-test fixture to package-owned prepared state
-while preserving duplicate rejection and exact absent-or-record expectations.
+Settings application and the raw-schema fixture now prepare owned state once and contribute
+reader-free while preserving nonempty and duplicate rejection, exact absent-or-record expectations,
+checked revisions, reservations, natural records, and direct typed failure provenance. Edition-2024
+format, scoped diff, and structural checks passed, and independent semantic review closed without
+findings. The intentional package compile gap remains through Phase 204.
 
 # Phase 203: Convert Session Mutation Preparation (pending)
 

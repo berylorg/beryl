@@ -111,9 +111,13 @@ impl DomainCallbackError for RawMutationError {
 
 impl DomainMutation<RawSettingsDomain> for PutRawSetting {
     type Error = RawMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, RawSettingsDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, RawSettingsDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -125,11 +129,10 @@ impl DomainMutation<RawSettingsDomain> for PutRawSetting {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, RawSettingsDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, RawSettingsDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<RawSettingRecordV1>(&self.key, &self.value)?;
+        mutations.put::<RawSettingRecordV1>(&prepared.key, &prepared.value)?;
         Ok(())
     }
 }

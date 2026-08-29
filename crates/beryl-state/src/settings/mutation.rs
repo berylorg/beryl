@@ -62,6 +62,10 @@ pub struct ApplySettings {
     updates: Vec<SettingUpdate>,
 }
 
+pub(crate) struct PreparedApplySettings {
+    records: Vec<SettingRecord>,
+}
+
 impl ApplySettings {
     pub fn new(updates: Vec<SettingUpdate>) -> Result<Self, ApplySettingsError> {
         if updates.is_empty() {
@@ -125,12 +129,18 @@ impl Error for ApplySettingsError {}
 
 impl DomainMutation<SettingsDomain> for ApplySettings {
     type Error = SettingsMutationError;
+    type Prepared = PreparedApplySettings;
 
-    fn validate(&self, reader: &DomainReader<'_, SettingsDomain>) -> Result<(), Self::Error> {
-        for update in &self.updates {
-            validate_update(reader, update)?;
-        }
-        Ok(())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SettingsDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let records = self
+            .updates
+            .iter()
+            .map(|update| prepare_update(reader, update))
+            .collect::<Result<_, _>>()?;
+        Ok(PreparedApplySettings { records })
     }
 
     fn reserve_reconciliation(
@@ -142,35 +152,25 @@ impl DomainMutation<SettingsDomain> for ApplySettings {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SettingsDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SettingsDomain>,
     ) -> Result<(), Self::Error> {
-        for update in &self.updates {
-            let record = match update.expected_revision {
-                ExpectedSettingRevision::Absent => {
-                    SettingRecord::initial(update.key, update.value.clone())
-                }
-                ExpectedSettingRevision::Exact(_) => {
-                    let mut record = required(reader, update.key)?;
-                    record.value = update.value.clone();
-                    record.revision = record.revision.checked_next()?;
-                    record
-                }
-            };
-            mutations.put::<SettingRecordCodec>(&update.key, &record)?;
+        for record in prepared.records {
+            mutations.put::<SettingRecordCodec>(&record.key, &record)?;
         }
         Ok(())
     }
 }
 
-fn validate_update(
+fn prepare_update(
     reader: &DomainReader<'_, SettingsDomain>,
     update: &SettingUpdate,
-) -> Result<(), SettingsMutationError> {
+) -> Result<SettingRecord, SettingsMutationError> {
     let current = read(reader, update.key)?;
     match (update.expected_revision, current) {
-        (ExpectedSettingRevision::Absent, None) => Ok(()),
+        (ExpectedSettingRevision::Absent, None) => {
+            Ok(SettingRecord::initial(update.key, update.value.clone()))
+        }
         (ExpectedSettingRevision::Absent, Some(_)) => {
             Err(SettingsMutationError::SettingExists { key: update.key })
         }
@@ -184,7 +184,11 @@ fn validate_update(
                 current: record.revision,
             })
         }
-        (ExpectedSettingRevision::Exact(_), Some(_)) => Ok(()),
+        (ExpectedSettingRevision::Exact(_), Some(mut record)) => {
+            record.value = update.value.clone();
+            record.revision = record.revision.checked_next()?;
+            Ok(record)
+        }
     }
 }
 
@@ -195,13 +199,6 @@ fn read(
     reader
         .point::<SettingRecordCodec>(&key, point_limit())
         .map_err(Into::into)
-}
-
-fn required(
-    reader: &DomainReader<'_, SettingsDomain>,
-    key: SettingKey,
-) -> Result<SettingRecord, SettingsMutationError> {
-    read(reader, key)?.ok_or(SettingsMutationError::SettingMissing { key })
 }
 
 fn point_limit() -> PointReadLimit {
