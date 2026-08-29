@@ -23,6 +23,9 @@ impl ActivePropagatedClipboard {
         kind: ClipboardKind,
         limits: ClipboardLimits,
     ) -> Result<Self, String> {
+        if limits.provenance() != gpui_text_input::ClipboardProvenancePolicy::Omit {
+            return Err("composer clipboard provenance is not enabled in this phase".to_owned());
+        }
         let mut coordinator = RangeClipboardCoordinator::new_composite(
             selection.binding().range_binding(),
             gpui_text_input::PresentationGeneration::new(
@@ -30,7 +33,8 @@ impl ActivePropagatedClipboard {
             ),
             TextInputAtomClipboardPolicy::PlainText,
             limits,
-        );
+        )
+        .map_err(|_| "composer clipboard coordinator construction failed".to_owned())?;
         let progress = coordinator
             .begin_selection(
                 ClipboardId::new(1),
@@ -83,6 +87,11 @@ impl ActivePropagatedClipboard {
                     RangeTextInputRequest::ObjectPage(request),
                 ))
             }
+            ClipboardProgress::ProvenancePage(page) => {
+                let _ = self.coordinator.cancel(page.key().clipboard());
+                self.progress = ClipboardProgress::Terminal(ClipboardCompletion::Cancelled);
+                Err("composer clipboard provenance arrived before rich paste is enabled".to_owned())
+            }
             ClipboardProgress::Write(_) => {
                 let ClipboardProgress::Write(write) = std::mem::replace(
                     &mut self.progress,
@@ -112,20 +121,57 @@ impl ActivePropagatedClipboard {
             (
                 ClipboardProgress::NeedTextPage { .. },
                 MainWindowComposerDispatchOutcome::Page(page),
-            ) => self
-                .coordinator
-                .admit_text_page(page)
-                .map_err(|_| "composer clipboard text response was rejected".to_owned())?,
+            ) => self.admit_text_page(page)?,
             (
                 ClipboardProgress::NeedObjectPage { .. },
                 MainWindowComposerDispatchOutcome::ObjectPage(page),
-            ) => self
-                .coordinator
-                .admit_object_page(page)
-                .map_err(|_| "composer clipboard object response was rejected".to_owned())?,
+            ) => self.admit_object_page(page)?,
             _ => return Err("composer clipboard response had the wrong kind".into()),
         };
         Ok(())
+    }
+
+    fn admit_text_page(&mut self, page: RangePage) -> Result<ClipboardProgress, String> {
+        let prepared = self
+            .coordinator
+            .prepare_text_page(&page)
+            .map_err(|_| "composer clipboard text response preparation failed".to_owned())?;
+        let commit = self
+            .coordinator
+            .commit_text_page(page, prepared)
+            .map_err(|_| "composer clipboard text response commit failed".to_owned())?;
+        self.finish_prepared(commit)
+    }
+
+    fn admit_object_page(&mut self, page: ObjectPage) -> Result<ClipboardProgress, String> {
+        let prepared = self
+            .coordinator
+            .prepare_object_page(&page)
+            .map_err(|_| "composer clipboard object response preparation failed".to_owned())?;
+        let commit = self
+            .coordinator
+            .commit_object_page(page, prepared)
+            .map_err(|_| "composer clipboard object response commit failed".to_owned())?;
+        self.finish_prepared(commit)
+    }
+
+    fn finish_prepared(
+        &mut self,
+        mut commit: ClipboardPreparedCommit,
+    ) -> Result<ClipboardProgress, String> {
+        loop {
+            if let Some(progress) = commit.into_progress() {
+                return Ok(progress);
+            }
+            let prepared = self
+                .coordinator
+                .prepare_next()
+                .map_err(|_| "composer clipboard response continuation failed".to_owned())?;
+            commit = self
+                .coordinator
+                .commit_prepared(prepared)
+                .map_err(|_| "composer clipboard response continuation commit failed".to_owned())?;
+        }
     }
 
     pub(in super::super) fn acknowledge_write(

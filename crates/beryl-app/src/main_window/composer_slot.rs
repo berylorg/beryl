@@ -132,6 +132,7 @@ impl MainWindowComposerSlot {
                     | gpui_text_input::RangeTextInputRequest::ReleasePage(_)
                     | gpui_text_input::RangeTextInputRequest::CancelObjectPage(_)
                     | gpui_text_input::RangeTextInputRequest::ReleaseObjectPage(_)
+                    | gpui_text_input::RangeTextInputRequest::CancelClipboardProvenancePage(_)
                     | gpui_text_input::RangeTextInputRequest::CancelClipboardWrite(_)
             )
         }) {

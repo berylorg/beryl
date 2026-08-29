@@ -403,8 +403,12 @@ fn dispatch(
         | RangeTextInputRequest::ReleasePage(_)
         | RangeTextInputRequest::CancelObjectPage(_)
         | RangeTextInputRequest::ReleaseObjectPage(_)
+        | RangeTextInputRequest::CancelClipboardProvenancePage(_)
         | RangeTextInputRequest::CancelClipboardWrite(_) => {
             MainWindowComposerDispatchOutcome::Released
+        }
+        RangeTextInputRequest::ClipboardProvenancePage(_) => {
+            return Err(MainWindowComposerDispatchError::Malformed);
         }
         RangeTextInputRequest::MutationBegin(request) => {
             let key = request.proposal().key();

@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use gpui_text_input::{
-    ByteRange, ClipboardCompletion, ClipboardId, ClipboardKind, ClipboardLimits, ClipboardProgress,
-    ClipboardWriteRequest, InlineObjectGap, InlineObjectNeighbor, MutationBeginRequest,
-    MutationCursor, MutationFinishInput, MutationIdentity, MutationLane, MutationLimits,
-    MutationPage, MutationPageItem, MutationPageKey, MutationPositions, MutationStreamFinish,
-    MutationTotals, ObjectChange, ObjectCursor, ObjectDemandEnvelope, ObjectDirection, ObjectPage,
-    ObjectPageEdgeFact, ObjectPurpose, ObjectRequest, ObjectRequestId, ObjectRequestKey,
-    ObjectTarget, PageRequestId, RangeClipboardCoordinator, RangeSourceSelection, RangeTextInput,
+    ByteRange, ClipboardCompletion, ClipboardId, ClipboardKind, ClipboardLimits,
+    ClipboardPreparedCommit, ClipboardProgress, ClipboardWriteRequest, InlineObjectGap,
+    InlineObjectNeighbor, MutationBeginRequest, MutationCursor, MutationFinishInput,
+    MutationIdentity, MutationLane, MutationLimits, MutationPage, MutationPageItem,
+    MutationPageKey, MutationPositions, MutationStreamFinish, MutationTotals, ObjectChange,
+    ObjectCursor, ObjectDemandEnvelope, ObjectDirection, ObjectPage, ObjectPageEdgeFact,
+    ObjectPurpose, ObjectRequest, ObjectRequestId, ObjectRequestKey, ObjectTarget, PageRequestId,
+    RangeClipboardCoordinator, RangePage, RangeSourceSelection, RangeTextInput,
     RangeTextInputRequest, SourcePosition, SourceRange, TextInputAtomClipboardPolicy,
 };
 
