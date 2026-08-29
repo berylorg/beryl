@@ -294,8 +294,8 @@ impl ScheduledOrdinaryExecutionLease {
 
     /// Returns the exact asset domain authority retained by this lease.
     #[must_use]
-    pub const fn assets(&self) -> AssetState {
-        self.assets
+    pub const fn assets(&self) -> &AssetState {
+        &self.assets
     }
 
     pub(super) fn session(&mut self) -> &mut AdmittedProjectionSession {
@@ -315,7 +315,7 @@ impl ScheduledOrdinaryExecutionLease {
         use_authority: impl FnOnce(
             &mut AdmittedProjectionSession,
             &ScheduledOrdinaryRequestPolicy,
-            AssetState,
+            &AssetState,
             OrdinaryDynamicToolHandlers<'_>,
             &ProjectionFlight,
         ) -> R,
@@ -328,7 +328,7 @@ impl ScheduledOrdinaryExecutionLease {
             flight,
             ..
         } = self;
-        use_authority(session.session(), policy, *assets, tools.handlers(), flight)
+        use_authority(session.session(), policy, assets, tools.handlers(), flight)
     }
 }
 

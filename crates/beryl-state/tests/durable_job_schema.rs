@@ -31,6 +31,12 @@ impl StorageDomain for DurableJobV2Probe {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = JOB_FAMILIES;
     type ValidationError = ProbeError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         reader
@@ -153,7 +159,7 @@ fn routine_reopen_defers_an_unsupported_durable_job_record_version_to_explicit_s
     let probe = store.register_domain::<DurableJobV2Probe>().unwrap();
     store
         .inject_persisted_corrupt_record::<DurableJobV2Probe, JobRecordV2>(
-            probe,
+            &probe,
             &[1; 16],
             &1_u32.to_be_bytes(),
         )
@@ -168,7 +174,7 @@ fn routine_reopen_defers_an_unsupported_durable_job_record_version_to_explicit_s
     let probe = reopened.register_domain::<DurableJobV2Probe>().unwrap();
     assert!(matches!(
         reopened.read_point::<DurableJobV2Probe, JobRecordV2>(
-            probe,
+            &probe,
             &JobId::from_bytes([1; 16]),
             PointReadLimit::new(128 * 1024 + 4).unwrap(),
         ),

@@ -76,7 +76,7 @@ impl SyndicComposerHost {
         ))?;
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.publication_before_execute_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         let outcome = store.execute(command);
         match outcome {

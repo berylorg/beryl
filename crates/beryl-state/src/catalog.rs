@@ -60,6 +60,13 @@ impl StorageDomain for CatalogDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = CATALOG_FAMILIES;
     type ValidationError = CatalogValidationError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>
+    {
+        Ok(())
+    }
 
     fn validate(
         reader: &beryl_home_store::DomainReader<'_, Self>,
@@ -155,7 +162,7 @@ impl CatalogPage {
 }
 
 /// Opaque typed access to the compact thread-catalog domain.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct CatalogState {
     handle: DomainHandle<CatalogDomain>,
 }
@@ -192,7 +199,7 @@ impl CatalogState {
     }
 
     pub fn revision(&self, store: &HomeStore) -> Result<DomainRevision, ReadError> {
-        store.domain_revision(self.handle)
+        store.domain_revision(&self.handle)
     }
 
     /// Returns this domain's revision from a still-current successful command.
@@ -201,7 +208,7 @@ impl CatalogState {
         store: &HomeStore,
         receipt: &beryl_home_store::CommitReceipt,
     ) -> Result<Option<DomainRevision>, beryl_home_store::CommitReceiptError> {
-        store.receipt_domain_revision(receipt, self.handle)
+        store.receipt_domain_revision(receipt, &self.handle)
     }
 
     /// Reads one ordinary decoded row after its point-value limit passes.
@@ -212,7 +219,7 @@ impl CatalogState {
         limit: CatalogPointReadLimit,
     ) -> Result<Option<CatalogRow>, CatalogReadError> {
         let row = store.read_point::<CatalogDomain, CatalogRowCodec>(
-            self.handle,
+            &self.handle,
             &thread_id,
             PointReadLimit::new(limit.max_bytes()).expect("catalog point limit is nonzero"),
         )?;
@@ -240,7 +247,7 @@ impl CatalogState {
             }
         };
         let page = store.read_cursor::<CatalogDomain, CatalogRecencyCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,

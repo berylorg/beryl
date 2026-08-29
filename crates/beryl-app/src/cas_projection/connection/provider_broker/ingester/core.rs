@@ -320,12 +320,12 @@ impl Ingester {
             .expect("provider apply retains its operation-scoped live command")
     }
 
-    pub(super) fn committer(
-        &self,
+    pub(super) fn committer<'a>(
+        &'a self,
         identity: ProviderObservationId,
         home_generation: HomeGeneration,
-        storage: SyndicStorage,
-    ) -> super::super::staging::StageCommitter<'_> {
+        storage: &'a SyndicStorage,
+    ) -> super::super::staging::StageCommitter<'a> {
         super::super::staging::StageCommitter {
             home: &self.home,
             home_id: self.home_id,

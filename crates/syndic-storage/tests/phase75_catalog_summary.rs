@@ -292,7 +292,7 @@ impl Fixture {
             25,
         );
         let prepared = prepare_lifecycle_continuation_content().unwrap();
-        let manifest = stage_prepared_content(&self.store, self.syndic, &prepared);
+        let manifest = stage_prepared_content(&self.store, self.syndic.clone(), &prepared);
         execute_current(
             &self.store,
             self.syndic.current_seal_lifecycle_continuation_content(

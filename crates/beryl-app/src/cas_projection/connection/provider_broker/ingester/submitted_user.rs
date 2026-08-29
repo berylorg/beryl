@@ -109,7 +109,7 @@ impl Ingester {
             (|| {
                 let target = LiveSourceTarget::resolve(
                     &self.home,
-                    storage,
+                    &storage,
                     permit.syndic_thread_id(),
                     permit.cas_thread_id(),
                     permit.cas_turn_id(),
@@ -127,7 +127,7 @@ impl Ingester {
                     );
                 }
                 let frame =
-                    self.submitted_user_frame(&message, &permit, &target, storage, limit)?;
+                    self.submitted_user_frame(&message, &permit, &target, &storage, limit)?;
                 Ok((target, frame))
             })();
         if verification.settle_after_operation().is_err() {
@@ -146,7 +146,7 @@ impl Ingester {
             &self.home,
             self.home_id,
             home_generation,
-            storage,
+            &storage,
             target,
             &message,
             frame,
@@ -167,7 +167,7 @@ impl Ingester {
         message: &CheckedUserMessage,
         permit: &SourcePublicationPermit,
         target: &LiveSourceTarget,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         limit: SyndicPointReadLimit,
     ) -> Result<SubmittedUserFrame, CheckedUserPreparationError> {
         match message.lifecycle() {
@@ -322,7 +322,7 @@ fn publish_checked_user_frame(
     home: &beryl_home_store::HomeStore,
     home_id: beryl_model::BerylHomeId,
     home_generation: beryl_home_store::HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: LiveSourceTarget,
     message: &CheckedUserMessage,
     submitted: SubmittedUserFrame,

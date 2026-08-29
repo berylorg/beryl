@@ -50,14 +50,14 @@ pub(super) fn terminal_home(
     let recovery = pending_home(name, value);
     let source = exact_cas::establish_turn(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
         timestamp(5),
     );
     exact_cas::admit_event(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
         &source,
@@ -67,7 +67,7 @@ pub(super) fn terminal_home(
     if correlate_user {
         exact_cas::correlate_user_item(
             &recovery.store,
-            recovery.storage,
+            recovery.storage.clone(),
             recovery.thread,
             recovery.turn,
             SyndicItemId::from_bytes(*ordered_id(value + 30_000).as_bytes()),
@@ -82,7 +82,7 @@ pub(super) fn terminal_home(
     };
     exact_cas::admit_event(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
         &source,
@@ -302,7 +302,7 @@ pub(super) fn queue_input(
     let replacement = SyndicDraftId::from_bytes(*ordered_id(value + 40_000).as_bytes());
     let replacement_roots = seed_detached_canonical_draft_backing(
         store,
-        storage,
+        storage.clone(),
         ordered_id(value + 50_000),
         replacement,
     );

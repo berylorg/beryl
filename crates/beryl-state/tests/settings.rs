@@ -377,6 +377,12 @@ impl StorageDomain for SettingsV2Probe {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = SETTINGS_FAMILIES;
     type ValidationError = ProbeError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         reader
@@ -464,7 +470,7 @@ fn routine_reopen_defers_an_unsupported_setting_record_version_to_explicit_scrub
     let probe = store.register_domain::<SettingsV2Probe>().unwrap();
     store
         .inject_persisted_corrupt_record::<SettingsV2Probe, SettingRecordV2>(
-            probe,
+            &probe,
             &[0],
             &1_u32.to_be_bytes(),
         )
@@ -479,7 +485,7 @@ fn routine_reopen_defers_an_unsupported_setting_record_version_to_explicit_scrub
     let probe = reopened.register_domain::<SettingsV2Probe>().unwrap();
     assert!(matches!(
         reopened.read_point::<SettingsV2Probe, SettingRecordV2>(
-            probe,
+            &probe,
             &0,
             PointReadLimit::new(64 * 1024 + 4).unwrap(),
         ),

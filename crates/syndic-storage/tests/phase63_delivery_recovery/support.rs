@@ -48,10 +48,15 @@ pub fn pending_home(name: &str, value: u64) -> RecoveryHome {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread = ordered_id(value);
-    seed_canonical_empty_thread(&store, storage, thread, ordered_draft(value + 10_000));
+    seed_canonical_empty_thread(
+        &store,
+        storage.clone(),
+        thread,
+        ordered_draft(value + 10_000),
+    );
     let turn = exact_cas::submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         thread,
         ordered_draft(value + 20_000),
         SyndicItemId::from_bytes(*ordered_id(value + 30_000).as_bytes()),

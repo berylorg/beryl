@@ -280,9 +280,10 @@ pub use command::{
     StorageErrorClass, StorageResource, ValidationContribution,
 };
 pub use domain::{
-    DomainCallbackError, DomainCallbackSource, DomainDefinitionError, DomainHandle,
-    DomainHandleError, DomainRegistrationError, DomainRegistrationStage, DomainValidationError,
-    StorageDomain, WholeHomeScrubError,
+    DomainAttachmentAccessError, DomainAttachmentCapability, DomainCallbackError,
+    DomainCallbackSource, DomainDefinitionError, DomainHandle, DomainHandleError,
+    DomainRegistrationError, DomainRegistrationStage, DomainRuntimeAttachment,
+    DomainValidationError, StorageDomain, WholeHomeScrubError,
 };
 pub use error::{
     HomeCloseError, HomeLockCapability, HomeOpenError, HomeOpenStage, HomeUnreadableStage,
@@ -340,6 +341,7 @@ pub use turn_start_admission::{
 /// Deterministic concrete-boundary fault controls compiled only for package tests.
 #[cfg(feature = "test-faults")]
 pub mod test_faults {
+    pub use crate::domain::capability_with_test_attachment_type;
     pub use crate::fault::{
         FaultBlock, FaultController, FaultPoint, FaultScope, FreeSpaceTestObservation,
         PersistedCorruptionError, PersistedCorruptionStage,

@@ -22,7 +22,7 @@ impl ProjectionConnectionService {
             &home,
             home.home_id(),
             home_generation,
-            storage,
+            &storage,
         )?;
         let storage_revision = storage
             .revision(&home)
@@ -73,7 +73,7 @@ impl ProjectionConnectionService {
             &home,
             home.home_id(),
             home_generation,
-            storage,
+            storage.clone(),
             command_authorizer.clone(),
         ));
         let persistent_failure = PersistentFailureCoordinator::start_with_initial_start(
@@ -99,7 +99,7 @@ impl ProjectionConnectionService {
                 Arc::clone(&home),
                 home.home_id(),
                 home_generation,
-                storage,
+                storage.clone(),
                 Arc::clone(&connections),
                 Arc::clone(&stop_coordinator),
                 command_authorizer.clone(),
@@ -118,7 +118,7 @@ impl ProjectionConnectionService {
                 home.home_id(),
                 home_generation,
                 config.turn_start_admission_requirement(),
-                storage,
+                storage.clone(),
                 workers.clone(),
                 Arc::clone(&connections),
                 Arc::clone(&scheduled_ordinary_provider),

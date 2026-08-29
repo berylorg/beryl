@@ -166,6 +166,27 @@ impl HomeRecoveryCandidate {
         Ok(DomainHandle::new(generation.instance_id, slot))
     }
 
+    pub fn with_domain_attachment<D: StorageDomain, R>(
+        &self,
+        capability: &crate::DomainAttachmentCapability<D>,
+        callback: impl FnOnce(&D::RuntimeAttachment) -> R,
+    ) -> Result<R, crate::DomainAttachmentAccessError> {
+        let store = self.store.as_ref().expect("candidate store is present");
+        let generation = store
+            .generation
+            .read()
+            .map_err(|_| crate::DomainAttachmentAccessError::GenerationPoisoned)?;
+        let generation = generation
+            .as_ref()
+            .ok_or(crate::DomainAttachmentAccessError::StaleOrForeign)?;
+        generation.database.health().map_err(|source| {
+            crate::DomainAttachmentAccessError::StorageHealth {
+                source: Box::new(ClassifiedFjallError::direct(source)),
+            }
+        })?;
+        generation.with_domain_attachment(capability, callback)
+    }
+
     /// Publishes the candidate as the new healthy store generation.
     #[must_use]
     pub fn publish(mut self) -> HomeStore {
@@ -186,7 +207,9 @@ impl HomeRecoveryCandidate {
             .take()
             .expect("candidate maintenance authority is present");
         maintenance.finish_failed();
-        self.store.take().expect("candidate store is present")
+        let mut store = self.store.take().expect("candidate store is present");
+        store.retire_generation();
+        store
     }
 }
 

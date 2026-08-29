@@ -25,7 +25,7 @@ fn limit() -> SyndicPointReadLimit {
 
 fn execute(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     expected_domain_revision: beryl_model::DomainRevision,
     creation: CreateThread,
 ) -> beryl_home_store::CommandOutcome {
@@ -95,12 +95,12 @@ fn typed_error(error: &CommandError) -> &SyndicMutationError {
 
 fn source_history(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     draft_id: SyndicDraftId,
     turn_id: SyndicTurnId,
 ) {
-    seed_canonical_empty_thread(store, storage, thread_id, draft_id);
+    seed_canonical_empty_thread(store, storage.clone(), thread_id, draft_id);
     let digest = root_turn_chain_digest(turn_id);
     let mut records = vec![
         FixtureRecord::Turn(TurnRecord::new(
@@ -139,12 +139,12 @@ fn source_history(
         ThreadRevision::new(1).unwrap(),
         &[(turn_id, digest, TurnLifecycle::Interrupted, 1, timestamp(1))],
     ));
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
 }
 
 fn publish_source_activity(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
 ) {
     let thread = storage.thread(store, thread_id, limit()).unwrap().unwrap();
@@ -201,7 +201,7 @@ fn publish_source_activity(
     );
     commit(
         store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::Draft(draft),
             FixtureRecord::DraftByThread(draft_by_thread),
@@ -219,7 +219,7 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
     let source_thread = id(1);
     let source_draft = draft_id(2);
     let turn = SyndicTurnId::from_bytes([3; 16]);
-    source_history(&store, storage, source_thread, source_draft, turn);
+    source_history(&store, &storage, source_thread, source_draft, turn);
     let tail = storage
         .thread_tail(&store, source_thread, limit())
         .unwrap()
@@ -244,7 +244,7 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
     .unwrap();
     assert_committed(execute(
         &store,
-        storage,
+        &storage,
         storage.revision(&store).unwrap(),
         creation.clone(),
     ));
@@ -310,7 +310,7 @@ fn shared_tail_creation_conflicts_then_retries_without_copying_history() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let source_thread = id(10);
     let turn = SyndicTurnId::from_bytes([11; 16]);
-    source_history(&store, storage, source_thread, draft_id(12), turn);
+    source_history(&store, &storage, source_thread, draft_id(12), turn);
     let tail = storage
         .thread_tail(&store, source_thread, limit())
         .unwrap()
@@ -332,12 +332,12 @@ fn shared_tail_creation_conflicts_then_retries_without_copying_history() {
     )
     .unwrap();
     let shared_revision = storage.revision(&store).unwrap();
-    assert_committed(execute(&store, storage, shared_revision, first));
-    let conflict = assert_not_committed(execute(&store, storage, shared_revision, second.clone()));
+    assert_committed(execute(&store, &storage, shared_revision, first));
+    let conflict = assert_not_committed(execute(&store, &storage, shared_revision, second.clone()));
     assert!(matches!(conflict, CommandError::Conflict { .. }));
     assert_committed(execute(
         &store,
-        storage,
+        &storage,
         storage.revision(&store).unwrap(),
         second,
     ));
@@ -365,7 +365,7 @@ fn source_activity_change_invalidates_a_captured_creation_proof() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let source_thread = id(20);
     let turn = SyndicTurnId::from_bytes([21; 16]);
-    source_history(&store, storage, source_thread, draft_id(22), turn);
+    source_history(&store, &storage, source_thread, draft_id(22), turn);
     let tail = storage
         .thread_tail(&store, source_thread, limit())
         .unwrap()
@@ -379,14 +379,14 @@ fn source_activity_change_invalidates_a_captured_creation_proof() {
     )
     .unwrap();
 
-    publish_source_activity(&store, storage, source_thread);
+    publish_source_activity(&store, &storage, source_thread);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
 
     let error = assert_not_committed(execute(
         &store,
-        storage,
+        &storage,
         storage.revision(&store).unwrap(),
         creation.clone(),
     ));

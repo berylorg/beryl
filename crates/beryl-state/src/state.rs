@@ -71,8 +71,8 @@ impl BerylStateBootstrap {
 
     /// Returns the session boundary used for the minimal bootstrap read.
     #[must_use]
-    pub const fn session(&self) -> SessionState {
-        self.session
+    pub fn session(&self) -> SessionState {
+        self.session.clone()
     }
 
     /// Routinely registers the remaining Beryl domains after ordinary shells may open.
@@ -334,33 +334,33 @@ impl BerylState {
     }
 
     #[must_use]
-    pub const fn session(&self) -> SessionState {
-        self.session
+    pub fn session(&self) -> SessionState {
+        self.session.clone()
     }
 
     #[must_use]
-    pub const fn runtime_roots(&self) -> RuntimeRootState {
-        self.runtime_roots
+    pub fn runtime_roots(&self) -> RuntimeRootState {
+        self.runtime_roots.clone()
     }
 
     #[must_use]
-    pub const fn settings(&self) -> SettingsState {
-        self.settings
+    pub fn settings(&self) -> SettingsState {
+        self.settings.clone()
     }
 
     #[must_use]
-    pub const fn durable_jobs(&self) -> DurableJobState {
-        self.durable_jobs
+    pub fn durable_jobs(&self) -> DurableJobState {
+        self.durable_jobs.clone()
     }
 
     #[must_use]
-    pub const fn catalog(&self) -> CatalogState {
-        self.catalog
+    pub fn catalog(&self) -> CatalogState {
+        self.catalog.clone()
     }
 
     #[must_use]
-    pub const fn assets(&self) -> AssetState {
-        self.assets
+    pub fn assets(&self) -> AssetState {
+        self.assets.clone()
     }
 
     /// Returns the fresh typed theme service bound to this state generation.

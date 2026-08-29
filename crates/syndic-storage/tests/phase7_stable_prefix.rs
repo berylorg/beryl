@@ -51,14 +51,14 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
 
 fn admit(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: &LiveAssistantFixture,
     payload: SourceEventPayload,
     observed_at: SyndicTimestamp,
 ) {
     admit_event(
         store,
-        storage,
+        storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -77,7 +77,7 @@ fn agent_value(text: &str) -> ProviderItemV1 {
 
 fn next_frame_ordinal(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item: SyndicItemId,
 ) -> ProviderFrameOrdinalV1 {
     storage
@@ -92,7 +92,7 @@ fn next_frame_ordinal(
 
 fn seed_live_assistant(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     initial_text: &str,
 ) -> LiveAssistantFixture {
     let thread = id(1);
@@ -113,7 +113,7 @@ fn seed_live_assistant(
 
     let turn = submit_current_draft(
         store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(3),
         SyndicItemId::from_bytes([USER_ITEM_BYTE; 16]),
@@ -121,7 +121,7 @@ fn seed_live_assistant(
         timestamp(3),
     );
 
-    let source = establish_turn(store, storage, thread, turn, timestamp(4));
+    let source = establish_turn(store, storage.clone(), thread, turn, timestamp(4));
     let fixture = LiveAssistantFixture {
         thread,
         turn,
@@ -138,7 +138,7 @@ fn seed_live_assistant(
     );
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         fixture.thread,
         fixture.turn,
         fixture.item,
@@ -155,7 +155,7 @@ fn seed_live_assistant(
     );
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         fixture.thread,
         fixture.turn,
         fixture.item,
@@ -174,7 +174,7 @@ fn seed_live_assistant(
 
 fn start_build(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item: SyndicItemId,
     generation: ItemProjectionGeneration,
 ) {
@@ -193,7 +193,7 @@ fn start_build(
 
 fn advance_build_once(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item: SyndicItemId,
     generation: ItemProjectionGeneration,
 ) {
@@ -212,7 +212,7 @@ fn advance_build_once(
 
 fn finish_build(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item: SyndicItemId,
     generation: ItemProjectionGeneration,
 ) -> ItemProjectionSetRecord {
@@ -230,7 +230,7 @@ fn finish_build(
 
 fn read_generation(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item: SyndicItemId,
     generation: ItemProjectionGeneration,
 ) -> Vec<ItemProjectionIndexRecord> {
@@ -277,14 +277,14 @@ fn projection_ids(records: &[ItemProjectionIndexRecord]) -> Vec<SyndicProjection
 
 fn append_text(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: &LiveAssistantFixture,
     text: &str,
     at: u64,
 ) {
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         fixture.thread,
         fixture.turn,
         fixture.item,
@@ -302,14 +302,14 @@ fn append_text(
 
 fn complete_item(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: &LiveAssistantFixture,
     text: &str,
     at: u64,
 ) {
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         fixture.thread,
         fixture.turn,
         fixture.item,

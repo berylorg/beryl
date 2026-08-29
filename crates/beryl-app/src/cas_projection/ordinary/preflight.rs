@@ -66,8 +66,8 @@ pub(in crate::cas_projection) struct PendingOrdinaryExecution {
 impl PendingOrdinaryExecution {
     pub(in crate::cas_projection) fn read(
         store: &HomeStore,
-        storage: SyndicStorage,
-        assets: AssetState,
+        storage: &SyndicStorage,
+        assets: &AssetState,
         witness: &impl PendingOrdinaryExecutionWitness,
         limit: SyndicPointReadLimit,
     ) -> Result<Self, OrdinaryTurnExecutionError> {
@@ -77,8 +77,8 @@ impl PendingOrdinaryExecution {
     #[cfg(test)]
     pub(in crate::cas_projection) fn read_with_confirmation_hook(
         store: &HomeStore,
-        storage: SyndicStorage,
-        assets: AssetState,
+        storage: &SyndicStorage,
+        assets: &AssetState,
         witness: &impl PendingOrdinaryExecutionWitness,
         limit: SyndicPointReadLimit,
         before_confirmation: impl FnOnce(),
@@ -88,8 +88,8 @@ impl PendingOrdinaryExecution {
 
     fn read_inner(
         store: &HomeStore,
-        storage: SyndicStorage,
-        assets: AssetState,
+        storage: &SyndicStorage,
+        assets: &AssetState,
         witness: &impl PendingOrdinaryExecutionWitness,
         limit: SyndicPointReadLimit,
         before_confirmation: impl FnOnce(),

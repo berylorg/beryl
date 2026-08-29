@@ -34,7 +34,7 @@ fn seeded(
     for current_draft in current_drafts {
         let root_history = seed_detached_canonical_draft_backing(
             &store,
-            storage,
+            storage.clone(),
             SyndicThreadId::from_bytes([0xf3; 16]),
             current_draft,
         );
@@ -65,7 +65,7 @@ fn seeded(
         }
     }
     for delta in records.chunks(FIXTURE_DELTA_RECORDS_PER_COMMAND) {
-        commit(&store, storage, batch(delta.iter().cloned()));
+        commit(&store, storage.clone(), batch(delta.iter().cloned()));
     }
     (home, store, storage)
 }
@@ -78,7 +78,10 @@ fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(65_536).unwrap()
 }
 
-fn sources(store: &beryl_home_store::HomeStore, storage: SyndicStorage) -> Vec<AcceptedNextSource> {
+fn sources(
+    store: &beryl_home_store::HomeStore,
+    storage: &SyndicStorage,
+) -> Vec<AcceptedNextSource> {
     let revision = storage.revision(store).unwrap();
     storage
         .accepted_next_source_page(store, revision, None, limits(256))
@@ -136,7 +139,7 @@ fn global_source_pages_are_ordered_clamped_and_revision_fenced() {
 
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::AcceptedNextSource(
             AcceptedNextSourceRecord::new(
                 ordered_thread(400),
@@ -174,7 +177,7 @@ fn candidate_pages_advance_terminal_history_and_stop_at_the_first_candidate() {
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    let source = sources(&store, storage)[0];
+    let source = sources(&store, &storage)[0];
     let first = storage
         .accepted_next_candidate_page(&store, source, None, limits(256))
         .unwrap();
@@ -214,7 +217,7 @@ fn source_order_is_exact_across_generations_and_later_same_thread_source_is_reje
         ],
     );
     let (_home, store, storage) = seeded("phase58-next-generation-order", records);
-    let sources = sources(&store, storage);
+    let sources = sources(&store, &storage);
     assert_eq!(sources.len(), 2);
     assert_eq!(sources[0].thread_id(), thread);
     assert_eq!(sources[0].generation(), AcceptedRouteGeneration::FIRST);
@@ -253,7 +256,7 @@ fn candidate_basis_accepts_an_unselected_current_head_from_another_generation() 
         ),
     ));
     let (_home, store, storage) = seeded("phase58-next-unselected-head", records);
-    let source = sources(&store, storage)[0];
+    let source = sources(&store, &storage)[0];
     assert_eq!(source.generation(), AcceptedRouteGeneration::FIRST);
     assert!(
         storage
@@ -279,7 +282,7 @@ fn candidate_cursor_from_another_source_is_rejected() {
         &[GenerationSpec::new(1, 1, NextTurnReason::Stop)],
     ));
     let (_home, store, storage) = seeded("phase58-next-wrong-source-cursor", records);
-    let sources = sources(&store, storage);
+    let sources = sources(&store, &storage);
     assert_eq!(sources.len(), 2);
     let first = storage
         .accepted_next_candidate_page(&store, sources[0], None, limits(1))
@@ -297,8 +300,8 @@ fn projection_lost_routed_input_stays_ineligible_while_gate_is_not_idle() {
     let home = TestHome::new("phase58-next-projection-lost");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    accepted_fixtures::seed_mixed_abandonment(&store, storage);
-    let request = accepted_fixtures::abandonment_request(&store, storage);
+    accepted_fixtures::seed_mixed_abandonment(&store, storage.clone());
+    let request = accepted_fixtures::abandonment_request(&store, &storage);
     assert!(matches!(
         store.execute_current(storage.current_abandon_active_binding(request)),
         CommandOutcome::Committed {
@@ -309,10 +312,10 @@ fn projection_lost_routed_input_stays_ineligible_while_gate_is_not_idle() {
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    let source = sources(&store, storage)[0];
+    let source = sources(&store, &storage)[0];
     let generation = syndic_storage::test_faults::accepted_route_generation(
         &store,
-        storage,
+        storage.clone(),
         thread,
         AcceptedRouteGeneration::FIRST,
     )
@@ -333,10 +336,14 @@ fn projection_lost_routed_input_stays_ineligible_while_gate_is_not_idle() {
         ))
     );
     assert_eq!(
-        syndic_storage::test_faults::accepted_route_generation_head(&store, storage, thread)
-            .unwrap()
-            .unwrap()
-            .proof(),
+        syndic_storage::test_faults::accepted_route_generation_head(
+            &store,
+            storage.clone(),
+            thread
+        )
+        .unwrap()
+        .unwrap()
+        .proof(),
         gate.selected_route().unwrap()
     );
     assert_ne!(gate.state(), &InputGateState::Idle);
@@ -360,7 +367,7 @@ fn non_idle_gate_returns_a_completed_empty_candidate_page() {
         InputGateState::PendingTurn(SyndicTurnId::from_bytes([87; 16])),
     );
     let (_home, store, storage) = seeded("phase58-next-non-idle", records);
-    let source = sources(&store, storage)[0];
+    let source = sources(&store, &storage)[0];
     let page = storage
         .accepted_next_candidate_page(&store, source, None, limits(256))
         .unwrap();
@@ -379,14 +386,14 @@ fn gate_drift_stales_source_and_invalidates_its_cursor_at_the_new_revision() {
         &[GenerationSpec::new(1, 1, NextTurnReason::PendingTurn)],
     );
     let (_home, store, storage) = seeded("phase58-next-gate-drift", records);
-    let old_source = sources(&store, storage)[0];
+    let old_source = sources(&store, &storage)[0];
     let first = storage
         .accepted_next_candidate_page(&store, old_source, None, limits(1))
         .unwrap();
     let old_cursor = first.next_cursor().expect("candidate remains");
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::InputGate(
             InputGateRecord::new(
                 thread,
@@ -406,7 +413,7 @@ fn gate_drift_stales_source_and_invalidates_its_cursor_at_the_new_revision() {
         storage.accepted_next_candidate_page(&store, old_source, Some(old_cursor), limits(1)),
         Err(SyndicReadError::StaleAcceptedNextCandidateSource)
     ));
-    let new_source = sources(&store, storage)[0];
+    let new_source = sources(&store, &storage)[0];
     assert!(matches!(
         storage.accepted_next_candidate_page(&store, new_source, Some(old_cursor), limits(1)),
         Err(SyndicReadError::InvalidAcceptedNextCandidateCursor)
@@ -422,10 +429,10 @@ fn fresh_pages_reject_source_generation_and_gate_counter_incoherence() {
         &[GenerationSpec::new(0, 1, NextTurnReason::PendingTurn)],
     );
     let (_home, store, storage) = seeded("phase58-next-authority-drift", records);
-    let old_source = sources(&store, storage)[0];
+    let old_source = sources(&store, &storage)[0];
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::AcceptedRouteGeneration(
                 AcceptedRouteGenerationRecord::new(
@@ -458,7 +465,7 @@ fn fresh_pages_reject_source_generation_and_gate_counter_incoherence() {
         storage.accepted_next_candidate_page(&store, old_source, None, limits(256)),
         Err(SyndicReadError::StaleAcceptedNextCandidateSource)
     ));
-    let revised_source = sources(&store, storage)[0];
+    let revised_source = sources(&store, &storage)[0];
     assert!(
         storage
             .accepted_next_candidate_page(&store, revised_source, None, limits(256))
@@ -469,7 +476,7 @@ fn fresh_pages_reject_source_generation_and_gate_counter_incoherence() {
 
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::InputGate(
             InputGateRecord::new(
                 thread,
@@ -485,7 +492,7 @@ fn fresh_pages_reject_source_generation_and_gate_counter_incoherence() {
             .unwrap(),
         )]),
     );
-    let incoherent_source = sources(&store, storage)[0];
+    let incoherent_source = sources(&store, &storage)[0];
     assert!(matches!(
         storage.accepted_next_candidate_page(&store, incoherent_source, None, limits(256)),
         Err(SyndicReadError::Invariant(_))
@@ -517,7 +524,7 @@ fn candidate_scan_rejects_order_and_leaf_identity_drift() {
         }
     }
     let (_home, store, storage) = seeded("phase58-next-leaf-identity-drift", records);
-    let source = sources(&store, storage)[0];
+    let source = sources(&store, &storage)[0];
     assert!(matches!(
         storage.accepted_next_candidate_page(&store, source, None, limits(256)),
         Err(SyndicReadError::Invariant(_))
@@ -538,7 +545,7 @@ fn idle_scan_rejects_a_source_claiming_work_without_an_effective_leaf() {
         AcceptedRouteGeneration::FIRST,
     );
     let (_home, store, storage) = seeded("phase58-next-contradictory-source", records);
-    let source = sources(&store, storage)[0];
+    let source = sources(&store, &storage)[0];
 
     assert!(matches!(
         storage.accepted_next_candidate_page(&store, source, None, limits(256)),

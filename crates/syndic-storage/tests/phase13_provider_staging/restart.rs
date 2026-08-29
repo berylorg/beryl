@@ -37,7 +37,7 @@ impl Drop for TestHome {
 
 fn commit_first_batch(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     prepared: &PreparedProviderFrame,
 ) -> ProviderFrameStageBatch {
     let mut committed_batch = None;
@@ -151,7 +151,7 @@ fn content_ahead_partial_build_reopens_and_resumes() {
         }
     }
 
-    let committed_batch = commit_first_batch(&store, storage, &prepared);
+    let committed_batch = commit_first_batch(&store, &storage, &prepared);
     let committed = committed_batch.next_build();
     assert_eq!(committed_batch.chunks().len(), CONTENT_APPEND_MAX_CHUNKS);
     assert!(committed_batch.narrative_spans().is_empty());
@@ -272,7 +272,7 @@ fn narrative_ahead_content_incomplete_partial_build_reopens_and_resumes() {
         }
     }
 
-    let committed_batch = commit_first_batch(&store, storage, &prepared);
+    let committed_batch = commit_first_batch(&store, &storage, &prepared);
     let committed = committed_batch.next_build();
     assert_eq!(committed_batch.chunks().len(), CONTENT_APPEND_MAX_CHUNKS);
     assert_eq!(committed_batch.narrative_spans().len(), 1);

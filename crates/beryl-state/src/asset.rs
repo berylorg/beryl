@@ -93,6 +93,13 @@ impl StorageDomain for AssetDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(3);
     const FAMILIES: &'static [RecordFamily<Self>] = ASSET_FAMILIES;
     type ValidationError = AssetValidationError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>
+    {
+        Ok(())
+    }
 
     fn validate(
         reader: &beryl_home_store::DomainReader<'_, Self>,
@@ -144,7 +151,7 @@ impl StorageDomain for AssetDomain {
 }
 
 /// Opaque typed access to durable asset metadata, reference-set staging, and owner heads.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct AssetState {
     handle: DomainHandle<AssetDomain>,
 }
@@ -181,7 +188,7 @@ impl AssetState {
     }
 
     pub fn revision(&self, store: &HomeStore) -> Result<DomainRevision, ReadError> {
-        store.domain_revision(self.handle)
+        store.domain_revision(&self.handle)
     }
 
     pub fn committed_revision(
@@ -189,7 +196,7 @@ impl AssetState {
         store: &HomeStore,
         receipt: &beryl_home_store::CommitReceipt,
     ) -> Result<Option<DomainRevision>, beryl_home_store::CommitReceiptError> {
-        store.receipt_domain_revision(receipt, self.handle)
+        store.receipt_domain_revision(receipt, &self.handle)
     }
 
     pub fn metadata(
@@ -198,7 +205,7 @@ impl AssetState {
         asset_id: AssetId,
     ) -> Result<Option<AssetMetadataRecord>, ReadError> {
         store.read_point::<AssetDomain, AssetMetadataCodec>(
-            self.handle,
+            &self.handle,
             &asset_id,
             metadata_point_limit(),
         )
@@ -252,7 +259,7 @@ impl AssetState {
             CursorRange::closed(start, end)
         };
         let page = store.read_cursor::<AssetDomain, AssetReferenceEntryCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,
@@ -279,7 +286,7 @@ impl AssetState {
         let set_id = proof.set_id();
         let key = AssetMarkerKey { set_id, marker_id };
         let Some(ordinal) = store.read_point::<AssetDomain, AssetReferenceMarkerCodec>(
-            self.handle,
+            &self.handle,
             &key,
             index_point_limit(),
         )?
@@ -287,7 +294,7 @@ impl AssetState {
             return Ok(None);
         };
         Ok(store.read_point::<AssetDomain, AssetReferenceEntryCodec>(
-            self.handle,
+            &self.handle,
             &AssetEntryKey { set_id, ordinal },
             entry_point_limit(),
         )?)
@@ -304,7 +311,7 @@ impl AssetState {
         let set_id = proof.set_id();
         let key = AssetLabelFirstKey { set_id, label };
         let Some(first) = store.read_point::<AssetDomain, AssetReferenceLabelFirstCodec>(
-            self.handle,
+            &self.handle,
             &key,
             index_point_limit(),
         )?
@@ -312,7 +319,7 @@ impl AssetState {
             return Ok(None);
         };
         Ok(store.read_point::<AssetDomain, AssetReferenceEntryCodec>(
-            self.handle,
+            &self.handle,
             &AssetEntryKey {
                 set_id,
                 ordinal: first.first_ordinal,
@@ -327,7 +334,7 @@ impl AssetState {
         owner: AssetOwner,
     ) -> Result<Option<AssetOwnerHeadRecord>, ReadError> {
         store.read_point::<AssetDomain, AssetOwnerHeadCodec>(
-            self.handle,
+            &self.handle,
             &owner,
             head_point_limit(),
         )

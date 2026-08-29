@@ -33,7 +33,7 @@ impl SyndicStorage {
             ),
         };
         let page = store.read_cursor::<SyndicDomain, ExactCodec<InputGatesFamily>>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             recovery_gate_limits(limits),
@@ -97,7 +97,7 @@ impl SyndicStorage {
             ),
         };
         let page = store.read_cursor::<SyndicDomain, ExactCodec<InputGatesFamily>>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             recovery_gate_limits(limits),

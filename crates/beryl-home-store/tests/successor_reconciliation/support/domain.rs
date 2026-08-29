@@ -140,6 +140,13 @@ macro_rules! domain {
             const FAMILIES: &'static [RecordFamily<Self>] =
                 &[RecordFamily::new::<$record>(KeyspaceSchemaVersion::new(1))];
             type ValidationError = TestError;
+            type RuntimeAttachment = ();
+            type RuntimeAttachmentError = std::convert::Infallible;
+
+            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+                Ok(())
+            }
+
             fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
                 Ok(())
             }

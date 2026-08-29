@@ -42,7 +42,7 @@ fn seed(name: &str, prepared: &PreparedContent) -> Fixture {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (content, records) = prepared_content_records(prepared);
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
     Fixture {
         store,
         _home: home,

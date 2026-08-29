@@ -170,7 +170,7 @@ impl MainWindowConversationComposerMount {
         let published_at = current_timestamp()?;
         self.autosave.last_error = None;
         let service = self.service.clone();
-        let assets = self.autosave.assets;
+        let assets = self.autosave.assets.clone();
         let marker_seals = self.autosave.marker_seals.clone();
         let cancellation = CommandCancellation::new();
         let task = cx.background_executor().spawn(async move {

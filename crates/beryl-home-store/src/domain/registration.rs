@@ -173,7 +173,7 @@ impl HomeStore {
 impl StoreGeneration {
     pub(crate) fn resolve_domain<D: StorageDomain>(
         &self,
-        handle: DomainHandle<D>,
+        handle: &DomainHandle<D>,
     ) -> Option<&RegisteredDomain> {
         if handle.store != self.instance_id || handle.owner != DomainOwnerId::of::<D>() {
             return None;
@@ -313,7 +313,7 @@ fn open_existing_families<D: StorageDomain>(
             })?;
         families.push(registered_family(family, keyspace));
     }
-    Ok(registered_domain(definition, families))
+    registered_domain(definition, families)
 }
 
 fn create_new_families<D: StorageDomain>(
@@ -392,7 +392,7 @@ fn create_new_families<D: StorageDomain>(
             )
         })
         .collect();
-    Ok(registered_domain(definition, families))
+    registered_domain(definition, families)
 }
 
 fn persist_new_registration<D: StorageDomain>(
@@ -452,24 +452,40 @@ pub(super) fn registered_family(
     }
 }
 
-fn registered_domain(
+pub(crate) fn registered_domain(
     definition: &DomainBlueprint,
     families: Vec<RegisteredFamily>,
-) -> RegisteredDomain {
+) -> Result<RegisteredDomain, DomainRegistrationError> {
     let family_slots = families
         .iter()
         .enumerate()
         .map(|(slot, family)| (family.logical_name, slot))
         .collect();
-    RegisteredDomain {
+    let attachment = (definition.attachment_factory)().map_err(|source| {
+        DomainRegistrationError::AttachmentConstruction {
+            domain: definition.name,
+            source,
+        }
+    })?;
+    if attachment.attachment_type() != definition.attachment_type {
+        return Err(DomainRegistrationError::AttachmentConstruction {
+            domain: definition.name,
+            source: Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "runtime attachment factory returned another Rust type",
+            )),
+        });
+    }
+    Ok(RegisteredDomain {
         name: definition.name,
         schema: definition.schema,
         owner: definition.owner,
+        attachment,
         families,
         family_slots,
         reopen_validator: definition.reopen_validator,
         reconciler: definition.reconciler,
-    }
+    })
 }
 
 fn validate_persisted(
@@ -556,6 +572,7 @@ fn registration_failure_severity(error: &DomainRegistrationError) -> Option<Fail
         DomainRegistrationError::InvalidDefinition(_)
         | DomainRegistrationError::DuplicateDomain { .. }
         | DomainRegistrationError::OwnerTypeMismatch { .. }
+        | DomainRegistrationError::AttachmentConstruction { .. }
         | DomainRegistrationError::HealthGate(_) => None,
         DomainRegistrationError::Storage { source, .. } => {
             source.downcast_ref::<ClassifiedFjallError>().map_or(

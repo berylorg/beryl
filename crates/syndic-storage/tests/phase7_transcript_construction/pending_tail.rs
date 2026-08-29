@@ -5,39 +5,41 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
     let home = TestHome::new("phase7-transcript-complete-tail-gate");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(&store, storage);
+    let thread = create_thread(&store, storage.clone());
     let authored = format!(
         "```text\n{}\n```\n",
         "x".repeat(MARKDOWN_CODE_INLINE_MAX_BYTES + 1)
     );
     let pending = submit_text(
         &store,
-        storage,
+        storage.clone(),
         thread,
         &authored,
         draft_id(3),
         SyndicItemId::from_bytes([40; 16]),
         timestamp(3),
     );
-    let initial_item_generation = project_item(&store, storage, pending.item);
+    let initial_item_generation = project_item(&store, storage.clone(), pending.item);
     let initial_item_set = storage
         .item_projection_set(&store, pending.item, initial_item_generation, point_limit())
         .unwrap()
         .unwrap()
         .clone();
-    let initial_projection_ids = item_projection_ids(&store, storage, pending.item);
-    let initial_resource_ids = projection_resource_ids(&store, storage, &initial_projection_ids);
+    let initial_projection_ids = item_projection_ids(&store, storage.clone(), pending.item);
+    let initial_resource_ids =
+        projection_resource_ids(&store, storage.clone(), &initial_projection_ids);
     assert_eq!(initial_item_set.resource_count(), 1);
     assert_eq!(initial_resource_ids.len(), 1);
 
-    let (pending_generation, _) = start_transcript_build(&store, storage, thread);
-    let pending_build = finish_transcript_build(&store, storage, thread, pending_generation);
+    let (pending_generation, _) = start_transcript_build(&store, storage.clone(), thread);
+    let pending_build =
+        finish_transcript_build(&store, storage.clone(), thread, pending_generation);
     assert_eq!(pending_build.entry_count(), 0);
     assert!(!pending_build.history_complete());
-    let pending_path = path_turns(&store, storage, thread, pending_generation);
+    let pending_path = path_turns(&store, storage.clone(), thread, pending_generation);
     assert_eq!(pending_path.len(), 1);
     assert_eq!(pending_path[0].finalized_item_count(), 0);
-    assert!(transcript_entries(&store, storage, thread, pending_generation).is_empty());
+    assert!(transcript_entries(&store, storage.clone(), thread, pending_generation).is_empty());
     let pending_head = storage
         .transcript_view_head(&store, thread, point_limit())
         .unwrap()
@@ -52,10 +54,10 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
             .complete()
     );
 
-    let source = establish_turn(&store, storage, thread, pending.turn, timestamp(4));
+    let source = establish_turn(&store, storage.clone(), thread, pending.turn, timestamp(4));
     admit(
         &store,
-        storage,
+        storage.clone(),
         thread,
         pending.turn,
         &source,
@@ -78,7 +80,7 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
     let cas_item_id = CasItemId::new("phase13-correlated-user").unwrap();
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         pending.turn,
         pending.item,
@@ -119,7 +121,7 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
         ProjectionLifecycle::Stale
     );
 
-    let started_item_generation = project_item(&store, storage, pending.item);
+    let started_item_generation = project_item(&store, storage.clone(), pending.item);
     let started_item_set = storage
         .item_projection_set(&store, pending.item, started_item_generation, point_limit())
         .unwrap()
@@ -137,22 +139,27 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
         initial_item_set.resume_checkpoint()
     );
     assert_eq!(
-        item_projection_ids(&store, storage, pending.item),
+        item_projection_ids(&store, storage.clone(), pending.item),
         initial_projection_ids
     );
     assert_eq!(
-        projection_resource_ids(&store, storage, &initial_projection_ids),
+        projection_resource_ids(&store, storage.clone(), &initial_projection_ids),
         initial_resource_ids
     );
 
-    let (started_transcript_generation, _) = start_transcript_build(&store, storage, thread);
+    let (started_transcript_generation, _) =
+        start_transcript_build(&store, storage.clone(), thread);
     assert_ne!(started_transcript_generation, pending_generation);
-    let started_transcript =
-        finish_transcript_build(&store, storage, thread, started_transcript_generation);
+    let started_transcript = finish_transcript_build(
+        &store,
+        storage.clone(),
+        thread,
+        started_transcript_generation,
+    );
     assert_eq!(started_transcript.entry_count(), 0);
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         pending.turn,
         pending.item,
@@ -195,7 +202,7 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
     );
     admit(
         &store,
-        storage,
+        storage.clone(),
         thread,
         pending.turn,
         &source,
@@ -256,7 +263,7 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
         published_completed_item.revision().checked_next().unwrap()
     );
 
-    let completed_item_generation = project_item(&store, storage, pending.item);
+    let completed_item_generation = project_item(&store, storage.clone(), pending.item);
     let completed_item_set = storage
         .item_projection_set(
             &store,
@@ -283,11 +290,11 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
         initial_item_set.resume_checkpoint()
     );
     assert_eq!(
-        item_projection_ids(&store, storage, pending.item),
+        item_projection_ids(&store, storage.clone(), pending.item),
         initial_projection_ids
     );
     assert_eq!(
-        projection_resource_ids(&store, storage, &initial_projection_ids),
+        projection_resource_ids(&store, storage.clone(), &initial_projection_ids),
         initial_resource_ids
     );
 
@@ -310,12 +317,12 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
         ),
     );
 
-    let (final_generation, _) = start_transcript_build(&store, storage, thread);
+    let (final_generation, _) = start_transcript_build(&store, storage.clone(), thread);
     assert_ne!(final_generation, pending_generation);
-    let completed = finish_transcript_build(&store, storage, thread, final_generation);
+    let completed = finish_transcript_build(&store, storage.clone(), thread, final_generation);
     assert_eq!(completed.entry_count(), 1);
     assert!(completed.history_complete());
-    let entries = transcript_entries(&store, storage, thread, final_generation);
+    let entries = transcript_entries(&store, storage.clone(), thread, final_generation);
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].position(), TranscriptPosition::FIRST);
     assert_eq!(entries[0].item_id(), pending.item);

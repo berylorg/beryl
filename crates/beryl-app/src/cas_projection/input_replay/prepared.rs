@@ -96,7 +96,7 @@ impl TextReplayAuthority {
         Self {
             context: self.context.clone(),
             record: self.record.clone(),
-            assets: self.assets,
+            assets: self.assets.clone(),
             content: self.content,
             header: self.header,
             source_id: self.source_id,
@@ -111,7 +111,7 @@ impl TextReplayAuthority {
     pub(in crate::cas_projection) fn service<'a>(
         &'a mut self,
         store: &'a HomeStore,
-        storage: SyndicStorage,
+        storage: &'a SyndicStorage,
         cancellation: &'a ProjectionCancellationToken,
     ) -> TextReplayService<'a> {
         TextReplayService {
@@ -125,7 +125,7 @@ impl TextReplayAuthority {
     pub(in crate::cas_projection) fn begin_pass(
         &mut self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<StreamedInputHeader, StreamedInputSourceError> {
         if self.pass_open {
@@ -140,7 +140,7 @@ impl TextReplayAuthority {
     pub(in crate::cas_projection) fn next_descriptor(
         &mut self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<Option<StreamedInputDescriptor>, StreamedInputSourceError> {
         self.check_authority(store, storage, cancellation)?;
@@ -167,7 +167,7 @@ impl TextReplayAuthority {
     pub(super) fn check_page_authority(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
         source_id: StreamedTextSourceId,
     ) -> Result<(), StreamedInputSourceError> {
@@ -203,7 +203,7 @@ impl TextReplayAuthority {
     fn check_authority(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<(), StreamedInputSourceError> {
         check_source_cancelled(cancellation)?;
@@ -246,7 +246,7 @@ impl TextReplayAuthority {
 pub(in crate::cas_projection) struct TextReplayService<'a> {
     authority: &'a mut TextReplayAuthority,
     store: &'a HomeStore,
-    storage: SyndicStorage,
+    storage: &'a SyndicStorage,
     cancellation: &'a ProjectionCancellationToken,
 }
 

@@ -2,7 +2,7 @@ use super::*;
 
 fn provider_operation_seed(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
     turn: SyndicTurnId,
@@ -66,11 +66,11 @@ fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
     let thread = id(110);
     let draft = draft_id(111);
     let turn = SyndicTurnId::from_bytes([112; 16]);
-    seed_canonical_empty_thread(&store, storage, thread, draft);
+    seed_canonical_empty_thread(&store, storage.clone(), thread, draft);
     commit(
         &store,
-        storage,
-        provider_operation_seed(&store, storage, thread, draft, turn),
+        storage.clone(),
+        provider_operation_seed(&store, &storage, thread, draft, turn),
     );
 
     let selected = storage
@@ -84,10 +84,10 @@ fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
     let cas_thread = CasThreadId::new("phase10-provider-fork").unwrap();
     publish_valid(
         &store,
-        storage,
+        &storage,
         valid_request_with_count(
             &store,
-            storage,
+            &storage,
             thread,
             selected,
             cas_thread.clone(),
@@ -115,7 +115,7 @@ fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
 
     let forged_resume = valid_request_with_count(
         &store,
-        storage,
+        &storage,
         thread,
         selected,
         cas_thread.clone(),
@@ -134,10 +134,10 @@ fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
 
     publish_valid(
         &store,
-        storage,
+        &storage,
         valid_request_with_count(
             &store,
-            storage,
+            &storage,
             thread,
             selected,
             cas_thread,

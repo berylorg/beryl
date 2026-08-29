@@ -35,10 +35,10 @@ fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
-fn commit_callback(
-    store: &HomeStore,
-    storage: SyndicStorage,
-) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + '_ {
+fn commit_callback<'a>(
+    store: &'a HomeStore,
+    storage: &'a SyndicStorage,
+) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + 'a {
     move |batch| {
         store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
     }
@@ -181,7 +181,7 @@ fn arbitrary_utf8_fragmentation_is_canonical_and_cursor_has_exact_eof() {
     let bytes = "héllo \u{1f980}".as_bytes();
 
     let first = {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager =
             begin_agent(ProviderObservationId::from_bytes([1; 16]), &mut callback).unwrap();
         text(
@@ -194,7 +194,7 @@ fn arbitrary_utf8_fragmentation_is_canonical_and_cursor_has_exact_eof() {
         clean_seal(stager.seal(&mut callback).unwrap())
     };
     let second = {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager =
             begin_agent(ProviderObservationId::from_bytes([2; 16]), &mut callback).unwrap();
         text(
@@ -243,7 +243,7 @@ fn partial_build_reopens_resumes_and_exact_batches_reconcile() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_agent(identity, &mut callback).unwrap();
         let context = ProviderValueContext::Field(ProviderField::AgentMessageText);
         clean_stage(
@@ -323,7 +323,7 @@ fn identity_collision_route_mismatch_and_abandonment_are_explicit() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let identity = ProviderObservationId::from_bytes([70; 16]);
     let sealed = {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_agent(identity, &mut callback).unwrap();
         text(
             &mut stager,
@@ -335,7 +335,7 @@ fn identity_collision_route_mismatch_and_abandonment_are_explicit() {
         clean_seal(stager.seal(&mut callback).unwrap())
     };
     {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         match ProviderObservationStager::begin(
             identity,
             ProviderObservationBegin::Item {
@@ -394,7 +394,7 @@ fn large_observation_stays_bounded_and_missing_chunk_is_rejected() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let identity = ProviderObservationId::from_bytes([71; 16]);
     let sealed = {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_agent(identity, &mut callback).unwrap();
         let context = ProviderValueContext::Field(ProviderField::AgentMessageText);
         clean_stage(
@@ -461,7 +461,7 @@ fn corrupted_build_digest_is_rejected_and_new_families_are_registered() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let identity = ProviderObservationId::from_bytes([72; 16]);
     {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_agent(identity, &mut callback).unwrap();
         text(
             &mut stager,

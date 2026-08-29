@@ -15,13 +15,13 @@ pub fn exercise_case(
     let mut store = open(registration_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     for &(thread, draft) in threads {
-        seed_canonical_empty_thread(&store, storage, thread, draft);
+        seed_canonical_empty_thread(&store, storage.clone(), thread, draft);
     }
-    commit(&store, storage, seed());
+    commit(&store, storage.clone(), seed());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    commit(&store, storage, corrupt());
+    commit(&store, storage.clone(), corrupt());
     store.close().unwrap();
 
     let mut routine_reopened = open(registration_home.path());
@@ -46,13 +46,13 @@ pub fn exercise_case(
     let mut store = open(recovery_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     for &(thread, draft) in threads {
-        seed_canonical_empty_thread(&store, storage, thread, draft);
+        seed_canonical_empty_thread(&store, storage.clone(), thread, draft);
     }
-    commit(&store, storage, seed());
+    commit(&store, storage.clone(), seed());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    commit(&store, storage, corrupt());
+    commit(&store, storage.clone(), corrupt());
     assert_rejected(
         store
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -75,11 +75,11 @@ pub fn exercise_seeded_populated_case(
     let registration_home = TestHome::new(&format!("{name}-registration"));
     let mut store = open(registration_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    commit(&store, storage, corrupt(&store, storage));
+    commit(&store, storage.clone(), corrupt(&store, storage.clone()));
     store.close().unwrap();
 
     let mut routine_reopened = open(registration_home.path());
@@ -97,11 +97,11 @@ pub fn exercise_seeded_populated_case(
     let recovery_home = TestHome::new(&format!("{name}-recovery"));
     let mut store = open(recovery_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    commit(&store, storage, corrupt(&store, storage));
+    commit(&store, storage.clone(), corrupt(&store, storage.clone()));
     assert_rejected(
         store
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

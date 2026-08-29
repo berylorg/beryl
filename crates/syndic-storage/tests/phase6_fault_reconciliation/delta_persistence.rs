@@ -19,10 +19,10 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
         let faults = FaultController::new();
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        seed_populated(&store, storage);
+        seed_populated(&store, storage.clone());
         let item = SyndicItemId::from_bytes([71; 16]);
         let cas_item = CasItemId::new("phase6-fault-item").unwrap();
-        start_item(&store, storage, item, &cas_item);
+        start_item(&store, &storage, item, &cas_item);
         let baseline_turn_events = storage
             .turn_state(&store, active_turn(), limit())
             .unwrap()
@@ -35,13 +35,13 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
             .source_event_count();
         let delta_frame = stage_item_frame_for_publication(
             &store,
-            storage,
+            &storage,
             item,
             agent_delta(cas_item, "atomic delta"),
         );
         let delta = source_event(
             &store,
-            storage,
+            &storage,
             SourceEventPayload::ItemFrame {
                 item_id: item,
                 frame: Box::new(delta_frame),
@@ -105,7 +105,7 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
             baseline_item_events + u64::from(delta_persisted)
         );
         assert_eq!(
-            item_text(&store, storage, item),
+            item_text(&store, &storage, item),
             if delta_persisted { "atomic delta" } else { "" }
         );
         store
@@ -127,7 +127,7 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap();
         assert_eq!(
-            item_text(&reopened, storage, item),
+            item_text(&reopened, &storage, item),
             if delta_persisted { "atomic delta" } else { "" }
         );
         let retry = execute(
@@ -145,7 +145,7 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
         reopened
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap();
-        assert_eq!(item_text(&reopened, storage, item), "atomic delta");
+        assert_eq!(item_text(&reopened, &storage, item), "atomic delta");
         assert_eq!(
             storage
                 .turn_state(&reopened, active_turn(), limit())

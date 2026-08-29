@@ -33,7 +33,7 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
     let existing_item = SyndicItemId::from_bytes([203; 16]);
     support::exact_cas::submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         collision_thread,
         beryl_model::SyndicDraftId::from_bytes([202; 16]),
         existing_item,
@@ -64,7 +64,7 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
     ];
 
     for (turn, item, namespace) in turn_collisions {
-        let request = promotion(&store, storage, turn, item);
+        let request = promotion(&store, &storage, turn, item);
         assert_eq!(
             storage
                 .accepted_input_promotion_status(&store, &request, limit())
@@ -72,7 +72,7 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
             AcceptedInputPromotionStatus::Collision,
             "{namespace} collision must not classify as Prior",
         );
-        let error = match execute_promotion(&store, storage, request) {
+        let error = match execute_promotion(&store, &storage, request) {
             CommandOutcome::NotCommitted { evidence } => evidence,
             outcome => panic!("expected definitive identity collision, got {outcome:?}"),
         };
@@ -87,7 +87,7 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
 
     let item_collision = promotion(
         &store,
-        storage,
+        &storage,
         SyndicTurnId::from_bytes([135; 16]),
         existing_item,
     );
@@ -97,7 +97,7 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
             .unwrap(),
         AcceptedInputPromotionStatus::Collision,
     );
-    let error = match execute_promotion(&store, storage, item_collision) {
+    let error = match execute_promotion(&store, &storage, item_collision) {
         CommandOutcome::NotCommitted { evidence } => evidence,
         outcome => panic!("expected definitive item collision, got {outcome:?}"),
     };
@@ -108,7 +108,7 @@ fn every_successor_identity_namespace_collision_is_rejected_without_partial_prom
 
     let fresh = promotion(
         &store,
-        storage,
+        &storage,
         SyndicTurnId::from_bytes([133; 16]),
         SyndicItemId::from_bytes([134; 16]),
     );

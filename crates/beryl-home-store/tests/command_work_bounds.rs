@@ -26,6 +26,12 @@ impl StorageDomain for CountedDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         VALIDATOR_CALLS.fetch_add(1, Ordering::Relaxed);
@@ -151,7 +157,7 @@ fn one_command_never_scans_the_existing_domain() {
 fn execute(store: &HomeStore, domain: beryl_home_store::DomainHandle<CountedDomain>, key: u64) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(domain.contribution(store.domain_revision(domain).unwrap(), Put(key)))
+        .add(domain.contribution(store.domain_revision(&domain).unwrap(), Put(key)))
         .unwrap();
     assert!(matches!(
         store.execute(command),

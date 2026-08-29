@@ -56,6 +56,12 @@ impl StorageDomain for OwnerDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -69,6 +75,12 @@ impl StorageDomain for ImpostorDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -143,7 +155,7 @@ fn stable_names_cannot_alias_live_domain_or_family_rust_owners() {
         })
     ));
     assert!(matches!(
-        store.read_point::<OwnerDomain, AliasCodec>(owner, &1, PointReadLimit::new(5).unwrap(),),
+        store.read_point::<OwnerDomain, AliasCodec>(&owner, &1, PointReadLimit::new(5).unwrap(),),
         Err(ReadError::CodecTypeMismatch {
             domain: "typed_owner",
             family: "records"
@@ -152,7 +164,7 @@ fn stable_names_cannot_alias_live_domain_or_family_rust_owners() {
 
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(owner.contribution(store.domain_revision(owner).unwrap(), AliasPut))
+        .add(owner.contribution(store.domain_revision(&owner).unwrap(), AliasPut))
         .unwrap();
     let error = match store.execute(command) {
         beryl_home_store::CommandOutcome::NotCommitted { evidence } => evidence,

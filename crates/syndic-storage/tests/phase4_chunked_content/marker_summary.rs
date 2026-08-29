@@ -43,17 +43,17 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
 
     execute(
         &store,
-        storage,
-        storage.begin_content(
-            storage.revision(&store).unwrap(),
+        storage.clone(),
+        storage.clone().begin_content(
+            storage.clone().revision(&store).unwrap(),
             ContentBuild::from_prepared(&content),
         ),
     );
     let mut manifest = content.building_manifest();
-    while let Some(next) = append_one_batch(&store, storage, &manifest, &content) {
+    while let Some(next) = append_one_batch(&store, storage.clone(), &manifest, &content) {
         manifest = next;
     }
-    manifest = seal_prepared_content(&store, storage, &manifest, &content);
+    manifest = seal_prepared_content(&store, storage.clone(), &manifest, &content);
     assert_eq!(manifest.lifecycle(), ContentLifecycle::Sealed);
     store.close().unwrap();
 

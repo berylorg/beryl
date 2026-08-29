@@ -84,7 +84,7 @@ pub(super) fn fixture(
     let home = TestHome::new(name);
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(storage, &store, seed, budget);
+    let thread = create_thread(&storage, &store, seed, budget);
     (home, store, storage, thread)
 }
 
@@ -107,7 +107,7 @@ pub(super) fn fault_fixture(
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(storage, &store, seed, budget);
+    let thread = create_thread(&storage, &store, seed, budget);
     (home, store, storage, faults, thread)
 }
 
@@ -131,7 +131,7 @@ pub(super) fn create_request(seed: u8, budget: u64) -> CreateThread {
 }
 
 pub(super) fn create_thread(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     seed: u8,
     budget: u64,
@@ -146,7 +146,7 @@ pub(super) fn create_thread(
 }
 
 pub(super) fn current(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
 ) -> syndic_storage::SyndicCurrentDraft {
@@ -182,7 +182,7 @@ pub(super) fn open_request(
 }
 
 pub(super) fn open_session(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     current: &syndic_storage::SyndicCurrentDraft,
     session: u8,
@@ -212,7 +212,7 @@ pub(super) fn open_session(
 }
 
 pub(super) fn transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,
@@ -234,7 +234,7 @@ pub(super) fn transaction(
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn transaction_with_positions(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,
@@ -285,7 +285,7 @@ pub(super) fn transaction_with_positions(
     }
 }
 
-pub(super) fn build(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) {
+pub(super) fn build(storage: &SyndicStorage, store: &HomeStore, transaction: &Transaction) {
     committed(execute(
         store,
         storage.begin_draft_piece_edit(
@@ -320,7 +320,7 @@ pub(super) fn build(storage: SyndicStorage, store: &HomeStore, transaction: &Tra
 }
 
 pub(super) fn settled(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> syndic_storage::DraftPieceSettlementV1 {

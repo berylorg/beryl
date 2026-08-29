@@ -266,8 +266,8 @@ impl ProjectionConnectionService {
 
     /// Returns the registered Syndic handle paired with this owned home.
     #[must_use]
-    pub const fn storage(&self) -> SyndicStorage {
-        self.storage
+    pub fn storage(&self) -> SyndicStorage {
+        self.storage.clone()
     }
 
     #[must_use]

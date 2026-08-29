@@ -13,7 +13,7 @@ pub(super) fn abandon_exact_active(
     home: &beryl_home_store::HomeStore,
     home_id: beryl_model::BerylHomeId,
     home_generation: beryl_home_store::HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     activation: &PendingTurnActivation,
     cas_thread_id: &CasThreadId,
     loaded_generation: CasLoadedSessionGeneration,

@@ -98,6 +98,12 @@ impl StorageDomain for StrictDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = std::convert::Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -111,6 +117,12 @@ impl StorageDomain for EmptyKeyDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = std::convert::Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -171,7 +183,7 @@ fn shared_physical_key_guard_rejects_empty_codec_output() {
     let domain = store.register_domain::<EmptyKeyDomain>().unwrap();
     assert!(matches!(
         store.read_point::<EmptyKeyDomain, EmptyKeyRecord>(
-            domain,
+            &domain,
             &(),
             beryl_home_store::PointReadLimit::new(5).unwrap(),
         ),
@@ -285,7 +297,7 @@ fn routine_recovery_ignores_raw_corruption_but_explicit_scrub_rejects_it() {
     let domain = store.register_domain::<StrictDomain>().unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(domain.contribution(store.domain_revision(domain).unwrap(), FailStructurally))
+        .add(domain.contribution(store.domain_revision(&domain).unwrap(), FailStructurally))
         .unwrap();
     assert!(matches!(
         store.execute(command),

@@ -10,7 +10,7 @@ use super::ProjectionPublicationFailure;
 
 pub(super) fn publish_valid(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &PublishValidBinding,
     _limit: SyndicPointReadLimit,
 ) -> Result<BindingRevision, ProjectionPublicationFailure> {
@@ -23,7 +23,7 @@ pub(super) fn publish_valid(
 
 pub(super) fn publish_stale(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &PublishStaleBinding,
     _limit: SyndicPointReadLimit,
 ) -> Result<BindingRevision, ProjectionPublicationFailure> {
@@ -36,7 +36,7 @@ pub(super) fn publish_stale(
 
 pub(super) fn activate(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &ActivateBinding,
     _limit: SyndicPointReadLimit,
 ) -> Result<(BindingRevision, InputGateRevision), ProjectionPublicationFailure> {
@@ -49,7 +49,7 @@ pub(super) fn activate(
 
 pub(super) fn cancel_activation(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &CancelBindingActivation,
     _limit: SyndicPointReadLimit,
 ) -> Result<(BindingRevision, InputGateRevision), ProjectionPublicationFailure> {
@@ -65,7 +65,7 @@ pub(super) fn cancel_activation(
 
 pub(super) fn publish_active_turn(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &PublishActiveCasTurn,
     _limit: SyndicPointReadLimit,
 ) -> Result<InputGateRevision, ProjectionPublicationFailure> {
@@ -80,7 +80,7 @@ pub(super) fn publish_active_turn_reconciled(
     store: &HomeStore,
     _expected_home_id: BerylHomeId,
     _expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &PublishActiveCasTurn,
     limit: SyndicPointReadLimit,
 ) -> Result<InputGateRevision, ProjectionPublicationFailure> {
@@ -89,7 +89,7 @@ pub(super) fn publish_active_turn_reconciled(
 
 pub(super) fn abandon_active(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &AbandonActiveBinding,
     _limit: SyndicPointReadLimit,
 ) -> Result<BindingRevision, ProjectionPublicationFailure> {
@@ -104,7 +104,7 @@ pub(super) fn abandon_active_reconciled(
     store: &HomeStore,
     _expected_home_id: BerylHomeId,
     _expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &AbandonActiveBinding,
     limit: SyndicPointReadLimit,
 ) -> Result<BindingRevision, ProjectionPublicationFailure> {
@@ -113,7 +113,7 @@ pub(super) fn abandon_active_reconciled(
 
 pub(super) fn abandon_stop(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &AbandonStopOperation,
     _limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {
@@ -127,7 +127,7 @@ pub(super) fn abandon_stop_reconciled(
     store: &HomeStore,
     _expected_home_id: BerylHomeId,
     _expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &AbandonStopOperation,
     limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {
@@ -136,7 +136,7 @@ pub(super) fn abandon_stop_reconciled(
 
 pub(super) fn admit_live_event(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &LiveSourceEvent,
     _limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {
@@ -150,7 +150,7 @@ pub(super) fn admit_live_event_reconciled(
     store: &HomeStore,
     _expected_home_id: BerylHomeId,
     _expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: &LiveSourceEvent,
     limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {

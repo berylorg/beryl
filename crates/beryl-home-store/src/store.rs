@@ -82,6 +82,12 @@ impl StoreGeneration {
     }
 }
 
+impl Drop for StoreGeneration {
+    fn drop(&mut self) {
+        self.registry.retire_attachments();
+    }
+}
+
 /// Immutable input for opening exactly one configured Beryl home.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HomeOpenOptions {
@@ -354,6 +360,10 @@ impl HomeStore {
             .get_mut()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
+        self.retire_generation();
+    }
+
+    pub(crate) fn retire_generation(&mut self) {
         let generation = self
             .generation
             .get_mut()

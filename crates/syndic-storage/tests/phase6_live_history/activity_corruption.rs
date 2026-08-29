@@ -36,23 +36,23 @@ fn one_completed_activity(
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let (thread, turn) = seed_pending_turn(&store, &storage);
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    correlate_submitted_user_item(&store, storage, thread, turn, &source, timestamp(5));
+    correlate_submitted_user_item(&store, &storage, thread, turn, &source, timestamp(5));
     let item = SyndicItemId::from_bytes([210; 16]);
     let cas = CasItemId::new("phase6-corruption-completed").unwrap();
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         item,
@@ -62,7 +62,7 @@ fn one_completed_activity(
     );
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         item,
@@ -103,21 +103,21 @@ fn scrub_rejects_a_coherently_removed_running_activity_entry() {
     let home = TestHome::new("phase6-activity-running-completeness-corruption");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let (thread, turn) = seed_pending_turn(&store, &storage);
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    correlate_submitted_user_item(&store, storage, thread, turn, &source, timestamp(5));
+    correlate_submitted_user_item(&store, &storage, thread, turn, &source, timestamp(5));
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         SyndicItemId::from_bytes([211; 16]),
@@ -258,7 +258,7 @@ fn scrub_rejects_an_inexact_retired_source_frontier() {
         .clone();
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -276,10 +276,10 @@ fn scrub_rejects_an_inexact_retired_source_frontier() {
         .unwrap()
         .unwrap()
         .clone();
-    converge_and_release_terminal_history(&store, storage, thread, turn);
+    converge_and_release_terminal_history(&store, storage.clone(), thread, turn);
     submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(212),
         SyndicItemId::from_bytes([213; 16]),

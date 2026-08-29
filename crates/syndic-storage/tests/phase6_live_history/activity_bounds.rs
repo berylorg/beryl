@@ -8,18 +8,18 @@ fn completed_activity_store(
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let (thread, turn) = seed_pending_turn(&store, &storage);
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    correlate_submitted_user_item(&store, storage, thread, turn, &source, timestamp(5));
+    correlate_submitted_user_item(&store, &storage, thread, turn, &source, timestamp(5));
     for index in 0..count {
         let identity = u128::try_from(index).unwrap() + 1_000;
         let item = SyndicItemId::from_bytes(identity.to_be_bytes());
@@ -32,7 +32,7 @@ fn completed_activity_store(
         let at = 10 + u64::try_from(index).unwrap() * 2;
         admit_item_frame(
             &store,
-            storage,
+            storage.clone(),
             thread,
             turn,
             item,
@@ -42,7 +42,7 @@ fn completed_activity_store(
         );
         admit_item_frame(
             &store,
-            storage,
+            storage.clone(),
             thread,
             turn,
             item,
@@ -61,7 +61,7 @@ fn completed_activity_store(
 
 fn retained_activity(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> (ActivityQueryHeadRecord, Vec<ActivityQueryEntryRecord>) {
     let head = storage
@@ -85,7 +85,7 @@ fn retained_activity(
 fn completed_retention_keeps_exact_newest_prefix_within_both_caps() {
     let (_home, store, storage, thread) =
         completed_activity_store("phase6-activity-row-retention", 260, false);
-    let (head, records) = retained_activity(&store, storage, thread);
+    let (head, records) = retained_activity(&store, &storage, thread);
     let retained = usize::try_from(head.completed_row_count()).unwrap();
     assert!(retained <= 256);
     assert_eq!(head.logical_row_count(), head.completed_row_count());
@@ -123,7 +123,7 @@ fn completed_retention_enforces_exact_stored_byte_cap_before_row_cap() {
     let count = 180_usize;
     let (_home, store, storage, thread) =
         completed_activity_store("phase6-activity-byte-retention", count, true);
-    let (head, records) = retained_activity(&store, storage, thread);
+    let (head, records) = retained_activity(&store, &storage, thread);
     let retained = usize::try_from(head.completed_row_count()).unwrap();
     assert!(retained < count);
     assert!(retained < 256);
@@ -145,18 +145,18 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
     let home = TestHome::new("phase6-activity-bounded-retirement");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let (thread, turn) = seed_pending_turn(&store, &storage);
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    correlate_submitted_user_item(&store, storage, thread, turn, &source, timestamp(5));
+    correlate_submitted_user_item(&store, &storage, thread, turn, &source, timestamp(5));
 
     let mut completed_ids = Vec::new();
     for (index, value) in (20_u8..22).enumerate() {
@@ -165,7 +165,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         let cas = CasItemId::new(format!("phase6-activity-completed-{value}")).unwrap();
         admit_item_frame(
             &store,
-            storage,
+            storage.clone(),
             thread,
             turn,
             item,
@@ -175,7 +175,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         );
         admit_item_frame(
             &store,
-            storage,
+            storage.clone(),
             thread,
             turn,
             item,
@@ -194,7 +194,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         let item = SyndicItemId::from_bytes([value; 16]);
         admit_item_frame(
             &store,
-            storage,
+            storage.clone(),
             thread,
             turn,
             item,
@@ -249,7 +249,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
 
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -291,11 +291,11 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         (32, false),
         "terminal retirement must not delete stranded running rows"
     );
-    converge_and_release_terminal_history(&store, storage, thread, turn);
+    converge_and_release_terminal_history(&store, storage.clone(), thread, turn);
 
     submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(90),
         SyndicItemId::from_bytes([91; 16]),

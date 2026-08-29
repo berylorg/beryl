@@ -135,7 +135,7 @@ fn reversed_cursor_range_and_non_owning_record_codec_are_typed() {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain, BytesRecordV2<AlphaDomain>>::new(1, b"v2".to_vec()),
         ))
         .unwrap();
@@ -167,7 +167,7 @@ fn put(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            store.domain_revision(&domain).unwrap(),
             PutBytes::<AlphaDomain>::new(key, value),
         ))
         .unwrap();

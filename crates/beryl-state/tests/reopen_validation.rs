@@ -32,6 +32,12 @@ impl StorageDomain for IncompleteRuntimeDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = RUNTIME_FAMILIES;
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -166,10 +172,11 @@ fn routine_bootstrap_defers_unrelated_runtime_validation_to_explicit_schema_boun
     let domain = store.register_domain::<IncompleteRuntimeDomain>().unwrap();
     let runtime_id = RuntimeId::from_bytes([1; 16]);
     let executable = r"C:\Codex\codex.exe";
+    let domain_revision = store.domain_revision(&domain).unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            domain_revision,
             SeedRuntimeWithoutHomeRoot {
                 runtime_key: runtime_id.as_bytes().to_vec(),
                 runtime_value: runtime_record(runtime_id, executable),

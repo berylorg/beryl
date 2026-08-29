@@ -32,7 +32,7 @@ fn recovery_assembly_read_fault_preserves_state_for_same_home_recovery() {
     let faults = FaultController::new();
     let mut store = open_with_faults(home.path(), faults.clone());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     let thread_id = id(30);
     let before = storage
         .thread(&store, thread_id, point_limit())

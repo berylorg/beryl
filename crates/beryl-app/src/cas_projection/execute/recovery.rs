@@ -30,7 +30,7 @@ impl CasProjectionCoordinator {
     pub(super) fn recover_projection(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,

@@ -9,7 +9,7 @@ pub fn admit_current_draft_as_accepted(
 ) -> syndic_storage::AcceptedInputRecord {
     admit_queued_text(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         text,
         SyndicDraftId::from_bytes([next_draft_byte; 16]),
@@ -20,7 +20,7 @@ pub fn admit_current_draft_as_accepted(
 #[cfg(feature = "test-faults")]
 pub fn admit_queued_text(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     text: &str,
     next_draft_id: SyndicDraftId,
@@ -74,7 +74,7 @@ pub fn admit_queued_text(
     let auxiliary_item = SyndicItemId::from_bytes(auxiliary_item_bytes);
     exact_cas::submit_current_draft(
         store,
-        storage,
+        storage.clone(),
         auxiliary_thread,
         auxiliary_next_draft,
         auxiliary_item,
@@ -115,7 +115,7 @@ pub fn admit_queued_text(
         Some(
             syndic_storage::test_faults::accepted_route_generation(
                 store,
-                storage,
+                storage.clone(),
                 thread_id,
                 proof.generation(),
             )
@@ -245,7 +245,7 @@ pub fn admit_queued_text(
     }
     let root_history = crate::support::seed_detached_canonical_draft_backing(
         store,
-        storage,
+        storage.clone(),
         SyndicThreadId::from_bytes(staging_thread_bytes),
         next_draft_id,
     );
@@ -353,6 +353,6 @@ pub fn admit_queued_text(
             ))
             .unwrap();
     }
-    crate::support::commit(store, storage, fixture);
+    crate::support::commit(store, storage.clone(), fixture);
     input
 }

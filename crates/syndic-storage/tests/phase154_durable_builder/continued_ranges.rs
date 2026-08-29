@@ -1,8 +1,8 @@
 #[test]
 fn nonempty_replacement_continuations_consume_source_once_across_marker_effects_and_reopen() {
     let (home, store, storage, thread) = fixture("nonempty-continuation", 100);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 101, 102);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 101, 102);
     session = complete_staged(
         &storage,
         &store,

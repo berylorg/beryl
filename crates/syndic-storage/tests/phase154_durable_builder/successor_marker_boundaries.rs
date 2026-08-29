@@ -1,8 +1,8 @@
 #[test]
 fn rightward_move_preserves_following_frontier_across_restart() {
     let (home, store, storage, thread) = fixture("rightward-move-frontier", 130);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 131, 132);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 131, 132);
     session = complete_staged(
         &storage,
         &store,
@@ -127,8 +127,8 @@ fn rightward_move_preserves_following_frontier_across_restart() {
 #[test]
 fn same_id_replacement_preserves_following_frontier_across_restart() {
     let (home, store, storage, thread) = fixture("same-id-frontier", 140);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 141, 142);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 141, 142);
     session = complete_staged(
         &storage,
         &store,
@@ -252,8 +252,8 @@ fn same_id_replacement_preserves_following_frontier_across_restart() {
 #[test]
 fn earlier_inner_anchor_preserves_later_inner_frontier() {
     let (_home, store, storage, thread) = fixture("earlier-inner-frontier", 150);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 151, 152);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 151, 152);
     session = complete_staged(
         &storage,
         &store,
@@ -332,8 +332,8 @@ fn earlier_inner_anchor_preserves_later_inner_frontier() {
 #[test]
 fn in_tree_anchor_after_physical_frontier_rejects() {
     let (_home, store, storage, thread) = fixture("ahead-of-frontier", 160);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 161, 162);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 161, 162);
     session = complete_staged(
         &storage,
         &store,

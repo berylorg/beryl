@@ -37,7 +37,23 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   not churn Beryl-state or Syndic caller APIs.
 - Logical domains register private record families, exact codecs, exhaustive validation hooks,
   operation-scoped natural-record reconciliation hooks, typed reads, typed mutation contributors,
-  and typed validation-only command participants through package-owned traits.
+  typed validation-only command participants, and one exact process-local runtime-attachment type
+  and factory through package-owned traits.
+- Each registered-domain slot constructs exactly one runtime attachment for its home generation
+  and is that attachment's sole strong owner. Typed domain handles are cloneable non-`Copy` views
+  that resolve the slot's existing attachment after the ordinary store, owner, registration, and
+  generation fences; handle cloning, routine reacquisition, and stable name/schema/type agreement
+  cannot construct another attachment or prolong its lifetime.
+- Store reads, receipt revision inspection, mutation and validation contribution construction,
+  current-revision command construction, and proof-source or proof-witness construction borrow a
+  typed handle. They copy only its fixed identity into the resulting plan. Cloning is reserved for
+  a retained view or an explicit asynchronous or cross-owner custody boundary, not required for
+  routine synchronous use.
+- The attachment boundary is generic and exposes no cross-domain registry or application-owned
+  state. A domain owns the type and configured bounded contents of its attachment. The package owns
+  exact-once construction, same-generation identity, access fencing, retirement, and drop. It
+  provides no process-global registry, per-handle attachment, compatibility bridge, or way to
+  transplant an attachment into another generation.
 - The package also exposes `HomeProofCommand<P>` and `HomeStore::compose_proof` as the generic
   process-local boundary for read-only proof composition. A command has exactly one statically
   typed source role and zero or more statically typed witness roles, with at most one role for each
@@ -75,7 +91,11 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   family, count, and byte bounds are fixed. `HomeStore::reconcile` remains the only execution
   boundary; the package exposes no post-hoc proof or scope-release API.
 - Registration never gives a domain a raw database or keyspace handle.
-- Each live domain blueprint, handle, command contribution, and reacquired recovery registration carries the exact process-local Rust owner type. Each family likewise carries the exact process-local codec type. Stable names and schemas remain durable compatibility facts, but cannot impersonate either live Rust owner; neither `TypeId` is persisted.
+- Each live domain blueprint, handle, command contribution, runtime attachment, and reacquired
+  recovery registration carries the exact process-local Rust owner type. Each family likewise
+  carries the exact process-local codec type. Stable names and schemas remain durable compatibility
+  facts, but cannot impersonate either live Rust owner or runtime-attachment identity; no `TypeId`
+  is persisted.
 - Stable domain and family identifiers are bounded lowercase ASCII components. The persistent registry records the exact domain schema, complete sorted family declaration, exact family schemas, physical family names, and current domain revision; reopening rejects missing families or any incompatible declaration instead of creating or guessing it.
 - Persistent domain metadata has an 8-KiB stored-byte ceiling as its primary capacity bound and no
   independent fixed family-count policy. Before allocating or iterating families, encoding and
@@ -395,6 +415,10 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   final close may dispose collision-sealed process-local facts with the registry. Forced process
   termination publishes no in-memory command result or acknowledgement. Dropping the store or its
   pending-close error with retained scopes cannot unlock the home or permit a same-process reopen.
+- Generation teardown also closes new runtime-attachment access and drains every admitted
+  attachment user before synchronously retiring and dropping each registered-domain attachment
+  exactly once. A typed handle or attachment-derived capability that survives teardown remains a
+  stale non-owning view and cannot authorize access or delay retirement.
 - One home runs at most four reconciliation workers and at most one per exact scope. When all four
   permits are held, another registered gate remains closed and awaits a worker without duplicating
   its descriptor.
@@ -430,9 +454,11 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   never reopen-validation evidence or authority for the replacement generation.
 - A recovered private candidate must validate the home header, registry, required schema
   declarations, and physical families, reacquire every registered domain through fresh typed
-  handles, and complete the required Fjall physical verification. These structural checks do not
-  create a schema-validation boundary or exhaustively scan application records during routine
-  recovery. Any disagreement or I/O failure discards the candidate and permits a later retry.
+  handles, construct exactly one fresh runtime attachment for every registered-domain slot, and
+  complete the required Fjall physical verification. These structural checks do not create a
+  schema-validation boundary or exhaustively scan application records during routine recovery.
+  Any disagreement, attachment-construction failure, or I/O failure retires and drops the candidate
+  attachments, discards the candidate, and permits a later retry.
 - Successful forced reopen assigns the private candidate a new monotonic process-local home
   generation and store-instance identity, but exposes no app-usable healthy handle. The system
   recovery boundary consumes the candidate once and alone authorizes full-stack publication.
@@ -548,6 +574,11 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   and `ExactSuccessor`. Collision tests prove opaque-descriptor disposal, one bounded sealed-fact set and its
   closed slot remain, and every transient worker resource is released. Open tests prove that no
   candidate application discovery is available before complete typed-stack publication.
+- Runtime-attachment tests prove exact-once construction per registered owner and generation,
+  clone/reacquisition identity stability, no retirement on ordinary handle drop, exact-once
+  retirement/drop during generation teardown, rejection through old handles and capabilities, and
+  distinct fresh attachment identity for an unpublished recovery candidate. They also prove that
+  no handle, application object, or process-global registry remains a strong attachment owner.
 - Durable-start footprint tests independently compose both allowed typed participant pairs, prove
   the direct logical total is 26 records and 1,263,194 encoded key-plus-value bytes, prove the queued
   logical envelope is 25 records and 1,328,212 bytes, and prove owned journal framing raises the

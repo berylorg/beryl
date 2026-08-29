@@ -159,7 +159,7 @@ fn inject<F: Family>(
     let encoded_key = <ExactCodec<F> as RecordCodec<SyndicDomain>>::encode_key(&key)
         .expect("retired schema-history fixture key must encode");
     store.inject_persisted_corrupt_record::<SyndicDomain, ExactCodec<F>>(
-        storage.handle,
+        &storage.handle,
         &encoded_key,
         &retired_version.to_be_bytes(),
     )

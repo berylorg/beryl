@@ -2,7 +2,7 @@ use super::*;
 
 fn empty_selected_path(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> SelectedPathProof {
     storage
@@ -39,13 +39,13 @@ fn retired_cas_identity_is_one_way_and_cannot_rewrite_its_execution() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread = id(220);
-    create_thread(&store, storage, thread, draft_id(221));
-    let selected = empty_selected_path(&store, storage, thread);
+    create_thread(&store, &storage, thread, draft_id(221));
+    let selected = empty_selected_path(&store, &storage, thread);
     let cas_thread = CasThreadId::new("one-way-retired-cas").unwrap();
     publish_valid(
         &store,
-        storage,
-        valid_request(&store, storage, thread, selected, cas_thread.clone()),
+        &storage,
+        valid_request(&store, &storage, thread, selected, cas_thread.clone()),
     );
 
     let different_execution = ExecutionBinding::new(
@@ -71,7 +71,7 @@ fn retired_cas_identity_is_one_way_and_cannot_rewrite_its_execution() {
             storage.revision(&store).unwrap(),
             PublishStaleBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
                 selected,
                 stale_binding(
                     different_execution,
@@ -100,7 +100,7 @@ fn retired_cas_identity_is_one_way_and_cannot_rewrite_its_execution() {
             storage.revision(&store).unwrap(),
             PublishStaleBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
                 selected,
                 stale_binding(
                     execution_binding(),
@@ -121,7 +121,7 @@ fn retired_cas_identity_is_one_way_and_cannot_rewrite_its_execution() {
         &store,
         storage.publish_valid_binding(
             storage.revision(&store).unwrap(),
-            valid_request(&store, storage, thread, selected, cas_thread),
+            valid_request(&store, &storage, thread, selected, cas_thread),
         ),
     );
     assert!(matches!(
@@ -143,7 +143,8 @@ fn first_stale_inclusive_fork_retains_exact_nonzero_provenance_after_reopen() {
     let home = TestHome::new("phase9-first-stale-inclusive-fork");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, Some(parent), _, selected) = fault_pending_path(&store, storage, 224, true) else {
+    let (thread, Some(parent), _, selected) = fault_pending_path(&store, &storage, 224, true)
+    else {
         unreachable!()
     };
     let parent = storage
@@ -164,7 +165,7 @@ fn first_stale_inclusive_fork_retains_exact_nonzero_provenance_after_reopen() {
             storage.revision(&store).unwrap(),
             PublishStaleBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
                 selected,
                 StaleCasBinding::new(
                     storage
@@ -186,7 +187,7 @@ fn first_stale_inclusive_fork_retains_exact_nonzero_provenance_after_reopen() {
             ),
         ),
     );
-    let assert_provenance = |store: &HomeStore, storage: SyndicStorage| {
+    let assert_provenance = |store: &HomeStore, storage: &SyndicStorage| {
         let binding = storage
             .current_binding(store, thread, point_limit())
             .unwrap()
@@ -199,7 +200,7 @@ fn first_stale_inclusive_fork_retains_exact_nonzero_provenance_after_reopen() {
         assert_eq!(stale.observed_lineage(), Some(lineage));
         assert_eq!(stale.observed_native_turn_count(), Some(native_count));
     };
-    assert_provenance(&store, storage);
+    assert_provenance(&store, &storage);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -207,7 +208,7 @@ fn first_stale_inclusive_fork_retains_exact_nonzero_provenance_after_reopen() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    assert_provenance(&reopened, storage);
+    assert_provenance(&reopened, &storage);
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

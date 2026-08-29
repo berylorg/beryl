@@ -2,8 +2,8 @@
 fn more_than_256_marker_effects_use_one_fixed_continuation() {
     const EFFECTS: u64 = 257;
     let (_home, store, storage, thread) = fixture("many-marker-effects", 140);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 141, 142);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 141, 142);
     session = complete_staged(
         &storage,
         &store,

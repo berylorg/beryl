@@ -28,7 +28,7 @@ fn limits(items: usize) -> CursorReadLimits {
 
 fn source(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> AcceptedReadySourceRecord {
     let revision = storage.revision(store).unwrap();
     let page = storage
@@ -41,25 +41,30 @@ fn source(
 
 fn seed_ordinary_ready_source(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft_byte: u8,
 ) -> AcceptedReadySourceRecord {
     let initial_draft = draft_id(draft_byte);
     let replacement_draft = draft_id(draft_byte + 1);
     let consumed_source_draft = draft_id(draft_byte + 2);
-    seed_canonical_empty_thread(store, storage, thread, initial_draft);
+    seed_canonical_empty_thread(store, storage.clone(), thread, initial_draft);
     let turn = support::exact_cas::submit_current_draft(
         store,
-        storage,
+        storage.clone(),
         thread,
         replacement_draft,
         SyndicItemId::from_bytes([draft_byte; 16]),
         "ready-source backing turn",
         support::timestamp(10),
     );
-    let _source =
-        support::exact_cas::establish_turn(store, storage, thread, turn, support::timestamp(11));
+    let _source = support::exact_cas::establish_turn(
+        store,
+        storage.clone(),
+        thread,
+        turn,
+        support::timestamp(11),
+    );
 
     let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
     let current_thread = storage.thread(store, thread, limit).unwrap().unwrap();
@@ -75,7 +80,7 @@ fn seed_ordinary_ready_source(
     let route_head = gate.selected_route().expect("active route is selected");
     let route = syndic_storage::test_faults::accepted_route_generation(
         store,
-        storage,
+        storage.clone(),
         thread,
         route_head.generation(),
     )
@@ -99,7 +104,7 @@ fn seed_ordinary_ready_source(
     let content = empty_composer_content();
     commit(
         store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::Thread(ThreadRecord::new(
                 thread,
@@ -206,7 +211,7 @@ fn seed_ordinary_ready_source(
 #[test]
 fn global_ready_source_pages_are_ordered_bounded_and_revision_fenced() {
     let (_home, store, storage) = seeded_populated("phase57-ready-source-page");
-    let extra = seed_ordinary_ready_source(&store, storage, id(50), 150);
+    let extra = seed_ordinary_ready_source(&store, &storage, id(50), 150);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -225,7 +230,7 @@ fn global_ready_source_pages_are_ordered_bounded_and_revision_fenced() {
     assert_eq!(second.records(), &[extra]);
     assert!(second.next_cursor().is_none());
 
-    let _later = seed_ordinary_ready_source(&store, storage, id(60), 160);
+    let _later = seed_ordinary_ready_source(&store, &storage, id(60), 160);
     assert!(matches!(
         storage.accepted_ready_source_page(&store, revision, Some(cursor), limits(1)),
         Err(SyndicReadError::StaleAcceptedReadySourceScan)
@@ -244,7 +249,7 @@ fn global_ready_source_pages_are_ordered_bounded_and_revision_fenced() {
         .unwrap();
 }
 
-fn seed_terminal_heavy(store: &beryl_home_store::HomeStore, storage: SyndicStorage) {
+fn seed_terminal_heavy(store: &beryl_home_store::HomeStore, storage: &SyndicStorage) {
     seed_large_ready_generation(store, storage, 384);
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
@@ -252,9 +257,13 @@ fn seed_terminal_heavy(store: &beryl_home_store::HomeStore, storage: SyndicStora
         .input_gate(store, thread, accepted_support::limit())
         .unwrap()
         .unwrap();
-    let initial_route =
-        syndic_storage::test_faults::accepted_route_generation(store, storage, thread, generation)
-            .unwrap();
+    let initial_route = syndic_storage::test_faults::accepted_route_generation(
+        store,
+        storage.clone(),
+        thread,
+        generation,
+    )
+    .unwrap();
     assert_eq!(
         initial_gate.selected_route(),
         Some(AcceptedRouteHeadProof::new(
@@ -337,7 +346,7 @@ fn seed_terminal_heavy(store: &beryl_home_store::HomeStore, storage: SyndicStora
         })
         .collect::<Vec<_>>();
     for chunk in leaves.chunks(96) {
-        commit(store, storage, batch(chunk.iter().cloned()));
+        commit(store, storage.clone(), batch(chunk.iter().cloned()));
     }
 
     assert_eq!(ready_count, 84);
@@ -347,7 +356,7 @@ fn seed_terminal_heavy(store: &beryl_home_store::HomeStore, storage: SyndicStora
     let final_head = AcceptedRouteHeadProof::new(generation, route_revision);
     commit(
         store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::InputGate(
                 InputGateRecord::new(
@@ -408,11 +417,11 @@ fn candidate_pages_advance_across_terminal_history_and_preserve_accepted_order()
     let home = TestHome::new("phase57-terminal-heavy-ready");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_terminal_heavy(&store, storage);
+    seed_terminal_heavy(&store, &storage);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    let source = source(&store, storage);
+    let source = source(&store, &storage);
     let first = storage
         .accepted_ready_candidate_page(&store, source, None, limits(256))
         .unwrap();
@@ -449,14 +458,14 @@ fn candidate_pages_advance_across_terminal_history_and_preserve_accepted_order()
 #[test]
 fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
     let (_home, store, storage) = seeded_mixed("phase57-ready-candidate-drift");
-    let old_source = source(&store, storage);
+    let old_source = source(&store, &storage);
     let first = storage
         .accepted_ready_candidate_page(&store, old_source, None, limits(1))
         .unwrap();
     assert_eq!(first.records().len(), 1);
     let old_cursor = first.next_cursor().expect("source interval continues");
 
-    match store.execute_current(AcceptedOperation::Retry.current_command(storage)) {
+    match store.execute_current(AcceptedOperation::Retry.current_command(&storage)) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -465,7 +474,7 @@ fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
             panic!("expected retry command to commit without later failure, got {outcome:?}")
         }
     }
-    let new_source = source(&store, storage);
+    let new_source = source(&store, &storage);
     assert_ne!(new_source, old_source);
     assert!(matches!(
         storage.accepted_ready_candidate_page(&store, old_source, Some(old_cursor), limits(1),),
@@ -480,8 +489,8 @@ fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
 #[test]
 fn claiming_the_last_ready_input_removes_global_source_authority() {
     let (_home, store, storage) = seeded_populated("phase57-last-ready-claim");
-    assert_eq!(source(&store, storage).thread_id(), id(40));
-    match store.execute_current(AcceptedOperation::Begin.current_command(storage)) {
+    assert_eq!(source(&store, &storage).thread_id(), id(40));
+    match store.execute_current(AcceptedOperation::Begin.current_command(&storage)) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -509,7 +518,7 @@ fn assert_reopen_rejects(
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     corruption(storage, &store);
     let error = store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

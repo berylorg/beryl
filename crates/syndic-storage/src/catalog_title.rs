@@ -39,9 +39,9 @@ impl From<ReadError> for HistoryTitleReadError {
     }
 }
 
-pub(crate) struct StoreTitleSnapshot<'a> {
-    pub(crate) storage: SyndicStorage,
-    pub(crate) store: &'a HomeStore,
+pub(crate) struct StoreTitleSnapshot<'storage, 'store> {
+    pub(crate) storage: &'storage SyndicStorage,
+    pub(crate) store: &'store HomeStore,
 }
 
 pub(crate) struct DomainTitleSnapshot<'a, 'b> {

@@ -33,6 +33,12 @@ impl StorageDomain for RawSessionDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = RAW_SESSION_FAMILIES;
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -202,9 +208,10 @@ fn write_raw(path: &std::path::Path, mutation: RawMutation) {
     let mut store =
         HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
     let raw = store.register_domain::<RawSessionDomain>().unwrap();
+    let raw_revision = store.domain_revision(&raw).unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(raw.contribution(store.domain_revision(raw).unwrap(), mutation))
+        .add(raw.contribution(raw_revision, mutation))
         .unwrap();
     match store.execute(command) {
         CommandOutcome::Committed {
@@ -404,7 +411,7 @@ fn paired_stale_claims_are_readable_and_begin_restore_deletes_both_copies() {
     assert!(
         raw_store
             .read_point::<RawSessionDomain, RawClaimByWindowCodec>(
-                raw,
+                &raw,
                 &window_id,
                 PointReadLimit::new(53).unwrap(),
             )
@@ -414,7 +421,7 @@ fn paired_stale_claims_are_readable_and_begin_restore_deletes_both_copies() {
     assert!(
         raw_store
             .read_point::<RawSessionDomain, RawClaimByThreadCodec>(
-                raw,
+                &raw,
                 &thread_id,
                 PointReadLimit::new(53).unwrap(),
             )

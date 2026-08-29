@@ -38,7 +38,7 @@ impl MarkerReplayAuthority {
     )]
     pub(in crate::cas_projection) fn prepare(
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         assets: AssetState,
         context: InputReplayContext,
         record: InputReplayRecord,
@@ -50,7 +50,7 @@ impl MarkerReplayAuthority {
     ) -> Result<Self, InputReplayPrepareError> {
         let source = MarkerSource::prepare(
             store,
-            storage,
+            &storage,
             assets,
             context,
             record,
@@ -62,11 +62,11 @@ impl MarkerReplayAuthority {
             diagnostics,
         )
         .map_err(|error| error.into_preparation())?;
-        let item_count = structural_count(&source, store, storage, cancellation)?;
+        let item_count = structural_count(&source, store, &storage, cancellation)?;
         if item_count == 0 {
             return Err(InputReplayPrepareError::EmptyInput);
         }
-        let sequence_digest = sequence_digest(&source, store, storage, cancellation, item_count)?;
+        let sequence_digest = sequence_digest(&source, store, &storage, cancellation, item_count)?;
         let header = StreamedInputHeader::new(
             source.source_identity(),
             source.source_revision(),
@@ -95,7 +95,7 @@ impl MarkerReplayAuthority {
     pub(in crate::cas_projection) fn service<'a>(
         &'a mut self,
         store: &'a HomeStore,
-        storage: SyndicStorage,
+        storage: &'a SyndicStorage,
         cancellation: &'a ProjectionCancellationToken,
     ) -> MarkerReplayService<'a> {
         MarkerReplayService {
@@ -109,14 +109,14 @@ impl MarkerReplayAuthority {
     fn begin_pass(
         &mut self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<StreamedInputHeader, StreamedInputSourceError> {
         if self.pass.is_some() {
             return Err(StreamedInputSourceError::InvalidSource);
         }
         self.source
-            .check_authority(store, storage, cancellation)
+            .check_authority(store, &storage, cancellation)
             .map_err(|error| error.into_source())?;
         self.pass = Some(ReplayPass {
             walk: DescriptorWalk::new(),
@@ -128,14 +128,14 @@ impl MarkerReplayAuthority {
     fn next_descriptor(
         &mut self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<Option<StreamedInputDescriptor>, StreamedInputSourceError> {
         if self.pass.is_none() {
             return Err(StreamedInputSourceError::InvalidSource);
         }
         self.source
-            .check_authority(store, storage, cancellation)
+            .check_authority(store, &storage, cancellation)
             .map_err(|error| error.into_source())?;
         let pass = self
             .pass
@@ -147,11 +147,11 @@ impl MarkerReplayAuthority {
         pass.page = None;
         let blueprint = pass
             .walk
-            .next(&self.source, store, storage, cancellation)
+            .next(&self.source, store, &storage, cancellation)
             .map_err(|error| error.into_source())?;
         let Some(blueprint) = blueprint else {
             self.source
-                .check_authority(store, storage, cancellation)
+                .check_authority(store, &storage, cancellation)
                 .map_err(|error| error.into_source())?;
             self.pass = None;
             return Ok(None);
@@ -189,7 +189,7 @@ impl MarkerReplayAuthority {
     fn read_text_page(
         &mut self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
         source_id: StreamedTextSourceId,
         start: u64,
@@ -202,7 +202,7 @@ impl MarkerReplayAuthority {
             .read(
                 &self.source,
                 store,
-                storage,
+                &storage,
                 cancellation,
                 source_id,
                 start,
@@ -214,7 +214,7 @@ impl MarkerReplayAuthority {
 pub(in crate::cas_projection) struct MarkerReplayService<'a> {
     authority: &'a mut MarkerReplayAuthority,
     store: &'a HomeStore,
-    storage: SyndicStorage,
+    storage: &'a SyndicStorage,
     cancellation: &'a ProjectionCancellationToken,
 }
 
@@ -225,14 +225,14 @@ impl StreamedInputBrokerService for MarkerReplayService<'_> {
 
     fn begin_pass(&mut self) -> Result<StreamedInputHeader, StreamedInputSourceError> {
         self.authority
-            .begin_pass(self.store, self.storage, self.cancellation)
+            .begin_pass(self.store, &self.storage, self.cancellation)
     }
 
     fn next_descriptor(
         &mut self,
     ) -> Result<Option<StreamedInputDescriptor>, StreamedInputSourceError> {
         self.authority
-            .next_descriptor(self.store, self.storage, self.cancellation)
+            .next_descriptor(self.store, &self.storage, self.cancellation)
     }
 
     fn read_text_page(
@@ -243,7 +243,7 @@ impl StreamedInputBrokerService for MarkerReplayService<'_> {
     ) -> Result<StreamedTextPage, StreamedInputSourceError> {
         self.authority.read_text_page(
             self.store,
-            self.storage,
+            &self.storage,
             self.cancellation,
             source_id,
             start,
@@ -268,7 +268,7 @@ fn local_image_descriptor(_source: &MarkerSource, path: Box<str>) -> StreamedLoc
 fn structural_count(
     source: &MarkerSource,
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     cancellation: &ProjectionCancellationToken,
 ) -> Result<u64, InputReplayPrepareError> {
     source
@@ -294,7 +294,7 @@ fn structural_count(
 fn sequence_digest(
     source: &MarkerSource,
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     cancellation: &ProjectionCancellationToken,
     item_count: u64,
 ) -> Result<StreamedInputSequenceDigest, InputReplayPrepareError> {

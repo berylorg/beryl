@@ -23,11 +23,11 @@ fn every_proven_terminal_outcome_persists_its_exact_gate_semantics() {
         let home = TestHome::new(&format!("phase6-terminal-{name}"));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        let (thread, turn) = seed_pending_turn(&store, storage);
-        let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+        let (thread, turn) = seed_pending_turn(&store, &storage);
+        let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
         admit(
             &store,
-            storage,
+            &storage,
             thread,
             turn,
             &source,
@@ -36,7 +36,7 @@ fn every_proven_terminal_outcome_persists_its_exact_gate_semantics() {
         );
         admit(
             &store,
-            storage,
+            &storage,
             thread,
             turn,
             &source,
@@ -69,12 +69,12 @@ fn active_sourced_unknown_terminal_enters_queue_only_wait_without_stop_authority
     let home = TestHome::new("phase6-active-unknown-terminal-awaiting");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let (thread, turn) = seed_pending_turn(&store, &storage);
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
 
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -87,7 +87,7 @@ fn active_sourced_unknown_terminal_enters_queue_only_wait_without_stop_authority
             storage.revision(&store).unwrap(),
             next_event(
                 &store,
-                storage,
+                &storage,
                 thread,
                 turn,
                 &source,

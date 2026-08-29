@@ -33,12 +33,12 @@ use stop_support::{active_stop_fixture_with_faults, admit_current_draft_as_accep
 #[cfg(feature = "test-faults")]
 fn delete_fixture(
     store: &beryl_home_store::HomeStore,
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     deletion: syndic_storage::test_faults::FixtureDelete,
 ) {
     let mut mutation = syndic_storage::test_faults::FixtureBatch::new();
     mutation.delete(deletion).unwrap();
-    support::commit(store, storage, mutation);
+    support::commit(store, storage.clone(), mutation);
 }
 
 #[test]
@@ -383,7 +383,7 @@ fn compacting_and_finalizing_gates_are_typed_ineligible() {
     let compacting = recovery_support::pending_home("phase68-stop-admission-compacting", 680);
     recovery_support::replace_gate_state(
         &compacting.store,
-        compacting.storage,
+        compacting.storage.clone(),
         compacting.thread,
         InputGateState::Compacting {
             turn_id: compacting.turn,
@@ -433,7 +433,7 @@ fn compacting_and_finalizing_gates_are_typed_ineligible() {
 #[cfg(feature = "test-faults")]
 fn a_stale_binding_successor_is_typed_ineligible() {
     let fixture = active_stop_fixture("phase68-stop-admission-stale-binding");
-    let source = recovery_support::startup_source(&fixture.store, fixture.storage);
+    let source = recovery_support::startup_source(&fixture.store, fixture.storage.clone());
     let DeliveryRecoveryCase::Active(active) = fixture
         .storage
         .classify_delivery_recovery(&fixture.store, &source, point_limit())
@@ -544,7 +544,7 @@ fn matching_terminal_consumption_during_the_second_pass_is_concurrent_change() {
     fixture.admit_stop();
     correlate_user_item(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         fixture.item,
@@ -649,7 +649,7 @@ fn a_stably_missing_active_cas_turn_is_an_invariant_failure() {
     mutation
         .delete(FixtureDelete::ActiveCasTurn(fixture.target.snapshot_id()))
         .unwrap();
-    support::commit(&fixture.store, fixture.storage, mutation);
+    support::commit(&fixture.store, fixture.storage.clone(), mutation);
 
     assert!(matches!(
         fixture
@@ -667,7 +667,7 @@ fn a_missing_reverse_cas_turn_authority_is_an_invariant_failure() {
     let fixture = active_stop_fixture("phase68-stop-admission-missing-cas-turn-index");
     delete_fixture(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         syndic_storage::test_faults::FixtureDelete::CasTurn {
             thread: fixture.target.cas_thread_id().clone(),
             turn: fixture.target.cas_turn_id().clone(),
@@ -711,7 +711,7 @@ fn a_present_but_contradictory_cas_turn_authority_is_an_invariant_failure() {
     );
     let mut mutation = FixtureBatch::new();
     mutation.put(FixtureRecord::CasTurn(contradictory)).unwrap();
-    support::commit(&fixture.store, fixture.storage, mutation);
+    support::commit(&fixture.store, fixture.storage.clone(), mutation);
 
     assert!(matches!(
         fixture
@@ -731,7 +731,7 @@ fn a_missing_ready_route_source_is_an_invariant_failure() {
     let selected = fixture.gate().selected_route().unwrap();
     delete_fixture(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         syndic_storage::test_faults::FixtureDelete::AcceptedReadySource {
             thread: fixture.thread,
             generation: selected.generation(),
@@ -779,7 +779,7 @@ fn a_missing_stopped_next_route_source_is_an_invariant_failure() {
     let selected = fixture.gate().selected_route().unwrap();
     delete_fixture(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         syndic_storage::test_faults::FixtureDelete::AcceptedNextSource {
             thread: fixture.thread,
             generation: selected.generation(),
@@ -803,7 +803,7 @@ fn a_stopping_gate_without_its_selected_record_is_an_invariant_failure() {
     fixture.admit_stop();
     delete_fixture(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         syndic_storage::test_faults::FixtureDelete::StopOperation(fixture.operation_id),
     );
 

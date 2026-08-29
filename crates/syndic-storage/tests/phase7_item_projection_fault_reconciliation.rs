@@ -52,7 +52,7 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
     }
 }
 
-fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> PendingPublication {
+fn prepare_final_publication(store: &HomeStore, storage: &SyndicStorage) -> PendingPublication {
     let thread = id(1);
     let draft = draft_id(2);
     execute(
@@ -72,7 +72,7 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
     let item = SyndicItemId::from_bytes([4; 16]);
     submit_current_draft(
         store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(3),
         item,
@@ -135,7 +135,7 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
 
 fn assert_recovered_state(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     pending: &PendingPublication,
     expected: RecoveredState,
 ) {
@@ -211,7 +211,7 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
         let faults = FaultController::new();
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        let pending = prepare_final_publication(&store, storage);
+        let pending = prepare_final_publication(&store, &storage);
 
         let mut command = HomeCommand::new(store.home_revision().unwrap());
         command
@@ -265,11 +265,11 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
             reopened
                 .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
                 .unwrap();
-            assert_recovered_state(&reopened, reopened_storage, &pending, expected);
+            assert_recovered_state(&reopened, &reopened_storage, &pending, expected);
             reopened.close().unwrap();
             continue;
         }
-        assert_recovered_state(&store, storage, &pending, expected);
+        assert_recovered_state(&store, &storage, &pending, expected);
         store
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap();
@@ -293,7 +293,7 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
         reopened
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap();
-        assert_recovered_state(&reopened, storage, &pending, expected);
+        assert_recovered_state(&reopened, &storage, &pending, expected);
         reopened.close().unwrap();
     }
 }

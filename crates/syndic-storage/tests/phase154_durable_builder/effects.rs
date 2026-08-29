@@ -1,8 +1,8 @@
 #[test]
 fn staged_marker_effects_derive_current_placement_and_close_identity_collisions() {
     let (home, store, storage, thread) = fixture("marker-effects", 1);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 3, 4);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 3, 4);
 
     let text = DraftPieceReplacementV1::new(
         point(0),

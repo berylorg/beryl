@@ -289,7 +289,7 @@ impl SyndicStorage {
                 crate::domain::SyndicDomain,
                 ExactCodec<StableItemProjectionsFamily>,
             >(
-                self.handle,
+                &self.handle,
                 &CursorRange::closed(
                     StableItemProjectionKey {
                         item,
@@ -364,7 +364,7 @@ impl SyndicStorage {
                 .map_err(|_| SyndicReadError::Invariant("projection frontier is invalid"))?;
             let page = store
                 .read_cursor::<crate::domain::SyndicDomain, ExactCodec<ItemProjectionsFamily>>(
-                    self.handle,
+                    &self.handle,
                     &CursorRange::closed(
                         ItemProjectionKey {
                             item,

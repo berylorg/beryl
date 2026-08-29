@@ -59,13 +59,13 @@ fn reopen_rejects_persisted_binding_that_claims_the_pending_tail() {
     let home = TestHome::new("phase9-persisted-pending-claim");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 57, false) else {
+    let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 57, false) else {
         unreachable!()
     };
     let represented =
         CasRepresentedPrefixProof::new(Some(turn), selected.thread_revision(), selected.digest());
     let cas_thread = CasThreadId::new("corrupt-pending-claim").unwrap();
-    let revision = current_binding_revision(&store, storage, thread)
+    let revision = current_binding_revision(&store, &storage, thread)
         .checked_next()
         .unwrap();
     let usable = UsableCasBinding::new(
@@ -132,7 +132,7 @@ fn reopen_rejects_first_cas_membership_established_at_another_prefix() {
     let home = TestHome::new("phase9-first-membership-establishment");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, Some(parent), _, selected) = fault_pending_path(&store, storage, 60, true) else {
+    let (thread, Some(parent), _, selected) = fault_pending_path(&store, &storage, 60, true) else {
         unreachable!()
     };
     let parent = storage
@@ -150,7 +150,7 @@ fn reopen_rejects_first_cas_membership_established_at_another_prefix() {
         empty_selected_path_digest(),
     );
     let cas_thread = CasThreadId::new("corrupt-first-establishment").unwrap();
-    let revision = current_binding_revision(&store, storage, thread)
+    let revision = current_binding_revision(&store, &storage, thread)
         .checked_next()
         .unwrap();
     let usable = UsableCasBinding::new(

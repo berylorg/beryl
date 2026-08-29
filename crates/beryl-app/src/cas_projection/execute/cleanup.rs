@@ -61,7 +61,7 @@ impl CasProjectionCoordinator {
     pub(super) fn abandon_projection_target(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         _session: &AdmittedProjectionSession,
         request: &CasProjectionRequest,
         basis: NativeProjectionBasis,
@@ -118,7 +118,7 @@ impl CasProjectionCoordinator {
     pub(super) fn publish_abandoned_target(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         request: &CasProjectionRequest,
         basis: NativeProjectionBasis,
         cas_thread_id: CasThreadId,

@@ -25,11 +25,11 @@ fn every_delivery_transition_executes_current_and_persists_exact_aggregates() {
         let name = format!("phase53-current-{}", operation.name());
         let (home, store, storage) = seeded_operation(&name, operation);
         assert_eq!(
-            operation.status(&store, storage),
+            operation.status(&store, &storage),
             AcceptedInputDeliveryTransitionStatus::Prior
         );
 
-        match store.execute_current(operation.current_command(storage)) {
+        match store.execute_current(operation.current_command(&storage)) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..
@@ -42,12 +42,12 @@ fn every_delivery_transition_executes_current_and_persists_exact_aggregates() {
         }
 
         assert_eq!(
-            operation.status(&store, storage),
+            operation.status(&store, &storage),
             AcceptedInputDeliveryTransitionStatus::Exact
         );
-        assert_operation_committed(&store, storage, operation);
-        assert_eq!(aggregates(&store, storage), expected_aggregates(operation));
-        let (_, entry) = route_entry(&store, storage, operation.input());
+        assert_operation_committed(&store, &storage, operation);
+        assert_eq!(aggregates(&store, &storage), expected_aggregates(operation));
+        let (_, entry) = route_entry(&store, &storage, operation.input());
         assert_eq!(
             entry.leaf().last_transition(),
             Some(AcceptedRouteLeafTransitionProof::new(
@@ -62,19 +62,19 @@ fn every_delivery_transition_executes_current_and_persists_exact_aggregates() {
         let mut reopened = open(home.path());
         let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
         assert_eq!(
-            operation.status(&reopened, reopened_storage),
+            operation.status(&reopened, &reopened_storage),
             AcceptedInputDeliveryTransitionStatus::Exact
         );
-        assert_operation_committed(&reopened, reopened_storage, operation);
+        assert_operation_committed(&reopened, &reopened_storage, operation);
         assert_eq!(
-            aggregates(&reopened, reopened_storage),
+            aggregates(&reopened, &reopened_storage),
             expected_aggregates(operation)
         );
         reopened.close().unwrap();
     }
 }
 
-fn aggregates(store: &beryl_home_store::HomeStore, storage: SyndicStorage) -> Aggregates {
+fn aggregates(store: &beryl_home_store::HomeStore, storage: &SyndicStorage) -> Aggregates {
     let gate = storage.input_gate(store, id(40), limit()).unwrap().unwrap();
     let proof = gate.selected_route().unwrap();
     let page = storage

@@ -27,9 +27,9 @@ impl DraftMarkerSealService {
             let mut state = lock_state(&self.inner);
             validate_store(&mut state, store)?;
             require_active(state.lifecycle)?;
-            state.storage
+            state.storage.clone()
         };
-        authenticate_candidate(storage, store, request.candidate)?;
+        authenticate_candidate(&storage, store, request.candidate)?;
 
         let mut state = lock_state(&self.inner);
         validate_store(&mut state, store)?;
@@ -79,7 +79,7 @@ impl DraftMarkerSealService {
 }
 
 pub(super) fn authenticate_candidate(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     expected: DraftEditorCandidateActivationBindingV1,
 ) -> Result<(), DraftMarkerSealServiceError> {
@@ -112,7 +112,7 @@ pub(super) fn authenticate_candidate(
 }
 
 pub(super) fn authenticate_supersession(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     request: DraftMarkerSealFlightRequest,
     intent: DraftMarkerSealReleaseIntent,

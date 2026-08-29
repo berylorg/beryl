@@ -345,7 +345,7 @@ fn spawn_worker(
         return Ok(());
     };
     let validator = runtime.context.lease_validator(command);
-    let storage = runtime.context.storage;
+    let storage = runtime.context.storage.clone();
     let cancellation = runtime.context.ordinary_cancellation.clone();
     let signal = runtime.context.signal.clone();
     let completions = runtime.completions.clone();
@@ -353,7 +353,7 @@ fn spawn_worker(
         .name("beryl-recovered-pending-execution".to_owned())
         .spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                execute_source(&validator, storage, &cancellation, &source, &mut lease)
+                execute_source(&validator, &storage, &cancellation, &source, &mut lease)
             }));
             let disposition = result.unwrap_or(WorkerDisposition::Fatal);
             completions.publish(WorkerCompletion {
@@ -370,7 +370,7 @@ fn spawn_worker(
 
 fn execute_source(
     validator: &super::next_turn::LeaseValidationAuthority,
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     cancellation: &crate::cas_projection::ProjectionCancellationToken,
     source: &RecoveredPendingSource,
     lease: &mut crate::cas_projection::ScheduledOrdinaryExecutionLease,

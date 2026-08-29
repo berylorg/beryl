@@ -150,7 +150,7 @@ impl Ingester {
         };
         let target = match LiveSourceTarget::resolve(
             &self.home,
-            storage,
+            &storage,
             permit.syndic_thread_id(),
             permit.cas_thread_id(),
             permit.cas_turn_id(),
@@ -159,11 +159,11 @@ impl Ingester {
             Ok(target) => target,
             Err(_) => return self.failed_normal_terminal_permit(permit, terminal),
         };
-        let audit = match self.audit_terminal_items(storage, &target, limit) {
+        let audit = match self.audit_terminal_items(&storage, &target, limit) {
             Ok(audit) => audit,
             Err(()) => return self.failed_normal_terminal_permit(permit, terminal),
         };
-        let frontier = match LiveSourceFrontier::read(&self.home, storage, &target, limit) {
+        let frontier = match LiveSourceFrontier::read(&self.home, &storage, &target, limit) {
             Ok(frontier) if frontier.state() == &audit.state => frontier,
             Ok(_) | Err(_) => return self.failed_normal_terminal_permit(permit, terminal),
         };
@@ -181,7 +181,7 @@ impl Ingester {
             &self.home,
             self.home_id,
             home_generation,
-            storage,
+            &storage,
             &event,
             limit,
         )
@@ -224,7 +224,7 @@ impl Ingester {
 
     fn audit_terminal_items(
         &self,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         target: &LiveSourceTarget,
         limit: SyndicPointReadLimit,
     ) -> Result<TerminalAuditProof, ()> {
@@ -253,7 +253,7 @@ impl Ingester {
 
     fn scan_terminal_items(
         &self,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         target: &LiveSourceTarget,
         limit: SyndicPointReadLimit,
         audit: &mut TerminalAudit,
@@ -289,7 +289,7 @@ impl Ingester {
 
     fn audit_terminal_item(
         &self,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         target: &LiveSourceTarget,
         index: &TurnItemIndexRecord,
         limit: SyndicPointReadLimit,

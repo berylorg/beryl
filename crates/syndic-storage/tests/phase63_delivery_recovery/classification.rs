@@ -18,10 +18,10 @@ fn safe_pending_accepts_unbound_valid_and_stale_non_active_bindings() {
     let unbound = pending_home("phase63-safe-pending-unbound", 401);
     assert!(matches!(
         unbound
-            .storage
+            .storage.clone()
             .classify_delivery_recovery(
                 &unbound.store,
-                &startup_source(&unbound.store, unbound.storage),
+                &startup_source(&unbound.store, unbound.storage.clone()),
                 point_limit(),
             )
             .unwrap(),
@@ -35,10 +35,16 @@ fn safe_pending_accepts_unbound_valid_and_stale_non_active_bindings() {
     ));
 
     let valid = pending_home("phase63-safe-pending-valid", 402);
-    let active = activate(&valid.store, valid.storage, valid.thread, valid.turn, false);
+    let active = activate(
+        &valid.store,
+        valid.storage.clone(),
+        valid.thread,
+        valid.turn,
+        false,
+    );
     cancel_active(
         &valid.store,
-        valid.storage,
+        valid.storage.clone(),
         valid.thread,
         valid.turn,
         active.snapshot,
@@ -46,9 +52,10 @@ fn safe_pending_accepts_unbound_valid_and_stale_non_active_bindings() {
     assert!(matches!(
         valid
             .storage
+            .clone()
             .classify_delivery_recovery(
                 &valid.store,
-                &startup_source(&valid.store, valid.storage),
+                &startup_source(&valid.store, valid.storage.clone()),
                 point_limit(),
             )
             .unwrap(),
@@ -57,6 +64,7 @@ fn safe_pending_accepts_unbound_valid_and_stale_non_active_bindings() {
     assert!(matches!(
         valid
             .storage
+            .clone()
             .current_binding(&valid.store, valid.thread, point_limit())
             .unwrap()
             .unwrap()
@@ -65,13 +73,14 @@ fn safe_pending_accepts_unbound_valid_and_stale_non_active_bindings() {
         BindingState::Valid(_)
     ));
 
-    publish_stale_valid(&valid.store, valid.storage, valid.thread);
+    publish_stale_valid(&valid.store, valid.storage.clone(), valid.thread);
     assert!(matches!(
         valid
             .storage
+            .clone()
             .classify_delivery_recovery(
                 &valid.store,
-                &startup_source(&valid.store, valid.storage),
+                &startup_source(&valid.store, valid.storage.clone()),
                 point_limit(),
             )
             .unwrap(),
@@ -80,6 +89,7 @@ fn safe_pending_accepts_unbound_valid_and_stale_non_active_bindings() {
     assert!(matches!(
         valid
             .storage
+            .clone()
             .current_binding(&valid.store, valid.thread, point_limit())
             .unwrap()
             .unwrap()
@@ -95,14 +105,15 @@ fn active_classification_covers_pre_and_post_cas_turn_publication() {
         let recovery = pending_home("phase63-active-classification", value);
         let expected = activate(
             &recovery.store,
-            recovery.storage,
+            recovery.storage.clone(),
             recovery.thread,
             recovery.turn,
             publish_cas_turn,
         );
-        let source = startup_source(&recovery.store, recovery.storage);
+        let source = startup_source(&recovery.store, recovery.storage.clone());
         let DeliveryRecoveryCase::Active(active) = recovery
             .storage
+            .clone()
             .classify_delivery_recovery(&recovery.store, &source, point_limit())
             .unwrap()
         else {
@@ -145,14 +156,15 @@ fn active_abandonment_authenticates_same_turn_post_abandonment_recovery() {
     let recovery = pending_home("phase63-post-abandonment", 420);
     activate(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
         true,
     );
-    let active_source = startup_source(&recovery.store, recovery.storage);
+    let active_source = startup_source(&recovery.store, recovery.storage.clone());
     let DeliveryRecoveryCase::Active(active) = recovery
         .storage
+        .clone()
         .classify_delivery_recovery(&recovery.store, &active_source, point_limit())
         .unwrap()
     else {
@@ -163,20 +175,23 @@ fn active_abandonment_authenticates_same_turn_post_abandonment_recovery() {
         .unwrap();
     execute(
         &recovery.store,
-        recovery
-            .storage
-            .abandon_active_binding(recovery.storage.revision(&recovery.store).unwrap(), request),
+        recovery.storage.clone().abandon_active_binding(
+            recovery.storage.clone().revision(&recovery.store).unwrap(),
+            request,
+        ),
     );
 
     assert!(matches!(
-        recovery
-            .storage
-            .classify_delivery_recovery(&recovery.store, &active_source, point_limit(),),
+        recovery.storage.clone().classify_delivery_recovery(
+            &recovery.store,
+            &active_source,
+            point_limit(),
+        ),
         Err(DeliveryRecoveryClassificationError::SourceDrift)
     ));
-    let recovered_source = startup_source(&recovery.store, recovery.storage);
+    let recovered_source = startup_source(&recovery.store, recovery.storage.clone());
     assert!(matches!(
-        recovery.storage.classify_delivery_recovery(
+        recovery.storage.clone().classify_delivery_recovery(
             &recovery.store,
             &recovered_source,
             point_limit(),
@@ -192,6 +207,7 @@ fn active_abandonment_authenticates_same_turn_post_abandonment_recovery() {
     assert!(matches!(
         recovery
             .storage
+            .clone()
             .current_binding(&recovery.store, recovery.thread, point_limit())
             .unwrap()
             .unwrap()
@@ -206,7 +222,7 @@ fn compaction_defers_work_and_idle_successor_settles_old_source() {
     let compacting = pending_home("phase63-deferred-compaction", 430);
     replace_gate_state(
         &compacting.store,
-        compacting.storage,
+        compacting.storage.clone(),
         compacting.thread,
         InputGateState::Compacting {
             turn_id: compacting.turn,
@@ -214,9 +230,9 @@ fn compaction_defers_work_and_idle_successor_settles_old_source() {
         },
     );
     assert!(matches!(
-        compacting.storage.classify_delivery_recovery(
+        compacting.storage.clone().classify_delivery_recovery(
             &compacting.store,
-            &startup_source(&compacting.store, compacting.storage),
+            &startup_source(&compacting.store, compacting.storage.clone()),
             point_limit(),
         ),
         Ok(DeliveryRecoveryCase::DeferredCompaction {
@@ -226,16 +242,16 @@ fn compaction_defers_work_and_idle_successor_settles_old_source() {
     ));
 
     let settled = pending_home("phase63-settled-successor", 431);
-    let source = startup_source(&settled.store, settled.storage);
+    let source = startup_source(&settled.store, settled.storage.clone());
     replace_gate_state(
         &settled.store,
-        settled.storage,
+        settled.storage.clone(),
         settled.thread,
         InputGateState::Idle,
     );
     assert!(matches!(
         settled
-            .storage
+            .storage.clone()
             .classify_delivery_recovery(&settled.store, &source, point_limit()),
         Ok(DeliveryRecoveryCase::Settled { thread_id }) if thread_id == settled.thread
     ));
@@ -244,17 +260,19 @@ fn compaction_defers_work_and_idle_successor_settles_old_source() {
 #[test]
 fn non_idle_gate_successor_is_reported_as_source_drift() {
     let recovery = pending_home("phase63-source-drift", 440);
-    let source = startup_source(&recovery.store, recovery.storage);
+    let source = startup_source(&recovery.store, recovery.storage.clone());
     replace_gate_state(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         InputGateState::PendingTurn(recovery.turn),
     );
     assert!(matches!(
-        recovery
-            .storage
-            .classify_delivery_recovery(&recovery.store, &source, point_limit()),
+        recovery.storage.clone().classify_delivery_recovery(
+            &recovery.store,
+            &source,
+            point_limit()
+        ),
         Err(DeliveryRecoveryClassificationError::SourceDrift)
     ));
 }
@@ -262,15 +280,16 @@ fn non_idle_gate_successor_is_reported_as_source_drift() {
 #[test]
 fn stable_unsupported_turn_state_is_reported_as_corruption() {
     let recovery = pending_home("phase63-corrupt-turn-state", 450);
-    let source = startup_source(&recovery.store, recovery.storage);
+    let source = startup_source(&recovery.store, recovery.storage.clone());
     let state = recovery
         .storage
+        .clone()
         .turn_state(&recovery.store, recovery.turn, point_limit())
         .unwrap()
         .unwrap();
     commit(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         batch([FixtureRecord::TurnState(fixture_turn_state(
             recovery.turn,
             state.revision().checked_next().unwrap(),
@@ -281,9 +300,11 @@ fn stable_unsupported_turn_state_is_reported_as_corruption() {
         ))]),
     );
     assert!(matches!(
-        recovery
-            .storage
-            .classify_delivery_recovery(&recovery.store, &source, point_limit()),
+        recovery.storage.clone().classify_delivery_recovery(
+            &recovery.store,
+            &source,
+            point_limit()
+        ),
         Err(DeliveryRecoveryClassificationError::Corruption(_))
     ));
 }
@@ -293,6 +314,7 @@ fn pending_gate_for_a_noncurrent_tail_is_never_recoverable() {
     let recovery = pending_home("phase63-corrupt-pending-tail", 460);
     let summary = recovery
         .storage
+        .clone()
         .history_summary(&recovery.store, recovery.thread, point_limit())
         .unwrap()
         .unwrap();
@@ -300,7 +322,7 @@ fn pending_gate_for_a_noncurrent_tail_is_never_recoverable() {
         beryl_model::SyndicTurnId::from_bytes(*crate::recovery_support::ordered_id(461).as_bytes());
     commit(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         batch([FixtureRecord::HistorySummary(HistorySummaryRecord::new(
             recovery.thread,
             summary.revision().checked_next().unwrap(),
@@ -312,17 +334,19 @@ fn pending_gate_for_a_noncurrent_tail_is_never_recoverable() {
         ))]),
     );
 
-    let source = startup_source(&recovery.store, recovery.storage);
+    let source = startup_source(&recovery.store, recovery.storage.clone());
     assert!(matches!(
-        recovery
-            .storage
-            .classify_delivery_recovery(&recovery.store, &source, point_limit()),
+        recovery.storage.clone().classify_delivery_recovery(
+            &recovery.store,
+            &source,
+            point_limit()
+        ),
         Err(DeliveryRecoveryClassificationError::Corruption(_))
     ));
 
-    let revision = recovery.storage.revision(&recovery.store).unwrap();
+    let revision = recovery.storage.clone().revision(&recovery.store).unwrap();
     assert!(matches!(
-        recovery.storage.recovered_pending_page(
+        recovery.storage.clone().recovered_pending_page(
             &recovery.store,
             revision,
             None,
@@ -339,19 +363,20 @@ fn active_snapshot_must_match_the_current_history_path() {
     let recovery = pending_home("phase63-corrupt-active-path", 470);
     activate(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
         false,
     );
     let summary = recovery
         .storage
+        .clone()
         .history_summary(&recovery.store, recovery.thread, point_limit())
         .unwrap()
         .unwrap();
     commit(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         batch([FixtureRecord::HistorySummary(HistorySummaryRecord::new(
             recovery.thread,
             summary.revision().checked_next().unwrap(),
@@ -363,11 +388,13 @@ fn active_snapshot_must_match_the_current_history_path() {
         ))]),
     );
 
-    let source = startup_source(&recovery.store, recovery.storage);
+    let source = startup_source(&recovery.store, recovery.storage.clone());
     assert!(matches!(
-        recovery
-            .storage
-            .classify_delivery_recovery(&recovery.store, &source, point_limit()),
+        recovery.storage.clone().classify_delivery_recovery(
+            &recovery.store,
+            &source,
+            point_limit()
+        ),
         Err(DeliveryRecoveryClassificationError::Corruption(_))
     ));
 }

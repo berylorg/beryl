@@ -577,7 +577,7 @@ impl SyndicStorage {
         crate::test_faults::metrics::record_syndic_point_read();
         store
             .read_point::<crate::domain::SyndicDomain, ExactCodec<F>>(
-                self.handle,
+                &self.handle,
                 &key,
                 PointReadLimit::new(limit.max_bytes()).expect("point bound is nonzero"),
             )

@@ -152,7 +152,7 @@ fn ineligible_exact_old_role_skips_successor_hook_and_seals_collision() {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(source.contribution(
-            store.domain_revision(source).unwrap(),
+            store.domain_revision(&source).unwrap(),
             SourcePut {
                 key: 1,
                 value: 2,
@@ -162,7 +162,7 @@ fn ineligible_exact_old_role_skips_successor_hook_and_seals_collision() {
         .unwrap();
     command
         .add(passive.contribution(
-            store.domain_revision(passive).unwrap(),
+            store.domain_revision(&passive).unwrap(),
             Put::<PassiveDomain, PassiveRecord>::new(9, 2),
         ))
         .unwrap();

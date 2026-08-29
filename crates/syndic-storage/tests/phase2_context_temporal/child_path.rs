@@ -62,7 +62,7 @@ fn submitted_context_owner_need_not_remain_on_child_selected_path() {
         let transcript_digest =
             fixture_advance_transcript_digest(fixture_transcript_digest_seed(), &transcript_entry);
         let new_root_history =
-            seed_detached_canonical_draft_backing(store, storage, id(238), new_draft);
+            seed_detached_canonical_draft_backing(store, storage.clone(), id(238), new_draft);
 
         let mut mutation = batch([
             FixtureRecord::Thread(ThreadRecord::new(

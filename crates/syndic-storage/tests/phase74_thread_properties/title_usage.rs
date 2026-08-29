@@ -161,7 +161,7 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
     let item = SyndicItemId::from_bytes([42; 16]);
     let first_turn = submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(43),
         item,
@@ -202,10 +202,10 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
         ),
     );
 
-    let source = establish_turn(&store, storage, thread, first_turn, timestamp(4));
+    let source = establish_turn(&store, storage.clone(), thread, first_turn, timestamp(4));
     admit_event(
         &store,
-        storage,
+        storage.clone(),
         thread,
         first_turn,
         &source,
@@ -214,7 +214,7 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
     );
     correlate_user_item(
         &store,
-        storage,
+        storage.clone(),
         thread,
         first_turn,
         item,
@@ -223,7 +223,7 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
     );
     admit_event(
         &store,
-        storage,
+        storage.clone(),
         thread,
         first_turn,
         &source,
@@ -232,7 +232,7 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
         ),
         timestamp(6),
     );
-    converge_and_release_terminal_history(&store, storage, thread, first_turn);
+    converge_and_release_terminal_history(&store, storage.clone(), thread, first_turn);
     let accepted_source_revision = storage
         .thread_attributes(&store, thread, limit())
         .unwrap()
@@ -242,7 +242,7 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
         .source_thread_revision();
     submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(45),
         SyndicItemId::from_bytes([44; 16]),

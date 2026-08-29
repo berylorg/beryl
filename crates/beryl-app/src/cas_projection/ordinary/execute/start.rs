@@ -33,8 +33,8 @@ use crate::cas_projection::{
 pub(super) fn execute(
     coordinator: &CasProjectionCoordinator,
     store: &HomeStore,
-    storage: SyndicStorage,
-    assets: AssetState,
+    storage: &SyndicStorage,
+    assets: &AssetState,
     projection: LoadedCasProjection,
     cancellation: &ProjectionCancellationToken,
     request: &OrdinaryTurnExecutionRequest,
@@ -65,8 +65,8 @@ pub(super) fn execute(
 pub(super) fn execute_in_flight(
     coordinator: &CasProjectionCoordinator,
     store: &HomeStore,
-    storage: SyndicStorage,
-    assets: AssetState,
+    storage: &SyndicStorage,
+    assets: &AssetState,
     projection: LoadedCasProjection,
     cancellation: &ProjectionCancellationToken,
     request: &OrdinaryTurnExecutionRequest,
@@ -108,7 +108,7 @@ pub(super) fn execute_in_flight(
     let prepared = retain_projection!(InputReplayFactory::prepare(
         store,
         storage,
-        assets,
+        AssetState::clone(assets),
         InputReplayContext::from_projection(&projection),
         InputReplayRecord::submitted(pending.thread_id, pending.item_id),
         pending.input,
@@ -243,7 +243,7 @@ enum ActivationAttempt {
 
 fn activate(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     activation: &ActivateBinding,
     limit: SyndicPointReadLimit,
 ) -> ActivationAttempt {
@@ -281,7 +281,7 @@ fn after_activation(source: OrdinaryTurnExecutionError) -> OrdinaryTurnExecution
 #[allow(clippy::too_many_arguments)]
 fn finish_not_started(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     mut target: LiveEventTarget,
     start: TargetTurnStartOutcome,
     pending: PendingOrdinaryExecution,

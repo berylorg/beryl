@@ -5,10 +5,10 @@ fn selected_tail_advance_preserves_the_completed_release_build() {
     let home = TestHome::new("phase7-transcript-release-build");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(&store, storage);
+    let thread = create_thread(&store, storage.clone());
     let root = submit_text(
         &store,
-        storage,
+        storage.clone(),
         thread,
         "root before supersession",
         draft_id(3),
@@ -17,14 +17,14 @@ fn selected_tail_advance_preserves_the_completed_release_build() {
     );
     complete_turn(
         &store,
-        storage,
+        storage.clone(),
         thread,
         root,
         timestamp(4),
         timestamp(5),
         timestamp(6),
     );
-    converge_and_release_terminal_history(&store, storage, thread, root.turn);
+    converge_and_release_terminal_history(&store, storage.clone(), thread, root.turn);
     let released_head = storage
         .transcript_view_head(&store, thread, point_limit())
         .unwrap()
@@ -39,7 +39,7 @@ fn selected_tail_advance_preserves_the_completed_release_build() {
 
     let new_tail = submit_text(
         &store,
-        storage,
+        storage.clone(),
         thread,
         "new selected tail",
         draft_id(4),

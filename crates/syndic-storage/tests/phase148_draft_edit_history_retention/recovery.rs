@@ -4,11 +4,11 @@ use super::{common::commit_edit, support::*};
 fn eviction_commit_crash_cuts_recover_old_or_complete_successor() {
     let (_measure_home, measure_store, measure_storage, measure_thread) =
         fixture("eviction-cut-measure", 120, 65_536);
-    let durable = current(measure_storage, &measure_store, measure_thread);
-    let session = open_session(measure_storage, &measure_store, &durable, 122, 123);
-    let first = commit_edit(measure_storage, &measure_store, &session, 124, "a");
+    let durable = current(&measure_storage, &measure_store, measure_thread);
+    let session = open_session(&measure_storage, &measure_store, &durable, 122, 123);
+    let first = commit_edit(&measure_storage, &measure_store, &session, 124, "a");
     let second = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         first.adopted_session(),
         125,
@@ -41,24 +41,24 @@ fn eviction_commit_crash_cuts_recover_old_or_complete_successor() {
         ),
     ] {
         let (_home, store, storage, faults, thread) = fault_fixture(name, seed, budget);
-        let durable = current(storage, &store, thread);
+        let durable = current(&storage, &store, thread);
         let session = open_session(
-            storage,
+            &storage,
             &store,
             &durable,
             seed.wrapping_add(2),
             seed.wrapping_add(3),
         );
-        let first = commit_edit(storage, &store, &session, seed.wrapping_add(4), "a");
+        let first = commit_edit(&storage, &store, &session, seed.wrapping_add(4), "a");
         let edit = transaction(
-            storage,
+            &storage,
             &store,
             first.adopted_session(),
             seed.wrapping_add(5),
             "b",
             point(1),
         );
-        build(storage, &store, &edit);
+        build(&storage, &store, &edit);
         faults.fail_next(fault);
         let outcome = execute(
             &store,
@@ -125,9 +125,9 @@ fn eviction_commit_crash_cuts_recover_old_or_complete_successor() {
 fn capacity_unavailable_is_terminal_at_every_commit_crash_cut_without_a_successor_root() {
     let (_measure_home, measure_store, measure_storage, measure_thread) =
         fixture("capacity-cut-measure", 188, 4_096);
-    let durable = current(measure_storage, &measure_store, measure_thread);
-    let session = open_session(measure_storage, &measure_store, &durable, 189, 190);
-    let adoption = commit_edit(measure_storage, &measure_store, &session, 191, "capacity");
+    let durable = current(&measure_storage, &measure_store, measure_thread);
+    let session = open_session(&measure_storage, &measure_store, &durable, 189, 190);
+    let adoption = commit_edit(&measure_storage, &measure_store, &session, 191, "capacity");
     let parts = draft_edit_history_stored_charge_components(
         adoption.adopted_history(),
         adoption.transition(),
@@ -150,23 +150,23 @@ fn capacity_unavailable_is_terminal_at_every_commit_crash_cut_without_a_successo
         ),
     ] {
         let (_home, store, storage, faults, thread) = fault_fixture(name, seed, budget);
-        let durable = current(storage, &store, thread);
+        let durable = current(&storage, &store, thread);
         let session = open_session(
-            storage,
+            &storage,
             &store,
             &durable,
             seed.wrapping_add(2),
             seed.wrapping_add(3),
         );
         let edit = transaction(
-            storage,
+            &storage,
             &store,
             &session,
             seed.wrapping_add(4),
             "capacity",
             point(8),
         );
-        build(storage, &store, &edit);
+        build(&storage, &store, &edit);
         faults.fail_next(fault);
         let outcome = execute(
             &store,
@@ -205,7 +205,7 @@ fn capacity_unavailable_is_terminal_at_every_commit_crash_cut_without_a_successo
                         edit.prepared.clone(),
                     ),
                 ));
-                settled(storage, &store, &edit)
+                settled(&storage, &store, &edit)
             }
             other => panic!("capacity crash cut did not reconcile: {other:?}"),
         };
@@ -221,7 +221,11 @@ fn capacity_unavailable_is_terminal_at_every_commit_crash_cut_without_a_successo
         let proposed = noncommit
             .proposed_successor()
             .expect("completed capacity build retains its successor reference");
-        assert!(!draft_edit_history_root_exists(&store, storage, proposed));
+        assert!(!draft_edit_history_root_exists(
+            &store,
+            storage.clone(),
+            proposed,
+        ));
         assert_eq!(
             noncommit.observed_session().newest_root(),
             session.newest_root()

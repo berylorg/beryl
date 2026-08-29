@@ -32,6 +32,12 @@ impl StorageDomain for ScrubDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         if VALIDATIONS.fetch_add(1, Ordering::SeqCst) == 0 {

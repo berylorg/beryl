@@ -42,7 +42,7 @@ pub(super) fn read_provider_narrative_bytes_into(
     let encoded_frontier = manifest.encoded_bytes();
     let predecessor = store
         .read_cursor::<crate::domain::SyndicDomain, ProviderNarrativeSpansCodec>(
-            storage.handle,
+            &storage.handle,
             &CursorRange::closed(
                 ProviderNarrativeSpanKey::first_for_generation(
                     narrative.content_id(),
@@ -95,7 +95,7 @@ pub(super) fn read_provider_narrative_bytes_into(
             }
         }
         let page = store.read_cursor::<crate::domain::SyndicDomain, ProviderNarrativeSpansCodec>(
-            storage.handle,
+            &storage.handle,
             &CursorRange::after(
                 ProviderNarrativeSpanKey::new(
                     narrative.content_id(),
@@ -254,7 +254,7 @@ fn append_provider_encoded_range(
         ));
     }
     let predecessor = store.read_cursor::<crate::domain::SyndicDomain, ContentByteSpansCodec>(
-        storage.handle,
+        &storage.handle,
         &CursorRange::closed(
             ContentByteSpanKey {
                 owner: content_id,
@@ -305,7 +305,7 @@ fn append_provider_encoded_range(
             }
         }
         let page = store.read_cursor::<crate::domain::SyndicDomain, ContentByteSpansCodec>(
-            storage.handle,
+            &storage.handle,
             &CursorRange::after(
                 ContentByteSpanKey {
                     owner: content_id,

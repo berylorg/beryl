@@ -72,7 +72,6 @@ fn limit() -> SyndicPointReadLimit {
 
 fn execute(
     store: &HomeStore,
-    _storage: SyndicStorage,
     contribution: beryl_home_store::MutationContribution,
 ) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -82,7 +81,7 @@ fn execute(
 
 fn assert_committed(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     outcome: beryl_home_store::CommandOutcome,
 ) -> beryl_home_store::CommitReceipt {
     match outcome {
@@ -173,10 +172,9 @@ fn ordinary_creation_is_atomic_reopenable_and_naturally_reconcilable() {
     );
     assert_committed(
         &store,
-        storage,
+        &storage,
         execute(
             &store,
-            storage,
             storage.create_thread(storage.revision(&store).unwrap(), creation.clone()),
         ),
     );
@@ -267,17 +265,15 @@ fn cancellation_before_admission_and_identity_collision_change_nothing() {
 
     assert_committed(
         &store,
-        storage,
+        &storage,
         execute(
             &store,
-            storage,
             storage.create_thread(storage.revision(&store).unwrap(), creation.clone()),
         ),
     );
     let error = assert_not_committed(
         execute(
             &store,
-            storage,
             storage.create_thread(storage.revision(&store).unwrap(), creation),
         ),
         "duplicate thread creation",

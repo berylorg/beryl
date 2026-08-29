@@ -75,18 +75,5 @@ fn reacquire_families(
             })?;
         families.push(registered_family(family, keyspace));
     }
-    let family_slots = families
-        .iter()
-        .enumerate()
-        .map(|(slot, family)| (family.logical_name, slot))
-        .collect();
-    Ok(RegisteredDomain {
-        name: blueprint.name,
-        schema: blueprint.schema,
-        owner: blueprint.owner,
-        families,
-        family_slots,
-        reopen_validator: blueprint.reopen_validator,
-        reconciler: blueprint.reconciler,
-    })
+    super::registration::registered_domain(blueprint, families)
 }

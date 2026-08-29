@@ -110,7 +110,7 @@ fn inconsistent_active_cas_turn_target_is_an_invariant_failure() {
     let (_home, store, storage) = seeded_populated("phase53-ready-target-corruption");
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::ActiveCasTurn(ActiveCasTurnRecord::new(
             active_snapshot(),
             id(40),

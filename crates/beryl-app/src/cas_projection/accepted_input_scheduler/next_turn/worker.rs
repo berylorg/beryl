@@ -46,7 +46,7 @@ pub(super) fn spawn_worker(
         return Ok(());
     };
     let validator = runtime.context.lease_validator(command);
-    let storage = runtime.context.storage;
+    let storage = runtime.context.storage.clone();
     let cancellation = runtime.context.ordinary_cancellation.clone();
     let signal = runtime.context.signal.clone();
     let completions = runtime.completions.clone();
@@ -115,13 +115,13 @@ fn execute_candidate(
         PromoteAcceptedInput::new(candidate, successor_turn_id, successor_item_id, promoted_at);
     let command = match accepted_input_promotion_command(
         &validator.home,
-        storage,
-        lease.assets(),
+        &storage,
+        &lease.assets(),
         promotion.clone(),
     ) {
         Ok(command) => command,
         Err(_) => {
-            return classify_unbuilt_promotion(validator, storage, &promotion);
+            return classify_unbuilt_promotion(validator, &storage, &promotion);
         }
     };
     if cancellation.is_cancelled() {
@@ -209,7 +209,7 @@ fn execute_candidate(
     if let Some(failure) = command_failure {
         return failure;
     }
-    let promotion_result = reconcile_promotion(validator, storage, lease.assets(), &promotion)
+    let promotion_result = reconcile_promotion(validator, &storage, &lease.assets(), &promotion)
         .map(|status| Some((true, status)));
     let Some((dispatch_succeeded, status)) = (match promotion_result {
         Ok(result) => result,
@@ -233,7 +233,7 @@ fn execute_candidate(
     signal.wake(AcceptedInputWakeReason::AcceptedNextReady);
     let selected_path = match current_selected_path(
         &validator.home,
-        storage,
+        &storage,
         promotion.thread_id(),
         validator.home_generation(),
     ) {
@@ -245,7 +245,7 @@ fn execute_candidate(
     };
     match execute_pending_turn(
         validator,
-        storage,
+        &storage,
         cancellation,
         promoted_at,
         selected_path,

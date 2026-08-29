@@ -30,7 +30,7 @@ fn prepare_uncommitted_window(
             .unwrap()
             .unwrap();
         let page = prepare_one_page(
-            *storage,
+            storage,
             &head,
             &active,
             DraftMutationStagingPageItemV1::SourcePosition(point(0)),
@@ -41,11 +41,8 @@ fn prepare_uncommitted_window(
             storage.draft_mutation_staging_page_batch(storage.revision(store).unwrap(), page),
         ));
     }
-    let replacement = DraftPieceReplacementV1::new(
-        point(0),
-        point(0),
-        vec![DraftPieceV1::Text("x".to_owned())],
-    );
+    let replacement =
+        DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Text("x".to_owned())]);
     let chain = draft_piece_fragment_chain_link_v1(
         canonical_empty_draft_piece_fragment_chain_v1(),
         1,
@@ -56,7 +53,7 @@ fn prepare_uncommitted_window(
         .unwrap()
         .unwrap();
     let page = prepare_one_page(
-        *storage,
+        storage,
         &head,
         &active,
         DraftMutationStagingPageItemV1::Proposal(replacement),
@@ -137,13 +134,7 @@ fn prepare_uncommitted_window(
         identity.session_id(),
         identity.operation_id().as_piece_operation(),
     );
-    (
-        window,
-        page_receipt,
-        build,
-        settlement_key,
-        identity,
-    )
+    (window, page_receipt, build, settlement_key, identity)
 }
 
 #[cfg(feature = "test-faults")]
@@ -151,8 +142,8 @@ fn prepare_uncommitted_window(
 fn staging_window_source_and_target_replay_require_page_and_build_receipts() {
     for case in 0_u8..8 {
         let (_home, store, storage, thread) = fixture(&format!("window-replay-{case}"), 100 + case);
-        let current = current(storage, &store, thread);
-        let session = open_session(storage, &store, &current, 110 + case, 120 + case);
+        let current = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &current, 110 + case, 120 + case);
         let (window, page_receipt, source_build_receipt, settlement_key, _) =
             prepare_uncommitted_window(&storage, &store, &session, 125 + case);
         let target_build_receipt = window.target_endpoint().key();
@@ -168,30 +159,30 @@ fn staging_window_source_and_target_replay_require_page_and_build_receipts() {
         let deletion = match case {
             0 | 4 => syndic_storage::test_faults::delete_draft_mutation_staging_receipt(
                 &store,
-                storage,
+                &storage,
                 page_receipt,
             ),
             1 | 5 => {
                 syndic_storage::test_faults::inject_draft_mutation_staging_receipt_digest_corruption(
                     &store,
-                    storage,
+                    &storage,
                     page_receipt,
                 )
             }
             2 => syndic_storage::test_faults::delete_draft_piece_build_progress_receipt(
                 &store,
-                storage,
+                &storage,
                 source_build_receipt.key(),
             ),
             3 | 7 => syndic_storage::test_faults::inject_draft_piece_progress_receipt_corruption(
                 &store,
-                storage,
+                &storage,
                 settlement_key,
                 syndic_storage::test_faults::DraftPieceProgressReceiptCorruption::StateMismatch,
             ),
             6 => syndic_storage::test_faults::delete_draft_piece_build_progress_receipt(
                 &store,
-                storage,
+                &storage,
                 target_build_receipt,
             ),
             _ => unreachable!(),
@@ -216,8 +207,8 @@ fn staging_window_acquisition_and_replay_require_build_receipt_predecessor() {
     for case in 0_u8..4 {
         let (home, store, storage, thread) =
             fixture(&format!("window-predecessor-{case}"), 140 + case);
-        let current = current(storage, &store, thread);
-        let session = open_session(storage, &store, &current, 150 + case, 160 + case);
+        let current = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &current, 150 + case, 160 + case);
         let (window, _, _source_endpoint, settlement_key, identity) =
             prepare_uncommitted_window(&storage, &store, &session, 170 + case);
         committed(execute(
@@ -236,7 +227,7 @@ fn staging_window_acquisition_and_replay_require_build_receipt_predecessor() {
             &store,
             syndic_storage::test_faults::inject_draft_piece_progress_receipt_corruption(
                 &store,
-                storage,
+                &storage,
                 settlement_key,
                 corruption,
             ),

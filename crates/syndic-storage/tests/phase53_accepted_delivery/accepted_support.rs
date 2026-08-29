@@ -25,7 +25,7 @@ pub fn seeded(name: &str, records: Vec<FixtureRecord>) -> (TestHome, HomeStore, 
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
     (home, store, storage)
 }
 
@@ -33,7 +33,7 @@ pub fn seeded_populated(name: &str) -> (TestHome, HomeStore, SyndicStorage) {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     (home, store, storage)
 }
 
@@ -41,7 +41,7 @@ pub fn seeded_mixed(name: &str) -> (TestHome, HomeStore, SyndicStorage) {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_mixed_abandonment(&store, storage);
+    seed_mixed_abandonment(&store, storage.clone());
     (home, store, storage)
 }
 
@@ -49,15 +49,15 @@ pub fn seeded_large_ready(name: &str, last_ordinal: u64) -> (TestHome, HomeStore
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_large_ready_generation(&store, storage, last_ordinal);
+    seed_large_ready_generation(&store, &storage, last_ordinal);
     (home, store, storage)
 }
 
-pub fn seed_operation(store: &HomeStore, storage: SyndicStorage, operation: AcceptedOperation) {
+pub fn seed_operation(store: &HomeStore, storage: &SyndicStorage, operation: AcceptedOperation) {
     match operation {
-        AcceptedOperation::Begin => seed_populated(store, storage),
+        AcceptedOperation::Begin => seed_populated(store, storage.clone()),
         AcceptedOperation::Retry | AcceptedOperation::Complete | AcceptedOperation::Reject => {
-            seed_mixed_abandonment(store, storage);
+            seed_mixed_abandonment(store, storage.clone());
         }
     }
 }
@@ -69,13 +69,13 @@ pub fn seeded_operation(
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_operation(&store, storage, operation);
+    seed_operation(&store, &storage, operation);
     (home, store, storage)
 }
 
 pub fn route_entry(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     input: SyndicAcceptedInputId,
 ) -> (InputGateRecord, AcceptedRouteEntry) {
     let gate = storage.input_gate(store, id(40), limit()).unwrap().unwrap();
@@ -161,7 +161,7 @@ impl AcceptedOperation {
         )
     }
 
-    pub fn current_command(self, storage: SyndicStorage) -> CurrentDomainCommand {
+    pub fn current_command(self, storage: &SyndicStorage) -> CurrentDomainCommand {
         match self {
             Self::Begin => storage.current_begin_accepted_input_delivery(self.begin_request()),
             Self::Retry => storage.current_retry_accepted_input_delivery(self.retry_request()),
@@ -175,7 +175,7 @@ impl AcceptedOperation {
     pub fn status(
         self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
     ) -> AcceptedInputDeliveryTransitionStatus {
         match self {
             Self::Begin => {
@@ -275,7 +275,7 @@ impl AcceptedOperation {
 
 pub fn assert_operation_committed(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     operation: AcceptedOperation,
 ) {
     let (gate, entry) = route_entry(store, storage, operation.input());
@@ -296,9 +296,9 @@ pub fn assert_operation_committed(
         .unwrap();
 }
 
-pub fn seed_large_ready_generation(store: &HomeStore, storage: SyndicStorage, last_ordinal: u64) {
+pub fn seed_large_ready_generation(store: &HomeStore, storage: &SyndicStorage, last_ordinal: u64) {
     assert!(last_ordinal > 256);
-    seed_populated(store, storage);
+    seed_populated(store, storage.clone());
     let limit = limit();
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
@@ -316,9 +316,13 @@ pub fn seed_large_ready_generation(store: &HomeStore, storage: SyndicStorage, la
         .unwrap()
         .unwrap();
     let gate = storage.input_gate(store, thread, limit).unwrap().unwrap();
-    let route =
-        syndic_storage::test_faults::accepted_route_generation(store, storage, thread, generation)
-            .unwrap();
+    let route = syndic_storage::test_faults::accepted_route_generation(
+        store,
+        storage.clone(),
+        thread,
+        generation,
+    )
+    .unwrap();
     let final_thread_revision = ThreadRevision::new(last_ordinal + 1).unwrap();
     let final_gate_revision = InputGateRevision::new(last_ordinal + 1).unwrap();
     let empty_content = next.content();
@@ -462,9 +466,9 @@ pub fn seed_large_ready_generation(store: &HomeStore, storage: SyndicStorage, la
     }
     let additions = records.split_off(8);
     for chunk in additions.chunks(96) {
-        commit(store, storage, batch(chunk.iter().cloned()));
+        commit(store, storage.clone(), batch(chunk.iter().cloned()));
     }
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
 }
 
 fn accepted_id(ordinal: u64) -> SyndicAcceptedInputId {

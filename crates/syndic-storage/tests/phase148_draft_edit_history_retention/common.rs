@@ -1,7 +1,7 @@
 use super::support::*;
 
 pub(super) fn commit_edit(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,

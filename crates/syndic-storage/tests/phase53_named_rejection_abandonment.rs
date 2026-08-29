@@ -26,7 +26,7 @@ fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
-fn named_request(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBinding {
+fn named_request(store: &HomeStore, storage: &SyndicStorage) -> AbandonActiveBinding {
     let generic = abandonment_request(store, storage);
     AbandonActiveBinding::after_exact_rejection(
         generic.thread_id(),
@@ -39,11 +39,11 @@ fn named_request(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBind
     )
 }
 
-fn seed(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBinding {
-    seed_mixed_abandonment(store, storage);
+fn seed(store: &HomeStore, storage: &SyndicStorage) -> AbandonActiveBinding {
+    seed_mixed_abandonment(store, storage.clone());
     let route = syndic_storage::test_faults::accepted_route_generation(
         store,
-        storage,
+        storage.clone(),
         id(40),
         AcceptedRouteGeneration::FIRST,
     )
@@ -60,7 +60,7 @@ fn seed(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBinding {
         .clone();
     commit(
         store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::AcceptedRouteGeneration(
                 AcceptedRouteGenerationRecord::new(
@@ -116,7 +116,7 @@ fn generic_request(request: &AbandonActiveBinding) -> AbandonActiveBinding {
     )
 }
 
-fn route_page(store: &HomeStore, storage: SyndicStorage) -> (InputGateRecord, AcceptedRoutePage) {
+fn route_page(store: &HomeStore, storage: &SyndicStorage) -> (InputGateRecord, AcceptedRoutePage) {
     let gate = storage.input_gate(store, id(40), limit()).unwrap().unwrap();
     let proof = gate.selected_route().unwrap();
     let page = storage
@@ -140,7 +140,7 @@ fn exact_unverdictable_rejection_is_preserved_while_sibling_delivery_becomes_unk
     let home = TestHome::new("phase53-named-rejection-abandonment");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let request = seed(&store, storage);
+    let request = seed(&store, &storage);
     let generic = generic_request(&request);
 
     assert_eq!(
@@ -170,7 +170,7 @@ fn exact_unverdictable_rejection_is_preserved_while_sibling_delivery_becomes_unk
         "a named abandonment must not authenticate the generic command",
     );
 
-    let (gate, page) = route_page(&store, storage);
+    let (gate, page) = route_page(&store, &storage);
     assert_eq!(gate.live_steering_count(), 0);
     assert_eq!(gate.live_next_turn_count(), 3);
     assert_eq!(
@@ -251,7 +251,7 @@ fn named_rejection_reconciliation_rejects_leaf_and_route_drift() {
     let home = TestHome::new("phase53-named-rejection-collision");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let request = seed(&store, storage);
+    let request = seed(&store, &storage);
 
     let wrong_leaf = AbandonActiveBinding::after_exact_rejection(
         request.thread_id(),
@@ -292,7 +292,7 @@ fn generic_abandonment_witness_rejects_named_reconciliation_and_authority_drift(
     let home = TestHome::new("phase53-generic-abandonment-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let named = seed(&store, storage);
+    let named = seed(&store, &storage);
     let generic = generic_request(&named);
 
     let AcceptedRouteLostTarget::Steering(target) = generic.target() else {
@@ -402,7 +402,7 @@ fn named_rejection_abandonment_fault_cuts_reconcile_old_or_exact() {
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
-        let request = seed(&store, storage);
+        let request = seed(&store, &storage);
 
         faults.fail_next(point);
         let outcome =
@@ -495,8 +495,8 @@ fn generic_abandonment_fault_cuts_reconcile_old_or_exact() {
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
-        seed_mixed_abandonment(&store, storage);
-        let request = abandonment_request(&store, storage);
+        seed_mixed_abandonment(&store, storage.clone());
+        let request = abandonment_request(&store, &storage);
 
         faults.fail_next(point);
         let outcome =

@@ -23,12 +23,12 @@ fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, b"alpha".to_vec()),
         ))
         .unwrap()
         .add(beta.contribution(
-            store.domain_revision(beta).unwrap(),
+            store.domain_revision(&beta).unwrap(),
             PutBytes::<BetaDomain>::new(2, b"beta".to_vec()),
         ))
         .unwrap();
@@ -38,7 +38,7 @@ fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
     assert_eq!(receipt.generation(), store.health().generation().unwrap());
     assert_eq!(
         store
-            .receipt_domain_revision(&receipt, alpha)
+            .receipt_domain_revision(&receipt, &alpha)
             .unwrap()
             .unwrap()
             .get(),
@@ -46,7 +46,7 @@ fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
     );
     assert_eq!(
         store
-            .receipt_domain_revision(&receipt, beta)
+            .receipt_domain_revision(&receipt, &beta)
             .unwrap()
             .unwrap()
             .get(),
@@ -58,8 +58,8 @@ fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
     let beta = reopened.register_domain::<BetaDomain>().unwrap();
     assert_eq!(reopened.home_revision().unwrap().get(), 2);
-    assert_eq!(reopened.domain_revision(alpha).unwrap().get(), 2);
-    assert_eq!(reopened.domain_revision(beta).unwrap().get(), 2);
+    assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 2);
+    assert_eq!(reopened.domain_revision(&beta).unwrap().get(), 2);
     assert_eq!(read(&reopened, alpha, 1), Some(b"alpha".to_vec()));
     assert_eq!(read(&reopened, beta, 2), Some(b"beta".to_vec()));
 }
@@ -73,7 +73,7 @@ fn receipt_reports_only_affected_domains_in_its_exact_generation() {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, b"alpha".to_vec()),
         ))
         .unwrap();
@@ -86,10 +86,13 @@ fn receipt_reports_only_affected_domains_in_its_exact_generation() {
     assert!(!debug.contains("domains:"));
     assert!(!debug.contains("DomainRevision"));
     assert_eq!(
-        store.receipt_domain_revision(&receipt, alpha).unwrap(),
+        store.receipt_domain_revision(&receipt, &alpha).unwrap(),
         Some(DomainRevision::new(2).unwrap())
     );
-    assert_eq!(store.receipt_domain_revision(&receipt, beta).unwrap(), None);
+    assert_eq!(
+        store.receipt_domain_revision(&receipt, &beta).unwrap(),
+        None
+    );
 }
 
 #[test]
@@ -103,18 +106,18 @@ fn receipt_rejects_another_home_and_another_registration() {
     let mut command = HomeCommand::new(first.home_revision().unwrap());
     command
         .add(first_alpha.contribution(
-            first.domain_revision(first_alpha).unwrap(),
+            first.domain_revision(&first_alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, b"first home".to_vec()),
         ))
         .unwrap();
     let receipt = committed(first.execute(command));
 
     assert!(matches!(
-        second.receipt_domain_revision(&receipt, second_alpha),
+        second.receipt_domain_revision(&receipt, &second_alpha),
         Err(CommitReceiptError::StaleOrForeign { .. })
     ));
     assert!(matches!(
-        first.receipt_domain_revision(&receipt, second_alpha),
+        first.receipt_domain_revision(&receipt, &second_alpha),
         Err(CommitReceiptError::ForeignDomain { domain: "alpha" })
     ));
 }
@@ -135,11 +138,11 @@ fn later_validation_or_assembly_failure_commits_nothing() {
         let mut command = HomeCommand::new(store.home_revision().unwrap());
         command
             .add(alpha.contribution(
-                store.domain_revision(alpha).unwrap(),
+                store.domain_revision(&alpha).unwrap(),
                 PutBytes::<AlphaDomain>::new(1, b"alpha".to_vec()),
             ))
             .unwrap()
-            .add(beta.contribution(store.domain_revision(beta).unwrap(), rejected))
+            .add(beta.contribution(store.domain_revision(&beta).unwrap(), rejected))
             .unwrap();
 
         let error = not_committed(store.execute(command));
@@ -155,8 +158,8 @@ fn later_validation_or_assembly_failure_commits_nothing() {
             ));
         }
         assert_eq!(store.home_revision().unwrap().get(), 1);
-        assert_eq!(store.domain_revision(alpha).unwrap().get(), 1);
-        assert_eq!(store.domain_revision(beta).unwrap().get(), 1);
+        assert_eq!(store.domain_revision(&alpha).unwrap().get(), 1);
+        assert_eq!(store.domain_revision(&beta).unwrap().get(), 1);
         assert_eq!(read(&store, alpha, 1), None);
         assert_eq!(read(&store, beta, 2), None);
     }
@@ -217,7 +220,7 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
         HomeCommand::new(store.home_revision().unwrap()).with_cancellation(cancelled.clone());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, b"never".to_vec()),
         ))
         .unwrap();
@@ -234,7 +237,7 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
         HomeCommand::new(store.home_revision().unwrap()).with_cancellation(after_admission.clone());
     admitted
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             CancelDuringValidation {
                 cancellation: after_admission.clone(),
                 key: 2,
@@ -279,12 +282,12 @@ fn same_thread_writer_reentrancy_is_rejected_without_deadlock() {
     let mut outer = HomeCommand::new(store.home_revision().unwrap());
     outer
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             ReentrantProbe {
                 store: Arc::clone(&store),
                 domain: alpha,
                 home_revision: store.home_revision().unwrap(),
-                domain_revision: store.domain_revision(alpha).unwrap(),
+                domain_revision: store.domain_revision(&alpha).unwrap(),
             },
         ))
         .unwrap();
@@ -314,14 +317,14 @@ fn empty_duplicate_and_foreign_commands_are_rejected_before_mutation() {
     let mut duplicate = HomeCommand::new(first.home_revision().unwrap());
     duplicate
         .add(alpha.contribution(
-            first.domain_revision(alpha).unwrap(),
+            first.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, b"one".to_vec()),
         ))
         .unwrap();
     assert!(
         duplicate
             .add(alpha.contribution(
-                first.domain_revision(alpha).unwrap(),
+                first.domain_revision(&alpha).unwrap(),
                 PutBytes::<AlphaDomain>::new(2, b"two".to_vec()),
             ))
             .is_err()
@@ -330,7 +333,7 @@ fn empty_duplicate_and_foreign_commands_are_rejected_before_mutation() {
     let mut foreign = HomeCommand::new(second.home_revision().unwrap());
     foreign
         .add(alpha.contribution(
-            first.domain_revision(alpha).unwrap(),
+            first.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(3, b"foreign".to_vec()),
         ))
         .unwrap();
@@ -477,7 +480,7 @@ fn commit_one<D: beryl_home_store::StorageDomain>(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            store.domain_revision(&domain).unwrap(),
             PutBytes::<D>::new(key, value),
         ))
         .unwrap();
@@ -490,6 +493,6 @@ fn read<D: beryl_home_store::StorageDomain>(
     key: u64,
 ) -> Option<Vec<u8>> {
     store
-        .read_point::<D, BytesRecord<D>>(domain, &key, PointReadLimit::new(1_028).unwrap())
+        .read_point::<D, BytesRecord<D>>(&domain, &key, PointReadLimit::new(1_028).unwrap())
         .unwrap()
 }

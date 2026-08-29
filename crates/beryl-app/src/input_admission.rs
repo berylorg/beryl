@@ -45,8 +45,8 @@ pub enum FirstAcceptanceCommand {
 #[cfg(feature = "test-faults")]
 pub fn first_acceptance_command(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    assets: AssetState,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
     acceptance: FirstAcceptance,
 ) -> Result<FirstAcceptanceCommand, InputAdmissionBuildError> {
     build_first_acceptance_command(store, syndic, assets, acceptance)
@@ -55,8 +55,8 @@ pub fn first_acceptance_command(
 #[cfg(not(feature = "test-faults"))]
 pub(crate) fn first_acceptance_command(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    assets: AssetState,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
     acceptance: FirstAcceptance,
 ) -> Result<FirstAcceptanceCommand, InputAdmissionBuildError> {
     build_first_acceptance_command(store, syndic, assets, acceptance)
@@ -64,14 +64,15 @@ pub(crate) fn first_acceptance_command(
 
 fn build_first_acceptance_command(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    assets: AssetState,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
     acceptance: FirstAcceptance,
 ) -> Result<FirstAcceptanceCommand, InputAdmissionBuildError> {
     let source = AssetOwner::CurrentDraft(acceptance.draft_id());
     let destination = first_acceptance_destination(&acceptance);
     let proof = acceptance.asset_reference_set();
-    match first_acceptance_status(store, syndic, assets, &acceptance, admission_point_limit())? {
+    match first_acceptance_status_for(store, syndic, assets, &acceptance, admission_point_limit())?
+    {
         FirstAcceptanceStatus::ExactNew(kind) => {
             return Ok(FirstAcceptanceCommand::AlreadyAccepted(kind));
         }
@@ -94,8 +95,18 @@ fn build_first_acceptance_command(
 
 pub fn first_acceptance_status(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    assets: AssetState,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
+    acceptance: &FirstAcceptance,
+    limit: SyndicPointReadLimit,
+) -> Result<FirstAcceptanceStatus, InputAdmissionBuildError> {
+    first_acceptance_status_for(store, syndic, assets, acceptance, limit)
+}
+
+fn first_acceptance_status_for(
+    store: &HomeStore,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
     acceptance: &FirstAcceptance,
     limit: SyndicPointReadLimit,
 ) -> Result<FirstAcceptanceStatus, InputAdmissionBuildError> {
@@ -148,8 +159,8 @@ struct FirstAcceptanceCrossDomainObservation {
 impl FirstAcceptanceCrossDomainObservation {
     fn read(
         store: &HomeStore,
-        syndic: SyndicStorage,
-        assets: AssetState,
+        syndic: &SyndicStorage,
+        assets: &AssetState,
         acceptance: &FirstAcceptance,
         limit: SyndicPointReadLimit,
     ) -> Result<Self, InputAdmissionBuildError> {
@@ -189,8 +200,8 @@ fn admission_point_limit() -> SyndicPointReadLimit {
 #[cfg(feature = "test-faults")]
 pub fn accepted_input_promotion_command(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    assets: AssetState,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
     promotion: PromoteAcceptedInput,
 ) -> Result<HomeCommand, InputAdmissionBuildError> {
     build_accepted_input_promotion_command(store, syndic, assets, promotion)
@@ -199,8 +210,8 @@ pub fn accepted_input_promotion_command(
 #[cfg(not(feature = "test-faults"))]
 pub(crate) fn accepted_input_promotion_command(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    assets: AssetState,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
     promotion: PromoteAcceptedInput,
 ) -> Result<HomeCommand, InputAdmissionBuildError> {
     build_accepted_input_promotion_command(store, syndic, assets, promotion)
@@ -208,8 +219,8 @@ pub(crate) fn accepted_input_promotion_command(
 
 fn build_accepted_input_promotion_command(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    assets: AssetState,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
     promotion: PromoteAcceptedInput,
 ) -> Result<HomeCommand, InputAdmissionBuildError> {
     let proof = promotion.asset_reference_set();
@@ -225,8 +236,8 @@ fn build_accepted_input_promotion_command(
 
 pub fn accepted_input_promotion_status(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    assets: AssetState,
+    syndic: &SyndicStorage,
+    assets: &AssetState,
     promotion: &PromoteAcceptedInput,
     limit: SyndicPointReadLimit,
 ) -> Result<AcceptedInputPromotionStatus, InputAdmissionBuildError> {
@@ -274,7 +285,7 @@ pub fn accepted_input_promotion_status(
 
 fn command_with_owner_transfer(
     store: &HomeStore,
-    assets: AssetState,
+    assets: &AssetState,
     syndic_contribution: beryl_home_store::MutationContribution,
     proof: Option<beryl_model::SealedAssetReferenceSetProof>,
     source: AssetOwner,
@@ -317,7 +328,7 @@ fn command_with_owner_transfer(
 
 fn exact_owner_head(
     store: &HomeStore,
-    assets: AssetState,
+    assets: &AssetState,
     owner: AssetOwner,
     proof: beryl_model::SealedAssetReferenceSetProof,
 ) -> Result<AssetOwnerHeadExpectation, InputAdmissionBuildError> {
@@ -332,7 +343,7 @@ fn exact_owner_head(
 
 fn require_absent_owner(
     store: &HomeStore,
-    assets: AssetState,
+    assets: &AssetState,
     owner: AssetOwner,
 ) -> Result<(), InputAdmissionBuildError> {
     if assets.owner_head(store, owner)?.is_some() {

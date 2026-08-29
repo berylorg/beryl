@@ -331,7 +331,7 @@ impl SyndicStorage {
             ));
         }
         let page = store.read_cursor::<crate::domain::SyndicDomain, ImageLabelOriginSpansCodec>(
-            self.handle,
+            &self.handle,
             &CursorRange::closed(
                 ImageLabelOriginSpanKey {
                     thread: origin_thread.id(),

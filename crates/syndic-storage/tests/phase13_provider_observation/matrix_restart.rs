@@ -2,7 +2,7 @@ use super::{matrix::*, *};
 
 fn assert_duplicate_after_restart(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     identity: ProviderObservationId,
 ) {
     let mut stager = storage
@@ -47,7 +47,7 @@ fn all_17_item_and_nine_delta_duplicate_states_survive_restart_unpublished() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         for (index, kind) in ITEMS.into_iter().enumerate() {
             let mut stager = clean_stage(
                 ProviderObservationStager::begin(
@@ -89,14 +89,14 @@ fn all_17_item_and_nine_delta_duplicate_states_survive_restart_unpublished() {
     for index in 0..ITEMS.len() {
         assert_duplicate_after_restart(
             &reopened,
-            storage,
+            &storage,
             ProviderObservationId::from_bytes([90 + index as u8; 16]),
         );
     }
     for index in 0..DELTAS.len() {
         assert_duplicate_after_restart(
             &reopened,
-            storage,
+            &storage,
             ProviderObservationId::from_bytes([110 + index as u8; 16]),
         );
     }

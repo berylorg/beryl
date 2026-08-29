@@ -6,7 +6,7 @@ fn recursive_structured_values_match_materialized_provider_encoding() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let bound = {
-        let mut callback = observation_callback(&store, storage);
+        let mut callback = observation_callback(&store, storage.clone());
         let mut stager = committed_stage_value(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([4; 16]),
@@ -166,7 +166,7 @@ fn variant_fields_may_precede_their_discriminant_without_changing_encoding() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let bound = {
-        let mut callback = observation_callback(&store, storage);
+        let mut callback = observation_callback(&store, storage.clone());
         let mut stager = committed_stage_value(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([5; 16]),

@@ -119,7 +119,7 @@ fn read_completion_evidence(
     set_id: AssetReferenceSetId,
 ) -> Result<Option<AssetReferenceSetCompletionEvidence>, ReadError> {
     store.read_point::<AssetDomain, AssetReferenceCompletionEvidenceCodec>(
-        state.handle,
+        &state.handle,
         &set_id,
         completion_evidence_point_limit(),
     )
@@ -136,7 +136,7 @@ pub(super) fn read_manifest(
     set_id: AssetReferenceSetId,
 ) -> Result<Option<AssetReferenceSetManifest>, ReadError> {
     store.read_point::<AssetDomain, AssetReferenceManifestCodec>(
-        state.handle,
+        &state.handle,
         &set_id,
         manifest_point_limit(),
     )

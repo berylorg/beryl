@@ -100,6 +100,25 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Every live logical-domain blueprint, handle, and command contribution is bound to its exact Rust owner type in addition to the durable stable name and schema. Every declared record family is bound to one exact codec type. These process-local identities are not persisted, and a same-name/schema type or alternate same-name codec cannot reacquire another live owner's authority.
 - Routine open, reopen, and handle reacquisition validate those exact live types, durable
   declarations, required families, and generation without scanning every application record.
+- Every registered domain blueprint declares one exact process-local runtime-attachment type and
+  factory. The registered-domain slot in one home generation constructs exactly one attachment and
+  is its sole strong owner; every same-generation typed-handle clone or reacquisition resolves that
+  same attachment rather than constructing or retaining another instance. Typed handles are
+  cloneable non-`Copy` views and cannot extend attachment lifetime.
+- Routine reads, receipt inspection, command-participant construction, and proof-role construction
+  borrow those non-owning typed-handle views. A caller clones a view only when another retained
+  owner, asynchronous task, or other explicit custody boundary must keep it; ordinary observation
+  and synchronous command construction never consume the caller's view merely to copy its fixed
+  identity fields.
+- Runtime attachments are generic HomeStore lifecycle state, not durable records or cross-domain
+  storage. A domain may place only its own configured bounded process state in its attachment.
+  There is no process-global attachment registry, per-wrapper attachment, compatibility bridge, or
+  app-owned substitute.
+- Generation retirement first closes new attachment access and drains admitted attachment users,
+  then synchronously retires and drops every registered-domain attachment exactly once. This
+  invalidates all outstanding attachment-derived capabilities even when a stale typed-handle view
+  survives. Recovery constructs fresh attachments only inside the unpublished new generation;
+  neither identity nor process-local custody crosses generations.
 - Every mutation domain also registers a separate bounded natural-record reconciliation hook. Its
   ordinary exact-side classification can read only the exact operation identities admitted by the
   command's pre-writer descriptor reservation and materialized under the serialized writer before
@@ -490,9 +509,11 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - CAS events, command results, and other incoming work observed while the Fjall gate is closed cannot be committed or published as durable Syndic state. The last successfully committed lifecycle record remains the recovery starting point.
 - Recovery drains and drops the failed Fjall generation, constructs a fresh Fjall configuration,
   reopens `state`, validates the home header, registry, and required schema, and reacquires fresh
-  typed handles into an unpublished private home-store candidate behind the startup fence. It does
-  not require opened-object identity continuity or retain dependency handles from the failed
-  generation.
+  typed handles and their newly constructed registered-domain runtime attachments into an
+  unpublished private home-store candidate behind the startup fence. It does not require opened-
+  object identity continuity or retain dependency handles, attachment identities, or attachment-
+  derived capabilities from the failed generation. The failed generation retires and drops its
+  attachments before the candidate may publish.
 - Each Fjall database generation owns a fresh dependency cache. Recovery drops the failed
   generation's cache and constructs the candidate with a new Fjall configuration; no block or blob
   resident crosses reopen or contributes evidence to reopen validation. Cache reuse is confined to
@@ -684,6 +705,12 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   prove that a fresh reopen remains private until one complete app-visible stack is published, and
   that neither initial bootstrap nor reopen discovery can observe partial domain registration or
   partial typed handles.
+- Domain-runtime tests prove exactly one attachment construction for each registered owner and home
+  generation, stable attachment identity across handle clones and routine reacquisition, no
+  retirement from ordinary handle drop, fresh identity in an unpublished recovery candidate, and
+  exact-once synchronous retirement/drop before old-generation disposal. Stale handles and every
+  attachment-derived capability reject after retirement, and no handle, app object, or global
+  registry retains a strong attachment owner.
 - Reconciliation tests independently fill all 1,024 registry slots and the 256-MiB aggregate byte
   budget, prove the next potentially indeterminate mutation receives typed pre-writer
   `NotCommitted` capacity evidence without global failure or interruption of already-admitted work,

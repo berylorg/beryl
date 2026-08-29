@@ -75,7 +75,7 @@ fn prepare_parent_active_job(
     state: &BerylState,
     syndic: SyndicStorage,
 ) -> JobId {
-    seed_populated(store, syndic);
+    seed_populated(store, syndic.clone());
     let admission = admission();
     let job_id = admission.job_id();
     execute(
@@ -168,9 +168,9 @@ fn durable_job_success_and_intrinsic_archive_publish_atomically() {
     let mut store = open_with_faults(home.path(), FaultController::new());
     let state = BerylState::register(&mut store).unwrap();
     let syndic = SyndicStorage::register(&mut store).unwrap();
-    let job_id = prepare_parent_active_job(&store, &state, syndic);
+    let job_id = prepare_parent_active_job(&store, &state, syndic.clone());
 
-    match store.execute(terminal_command(&store, &state, syndic, job_id)) {
+    match store.execute(terminal_command(&store, &state, syndic.clone(), job_id)) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -205,7 +205,7 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
     let mut store = open_with_faults(home.path(), faults.clone());
     let state = BerylState::register(&mut store).unwrap();
     let syndic = SyndicStorage::register(&mut store).unwrap();
-    let job_id = prepare_parent_active_job(&store, &state, syndic);
+    let job_id = prepare_parent_active_job(&store, &state, syndic.clone());
 
     faults.fail_next(FaultPoint::BeforeCommit);
     match store.execute(terminal_command(&store, &state, syndic, job_id)) {

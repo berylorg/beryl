@@ -27,7 +27,7 @@ pub(super) fn recover_startup(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> Result<StartupRecoveryDiagnostics, ProjectionCoordinatorError> {
     let mut diagnostics = StartupRecoveryDiagnostics::default();
     let mut cursor = None;
@@ -60,7 +60,7 @@ pub(super) fn recover_startup(
                 home,
                 home_id,
                 home_generation,
-                storage,
+                &storage,
                 case,
                 &mut diagnostics,
             )?;
@@ -76,7 +76,7 @@ fn converge_case(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     case: DeliveryRecoveryCase,
     diagnostics: &mut StartupRecoveryDiagnostics,
 ) -> Result<(), ProjectionCoordinatorError> {
@@ -194,7 +194,7 @@ fn converge_case(
 
 fn converge_compaction_restart(
     home: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: beryl_model::SyndicThreadId,
     turn_id: beryl_model::SyndicTurnId,
 ) -> Result<(), ProjectionCoordinatorError> {
@@ -302,7 +302,7 @@ fn publish_source_less_terminal(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: beryl_model::SyndicThreadId,
     turn_id: beryl_model::SyndicTurnId,
     minimum_observed_at: SyndicTimestamp,

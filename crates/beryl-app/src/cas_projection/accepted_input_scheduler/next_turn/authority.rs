@@ -125,7 +125,7 @@ impl AcceptedInputSchedulerContext {
             home_id: self.home_id,
             home_generation: self.home_generation,
             turn_start_admission_requirement: self.turn_start_admission_requirement,
-            storage: self.storage,
+            storage: self.storage.clone(),
             connections: Arc::clone(&self.connections),
             command,
             terminal_disposer: self.terminal_disposer.clone(),

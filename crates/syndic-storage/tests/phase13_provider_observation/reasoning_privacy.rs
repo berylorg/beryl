@@ -33,7 +33,7 @@ fn reasoning_text_observed_seals_only_identity_and_content_index() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let identity = ProviderObservationId::from_bytes([120; 16]);
     let sealed = {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = begin(120, &mut callback);
         text(
             &mut stager,
@@ -100,7 +100,7 @@ fn reasoning_text_observed_rejects_text_substitution_duplicate_and_missing_index
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
 
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
     let mut exact = begin(121, &mut callback);
     text(
         &mut exact,

@@ -8,9 +8,9 @@ use syndic_storage::{
 #[test]
 fn fresh_abandonment_preserves_selector_and_replays_across_reopen() {
     let (home, store, storage, thread) = fixture("abandon-success", 10, 65_536);
-    let selected = current(storage, &store, thread);
+    let selected = current(&storage, &store, thread);
     let selected_before = selector(&selected);
-    let opened = open_session(storage, &store, &selected, 12, 13);
+    let opened = open_session(&storage, &store, &selected, 12, 13);
     let forked_history = opened.newest_history();
     assert_ne!(forked_history, opened.published_history());
     let request = abandon_request(&opened, 14);
@@ -34,7 +34,10 @@ fn fresh_abandonment_preserves_selector_and_replays_across_reopen() {
         DraftEditorCandidateSessionAbandonFreshOutcomeV1::Abandoned(head) => head,
         other => panic!("fresh session was not abandoned: {other:?}"),
     };
-    assert_eq!(selector(&current(storage, &store, thread)), selected_before);
+    assert_eq!(
+        selector(&current(&storage, &store, thread)),
+        selected_before
+    );
     assert_eq!(
         abandoned.session_generation(),
         opened.session_generation() + 1
@@ -48,7 +51,7 @@ fn fresh_abandonment_preserves_selector_and_replays_across_reopen() {
         Some(request.operation_id())
     );
     assert!(abandoned.active_operation().is_none());
-    assert_eq!(head(storage, &store, &opened), abandoned);
+    assert_eq!(head(&storage, &store, &opened), abandoned);
 
     let replay = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -74,7 +77,7 @@ fn fresh_abandonment_preserves_selector_and_replays_across_reopen() {
     drop(store);
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
-    assert_eq!(head(storage, &store, &opened), abandoned);
+    assert_eq!(head(&storage, &store, &opened), abandoned);
     let replay = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
         .unwrap();
@@ -91,5 +94,5 @@ fn fresh_abandonment_preserves_selector_and_replays_across_reopen() {
             .unwrap(),
         DraftEditorCandidateSessionAbandonFreshOutcomeV1::ExactReplay(_)
     ));
-    assert_eq!(head(storage, &store, &opened), abandoned);
+    assert_eq!(head(&storage, &store, &opened), abandoned);
 }

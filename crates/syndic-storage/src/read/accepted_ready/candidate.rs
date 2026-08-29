@@ -178,7 +178,7 @@ impl SyndicStorage {
             .min(ACCEPTED_READY_PAGE_MAX_RECORDS)
             .min(rows_for_bytes);
         let page = store.read_cursor::<crate::domain::SyndicDomain, AcceptedOrderCodec>(
-            self.handle,
+            &self.handle,
             &CursorRange::closed(
                 ThreadAcceptedKey {
                     owner: source.thread_id(),

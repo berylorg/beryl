@@ -14,7 +14,7 @@ use super::OrdinaryTurnExecutionError;
 
 pub(in crate::cas_projection) fn converge_terminal_history(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     minimum_observed_at: SyndicTimestamp,

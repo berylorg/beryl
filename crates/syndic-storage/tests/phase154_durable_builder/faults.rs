@@ -12,8 +12,8 @@ fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
         let faults = FaultController::new();
         let (_home, store, storage, thread) =
             fixture_with_faults(&format!("marker-cut-{cut}"), 30 + cut as u8, faults.clone());
-        let current = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &current, 40 + cut as u8, 50 + cut as u8);
+        let current = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &current, 40 + cut as u8, 50 + cut as u8);
         session = complete_staged(
             &storage,
             &store,

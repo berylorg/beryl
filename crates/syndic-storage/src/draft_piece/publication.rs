@@ -1441,7 +1441,7 @@ impl SyndicStorage {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         }
         Ok(CapturedDraftEditorCandidatePublicationSourceV1 {
-            storage: *self,
+            storage: self.clone(),
             request,
             source_frontier,
             captured_head: head,

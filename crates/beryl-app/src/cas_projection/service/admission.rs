@@ -170,7 +170,7 @@ impl ProjectionConnectionService {
             prepared.home,
             self.home_id,
             self.home_generation,
-            self.storage,
+            self.storage.clone(),
             prepared.worker_permits,
             self.scheduler_signal.clone(),
             Arc::clone(&self.stop_coordinator),

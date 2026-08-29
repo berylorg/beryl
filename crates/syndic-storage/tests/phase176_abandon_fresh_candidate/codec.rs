@@ -9,8 +9,8 @@ use syndic_storage::{
 #[test]
 fn tag_three_accepts_only_clean_disposal_or_exact_fresh_abandonment() {
     let (_home, store, storage, thread) = fixture("abandon-codec", 170, 65_536);
-    let selected = current(storage, &store, thread);
-    let fresh_before = open_session(storage, &store, &selected, 172, 173);
+    let selected = current(&storage, &store, thread);
+    let fresh_before = open_session(&storage, &store, &selected, 172, 173);
     let fresh_request = abandon_request(&fresh_before, 174);
     let fresh_prepared = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, fresh_request)
@@ -57,11 +57,11 @@ fn tag_three_accepts_only_clean_disposal_or_exact_fresh_abandonment() {
         fresh_receipt.frontier().clone(),
     ));
 
-    let other_thread = create_thread(storage, &store, 180, 65_536);
-    let other_selected = current(storage, &store, other_thread);
-    let opened = open_session(storage, &store, &other_selected, 182, 183);
-    let transaction = transaction(storage, &store, &opened, 184, "x", point(1));
-    build(storage, &store, &transaction);
+    let other_thread = create_thread(&storage, &store, 180, 65_536);
+    let other_selected = current(&storage, &store, other_thread);
+    let opened = open_session(&storage, &store, &other_selected, 182, 183);
+    let transaction = transaction(&storage, &store, &opened, 184, "x", point(1));
+    build(&storage, &store, &transaction);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(
@@ -69,12 +69,12 @@ fn tag_three_accepts_only_clean_disposal_or_exact_fresh_abandonment() {
             transaction.prepared.clone(),
         ),
     ));
-    let dirty = match settled(storage, &store, &transaction).closure() {
+    let dirty = match settled(&storage, &store, &transaction).closure() {
         DraftPieceSettlementClosureV1::Committed(adoption) => adoption.adopted_session().clone(),
         other => panic!("clean disposal edit fixture failed: {other:?}"),
     };
-    publish_candidate(storage, &store, &other_selected, &dirty, 185);
-    let clean_before = head(storage, &store, &opened);
+    publish_candidate(&storage, &store, &other_selected, &dirty, 185);
+    let clean_before = head(&storage, &store, &opened);
     let clean_request = abandon_request(&clean_before, 186);
     let clean_prepared = storage
         .prepare_dispose_draft_editor_candidate_session(&store, clean_request)

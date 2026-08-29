@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn seed_terminal_turn_with_open_assistant(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> TerminalTurn {
     let thread = id(1);
     execute(
@@ -30,7 +30,7 @@ pub(super) fn seed_terminal_turn_with_open_assistant(
     );
     let assistant_item = SyndicItemId::from_bytes([5; 16]);
     let cas_assistant = CasItemId::new("phase7-selected-path-assistant").unwrap();
-    let source = establish_turn(store, storage, thread, turn, timestamp(4));
+    let source = establish_turn(store, storage.clone(), thread, turn, timestamp(4));
     admit(
         store,
         storage,
@@ -42,7 +42,7 @@ pub(super) fn seed_terminal_turn_with_open_assistant(
     );
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant_item,
@@ -59,7 +59,7 @@ pub(super) fn seed_terminal_turn_with_open_assistant(
     );
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant_item,
@@ -75,7 +75,7 @@ pub(super) fn seed_terminal_turn_with_open_assistant(
     );
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant_item,
@@ -130,7 +130,7 @@ pub(super) fn seed_terminal_turn_with_open_assistant(
 
 pub(super) fn replace_with_completed_root(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     old: TerminalTurn,
 ) -> (SyndicTurnId, SyndicItemId) {
     let thread = storage
@@ -158,7 +158,7 @@ pub(super) fn replace_with_completed_root(
     let replacement_revision = draft.draft().revision().checked_next().unwrap();
     crate::support::commit(
         store,
-        storage,
+        storage.clone(),
         crate::support::batch([
             syndic_storage::test_faults::FixtureRecord::Draft(DraftRecord::new(
                 draft.draft().id(),
@@ -185,7 +185,7 @@ pub(super) fn replace_with_completed_root(
     let replacement_item = SyndicItemId::from_bytes([7; 16]);
     let replacement_turn = submit_current_draft(
         store,
-        storage,
+        storage.clone(),
         old.thread,
         draft_id(6),
         replacement_item,
@@ -193,7 +193,13 @@ pub(super) fn replace_with_completed_root(
         timestamp(10),
     );
 
-    let source = establish_turn(store, storage, old.thread, replacement_turn, timestamp(11));
+    let source = establish_turn(
+        store,
+        storage.clone(),
+        old.thread,
+        replacement_turn,
+        timestamp(11),
+    );
     admit(
         store,
         storage,
@@ -205,7 +211,7 @@ pub(super) fn replace_with_completed_root(
     );
     correlate_user_item(
         store,
-        storage,
+        storage.clone(),
         old.thread,
         replacement_turn,
         replacement_item,
@@ -264,7 +270,7 @@ pub(super) fn replace_with_completed_root(
 
 pub(super) fn head(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> TranscriptViewHeadRecord {
     storage
@@ -276,7 +282,7 @@ pub(super) fn head(
 
 pub(super) fn summary(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> HistorySummaryRecord {
     storage
@@ -288,7 +294,7 @@ pub(super) fn summary(
 
 pub(super) fn assistant_content_lifecycle(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: TerminalTurn,
 ) -> ContentLifecycle {
     let item = storage

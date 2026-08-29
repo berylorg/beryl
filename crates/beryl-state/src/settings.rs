@@ -34,6 +34,13 @@ impl StorageDomain for SettingsDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = SETTINGS_FAMILIES;
     type ValidationError = SettingsValidationError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>
+    {
+        Ok(())
+    }
 
     fn validate(
         reader: &beryl_home_store::DomainReader<'_, Self>,
@@ -95,7 +102,7 @@ impl SettingRecord {
 }
 
 /// Opaque typed access to Beryl-owned scalar settings.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct SettingsState {
     handle: DomainHandle<SettingsDomain>,
 }
@@ -132,7 +139,7 @@ impl SettingsState {
     }
 
     pub fn revision(&self, store: &HomeStore) -> Result<beryl_model::DomainRevision, ReadError> {
-        store.domain_revision(self.handle)
+        store.domain_revision(&self.handle)
     }
 
     /// Returns this domain's revision from a still-current successful command.
@@ -141,7 +148,7 @@ impl SettingsState {
         store: &HomeStore,
         receipt: &beryl_home_store::CommitReceipt,
     ) -> Result<Option<beryl_model::DomainRevision>, beryl_home_store::CommitReceiptError> {
-        store.receipt_domain_revision(receipt, self.handle)
+        store.receipt_domain_revision(receipt, &self.handle)
     }
 
     pub fn setting(
@@ -149,7 +156,7 @@ impl SettingsState {
         store: &HomeStore,
         key: SettingKey,
     ) -> Result<Option<SettingRecord>, ReadError> {
-        store.read_point::<SettingsDomain, SettingRecordCodec>(self.handle, &key, point_limit())
+        store.read_point::<SettingsDomain, SettingRecordCodec>(&self.handle, &key, point_limit())
     }
 
     pub fn list(
@@ -165,7 +172,7 @@ impl SettingsState {
             CursorRange::closed(start, SettingKey::LAST)
         };
         let page = store.read_cursor::<SettingsDomain, SettingRecordCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,

@@ -72,7 +72,7 @@ impl Ingester {
         let mut commit = self.committer(
             observation.identity,
             observation.home_generation,
-            observation.storage,
+            &observation.storage,
         );
         let sealed = match observation.stager.seal(&mut commit) {
             Ok(syndic_storage::ProviderObservationSealOutcome::Committed {
@@ -131,7 +131,7 @@ impl Ingester {
         };
         let prepared = super::super::super::consumer::prepare(
             &self.home,
-            storage,
+            &storage,
             permit.syndic_thread_id(),
             bound,
             point_limit(),
@@ -152,7 +152,7 @@ impl Ingester {
             &self.home,
             self.home_id,
             home_generation,
-            storage,
+            &storage,
             prepared,
             point_limit(),
             &self.cancelled,

@@ -18,8 +18,8 @@ use super::{
 
 pub(super) fn drive_begin(
     store: &HomeStore,
-    storage: SyndicStorage,
-    assets: AssetState,
+    storage: &SyndicStorage,
+    assets: &AssetState,
     request: DraftMarkerSealFlightRequest,
     command_fault: CommandFault,
     reconcile_fault: ReconcileFault,
@@ -96,8 +96,8 @@ pub(super) fn drive_begin(
 
 pub(super) fn drive_page(
     store: &HomeStore,
-    storage: SyndicStorage,
-    assets: AssetState,
+    storage: &SyndicStorage,
+    assets: &AssetState,
     request: DraftMarkerSealFlightRequest,
     staging: Option<AssetReferenceSetStagingAuthority>,
     page_limit: usize,
@@ -111,7 +111,7 @@ pub(super) fn drive_page(
         page_limit,
     )?
     else {
-        return completed_or_terminal(store, storage, assets, request, staging);
+        return completed_or_terminal(store, &storage, assets, request, staging);
     };
     let release = prepared.page().release();
     let mut command = HomeCommand::new(store.home_revision()?);
@@ -183,8 +183,8 @@ pub(super) fn drive_page(
 
 fn completed_or_terminal(
     store: &HomeStore,
-    storage: SyndicStorage,
-    assets: AssetState,
+    storage: &SyndicStorage,
+    assets: &AssetState,
     request: DraftMarkerSealFlightRequest,
     staging: Option<AssetReferenceSetStagingAuthority>,
 ) -> Result<DriveUpdate, DraftMarkerSealServiceError> {
@@ -209,8 +209,8 @@ fn completed_or_terminal(
 
 pub(super) fn drive_asset_seal(
     store: &HomeStore,
-    storage: SyndicStorage,
-    assets: AssetState,
+    storage: &SyndicStorage,
+    assets: &AssetState,
     request: DraftMarkerSealFlightRequest,
     staging: AssetReferenceSetStagingAuthority,
     syndic: DraftMarkerSealProofV1,
@@ -269,7 +269,7 @@ pub(super) fn drive_asset_seal(
 
 fn require_building_completion(
     store: &HomeStore,
-    assets: AssetState,
+    assets: &AssetState,
     staging: AssetReferenceSetStagingAuthority,
 ) -> Result<beryl_state::AssetReferenceSetManifest, DraftMarkerSealServiceError> {
     match assets.complete_reference_set(
@@ -287,7 +287,7 @@ fn require_building_completion(
 
 fn completed_nonempty(
     store: &HomeStore,
-    assets: AssetState,
+    assets: &AssetState,
     staging: AssetReferenceSetStagingAuthority,
     syndic: DraftMarkerSealProofV1,
 ) -> Result<DriveUpdate, DraftMarkerSealServiceError> {

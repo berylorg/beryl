@@ -7,7 +7,7 @@ fn session_replay_rejects_replaced_wrong_root_and_corrupt_frontiers() {
         ("session-wrong-root", 50, true),
     ] {
         let (_home, store, storage, thread) = fixture(name, seed, 4_096);
-        let durable = current(storage, &store, thread);
+        let durable = current(&storage, &store, thread);
         let request = open_request(&durable, seed.wrapping_add(2), seed.wrapping_add(3));
         let prepared = storage
             .prepare_open_draft_editor_candidate_session(&store, request)
@@ -53,7 +53,7 @@ fn session_replay_rejects_replaced_wrong_root_and_corrupt_frontiers() {
             &store,
             replace_draft_edit_history_frontier(
                 &store,
-                storage,
+                storage.clone(),
                 session.newest_history().key(),
                 replacement,
             ),
@@ -73,7 +73,7 @@ fn session_replay_rejects_replaced_wrong_root_and_corrupt_frontiers() {
     }
 
     let (_home, store, storage, thread) = fixture("session-corrupt", 60, 4_096);
-    let durable = current(storage, &store, thread);
+    let durable = current(&storage, &store, thread);
     let request = open_request(&durable, 62, 63);
     let prepared = storage
         .prepare_open_draft_editor_candidate_session(&store, request)
@@ -97,7 +97,7 @@ fn session_replay_rejects_replaced_wrong_root_and_corrupt_frontiers() {
     };
     inject_draft_edit_history_frontier_digest_corruption(
         &store,
-        storage,
+        storage.clone(),
         session.newest_history().key(),
     )
     .unwrap();
@@ -120,9 +120,9 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
     for target in 0_u8..4 {
         let seed = 80_u8.wrapping_add(target * 10);
         let (home, store, storage, thread) = fixture("session-point-history", seed, 4_096);
-        let durable = current(storage, &store, thread);
+        let durable = current(&storage, &store, thread);
         let opened = open_session(
-            storage,
+            &storage,
             &store,
             &durable,
             seed.wrapping_add(2),
@@ -132,14 +132,14 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
             (opened.clone(), None)
         } else {
             let edit = transaction(
-                storage,
+                &storage,
                 &store,
                 &opened,
                 seed.wrapping_add(4),
                 "history",
                 point(7),
             );
-            build(storage, &store, &edit);
+            build(&storage, &store, &edit);
             committed(execute(
                 &store,
                 storage.settle_draft_piece_edit(
@@ -147,7 +147,7 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
                     edit.prepared.clone(),
                 ),
             ));
-            let settlement = settled(storage, &store, &edit);
+            let settlement = settled(&storage, &store, &edit);
             let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
                 panic!("history fixture did not commit")
             };
@@ -172,7 +172,7 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
         let corruption = match target {
             0 | 1 => delete_draft_edit_history_frontier(
                 &reopened,
-                storage,
+                storage.clone(),
                 expected.newest_history().key(),
             ),
             2 => {
@@ -183,7 +183,7 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
                 };
                 delete_draft_edit_history_record(
                     &reopened,
-                    storage,
+                    storage.clone(),
                     DraftEditHistoryRecordDeletion::Transition(adoption.transition().key()),
                 )
             }
@@ -205,7 +205,7 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
                 );
                 replace_draft_edit_history_transition(
                     &reopened,
-                    storage,
+                    storage.clone(),
                     adoption.transition().key(),
                     replacement,
                 )
@@ -244,15 +244,15 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
 #[test]
 fn candidate_ranges_fail_closed_on_wrong_missing_and_replaced_history() {
     let (_home, store, storage, thread) = fixture("range-wrong-history", 120, 4_096);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 122, 123);
-    let edit = transaction(storage, &store, &session, 124, "range", point(5));
-    build(storage, &store, &edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 122, 123);
+    let edit = transaction(&storage, &store, &session, 124, "range", point(5));
+    build(&storage, &store, &edit);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     ));
-    let settlement = settled(storage, &store, &edit);
+    let settlement = settled(&storage, &store, &edit);
     let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
         panic!("range fixture did not commit")
     };
@@ -278,7 +278,7 @@ fn candidate_ranges_fail_closed_on_wrong_missing_and_replaced_history() {
 
     committed(execute(
         &store,
-        delete_draft_edit_history_frontier(&store, storage, head.newest_history().key()),
+        delete_draft_edit_history_frontier(&store, storage.clone(), head.newest_history().key()),
     ));
     assert!(matches!(
         storage.candidate_draft_piece_marker_demand(
@@ -296,15 +296,15 @@ fn candidate_ranges_fail_closed_on_wrong_missing_and_replaced_history() {
     ));
 
     let (_home, store, storage, thread) = fixture("range-replaced-history", 130, 4_096);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 132, 133);
-    let edit = transaction(storage, &store, &session, 134, "range", point(5));
-    build(storage, &store, &edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 132, 133);
+    let edit = transaction(&storage, &store, &session, 134, "range", point(5));
+    build(&storage, &store, &edit);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     ));
-    let settlement = settled(storage, &store, &edit);
+    let settlement = settled(&storage, &store, &edit);
     let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
         panic!("range replacement fixture did not commit")
     };
@@ -322,7 +322,7 @@ fn candidate_ranges_fail_closed_on_wrong_missing_and_replaced_history() {
         &store,
         replace_draft_edit_history_transition(
             &store,
-            storage,
+            storage.clone(),
             adoption.transition().key(),
             replacement,
         ),
@@ -341,7 +341,7 @@ fn candidate_ranges_fail_closed_on_wrong_missing_and_replaced_history() {
 #[test]
 fn session_identity_collision_is_not_exact_replay() {
     let (_home, store, storage, thread) = fixture("session-collision", 70, 4_096);
-    let durable = current(storage, &store, thread);
+    let durable = current(&storage, &store, thread);
     let request = open_request(&durable, 72, 73);
     let prepared = storage
         .prepare_open_draft_editor_candidate_session(&store, request)

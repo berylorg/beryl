@@ -52,7 +52,7 @@ impl DescendantDrift {
     fn fixture_batch(
         self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         fixture: &Fixture,
         request: &PromoteAcceptedInput,
     ) -> FixtureBatch {
@@ -134,7 +134,7 @@ impl DescendantDrift {
         self,
         batch: &mut FixtureBatch,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         fixture: &Fixture,
         request: &PromoteAcceptedInput,
     ) {
@@ -259,11 +259,11 @@ fn similar_but_incoherent_promotion_descendants_are_collisions() {
         let (_home, store, storage) = seed(&name, fixture.records.clone());
         let request = promotion(
             &store,
-            storage,
+            &storage,
             SyndicTurnId::from_bytes([200_u8.checked_add(offset as u8).unwrap(); 16]),
             SyndicItemId::from_bytes([220_u8.checked_add(offset as u8).unwrap(); 16]),
         );
-        match execute_promotion(&store, storage, request.clone()) {
+        match execute_promotion(&store, &storage, request.clone()) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..
@@ -283,8 +283,8 @@ fn similar_but_incoherent_promotion_descendants_are_collisions() {
 
         commit(
             &store,
-            storage,
-            drift.fixture_batch(&store, storage, &fixture, &request),
+            storage.clone(),
+            drift.fixture_batch(&store, &storage, &fixture, &request),
         );
         assert_eq!(
             storage
@@ -364,7 +364,7 @@ fn prior_requires_the_complete_terminal_source_parent() {
         let (_home, store, storage) = seed(&name, fixture.records.clone());
         let request = promotion(
             &store,
-            storage,
+            &storage,
             SyndicTurnId::from_bytes([230_u8.checked_add(offset as u8).unwrap(); 16]),
             SyndicItemId::from_bytes([240_u8.checked_add(offset as u8).unwrap(); 16]),
         );
@@ -375,7 +375,7 @@ fn prior_requires_the_complete_terminal_source_parent() {
             AcceptedInputPromotionStatus::Prior,
         );
 
-        commit(&store, storage, drift.fixture_batch(parent));
+        commit(&store, storage.clone(), drift.fixture_batch(parent));
         assert_eq!(
             storage
                 .accepted_input_promotion_status(&store, &request, limit())

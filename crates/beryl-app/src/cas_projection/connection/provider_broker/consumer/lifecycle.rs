@@ -63,7 +63,7 @@ impl ResolvedFrame {
 
 pub(super) fn resolve(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: &LiveSourceTarget,
     lifecycle: ProviderFrameObservationSummaryV1,
     kind: ProviderItemKind,

@@ -26,7 +26,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
         let head = state.assets().owner_head(&store, owner).unwrap().unwrap();
         let other = if stray_source { destination } else { source };
         let assets_before_present_validation = state.assets().revision(&store).unwrap();
-        let probe_before_present_validation = store.domain_revision(probe).unwrap();
+        let probe_before_present_validation = store.domain_revision(&probe).unwrap();
         let present_receipt = {
             let mut command = HomeCommand::new(store.home_revision().unwrap());
             command
@@ -41,7 +41,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
                     ),
                 )
                 .unwrap()
-                .add(probe.contribution(
+                .add(probe.clone().contribution(
                     probe_before_present_validation,
                     PutProbe { key: 3, value: 8 },
                 ))
@@ -68,7 +68,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
         assert_eq!(
             store
                 .read_point::<ProbeDomain, ProbeRecord>(
-                    probe,
+                    &probe,
                     &3,
                     beryl_home_store::PointReadLimit::new(5).unwrap(),
                 )
@@ -78,7 +78,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
 
         let home_before = store.home_revision().unwrap();
         let assets_before = state.assets().revision(&store).unwrap();
-        let probe_before = store.domain_revision(probe).unwrap();
+        let probe_before = store.domain_revision(&probe).unwrap();
 
         let mut rejected = HomeCommand::new(home_before);
         rejected
@@ -93,7 +93,11 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
                 ),
             )
             .unwrap()
-            .add(probe.contribution(probe_before, PutProbe { key: 2, value: 7 }))
+            .add(
+                probe
+                    .clone()
+                    .contribution(probe_before, PutProbe { key: 2, value: 7 }),
+            )
             .unwrap();
         let error = match store.execute(rejected) {
             CommandOutcome::NotCommitted { evidence } => evidence,
@@ -108,7 +112,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
         ));
         assert_eq!(store.home_revision().unwrap(), home_before);
         assert_eq!(state.assets().revision(&store).unwrap(), assets_before);
-        assert_eq!(store.domain_revision(probe).unwrap(), probe_before);
+        assert_eq!(store.domain_revision(&probe).unwrap(), probe_before);
         assert_eq!(
             state.assets().owner_head(&store, owner).unwrap(),
             Some(head.clone())
@@ -116,7 +120,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
         assert_eq!(
             store
                 .read_point::<ProbeDomain, ProbeRecord>(
-                    probe,
+                    &probe,
                     &2,
                     beryl_home_store::PointReadLimit::new(5).unwrap(),
                 )
@@ -160,7 +164,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
 
         let stale_home = store.home_revision().unwrap();
         let stale_assets = state.assets().revision(&store).unwrap();
-        let stale_probe = store.domain_revision(probe).unwrap();
+        let stale_probe = store.domain_revision(&probe).unwrap();
         let mut stale_command = HomeCommand::new(stale_home);
         stale_command
             .add_validation(
@@ -174,7 +178,11 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
                 ),
             )
             .unwrap()
-            .add(probe.contribution(stale_probe, PutProbe { key: 4, value: 6 }))
+            .add(
+                probe
+                    .clone()
+                    .contribution(stale_probe, PutProbe { key: 4, value: 6 }),
+            )
             .unwrap();
         assert!(matches!(
             store.execute(stale_command),
@@ -187,11 +195,11 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
         ));
         assert_eq!(store.home_revision().unwrap(), stale_home);
         assert_eq!(state.assets().revision(&store).unwrap(), stale_assets);
-        assert_eq!(store.domain_revision(probe).unwrap(), stale_probe);
+        assert_eq!(store.domain_revision(&probe).unwrap(), stale_probe);
         assert_eq!(
             store
                 .read_point::<ProbeDomain, ProbeRecord>(
-                    probe,
+                    &probe,
                     &4,
                     beryl_home_store::PointReadLimit::new(5).unwrap(),
                 )

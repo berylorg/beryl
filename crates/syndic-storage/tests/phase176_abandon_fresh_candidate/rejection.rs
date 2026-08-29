@@ -8,10 +8,10 @@ use syndic_storage::{
 #[test]
 fn stale_dirty_custody_and_disposed_sessions_do_not_abandon() {
     let (_home, store, storage, thread) = fixture("abandon-rejections", 30, 65_536);
-    let selected = current(storage, &store, thread);
-    let opened = open_session(storage, &store, &selected, 32, 33);
-    let other_thread = create_thread(storage, &store, 60, 65_536);
-    let other = current(storage, &store, other_thread);
+    let selected = current(&storage, &store, thread);
+    let opened = open_session(&storage, &store, &selected, 32, 33);
+    let other_thread = create_thread(&storage, &store, 60, 65_536);
+    let other = current(&storage, &store, other_thread);
     for request in [
         DraftEditorCandidateSessionDisposeRequestV1::new(
             opened.draft_id(),
@@ -51,15 +51,15 @@ fn stale_dirty_custody_and_disposed_sessions_do_not_abandon() {
                 .unwrap(),
             DraftEditorCandidateSessionAbandonFreshOutcomeV1::NotFresh(_)
         ));
-        assert_eq!(head(storage, &store, &opened), opened);
+        assert_eq!(head(&storage, &store, &opened), opened);
     }
 
-    let custody = transaction(storage, &store, &opened, 36, "x", point(1));
+    let custody = transaction(&storage, &store, &opened, 36, "x", point(1));
     committed(execute(
         &store,
         storage.begin_draft_piece_edit(storage.revision(&store).unwrap(), custody.prepared.clone()),
     ));
-    let occupied = head(storage, &store, &opened);
+    let occupied = head(&storage, &store, &opened);
     let request = abandon_request(&occupied, 37);
     let prepared = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -77,13 +77,13 @@ fn stale_dirty_custody_and_disposed_sessions_do_not_abandon() {
             .unwrap(),
         DraftEditorCandidateSessionAbandonFreshOutcomeV1::NotFresh(_)
     ));
-    assert_eq!(head(storage, &store, &opened), occupied);
+    assert_eq!(head(&storage, &store, &opened), occupied);
 
     let (_home, store, storage, thread) = fixture("abandon-dirty", 40, 65_536);
-    let selected = current(storage, &store, thread);
-    let opened = open_session(storage, &store, &selected, 42, 43);
-    let transaction = transaction(storage, &store, &opened, 44, "x", point(1));
-    build(storage, &store, &transaction);
+    let selected = current(&storage, &store, thread);
+    let opened = open_session(&storage, &store, &selected, 42, 43);
+    let transaction = transaction(&storage, &store, &opened, 44, "x", point(1));
+    build(&storage, &store, &transaction);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(
@@ -91,7 +91,7 @@ fn stale_dirty_custody_and_disposed_sessions_do_not_abandon() {
             transaction.prepared.clone(),
         ),
     ));
-    let dirty = match settled(storage, &store, &transaction).closure() {
+    let dirty = match settled(&storage, &store, &transaction).closure() {
         DraftPieceSettlementClosureV1::Committed(adoption) => adoption.adopted_session().clone(),
         other => panic!("edit did not commit: {other:?}"),
     };
@@ -112,10 +112,10 @@ fn stale_dirty_custody_and_disposed_sessions_do_not_abandon() {
             .unwrap(),
         DraftEditorCandidateSessionAbandonFreshOutcomeV1::NotFresh(_)
     ));
-    assert_eq!(head(storage, &store, &opened), dirty);
+    assert_eq!(head(&storage, &store, &opened), dirty);
 
-    publish_candidate(storage, &store, &selected, &dirty, 45);
-    let published = head(storage, &store, &opened);
+    publish_candidate(&storage, &store, &selected, &dirty, 45);
+    let published = head(&storage, &store, &opened);
     let request = abandon_request(&published, 46);
     let prepared = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -133,14 +133,14 @@ fn stale_dirty_custody_and_disposed_sessions_do_not_abandon() {
             .unwrap(),
         DraftEditorCandidateSessionAbandonFreshOutcomeV1::NotFresh(_)
     ));
-    assert_eq!(head(storage, &store, &opened), published);
+    assert_eq!(head(&storage, &store, &opened), published);
 }
 
 #[test]
 fn selector_drift_is_unrelated_and_abandonment_identity_is_exact() {
     let (_home, store, storage, thread) = fixture("abandon-identity", 50, 65_536);
-    let selected = current(storage, &store, thread);
-    let opened = open_session(storage, &store, &selected, 52, 53);
+    let selected = current(&storage, &store, thread);
+    let opened = open_session(&storage, &store, &selected, 52, 53);
     let request = abandon_request(&opened, 54);
     let prepared = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -149,17 +149,17 @@ fn selector_drift_is_unrelated_and_abandonment_identity_is_exact() {
         &store,
         publish_draft_edit_history_pair(
             &store,
-            storage,
+            storage.clone(),
             selected.draft().clone(),
             selected.draft().piece_root(),
             selected.draft().history(),
         ),
     ));
     assert_ne!(
-        selector(&current(storage, &store, thread)),
+        selector(&current(&storage, &store, thread)),
         selector(&selected)
     );
-    let selector_before_abandonment = selector(&current(storage, &store, thread));
+    let selector_before_abandonment = selector(&current(&storage, &store, thread));
     let outcome = execute(
         &store,
         storage.abandon_fresh_draft_editor_candidate_session(
@@ -175,7 +175,7 @@ fn selector_drift_is_unrelated_and_abandonment_identity_is_exact() {
         other => panic!("selector drift blocked abandonment: {other:?}"),
     };
     assert_eq!(
-        selector(&current(storage, &store, thread)),
+        selector(&current(&storage, &store, thread)),
         selector_before_abandonment
     );
 
@@ -234,5 +234,5 @@ fn selector_drift_is_unrelated_and_abandonment_identity_is_exact() {
             .unwrap(),
         DraftEditorCandidateSessionAbandonFreshOutcomeV1::AlreadyDisposed(_)
     ));
-    assert_eq!(head(storage, &store, &opened), abandoned);
+    assert_eq!(head(&storage, &store, &opened), abandoned);
 }

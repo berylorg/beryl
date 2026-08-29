@@ -4,25 +4,25 @@ use super::{common::commit_edit, support::*};
 fn cumulative_keys_and_oldest_first_floor_repeat_at_exact_saturation() {
     let (_measure_home, measure_store, measure_storage, measure_thread) =
         fixture("retention-measure", 20, 65_536);
-    let durable = current(measure_storage, &measure_store, measure_thread);
-    let initial = open_session(measure_storage, &measure_store, &durable, 22, 23);
-    let first = commit_edit(measure_storage, &measure_store, &initial, 24, "a");
+    let durable = current(&measure_storage, &measure_store, measure_thread);
+    let initial = open_session(&measure_storage, &measure_store, &durable, 22, 23);
+    let first = commit_edit(&measure_storage, &measure_store, &initial, 24, "a");
     let second = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         first.adopted_session(),
         25,
         "variable",
     );
     let third = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         second.adopted_session(),
         26,
         "charge",
     );
     let fourth = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         third.adopted_session(),
         27,
@@ -65,11 +65,11 @@ fn cumulative_keys_and_oldest_first_floor_repeat_at_exact_saturation() {
 
     let (home, store, storage, thread) =
         fixture("retention-saturation", 40, exact_saturated_budget);
-    let durable = current(storage, &store, thread);
-    let mut head = open_session(storage, &store, &durable, 42, 43);
+    let durable = current(&storage, &store, thread);
+    let mut head = open_session(&storage, &store, &durable, 42, 43);
     let mut retained: Vec<syndic_storage::DraftEditHistoryTransitionV1> = Vec::new();
     for (operation, text) in [(44, "a"), (45, "bb"), (46, "ccc"), (47, "dddd")] {
-        let adoption = commit_edit(storage, &store, &head, operation, text);
+        let adoption = commit_edit(&storage, &store, &head, operation, text);
         let transition = adoption.transition().clone();
         assert_eq!(
             transition.key().cumulative_encoded_bytes(),
@@ -94,17 +94,17 @@ fn cumulative_keys_and_oldest_first_floor_repeat_at_exact_saturation() {
         for prior in &retained {
             assert!(draft_edit_history_transition_exists(
                 &store,
-                storage,
+                storage.clone(),
                 prior.key()
             ));
             assert!(draft_edit_history_root_exists(
                 &store,
-                storage,
+                storage.clone(),
                 prior.predecessor_root()
             ));
             assert!(draft_edit_history_root_exists(
                 &store,
-                storage,
+                storage.clone(),
                 prior.successor_root()
             ));
         }
@@ -121,7 +121,7 @@ fn cumulative_keys_and_oldest_first_floor_repeat_at_exact_saturation() {
             .unwrap(),
         DraftEditorCandidateSessionReadOutcomeV1::Active(value) if value == head
     ));
-    let fresh = open_session(reopened_storage, &reopened, &durable, 52, 53);
+    let fresh = open_session(&reopened_storage, &reopened, &durable, 52, 53);
     assert_eq!(fresh.newest_root(), durable.draft().piece_root());
     assert!(!fresh.newest_history().availability().undo_available());
 }
@@ -130,25 +130,25 @@ fn cumulative_keys_and_oldest_first_floor_repeat_at_exact_saturation() {
 fn variable_charge_cutoff_straddle_advances_to_the_next_transition_boundary() {
     let (_measure_home, measure_store, measure_storage, measure_thread) =
         fixture("retention-straddle-measure", 54, 65_536);
-    let durable = current(measure_storage, &measure_store, measure_thread);
-    let session = open_session(measure_storage, &measure_store, &durable, 55, 56);
-    let first = commit_edit(measure_storage, &measure_store, &session, 57, "a");
+    let durable = current(&measure_storage, &measure_store, measure_thread);
+    let session = open_session(&measure_storage, &measure_store, &durable, 55, 56);
+    let first = commit_edit(&measure_storage, &measure_store, &session, 57, "a");
     let second = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         first.adopted_session(),
         58,
         "variable",
     );
     let third = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         second.adopted_session(),
         59,
         "charge",
     );
     let fourth = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         third.adopted_session(),
         60,
@@ -175,12 +175,12 @@ fn variable_charge_cutoff_straddle_advances_to_the_next_transition_boundary() {
     let straddling_budget = frontier_charge + second_charge + third_charge + fourth_charge - 1;
 
     let (_home, store, storage, thread) = fixture("retention-straddle", 61, straddling_budget);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 62, 63);
-    let first = commit_edit(storage, &store, &session, 64, "a");
-    let second = commit_edit(storage, &store, first.adopted_session(), 65, "variable");
-    let third = commit_edit(storage, &store, second.adopted_session(), 66, "charge");
-    let fourth = commit_edit(storage, &store, third.adopted_session(), 67, "boundary");
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 62, 63);
+    let first = commit_edit(&storage, &store, &session, 64, "a");
+    let second = commit_edit(&storage, &store, first.adopted_session(), 65, "variable");
+    let third = commit_edit(&storage, &store, second.adopted_session(), 66, "charge");
+    let fourth = commit_edit(&storage, &store, third.adopted_session(), 67, "boundary");
 
     assert_eq!(
         fourth.adopted_history().oldest_eligible(),
@@ -193,12 +193,12 @@ fn variable_charge_cutoff_straddle_advances_to_the_next_transition_boundary() {
     assert!(fourth.adopted_history().retained_encoded_bytes() <= straddling_budget);
     assert!(draft_edit_history_transition_exists(
         &store,
-        storage,
+        storage.clone(),
         first.transition().key()
     ));
     assert!(draft_edit_history_transition_exists(
         &store,
-        storage,
+        storage.clone(),
         second.transition().key()
     ));
 }
@@ -207,25 +207,25 @@ fn variable_charge_cutoff_straddle_advances_to_the_next_transition_boundary() {
 fn cumulative_seek_spans_a_nonempty_session_fork_and_reopens() {
     let (_measure_home, measure_store, measure_storage, measure_thread) =
         fixture("fork-saturation-measure", 200, 65_536);
-    let durable = current(measure_storage, &measure_store, measure_thread);
-    let session = open_session(measure_storage, &measure_store, &durable, 201, 202);
-    let first = commit_edit(measure_storage, &measure_store, &session, 203, "a");
+    let durable = current(&measure_storage, &measure_store, measure_thread);
+    let session = open_session(&measure_storage, &measure_store, &durable, 201, 202);
+    let first = commit_edit(&measure_storage, &measure_store, &session, 203, "a");
     let second = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         first.adopted_session(),
         204,
         "variable",
     );
     let third = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         second.adopted_session(),
         205,
         "charge",
     );
     let fourth = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         third.adopted_session(),
         206,
@@ -250,24 +250,24 @@ fn cumulative_seek_spans_a_nonempty_session_fork_and_reopens() {
         - 1;
 
     let (home, store, storage, thread) = fixture("fork-saturation", 210, budget);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 211, 212);
-    let first = commit_edit(storage, &store, &session, 213, "a");
-    let second = commit_edit(storage, &store, first.adopted_session(), 214, "variable");
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 211, 212);
+    let first = commit_edit(&storage, &store, &session, 213, "a");
+    let second = commit_edit(&storage, &store, first.adopted_session(), 214, "variable");
     committed(execute(
         &store,
         publish_draft_edit_history_pair(
             &store,
-            storage,
+            storage.clone(),
             durable.draft().clone(),
             second.adopted_root().reference(),
             second.adopted_history().reference(),
         ),
     ));
-    let published = current(storage, &store, thread);
-    let forked = open_session(storage, &store, &published, 215, 216);
-    let third = commit_edit(storage, &store, &forked, 217, "charge");
-    let fourth = commit_edit(storage, &store, third.adopted_session(), 218, "boundary");
+    let published = current(&storage, &store, thread);
+    let forked = open_session(&storage, &store, &published, 215, 216);
+    let third = commit_edit(&storage, &store, &forked, 217, "charge");
+    let fourth = commit_edit(&storage, &store, third.adopted_session(), 218, "boundary");
     assert_eq!(
         fourth.adopted_history().oldest_eligible(),
         Some(third.transition().reference())
@@ -278,7 +278,7 @@ fn cumulative_seek_spans_a_nonempty_session_fork_and_reopens() {
     );
     assert!(draft_edit_history_transition_exists(
         &store,
-        storage,
+        storage.clone(),
         second.transition().key()
     ));
 

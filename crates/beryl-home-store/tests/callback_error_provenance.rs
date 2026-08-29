@@ -23,6 +23,12 @@ impl StorageDomain for AccessDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = CallbackError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         let marker = reader
@@ -192,7 +198,7 @@ fn execute(
 ) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(domain.contribution(store.domain_revision(domain).unwrap(), mutation))
+        .add(domain.contribution(store.domain_revision(&domain).unwrap(), mutation))
         .unwrap();
     store.execute(command)
 }
@@ -206,12 +212,12 @@ fn execute_with_validator(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(mutation_domain.contribution(
-            store.domain_revision(mutation_domain).unwrap(),
+            store.domain_revision(&mutation_domain).unwrap(),
             PutBytes::<AlphaDomain>::new(17, b"must stay atomic".to_vec()),
         ))
         .unwrap()
         .add_validation(validator_domain.validation(
-            store.domain_revision(validator_domain).unwrap(),
+            store.domain_revision(&validator_domain).unwrap(),
             AccessValidator { failure },
         ))
         .unwrap();
@@ -245,7 +251,7 @@ fn storage_access_from_either_callback_stage_fails_closed_with_provenance() {
         let mut store = open(directory.path());
         let domain = store.register_domain::<AccessDomain>().unwrap();
         let home_before = store.home_revision().unwrap();
-        let domain_before = store.domain_revision(domain).unwrap();
+        let domain_before = store.domain_revision(&domain).unwrap();
 
         let error = execute(
             &store,
@@ -271,7 +277,7 @@ fn storage_access_from_either_callback_stage_fails_closed_with_provenance() {
         let domain = candidate.domain_handle::<AccessDomain>().unwrap();
         let store = candidate.publish();
         assert_eq!(store.home_revision().unwrap(), home_before);
-        assert_eq!(store.domain_revision(domain).unwrap(), domain_before);
+        assert_eq!(store.domain_revision(&domain).unwrap(), domain_before);
         committed(execute(&store, domain, put(b"committed")));
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         store.close().unwrap();
@@ -341,8 +347,8 @@ fn validation_only_participant_preserves_semantic_and_access_provenance() {
         let mutation_domain = store.register_domain::<AlphaDomain>().unwrap();
         let validator_domain = store.register_domain::<AccessDomain>().unwrap();
         let home_before = store.home_revision().unwrap();
-        let mutation_before = store.domain_revision(mutation_domain).unwrap();
-        let validator_before = store.domain_revision(validator_domain).unwrap();
+        let mutation_before = store.domain_revision(&mutation_domain).unwrap();
+        let validator_before = store.domain_revision(&validator_domain).unwrap();
 
         let error = not_committed(execute_with_validator(
             &store,
@@ -389,11 +395,11 @@ fn validation_only_participant_preserves_semantic_and_access_provenance() {
         }
         assert_eq!(store.home_revision().unwrap(), home_before);
         assert_eq!(
-            store.domain_revision(mutation_domain).unwrap(),
+            store.domain_revision(&mutation_domain).unwrap(),
             mutation_before
         );
         assert_eq!(
-            store.domain_revision(validator_domain).unwrap(),
+            store.domain_revision(&validator_domain).unwrap(),
             validator_before
         );
     }

@@ -2,7 +2,7 @@ use super::*;
 
 fn terminal_event(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: &ActiveFixture,
     source: Option<CasTurnSource>,
     outcome: TurnTerminalOutcome,
@@ -31,7 +31,7 @@ fn terminal_event(
 
 fn complete_active_terminal(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_byte: u8,
 ) -> ActiveFixture {
     let fixture = activate_pending(store, storage, thread_byte, false);
@@ -75,9 +75,9 @@ fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
     let home = TestHome::new("phase9-current-binding-activation");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, _, turn, selected) = same_home_pending_path(&store, storage, 70);
+    let (thread, _, turn, selected) = same_home_pending_path(&store, &storage, 70);
     let cas_thread = CasThreadId::new("phase9-current-activation").unwrap();
-    let valid = valid_request(&store, storage, thread, selected, cas_thread);
+    let valid = valid_request(&store, &storage, thread, selected, cas_thread);
     assert_eq!(
         storage
             .valid_binding_publication_status(&store, &valid, point_limit())
@@ -98,8 +98,8 @@ fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
     let snapshot = SyndicExecutionSnapshotId::from_bytes([72; 16]);
     let activation = ActivateBinding::new(
         thread,
-        current_binding_revision(&store, storage, thread),
-        current_gate_revision(&store, storage, thread),
+        current_binding_revision(&store, &storage, thread),
+        current_gate_revision(&store, &storage, thread),
         selected,
         snapshot,
         turn,
@@ -128,7 +128,7 @@ fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
         .unwrap();
     assert_eq!(
         immutable_snapshot.activation_gate_revision(),
-        current_gate_revision(&store, storage, thread)
+        current_gate_revision(&store, &storage, thread)
     );
     assert_eq!(
         immutable_snapshot.represented_base_native_turn_count(),
@@ -159,10 +159,10 @@ fn queued_admission_descendant_preserves_activation_reconciliation() {
     let home = TestHome::new("phase9-current-queued-descendant-activation");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, _, turn, projected_path) = same_home_pending_path(&store, storage, 80);
+    let (thread, _, turn, projected_path) = same_home_pending_path(&store, &storage, 80);
     let valid = valid_request(
         &store,
-        storage,
+        &storage,
         thread,
         projected_path,
         CasThreadId::new("phase9-current-descendant-activation").unwrap(),
@@ -171,7 +171,7 @@ fn queued_admission_descendant_preserves_activation_reconciliation() {
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), valid),
     );
-    let accepted = seed_queued_input(&store, storage, thread, draft_id(93));
+    let accepted = seed_queued_input(&store, &storage, thread, draft_id(93));
     let current = storage
         .thread(&store, thread, point_limit())
         .unwrap()
@@ -201,8 +201,8 @@ fn queued_admission_descendant_preserves_activation_reconciliation() {
 
     let activation = ActivateBinding::new(
         thread,
-        current_binding_revision(&store, storage, thread),
-        current_gate_revision(&store, storage, thread),
+        current_binding_revision(&store, &storage, thread),
+        current_gate_revision(&store, &storage, thread),
         current_path,
         SyndicExecutionSnapshotId::from_bytes([82; 16]),
         turn,
@@ -236,11 +236,11 @@ fn cancelled_activation_reconciles_prior_then_exact_and_survives_reopen() {
     let home = TestHome::new("phase9-current-activation-cancellation");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = activate_pending(&store, storage, 100, false);
+    let fixture = activate_pending(&store, &storage, 100, false);
     let cancellation = CancelBindingActivation::new(
         fixture.thread,
-        current_binding_revision(&store, storage, fixture.thread),
-        current_gate_revision(&store, storage, fixture.thread),
+        current_binding_revision(&store, &storage, fixture.thread),
+        current_gate_revision(&store, &storage, fixture.thread),
         fixture.selected,
         fixture.snapshot,
         fixture.turn,
@@ -305,7 +305,7 @@ fn cancellation_rejects_after_cas_turn_publication() {
     let home = TestHome::new("phase9-current-cancellation-after-cas-turn");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = activate_pending(&store, storage, 110, true);
+    let fixture = activate_pending(&store, &storage, 110, true);
     let before_binding = storage
         .current_binding(&store, fixture.thread, point_limit())
         .unwrap()
@@ -357,10 +357,10 @@ fn exact_terminal_cas_authority_advances_native_count_once() {
     let home = TestHome::new("phase9-current-terminal-cas-authority");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = activate_pending(&store, storage, 120, false);
+    let fixture = activate_pending(&store, &storage, 120, false);
     let source_less = terminal_event(
         &store,
-        storage,
+        &storage,
         &fixture,
         None,
         TurnTerminalOutcome::Complete,
@@ -381,8 +381,8 @@ fn exact_terminal_cas_authority_advances_native_count_once() {
             storage.revision(&store).unwrap(),
             PublishActiveCasTurn::new(
                 fixture.thread,
-                current_binding_revision(&store, storage, fixture.thread),
-                current_gate_revision(&store, storage, fixture.thread),
+                current_binding_revision(&store, &storage, fixture.thread),
+                current_gate_revision(&store, &storage, fixture.thread),
                 fixture.snapshot,
                 fixture.cas_thread.clone(),
                 fixture.cas_turn.clone(),
@@ -396,7 +396,7 @@ fn exact_terminal_cas_authority_advances_native_count_once() {
             storage.revision(&store).unwrap(),
             terminal_event(
                 &store,
-                storage,
+                &storage,
                 &fixture,
                 Some(CasTurnSource::new(
                     fixture.cas_thread.clone(),
@@ -474,10 +474,10 @@ fn source_less_terminal_requires_projection_unbinding() {
     let home = TestHome::new("phase9-current-source-less-terminal");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, _, turn, selected) = same_home_pending_path(&store, storage, 130);
+    let (thread, _, turn, selected) = same_home_pending_path(&store, &storage, 130);
     let valid = valid_request(
         &store,
-        storage,
+        &storage,
         thread,
         selected,
         CasThreadId::new("phase9-source-less-parent").unwrap(),
@@ -571,7 +571,7 @@ fn reopen_rejects_terminal_valid_successor_with_wrong_native_count() {
     let home = TestHome::new("phase9-terminal-native-count-corruption");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = complete_active_terminal(&store, storage, 160);
+    let fixture = complete_active_terminal(&store, &storage, 160);
     let current = storage
         .current_binding(&store, fixture.thread, point_limit())
         .unwrap()
@@ -619,7 +619,7 @@ fn reopen_rejects_source_less_event_claiming_external_activity() {
     let home = TestHome::new("phase9-source-less-external-corruption");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = complete_active_terminal(&store, storage, 170);
+    let fixture = complete_active_terminal(&store, &storage, 170);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -667,7 +667,7 @@ fn post_terminal_continuation_preserves_profile_and_reconciliation_history() {
     let home = TestHome::new("phase9-post-terminal-continuation");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = complete_active_terminal(&store, storage, 180);
+    let fixture = complete_active_terminal(&store, &storage, 180);
     let terminal_binding = storage
         .current_binding(&store, fixture.thread, point_limit())
         .unwrap()
@@ -677,7 +677,7 @@ fn post_terminal_continuation_preserves_profile_and_reconciliation_history() {
     };
     let terminal_native_count = terminal_usable.native_turn_count();
     let child = SyndicTurnId::from_bytes([184; 16]);
-    let child_selected = seed_child_pending_after_terminal(&store, storage, &fixture, child);
+    let child_selected = seed_child_pending_after_terminal(&store, &storage, &fixture, child);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -688,7 +688,7 @@ fn post_terminal_continuation_preserves_profile_and_reconciliation_history() {
     );
     let continuation = PublishValidBinding::new(
         fixture.thread,
-        current_binding_revision(&store, storage, fixture.thread),
+        current_binding_revision(&store, &storage, fixture.thread),
         child_selected,
         fixture.valid.execution().clone(),
         fixture.cas_thread.clone(),

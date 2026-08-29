@@ -139,7 +139,7 @@ fn scan_to_boundary(
             ),
         };
         let page = store.read_cursor::<crate::domain::SyndicDomain, ContentPiecesCodec>(
-            storage.handle,
+            &storage.handle,
             &range,
             CursorDirection::Forward,
             CursorReadLimits::new(PIECE_PAGE_ITEMS, PIECE_PAGE_BYTES)

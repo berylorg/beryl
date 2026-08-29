@@ -97,8 +97,8 @@ impl Drop for TestHome {
 #[test]
 fn one_page_payload_is_durable_before_bounded_builder_construction() {
     let (_home, store, storage, thread) = fixture("one-page", 1);
-    let before = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &before, 3, 4);
+    let before = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &before, 3, 4);
     let identity = DraftMutationStagingIdentityV1::new(
         session.draft_id(),
         session.session_id(),
@@ -140,7 +140,7 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
         .unwrap()
         .unwrap();
     let prepared = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &head,
         &session,
         DraftMutationStagingLaneV1::Proposal,
@@ -296,7 +296,7 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
     );
     assert_ne!(settled_session.newest_root(), session.newest_root());
     assert_ne!(settled_session.newest_history(), session.newest_history());
-    assert_eq!(current(storage, &store, thread), before);
+    assert_eq!(current(&storage, &store, thread), before);
     drop(store);
     let mut reopened =
         HomeStore::open(HomeOpenOptions::new(&_home.0, HomeSchemaVersion::CURRENT)).unwrap();
@@ -310,14 +310,14 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
         ),
         settled_session
     );
-    assert_eq!(current(reopened_storage, &reopened, thread), before);
+    assert_eq!(current(&reopened_storage, &reopened, thread), before);
 }
 
 #[test]
 fn transferred_terminal_settlements_clear_building_custody_and_replay() {
     let (_home, store, storage, thread) = fixture("transferred-terminals", 7);
-    let before = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &before, 8, 9);
+    let before = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &before, 8, 9);
 
     let cancelled = transfer_single_staged_piece(&storage, &store, &session, 10);
     let cancelled_replay = cancelled.clone();
@@ -374,7 +374,7 @@ fn transferred_terminal_settlements_clear_building_custody_and_replay() {
     session = active_session(&storage, &store, session.draft_id(), session.session_id());
     assert!(session.active_operation().is_none());
     assert_eq!(session.newest_candidate_generation(), 0);
-    assert_eq!(current(storage, &store, thread), before);
+    assert_eq!(current(&storage, &store, thread), before);
 }
 
 #[cfg(feature = "test-faults")]
@@ -382,7 +382,7 @@ fn transferred_terminal_settlements_clear_building_custody_and_replay() {
 fn transferred_settlement_rejects_corrupt_building_custody_and_generation() {
     let corruptions: [fn(
         &HomeStore,
-        SyndicStorage,
+        &SyndicStorage,
         SyndicDraftId,
         DraftEditorCandidateSessionIdV1,
     ) -> MutationContribution; 2] = [
@@ -391,12 +391,18 @@ fn transferred_settlement_rejects_corrupt_building_custody_and_generation() {
     ];
     for (index, corrupt) in corruptions.into_iter().enumerate() {
         let (_home, store, storage, thread) = fixture("transferred-corruption", 13 + index as u8);
-        let before = current(storage, &store, thread);
-        let session = open_session(storage, &store, &before, 16 + index as u8, 17 + index as u8);
+        let before = current(&storage, &store, thread);
+        let session = open_session(
+            &storage,
+            &store,
+            &before,
+            16 + index as u8,
+            17 + index as u8,
+        );
         let settlement = transfer_single_staged_piece(&storage, &store, &session, 18 + index as u8);
         committed(execute(
             &store,
-            corrupt(&store, storage, session.draft_id(), session.session_id()),
+            corrupt(&store, &storage, session.draft_id(), session.session_id()),
         ));
         assert!(matches!(
             execute(
@@ -405,15 +411,15 @@ fn transferred_settlement_rejects_corrupt_building_custody_and_generation() {
             ),
             CommandOutcome::NotCommitted { .. }
         ));
-        assert_eq!(current(storage, &store, thread), before);
+        assert_eq!(current(&storage, &store, thread), before);
     }
 }
 
 #[test]
 fn lanes_advance_independently_and_commands_reconcile_exactly() {
     let (_home, store, storage, thread) = fixture("lanes-reconcile", 11);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 12, 13);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 12, 13);
     let identity = staging_identity(&session, 14);
     let begin = begin_input(identity, &session);
     let prepared = storage
@@ -447,7 +453,7 @@ fn lanes_advance_independently_and_commands_reconcile_exactly() {
         .unwrap()
         .unwrap();
     let source = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &head,
         &session,
         DraftMutationStagingLaneV1::Source,
@@ -474,7 +480,7 @@ fn lanes_advance_independently_and_commands_reconcile_exactly() {
     let proposal =
         DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Text("p".to_owned())]);
     let prepared = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &after_source,
         &session,
         DraftMutationStagingLaneV1::Proposal,
@@ -501,8 +507,8 @@ fn lanes_advance_independently_and_commands_reconcile_exactly() {
 #[test]
 fn terminal_first_and_admitted_terminal_evidence_are_exact() {
     let (_home, store, storage, thread) = fixture("terminals", 21);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 22, 23);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 22, 23);
     for index in 0..3 {
         let identity = staging_identity(&session, 30 + index as u8);
         let begin = begin_input(identity, &session);
@@ -629,7 +635,7 @@ fn terminal_first_and_admitted_terminal_evidence_are_exact() {
 
     let conflict_identity = staging_identity(&session, 41);
     let stale_begin = begin_input(conflict_identity, &session);
-    let advanced = advance_candidate(storage, &store, &session, 42);
+    let advanced = advance_candidate(&storage, &store, &session, 42);
     assert!(matches!(
         storage.draft_mutation_staging_status(&store, identity).unwrap(),
         DraftMutationStagingStatusV1::Cancelled { evidence: stored, .. } if stored == evidence
@@ -676,8 +682,8 @@ fn terminal_first_and_admitted_terminal_evidence_are_exact() {
 #[test]
 fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     let (_home, store, storage, thread) = fixture("collisions-overflow", 41);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 42, 43);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 42, 43);
     let identity = staging_identity(&session, 44);
     let begin = storage
         .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -693,7 +699,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         .unwrap();
     assert!(matches!(
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -716,7 +722,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         .into_boxed_slice();
     assert!(
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Source,
@@ -733,7 +739,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
         .into_boxed_slice();
     assert!(matches!(
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Source,
@@ -746,7 +752,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     ));
     assert!(matches!(
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Source,
@@ -759,7 +765,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     ));
     assert!(matches!(
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Source,
@@ -772,7 +778,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     ));
     assert!(matches!(
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &source_head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -793,7 +799,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     let first_replacement =
         DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Text("a".to_owned())]);
     let accepted = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &source_head,
         &session,
         DraftMutationStagingLaneV1::Proposal,
@@ -804,7 +810,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     )
     .unwrap();
     let collision = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &source_head,
         &session,
         DraftMutationStagingLaneV1::Proposal,
@@ -867,7 +873,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     );
     assert!(matches!(
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &overflow_head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -904,7 +910,7 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
     );
     assert!(matches!(
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &byte_overflow_head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -927,8 +933,8 @@ fn occupied_next_fork_cursor_totals_and_overflow_fail_closed() {
 #[test]
 fn occupied_next_error_is_derived_from_durable_canonical_bytes() {
     let (_home, store, storage, thread) = fixture("occupied-error", 84);
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 85, 86);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 85, 86);
     let identity = staging_identity(&session, 87);
     let begin = storage
         .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -944,7 +950,7 @@ fn occupied_next_error_is_derived_from_durable_canonical_bytes() {
         .unwrap();
     let page = |text: &str| {
         prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -966,7 +972,7 @@ fn occupied_next_error_is_derived_from_durable_canonical_bytes() {
     let (stored_page, _) = draft_mutation_staging_batch_target(&stored, 0).unwrap();
     committed(execute(
         &store,
-        inject_draft_mutation_staging_occupied_page(&store, storage, stored_page),
+        inject_draft_mutation_staging_occupied_page(&store, &storage, stored_page),
     ));
     assert!(matches!(
         execute(
@@ -993,15 +999,15 @@ fn occupied_next_error_is_derived_from_durable_canonical_bytes() {
         active_session(&storage, &store, session.draft_id(), session.session_id()),
         session
     );
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[test]
 fn admitted_rejected_and_operational_error_are_derived_and_exact() {
     {
         let (_home, store, storage, thread) = fixture("admitted-rejected", 88);
-        let durable = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &durable, 89, 90);
+        let durable = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &durable, 89, 90);
         let identity = staging_identity(&session, 91);
         let begin = storage
             .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -1047,8 +1053,8 @@ fn admitted_rejected_and_operational_error_are_derived_and_exact() {
     }
     {
         let (_home, store, storage, thread) = fixture("admitted-error", 92);
-        let durable = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &durable, 93, 94);
+        let durable = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &durable, 93, 94);
         let identity = staging_identity(&session, 95);
         let begin = storage
             .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -1086,8 +1092,8 @@ fn admitted_rejected_and_operational_error_are_derived_and_exact() {
 #[test]
 fn begin_rejects_occupied_build_and_settlement_natural_identity() {
     let (_home, store, storage, thread) = fixture("occupied-begin", 45);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 46, 47);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 46, 47);
     let identity = staging_identity(&session, 48);
     let replacement =
         DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Text("x".to_owned())]);
@@ -1146,8 +1152,8 @@ fn begin_rejects_occupied_build_and_settlement_natural_identity() {
     #[cfg(feature = "test-faults")]
     {
         let (_home, store, storage, thread) = fixture("occupied-candidate-root", 96);
-        let current = current(storage, &store, thread);
-        let session = open_session(storage, &store, &current, 97, 98);
+        let current = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &current, 97, 98);
         let identity = staging_identity(&session, 99);
         let root = session.newest_root();
         let occupied_root = rekey_draft_piece_root_for_collision(
@@ -1162,7 +1168,7 @@ fn begin_rejects_occupied_build_and_settlement_natural_identity() {
             &store,
             inject_draft_piece_candidate_root_collision(
                 &store,
-                storage,
+                &storage,
                 occupied_root,
                 DraftPieceCandidateRootCollision::Exact,
             ),
@@ -1189,8 +1195,8 @@ fn begin_rejects_occupied_build_and_settlement_natural_identity() {
 #[test]
 fn maximum_window_and_direct_late_continuation_reopen_exactly() {
     let (home, store, storage, thread) = fixture("many-pages", 51);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 52, 53);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 52, 53);
     let identity = staging_identity(&session, 54);
     let begin = storage
         .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -1205,7 +1211,7 @@ fn maximum_window_and_direct_late_continuation_reopen_exactly() {
         .unwrap()
         .unwrap();
     let source = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &head,
         &session,
         DraftMutationStagingLaneV1::Source,
@@ -1241,7 +1247,7 @@ fn maximum_window_and_direct_late_continuation_reopen_exactly() {
             .unwrap()
             .unwrap();
         let prepared = prepare_phase147_one_page_batch(
-            storage,
+            &storage,
             &head,
             &session,
             DraftMutationStagingLaneV1::Proposal,
@@ -1467,8 +1473,8 @@ fn every_staging_command_class_reconciles_after_an_indeterminate_commit() {
             ),
         ),
     ));
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 63, 64);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 63, 64);
 
     let terminal_identity = staging_identity(&session, 65);
     let terminal_evidence = DraftMutationStagingTerminalEvidenceV1::Rejected {
@@ -1535,7 +1541,7 @@ fn every_staging_command_class_reconciles_after_an_indeterminate_commit() {
         .unwrap()
         .unwrap();
     let page = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &head,
         &session,
         DraftMutationStagingLaneV1::Proposal,
@@ -1628,7 +1634,7 @@ fn every_staging_command_class_reconciles_after_an_indeterminate_commit() {
         panic!("durable-page construction did not remain building");
     };
     assert_eq!(build.key().transition_ordinal(), 2);
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[cfg(feature = "test-faults")]
@@ -1638,7 +1644,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
         let (_home, store, storage, identity, _, _) = staged_page_fixture("missing-head", 70);
         committed(execute(
             &store,
-            delete_draft_mutation_staging_head(&store, storage, identity),
+            delete_draft_mutation_staging_head(&store, &storage, identity),
         ));
         assert!(
             storage
@@ -1650,7 +1656,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
         let (_home, store, storage, identity, page, _) = staged_page_fixture("missing-page", 71);
         committed(execute(
             &store,
-            delete_draft_mutation_staging_page(&store, storage, page),
+            delete_draft_mutation_staging_page(&store, &storage, page),
         ));
         assert!(
             storage
@@ -1662,7 +1668,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
         let (_home, store, storage, identity, page, _) = staged_page_fixture("replaced-page", 72);
         committed(execute(
             &store,
-            inject_draft_mutation_staging_page_digest_corruption(&store, storage, page),
+            inject_draft_mutation_staging_page_digest_corruption(&store, &storage, page),
         ));
         assert!(
             storage
@@ -1675,7 +1681,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
             staged_page_fixture("missing-receipt", 73);
         committed(execute(
             &store,
-            delete_draft_mutation_staging_receipt(&store, storage, receipt),
+            delete_draft_mutation_staging_receipt(&store, &storage, receipt),
         ));
         assert!(
             storage
@@ -1688,7 +1694,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
             staged_page_fixture("replaced-receipt", 74);
         committed(execute(
             &store,
-            inject_draft_mutation_staging_receipt_digest_corruption(&store, storage, receipt),
+            inject_draft_mutation_staging_receipt_digest_corruption(&store, &storage, receipt),
         ));
         assert!(
             storage
@@ -1702,7 +1708,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
         let prior = DraftMutationStagingProgressReceiptKeyV1::new(identity, 1).unwrap();
         committed(execute(
             &store,
-            inject_draft_mutation_staging_receipt_digest_corruption(&store, storage, prior),
+            inject_draft_mutation_staging_receipt_digest_corruption(&store, &storage, prior),
         ));
         assert!(
             storage
@@ -1714,7 +1720,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
         let (_home, store, storage, identity, _, _) = staged_page_fixture("corrupt-head", 78);
         committed(execute(
             &store,
-            inject_draft_mutation_staging_head_digest_corruption(&store, storage, identity),
+            inject_draft_mutation_staging_head_digest_corruption(&store, &storage, identity),
         ));
         assert!(
             storage
@@ -1726,7 +1732,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
         let (_home, store, storage, identity, _, _) = staged_page_fixture("head-ahead", 75);
         committed(execute(
             &store,
-            inject_draft_mutation_staging_head_ahead(&store, storage, identity),
+            inject_draft_mutation_staging_head_ahead(&store, &storage, identity),
         ));
         assert!(
             storage
@@ -1738,7 +1744,7 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
         let (_home, store, storage, identity, _, _) = staged_page_fixture("head-fork", 76);
         committed(execute(
             &store,
-            inject_draft_mutation_staging_head_fork(&store, storage, identity),
+            inject_draft_mutation_staging_head_fork(&store, &storage, identity),
         ));
         assert!(
             storage
@@ -1753,8 +1759,8 @@ fn missing_and_replaced_staging_closure_records_fail_closed() {
 fn staging_session_corruption_and_disposal_are_closed() {
     {
         let (_home, store, storage, thread) = fixture("session-corruption", 100);
-        let durable = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &durable, 101, 102);
+        let durable = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &durable, 101, 102);
         let identity = staging_identity(&session, 103);
         let begin = storage
             .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -1779,7 +1785,7 @@ fn staging_session_corruption_and_disposal_are_closed() {
             &store,
             inject_draft_piece_session_generation_inflation(
                 &store,
-                storage,
+                &storage,
                 session.draft_id(),
                 session.session_id(),
             ),
@@ -1792,8 +1798,8 @@ fn staging_session_corruption_and_disposal_are_closed() {
     }
     {
         let (_home, store, storage, thread) = fixture("terminal-disposal", 104);
-        let durable = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &durable, 105, 106);
+        let durable = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &durable, 105, 106);
         let identity = staging_identity(&session, 107);
         let begin = storage
             .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -1847,7 +1853,7 @@ fn page_ceiling_commitment_fails_decode_status_and_reconstruction() {
             staged_page_fixture("page-ceiling-status", 128);
         committed(execute(
             &store,
-            inject_draft_mutation_staging_page_ceiling_corruption(&store, storage, page_key),
+            inject_draft_mutation_staging_page_ceiling_corruption(&store, &storage, page_key),
         ));
         assert!(
             storage
@@ -1862,8 +1868,8 @@ fn page_ceiling_commitment_fails_decode_status_and_reconstruction() {
     }
 
     let (_home, store, storage, thread) = fixture("page-ceiling-builder", 129);
-    let before = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &before, 130, 131);
+    let before = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &before, 130, 131);
     let identity = staging_identity(&session, 132);
     let begin = storage
         .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -1885,7 +1891,7 @@ fn page_ceiling_commitment_fails_decode_status_and_reconstruction() {
         .unwrap()
         .unwrap();
     let page = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &head,
         &session,
         DraftMutationStagingLaneV1::Proposal,
@@ -1941,7 +1947,7 @@ fn page_ceiling_commitment_fails_decode_status_and_reconstruction() {
     ));
     committed(execute(
         &store,
-        inject_draft_mutation_staging_page_ceiling_corruption(&store, storage, page_key),
+        inject_draft_mutation_staging_page_ceiling_corruption(&store, &storage, page_key),
     ));
     assert!(prepare_durable_page_window(&storage, &store, identity).is_err());
 }
@@ -1950,8 +1956,8 @@ fn page_ceiling_commitment_fails_decode_status_and_reconstruction() {
 #[test]
 fn terminal_status_and_replay_reject_same_operation_custody() {
     let (_home, store, storage, thread) = fixture("terminal-same-custody", 133);
-    let before = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &before, 134, 135);
+    let before = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &before, 134, 135);
     let identity = staging_identity(&session, 136);
     let begin = storage
         .prepare_draft_mutation_staging_begin(begin_input(identity, &session), &session)
@@ -1988,7 +1994,7 @@ fn terminal_status_and_replay_reject_same_operation_custody() {
     ));
     committed(execute(
         &store,
-        inject_draft_mutation_terminal_same_operation_custody(&store, storage, identity),
+        inject_draft_mutation_terminal_same_operation_custody(&store, &storage, identity),
     ));
     assert!(
         storage
@@ -2049,9 +2055,9 @@ fn staged_page_fixture(
     DraftMutationStagingProgressReceiptKeyV1,
 ) {
     let (home, store, storage, thread) = fixture(name, seed);
-    let current = current(storage, &store, thread);
+    let current = current(&storage, &store, thread);
     let mut session = open_session(
-        storage,
+        &storage,
         &store,
         &current,
         seed.wrapping_add(2),
@@ -2071,7 +2077,7 @@ fn staged_page_fixture(
         .unwrap()
         .unwrap();
     let page = prepare_phase147_one_page_batch(
-        storage,
+        &storage,
         &head,
         &session,
         DraftMutationStagingLaneV1::Proposal,
@@ -2098,7 +2104,7 @@ fn staged_page_fixture(
 }
 
 fn open_session(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     current: &syndic_storage::SyndicCurrentDraft,
     session: u8,
@@ -2130,7 +2136,7 @@ fn open_session(
 }
 
 fn advance_candidate(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,
@@ -2232,7 +2238,7 @@ fn transfer_single_staged_piece(
         .unwrap()
         .unwrap();
     let page = prepare_phase147_one_page_batch(
-        *storage,
+        storage,
         &head,
         &active,
         DraftMutationStagingLaneV1::Proposal,
@@ -2303,7 +2309,7 @@ fn active_session(
 }
 
 fn current(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
 ) -> syndic_storage::SyndicCurrentDraft {
@@ -2392,7 +2398,7 @@ fn point(offset: u64) -> DraftCompositePositionV1 {
 
 #[allow(clippy::too_many_arguments)]
 fn prepare_phase147_one_page_batch(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     head: &DraftMutationStagingHeadV1,
     session: &DraftEditorCandidateSessionV1,
     lane: DraftMutationStagingLaneV1,

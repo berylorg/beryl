@@ -55,7 +55,7 @@ pub fn timestamp(value: u64) -> SyndicTimestamp {
 
 pub fn stage_prepared_content(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     content: &PreparedContent,
 ) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());

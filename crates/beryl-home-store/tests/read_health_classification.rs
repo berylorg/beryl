@@ -39,7 +39,7 @@ fn put(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            store.domain_revision(&domain).unwrap(),
             PutBytes::<AlphaDomain>::new(key, value),
         ))
         .unwrap();
@@ -64,7 +64,7 @@ fn point_read_fails_closed_on_persisted_oversized_value_before_caller_budget() {
 
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &1_u64.to_be_bytes(),
             &oversized,
         )
@@ -73,7 +73,7 @@ fn point_read_fails_closed_on_persisted_oversized_value_before_caller_budget() {
 
     assert!(matches!(
         store.read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &1,
             PointReadLimit::new(1).unwrap(),
         ),
@@ -95,7 +95,7 @@ fn cursor_read_fails_closed_on_persisted_oversized_key() {
 
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &oversized_key,
             &encoded_value(b"valid"),
         )
@@ -103,7 +103,7 @@ fn cursor_read_fails_closed_on_persisted_oversized_key() {
 
     assert!(matches!(
         store.read_cursor::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &CursorRange::closed(0, u64::MAX),
             CursorDirection::Forward,
             CursorReadLimits::new(4, 2_048).unwrap(),
@@ -126,7 +126,7 @@ fn cursor_read_fails_closed_on_persisted_oversized_value() {
 
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &3_u64.to_be_bytes(),
             &oversized,
         )
@@ -134,7 +134,7 @@ fn cursor_read_fails_closed_on_persisted_oversized_value() {
 
     assert!(matches!(
         store.read_cursor::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &CursorRange::closed(3, 3),
             CursorDirection::Forward,
             CursorReadLimits::new(1, 1).unwrap(),
@@ -156,7 +156,7 @@ fn persisted_corruption_seam_rejects_valid_or_empty_records() {
 
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &1_u64.to_be_bytes(),
             &encoded_value(b"valid"),
         ),
@@ -164,7 +164,7 @@ fn persisted_corruption_seam_rejects_valid_or_empty_records() {
     ));
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            domain,
+            &domain,
             &[],
             &vec![0; MAX_STORED_VALUE_BYTES + 1],
         ),

@@ -36,7 +36,7 @@ impl SyndicStorage {
             None => CursorRange::closed(first, last),
         };
         let page = store.read_cursor::<crate::domain::SyndicDomain, AcceptedNextSourcesCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             accepted_next_limits(limits),

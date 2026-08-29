@@ -202,11 +202,11 @@ fn promotion_after_a_deep_tail_derives_child_digest_depth_and_deterministic_skip
 
     let request = promotion(
         &store,
-        storage,
+        &storage,
         SyndicTurnId::from_bytes([162; 16]),
         SyndicItemId::from_bytes([163; 16]),
     );
-    match execute_promotion(&store, storage, request.clone()) {
+    match execute_promotion(&store, &storage, request.clone()) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -274,11 +274,11 @@ fn reconciliation_rejects_a_deep_successor_with_a_malformed_ancestor_skip() {
         .unwrap();
     let request = promotion(
         &store,
-        storage,
+        &storage,
         SyndicTurnId::from_bytes([164; 16]),
         SyndicItemId::from_bytes([165; 16]),
     );
-    match execute_promotion(&store, storage, request.clone()) {
+    match execute_promotion(&store, &storage, request.clone()) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -309,7 +309,11 @@ fn reconciliation_rejects_a_deep_successor_with_a_malformed_ancestor_skip() {
         successor.chain_digest(),
         successor.submitted_at(),
     );
-    commit(&store, storage, batch([FixtureRecord::Turn(malformed)]));
+    commit(
+        &store,
+        storage.clone(),
+        batch([FixtureRecord::Turn(malformed)]),
+    );
 
     assert_eq!(
         storage

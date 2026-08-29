@@ -5,8 +5,8 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     let home = TestHome::new("phase6-canonical-live-history");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let (thread, turn) = seed_pending_turn(&store, &storage);
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     let assistant = SyndicItemId::from_bytes([10; 16]);
     let operational = SyndicItemId::from_bytes([11; 16]);
     let cas_assistant = CasItemId::new("phase6-canonical-assistant").unwrap();
@@ -17,17 +17,17 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
 
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    correlate_submitted_user_item(&store, storage, thread, turn, &source, timestamp(4));
+    correlate_submitted_user_item(&store, &storage, thread, turn, &source, timestamp(4));
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant,
@@ -41,7 +41,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     ] {
         admit_item_frame(
             &store,
-            storage,
+            storage.clone(),
             thread,
             turn,
             assistant,
@@ -52,7 +52,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     }
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant,
@@ -88,7 +88,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     );
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         operational,
@@ -120,7 +120,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     assert_eq!(running.source_event(), SourceEventSequence::new(8).unwrap());
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         operational,
@@ -162,7 +162,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     );
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         operational,
@@ -209,7 +209,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     );
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -225,11 +225,11 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     assert_eq!(terminal_head.logical_row_count(), 1);
     assert_eq!(terminal_head.running_row_count(), 0);
 
-    let items = turn_items(&store, storage, turn);
+    let items = turn_items(&store, &storage, turn);
     for (index, item) in items.iter().enumerate() {
         complete_item_frontier(
             &store,
-            storage,
+            &storage,
             thread,
             turn,
             item.ordinal(),
@@ -268,7 +268,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
         .provider_content()
         .expect("canonical assistant message has provider content");
     assert_eq!(
-        projected_item_text(&store, storage, assistant),
+        projected_item_text(&store, &storage, assistant),
         expected_assistant
     );
     let assistant_manifest = storage
@@ -290,7 +290,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
     let ProviderItemObservationV1::Completed {
         item: ProviderItemV1::CommandExecution(command),
         ..
-    } = current_provider_frame(&store, storage, operational)
+    } = current_provider_frame(&store, &storage, operational)
         .observation()
         .clone()
     else {
@@ -304,7 +304,7 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
             .and_then(ProviderTextV1::inline_str),
         Some("tool activity")
     );
-    assert_eq!(source_events(&store, storage, turn).len(), 11);
+    assert_eq!(source_events(&store, &storage, turn).len(), 11);
     assert_eq!(
         storage
             .item_source_events(
@@ -357,10 +357,10 @@ fn coalesced_assistant_and_operational_history_reopens_exactly() {
         .unwrap();
     assert_eq!(assistant_record.provider_content(), Some(assistant_content));
     assert_eq!(
-        projected_item_text(&reopened, storage, assistant),
+        projected_item_text(&reopened, &storage, assistant),
         expected_assistant
     );
-    assert_eq!(source_events(&reopened, storage, turn).len(), 11);
+    assert_eq!(source_events(&reopened, &storage, turn).len(), 11);
     let reopened_activity = storage
         .activity_query_head(&reopened, thread, limit())
         .unwrap()

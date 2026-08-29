@@ -39,7 +39,7 @@ impl InputReplayFactory {
     )]
     pub(in crate::cas_projection) fn prepare(
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         assets: AssetState,
         context: InputReplayContext,
         record: InputReplayRecord,
@@ -76,7 +76,7 @@ impl InputReplayFactory {
             InputReplayKind::MarkerFree(Box::new(TextReplayAuthority::prepare(
                 context.clone(),
                 record.clone(),
-                assets,
+                assets.clone(),
                 content,
                 #[cfg(feature = "test-faults")]
                 diagnostics,
@@ -90,7 +90,7 @@ impl InputReplayFactory {
             InputReplayKind::MarkerAware(Box::new(MarkerReplayAuthority::prepare(
                 store,
                 storage,
-                assets,
+                assets.clone(),
                 context.clone(),
                 record.clone(),
                 content,
@@ -168,7 +168,7 @@ impl InputReplayAuthority {
     pub(in crate::cas_projection) fn service<'a>(
         &'a mut self,
         store: &'a HomeStore,
-        storage: SyndicStorage,
+        storage: &'a SyndicStorage,
         cancellation: &'a ProjectionCancellationToken,
     ) -> InputReplayService<'a> {
         match &mut self.kind {

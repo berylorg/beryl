@@ -91,7 +91,7 @@ fn equal_and_unequal_partial_prefixes_and_missing_target_fail_closed() {
             &fixture.store,
             inject_draft_mutation_staging_batch_prefix(
                 &fixture.store,
-                fixture.storage,
+                &fixture.storage,
                 &prepared,
                 pages,
                 receipts,
@@ -137,18 +137,28 @@ fn equal_and_unequal_partial_prefixes_and_missing_target_fail_closed() {
         &unequal.store,
         inject_draft_mutation_staging_occupied_page(
             &unequal.store,
-            unequal.storage,
+            &unequal.storage,
             occupied_page.clone(),
         ),
     ));
     assert_eq!(
-        draft_mutation_staging_batch_target_records(&unequal.store, unequal.storage, &expected, 0,)
-            .unwrap(),
+        draft_mutation_staging_batch_target_records(
+            &unequal.store,
+            &unequal.storage,
+            &expected,
+            0,
+        )
+        .unwrap(),
         (Some(occupied_page.clone()), None),
     );
     assert_eq!(
-        draft_mutation_staging_batch_target_records(&unequal.store, unequal.storage, &expected, 1,)
-            .unwrap(),
+        draft_mutation_staging_batch_target_records(
+            &unequal.store,
+            &unequal.storage,
+            &expected,
+            1,
+        )
+        .unwrap(),
         (None, None),
     );
     assert!(
@@ -170,13 +180,23 @@ fn equal_and_unequal_partial_prefixes_and_missing_target_fail_closed() {
         }
     ));
     assert_eq!(
-        draft_mutation_staging_batch_target_records(&unequal.store, unequal.storage, &expected, 0,)
-            .unwrap(),
+        draft_mutation_staging_batch_target_records(
+            &unequal.store,
+            &unequal.storage,
+            &expected,
+            0,
+        )
+        .unwrap(),
         (Some(occupied_page), None),
     );
     assert_eq!(
-        draft_mutation_staging_batch_target_records(&unequal.store, unequal.storage, &expected, 1,)
-            .unwrap(),
+        draft_mutation_staging_batch_target_records(
+            &unequal.store,
+            &unequal.storage,
+            &expected,
+            1,
+        )
+        .unwrap(),
         (None, None),
     );
     assert_eq!(
@@ -214,7 +234,7 @@ fn equal_and_unequal_partial_prefixes_and_missing_target_fail_closed() {
     ));
     committed(execute(
         &missing.store,
-        delete_draft_mutation_staging_page(&missing.store, missing.storage, missing_key),
+        delete_draft_mutation_staging_page(&missing.store, &missing.storage, missing_key),
     ));
     assert!(
         missing

@@ -23,7 +23,7 @@ use crate::cas_projection::live_source::{
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare(
     home: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     syndic_thread_id: SyndicThreadId,
     observation: BoundProviderObservation,
     limit: SyndicPointReadLimit,
@@ -106,7 +106,7 @@ pub(super) fn publish(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     prepared: PreparedProviderObservationPublication,
     limit: SyndicPointReadLimit,
     cancelled: &AtomicBool,

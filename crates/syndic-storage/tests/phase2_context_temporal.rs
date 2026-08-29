@@ -69,7 +69,7 @@ fn transcript_build_with_history_complete(
 
 fn seeded_transcript_path(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: beryl_model::SyndicThreadId,
     generation: TranscriptGeneration,
     turn: SyndicTurnId,
@@ -257,7 +257,7 @@ fn assert_context_rejection(name: &str, expected: &str, mutation: FixtureBatch) 
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -301,16 +301,17 @@ fn assert_context_rejection(name: &str, expected: &str, mutation: FixtureBatch) 
 fn assert_seeded_context_rejection(
     name: &str,
     expected: &str,
-    mutation: impl Fn(&beryl_home_store::HomeStore, SyndicStorage) -> FixtureBatch,
+    mutation: impl Fn(&beryl_home_store::HomeStore, &SyndicStorage) -> FixtureBatch,
 ) {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    commit(&store, storage, mutation(&store, storage));
+    let mutation = mutation(&store, &storage);
+    commit(&store, storage, mutation);
     let error = store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
@@ -332,16 +333,17 @@ fn assert_seeded_context_rejection(
 
 fn validate_seeded_and_reopen(
     name: &str,
-    mutation: impl FnOnce(&beryl_home_store::HomeStore, SyndicStorage) -> FixtureBatch,
+    mutation: impl FnOnce(&beryl_home_store::HomeStore, &SyndicStorage) -> FixtureBatch,
 ) {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    commit(&store, storage, mutation(&store, storage));
+    let mutation = mutation(&store, &storage);
+    commit(&store, storage, mutation);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -357,7 +359,7 @@ fn validate_seeded_and_reopen(
 
 fn unknown_terminal_source_mutation(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> FixtureBatch {
     let point = SyndicPointReadLimit::new(1_000_000).unwrap();
     let events = storage

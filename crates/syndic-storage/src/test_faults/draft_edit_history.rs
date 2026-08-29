@@ -277,7 +277,7 @@ pub fn inject_draft_edit_history_frontier_digest_corruption(
         .expect("fixture history encoding is nonempty");
     *last ^= 0xA5;
     store.inject_persisted_corrupt_record::<SyndicDomain, DraftEditHistoryFrontiersCodec>(
-        storage.handle,
+        &storage.handle,
         &encoded_key,
         &payload,
     )

@@ -12,7 +12,7 @@ struct RecoveredFixture {
 
 fn establish_recovered_valid(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_byte: u8,
     cas_thread_name: &str,
     snapshot: SyndicExecutionSnapshotId,
@@ -65,7 +65,7 @@ fn establish_recovered_valid(
     }
 }
 
-fn activate_recovered(store: &HomeStore, storage: SyndicStorage, fixture: &RecoveredFixture) {
+fn activate_recovered(store: &HomeStore, storage: &SyndicStorage, fixture: &RecoveredFixture) {
     execute(
         store,
         storage.activate_binding(
@@ -109,7 +109,7 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let fixture = establish_recovered_valid(
         &store,
-        storage,
+        &storage,
         190,
         "phase9-recovered-stale-cas",
         SyndicExecutionSnapshotId::from_bytes([68; 16]),
@@ -194,7 +194,7 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
     .unwrap();
     commit(
         &reopened,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::Binding(BindingRecord::new(
             binding.binding().thread_id(),
             binding.binding().revision(),
@@ -221,12 +221,12 @@ fn recovered_abandonment_retains_exact_active_snapshot_generation() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let fixture = establish_recovered_valid(
         &store,
-        storage,
+        &storage,
         200,
         "phase9-recovered-abandonment-cas",
         SyndicExecutionSnapshotId::from_bytes([69; 16]),
     );
-    activate_recovered(&store, storage, &fixture);
+    activate_recovered(&store, &storage, &fixture);
     let binding = storage
         .current_binding(&store, fixture.thread, point_limit())
         .unwrap()

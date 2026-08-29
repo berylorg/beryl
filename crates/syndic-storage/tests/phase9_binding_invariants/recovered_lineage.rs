@@ -21,7 +21,7 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
     let home = TestHome::new("phase9-recovered-injection-process");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, Some(parent), turn, selected) = fault_pending_path(&store, storage, 170, true)
+    let (thread, Some(parent), turn, selected) = fault_pending_path(&store, &storage, 170, true)
     else {
         unreachable!()
     };
@@ -39,7 +39,7 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
     let recovered = recovered_proof(represented, injection_generation);
     let request = valid_request_with_count(
         &store,
-        storage,
+        &storage,
         thread,
         selected,
         CasThreadId::new("recovered-generation-cas").unwrap(),
@@ -47,13 +47,13 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
         CasNativeTurnCount::ZERO,
         CasLineageProof::recovered(recovered),
     );
-    publish_valid(&store, storage, request);
+    publish_valid(&store, &storage, request);
 
     let snapshot = SyndicExecutionSnapshotId::from_bytes([173; 16]);
     let wrong_process = ActivateBinding::new(
         thread,
-        current_binding_revision(&store, storage, thread),
-        current_gate_revision(&store, storage, thread),
+        current_binding_revision(&store, &storage, thread),
+        current_gate_revision(&store, &storage, thread),
         selected,
         snapshot,
         turn,
@@ -77,8 +77,8 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
 
     let too_early = ActivateBinding::new(
         thread,
-        current_binding_revision(&store, storage, thread),
-        current_gate_revision(&store, storage, thread),
+        current_binding_revision(&store, &storage, thread),
+        current_gate_revision(&store, &storage, thread),
         selected,
         snapshot,
         turn,
@@ -100,8 +100,8 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
             storage.revision(&store).unwrap(),
             ActivateBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
-                current_gate_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
+                current_gate_revision(&store, &storage, thread),
                 selected,
                 snapshot,
                 turn,
@@ -135,7 +135,8 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
     let home = TestHome::new("phase9-recovered-lineage-redefinition");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, Some(parent), _, selected) = fault_pending_path(&store, storage, 180, true) else {
+    let (thread, Some(parent), _, selected) = fault_pending_path(&store, &storage, 180, true)
+    else {
         unreachable!()
     };
     let parent = storage
@@ -151,10 +152,10 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
     let recovered = recovered_proof(represented, loaded_generation(9, 11));
     publish_valid(
         &store,
-        storage,
+        &storage,
         valid_request_with_count(
             &store,
-            storage,
+            &storage,
             thread,
             selected,
             cas_thread.clone(),
@@ -169,7 +170,7 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
             storage.revision(&store).unwrap(),
             PublishUnboundBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
                 selected,
                 "recovered injection must not become native",
             )
@@ -184,7 +185,7 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
     ] {
         let request = valid_request_with_count(
             &store,
-            storage,
+            &storage,
             thread,
             selected,
             cas_thread.clone(),
@@ -217,14 +218,14 @@ fn active_cas_turn_rejects_pre_start_and_reconciles_exact_or_colliding_publicati
     let home = TestHome::new("phase9-active-cas-turn-collisions");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 184, false) else {
+    let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 184, false) else {
         unreachable!()
     };
     let cas_thread = CasThreadId::new("active-publication-cas").unwrap();
     publish_valid(
         &store,
-        storage,
-        valid_request(&store, storage, thread, selected, cas_thread.clone()),
+        &storage,
+        valid_request(&store, &storage, thread, selected, cas_thread.clone()),
     );
 
     let snapshot = SyndicExecutionSnapshotId::from_bytes([187; 16]);
@@ -234,8 +235,8 @@ fn active_cas_turn_rejects_pre_start_and_reconciles_exact_or_colliding_publicati
             storage.revision(&store).unwrap(),
             ActivateBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
-                current_gate_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
+                current_gate_revision(&store, &storage, thread),
                 selected,
                 snapshot,
                 turn,
@@ -248,8 +249,8 @@ fn active_cas_turn_rejects_pre_start_and_reconciles_exact_or_colliding_publicati
     let cas_turn = CasTurnId::new("first-active-turn").unwrap();
     let regressed = PublishActiveCasTurn::new(
         thread,
-        current_binding_revision(&store, storage, thread),
-        current_gate_revision(&store, storage, thread),
+        current_binding_revision(&store, &storage, thread),
+        current_gate_revision(&store, &storage, thread),
         snapshot,
         cas_thread.clone(),
         cas_turn.clone(),
@@ -266,8 +267,8 @@ fn active_cas_turn_rejects_pre_start_and_reconciles_exact_or_colliding_publicati
 
     let publication = PublishActiveCasTurn::new(
         thread,
-        current_binding_revision(&store, storage, thread),
-        current_gate_revision(&store, storage, thread),
+        current_binding_revision(&store, &storage, thread),
+        current_gate_revision(&store, &storage, thread),
         snapshot,
         cas_thread.clone(),
         cas_turn.clone(),

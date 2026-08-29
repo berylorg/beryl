@@ -23,14 +23,14 @@ fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
 
     execute(
         &store,
-        storage,
-        storage.begin_content(
-            storage.revision(&store).unwrap(),
+        storage.clone(),
+        storage.clone().begin_content(
+            storage.clone().revision(&store).unwrap(),
             ContentBuild::from_prepared(&content),
         ),
     );
     let mut manifest = content.building_manifest();
-    manifest = append_one_batch(&store, storage, &manifest, &content).unwrap();
+    manifest = append_one_batch(&store, storage.clone(), &manifest, &content).unwrap();
     assert_eq!(manifest.lifecycle(), ContentLifecycle::Building);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -39,10 +39,10 @@ fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
 
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    while let Some(next) = append_one_batch(&store, storage, &manifest, &content) {
+    while let Some(next) = append_one_batch(&store, storage.clone(), &manifest, &content) {
         manifest = next;
     }
-    manifest = seal_prepared_content(&store, storage, &manifest, &content);
+    manifest = seal_prepared_content(&store, storage.clone(), &manifest, &content);
     assert_eq!(manifest.expected(), content.summary());
     let sealed = manifest.sealed_reference().unwrap();
     assert_eq!(sealed.id(), content.id());
@@ -74,8 +74,8 @@ fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
 
     let duplicate = execute_outcome(
         &store,
-        storage.begin_content(
-            storage.revision(&store).unwrap(),
+        storage.clone().begin_content(
+            storage.clone().revision(&store).unwrap(),
             ContentBuild::from_prepared(&content),
         ),
     );

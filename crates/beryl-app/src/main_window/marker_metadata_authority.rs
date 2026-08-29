@@ -6,7 +6,6 @@ use crate::composer_host::ComposerHostImageMarkerMetadata;
 
 use super::MainWindowComposerSelectionIdentity;
 
-#[derive(Clone, Copy)]
 pub struct MainWindowComposerMarkerMetadataAuthority {
     assets: AssetState,
 }
@@ -22,12 +21,12 @@ impl MainWindowComposerMarkerMetadataAuthority {
         Self { assets }
     }
 
-    pub(in crate::main_window) const fn assets(self) -> AssetState {
-        self.assets
+    pub(in crate::main_window) fn assets(&self) -> AssetState {
+        self.assets.clone()
     }
 
     pub(in crate::main_window) fn authenticate(
-        self,
+        &self,
         store: &HomeStore,
         selection: MainWindowComposerSelectionIdentity,
         request: &RangeTextInputRequest,

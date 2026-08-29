@@ -47,6 +47,8 @@ impl DomainBlueprint {
             name: D::NAME,
             schema: D::SCHEMA_VERSION,
             owner: DomainOwnerId::of::<D>(),
+            attachment_type: TypeId::of::<D::RuntimeAttachment>(),
+            attachment_factory: attachment::RuntimeAttachmentSlot::construct::<D>,
             families,
             reopen_validator: validate_reopen_typed::<D>,
             reconciler: reconcile_typed::<D>,

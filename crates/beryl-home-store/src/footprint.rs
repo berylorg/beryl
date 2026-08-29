@@ -281,6 +281,12 @@ mod tests {
         const SCHEMA_VERSION: crate::DomainSchemaVersion = crate::DomainSchemaVersion::new(1);
         const FAMILIES: &'static [crate::RecordFamily<Self>] = &[];
         type ValidationError = std::convert::Infallible;
+        type RuntimeAttachment = ();
+        type RuntimeAttachmentError = std::convert::Infallible;
+
+        fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+            Ok(())
+        }
 
         fn validate(_reader: &crate::DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
             Ok(())

@@ -112,8 +112,8 @@ fn writer_assembly_is_serialized_while_typed_reads_continue() {
     seed(&store, alpha);
     let store = Arc::new(store);
     let expected_home = store.home_revision().unwrap();
-    let alpha_revision = store.domain_revision(alpha).unwrap();
-    let beta_revision = store.domain_revision(beta).unwrap();
+    let alpha_revision = store.domain_revision(&alpha).unwrap();
+    let beta_revision = store.domain_revision(&beta).unwrap();
     let gate = Arc::new(AssemblyGate::default());
     let (entered_tx, entered_rx) = mpsc::channel();
 
@@ -205,7 +205,7 @@ fn cancellation_while_waiting_is_observed_before_writer_admission() {
         let mut command = HomeCommand::new(expected_home);
         command
             .add(alpha.contribution(
-                first_store.domain_revision(alpha).unwrap(),
+                first_store.domain_revision(&alpha).unwrap(),
                 BlockingAssembly::<AlphaDomain>::new(first_gate, entered_tx, "first", 1, true),
             ))
             .unwrap();
@@ -224,7 +224,7 @@ fn cancellation_while_waiting_is_observed_before_writer_admission() {
         let mut command = HomeCommand::new(expected_home).with_cancellation(queued_cancellation);
         command
             .add(beta.contribution(
-                second_store.domain_revision(beta).unwrap(),
+                second_store.domain_revision(&beta).unwrap(),
                 PutBytes::<BetaDomain>::new(2, b"cancelled".to_vec()),
             ))
             .unwrap();
@@ -254,7 +254,7 @@ fn seed(store: &beryl_home_store::HomeStore, alpha: beryl_home_store::DomainHand
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, b"seed".to_vec()),
         ))
         .unwrap();

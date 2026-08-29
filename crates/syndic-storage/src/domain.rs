@@ -1,3 +1,5 @@
+use std::convert::Infallible;
+
 use beryl_home_store::{
     CommitReceipt, CommitReceiptError, DomainHandle, DomainHandleError, DomainReconciliation,
     DomainRegistrationError, DomainSchemaVersion, HomeRecoveryCandidate, HomeStore,
@@ -105,6 +107,13 @@ impl StorageDomain for SyndicDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(7);
     const FAMILIES: &'static [RecordFamily<Self>] = V7_FAMILIES;
     type ValidationError = SyndicValidationError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>
+    {
+        Ok(())
+    }
 
     fn validate(
         reader: &beryl_home_store::DomainReader<'_, Self>,
@@ -248,7 +257,7 @@ where
     Ok(())
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct SyndicStorage {
     pub(crate) handle: DomainHandle<SyndicDomain>,
 }
@@ -289,7 +298,7 @@ impl SyndicStorage {
 
     /// Returns the exact current Syndic domain revision.
     pub fn revision(&self, store: &HomeStore) -> Result<DomainRevision, ReadError> {
-        store.domain_revision(self.handle)
+        store.domain_revision(&self.handle)
     }
 
     /// Returns this domain's revision from a still-current successful command receipt.
@@ -298,6 +307,6 @@ impl SyndicStorage {
         store: &HomeStore,
         receipt: &CommitReceipt,
     ) -> Result<Option<DomainRevision>, CommitReceiptError> {
-        store.receipt_domain_revision(receipt, self.handle)
+        store.receipt_domain_revision(receipt, &self.handle)
     }
 }

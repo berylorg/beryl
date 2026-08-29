@@ -49,7 +49,7 @@ pub fn draft_mutation_staging_batch_target(
 
 pub fn draft_mutation_staging_batch_target_records(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     prepared: &PreparedDraftMutationStagingBatchV1,
     index: usize,
 ) -> Result<
@@ -101,7 +101,7 @@ pub fn draft_mutation_staging_locally_exact_source_head(
 
 pub fn inject_draft_mutation_staging_batch_prefix(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     prepared: &PreparedDraftMutationStagingBatchV1,
     page_count: usize,
     receipt_count: usize,
@@ -126,7 +126,7 @@ pub fn inject_draft_mutation_staging_batch_prefix(
 
 pub fn delete_draft_mutation_staging_head(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     identity: DraftMutationStagingIdentityV1,
 ) -> MutationContribution {
     contribution(store, storage, StagingCorruption::DeleteHead(identity))
@@ -134,7 +134,7 @@ pub fn delete_draft_mutation_staging_head(
 
 pub fn delete_draft_mutation_staging_page(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftMutationStagingPageKeyV1,
 ) -> MutationContribution {
     contribution(store, storage, StagingCorruption::DeletePage(key))
@@ -142,7 +142,7 @@ pub fn delete_draft_mutation_staging_page(
 
 pub fn inject_draft_mutation_staging_occupied_page(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     page: DraftMutationStagingPageV1,
 ) -> MutationContribution {
     contribution(store, storage, StagingCorruption::PutPage(page.key(), page))
@@ -150,7 +150,7 @@ pub fn inject_draft_mutation_staging_occupied_page(
 
 pub fn delete_draft_mutation_staging_receipt(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftMutationStagingProgressReceiptKeyV1,
 ) -> MutationContribution {
     contribution(store, storage, StagingCorruption::DeleteReceipt(key))
@@ -158,7 +158,7 @@ pub fn delete_draft_mutation_staging_receipt(
 
 pub fn inject_draft_mutation_staging_page_digest_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftMutationStagingPageKeyV1,
 ) -> MutationContribution {
     let page = storage
@@ -184,7 +184,7 @@ pub fn inject_draft_mutation_staging_page_digest_corruption(
 
 pub fn inject_draft_mutation_staging_page_ceiling_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftMutationStagingPageKeyV1,
 ) -> MutationContribution {
     let page = storage
@@ -216,7 +216,7 @@ pub fn inject_draft_mutation_staging_page_ceiling_corruption(
 
 pub fn inject_draft_mutation_terminal_same_operation_custody(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     identity: DraftMutationStagingIdentityV1,
 ) -> MutationContribution {
     let head = stored_head(store, storage, identity);
@@ -252,7 +252,7 @@ pub fn inject_draft_mutation_terminal_same_operation_custody(
 
 pub fn inject_draft_mutation_staging_receipt_digest_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftMutationStagingProgressReceiptKeyV1,
 ) -> MutationContribution {
     let receipt = storage
@@ -288,7 +288,7 @@ pub fn inject_draft_mutation_staging_receipt_digest_corruption(
 
 pub fn inject_draft_mutation_staging_head_digest_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     identity: DraftMutationStagingIdentityV1,
 ) -> MutationContribution {
     let head = storage
@@ -314,7 +314,7 @@ pub fn inject_draft_mutation_staging_head_digest_corruption(
 
 pub fn inject_draft_mutation_staging_head_ahead(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     identity: DraftMutationStagingIdentityV1,
 ) -> MutationContribution {
     let head = stored_head(store, storage, identity);
@@ -336,7 +336,7 @@ pub fn inject_draft_mutation_staging_head_ahead(
 
 pub fn inject_draft_mutation_staging_head_fork(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     identity: DraftMutationStagingIdentityV1,
 ) -> MutationContribution {
     let head = stored_head(store, storage, identity);
@@ -355,7 +355,7 @@ pub fn inject_draft_mutation_staging_head_fork(
 
 fn contribution(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     corruption: StagingCorruption,
 ) -> MutationContribution {
     storage.handle.contribution(
@@ -366,7 +366,7 @@ fn contribution(
 
 fn stored_head(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     identity: DraftMutationStagingIdentityV1,
 ) -> DraftMutationStagingHeadV1 {
     storage

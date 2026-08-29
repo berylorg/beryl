@@ -136,10 +136,10 @@ fn remember_fixture_positions(
 #[test]
 fn fragment_ordinals_are_one_based_in_codec_and_durable_storage() {
     let (_home, store, storage, thread) = fixture("one-based-fragment-ordinals", 6);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 7, 8);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 7, 8);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         9,
@@ -178,7 +178,7 @@ fn fragment_ordinals_are_one_based_in_codec_and_durable_storage() {
     ));
     assert!(draft_piece_fragment_is_stored_exactly(
         &store,
-        storage,
+        &storage,
         &edit.fragments[0],
     ));
 }
@@ -186,8 +186,8 @@ fn fragment_ordinals_are_one_based_in_codec_and_durable_storage() {
 #[test]
 fn large_continued_edit_advances_only_the_named_candidate() {
     let (home, store, storage, thread) = fixture("candidate-only", 10);
-    let durable_before = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable_before, 20, 21);
+    let durable_before = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable_before, 20, 21);
     let first = "a".repeat(60_000);
     let second = "é".repeat(20_000);
     let fragments = vec![
@@ -198,7 +198,7 @@ fn large_continued_edit_advances_only_the_named_candidate() {
             vec![DraftPieceV1::Text(second.clone())],
         ),
     ];
-    let edit = transaction(storage, &store, &session, 22, fragments, point(100_000));
+    let edit = transaction(&storage, &store, &session, 22, fragments, point(100_000));
     committed(execute(
         &store,
         storage.begin_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
@@ -248,7 +248,7 @@ fn large_continued_edit_advances_only_the_named_candidate() {
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     ));
-    let settlement = settled(storage, &store, &edit);
+    let settlement = settled(&storage, &store, &edit);
     let DraftPieceSettlementOutcomeV1::Committed {
         candidate_generation,
         successor,
@@ -274,11 +274,11 @@ fn large_continued_edit_advances_only_the_named_candidate() {
         _ => panic!("committed settlement lacked adoption closure"),
     };
     let expected = format!("{first}{second}").into_bytes();
-    assert_eq!(candidate_bytes(storage, &store, &adopted), expected);
-    assert_eq!(current(storage, &store, thread), durable_before);
+    assert_eq!(candidate_bytes(&storage, &store, &adopted), expected);
+    assert_eq!(current(&storage, &store, thread), durable_before);
 
     let deletion = transaction(
-        storage,
+        &storage,
         &store,
         &adopted,
         23,
@@ -289,34 +289,37 @@ fn large_continued_edit_advances_only_the_named_candidate() {
         )],
         point(0),
     );
-    begin_stage_build(storage, &store, &deletion);
+    begin_stage_build(&storage, &store, &deletion);
     committed(execute(
         &store,
         storage
             .settle_draft_piece_edit(storage.revision(&store).unwrap(), deletion.prepared.clone()),
     ));
-    let emptied = adopted_head(storage, &store, &deletion);
+    let emptied = adopted_head(&storage, &store, &deletion);
     assert_eq!(emptied.newest_candidate_generation(), 2);
-    assert!(candidate_bytes(storage, &store, &emptied).is_empty());
-    assert_eq!(current(storage, &store, thread), durable_before);
+    assert!(candidate_bytes(&storage, &store, &emptied).is_empty());
+    assert_eq!(current(&storage, &store, thread), durable_before);
 
     drop(store);
     let mut reopened =
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
-    assert_eq!(current(reopened_storage, &reopened, thread), durable_before);
-    let fresh = open_session(reopened_storage, &reopened, &durable_before, 24, 25);
+    assert_eq!(
+        current(&reopened_storage, &reopened, thread),
+        durable_before
+    );
+    let fresh = open_session(&reopened_storage, &reopened, &durable_before, 24, 25);
     assert_eq!(fresh.newest_candidate_generation(), 0);
-    assert!(candidate_bytes(reopened_storage, &reopened, &fresh).is_empty());
+    assert!(candidate_bytes(&reopened_storage, &reopened, &fresh).is_empty());
 }
 
 #[test]
 fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
     let (_home, store, storage, thread) = fixture("terminals", 50);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 51, 52);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 51, 52);
     let cancelled = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         53,
@@ -334,7 +337,7 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
             cancelled.prepared.clone(),
         ),
     ));
-    let claimed = active_session(storage, &store, &session);
+    let claimed = active_session(&storage, &store, &session);
     assert_eq!(
         claimed
             .active_operation()
@@ -360,7 +363,7 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
             cancelled.fragments[0].clone(),
         ),
     ));
-    let staged = active_session(storage, &store, &session);
+    let staged = active_session(&storage, &store, &session);
     assert_eq!(
         staged
             .active_operation()
@@ -378,7 +381,7 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
             cancelled.prepared.clone(),
         ),
     ));
-    assert_eq!(active_session(storage, &store, &session), staged);
+    assert_eq!(active_session(&storage, &store, &session), staged);
     replay_succeeded(execute(
         &store,
         storage.stage_draft_piece_fragment(
@@ -395,18 +398,18 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
         ),
     ));
     assert!(matches!(
-        settled(storage, &store, &cancelled).outcome(),
+        settled(&storage, &store, &cancelled).outcome(),
         DraftPieceSettlementOutcomeV1::Cancelled
     ));
     assert!(
-        active_session(storage, &store, &session)
+        active_session(&storage, &store, &session)
             .active_operation()
             .is_none()
     );
 
-    let session_after_cancel = active_session(storage, &store, &session);
+    let session_after_cancel = active_session(&storage, &store, &session);
     let accepted = transaction(
-        storage,
+        &storage,
         &store,
         &session_after_cancel,
         54,
@@ -417,19 +420,19 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
         )],
         point(8),
     );
-    begin_stage_build(storage, &store, &accepted);
+    begin_stage_build(&storage, &store, &accepted);
     committed(execute(
         &store,
         storage
             .settle_draft_piece_edit(storage.revision(&store).unwrap(), accepted.prepared.clone()),
     ));
     assert!(matches!(
-        settled(storage, &store, &accepted).outcome(),
+        settled(&storage, &store, &accepted).outcome(),
         DraftPieceSettlementOutcomeV1::Committed { .. }
     ));
-    let accepted_session = adopted_head(storage, &store, &accepted);
+    let accepted_session = adopted_head(&storage, &store, &accepted);
     let colliding = transaction(
-        storage,
+        &storage,
         &store,
         &accepted_session,
         54,
@@ -441,13 +444,13 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
         point(9),
     );
     assert!(matches!(
-        status(storage, &store, &colliding),
+        status(&storage, &store, &colliding),
         DraftPieceOperationStatusV1::Collision(_)
     ));
 
-    let isolated = open_session(storage, &store, &durable, 55, 56);
+    let isolated = open_session(&storage, &store, &durable, 55, 56);
     let isolated_edit = transaction(
-        storage,
+        &storage,
         &store,
         &isolated,
         57,
@@ -458,7 +461,7 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
         )],
         point(8),
     );
-    begin_stage_build(storage, &store, &isolated_edit);
+    begin_stage_build(&storage, &store, &isolated_edit);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(
@@ -467,27 +470,27 @@ fn replay_collision_cancellation_and_old_session_isolation_are_closed() {
         ),
     ));
     assert_eq!(
-        candidate_bytes(storage, &store, &adopted_head(storage, &store, &accepted)),
+        candidate_bytes(&storage, &store, &adopted_head(&storage, &store, &accepted)),
         b"accepted"
     );
     assert_eq!(
         candidate_bytes(
-            storage,
+            &storage,
             &store,
-            &adopted_head(storage, &store, &isolated_edit)
+            &adopted_head(&storage, &store, &isolated_edit)
         ),
         b"isolated"
     );
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[test]
 fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
     let (_home, store, storage, thread) = fixture("partial-terminal-cancellation", 58);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 59, 60);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 59, 60);
     let partial = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         61,
@@ -545,7 +548,7 @@ fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
             DraftPieceTransactionOutcomeV1::Cancelled(_)
         )
     ));
-    let partial_settlement = settled(storage, &store, &partial);
+    let partial_settlement = settled(&storage, &store, &partial);
     assert_eq!(partial_settlement.fragment_count(), 3);
     let partial_source = partial_settlement
         .terminal_source()
@@ -563,7 +566,7 @@ fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
         3
     );
     assert!(
-        active_session(storage, &store, &session)
+        active_session(&storage, &store, &session)
             .active_operation()
             .is_none()
     );
@@ -585,11 +588,11 @@ fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
             DraftPieceErrorReasonV1::ResourceLimit,
         ),
     ));
-    assert_eq!(settled(storage, &store, &partial), partial_settlement);
+    assert_eq!(settled(&storage, &store, &partial), partial_settlement);
 
-    let terminal_first_source = active_session(storage, &store, &session);
+    let terminal_first_source = active_session(&storage, &store, &session);
     let terminal_first = transaction(
-        storage,
+        &storage,
         &store,
         &terminal_first_source,
         62,
@@ -632,7 +635,7 @@ fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
             DraftPieceTransactionOutcomeV1::Cancelled(_)
         )
     ));
-    let terminal_first_settlement = settled(storage, &store, &terminal_first);
+    let terminal_first_settlement = settled(&storage, &store, &terminal_first);
     assert_eq!(terminal_first_settlement.fragment_count(), 2);
     assert!(terminal_first_settlement.terminal_source().is_none());
     assert_eq!(
@@ -643,7 +646,7 @@ fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
         1
     );
     assert!(
-        active_session(storage, &store, &session)
+        active_session(&storage, &store, &session)
             .active_operation()
             .is_none()
     );
@@ -670,19 +673,19 @@ fn partial_and_terminal_first_cancellation_reconcile_staged_endpoints() {
         ),
     ));
     assert_eq!(
-        settled(storage, &store, &terminal_first),
+        settled(&storage, &store, &terminal_first),
         terminal_first_settlement
     );
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[test]
 fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
     let (_home, store, storage, thread) = fixture("terminal-first-source-race", 63);
-    let durable = current(storage, &store, thread);
-    let source = open_session(storage, &store, &durable, 64, 65);
+    let durable = current(&storage, &store, thread);
+    let source = open_session(&storage, &store, &durable, 64, 65);
     let stale = transaction(
-        storage,
+        &storage,
         &store,
         &source,
         66,
@@ -694,7 +697,7 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
         point(5),
     );
     let intervening = transaction(
-        storage,
+        &storage,
         &store,
         &source,
         67,
@@ -713,10 +716,10 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
         ),
     ));
     assert!(matches!(
-        status(storage, &store, &intervening),
+        status(&storage, &store, &intervening),
         DraftPieceOperationStatusV1::Settled(_)
     ));
-    let advanced = active_session(storage, &store, &source);
+    let advanced = active_session(&storage, &store, &source);
     assert_eq!(
         advanced.session_generation(),
         source.session_generation() + 2
@@ -726,7 +729,7 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
         source.newest_candidate_generation()
     );
     assert_eq!(advanced.newest_root(), source.newest_root());
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 
     let revision = storage.revision(&store).unwrap();
     not_committed(execute(
@@ -734,14 +737,14 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
         storage.cancel_draft_piece_edit(revision, stale.prepared.clone()),
     ));
     assert_eq!(storage.revision(&store).unwrap(), revision);
-    assert_eq!(active_session(storage, &store, &source), advanced);
+    assert_eq!(active_session(&storage, &store, &source), advanced);
     assert!(matches!(
-        status(storage, &store, &stale),
+        status(&storage, &store, &stale),
         DraftPieceOperationStatusV1::Absent
     ));
 
     let fresh = transaction(
-        storage,
+        &storage,
         &store,
         &advanced,
         66,
@@ -771,8 +774,12 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
             DraftPieceTransactionOutcomeV1::Cancelled(_)
         )
     ));
-    assert!(settled(storage, &store, &fresh).terminal_source().is_none());
-    assert_eq!(current(storage, &store, thread), durable);
+    assert!(
+        settled(&storage, &store, &fresh)
+            .terminal_source()
+            .is_none()
+    );
+    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[cfg(feature = "test-faults")]
@@ -786,11 +793,11 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(storage, &store, 70);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 71, 72);
+    let thread = create_thread(&storage, &store, 70);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 71, 72);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         73,
@@ -808,7 +815,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
     );
     assert!(matches!(begin, CommandOutcome::Indeterminate { .. }));
     assert!(matches!(
-        status(storage, &store, &edit),
+        status(&storage, &store, &edit),
         DraftPieceOperationStatusV1::Open(_)
     ));
 
@@ -858,11 +865,11 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
             DraftPieceTransactionOutcomeV1::Committed(_)
         )
     ));
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 
-    let disposable = open_session(storage, &store, &durable, 74, 75);
+    let disposable = open_session(&storage, &store, &durable, 74, 75);
     let stale_completion = transaction(
-        storage,
+        &storage,
         &store,
         &disposable,
         76,
@@ -873,7 +880,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
         )],
         point(8),
     );
-    begin_stage_build(storage, &store, &stale_completion);
+    begin_stage_build(&storage, &store, &stale_completion);
     not_committed(execute(
         &store,
         storage.test_dispose_draft_editor_candidate_session(
@@ -890,7 +897,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
         ),
     ));
     assert!(matches!(
-        settled(storage, &store, &stale_completion).outcome(),
+        settled(&storage, &store, &stale_completion).outcome(),
         DraftPieceSettlementOutcomeV1::Cancelled
     ));
     committed(execute(
@@ -903,7 +910,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
     ));
 
     let after_disposal = transaction(
-        storage,
+        &storage,
         &store,
         &disposable,
         77,
@@ -925,7 +932,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
         CommandOutcome::NotCommitted { .. }
     ));
     assert!(matches!(
-        status(storage, &store, &after_disposal),
+        status(&storage, &store, &after_disposal),
         DraftPieceOperationStatusV1::Absent
     ));
 }
@@ -941,10 +948,10 @@ fn occupied_roots_and_impossible_session_or_build_records_fail_closed() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(case, 80);
-        let durable = current(storage, &store, thread);
-        let session = open_session(storage, &store, &durable, 81, 82);
+        let durable = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &durable, 81, 82);
         let edit = transaction(
-            storage,
+            &storage,
             &store,
             &session,
             83,
@@ -955,23 +962,23 @@ fn occupied_roots_and_impossible_session_or_build_records_fail_closed() {
             )],
             point(4),
         );
-        begin_stage_build(storage, &store, &edit);
-        let DraftPieceOperationStatusV1::Complete(build) = status(storage, &store, &edit) else {
+        begin_stage_build(&storage, &store, &edit);
+        let DraftPieceOperationStatusV1::Complete(build) = status(&storage, &store, &edit) else {
             panic!("fixture build is not complete")
         };
         let successor = build.successor().unwrap();
         let collision_outcome = execute(
             &store,
-            inject_draft_piece_candidate_root_collision(&store, storage, successor, collision),
+            inject_draft_piece_candidate_root_collision(&store, &storage, successor, collision),
         );
         committed(collision_outcome);
-        let session_before = active_session(storage, &store, &session);
+        let session_before = active_session(&storage, &store, &session);
         not_committed(execute(
             &store,
             storage
                 .settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
         ));
-        assert_eq!(active_session(storage, &store, &session), session_before);
+        assert_eq!(active_session(&storage, &store, &session), session_before);
         assert!(
             storage
                 .draft_piece_operation_status_page(&store, &edit.prepared, 1, &edit.fragments)
@@ -982,17 +989,17 @@ fn occupied_roots_and_impossible_session_or_build_records_fail_closed() {
             storage
                 .settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
         ));
-        assert_eq!(current(storage, &store, thread), durable);
+        assert_eq!(current(&storage, &store, thread), durable);
     }
 
     let (_home, store, storage, thread) = fixture("session-frontier-corruption", 84);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 85, 86);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 85, 86);
     committed(execute(
         &store,
         inject_draft_editor_candidate_session_published_beyond_newest(
             &store,
-            storage,
+            &storage,
             session.draft_id(),
             session.session_id(),
         ),
@@ -1026,10 +1033,10 @@ fn occupied_roots_and_impossible_session_or_build_records_fail_closed() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(case, 87);
-        let durable = current(storage, &store, thread);
-        let session = open_session(storage, &store, &durable, 88, 89);
+        let durable = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &durable, 88, 89);
         let edit = transaction(
-            storage,
+            &storage,
             &store,
             &session,
             90,
@@ -1040,7 +1047,7 @@ fn occupied_roots_and_impossible_session_or_build_records_fail_closed() {
             )],
             point(5),
         );
-        begin_stage_build(storage, &store, &edit);
+        begin_stage_build(&storage, &store, &edit);
         if settle_first {
             committed(execute(
                 &store,
@@ -1054,7 +1061,7 @@ fn occupied_roots_and_impossible_session_or_build_records_fail_closed() {
             &store,
             inject_draft_piece_build_corruption(
                 &store,
-                storage,
+                &storage,
                 syndic_storage::DraftPieceSettlementKeyV1::new(
                     edit.prepared.header().draft_id(),
                     edit.prepared.header().session_id(),
@@ -1082,10 +1089,10 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
         "bad-settlement",
     ] {
         let (_home, store, storage, thread) = fixture(case, 120);
-        let durable = current(storage, &store, thread);
-        let session = open_session(storage, &store, &durable, 121, 122);
+        let durable = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &durable, 121, 122);
         let first = transaction(
-            storage,
+            &storage,
             &store,
             &session,
             123,
@@ -1096,15 +1103,15 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
             )],
             point(5),
         );
-        begin_stage_build(storage, &store, &first);
+        begin_stage_build(&storage, &store, &first);
         committed(execute(
             &store,
             storage
                 .settle_draft_piece_edit(storage.revision(&store).unwrap(), first.prepared.clone()),
         ));
-        let first_head = adopted_head(storage, &store, &first);
+        let first_head = adopted_head(&storage, &store, &first);
         let second = transaction(
-            storage,
+            &storage,
             &store,
             &first_head,
             124,
@@ -1115,7 +1122,7 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
             )],
             point(12),
         );
-        begin_stage_build(storage, &store, &second);
+        begin_stage_build(&storage, &store, &second);
         committed(execute(
             &store,
             storage.settle_draft_piece_edit(
@@ -1123,9 +1130,9 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
                 second.prepared.clone(),
             ),
         ));
-        let head = adopted_head(storage, &store, &second);
+        let head = adopted_head(&storage, &store, &second);
         let pending = transaction(
-            storage,
+            &storage,
             &store,
             &head,
             125,
@@ -1146,19 +1153,19 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
         let corruption = match case {
             "missing-root" => delete_draft_piece_immutable_record(
                 &store,
-                storage,
+                &storage,
                 head.newest_root(),
                 DraftPieceImmutableDeletion::Root,
             ),
             "missing-settlement" => delete_draft_piece_immutable_record(
                 &store,
-                storage,
+                &storage,
                 head.newest_root(),
                 DraftPieceImmutableDeletion::Settlement,
             ),
-            "missing-build" => delete_draft_piece_terminal_build(&store, storage, key),
+            "missing-build" => delete_draft_piece_terminal_build(&store, &storage, key),
             "bad-settlement" => {
-                inject_draft_piece_settlement_closure_corruption(&store, storage, key)
+                inject_draft_piece_settlement_closure_corruption(&store, &storage, key)
             }
             _ => unreachable!(),
         };
@@ -1206,8 +1213,8 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(case, 126);
-        let durable = current(storage, &store, thread);
-        let session = open_session(storage, &store, &durable, 127, 128);
+        let durable = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &durable, 127, 128);
         let request = DraftEditorCandidateSessionOpenRequestV1::new(
             selector(&durable),
             session.session_id(),
@@ -1227,7 +1234,7 @@ fn candidate_adoption_closure_and_open_receipt_bytes_fail_closed() {
             &store,
             inject_draft_editor_candidate_open_receipt_corruption(
                 &store,
-                storage,
+                &storage,
                 session.draft_id(),
                 session.session_id(),
                 session.open_operation_id(),
@@ -1293,10 +1300,10 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(case, 130);
-        let durable = current(storage, &store, thread);
-        let session = open_session(storage, &store, &durable, 131, 132);
+        let durable = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &durable, 131, 132);
         let seed = transaction(
-            storage,
+            &storage,
             &store,
             &session,
             133,
@@ -1307,15 +1314,15 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
             )],
             point(2),
         );
-        begin_stage_build(storage, &store, &seed);
+        begin_stage_build(&storage, &store, &seed);
         committed(execute(
             &store,
             storage
                 .settle_draft_piece_edit(storage.revision(&store).unwrap(), seed.prepared.clone()),
         ));
-        let seeded = adopted_head(storage, &store, &seed);
+        let seeded = adopted_head(&storage, &store, &seed);
         let edit = transaction(
-            storage,
+            &storage,
             &store,
             &seeded,
             134,
@@ -1352,7 +1359,7 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
             ));
         }
         loop {
-            let DraftPieceOperationStatusV1::Open(build) = status(storage, &store, &edit) else {
+            let DraftPieceOperationStatusV1::Open(build) = status(&storage, &store, &edit) else {
                 panic!("phase-jump fixture stopped being open")
             };
             let reached = matches!(
@@ -1403,7 +1410,7 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
             &store,
             inject_draft_piece_build_corruption(
                 &store,
-                storage,
+                &storage,
                 syndic_storage::DraftPieceSettlementKeyV1::new(
                     seeded.draft_id(),
                     seeded.session_id(),
@@ -1452,10 +1459,10 @@ fn immutable_progress_receipt_endpoint_closes_advance_status_and_settlement() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(case, 138);
-        let durable = current(storage, &store, thread);
-        let session = open_session(storage, &store, &durable, 139, 140);
+        let durable = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &durable, 139, 140);
         let edit = transaction(
-            storage,
+            &storage,
             &store,
             &session,
             141,
@@ -1493,7 +1500,7 @@ fn immutable_progress_receipt_endpoint_closes_advance_status_and_settlement() {
         );
         committed(execute(
             &store,
-            inject_draft_piece_progress_receipt_corruption(&store, storage, key, corruption),
+            inject_draft_piece_progress_receipt_corruption(&store, &storage, key, corruption),
         ));
         not_committed(execute(
             &store,
@@ -1542,10 +1549,10 @@ fn immutable_progress_receipt_endpoint_closes_advance_status_and_settlement() {
     }
 
     let (_home, store, storage, thread) = fixture("progress-forged-cross-validating", 152);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 153, 154);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 153, 154);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         155,
@@ -1572,7 +1579,7 @@ fn immutable_progress_receipt_endpoint_closes_advance_status_and_settlement() {
         &store,
         inject_draft_piece_build_corruption(
             &store,
-            storage,
+            &storage,
             syndic_storage::DraftPieceSettlementKeyV1::new(
                 session.draft_id(),
                 session.session_id(),
@@ -1611,10 +1618,10 @@ fn immutable_progress_receipt_endpoint_closes_advance_status_and_settlement() {
 #[test]
 fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
     let (_home, store, storage, thread) = fixture("occupied-progress-target", 156);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 157, 158);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 157, 158);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         159,
@@ -1636,7 +1643,7 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
     );
     committed(execute(
         &store,
-        inject_draft_piece_occupied_stage_target(&store, storage, key, edit.fragments[0].clone()),
+        inject_draft_piece_occupied_stage_target(&store, &storage, key, edit.fragments[0].clone()),
     ));
     not_committed(execute(
         &store,
@@ -1669,10 +1676,10 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
     ));
 
     let (_home, store, storage, thread) = fixture("fragment-ahead", 160);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 161, 162);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 161, 162);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         163,
@@ -1689,7 +1696,7 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
     ));
     committed(execute(
         &store,
-        inject_draft_piece_fragment_ahead(&store, storage, edit.fragments[0].clone()),
+        inject_draft_piece_fragment_ahead(&store, &storage, edit.fragments[0].clone()),
     ));
     assert!(
         storage
@@ -1722,10 +1729,10 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
     ));
 
     let (_home, store, storage, thread) = fixture("custody-endpoint-drift", 164);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 165, 166);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 165, 166);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         167,
@@ -1752,7 +1759,7 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
         &store,
         inject_draft_piece_custody_endpoint_corruption(
             &store,
-            storage,
+            &storage,
             session.draft_id(),
             session.session_id(),
         ),
@@ -1792,10 +1799,10 @@ fn progress_target_fork_fragment_ahead_and_custody_drift_fail_closed() {
 #[test]
 fn begin_replay_rejects_codec_valid_session_generation_inflation() {
     let (_home, store, storage, thread) = fixture("begin-session-generation", 180);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 181, 182);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 181, 182);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         183,
@@ -1814,7 +1821,7 @@ fn begin_replay_rejects_codec_valid_session_generation_inflation() {
         &store,
         inject_draft_piece_session_generation_inflation(
             &store,
-            storage,
+            &storage,
             session.draft_id(),
             session.session_id(),
         ),
@@ -1829,10 +1836,10 @@ fn begin_replay_rejects_codec_valid_session_generation_inflation() {
 #[test]
 fn stage_replay_rejects_codec_valid_session_generation_inflation() {
     let (_home, store, storage, thread) = fixture("stage-session-generation", 184);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 185, 186);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 185, 186);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         187,
@@ -1859,7 +1866,7 @@ fn stage_replay_rejects_codec_valid_session_generation_inflation() {
         &store,
         inject_draft_piece_session_generation_inflation(
             &store,
-            storage,
+            &storage,
             session.draft_id(),
             session.session_id(),
         ),
@@ -1878,10 +1885,10 @@ fn stage_replay_rejects_codec_valid_session_generation_inflation() {
 #[test]
 fn advance_replay_rejects_codec_valid_session_generation_inflation() {
     let (_home, store, storage, thread) = fixture("advance-session-generation", 188);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 189, 190);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 189, 190);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         191,
@@ -1921,7 +1928,7 @@ fn advance_replay_rejects_codec_valid_session_generation_inflation() {
         &store,
         inject_draft_piece_session_generation_inflation(
             &store,
-            storage,
+            &storage,
             session.draft_id(),
             session.session_id(),
         ),
@@ -1936,10 +1943,10 @@ fn advance_replay_rejects_codec_valid_session_generation_inflation() {
 #[test]
 fn stage_replay_rejects_coordinated_codec_valid_target_replacement() {
     let (_home, store, storage, thread) = fixture("stage-coordinated-target", 192);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 193, 194);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 193, 194);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &session,
         195,
@@ -1969,7 +1976,7 @@ fn stage_replay_rejects_coordinated_codec_valid_target_replacement() {
     );
     committed(execute(
         &store,
-        inject_draft_piece_coordinated_stage_target_replacement(&store, storage, key),
+        inject_draft_piece_coordinated_stage_target_replacement(&store, &storage, key),
     ));
     not_committed(execute(
         &store,
@@ -1982,7 +1989,7 @@ fn stage_replay_rejects_coordinated_codec_valid_target_replacement() {
 }
 
 fn transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,
@@ -2027,7 +2034,7 @@ fn transaction(
     }
 }
 
-fn begin_stage_build(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) {
+fn begin_stage_build(storage: &SyndicStorage, store: &HomeStore, transaction: &Transaction) {
     committed(execute(
         store,
         storage.begin_draft_piece_edit(
@@ -2062,7 +2069,7 @@ fn begin_stage_build(storage: SyndicStorage, store: &HomeStore, transaction: &Tr
 }
 
 fn build_and_reject(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> DraftPieceRejectedReasonV1 {
@@ -2108,25 +2115,25 @@ fn build_and_reject(
         ),
     ));
     assert!(matches!(
-        settled(storage, store, transaction).outcome(),
+        settled(&storage, store, transaction).outcome(),
         DraftPieceSettlementOutcomeV1::Rejected(actual) if *actual == reason
     ));
     reason
 }
 
 fn settled(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> syndic_storage::DraftPieceSettlementV1 {
-    match status(storage, store, transaction) {
+    match status(&storage, store, transaction) {
         DraftPieceOperationStatusV1::Settled(settlement) => settlement,
         other => panic!("operation is not settled: {other:?}"),
     }
 }
 
 fn status(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> DraftPieceOperationStatusV1 {
@@ -2140,11 +2147,11 @@ fn status(
 }
 
 fn adopted_head(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> DraftEditorCandidateSessionV1 {
-    match settled(storage, store, transaction).closure() {
+    match settled(&storage, store, transaction).closure() {
         syndic_storage::DraftPieceSettlementClosureV1::Committed(adoption) => {
             remember_fixture_positions(
                 adoption.adopted_session(),
@@ -2160,7 +2167,7 @@ fn adopted_head(
 }
 
 fn active_session(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     expected: &DraftEditorCandidateSessionV1,
 ) -> DraftEditorCandidateSessionV1 {
@@ -2174,11 +2181,11 @@ fn active_session(
 }
 
 fn settled_head(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> DraftEditorCandidateSessionV1 {
-    match settled(storage, store, transaction).closure() {
+    match settled(&storage, store, transaction).closure() {
         syndic_storage::DraftPieceSettlementClosureV1::Committed(adoption) => {
             remember_fixture_positions(
                 adoption.adopted_session(),
@@ -2196,7 +2203,7 @@ fn settled_head(
 }
 
 fn candidate_bytes(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     head: &DraftEditorCandidateSessionV1,
 ) -> Vec<u8> {
@@ -2225,7 +2232,7 @@ fn candidate_bytes(
 }
 
 fn open_session(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     current: &syndic_storage::SyndicCurrentDraft,
     session: u8,
@@ -2261,11 +2268,11 @@ fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicT
     let mut store =
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(storage, &store, seed);
+    let thread = create_thread(&storage, &store, seed);
     (home, store, storage, thread)
 }
 
-fn create_thread(storage: SyndicStorage, store: &HomeStore, seed: u8) -> SyndicThreadId {
+fn create_thread(storage: &SyndicStorage, store: &HomeStore, seed: u8) -> SyndicThreadId {
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(
@@ -2328,7 +2335,7 @@ fn replay_succeeded(outcome: CommandOutcome) {
 }
 
 fn current(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
 ) -> syndic_storage::SyndicCurrentDraft {

@@ -164,7 +164,7 @@ fn all_status_bearing_kinds_accept_legal_started_and_completed_statuses() {
     let home = TestHome::new("provider-observation-status-positive");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
     for (index, kind) in STATUS_KINDS.into_iter().enumerate() {
         let mut started = begin(
             130 + index as u8,
@@ -209,7 +209,7 @@ fn completed_in_progress_status_is_rejected_for_all_six_kinds_after_restart() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         for (index, kind) in STATUS_KINDS.into_iter().enumerate() {
             let mut stager = begin(
                 142 + index as u8,
@@ -236,7 +236,7 @@ fn completed_in_progress_status_is_rejected_for_all_six_kinds_after_restart() {
             .resume_provider_observation(&reopened, identity, limit())
             .unwrap()
             .unwrap();
-        let mut callback = commit_callback(&reopened, storage);
+        let mut callback = commit_callback(&reopened, &storage);
         assert!(matches!(
             stager.control(
                 ProviderObservationControl::Enum {

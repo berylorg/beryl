@@ -130,7 +130,7 @@ impl HomeStore {
     /// codec accepts.
     pub fn inject_persisted_corrupt_record<D: StorageDomain, R: RecordCodec<D>>(
         &self,
-        handle: DomainHandle<D>,
+        handle: &DomainHandle<D>,
         encoded_key: &[u8],
         encoded_value: &[u8],
     ) -> Result<(), PersistedCorruptionError> {

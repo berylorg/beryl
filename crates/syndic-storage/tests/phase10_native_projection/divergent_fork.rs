@@ -5,19 +5,19 @@ fn divergent_nonempty_prefix_selects_the_exact_inclusive_ancestor() {
     let home = TestHome::new("phase10-native-divergent-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     let child = id(114);
     let parent = support::populated::source_turn();
     fixtures::seed_child_at_tail(
         &store,
-        storage,
+        &storage,
         id(30),
         child,
         SyndicDraftId::from_bytes([115; 16]),
     );
     let fixture = fixtures::append_pending(
         &store,
-        storage,
+        &storage,
         child,
         SyndicTurnId::from_bytes([116; 16]),
         parent,
@@ -25,10 +25,10 @@ fn divergent_nonempty_prefix_selects_the_exact_inclusive_ancestor() {
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .expect("pending fork target fixture must be scrub-valid");
-    let advanced = fixtures::advance_source_to_divergent_prefix(&store, storage);
+    let advanced = fixtures::advance_source_to_divergent_prefix(&store, &storage);
     assert_ne!(advanced.turn, parent);
     assert_ne!(advanced.selected.digest(), fixture.selected.digest());
-    fixtures::finish_current_transcript(&store, storage, id(30));
+    fixtures::finish_current_transcript(&store, &storage, id(30));
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .expect("divergent native source fixture must be scrub-valid");

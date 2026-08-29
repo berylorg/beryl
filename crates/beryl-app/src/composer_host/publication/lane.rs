@@ -141,10 +141,10 @@ impl SyndicComposerHost {
             if intent.marker_authority.is_some() {
                 return Err(ComposerHostError::UnexpectedMarkerSealAuthority);
             }
-            let evidence = unchanged_evidence(store, assets, candidate_pair)?;
+            let evidence = unchanged_evidence(store, &intent.assets, candidate_pair)?;
             PublicationStage::Ready(prepare_publication(
                 store,
-                self.storage,
+                &self.storage,
                 &mut intent,
                 evidence,
             )?)
@@ -303,8 +303,14 @@ impl SyndicComposerHost {
         ticket: ComposerHostPublicationTicket,
         evidence: DraftEditorCandidatePublicationEvidenceV1,
     ) -> Result<(), ComposerHostError> {
-        let storage = self.storage;
-        let pending = self.pending_publication_mut(ticket)?;
+        let (storage, publication) = (&self.storage, &mut self.publication);
+        let pending = match publication.lane.as_deref_mut() {
+            Some(ComposerHostPublicationLane::Publication(pending)) if pending.ticket == ticket => {
+                pending
+            }
+            Some(_) => return Err(ComposerHostError::StalePublicationGeneration),
+            None => return Err(ComposerHostError::PublicationNotPending),
+        };
         let prepared = prepare_publication(store, storage, &mut pending.intent, evidence)?;
         pending.stage = PublicationStage::Ready(prepared);
         Ok(())

@@ -130,9 +130,9 @@ fn deferred_context_records() -> Vec<FixtureRecord> {
 }
 
 pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: SyndicStorage) {
-    seed_canonical_empty_thread(store, storage, id(30), draft_id(31));
-    seed_canonical_empty_thread(store, storage, id(40), draft_id(41));
-    seed_canonical_empty_thread(store, storage, id(36), draft_id(37));
+    seed_canonical_empty_thread(store, storage.clone(), id(30), draft_id(31));
+    seed_canonical_empty_thread(store, storage.clone(), id(40), draft_id(41));
+    seed_canonical_empty_thread(store, storage.clone(), id(36), draft_id(37));
     let mut initial_builds = FixtureBatch::new();
     for thread in [id(30), id(40)] {
         initial_builds
@@ -142,9 +142,9 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
             })
             .unwrap();
     }
-    commit(store, storage, initial_builds);
-    commit(store, storage, batch(pre_command_static_records()));
-    commit(store, storage, batch(pre_event_records()));
+    commit(store, storage.clone(), initial_builds);
+    commit(store, storage.clone(), batch(pre_command_static_records()));
+    commit(store, storage.clone(), batch(pre_event_records()));
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .expect("pre-event populated fixture must be domain-valid");
@@ -162,25 +162,29 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
         ),
     );
     accept_clean(
-        store.execute_current(storage.current_activate_binding(ActivateBinding::new(
-            source_thread,
-            BindingRevision::new(2).unwrap(),
-            InputGateRevision::new(1).unwrap(),
-            source_selected,
-            source_snapshot(),
-            source_turn,
-            CasLoadedSessionGeneration::new(
-                CasProcessGeneration::new(1).unwrap(),
-                CasLoadedThreadGeneration::new(1).unwrap(),
-            ),
-            timestamp(3),
-        ))),
+        store.execute_current(
+            storage
+                .clone()
+                .current_activate_binding(ActivateBinding::new(
+                    source_thread,
+                    BindingRevision::new(2).unwrap(),
+                    InputGateRevision::new(1).unwrap(),
+                    source_selected,
+                    source_snapshot(),
+                    source_turn,
+                    CasLoadedSessionGeneration::new(
+                        CasProcessGeneration::new(1).unwrap(),
+                        CasLoadedThreadGeneration::new(1).unwrap(),
+                    ),
+                    timestamp(3),
+                )),
+        ),
         "source binding activation",
         &mut receipts,
     );
     accept_clean(
-        store.execute_current(
-            storage.current_publish_active_cas_turn(PublishActiveCasTurn::new(
+        store.execute_current(storage.clone().current_publish_active_cas_turn(
+            PublishActiveCasTurn::new(
                 source_thread,
                 BindingRevision::new(3).unwrap(),
                 InputGateRevision::new(2).unwrap(),
@@ -188,8 +192,8 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
                 source_cas_thread(),
                 source_cas_turn(),
                 timestamp(3),
-            )),
-        ),
+            ),
+        )),
         "source CAS-turn publication",
         &mut receipts,
     );
@@ -206,7 +210,7 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
     };
     accept_clean(
         store.execute_current(
-            storage.current_admit_live_source_event(
+            storage.clone().current_admit_live_source_event(
                 LiveSourceEvent::new(
                     source_thread,
                     source_turn,
@@ -227,7 +231,7 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
     source_provider_fixture().seed(store, &storage, &mut source_seed, &mut receipts);
     accept_clean(
         store.execute_current(
-            storage.current_admit_live_source_event(
+            storage.clone().current_admit_live_source_event(
                 LiveSourceEvent::new(
                     source_thread,
                     source_turn,
@@ -250,37 +254,37 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
     source_seed.gate_revision = source_seed.gate_revision.checked_next().unwrap();
     provider::converge_transcript(store, &storage, source_thread, &mut receipts);
     accept_clean(
-        store.execute_current(
-            storage.current_freeze_next_turn_item(FreezeNextTurnItem::new(
+        store.execute_current(storage.clone().current_freeze_next_turn_item(
+            FreezeNextTurnItem::new(
                 source_thread,
                 source_turn,
                 source_seed.state_revision,
                 TurnItemOrdinal::FIRST,
                 source_item(),
                 source_seed.observed_at,
-            )),
-        ),
+            ),
+        )),
         "source-item freeze",
         &mut receipts,
     );
     source_seed.state_revision = source_seed.state_revision.checked_next().unwrap();
     provider::converge_item_projection(store, &storage, source_item(), &mut receipts);
     accept_clean(
-        store.execute_current(
-            storage.current_finalize_next_turn_item(FinalizeNextTurnItem::new(
+        store.execute_current(storage.clone().current_finalize_next_turn_item(
+            FinalizeNextTurnItem::new(
                 source_thread,
                 source_turn,
                 source_seed.state_revision,
                 TurnItemOrdinal::FIRST,
                 source_item(),
                 source_seed.observed_at,
-            )),
-        ),
+            ),
+        )),
         "source-item finalization",
         &mut receipts,
     );
     provider::converge_transcript(store, &storage, source_thread, &mut receipts);
-    commit(store, storage, batch(deferred_context_records()));
+    commit(store, storage.clone(), batch(deferred_context_records()));
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .expect("deferred discussion-context fixture must be domain-valid");
@@ -328,7 +332,7 @@ fn pre_command_static_records() -> Vec<FixtureRecord> {
 }
 
 pub fn seed_populated(store: &beryl_home_store::HomeStore, storage: SyndicStorage) {
-    seed_provider_records(store, storage);
+    seed_provider_records(store, storage.clone());
 }
 
 fn source_provider_fixture() -> ProviderItemFixture {

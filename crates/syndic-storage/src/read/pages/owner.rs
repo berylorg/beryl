@@ -24,7 +24,7 @@ impl SyndicStorage {
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<F::Value>, SyndicReadError> {
         let page = store.read_cursor::<crate::domain::SyndicDomain, ExactCodec<F>>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,

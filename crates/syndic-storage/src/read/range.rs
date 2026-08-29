@@ -212,7 +212,7 @@ fn read_composer_logical_bytes_into(
     output: &mut [u8],
 ) -> Result<ReadByteTotals, SyndicReadError> {
     let predecessor = store.read_cursor::<crate::domain::SyndicDomain, ContentTextSpansCodec>(
-        storage.handle,
+        &storage.handle,
         &CursorRange::closed(
             ContentTextSpanKey {
                 owner: content_id,
@@ -257,7 +257,7 @@ fn read_composer_logical_bytes_into(
         }
 
         let page = store.read_cursor::<crate::domain::SyndicDomain, ContentTextSpansCodec>(
-            storage.handle,
+            &storage.handle,
             &CursorRange::after(
                 ContentTextSpanKey {
                     owner: content_id,

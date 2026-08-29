@@ -7,7 +7,7 @@ fn restart_preserves_discriminant_and_duplicate_rejection_state() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = clean_stage(
             ProviderObservationStager::begin(
                 identity,
@@ -60,7 +60,7 @@ fn restart_preserves_discriminant_and_duplicate_rejection_state() {
         .resume_provider_observation(&reopened, identity, limit())
         .unwrap()
         .unwrap();
-    let mut callback = commit_callback(&reopened, storage);
+    let mut callback = commit_callback(&reopened, &storage);
     assert!(matches!(
         stager.control(
             ProviderObservationControl::Enum {

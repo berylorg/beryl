@@ -35,7 +35,7 @@ pub(super) enum ExactDisposition {
 
 pub(super) fn read_delivering(
     home: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     input_id: SyndicAcceptedInputId,
 ) -> Result<Option<SyndicDeliveringSteeringInput>, SyndicReadError> {
     storage.delivering_steering_input(home, input_id, point_limit())
@@ -45,7 +45,7 @@ pub(super) fn retry(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     route: &SyndicDeliveringSteeringInput,
 ) -> Result<(), ProjectionPublicationFailure> {
     #[cfg(test)]
@@ -72,7 +72,7 @@ pub(super) fn complete(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     route: &SyndicDeliveringSteeringInput,
 ) -> Result<(), ProjectionPublicationFailure> {
     #[cfg(test)]
@@ -99,7 +99,7 @@ pub(super) fn reject(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     route: &SyndicDeliveringSteeringInput,
 ) -> Result<(), ProjectionPublicationFailure> {
     #[cfg(test)]

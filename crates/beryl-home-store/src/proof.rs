@@ -253,7 +253,7 @@ impl<P: HomeProofProtocol> std::fmt::Debug for ProofWitnessContribution<P> {
 
 impl<D: StorageDomain> DomainHandle<D> {
     pub fn proof_source<P: HomeProofProtocol>(
-        self,
+        &self,
         expected_revision: DomainRevision,
         input: <D as ProofDomain>::SourceInput,
     ) -> ProofSourceContribution<P>
@@ -279,7 +279,7 @@ impl<D: StorageDomain> DomainHandle<D> {
     }
 
     pub fn proof_witness<P: HomeProofProtocol>(
-        self,
+        &self,
         expected_revision: DomainRevision,
         input: <D as ProofDomain>::WitnessInput,
     ) -> ProofWitnessContribution<P>

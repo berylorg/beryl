@@ -298,7 +298,7 @@ pub(super) fn read_text_page(
 ) -> Result<TextPageAssembly, SyndicReadError> {
     let (first_key, first_span, mut totals) = {
         let predecessor = store.read_cursor::<crate::domain::SyndicDomain, ContentTextSpansCodec>(
-            storage.handle,
+            &storage.handle,
             &CursorRange::closed(
                 ContentTextSpanKey {
                     owner: content.id(),
@@ -362,7 +362,7 @@ pub(super) fn read_text_page(
 
     while logical < desired_end {
         let page = store.read_cursor::<crate::domain::SyndicDomain, ContentTextSpansCodec>(
-            storage.handle,
+            &storage.handle,
             &CursorRange::after(
                 ContentTextSpanKey {
                     owner: content.id(),

@@ -16,11 +16,11 @@ use syndic_storage::{
 #[test]
 fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
     let (_home, store, storage, thread) = fixture("phase169-publication-evidence", 180);
-    let initial = current(storage, &store, thread);
+    let initial = current(&storage, &store, thread);
     let initial_empty_seal = seal_root(&storage, &store, initial.draft().piece_root(), 181);
     let empty_asset = asset_proof(initial_empty_seal, 182);
 
-    let mut changed_nonempty = open_session(storage, &store, &initial, 183, 184);
+    let mut changed_nonempty = open_session(&storage, &store, &initial, 183, 184);
     changed_nonempty = complete_staged(
         &storage,
         &store,
@@ -76,7 +76,7 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
     .unwrap();
 
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -90,7 +90,7 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
         ),
     );
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -104,7 +104,7 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
         ),
     );
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -118,7 +118,7 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
         ),
     );
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -129,7 +129,7 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
         ),
     );
     publish(
-        storage,
+        &storage,
         &store,
         publication_request(
             &initial,
@@ -146,10 +146,10 @@ fn publication_evidence_branches_are_exact_and_rejections_are_nonpublishing() {
 #[test]
 fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
     let (_home, store, storage, thread) = fixture("phase169-unchanged-nonempty", 20);
-    let initial = current(storage, &store, thread);
+    let initial = current(&storage, &store, thread);
     let empty_seal = seal_root(&storage, &store, initial.draft().piece_root(), 21);
     let empty_asset = asset_proof(empty_seal, 22);
-    let mut session = open_session(storage, &store, &initial, 23, 24);
+    let mut session = open_session(&storage, &store, &initial, 23, 24);
     session = complete_staged(
         &storage,
         &store,
@@ -186,7 +186,7 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
             asset_proof: nonempty_asset,
         },
     );
-    let changed_source = capture_publication_source(storage, &store, changed_request);
+    let changed_source = capture_publication_source(&storage, &store, changed_request);
     let changed_prepared = storage
         .prepare_draft_editor_candidate_publication(
             &store,
@@ -216,7 +216,7 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
 
-    let nonempty = current(storage, &store, thread);
+    let nonempty = current(&storage, &store, thread);
     let unchanged = active_session(&storage, &store, session.draft_id(), session.session_id());
     assert_ne!(unchanged.newest_root(), nonempty.draft().piece_root());
     assert_eq!(
@@ -224,7 +224,7 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
         nonempty.draft().piece_root().marker_commitment()
     );
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -237,7 +237,7 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
         ),
     );
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -251,7 +251,7 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
         ),
     );
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -262,7 +262,7 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
         ),
     );
     publish(
-        storage,
+        &storage,
         &store,
         publication_request(
             &nonempty,
@@ -278,9 +278,9 @@ fn unchanged_nonempty_requires_the_exact_branch_and_asset_summary() {
 #[test]
 fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
     let (_home, store, storage, thread) = fixture("phase169-changed-empty", 60);
-    let initial = current(storage, &store, thread);
+    let initial = current(&storage, &store, thread);
     let initial_empty_seal = seal_root(&storage, &store, initial.draft().piece_root(), 61);
-    let mut session = open_session(storage, &store, &initial, 62, 63);
+    let mut session = open_session(&storage, &store, &initial, 62, 63);
     session = complete_staged(
         &storage,
         &store,
@@ -322,7 +322,7 @@ fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
             asset_proof: nonempty_asset,
         },
     );
-    let changed_source = capture_publication_source(storage, &store, changed_request);
+    let changed_source = capture_publication_source(&storage, &store, changed_request);
     let changed_prepared = storage
         .prepare_draft_editor_candidate_publication(
             &store,
@@ -361,9 +361,9 @@ fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
-    let nonempty = current(storage, &store, thread);
+    let nonempty = current(&storage, &store, thread);
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -376,7 +376,7 @@ fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
         ),
     );
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -389,7 +389,7 @@ fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
         ),
     );
     assert_rejected_without_publication(
-        storage,
+        &storage,
         &store,
         thread,
         publication_request(
@@ -403,7 +403,7 @@ fn changed_empty_requires_the_exact_empty_seal_and_rejects_nonempty_evidence() {
         ),
     );
     publish(
-        storage,
+        &storage,
         &store,
         publication_request(
             &nonempty,
@@ -434,12 +434,12 @@ fn publication_request(
 }
 
 fn assert_rejected_without_publication(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     request: DraftEditorCandidatePublicationRequestV1,
 ) {
-    let before = current(storage, store, thread);
+    let before = current(&storage, store, thread);
     let revision = storage.revision(store).unwrap();
     let source = capture_publication_source(storage, store, request);
     assert!(
@@ -452,7 +452,7 @@ fn assert_rejected_without_publication(
 }
 
 fn publish(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     request: DraftEditorCandidatePublicationRequestV1,
 ) {
@@ -473,12 +473,12 @@ fn publish(
 }
 
 fn capture_publication_source(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     request: DraftEditorCandidatePublicationRequestV1,
 ) -> CapturedDraftEditorCandidatePublicationSourceV1 {
     let head = active_session(
-        &storage,
+        storage,
         store,
         request.selector().draft_id(),
         request.session_id(),

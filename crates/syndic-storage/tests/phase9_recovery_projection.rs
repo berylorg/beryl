@@ -42,7 +42,7 @@ fn turn_id(thread_byte: u8, index: usize) -> SyndicTurnId {
 
 fn same_home_path_records(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
     tail: SyndicTurnId,
@@ -50,7 +50,7 @@ fn same_home_path_records(
     history_complete: bool,
     last_activity_at: SyndicTimestamp,
 ) -> Vec<FixtureRecord> {
-    seed_canonical_empty_thread(store, storage, thread, draft);
+    seed_canonical_empty_thread(store, storage.clone(), thread, draft);
     let thread_revision = ThreadRevision::new(1).unwrap();
     let projection_revision = ProjectionRevision::new(1).unwrap();
     let binding_revision = BindingRevision::new(1).unwrap();
@@ -118,7 +118,7 @@ fn same_home_path_records(
 
 fn seed_recovery_fixture(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_byte: u8,
     entries: &[(&str, TurnLifecycle)],
     pending_successor: bool,
@@ -275,7 +275,7 @@ fn seed_recovery_fixture(
         !pending_successor,
         timestamp(u64::try_from(entries.len()).unwrap() + 2),
     ));
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     RecoveryFixture {
         thread,
         selected: SelectedPathProof::new(
@@ -289,10 +289,10 @@ fn seed_recovery_fixture(
 
 fn seed_user_assistant_fixture(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     user_text: &str,
 ) -> RecoveryFixture {
-    support::seed_populated(store, storage);
+    support::seed_populated(store, storage.clone());
     let thread = id(30);
     let root = SyndicTurnId::from_bytes([29; 16]);
     let item = SyndicItemId::from_bytes([210; 16]);
@@ -324,7 +324,7 @@ fn seed_user_assistant_fixture(
             revision,
         )),
     ]);
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     let selected = selected_path(store, storage, thread);
     RecoveryFixture {
         thread,
@@ -335,7 +335,7 @@ fn seed_user_assistant_fixture(
 
 fn prepare_ready(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: &RecoveryFixture,
     model_tokens: Option<u64>,
 ) -> RecoveryProjection {
@@ -361,7 +361,7 @@ fn prepare_ready(
 }
 
 fn replay(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &beryl_home_store::HomeStore,
     projection: RecoveryProjection,
 ) -> Vec<(RecoveryItemSequenceRole, String)> {
@@ -419,8 +419,8 @@ fn exact_root_to_tail_items_exclude_pending_input_and_reopen_deterministically()
         ("interrupted middle", TurnLifecycle::Interrupted),
         ("failed tail", TurnLifecycle::Failed),
     ];
-    let fixture = seed_recovery_fixture(&store, storage, 100, &entries, true);
-    let projection = prepare_ready(&store, storage, &fixture, Some(100_000));
+    let fixture = seed_recovery_fixture(&store, &storage, 100, &entries, true);
+    let projection = prepare_ready(&store, &storage, &fixture, Some(100_000));
     assert_eq!(projection.thread_id(), fixture.thread);
     assert_eq!(projection.selected_path(), fixture.selected);
     assert_eq!(
@@ -436,7 +436,7 @@ fn exact_root_to_tail_items_exclude_pending_input_and_reopen_deterministically()
         .map(|(text, _)| (RecoveryItemSequenceRole::UserInputText, (*text).to_owned()))
         .collect::<Vec<_>>();
     test_faults::reset_recovery_residency_metrics();
-    assert_eq!(replay(storage, &store, projection), expected);
+    assert_eq!(replay(&storage, &store, projection), expected);
     let metrics = test_faults::recovery_residency_metrics();
     assert_eq!(metrics.max_resident_turns(), 1);
     assert_eq!(metrics.max_resident_items(), 1);
@@ -446,9 +446,9 @@ fn exact_root_to_tail_items_exclude_pending_input_and_reopen_deterministically()
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    let reopened_projection = prepare_ready(&reopened, storage, &fixture, Some(100_000));
+    let reopened_projection = prepare_ready(&reopened, &storage, &fixture, Some(100_000));
     assert_eq!(reopened_projection.sequence_digest(), digest);
-    assert_eq!(replay(storage, &reopened, reopened_projection), expected);
+    assert_eq!(replay(&storage, &reopened, reopened_projection), expected);
     reopened.close().unwrap();
 }
 
@@ -459,12 +459,12 @@ fn caller_page_limit_preserves_utf8_progress_and_returns_the_exact_lease() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let fixture = seed_recovery_fixture(
         &store,
-        storage,
+        &storage,
         110,
         &[("\u{e9}\u{1f642}x", TurnLifecycle::Complete)],
         false,
     );
-    let projection = prepare_ready(&store, storage, &fixture, Some(100_000));
+    let projection = prepare_ready(&store, &storage, &fixture, Some(100_000));
     let mut cursor = storage.open_recovery_cursor(&store, projection).unwrap();
     let pool = recovery_page_pool(16);
 
@@ -524,10 +524,10 @@ fn recovery_sequence_digest_matches_the_fixed_v1_vector() {
     let home = TestHome::new("phase9-recovery-digest-vector");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = seed_user_assistant_fixture(&store, storage, "u");
-    let projection = prepare_ready(&store, storage, &fixture, Some(100_000));
+    let fixture = seed_user_assistant_fixture(&store, &storage, "u");
+    let projection = prepare_ready(&store, &storage, &fixture, Some(100_000));
     assert_eq!(
-        replay(storage, &store, projection),
+        replay(&storage, &store, projection),
         vec![
             (RecoveryItemSequenceRole::UserInputText, "u".to_owned()),
             (
@@ -555,12 +555,12 @@ fn recovery_crosses_content_chunks_and_emits_more_pages_than_items() {
     let text = "z".repeat(CONTENT_CHUNK_MAX_BYTES + 37);
     let fixture = seed_recovery_fixture(
         &store,
-        storage,
+        &storage,
         120,
         &[(text.as_str(), TurnLifecycle::Interrupted)],
         false,
     );
-    let projection = prepare_ready(&store, storage, &fixture, Some(u64::MAX));
+    let projection = prepare_ready(&store, &storage, &fixture, Some(u64::MAX));
     assert_eq!(projection.item_count().get(), 1);
     assert_eq!(projection.utf8_bytes().get(), text.len() as u64);
     let mut cursor = storage.open_recovery_cursor(&store, projection).unwrap();
@@ -607,7 +607,7 @@ fn absolute_utf8_ceiling_accepts_exactly_and_rejects_plus_one() {
         let text = "a".repeat(length);
         let fixture = seed_recovery_fixture(
             &store,
-            storage,
+            &storage,
             thread_byte,
             &[(text.as_str(), TurnLifecycle::Complete)],
             false,
@@ -646,7 +646,7 @@ fn half_window_budget_and_missing_or_zero_metadata_are_exact() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let fixture = seed_recovery_fixture(
         &store,
-        storage,
+        &storage,
         150,
         &[("elevenbytes", TurnLifecycle::Complete)],
         false,
@@ -689,9 +689,9 @@ fn canonical_itemless_terminal_history_fails_closed_and_reopens_deterministicall
     let home = TestHome::new("phase9-recovery-incomplete-root");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    support::seed_populated(&store, storage);
+    support::seed_populated(&store, storage.clone());
     let thread = id(30);
-    let selected = selected_path(&store, storage, thread);
+    let selected = selected_path(&store, &storage, thread);
     assert!(matches!(
         storage.prepare_recovery_projection(
             &store,
@@ -723,7 +723,7 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
         let storage = SyndicStorage::register(&mut store).unwrap();
         let fixture = seed_recovery_fixture(
             &store,
-            storage,
+            &storage,
             thread_byte,
             &[("placeholder", TurnLifecycle::Complete)],
             false,
@@ -741,7 +741,7 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
                 None,
             ),
         ));
-        commit(&store, storage, batch(records));
+        commit(&store, storage.clone(), batch(records));
         let error = storage
             .prepare_recovery_projection(
                 &store,
@@ -781,14 +781,14 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let fixture = seed_recovery_fixture(
         &store,
-        storage,
+        &storage,
         190,
         &[("incomplete", TurnLifecycle::Complete)],
         false,
     );
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::TurnState(
             support::fixture_turn_state_with_finalization(
                 fixture.represented_tail,
@@ -818,7 +818,7 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
     let home = TestHome::new("phase9-recovery-operational");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    support::seed_populated(&store, storage);
+    support::seed_populated(&store, storage.clone());
     let thread = id(40);
     let turn = support::populated::active_turn();
     let item = support::populated::activity_item();
@@ -869,8 +869,8 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
             })
             .unwrap();
     }
-    commit(&store, storage, replacement);
-    let selected = selected_path(&store, storage, thread);
+    commit(&store, storage.clone(), replacement);
+    let selected = selected_path(&store, &storage, thread);
     assert!(matches!(
         storage.prepare_recovery_projection(
             &store,
@@ -890,7 +890,7 @@ fn stale_selected_path_is_rejected_before_history_assembly() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let fixture = seed_recovery_fixture(
         &store,
-        storage,
+        &storage,
         160,
         &[("history", TurnLifecycle::Complete)],
         false,
@@ -912,7 +912,7 @@ fn stale_selected_path_is_rejected_before_history_assembly() {
 
 fn selected_path(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> SelectedPathProof {
     let thread = storage

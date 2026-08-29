@@ -4,25 +4,25 @@ use super::{common::commit_edit, support::*};
 fn sibling_at_the_threshold_cannot_redirect_selected_lineage_floor() {
     let (_measure_home, measure_store, measure_storage, measure_thread) =
         fixture("sibling-lineage-measure", 91, 65_536);
-    let durable = current(measure_storage, &measure_store, measure_thread);
-    let session = open_session(measure_storage, &measure_store, &durable, 92, 93);
-    let first = commit_edit(measure_storage, &measure_store, &session, 94, "a");
+    let durable = current(&measure_storage, &measure_store, measure_thread);
+    let session = open_session(&measure_storage, &measure_store, &durable, 92, 93);
+    let first = commit_edit(&measure_storage, &measure_store, &session, 94, "a");
     let second = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         first.adopted_session(),
         95,
         "variable",
     );
     let third = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         second.adopted_session(),
         96,
         "charge",
     );
     let fourth = commit_edit(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         third.adopted_session(),
         97,
@@ -44,25 +44,25 @@ fn sibling_at_the_threshold_cannot_redirect_selected_lineage_floor() {
         + charge(fourth_components);
 
     let (home, store, storage, thread) = fixture("sibling-lineage", 101, budget);
-    let durable = current(storage, &store, thread);
-    let base = open_session(storage, &store, &durable, 102, 103);
-    let first = commit_edit(storage, &store, &base, 104, "a");
-    let second = commit_edit(storage, &store, first.adopted_session(), 105, "variable");
+    let durable = current(&storage, &store, thread);
+    let base = open_session(&storage, &store, &durable, 102, 103);
+    let first = commit_edit(&storage, &store, &base, 104, "a");
+    let second = commit_edit(&storage, &store, first.adopted_session(), 105, "variable");
     committed(execute(
         &store,
         publish_draft_edit_history_pair(
             &store,
-            storage,
+            storage.clone(),
             durable.draft().clone(),
             second.adopted_root().reference(),
             second.adopted_history().reference(),
         ),
     ));
-    let published = current(storage, &store, thread);
-    let sibling_session = open_session(storage, &store, &published, 106, 107);
-    let selected_session = open_session(storage, &store, &published, 108, 109);
-    let sibling = commit_edit(storage, &store, &sibling_session, 110, "charge");
-    let selected = commit_edit(storage, &store, &selected_session, 111, "charge");
+    let published = current(&storage, &store, thread);
+    let sibling_session = open_session(&storage, &store, &published, 106, 107);
+    let selected_session = open_session(&storage, &store, &published, 108, 109);
+    let sibling = commit_edit(&storage, &store, &sibling_session, 110, "charge");
+    let selected = commit_edit(&storage, &store, &selected_session, 111, "charge");
     assert_eq!(
         sibling.transition().cumulative_encoded_bytes(),
         selected.transition().cumulative_encoded_bytes()
@@ -71,7 +71,13 @@ fn sibling_at_the_threshold_cannot_redirect_selected_lineage_floor() {
         sibling.transition().key().session_id(),
         selected.transition().key().session_id()
     );
-    let successor = commit_edit(storage, &store, selected.adopted_session(), 112, "boundary");
+    let successor = commit_edit(
+        &storage,
+        &store,
+        selected.adopted_session(),
+        112,
+        "boundary",
+    );
     assert_eq!(
         successor.adopted_history().oldest_eligible(),
         Some(selected.transition().reference())
@@ -104,12 +110,12 @@ fn sibling_at_the_threshold_cannot_redirect_selected_lineage_floor() {
 #[test]
 fn append_constructs_canonical_depth_and_binary_ancestor_witness() {
     let (_home, store, storage, thread) = fixture("witness-construction", 113, 65_536);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 114, 115);
-    let first = commit_edit(storage, &store, &session, 116, "a");
-    let second = commit_edit(storage, &store, first.adopted_session(), 117, "bb");
-    let third = commit_edit(storage, &store, second.adopted_session(), 118, "ccc");
-    let fourth = commit_edit(storage, &store, third.adopted_session(), 119, "dddd");
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 114, 115);
+    let first = commit_edit(&storage, &store, &session, 116, "a");
+    let second = commit_edit(&storage, &store, first.adopted_session(), 117, "bb");
+    let third = commit_edit(&storage, &store, second.adopted_session(), 118, "ccc");
+    let fourth = commit_edit(&storage, &store, third.adopted_session(), 119, "dddd");
 
     assert_eq!(first.transition().journal_depth(), 1);
     assert_eq!(first.transition().ancestor_witness().bitmap(), 0);

@@ -2,7 +2,7 @@ use super::*;
 
 pub fn converge_and_release_terminal_history(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
 ) {
@@ -38,7 +38,7 @@ pub fn converge_and_release_terminal_history(
 
 fn converge_items(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
 ) {
@@ -123,7 +123,7 @@ fn converge_items(
 
 fn generated_media_is_waiting(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item: &CanonicalItemRecord,
 ) -> bool {
     let CanonicalItemPresentation::GeneratedMedia { resource_id } = item.presentation() else {
@@ -142,7 +142,7 @@ fn generated_media_is_waiting(
     )
 }
 
-fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
+fn project_item_if_needed(store: &HomeStore, storage: &SyndicStorage, item: SyndicItemId) {
     let record = storage
         .canonical_item(store, item, point_limit())
         .unwrap()
@@ -195,7 +195,7 @@ fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item: Syndi
     panic!("bounded item-projection convergence did not finish")
 }
 
-fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread: SyndicThreadId) {
+fn converge_transcript(store: &HomeStore, storage: &SyndicStorage, thread: SyndicThreadId) {
     let record = storage
         .thread(store, thread, point_limit())
         .unwrap()

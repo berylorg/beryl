@@ -46,7 +46,7 @@ impl DescriptorWalk {
         &mut self,
         source: &MarkerSource,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<Option<DescriptorBlueprint>, MarkerReplayError> {
         if self.finished {

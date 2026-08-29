@@ -5,20 +5,26 @@ fn operational_event_refreshes_current_path_snapshot_without_invalidating_transc
     let home = TestHome::new("phase7-operational-current-path-snapshot");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(&store, storage);
+    let thread = create_thread(&store, storage.clone());
     let submitted = submit_text(
         &store,
-        storage,
+        storage.clone(),
         thread,
         "question",
         draft_id(3),
         SyndicItemId::from_bytes([40; 16]),
         timestamp(3),
     );
-    let source = establish_turn(&store, storage, thread, submitted.turn, timestamp(4));
+    let source = establish_turn(
+        &store,
+        storage.clone(),
+        thread,
+        submitted.turn,
+        timestamp(4),
+    );
     admit(
         &store,
-        storage,
+        storage.clone(),
         thread,
         submitted.turn,
         &source,
@@ -27,16 +33,16 @@ fn operational_event_refreshes_current_path_snapshot_without_invalidating_transc
     );
     correlate_user_item(
         &store,
-        storage,
+        storage.clone(),
         thread,
         submitted.turn,
         submitted.item,
         &source,
         timestamp(5),
     );
-    project_item(&store, storage, submitted.item);
-    let (generation, _) = start_transcript_build(&store, storage, thread);
-    finish_transcript_build(&store, storage, thread, generation);
+    project_item(&store, storage.clone(), submitted.item);
+    let (generation, _) = start_transcript_build(&store, storage.clone(), thread);
+    finish_transcript_build(&store, storage.clone(), thread, generation);
 
     let head_before = storage
         .transcript_view_head(&store, thread, point_limit())
@@ -44,8 +50,8 @@ fn operational_event_refreshes_current_path_snapshot_without_invalidating_transc
         .unwrap()
         .clone();
     assert_eq!(head_before.lifecycle(), ProjectionLifecycle::Current);
-    let paths_before = path_turns(&store, storage, thread, generation);
-    let entries_before = transcript_entries(&store, storage, thread, generation);
+    let paths_before = path_turns(&store, storage.clone(), thread, generation);
+    let entries_before = transcript_entries(&store, storage.clone(), thread, generation);
     let state_before = storage
         .turn_state(&store, submitted.turn, point_limit())
         .unwrap()
@@ -54,7 +60,7 @@ fn operational_event_refreshes_current_path_snapshot_without_invalidating_transc
 
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         submitted.turn,
         SyndicItemId::from_bytes([41; 16]),
@@ -86,11 +92,11 @@ fn operational_event_refreshes_current_path_snapshot_without_invalidating_transc
         .unwrap();
     assert_eq!(head_after, head_before);
     assert_eq!(
-        transcript_entries(&store, storage, thread, generation),
+        transcript_entries(&store, storage.clone(), thread, generation),
         entries_before
     );
 
-    let paths_after = path_turns(&store, storage, thread, generation);
+    let paths_after = path_turns(&store, storage.clone(), thread, generation);
     assert_eq!(paths_after.len(), paths_before.len());
     let path_before = &paths_before[0];
     let path_after = &paths_after[0];

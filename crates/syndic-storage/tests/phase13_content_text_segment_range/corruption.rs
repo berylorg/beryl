@@ -43,7 +43,7 @@ fn malformed_or_missing_text_index_evidence_rejects_before_proof() {
             corrupt,
         )))
         .unwrap();
-    commit(&fixture.store, fixture.storage, mutation);
+    commit(&fixture.store, fixture.storage.clone(), mutation);
     assert!(matches!(
         fixture.storage.prove_sealed_content_text_segment(
             &fixture.store,
@@ -65,7 +65,7 @@ fn malformed_or_missing_text_index_evidence_rejects_before_proof() {
             logical_start: after.logical_start(),
         })
         .unwrap();
-    commit(&fixture.store, fixture.storage, mutation);
+    commit(&fixture.store, fixture.storage.clone(), mutation);
     assert!(matches!(
         fixture.storage.prove_sealed_content_text_segment(
             &fixture.store,
@@ -107,7 +107,7 @@ fn page_revalidates_the_physical_boundary_after_proof() {
     mutation
         .put(FixtureRecord::ContentTextSpan(corrupt))
         .unwrap();
-    commit(&fixture.store, fixture.storage, mutation);
+    commit(&fixture.store, fixture.storage.clone(), mutation);
     assert!(matches!(
         fixture.storage.sealed_content_text_segment_range(
             &fixture.store,
@@ -151,7 +151,7 @@ fn fake_marker_at_zero_is_rejected_against_encoded_content() {
     let fixture = seed("phase13-content-segments-fake-marker", &source);
     let mut mutation = FixtureBatch::new();
     mutation.put(FixtureRecord::ContentPiece(fake)).unwrap();
-    commit(&fixture.store, fixture.storage, mutation);
+    commit(&fixture.store, fixture.storage.clone(), mutation);
     assert_marker_bytes_reject(&fixture);
 }
 
@@ -163,7 +163,7 @@ fn wrong_marker_digest_is_rejected_after_exact_byte_read() {
     let fixture = seed("phase13-content-segments-marker-digest", &source);
     let mut mutation = FixtureBatch::new();
     mutation.put(FixtureRecord::ContentPiece(corrupt)).unwrap();
-    commit(&fixture.store, fixture.storage, mutation);
+    commit(&fixture.store, fixture.storage.clone(), mutation);
     assert_marker_bytes_reject(&fixture);
 }
 
@@ -179,7 +179,7 @@ fn wrong_marker_ordinal_is_rejected_as_noncontiguous() {
     let fixture = seed("phase13-content-segments-marker-order", &source);
     let mut mutation = FixtureBatch::new();
     mutation.put(FixtureRecord::ContentPiece(corrupt)).unwrap();
-    commit(&fixture.store, fixture.storage, mutation);
+    commit(&fixture.store, fixture.storage.clone(), mutation);
     assert!(matches!(
         fixture
             .storage
@@ -204,7 +204,7 @@ fn carried_preceding_marker_proof_rejects_a_changed_marker_ordinal() {
     let corrupt = rebuild_marker(marker, InputMarkerOrdinal::new(2).unwrap(), digest);
     let mut mutation = FixtureBatch::new();
     mutation.put(FixtureRecord::ContentPiece(corrupt)).unwrap();
-    commit(&fixture.store, fixture.storage, mutation);
+    commit(&fixture.store, fixture.storage.clone(), mutation);
 
     assert!(matches!(
         fixture.storage.prove_sealed_content_text_segment(

@@ -57,6 +57,13 @@ impl StorageDomain for DurableJobDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = DURABLE_JOB_FAMILIES;
     type ValidationError = DurableJobValidationError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>
+    {
+        Ok(())
+    }
 
     fn validate(
         reader: &beryl_home_store::DomainReader<'_, Self>,
@@ -93,7 +100,7 @@ impl StorageDomain for DurableJobDomain {
 }
 
 /// Opaque typed access to the durable orchestration-job domain.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct DurableJobState {
     handle: DomainHandle<DurableJobDomain>,
 }
@@ -130,7 +137,7 @@ impl DurableJobState {
     }
 
     pub fn revision(&self, store: &HomeStore) -> Result<DomainRevision, ReadError> {
-        store.domain_revision(self.handle)
+        store.domain_revision(&self.handle)
     }
 
     /// Returns this domain's revision from a still-current successful command.
@@ -139,7 +146,7 @@ impl DurableJobState {
         store: &HomeStore,
         receipt: &beryl_home_store::CommitReceipt,
     ) -> Result<Option<DomainRevision>, beryl_home_store::CommitReceiptError> {
-        store.receipt_domain_revision(receipt, self.handle)
+        store.receipt_domain_revision(receipt, &self.handle)
     }
 
     /// Builds a deliberately incompatible persisted failure state for schema tests.
@@ -173,7 +180,7 @@ impl DurableJobState {
         job_id: JobId,
     ) -> Result<Option<BranchHandoffJobRecord>, ReadError> {
         store.read_point::<DurableJobDomain, JobRecordCodec>(
-            self.handle,
+            &self.handle,
             &job_id,
             job_point_limit(),
         )
@@ -185,7 +192,7 @@ impl DurableJobState {
         request: &ResolutionRequestIdentity,
     ) -> Result<Option<ResolutionRequestAdmission>, ReadError> {
         store.read_point::<DurableJobDomain, RequestIdempotencyIndexCodec>(
-            self.handle,
+            &self.handle,
             &RequestIndexKey::new(request.clone()),
             request_point_limit(),
         )
@@ -197,7 +204,7 @@ impl DurableJobState {
         discussion_thread_id: SyndicThreadId,
     ) -> Result<Option<LatestBranchHandoffAttempt>, ReadError> {
         store.read_point::<DurableJobDomain, LatestAttemptIndexCodec>(
-            self.handle,
+            &self.handle,
             &discussion_thread_id,
             small_point_limit(),
         )
@@ -217,7 +224,7 @@ impl DurableJobState {
             CursorRange::closed(start, end)
         };
         let page = store.read_cursor::<DurableJobDomain, LiveJobIndexCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,

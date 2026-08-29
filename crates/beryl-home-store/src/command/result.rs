@@ -245,7 +245,7 @@ impl CommitReceipt {
 
     pub(crate) fn domain_revision<D: StorageDomain>(
         &self,
-        handle: DomainHandle<D>,
+        handle: &DomainHandle<D>,
     ) -> Option<DomainRevision> {
         if handle.store != self.store {
             return None;
@@ -296,7 +296,7 @@ impl HomeStore {
     pub fn receipt_domain_revision<D: StorageDomain>(
         &self,
         receipt: &CommitReceipt,
-        handle: DomainHandle<D>,
+        handle: &DomainHandle<D>,
     ) -> Result<Option<DomainRevision>, CommitReceiptError> {
         let admission = self.health.admit()?;
         let generation_guard = match self.generation.read() {

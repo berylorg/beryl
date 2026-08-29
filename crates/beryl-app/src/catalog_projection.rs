@@ -76,8 +76,8 @@ impl SyndicPlan {
 /// Prepares one explicit non-GUI catalog rebuild through a stable cross-domain source fence.
 pub fn prepare_thread_catalog_projection(
     store: &HomeStore,
-    syndic: SyndicStorage,
-    state: BerylState,
+    syndic: &SyndicStorage,
+    state: &BerylState,
     thread_id: SyndicThreadId,
 ) -> Result<ThreadCatalogProjectionPreparation, CatalogProjectionBuildError> {
     let home_revision = store.home_revision()?;

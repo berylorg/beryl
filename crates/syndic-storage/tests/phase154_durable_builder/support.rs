@@ -97,7 +97,7 @@ fn stage_replacement(
         .unwrap()
         .unwrap();
     let page = prepare_one_page(
-        *storage,
+        storage,
         &head,
         &active,
         DraftMutationStagingPageItemV1::Proposal(replacement),
@@ -251,7 +251,7 @@ fn open_build(
 }
 
 fn prepare_one_page(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     head: &DraftMutationStagingHeadV1,
     session: &DraftEditorCandidateSessionV1,
     item: DraftMutationStagingPageItemV1,
@@ -353,7 +353,7 @@ fn fixture_with_faults(
 }
 
 fn open_session(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     current: &syndic_storage::SyndicCurrentDraft,
     session: u8,
@@ -400,7 +400,7 @@ fn active_session(
 }
 
 fn current(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
 ) -> syndic_storage::SyndicCurrentDraft {

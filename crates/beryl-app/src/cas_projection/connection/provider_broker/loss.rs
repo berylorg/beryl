@@ -296,7 +296,7 @@ impl ProviderBrokerControl {
             &self.home,
             self.home_id,
             home_generation,
-            storage,
+            &storage,
             &authority.activation,
             &authority.cas_thread_id,
             authority.loaded_generation,
@@ -332,7 +332,7 @@ impl ProviderBrokerControl {
                 &self.home,
                 self.home_id,
                 home_generation,
-                storage,
+                &storage,
                 authority,
                 limit,
             )?;
@@ -351,7 +351,7 @@ impl ProviderBrokerControl {
             &self.home,
             self.home_id,
             home_generation,
-            storage,
+            &storage,
             authority.activation(),
             authority.cas_thread_id(),
             authority.loaded_generation(),
@@ -362,7 +362,7 @@ impl ProviderBrokerControl {
             authority.activation().thread_id(),
             authority.activation().turn_id(),
         );
-        let frontier = LiveSourceFrontier::read(&self.home, storage, &target, limit)?;
+        let frontier = LiveSourceFrontier::read(&self.home, &storage, &target, limit)?;
         let terminal = frontier.event(
             &target,
             None,
@@ -372,7 +372,7 @@ impl ProviderBrokerControl {
             &self.home,
             self.home_id,
             home_generation,
-            storage,
+            &storage,
             &terminal,
             limit,
         )?;
@@ -482,7 +482,7 @@ fn publish_loss_activation(
     home: &beryl_home_store::HomeStore,
     home_id: beryl_model::BerylHomeId,
     home_generation: beryl_home_store::HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     authority: &crate::cas_projection::connection::router::TargetLossPublicationAuthority,
     limit: SyndicPointReadLimit,
 ) -> Result<(), ProviderBrokerLossError> {

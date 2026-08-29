@@ -48,14 +48,13 @@ impl Ingester {
         let Some(active_turn) = permit.active_turn_request() else {
             return Ok((home_generation, storage));
         };
-        let (storage, published_gate) =
-            self.publish_active_turn_once(home_generation, storage, &active_turn, limit)?;
+        let published_gate =
+            self.publish_active_turn_once(home_generation, &storage, &active_turn, limit)?;
         let activation = permit
             .activation_event(published_gate)
             .map_err(SourceActivationError::Record)?
             .ok_or(SourceActivationError::Target)?;
-        let storage =
-            self.publish_activation_event_once(home_generation, storage, &activation, limit)?;
+        self.publish_activation_event_once(home_generation, &storage, &activation, limit)?;
         Ok((home_generation, storage))
     }
 
@@ -131,10 +130,10 @@ impl Ingester {
     fn publish_active_turn_once(
         &self,
         home_generation: beryl_home_store::HomeGeneration,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         active_turn: &syndic_storage::PublishActiveCasTurn,
         limit: SyndicPointReadLimit,
-    ) -> Result<(SyndicStorage, beryl_model::InputGateRevision), SourceActivationError> {
+    ) -> Result<beryl_model::InputGateRevision, SourceActivationError> {
         let verification = self
             .live_command()
             .enter_current_home(&self.home, self.home_id, home_generation)
@@ -147,16 +146,16 @@ impl Ingester {
         verification
             .settle_after_operation()
             .map_err(SourceActivationError::Authority)?;
-        attempt.map(|published_gate| (storage, published_gate))
+        attempt
     }
 
     fn publish_activation_event_once(
         &self,
         home_generation: beryl_home_store::HomeGeneration,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         activation: &LiveSourceEvent,
         limit: SyndicPointReadLimit,
-    ) -> Result<SyndicStorage, SourceActivationError> {
+    ) -> Result<(), SourceActivationError> {
         let verification = self
             .live_command()
             .enter_current_home(&self.home, self.home_id, home_generation)
@@ -169,6 +168,6 @@ impl Ingester {
         verification
             .settle_after_operation()
             .map_err(SourceActivationError::Authority)?;
-        attempt.map(|()| storage)
+        attempt
     }
 }

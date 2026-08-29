@@ -35,7 +35,12 @@ pub struct Builder<'a> {
 impl<'a> Builder<'a> {
     pub fn new(store: &'a HomeStore, storage: SyndicStorage, thread_byte: u8) -> Self {
         let thread = SyndicThreadId::from_bytes([thread_byte; 16]);
-        seed_canonical_empty_thread(store, storage, thread, SyndicDraftId::from_bytes([2; 16]));
+        seed_canonical_empty_thread(
+            store,
+            storage.clone(),
+            thread,
+            SyndicDraftId::from_bytes([2; 16]),
+        );
         Self {
             store,
             storage,
@@ -92,7 +97,7 @@ impl<'a> Builder<'a> {
         self.next_item = self.next_item.checked_add(1).unwrap();
         let turn = exact_cas::submit_prepared_current_draft(
             self.store,
-            self.storage,
+            self.storage.clone(),
             self.thread,
             next_draft,
             user_item,
@@ -119,7 +124,7 @@ impl<'a> Builder<'a> {
         let source = self.activate_without_terminal(submitted);
         exact_cas::admit_event(
             self.store,
-            self.storage,
+            self.storage.clone(),
             self.thread,
             submitted.turn,
             &source,
@@ -132,14 +137,14 @@ impl<'a> Builder<'a> {
     pub fn activate_without_terminal(&mut self, submitted: SubmittedTurn) -> CasTurnSource {
         let source = exact_cas::establish_turn(
             self.store,
-            self.storage,
+            self.storage.clone(),
             self.thread,
             submitted.turn,
             self.tick(),
         );
         exact_cas::admit_event(
             self.store,
-            self.storage,
+            self.storage.clone(),
             self.thread,
             submitted.turn,
             &source,
@@ -148,7 +153,7 @@ impl<'a> Builder<'a> {
         );
         exact_cas::correlate_user_item(
             self.store,
-            self.storage,
+            self.storage.clone(),
             self.thread,
             submitted.turn,
             submitted.user_item,
@@ -161,7 +166,7 @@ impl<'a> Builder<'a> {
     pub fn finalize_turn(&mut self, turn: SyndicTurnId) {
         exact_cas::converge_and_release_terminal_history(
             self.store,
-            self.storage,
+            self.storage.clone(),
             self.thread,
             turn,
         );

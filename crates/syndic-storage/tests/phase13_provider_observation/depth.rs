@@ -220,7 +220,7 @@ fn worst_location_accepts_exact_semantic_depth_128() {
     let home = TestHome::new("provider-observation-depth-128");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
     let mut stager = begin_mcp(150, &mut callback);
     open_worst_location(&mut stager, &mut callback);
     close_worst_location(&mut stager, &mut callback);
@@ -239,7 +239,7 @@ fn exact_depth_128_worst_location_resumes_with_complete_259_frame_stack() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_mcp(151, &mut callback);
         open_worst_location(&mut stager, &mut callback);
         stager.abandon();
@@ -252,7 +252,7 @@ fn exact_depth_128_worst_location_resumes_with_complete_259_frame_stack() {
         .resume_provider_observation(&reopened, identity, limit())
         .unwrap()
         .unwrap();
-    let mut callback = commit_callback(&reopened, storage);
+    let mut callback = commit_callback(&reopened, &storage);
     close_worst_location(&mut stager, &mut callback);
     clean_seal(stager.seal(&mut callback).unwrap()).abandon();
     drop(callback);
@@ -267,7 +267,7 @@ fn worst_location_rejects_semantic_depth_129() {
     let home = TestHome::new("provider-observation-depth-129");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
     let mut stager = begin_mcp(152, &mut callback);
     open_worst_location(&mut stager, &mut callback);
     assert!(matches!(

@@ -31,7 +31,7 @@ fn stage_interleaved_replacements(
             .unwrap()
             .unwrap();
         let source = prepare_one_page(
-            *storage,
+            storage,
             &head,
             &active,
             DraftMutationStagingPageItemV1::SourcePosition(point(0)),
@@ -46,7 +46,7 @@ fn stage_interleaved_replacements(
             .unwrap()
             .unwrap();
         let proposal = prepare_one_page(
-            *storage,
+            storage,
             &head,
             &active,
             DraftMutationStagingPageItemV1::Proposal(replacement.clone()),
@@ -156,8 +156,8 @@ fn open_build_fragments(
 #[test]
 fn leading_marker_and_following_text_delete_in_one_atomic_build() {
     let (_home, store, storage, thread) = fixture("marker-text-delete", 70);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 71, 72);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 71, 72);
     session = complete_staged(
         &storage,
         &store,
@@ -252,8 +252,8 @@ fn leading_marker_and_following_text_delete_in_one_atomic_build() {
 #[test]
 fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
     let (home, store, storage, thread) = fixture("later-effect", 80);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 81, 82);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 81, 82);
     session = complete_staged(
         &storage,
         &store,
@@ -374,8 +374,8 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
 #[test]
 fn later_marker_effects_complete_in_canonical_fragment_order() {
     let (_home, store, storage, thread) = fixture("later-effect-overtake", 90);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 91, 92);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 91, 92);
     session = complete_staged(
         &storage,
         &store,

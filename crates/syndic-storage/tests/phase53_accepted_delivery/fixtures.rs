@@ -23,7 +23,7 @@ pub fn retryable_input() -> SyndicAcceptedInputId {
 }
 
 pub fn seed_mixed_abandonment(store: &HomeStore, storage: SyndicStorage) {
-    seed_populated(store, storage);
+    seed_populated(store, storage.clone());
     let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
     let thread = storage.thread(store, id(40), limit).unwrap().unwrap();
     let draft = storage
@@ -39,12 +39,13 @@ pub fn seed_mixed_abandonment(store: &HomeStore, storage: SyndicStorage) {
         .unwrap()
         .unwrap();
     let gate = storage.input_gate(store, id(40), limit).unwrap().unwrap();
-    let head = syndic_storage::test_faults::accepted_route_generation_head(store, storage, id(40))
-        .unwrap()
-        .unwrap();
+    let head =
+        syndic_storage::test_faults::accepted_route_generation_head(store, storage.clone(), id(40))
+            .unwrap()
+            .unwrap();
     let route = syndic_storage::test_faults::accepted_route_generation(
         store,
-        storage,
+        storage.clone(),
         id(40),
         AcceptedRouteGeneration::FIRST,
     )
@@ -245,7 +246,7 @@ pub fn seed_mixed_abandonment(store: &HomeStore, storage: SyndicStorage) {
     crate::support::commit(store, storage, crate::support::batch(records));
 }
 
-pub fn abandonment_request(store: &HomeStore, storage: SyndicStorage) -> AbandonActiveBinding {
+pub fn abandonment_request(store: &HomeStore, storage: &SyndicStorage) -> AbandonActiveBinding {
     let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
     let binding = storage
         .current_binding(store, id(40), limit)

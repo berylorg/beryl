@@ -7,7 +7,7 @@ use super::{
 };
 
 pub(super) fn read(
-    handle: DomainHandle<SessionDomain>,
+    handle: &DomainHandle<SessionDomain>,
     store: &HomeStore,
 ) -> Result<Option<MinimalSessionBootstrap>, SessionReadError> {
     let first = read_header(handle, store)?;
@@ -61,7 +61,7 @@ pub(super) fn read(
 }
 
 fn read_header(
-    handle: DomainHandle<SessionDomain>,
+    handle: &DomainHandle<SessionDomain>,
     store: &HomeStore,
 ) -> Result<Option<SessionHeader>, SessionReadError> {
     store

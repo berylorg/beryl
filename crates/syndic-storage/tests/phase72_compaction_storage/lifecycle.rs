@@ -210,14 +210,14 @@ fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen(
 
     let source = exact_cas::establish_turn(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         turn_id,
         timestamp(41),
     );
     exact_cas::admit_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         turn_id,
         &source,
@@ -240,7 +240,7 @@ fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen(
 
     exact_cas::correlate_user_item(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         turn_id,
         item_id,
@@ -249,14 +249,19 @@ fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen(
     );
     exact_cas::admit_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         turn_id,
         &source,
         syndic_storage::SourceEventPayload::TurnEnded(syndic_storage::TurnEndStatus::complete()),
         timestamp(44),
     );
-    converge_and_release_terminal_history(&fixture.store, fixture.storage, fixture.thread, turn_id);
+    converge_and_release_terminal_history(
+        &fixture.store,
+        fixture.storage.clone(),
+        fixture.thread,
+        turn_id,
+    );
     fixture
         .store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

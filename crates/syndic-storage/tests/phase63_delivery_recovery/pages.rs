@@ -23,7 +23,7 @@ fn startup_cursor_progress_survives_earlier_gate_mutation_and_filtered_pages() {
     for (index, thread) in threads.iter().enumerate() {
         seed_canonical_empty_thread(
             &store,
-            storage,
+            storage.clone(),
             *thread,
             ordered_draft(10_000 + index as u64),
         );
@@ -32,7 +32,7 @@ fn startup_cursor_progress_survives_earlier_gate_mutation_and_filtered_pages() {
         let text = format!("restart-{index}");
         exact_cas::submit_current_draft(
             &store,
-            storage,
+            storage.clone(),
             thread,
             ordered_draft(20_000 + index),
             SyndicItemId::from_bytes(*ordered_id(30_000 + index).as_bytes()),
@@ -48,7 +48,7 @@ fn startup_cursor_progress_survives_earlier_gate_mutation_and_filtered_pages() {
     assert_eq!(first.records()[0].thread_id(), threads[0]);
     let first_cursor = first.next_cursor().expect("two physical gates remain");
 
-    replace_gate_state(&store, storage, threads[0], InputGateState::Idle);
+    replace_gate_state(&store, storage.clone(), threads[0], InputGateState::Idle);
     let second = storage
         .delivery_recovery_startup_page(&store, Some(first_cursor), limits(1))
         .unwrap();
@@ -72,7 +72,7 @@ fn terminal_heavy_gate_pages_clamp_and_advance_while_filtered_empty() {
     for value in 1..=300 {
         seed_canonical_empty_thread(
             &store,
-            storage,
+            storage.clone(),
             ordered_id(value),
             ordered_draft(10_000 + value),
         );
@@ -119,7 +119,7 @@ fn recovered_pending_page_proves_safe_work_and_fences_cursor_revision() {
     for (index, thread) in threads.iter().enumerate() {
         seed_canonical_empty_thread(
             &store,
-            storage,
+            storage.clone(),
             *thread,
             ordered_draft(40_000 + index as u64),
         );
@@ -129,7 +129,7 @@ fn recovered_pending_page_proves_safe_work_and_fences_cursor_revision() {
         let text = format!("safe pending {index}");
         turns.push(exact_cas::submit_current_draft(
             &store,
-            storage,
+            storage.clone(),
             thread,
             ordered_draft(50_000 + index as u64),
             SyndicItemId::from_bytes(*ordered_id(60_000 + index as u64).as_bytes()),
@@ -151,7 +151,7 @@ fn recovered_pending_page_proves_safe_work_and_fences_cursor_revision() {
 
     replace_gate_state(
         &store,
-        storage,
+        storage.clone(),
         ordered_id(11),
         InputGateState::PendingTurn(turns[0]),
     );
@@ -199,7 +199,7 @@ fn startup_cursor_from_another_home_is_rejected() {
         for value in [base, base + 1] {
             seed_canonical_empty_thread(
                 &store,
-                storage,
+                storage.clone(),
                 ordered_id(value),
                 ordered_draft(10_000 + value),
             );

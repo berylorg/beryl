@@ -130,7 +130,7 @@ fn assert_current(outcome: CommandOutcome) {
 
 fn publish_compaction_provider(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     id: CompactionOperationId,
     event: CompactionProviderEvent,
     at: u64,
@@ -159,7 +159,7 @@ fn publish_compaction_provider(
 
 fn stage_prepared_content(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     prepared: &PreparedContent,
 ) -> ContentManifestRecord {
     let mut manifest = prepared.building_manifest();
@@ -185,7 +185,7 @@ fn stage_prepared_content(
 
 fn lifecycle_content(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> syndic_storage::ContentReference {
     let prepared = prepare_lifecycle_continuation_content().unwrap();
     let manifest = stage_prepared_content(store, storage, &prepared);
@@ -301,14 +301,14 @@ pub fn pending_turn_fixture(name: &str) -> PendingTurnFixture {
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         operation_id,
         CompactionProviderEvent::ThreadStatus(CompactionThreadStatus::Active),
         1,
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         operation_id,
         CompactionProviderEvent::TurnStarted(CasTurnId::new("phase68-pending-compaction").unwrap()),
         1,
@@ -316,7 +316,7 @@ pub fn pending_turn_fixture(name: &str) -> PendingTurnFixture {
     let marker = SyndicItemId::from_bytes([115; 16]);
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         operation_id,
         CompactionProviderEvent::Marker {
             item_id: marker,
@@ -326,7 +326,7 @@ pub fn pending_turn_fixture(name: &str) -> PendingTurnFixture {
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         operation_id,
         CompactionProviderEvent::Marker {
             item_id: marker,
@@ -336,21 +336,21 @@ pub fn pending_turn_fixture(name: &str) -> PendingTurnFixture {
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         operation_id,
         CompactionProviderEvent::ThreadStatus(CompactionThreadStatus::Idle),
         1,
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         operation_id,
         CompactionProviderEvent::Terminal(
             TurnEndStatus::new(TurnTerminalOutcome::Complete, None).unwrap(),
         ),
         1,
     );
-    let content = lifecycle_content(&store, storage);
+    let content = lifecycle_content(&store, &storage);
     let operation = storage
         .compaction_operation(&store, operation_id, point_limit())
         .unwrap()

@@ -24,7 +24,7 @@ fn fresh_registration_reopens_and_rejects_a_duplicate_generation_registration() 
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
 
     assert_eq!(store.home_revision().unwrap().get(), 1);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 1);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 1);
     assert!(matches!(
         store.register_domain::<AlphaDomain>(),
         Err(DomainRegistrationError::DuplicateDomain { domain: "alpha" })
@@ -33,7 +33,7 @@ fn fresh_registration_reopens_and_rejects_a_duplicate_generation_registration() 
 
     let mut reopened = open_home(directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
-    assert_eq!(reopened.domain_revision(alpha).unwrap().get(), 1);
+    assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 1);
     reopened
         .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -103,7 +103,7 @@ fn fresh_registration_adopts_only_an_empty_interrupted_family() {
 
     let mut reopened = open_home(empty_directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
-    assert_eq!(reopened.domain_revision(alpha).unwrap().get(), 1);
+    assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 1);
     reopened.close().unwrap();
     let mut persisted = open_home(empty_directory.path());
     persisted.register_domain::<AlphaDomain>().unwrap();
@@ -210,7 +210,7 @@ fn persisted_registration_distinguishes_routine_reacquisition_from_schema_valida
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            store.domain_revision(&domain).unwrap(),
             PutBytes::<ValidatedDomain>::new(1, b"reject".to_vec()),
         ))
         .unwrap();
@@ -219,7 +219,7 @@ fn persisted_registration_distinguishes_routine_reacquisition_from_schema_valida
     let mut rejected = HomeCommand::new(store.home_revision().unwrap());
     rejected
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            store.domain_revision(&domain).unwrap(),
             PutBytes::<ValidatedDomain>::new(2, b"later".to_vec()),
         ))
         .unwrap();

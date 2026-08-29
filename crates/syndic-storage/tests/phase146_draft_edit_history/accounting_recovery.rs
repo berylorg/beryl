@@ -4,17 +4,17 @@ use super::support::*;
 fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
     let (_measure_home, measure_store, measure_storage, measure_thread) =
         fixture("budget-measure", 30, 4_096);
-    let measure_durable = current(measure_storage, &measure_store, measure_thread);
-    let measure_session = open_session(measure_storage, &measure_store, &measure_durable, 32, 33);
+    let measure_durable = current(&measure_storage, &measure_store, measure_thread);
+    let measure_session = open_session(&measure_storage, &measure_store, &measure_durable, 32, 33);
     let measure_edit = transaction(
-        measure_storage,
+        &measure_storage,
         &measure_store,
         &measure_session,
         34,
         "x",
         point(1),
     );
-    build(measure_storage, &measure_store, &measure_edit);
+    build(&measure_storage, &measure_store, &measure_edit);
     committed(execute(
         &measure_store,
         measure_storage.settle_draft_piece_edit(
@@ -22,7 +22,7 @@ fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
             measure_edit.prepared.clone(),
         ),
     ));
-    let measured_settlement = settled(measure_storage, &measure_store, &measure_edit);
+    let measured_settlement = settled(&measure_storage, &measure_store, &measure_edit);
     let DraftPieceSettlementClosureV1::Committed(measured_adoption) = measured_settlement.closure()
     else {
         panic!("measurement edit was not committed");
@@ -68,17 +68,17 @@ fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
 
     let (_exact_home, exact_store, exact_storage, exact_thread) =
         fixture("budget-exact", 35, exact_budget);
-    let exact_durable = current(exact_storage, &exact_store, exact_thread);
-    let exact_session = open_session(exact_storage, &exact_store, &exact_durable, 37, 38);
+    let exact_durable = current(&exact_storage, &exact_store, exact_thread);
+    let exact_session = open_session(&exact_storage, &exact_store, &exact_durable, 37, 38);
     let exact_edit = transaction(
-        exact_storage,
+        &exact_storage,
         &exact_store,
         &exact_session,
         39,
         "x",
         point(1),
     );
-    build(exact_storage, &exact_store, &exact_edit);
+    build(&exact_storage, &exact_store, &exact_edit);
     committed(execute(
         &exact_store,
         exact_storage.settle_draft_piece_edit(
@@ -86,7 +86,7 @@ fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
             exact_edit.prepared.clone(),
         ),
     ));
-    let exact_settlement = settled(exact_storage, &exact_store, &exact_edit);
+    let exact_settlement = settled(&exact_storage, &exact_store, &exact_edit);
     let DraftPieceSettlementClosureV1::Committed(exact_adoption) = exact_settlement.closure()
     else {
         panic!("exact-fit edit was not committed");
@@ -97,15 +97,15 @@ fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
     );
 
     let (_home, store, storage, thread) = fixture("budget-under", 40, exact_budget - 1);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 42, 43);
-    let edit = transaction(storage, &store, &session, 44, "x", point(1));
-    build(storage, &store, &edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 42, 43);
+    let edit = transaction(&storage, &store, &session, 44, "x", point(1));
+    build(&storage, &store, &edit);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     ));
-    let settlement = settled(storage, &store, &edit);
+    let settlement = settled(&storage, &store, &edit);
     assert!(matches!(
         settlement.outcome(),
         DraftPieceSettlementOutcomeV1::Error(DraftPieceErrorReasonV1::HistoryCapacityUnavailable)
@@ -130,7 +130,7 @@ fn budget_exhaustion_is_typed_noncommit_and_preserves_history() {
 #[test]
 fn generation_frontier_cumulative_and_encoded_size_overflow_are_typed() {
     let (_home, store, storage, thread) = fixture("overflow", 170, 4_096);
-    let durable = current(storage, &store, thread);
+    let durable = current(&storage, &store, thread);
     let errors = draft_edit_history_overflow_errors(
         durable.draft().piece_root(),
         DraftEditorCandidateSessionIdV1::from_bytes([172; 16]),
@@ -167,23 +167,23 @@ fn adoption_crash_cuts_reconcile_to_old_or_exact_complete_pair() {
         ),
     ] {
         let (_home, store, storage, faults, thread) = fault_fixture(name, seed, 4_096);
-        let durable = current(storage, &store, thread);
+        let durable = current(&storage, &store, thread);
         let session = open_session(
-            storage,
+            &storage,
             &store,
             &durable,
             seed.wrapping_add(2),
             seed.wrapping_add(3),
         );
         let edit = transaction(
-            storage,
+            &storage,
             &store,
             &session,
             seed.wrapping_add(4),
             "crash-cut",
             point(9),
         );
-        build(storage, &store, &edit);
+        build(&storage, &store, &edit);
         faults.fail_next(fault);
         let outcome = execute(
             &store,
@@ -264,23 +264,23 @@ fn adoption_reconciliation_rejects_missing_replaced_or_corrupt_closure_records()
         ("corrupt-settlement-closure", 200, 6_u8),
     ] {
         let (_home, store, storage, faults, thread) = fault_fixture(name, seed, 4_096);
-        let durable = current(storage, &store, thread);
+        let durable = current(&storage, &store, thread);
         let session = open_session(
-            storage,
+            &storage,
             &store,
             &durable,
             seed.wrapping_add(2),
             seed.wrapping_add(3),
         );
         let edit = transaction(
-            storage,
+            &storage,
             &store,
             &session,
             seed.wrapping_add(4),
             "fault",
             point(5),
         );
-        build(storage, &store, &edit);
+        build(&storage, &store, &edit);
         faults.fail_next(FaultPoint::AfterCommitBeforePersist);
         let outcome = execute(
             &store,
@@ -288,32 +288,32 @@ fn adoption_reconciliation_rejects_missing_replaced_or_corrupt_closure_records()
                 .settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
         );
         assert!(matches!(outcome, CommandOutcome::Indeterminate { .. }));
-        let settlement = settled(storage, &store, &edit);
+        let settlement = settled(&storage, &store, &edit);
         let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
             panic!("fault fixture did not commit")
         };
         let deletion = match target {
             0 => delete_draft_piece_immutable_record(
                 &store,
-                storage,
+                &storage,
                 adoption.adopted_root().reference(),
                 DraftPieceImmutableDeletion::Root,
             ),
             1 => delete_draft_edit_history_record(
                 &store,
-                storage,
+                storage.clone(),
                 DraftEditHistoryRecordDeletion::Transition(adoption.transition().key()),
             ),
             2 => delete_draft_edit_history_record(
                 &store,
-                storage,
+                storage.clone(),
                 DraftEditHistoryRecordDeletion::Frontier(
                     adoption.adopted_history().reference().key(),
                 ),
             ),
             3 => delete_draft_piece_immutable_record(
                 &store,
-                storage,
+                &storage,
                 adoption.adopted_root().reference(),
                 DraftPieceImmutableDeletion::Settlement,
             ),
@@ -332,7 +332,7 @@ fn adoption_reconciliation_rejects_missing_replaced_or_corrupt_closure_records()
                 assert_ne!(wrong_transition.digest(), adoption.transition().digest());
                 replace_draft_edit_history_transition(
                     &store,
-                    storage,
+                    storage.clone(),
                     adoption.transition().key(),
                     wrong_transition,
                 )
@@ -363,13 +363,13 @@ fn adoption_reconciliation_rejects_missing_replaced_or_corrupt_closure_records()
                 );
                 replace_draft_edit_history_frontier(
                     &store,
-                    storage,
+                    storage.clone(),
                     adoption.adopted_history().reference().key(),
                     wrong_frontier,
                 )
             }
             6 => {
-                inject_draft_piece_settlement_closure_corruption(&store, storage, settlement.key())
+                inject_draft_piece_settlement_closure_corruption(&store, &storage, settlement.key())
             }
             _ => unreachable!(),
         };

@@ -51,6 +51,13 @@ impl StorageDomain for SessionDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = SESSION_FAMILIES;
     type ValidationError = error::SessionValidationError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>
+    {
+        Ok(())
+    }
 
     fn validate(
         reader: &beryl_home_store::DomainReader<'_, Self>,
@@ -331,7 +338,7 @@ impl MinimalSessionBootstrap {
 }
 
 /// Opaque typed access to durable session, window, and reverse-claim authority.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct SessionState {
     handle: DomainHandle<SessionDomain>,
 }
@@ -368,7 +375,7 @@ impl SessionState {
     }
 
     pub fn revision(&self, store: &HomeStore) -> Result<beryl_model::DomainRevision, ReadError> {
-        store.domain_revision(self.handle)
+        store.domain_revision(&self.handle)
     }
 
     /// Returns this domain's revision from a still-current successful command.
@@ -377,7 +384,7 @@ impl SessionState {
         store: &HomeStore,
         receipt: &beryl_home_store::CommitReceipt,
     ) -> Result<Option<beryl_model::DomainRevision>, beryl_home_store::CommitReceiptError> {
-        store.receipt_domain_revision(receipt, self.handle)
+        store.receipt_domain_revision(receipt, &self.handle)
     }
 
     /// Reads the active header and exactly its referenced window records, then
@@ -386,7 +393,7 @@ impl SessionState {
         &self,
         store: &HomeStore,
     ) -> Result<Option<MinimalSessionBootstrap>, SessionReadError> {
-        bootstrap::read(self.handle, store)
+        bootstrap::read(&self.handle, store)
     }
 
     #[must_use]

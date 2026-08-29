@@ -17,7 +17,7 @@ struct CompletionSnapshot {
 
 pub(super) fn complete(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     limit: SyndicPointReadLimit,
@@ -44,7 +44,7 @@ pub(super) fn complete(
 
 fn snapshot(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     limit: SyndicPointReadLimit,

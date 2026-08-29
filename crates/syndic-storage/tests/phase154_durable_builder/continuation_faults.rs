@@ -2,8 +2,8 @@
 #[test]
 fn missing_durable_continuation_fails_status_advance_and_reopen_closed() {
     let (home, store, storage, thread) = fixture("missing-continuation", 90);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 92, 93);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 92, 93);
     session = complete_staged(
         &storage,
         &store,
@@ -85,7 +85,7 @@ fn missing_durable_continuation_fails_status_advance_and_reopen_closed() {
         &store,
         inject_draft_piece_build_corruption(
             &store,
-            storage,
+            &storage,
             syndic_storage::DraftPieceSettlementKeyV1::new(
                 identity.draft_id(),
                 identity.session_id(),
@@ -166,8 +166,8 @@ fn marker_scan_and_active_identity_corruption_fail_closed() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(case, seed);
-        let current = current(storage, &store, thread);
-        let session = open_session(storage, &store, &current, seed + 1, seed + 2);
+        let current = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &current, seed + 1, seed + 2);
         let inserted = marker(seed + 3, 7, 9);
         let replacement =
             DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Marker(inserted)])
@@ -209,7 +209,7 @@ fn marker_scan_and_active_identity_corruption_fail_closed() {
             &store,
             inject_draft_piece_build_corruption(
                 &store,
-                storage,
+                &storage,
                 syndic_storage::DraftPieceSettlementKeyV1::new(
                     identity.draft_id(),
                     identity.session_id(),
@@ -283,8 +283,8 @@ fn each_published_and_hidden_active_root_fails_authentication_independently() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(case, seed);
-        let current = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &current, seed + 1, seed + 2);
+        let current = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &current, seed + 1, seed + 2);
         session = complete_staged(
             &storage,
             &store,
@@ -355,7 +355,10 @@ fn each_published_and_hidden_active_root_fails_authentication_independently() {
                     identity.operation_id().as_piece_operation(),
                 )
                 .unwrap_or_else(|error| {
-                    panic!("{case} advance failed at {:?}: {error:?}", snapshot.frontier())
+                    panic!(
+                        "{case} advance failed at {:?}: {error:?}",
+                        snapshot.frontier()
+                    )
                 })
                 .unwrap();
             committed(execute(
@@ -371,7 +374,7 @@ fn each_published_and_hidden_active_root_fails_authentication_independently() {
             &store,
             inject_draft_piece_progress_root_corruption(
                 &store,
-                storage,
+                &storage,
                 syndic_storage::DraftPieceSettlementKeyV1::new(
                     identity.draft_id(),
                     identity.session_id(),
@@ -419,8 +422,8 @@ fn coordinated_receipt_count_and_chain_corruption_fail_between_effects() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(case, seed);
-        let current = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &current, seed + 1, seed + 2);
+        let current = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &current, seed + 1, seed + 2);
         session = complete_staged(
             &storage,
             &store,
@@ -493,7 +496,7 @@ fn coordinated_receipt_count_and_chain_corruption_fail_between_effects() {
             &store,
             inject_draft_piece_build_corruption(
                 &store,
-                storage,
+                &storage,
                 syndic_storage::DraftPieceSettlementKeyV1::new(
                     identity.draft_id(),
                     identity.session_id(),

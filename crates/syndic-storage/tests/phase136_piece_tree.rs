@@ -152,9 +152,9 @@ impl CandidateDraft {
 #[test]
 fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
     let (home, store, storage, thread) = fixture("durable-resume", 10);
-    let base = current(storage, &store, thread);
+    let base = current(&storage, &store, thread);
     let staged_transaction = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         11,
@@ -165,7 +165,7 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
         )],
         point(7),
     );
-    begin_and_stage(storage, &store, &staged_transaction);
+    begin_and_stage(&storage, &store, &staged_transaction);
     let first = storage
         .prepare_draft_piece_build_advance(
             &store,
@@ -180,7 +180,7 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
         storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), first),
     ));
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(&storage, &store, thread).draft().piece_root(),
         base.draft().piece_root()
     );
     let staged_session = staged_transaction.session;
@@ -192,19 +192,19 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
     let storage = SyndicStorage::register(&mut reopened).unwrap();
     advance_until_complete_for(
-        storage,
+        &storage,
         &reopened,
         base.draft().id(),
         staged_session,
         staged_operation,
     );
     assert_eq!(
-        current(storage, &reopened, thread).draft().piece_root(),
+        current(&storage, &reopened, thread).draft().piece_root(),
         base.draft().piece_root()
     );
 
     let recovered = transaction(
-        storage,
+        &storage,
         &reopened,
         &base,
         11,
@@ -216,7 +216,7 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
         point(7),
     );
     assert!(matches!(
-        exact_status(storage, &reopened, &recovered),
+        exact_status(&storage, &reopened, &recovered),
         DraftPieceOperationStatusV1::Complete(_)
     ));
     committed(execute(
@@ -226,8 +226,8 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
             recovered.prepared.clone(),
         ),
     ));
-    remember_settled_transaction(storage, &reopened, &recovered);
-    let root = current(storage, &reopened, thread).draft().piece_root();
+    remember_settled_transaction(&storage, &reopened, &recovered);
+    let root = current(&storage, &reopened, thread).draft().piece_root();
     assert_eq!(
         storage
             .draft_piece_text_demand(&reopened, root, DraftPieceTextDemandV1::Forward(0), 64,)
@@ -240,9 +240,9 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
 #[test]
 fn exact_fragment_replay_and_header_collision_are_mutation_free() {
     let (_home, store, storage, thread) = fixture("exact-replay", 30);
-    let base = current(storage, &store, thread);
+    let base = current(&storage, &store, thread);
     let accepted = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         31,
@@ -253,10 +253,10 @@ fn exact_fragment_replay_and_header_collision_are_mutation_free() {
         )],
         point(1),
     );
-    run_transaction(storage, &store, &accepted, 2);
+    run_transaction(&storage, &store, &accepted, 2);
     let revision = storage.revision(&store).unwrap();
     assert!(matches!(
-        exact_status(storage, &store, &accepted),
+        exact_status(&storage, &store, &accepted),
         DraftPieceOperationStatusV1::Settled(_)
     ));
     assert!(matches!(
@@ -269,7 +269,7 @@ fn exact_fragment_replay_and_header_collision_are_mutation_free() {
     assert_eq!(storage.revision(&store).unwrap(), revision);
 
     let colliding = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         31,
@@ -282,7 +282,7 @@ fn exact_fragment_replay_and_header_collision_are_mutation_free() {
     );
     let before = storage.revision(&store).unwrap();
     assert!(matches!(
-        exact_status(storage, &store, &colliding),
+        exact_status(&storage, &store, &colliding),
         DraftPieceOperationStatusV1::Collision(_)
     ));
     assert_eq!(storage.revision(&store).unwrap(), before);
@@ -291,9 +291,9 @@ fn exact_fragment_replay_and_header_collision_are_mutation_free() {
 #[test]
 fn settled_operation_replays_after_a_newer_build_replaces_the_draft_head() {
     let (_home, store, storage, thread) = fixture("settlement-head-replacement", 35);
-    let base = current(storage, &store, thread);
+    let base = current(&storage, &store, thread);
     let first = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         36,
@@ -304,11 +304,11 @@ fn settled_operation_replays_after_a_newer_build_replaces_the_draft_head() {
         )],
         point(5),
     );
-    run_transaction(storage, &store, &first, 2);
-    let first_settlement = exact_status(storage, &store, &first);
-    let next_base = current(storage, &store, thread);
+    run_transaction(&storage, &store, &first, 2);
+    let first_settlement = exact_status(&storage, &store, &first);
+    let next_base = current(&storage, &store, thread);
     let second = transaction(
-        storage,
+        &storage,
         &store,
         &next_base,
         37,
@@ -319,21 +319,21 @@ fn settled_operation_replays_after_a_newer_build_replaces_the_draft_head() {
         )],
         point(12),
     );
-    begin_and_stage(storage, &store, &second);
+    begin_and_stage(&storage, &store, &second);
     assert!(matches!(
-        exact_status(storage, &store, &second),
+        exact_status(&storage, &store, &second),
         DraftPieceOperationStatusV1::Open(_)
     ));
-    assert_eq!(exact_status(storage, &store, &first), first_settlement);
+    assert_eq!(exact_status(&storage, &store, &first), first_settlement);
 }
 
 #[cfg(feature = "test-faults")]
 #[test]
 fn settlement_replay_requires_its_exact_terminal_build_after_newer_builds() {
     let (_home, store, storage, thread) = fixture("terminal-build-deletion", 38);
-    let base = current(storage, &store, thread);
+    let base = current(&storage, &store, thread);
     let first = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         39,
@@ -344,10 +344,10 @@ fn settlement_replay_requires_its_exact_terminal_build_after_newer_builds() {
         )],
         point(7),
     );
-    run_transaction(storage, &store, &first, 2);
-    let next_base = current(storage, &store, thread);
+    run_transaction(&storage, &store, &first, 2);
+    let next_base = current(&storage, &store, thread);
     let second = transaction(
-        storage,
+        &storage,
         &store,
         &next_base,
         40,
@@ -358,12 +358,12 @@ fn settlement_replay_requires_its_exact_terminal_build_after_newer_builds() {
         )],
         point(12),
     );
-    begin_and_stage(storage, &store, &second);
+    begin_and_stage(&storage, &store, &second);
     committed(execute(
         &store,
         delete_draft_piece_terminal_build(
             &store,
-            storage,
+            &storage,
             syndic_storage::DraftPieceSettlementKeyV1::new(
                 first.prepared.header().draft_id(),
                 first.prepared.header().session_id(),
@@ -390,16 +390,16 @@ fn settlement_replay_requires_its_exact_terminal_build_after_newer_builds() {
 #[test]
 fn no_change_terminals_close_the_five_way_settlement() {
     let (_home, store, storage, thread) = fixture("terminals", 50);
-    let base = current(storage, &store, thread);
+    let base = current(&storage, &store, thread);
     let rejected = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         51,
         vec![DraftPieceReplacementV1::new(point(0), point(0), Vec::new())],
         point(0),
     );
-    begin_and_stage(storage, &store, &rejected);
+    begin_and_stage(&storage, &store, &rejected);
     committed(execute(
         &store,
         storage.reject_draft_piece_edit(
@@ -408,7 +408,8 @@ fn no_change_terminals_close_the_five_way_settlement() {
             syndic_storage::DraftPieceRejectedReasonV1::TreeLimit,
         ),
     ));
-    let DraftPieceOperationStatusV1::Settled(settlement) = exact_status(storage, &store, &rejected)
+    let DraftPieceOperationStatusV1::Settled(settlement) =
+        exact_status(&storage, &store, &rejected)
     else {
         panic!("missing rejected settlement")
     };
@@ -417,20 +418,20 @@ fn no_change_terminals_close_the_five_way_settlement() {
         DraftPieceSettlementOutcomeV1::Rejected(_)
     ));
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(&storage, &store, thread).draft().piece_root(),
         base.draft().piece_root()
     );
 
-    let after_rejection = current(storage, &store, thread);
+    let after_rejection = current(&storage, &store, thread);
     let failed = transaction(
-        storage,
+        &storage,
         &store,
         &after_rejection,
         52,
         vec![DraftPieceReplacementV1::new(point(0), point(0), Vec::new())],
         point(0),
     );
-    begin_and_stage(storage, &store, &failed);
+    begin_and_stage(&storage, &store, &failed);
     committed(execute(
         &store,
         storage.error_draft_piece_edit(
@@ -439,7 +440,7 @@ fn no_change_terminals_close_the_five_way_settlement() {
             syndic_storage::DraftPieceErrorReasonV1::ResourceLimit,
         ),
     ));
-    let DraftPieceOperationStatusV1::Settled(settlement) = exact_status(storage, &store, &failed)
+    let DraftPieceOperationStatusV1::Settled(settlement) = exact_status(&storage, &store, &failed)
     else {
         panic!("missing error settlement")
     };
@@ -453,7 +454,7 @@ fn no_change_terminals_close_the_five_way_settlement() {
             &store,
             inject_draft_piece_settlement_closure_corruption(
                 &store,
-                storage,
+                &storage,
                 syndic_storage::DraftPieceSettlementKeyV1::new(
                     failed.prepared.header().draft_id(),
                     failed.prepared.header().session_id(),
@@ -477,9 +478,9 @@ fn no_change_terminals_close_the_five_way_settlement() {
 #[test]
 fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
     let (_home, store, storage, thread) = fixture("intra-text-frontier", 97);
-    let base = current(storage, &store, thread);
+    let base = current(&storage, &store, thread);
     let seed = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         98,
@@ -490,12 +491,12 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
         )],
         point(129),
     );
-    run_transaction(storage, &store, &seed, 2);
-    let base = current(storage, &store, thread);
+    run_transaction(&storage, &store, &seed, 2);
+    let base = current(&storage, &store, thread);
     assert!(base.draft().piece_root().summary().height() >= 2);
     let text = "x".repeat(65_536);
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         99,
@@ -506,7 +507,7 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
         )],
         point(65_665),
     );
-    begin_and_stage(storage, &store, &edit);
+    begin_and_stage(&storage, &store, &edit);
     let mut saw_intra_text_offset = false;
     loop {
         let Some(advance) = storage
@@ -538,8 +539,8 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     ));
-    remember_settled_transaction(storage, &store, &edit);
-    let root = current(storage, &store, thread).draft().piece_root();
+    remember_settled_transaction(&storage, &store, &edit);
+    let root = current(&storage, &store, thread).draft().piece_root();
     assert_eq!(root.summary().logical_utf8_bytes(), 65_665);
     assert_eq!(
         storage
@@ -554,9 +555,9 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
 fn staged_record_diagnostic_includes_marker_order_record_and_root() {
     let (_home, store, storage, thread) = fixture("staged-marker-order-diagnostic", 100);
     let seed = transaction(
-        storage,
+        &storage,
         &store,
-        &current(storage, &store, thread),
+        &current(&storage, &store, thread),
         101,
         vec![DraftPieceReplacementV1::new(
             point(0),
@@ -565,8 +566,8 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
         )],
         point(1),
     );
-    run_transaction(storage, &store, &seed, 101);
-    let base = current(storage, &store, thread);
+    run_transaction(&storage, &store, &seed, 101);
+    let base = current(&storage, &store, thread);
     let marker = DraftPieceMarkerV1::new(
         SyndicDraftMarkerId::from_bytes([0xA5; 16]),
         1,
@@ -574,7 +575,7 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
         AssetId::sha256_v1([0x5A; 32], std::num::NonZeroU64::new(1).unwrap()),
     );
     let edit = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         102,
@@ -590,7 +591,7 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
         ],
         DraftCompositePositionV1::new(0, DraftCompositeGapWitnessV1::BeforeAll),
     );
-    begin_and_stage(storage, &store, &edit);
+    begin_and_stage(&storage, &store, &edit);
     let mut staged_counts = Vec::new();
     for _ in 0..8 {
         let Some(advance) = storage
@@ -617,9 +618,9 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
 #[test]
 fn candidate_read_detects_selector_drift_after_exact_traversal() {
     let (_home, store, storage, thread) = fixture("current-drift", 140);
-    let base = current(storage, &store, thread);
+    let base = current(&storage, &store, thread);
     let initial = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         141,
@@ -630,10 +631,10 @@ fn candidate_read_detects_selector_drift_after_exact_traversal() {
         )],
         point(6),
     );
-    run_transaction(storage, &store, &initial, 30);
-    let base = current(storage, &store, thread);
+    run_transaction(&storage, &store, &initial, 30);
+    let base = current(&storage, &store, thread);
     let successor = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         142,
@@ -644,8 +645,8 @@ fn candidate_read_detects_selector_drift_after_exact_traversal() {
         )],
         point(11),
     );
-    begin_and_stage(storage, &store, &successor);
-    advance_until_complete(storage, &store, &successor);
+    begin_and_stage(&storage, &store, &successor);
+    advance_until_complete(&storage, &store, &successor);
     let active = match storage
         .draft_editor_candidate_session(&store, base.session.draft_id(), base.session.session_id())
         .unwrap()
@@ -670,12 +671,12 @@ fn candidate_read_detects_selector_drift_after_exact_traversal() {
         ),
         Err(DraftPieceRangeSourceErrorV1::ConcurrentChange)
     ));
-    remember_settled_transaction(storage, &store, &successor);
+    remember_settled_transaction(&storage, &store, &successor);
     assert_eq!(
         storage
             .draft_piece_text_demand(
                 &store,
-                current(storage, &store, thread).draft().piece_root(),
+                current(&storage, &store, thread).draft().piece_root(),
                 DraftPieceTextDemandV1::Forward(0),
                 64,
             )
@@ -711,9 +712,9 @@ fn writer_outcomes_reconcile_to_pending_or_exact_terminal_state() {
             ),
         ),
     ));
-    let base = current(storage, &store, thread);
+    let base = current(&storage, &store, thread);
     let transaction = transaction(
-        storage,
+        &storage,
         &store,
         &base,
         152,
@@ -724,7 +725,7 @@ fn writer_outcomes_reconcile_to_pending_or_exact_terminal_state() {
         )],
         point(7),
     );
-    begin_and_stage(storage, &store, &transaction);
+    begin_and_stage(&storage, &store, &transaction);
     let advance = storage
         .prepare_draft_piece_build_advance(
             &store,
@@ -763,7 +764,7 @@ fn writer_outcomes_reconcile_to_pending_or_exact_terminal_state() {
         reconciled,
         DraftPieceReconciledCommandV1::Pending(_)
     ));
-    advance_until_complete(storage, &store, &transaction);
+    advance_until_complete(&storage, &store, &transaction);
 
     let stale = execute(
         &store,
@@ -816,7 +817,7 @@ fn writer_outcomes_reconcile_to_pending_or_exact_terminal_state() {
 }
 
 fn transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     current: &CandidateCurrent,
     operation: u8,
@@ -867,7 +868,7 @@ fn transaction(
     }
 }
 
-fn begin_and_stage(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) {
+fn begin_and_stage(storage: &SyndicStorage, store: &HomeStore, transaction: &Transaction) {
     committed(execute(
         store,
         storage.begin_draft_piece_edit(
@@ -887,7 +888,7 @@ fn begin_and_stage(storage: SyndicStorage, store: &HomeStore, transaction: &Tran
     }
 }
 
-fn advance_until_complete(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) {
+fn advance_until_complete(storage: &SyndicStorage, store: &HomeStore, transaction: &Transaction) {
     advance_until_complete_for(
         storage,
         store,
@@ -898,7 +899,7 @@ fn advance_until_complete(storage: SyndicStorage, store: &HomeStore, transaction
 }
 
 fn advance_until_complete_for(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     draft_id: SyndicDraftId,
     session: DraftEditorCandidateSessionIdV1,
@@ -923,7 +924,7 @@ fn advance_until_complete_for(
 }
 
 fn run_transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
     _timestamp: u64,
@@ -941,7 +942,7 @@ fn run_transaction(
 }
 
 fn remember_settled_transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) {
@@ -960,7 +961,7 @@ fn remember_settled_transaction(
 }
 
 fn exact_status(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> DraftPieceOperationStatusV1 {
@@ -1023,7 +1024,7 @@ fn committed(outcome: CommandOutcome) {
     }
 }
 
-fn current(storage: SyndicStorage, store: &HomeStore, thread: SyndicThreadId) -> CandidateCurrent {
+fn current(storage: &SyndicStorage, store: &HomeStore, thread: SyndicThreadId) -> CandidateCurrent {
     let durable = storage
         .current_draft(store, thread, SyndicPointReadLimit::new(65_536).unwrap())
         .unwrap()

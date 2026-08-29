@@ -73,6 +73,12 @@ impl StorageDomain for StrictPayloadDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -91,7 +97,7 @@ impl DomainMutation<AlphaDomain> for CorruptionReentrantProbe {
         if !matches!(
             self.store
                 .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-                    self.domain,
+                    &self.domain,
                     &[7; 7],
                     &encoded_value(1, b"valid"),
                 ),
@@ -144,7 +150,7 @@ fn codec_valid_envelope_is_rejected_without_mutating_the_family() {
 
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &1_u64.to_be_bytes(),
             &encoded_value(1, b"valid"),
         ),
@@ -175,7 +181,7 @@ fn same_thread_writer_reentry_is_rejected_without_deadlock_or_corruption() {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             CorruptionReentrantProbe {
                 store: Arc::clone(&store),
                 domain: alpha,
@@ -205,7 +211,7 @@ fn malformed_in_bound_key_is_persisted_only_for_structural_validation() {
 
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &[7; 7],
             &encoded_value(1, b"valid"),
         )
@@ -234,7 +240,7 @@ fn malformed_in_bound_payload_is_persisted_only_when_the_exact_codec_rejects_it(
 
     store
         .inject_persisted_corrupt_record::<StrictPayloadDomain, StrictPayloadRecord>(
-            domain,
+            &domain,
             &[1],
             &encoded_value(1, &[2]),
         )
@@ -261,7 +267,7 @@ fn truncated_and_unsupported_version_values_are_admitted_as_corruption() {
     let truncated_alpha = truncated_store.register_domain::<AlphaDomain>().unwrap();
     truncated_store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            truncated_alpha,
+            &truncated_alpha,
             &1_u64.to_be_bytes(),
             &[0, 0, 1],
         )
@@ -283,7 +289,7 @@ fn truncated_and_unsupported_version_values_are_admitted_as_corruption() {
     let version_alpha = version_store.register_domain::<AlphaDomain>().unwrap();
     version_store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            version_alpha,
+            &version_alpha,
             &1_u64.to_be_bytes(),
             &encoded_value(2, b"unsupported"),
         )
@@ -312,7 +318,7 @@ fn oversized_envelope_remains_an_accepted_corruption_fixture() {
 
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &[0; 9],
             &encoded_value(1, b"valid"),
         )
@@ -344,7 +350,7 @@ fn foreign_domain_handle_and_shadow_codec_are_rejected_before_fixture_validation
 
     assert!(matches!(
         first.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            second_alpha,
+            &second_alpha,
             &1_u64.to_be_bytes(),
             &encoded_value(1, b"valid"),
         ),
@@ -352,7 +358,7 @@ fn foreign_domain_handle_and_shadow_codec_are_rejected_before_fixture_validation
     ));
     assert!(matches!(
         first.inject_persisted_corrupt_record::<AlphaDomain, BytesRecordV2<AlphaDomain>>(
-            first_alpha,
+            &first_alpha,
             &[7; 7],
             &[0, 0, 1],
         ),
@@ -372,7 +378,7 @@ fn empty_engine_oversized_and_fixture_oversized_requests_are_hard_rejected() {
 
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &[],
             &[0, 0, 1],
         ),
@@ -382,7 +388,7 @@ fn empty_engine_oversized_and_fixture_oversized_requests_are_hard_rejected() {
     let engine_oversized_key = vec![0; usize::from(u16::MAX) + 1];
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &engine_oversized_key,
             &[],
         ),
@@ -396,7 +402,7 @@ fn empty_engine_oversized_and_fixture_oversized_requests_are_hard_rejected() {
     let fixture_oversized_value = vec![0; MAX_CORRUPTION_FIXTURE_BYTES - size_of::<u64>() + 1];
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &1_u64.to_be_bytes(),
             &fixture_oversized_value,
         ),
@@ -426,7 +432,7 @@ fn scrub_rejects_but_routine_recovery_ignores_a_dormant_malformed_envelope() {
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &1_u64.to_be_bytes(),
             &encoded_value(2, b"unsupported"),
         )

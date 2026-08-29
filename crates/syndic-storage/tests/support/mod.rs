@@ -73,7 +73,11 @@ pub fn open(path: &Path) -> HomeStore {
 pub fn commit(store: &HomeStore, storage: SyndicStorage, batch: FixtureBatch) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(storage.fixture_contribution(storage.revision(store).unwrap(), batch))
+        .add(
+            storage
+                .clone()
+                .fixture_contribution(storage.clone().revision(store).unwrap(), batch),
+        )
         .unwrap();
     match store.execute(command) {
         CommandOutcome::Committed {
@@ -98,7 +102,7 @@ pub fn commit(store: &HomeStore, storage: SyndicStorage, batch: FixtureBatch) {
 }
 
 pub fn seed_populated(store: &HomeStore, storage: SyndicStorage) {
-    populated::seed_populated(store, storage);
+    populated::seed_populated(store, storage.clone());
 }
 
 pub fn id(byte: u8) -> SyndicThreadId {
@@ -117,7 +121,7 @@ pub fn canonical_empty_root_history_pair_for(
     let home = TestHome::new("canonical-root-history-reference");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_canonical_empty_thread(&store, storage, id(245), draft_id);
+    seed_canonical_empty_thread(&store, storage.clone(), id(245), draft_id);
     storage
         .current_draft(
             &store,
@@ -145,7 +149,11 @@ pub fn seed_canonical_empty_thread(
     );
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(storage.create_thread(storage.revision(store).unwrap(), request))
+        .add(
+            storage
+                .clone()
+                .create_thread(storage.clone().revision(store).unwrap(), request),
+        )
         .unwrap();
     match store.execute(command) {
         CommandOutcome::Committed {
@@ -162,7 +170,7 @@ pub fn seed_detached_canonical_draft_backing(
     staging_thread: SyndicThreadId,
     draft_id: SyndicDraftId,
 ) -> syndic_storage::DraftRootHistoryPairV1 {
-    seed_canonical_empty_thread(store, storage, staging_thread, draft_id);
+    seed_canonical_empty_thread(store, storage.clone(), staging_thread, draft_id);
     let pair = storage
         .current_draft(
             store,
@@ -199,7 +207,7 @@ pub fn seed_detached_canonical_draft_backing(
     ] {
         cleanup.delete(delete).unwrap();
     }
-    commit(store, storage, cleanup);
+    commit(store, storage.clone(), cleanup);
     pair
 }
 
@@ -321,7 +329,7 @@ pub fn stage_prepared_content(
     content: &PreparedContent,
 ) {
     let (_, records) = prepared_content_records(content);
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
 }
 
 fn prepared_content_records_with_manifest(

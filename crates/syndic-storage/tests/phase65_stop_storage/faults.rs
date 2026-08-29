@@ -306,7 +306,7 @@ fn matching_terminal_fault_cuts_reconcile_to_one_whole_state() {
         fixture.admit_stop();
         correlate_user_item(
             &fixture.store,
-            fixture.storage,
+            &fixture.storage,
             fixture.thread,
             fixture.turn,
             fixture.item,

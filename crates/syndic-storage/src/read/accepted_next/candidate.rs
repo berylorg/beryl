@@ -49,7 +49,7 @@ impl SyndicStorage {
         expected: AcceptedNextSourceRecord,
     ) -> Result<(), SyndicReadError> {
         let page = store.read_cursor::<crate::domain::SyndicDomain, AcceptedNextSourcesCodec>(
-            self.handle,
+            &self.handle,
             &CursorRange::closed(
                 ThreadRouteKey {
                     thread: expected.thread_id(),

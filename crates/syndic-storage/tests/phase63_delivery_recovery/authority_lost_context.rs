@@ -49,14 +49,14 @@ fn context_fixture(name: &str, marker: bool) -> ContextFixture {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut builder = Builder::new(&store, storage, 71);
+    let mut builder = Builder::new(&store, storage.clone(), 71);
     let predecessor = if marker {
         builder.submit_marker()
     } else {
         builder.submit_text("interrupted request")
     };
     let terminal_source = builder.activate_without_terminal(predecessor);
-    let source = crate::recovery_support::startup_source(&store, storage);
+    let source = crate::recovery_support::startup_source(&store, storage.clone());
     let DeliveryRecoveryCase::Active(active) = storage
         .classify_delivery_recovery(&store, &source, point_limit())
         .unwrap()
@@ -66,8 +66,8 @@ fn context_fixture(name: &str, marker: bool) -> ContextFixture {
     let observed_at = active.minimum_timestamp();
     crate::recovery_support::execute(
         &store,
-        storage.abandon_active_binding(
-            storage.revision(&store).unwrap(),
+        storage.clone().abandon_active_binding(
+            storage.clone().revision(&store).unwrap(),
             active
                 .generic_abandonment("phase63 authority-lost context", observed_at)
                 .unwrap(),
@@ -96,7 +96,9 @@ fn context_fixture(name: &str, marker: bool) -> ContextFixture {
     .unwrap();
     crate::recovery_support::execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), terminal),
+        storage
+            .clone()
+            .admit_live_source_event(storage.clone().revision(&store).unwrap(), terminal),
     );
     builder.finalize_turn(predecessor.turn);
     let baseline = storage
@@ -109,7 +111,7 @@ fn context_fixture(name: &str, marker: bool) -> ContextFixture {
     ContextFixture {
         home,
         store,
-        storage,
+        storage: storage.clone(),
         thread,
         predecessor: predecessor.turn,
         selected,
@@ -149,7 +151,7 @@ fn install_incomplete(
     .unwrap();
     commit(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         batch([
             FixtureRecord::TurnState(state),
             FixtureRecord::SourceEvent(event),
@@ -158,7 +160,7 @@ fn install_incomplete(
 }
 
 fn prepare(fixture: &ContextFixture) -> Result<RecoveryAssembly, RecoveryProjectionError> {
-    fixture.storage.prepare_recovery_projection(
+    fixture.storage.clone().prepare_recovery_projection(
         &fixture.store,
         RecoveryProjectionRequest::for_pending_selected_turn_parent(
             fixture.thread,
@@ -173,7 +175,10 @@ fn replay(
     store: &beryl_home_store::HomeStore,
     projection: RecoveryProjection,
 ) -> Vec<(RecoveryItemSequenceRole, String)> {
-    let mut cursor = storage.open_recovery_cursor(store, projection).unwrap();
+    let mut cursor = storage
+        .clone()
+        .open_recovery_cursor(store, projection)
+        .unwrap();
     let pool = recovery_page_pool(RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES);
     let mut lease = pool.try_lease().unwrap();
     let mut items: Vec<(RecoveryItemSequenceRole, String)> = Vec::new();
@@ -224,7 +229,7 @@ fn exact_source_less_authority_lost_parent_replays_after_reopen_as_context() {
         RecoveryItemSequenceRole::UserInputText,
         "interrupted request".to_owned(),
     )];
-    assert_eq!(replay(storage, &reopened, projection), expected);
+    assert_eq!(replay(storage.clone(), &reopened, projection), expected);
     let RecoveryAssembly::Ready(reopened_projection) = storage
         .prepare_recovery_projection(
             &reopened,
@@ -239,7 +244,10 @@ fn exact_source_less_authority_lost_parent_replays_after_reopen_as_context() {
         panic!("reopened authority-lost predecessor lost context eligibility")
     };
     assert_eq!(reopened_projection.sequence_digest(), digest);
-    assert_eq!(replay(storage, &reopened, reopened_projection), expected);
+    assert_eq!(
+        replay(storage.clone(), &reopened, reopened_projection),
+        expected
+    );
 }
 
 #[test]
@@ -317,7 +325,7 @@ fn missing_or_mismatched_authority_lost_terminal_is_rejected() {
     .unwrap();
     commit(
         &mismatched.store,
-        mismatched.storage,
+        mismatched.storage.clone(),
         batch([
             FixtureRecord::TurnState(mismatched_state),
             FixtureRecord::SourceEvent(mismatched_event),
@@ -346,7 +354,7 @@ fn missing_or_mismatched_authority_lost_terminal_is_rejected() {
     .unwrap();
     commit(
         &missing.store,
-        missing.storage,
+        missing.storage.clone(),
         batch([FixtureRecord::TurnState(missing_state)]),
     );
     assert!(matches!(
@@ -428,7 +436,7 @@ fn authority_lost_context_is_allowed_only_at_the_immediate_predecessor() {
     let home = TestHome::new("phase63-authority-lost-not-immediate");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut builder = Builder::new(&store, storage, 72);
+    let mut builder = Builder::new(&store, storage.clone(), 72);
     let older = builder.submit_text("older interrupted request");
     builder.complete_without_assistant(older, TurnTerminalOutcome::Failed);
     let older_state = storage
@@ -439,7 +447,7 @@ fn authority_lost_context_is_allowed_only_at_the_immediate_predecessor() {
     let status = TurnEndStatus::incomplete(TurnIncompleteReason::AuthorityLost);
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::TurnState(
                 TurnStateRecord::with_capture_frontiers(
@@ -472,7 +480,7 @@ fn authority_lost_context_is_allowed_only_at_the_immediate_predecessor() {
     builder.submit_text("pending follow-up");
 
     assert!(matches!(
-        storage.prepare_recovery_projection(
+        storage.clone().prepare_recovery_projection(
             &store,
             RecoveryProjectionRequest::for_pending_selected_turn_parent(
                 builder.thread(),

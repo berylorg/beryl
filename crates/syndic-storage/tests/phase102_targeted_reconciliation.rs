@@ -86,12 +86,12 @@ fn exact_old_and_exact_new_classify_from_only_descriptor_records() {
     let new = index(1, 3, 2);
     commit_fixture(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::DraftByThread(old.clone())]),
     );
     let exact_new = indeterminate_fixture(
         &store,
-        storage,
+        storage.clone(),
         &faults,
         batch([FixtureRecord::DraftByThread(new.clone())]),
     );
@@ -102,11 +102,15 @@ fn exact_old_and_exact_new_classify_from_only_descriptor_records() {
 
     let exact_old = indeterminate_fixture(
         &store,
-        storage,
+        storage.clone(),
         &faults,
         batch([FixtureRecord::DraftByThread(index(1, 4, 3))]),
     );
-    commit_fixture(&store, storage, batch([FixtureRecord::DraftByThread(new)]));
+    commit_fixture(
+        &store,
+        storage.clone(),
+        batch([FixtureRecord::DraftByThread(new)]),
+    );
     assert_eq!(
         store.reconcile(&exact_old).unwrap(),
         ReconciliationResolution::ExactOld
@@ -181,7 +185,7 @@ fn mixed_and_neither_descriptor_records_seal_collision() {
     let second_new = index(12, 15, 2);
     commit_fixture(
         &store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::DraftByThread(first_old.clone()),
             FixtureRecord::DraftByThread(second_old),
@@ -189,7 +193,7 @@ fn mixed_and_neither_descriptor_records_seal_collision() {
     );
     let mixed = indeterminate_fixture(
         &store,
-        storage,
+        storage.clone(),
         &faults,
         batch([
             FixtureRecord::DraftByThread(first_new),
@@ -198,7 +202,7 @@ fn mixed_and_neither_descriptor_records_seal_collision() {
     );
     commit_fixture(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::DraftByThread(first_old)]),
     );
     assert_eq!(
@@ -208,13 +212,13 @@ fn mixed_and_neither_descriptor_records_seal_collision() {
 
     let neither = indeterminate_fixture(
         &store,
-        storage,
+        storage.clone(),
         &faults,
         batch([FixtureRecord::DraftByThread(index(20, 21, 1))]),
     );
     commit_fixture(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::DraftByThread(index(20, 22, 2))]),
     );
     commit_fixture(

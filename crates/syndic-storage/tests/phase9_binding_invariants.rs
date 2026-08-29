@@ -80,7 +80,7 @@ fn execution_binding() -> ExecutionBinding {
 
 fn create_thread(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
 ) {
@@ -101,7 +101,7 @@ fn create_thread(
 
 fn current_binding_revision(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> BindingRevision {
     storage
@@ -114,7 +114,7 @@ fn current_binding_revision(
 
 fn current_gate_revision(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> InputGateRevision {
     storage
@@ -133,7 +133,7 @@ fn loaded_generation(process: u64, thread: u64) -> CasLoadedSessionGeneration {
 
 fn same_home_path_records(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
     tail: SyndicTurnId,
@@ -208,7 +208,7 @@ fn same_home_path_records(
 
 fn fault_pending_path(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_byte: u8,
     non_root: bool,
 ) -> (
@@ -336,14 +336,14 @@ fn fault_pending_path(
         ThreadRevision::new(1).unwrap(),
         &transcript_path,
     ));
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     (thread, non_root.then_some(root), tail, selected)
 }
 
 #[allow(clippy::too_many_arguments)]
 fn valid_request_with_count(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     selected: SelectedPathProof,
     cas_thread: CasThreadId,
@@ -372,7 +372,7 @@ fn valid_request_with_count(
 
 fn valid_request(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     selected: SelectedPathProof,
     cas_thread: CasThreadId,
@@ -394,7 +394,7 @@ fn valid_request(
     )
 }
 
-fn publish_valid(store: &HomeStore, storage: SyndicStorage, request: PublishValidBinding) {
+fn publish_valid(store: &HomeStore, storage: &SyndicStorage, request: PublishValidBinding) {
     execute(
         store,
         storage.publish_valid_binding(storage.revision(store).unwrap(), request),
@@ -406,7 +406,7 @@ fn immutable_binding_history_and_current_head_survive_reopen() {
     let home = TestHome::new("phase9-immutable-binding-history");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     let thread = id(30);
     let expected: Vec<_> = (1..=4)
         .map(|revision| {
@@ -462,8 +462,8 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let owner = id(70);
     let contender = id(80);
-    create_thread(&store, storage, owner, draft_id(71));
-    create_thread(&store, storage, contender, draft_id(81));
+    create_thread(&store, &storage, owner, draft_id(71));
+    create_thread(&store, &storage, contender, draft_id(81));
     let owner_selected = storage
         .current_binding(&store, owner, point_limit())
         .unwrap()
@@ -495,7 +495,7 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
             storage.revision(&store).unwrap(),
             PublishStaleBinding::new(
                 owner,
-                current_binding_revision(&store, storage, owner),
+                current_binding_revision(&store, &storage, owner),
                 owner_selected,
                 stale,
             ),
@@ -505,7 +505,7 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
     let contender_request = || {
         valid_request(
             &store,
-            storage,
+            &storage,
             contender,
             contender_selected,
             cas_thread.clone(),
@@ -525,7 +525,7 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
             storage.revision(&store).unwrap(),
             PublishUnboundBinding::new(
                 owner,
-                current_binding_revision(&store, storage, owner),
+                current_binding_revision(&store, &storage, owner),
                 owner_selected,
                 "projection remains retired",
             )
@@ -546,7 +546,7 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
     let storage = SyndicStorage::register(&mut reopened).unwrap();
     let request = valid_request(
         &reopened,
-        storage,
+        &storage,
         contender,
         contender_selected,
         cas_thread,

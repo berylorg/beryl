@@ -39,7 +39,7 @@ where
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(source.contribution(
-            store.domain_revision(source).unwrap(),
+            store.domain_revision(&source).unwrap(),
             SourcePut {
                 key: 1,
                 value: 2,
@@ -49,7 +49,7 @@ where
         .unwrap();
     command
         .add(witness.contribution(
-            store.domain_revision(witness).unwrap(),
+            store.domain_revision(&witness).unwrap(),
             WitnessPut {
                 key: 7,
                 value: 2,

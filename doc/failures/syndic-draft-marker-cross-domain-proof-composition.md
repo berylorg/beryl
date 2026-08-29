@@ -2,8 +2,8 @@
 
 ## Status
 
-Invalidated during Phase 193 authority review. The accepted correction is the generic process-local
-HomeStore proof-composition boundary defined by the affected authority documents below.
+Invalidated during Phase 193 authority review. Phase 195 corrected the remaining runtime-owner and
+page-replay gaps in the accepted generic process-local HomeStore proof-composition design.
 
 ## Invalidated Approach
 
@@ -49,8 +49,9 @@ have.
   predecessor-root current-occurrence path. It does not establish immutable origin plus sealed
   Beryl-state label-first agreement.
 - The same source owns coordinators in a process-global `COORDINATORS` registry and advances the
-  permanent frontier from `admit_draft_marker_label_proof`. The domain handle must instead own the
-  configured coordinator, and only first acceptance may advance the permanent frontier.
+  permanent frontier from `admit_draft_marker_label_proof`. The registered Syndic domain's
+  generation-owned typed runtime attachment must instead own the configured coordinator, and only
+  first acceptance may advance the permanent frontier.
 - `crates/syndic-storage/src/draft_piece/model.rs` and
   `crates/syndic-storage/src/draft_piece/codec.rs` persist the complete process proof in mutation and
   build state. Durable staging needs only a fixed-size copyable binding digest; the generation-bound
@@ -85,18 +86,29 @@ current generation against that receipt, and returns neither the consumer nor ex
 correlation facts. The boundary performs no mutation, durable schema write, `CommitReceipt`,
 `SyncAll`, reconciliation, or raw cross-domain result publication.
 
-The Syndic handle-owned coordinator reserves destination ranges, streams bounded pages through that
-boundary, folds opaque receipts in strict order, and at exact EOF issues one move-only final proof
-plus one fixed-size copyable durable binding. `MutationBegin` consumes the proof and persists only
-the binding. Final adoption validates the actual storage-derived marker-effect closure against that
-binding in one Syndic-domain mutation. First acceptance alone advances the permanent frontier and
-creates origin spans. Cancellation, replay, indeterminate reconciliation, collision, and home-
-generation retirement retain or release the proof and reservation according to exact operation
-custody; an uncertain collision ordinal is never reused in the live generation.
+HomeStore also owns one generic typed runtime attachment in each registered-domain slot and home
+generation. The slot is the sole strong owner; every clone or reacquisition resolves the same
+attachment, and retirement invalidates its capabilities and drops it exactly once. Syndic supplies
+its configured coordinator as that attachment. There is no process-global or per-wrapper
+coordinator.
+
+The coordinator reserves destination ranges and streams bounded pages through the proof boundary.
+Each page remains in one opaque immutable move-only attempt that also binds its generation,
+operation, ordinal, prior frontier, executable command, and expectation consumer. The app transports
+only opaque attempt state, the executable, and the receipt. The same accepted attempt authorizes
+immediate replay; a fresh attempt at the occupied ordinal collides even when its bytes or digest
+match. At exact EOF Syndic issues one move-only final proof plus one fixed-size copyable durable
+binding. `MutationBegin` consumes the proof and persists only the binding. Final adoption validates
+the actual storage-derived marker-effect closure against that binding in one Syndic-domain mutation.
+First acceptance alone advances the permanent frontier and creates origin spans. Cancellation,
+reconciliation, collision, and attachment retirement retain, release, or invalidate the proof,
+attempt, and reservation according to exact operation custody; an uncertain collision ordinal is
+never reused in the live generation.
 
 ## Affected Authority And Phase
 
-Phase 193 is controlled by:
+The original Phase 193 invalidation and the Phase 195 runtime-owner/replay correction are controlled
+by:
 
 - `doc/systems/beryl-home-storage/design.md`
 - `crates/beryl-home-store/doc/design.md`
@@ -117,6 +129,7 @@ releases the sole move-only proof and reservation exactly once, especially direc
 a terminal settlement, `ExactOld`, and collision. Page canonicalization and binding preimages must
 be domain-separated and fixed before source changes. The bounded coordinator capacity and page
 ceilings must be configured from authority rather than hidden constants, and fault tests must cover
-writer-admission cancellation, immediate replay, differing-page collision, generation retirement,
-the first-acceptance-only permanent-frontier fence, executable/receipt substitution, receipt/
-consumer-pair substitution, and proof that execution cannot mint or return a consumer.
+writer-admission cancellation, same-attempt replay, fresh-attempt occupied-ordinal collision,
+generation attachment retirement, the first-acceptance-only permanent-frontier fence,
+attempt/executable/receipt substitution, receipt/consumer-pair substitution, and proof that neither
+digest equality nor execution can mint replay identity or return a consumer.

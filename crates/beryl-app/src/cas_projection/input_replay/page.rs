@@ -11,7 +11,7 @@ impl TextReplayAuthority {
     pub(in crate::cas_projection) fn read_page(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
         source_id: StreamedTextSourceId,
         start: u64,

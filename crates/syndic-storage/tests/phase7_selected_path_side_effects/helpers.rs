@@ -27,7 +27,7 @@ pub(super) fn execute(store: &HomeStore, contribution: beryl_home_store::Mutatio
 #[allow(clippy::too_many_arguments)]
 pub(super) fn submit_text(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     text: &str,
     next_draft: SyndicDraftId,
@@ -36,7 +36,7 @@ pub(super) fn submit_text(
 ) -> SyndicTurnId {
     submit_current_draft(
         store,
-        storage,
+        storage.clone(),
         thread,
         next_draft,
         user_item,
@@ -47,14 +47,22 @@ pub(super) fn submit_text(
 
 pub(super) fn admit(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     source: &CasTurnSource,
     payload: SourceEventPayload,
     observed_at: SyndicTimestamp,
 ) {
-    admit_event(store, storage, thread, turn, source, payload, observed_at);
+    admit_event(
+        store,
+        storage.clone(),
+        thread,
+        turn,
+        source,
+        payload,
+        observed_at,
+    );
 }
 
 pub(super) fn agent_value(text: &str) -> ProviderItemV1 {
@@ -65,7 +73,7 @@ pub(super) fn agent_value(text: &str) -> ProviderItemV1 {
     })
 }
 
-pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
+pub(super) fn project_item(store: &HomeStore, storage: &SyndicStorage, item: SyndicItemId) {
     let canonical = storage
         .canonical_item(store, item, point_limit())
         .unwrap()
@@ -103,7 +111,7 @@ pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item: Synd
 
 pub(super) fn finalize_item(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     ordinal: TurnItemOrdinal,
@@ -125,7 +133,7 @@ pub(super) fn finalize_item(
 
 pub(super) fn freeze_assistant(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: TerminalTurn,
     updated_at: SyndicTimestamp,
 ) {
@@ -151,7 +159,7 @@ pub(super) fn freeze_assistant(
 
 pub(super) fn publish_transcript(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> TranscriptViewHeadRecord {
     let thread_record = storage
@@ -197,7 +205,7 @@ pub(super) fn publish_transcript(
 
 pub(super) fn transcript_entry(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     generation: TranscriptGeneration,
     item: SyndicItemId,

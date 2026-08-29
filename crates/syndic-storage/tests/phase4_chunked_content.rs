@@ -72,9 +72,9 @@ fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
     let generation = ItemProjectionGeneration::FIRST;
     execute(
         store,
-        storage,
-        storage.start_item_projection_build(
-            storage.revision(store).unwrap(),
+        storage.clone(),
+        storage.clone().start_item_projection_build(
+            storage.clone().revision(store).unwrap(),
             StartItemProjectionBuild::new(item, canonical.revision(), generation),
         ),
     );
@@ -92,9 +92,9 @@ fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
             .unwrap();
         execute(
             store,
-            storage,
-            storage.advance_item_projection_build(
-                storage.revision(store).unwrap(),
+            storage.clone(),
+            storage.clone().advance_item_projection_build(
+                storage.clone().revision(store).unwrap(),
                 AdvanceItemProjectionBuild::new(item, generation, build.revision()),
             ),
         );
@@ -114,8 +114,10 @@ fn append_one_batch(
     assert!(advanced <= u64::try_from(CONTENT_APPEND_MAX_CHUNKS).unwrap());
     execute(
         store,
-        storage,
-        storage.append_content(storage.revision(store).unwrap(), append),
+        storage.clone(),
+        storage
+            .clone()
+            .append_content(storage.clone().revision(store).unwrap(), append),
     );
     Some(next)
 }
@@ -133,7 +135,7 @@ fn seal_prepared_content(
     let sealed = content.sealed_manifest(manifest.revision().checked_next().unwrap());
     commit(
         store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::ContentManifest(sealed.clone())]),
     );
     sealed

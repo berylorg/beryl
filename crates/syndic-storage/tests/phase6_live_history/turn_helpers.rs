@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn seed_pending_turn(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> (SyndicThreadId, SyndicTurnId) {
     let thread = id(1);
     let draft = draft_id(2);
@@ -22,7 +22,7 @@ pub(super) fn seed_pending_turn(
 
     let turn = submit_current_draft(
         store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(3),
         SyndicItemId::from_bytes([4; 16]),
@@ -34,7 +34,7 @@ pub(super) fn seed_pending_turn(
 
 pub(super) fn next_event(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     source: &CasTurnSource,
@@ -58,7 +58,7 @@ pub(super) fn next_event(
 
 pub(super) fn admit(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     source: &CasTurnSource,
@@ -74,7 +74,15 @@ pub(super) fn admit(
         payload.clone(),
         observed_at,
     );
-    admit_event(store, storage, thread, turn, source, payload, observed_at);
+    admit_event(
+        store,
+        storage.clone(),
+        thread,
+        turn,
+        source,
+        payload,
+        observed_at,
+    );
     event
 }
 
@@ -88,7 +96,7 @@ pub(super) fn provider_content_id(item_id: SyndicItemId) -> SyndicContentId {
 
 pub(super) fn prepare_item_frame(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn: SyndicTurnId,
     item_id: SyndicItemId,
     source: &CasTurnSource,
@@ -124,7 +132,7 @@ pub(super) fn prepare_item_frame(
 
 pub(super) fn prepared_item_target(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn: SyndicTurnId,
     item_id: SyndicItemId,
     source: &CasTurnSource,
@@ -137,7 +145,7 @@ pub(super) fn prepared_item_target(
 
 pub(super) fn stage_item_frame_for_publication(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn: SyndicTurnId,
     item_id: SyndicItemId,
     source: &CasTurnSource,
@@ -187,7 +195,7 @@ pub(super) fn stage_item_frame_for_publication(
 
 pub(super) fn correlate_submitted_user_item(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     source: &CasTurnSource,
@@ -199,7 +207,7 @@ pub(super) fn correlate_submitted_user_item(
         .expect("submitted turn has its local user item");
     correlate_user_item(
         store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         index.item_id(),
@@ -210,7 +218,7 @@ pub(super) fn correlate_submitted_user_item(
 
 pub(super) fn read_content_bytes(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     content: beryl_model::SyndicContentId,
 ) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -237,7 +245,7 @@ pub(super) fn read_content_bytes(
 
 pub(super) fn current_provider_frame(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item_id: SyndicItemId,
 ) -> ProviderItemFrameV1 {
     let item = storage
@@ -258,7 +266,7 @@ pub(super) fn current_provider_frame(
 
 pub(super) fn projected_item_text(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item_id: SyndicItemId,
 ) -> String {
     let head = storage
@@ -296,7 +304,7 @@ pub(super) fn projected_item_text(
 
 pub(super) fn source_events(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn: SyndicTurnId,
 ) -> Vec<SourceEventRecord> {
     storage
@@ -313,7 +321,7 @@ pub(super) fn source_events(
 
 pub(super) fn turn_items(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn: SyndicTurnId,
 ) -> Vec<TurnItemIndexRecord> {
     storage
@@ -328,7 +336,7 @@ pub(super) fn turn_items(
         .to_vec()
 }
 
-pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item_id: SyndicItemId) {
+pub(super) fn project_item(store: &HomeStore, storage: &SyndicStorage, item_id: SyndicItemId) {
     let item = storage
         .canonical_item(store, item_id, limit())
         .unwrap()
@@ -365,7 +373,7 @@ pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item_id: S
 
 pub(super) fn complete_item_frontier(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     ordinal: TurnItemOrdinal,

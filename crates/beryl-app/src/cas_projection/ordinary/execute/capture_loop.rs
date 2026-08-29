@@ -20,7 +20,7 @@ const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 #[allow(clippy::too_many_arguments)]
 pub(super) fn begin_capture(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: LiveEventTarget,
     start: TargetTurnStartOutcome,
     pending: PendingOrdinaryExecution,
@@ -89,7 +89,7 @@ pub(super) fn begin_capture(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn converge_completion_unknown_start(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: LiveEventTarget,
     start: TargetTurnStartOutcome,
     pending: PendingOrdinaryExecution,
@@ -121,7 +121,7 @@ pub(super) fn converge_completion_unknown_start(
 #[allow(clippy::too_many_arguments)]
 fn run_capture(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: LiveEventTarget,
     context: OrdinaryDynamicToolContext,
     cas_turn_id: beryl_model::CasTurnId,
@@ -246,7 +246,7 @@ fn handle_dynamic_tool(
 
 pub(super) fn converge_target_loss(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: LiveEventTarget,
     pending: &PendingOrdinaryExecution,
     active_binding_revision: BindingRevision,
@@ -283,7 +283,7 @@ pub(super) fn converge_target_loss(
 
 fn finish_proven_terminal(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     mut target: LiveEventTarget,
     pending: &PendingOrdinaryExecution,
     active_binding_revision: BindingRevision,

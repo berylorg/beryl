@@ -11,7 +11,7 @@ use super::stop_support::{active_stop_fixture, correlate_user_item, point_limit,
 fn delete(fixture: &super::stop_support::ActiveStopFixture, record: FixtureDelete) {
     let mut mutation = FixtureBatch::new();
     mutation.delete(record).unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, mutation);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), mutation);
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn matching_terminal_reconciliation_rejects_a_missing_event_half() {
     fixture.admit_stop();
     correlate_user_item(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         fixture.item,

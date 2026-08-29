@@ -9,7 +9,7 @@ use crate::support::{
 
 fn abandonment_request(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> AbandonActiveBinding {
     let binding = storage
         .current_binding(store, id(40), super::limit())
@@ -58,7 +58,7 @@ fn abandonment_request(
 
 fn route_entry(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     route: AcceptedRouteHeadProof,
 ) -> AcceptedRouteEntry {
     storage
@@ -76,7 +76,7 @@ fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_r
     let home = TestHome::new("phase58-promotion-prior-delivery-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -135,13 +135,13 @@ fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_r
         .unwrap()
         .selected_route()
         .unwrap();
-    let transition = route_entry(&store, storage, transition_route)
+    let transition = route_entry(&store, &storage, transition_route)
         .leaf()
         .last_transition()
         .expect("retry persists its exact transition witness");
     assert_eq!(transition.kind(), AcceptedRouteLeafTransitionKind::Retry);
 
-    let abandonment = abandonment_request(&store, storage);
+    let abandonment = abandonment_request(&store, &storage);
     assert!(matches!(
         store.execute_current(storage.current_abandon_active_binding(abandonment)),
         CommandOutcome::Committed {
@@ -188,14 +188,14 @@ fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_r
             ..
         }
     ));
-    converge_and_release_terminal_history(&store, storage, id(40), active_turn());
+    converge_and_release_terminal_history(&store, storage.clone(), id(40), active_turn());
     let source_route = storage
         .input_gate(&store, id(40), super::limit())
         .unwrap()
         .unwrap()
         .selected_route()
         .unwrap();
-    let source_entry = route_entry(&store, storage, source_route);
+    let source_entry = route_entry(&store, &storage, source_route);
     assert_eq!(
         source_entry.effective_state(),
         AcceptedRouteEffectiveState::NextTurn(NextTurnReason::ProjectionLost)
@@ -208,7 +208,7 @@ fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_r
         AcceptedInputDeliveryTransitionStatus::Exact
     );
 
-    let promotion = super::promotion(&store, storage);
+    let promotion = super::promotion(&store, &storage);
     assert_eq!(promotion.accepted_input_id(), steering_input());
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
@@ -225,7 +225,7 @@ fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_r
         source_route.generation(),
         source_route.revision().checked_next().unwrap(),
     );
-    let promoted_entry = route_entry(&store, storage, promoted_route);
+    let promoted_entry = route_entry(&store, &storage, promoted_route);
     assert_eq!(promoted_entry.leaf().last_transition(), Some(transition));
     assert!(promoted_entry.leaf().promotion().is_some());
     assert_eq!(
@@ -253,7 +253,7 @@ fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_r
             .unwrap(),
         AcceptedInputDeliveryTransitionStatus::Exact
     );
-    let reopened_entry = route_entry(&reopened, reopened_storage, promoted_route);
+    let reopened_entry = route_entry(&reopened, &reopened_storage, promoted_route);
     assert_eq!(reopened_entry.leaf().last_transition(), Some(transition));
     assert!(reopened_entry.leaf().promotion().is_some());
     reopened

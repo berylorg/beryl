@@ -5,7 +5,7 @@ fn populated_ordered_pages_preserve_cursor_continuation_and_index_getters() {
     let home = TestHome::new("populated-ordered-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    super::support::seed_populated(&store, storage);
+    super::support::seed_populated(&store, storage.clone());
     let one = CursorReadLimits::new(1, 65_536).unwrap();
 
     let accepted = storage.accepted_order(&store, id(40), None, one).unwrap();
@@ -103,8 +103,12 @@ fn successful_recovery_requires_old_handle_reacquisition() {
     )
     .unwrap();
     let old = SyndicStorage::register(&mut store).unwrap();
-    super::support::seed_canonical_empty_thread(&store, old, id(1), draft_id(2));
-    commit(&store, old, batch(empty_thread_records(id(1), draft_id(2))));
+    super::support::seed_canonical_empty_thread(&store, old.clone(), id(1), draft_id(2));
+    commit(
+        &store,
+        old.clone(),
+        batch(empty_thread_records(id(1), draft_id(2))),
+    );
 
     let replacement = HistorySummaryRecord::new(
         id(1),

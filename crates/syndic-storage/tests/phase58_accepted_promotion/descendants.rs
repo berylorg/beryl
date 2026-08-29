@@ -6,9 +6,9 @@ fn promotion_reconciliation_accepts_a_later_current_draft_revision() {
         "phase58-promotion-draft-descendant",
         promotion_fixture(93, id(93)),
     );
-    let request = promotion(&store, storage);
+    let request = promotion(&store, &storage);
     assert!(matches!(
-        execute_promotion(&store, storage, request.clone()),
+        execute_promotion(&store, &storage, request.clone()),
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -29,7 +29,7 @@ fn promotion_reconciliation_accepts_a_later_current_draft_revision() {
     let updated_at = timestamp(21);
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::Draft(DraftRecord::new(
                 draft.id(),
@@ -80,13 +80,13 @@ fn promotion_reconciliation_accepts_a_later_accepted_generation() {
     let (home, store, storage, fixture) =
         seeded_fixture("phase58-promotion-accepted-descendant", newer.fixture);
     let request = PromoteAcceptedInput::new(
-        candidate(&store, storage),
+        candidate(&store, &storage),
         SyndicTurnId::from_bytes([125; 16]),
         SyndicItemId::from_bytes([126; 16]),
         timestamp(20),
     );
     assert!(matches!(
-        execute_promotion(&store, storage, request.clone()),
+        execute_promotion(&store, &storage, request.clone()),
         CommandOutcome::Committed {
             later_failure: None,
             ..

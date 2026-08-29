@@ -62,7 +62,7 @@ fn execute(store: &HomeStore, contribution: MutationContribution) {
     }
 }
 
-fn create_thread(store: &HomeStore, storage: SyndicStorage) -> SyndicThreadId {
+fn create_thread(store: &HomeStore, storage: &SyndicStorage) -> SyndicThreadId {
     let thread = id(1);
     execute(
         store,
@@ -80,11 +80,15 @@ fn create_thread(store: &HomeStore, storage: SyndicStorage) -> SyndicThreadId {
     thread
 }
 
-fn submit_turn(store: &HomeStore, storage: SyndicStorage, thread: SyndicThreadId) -> SubmittedTurn {
+fn submit_turn(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    thread: SyndicThreadId,
+) -> SubmittedTurn {
     let item = SyndicItemId::from_bytes([20; 16]);
     let turn = submit_current_draft(
         store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(3),
         item,
@@ -96,17 +100,25 @@ fn submit_turn(store: &HomeStore, storage: SyndicStorage, thread: SyndicThreadId
 
 fn admit(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     source: &CasTurnSource,
     payload: SourceEventPayload,
     observed_at: SyndicTimestamp,
 ) {
-    admit_event(store, storage, thread, turn, source, payload, observed_at);
+    admit_event(
+        store,
+        storage.clone(),
+        thread,
+        turn,
+        source,
+        payload,
+        observed_at,
+    );
 }
 
-fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
+fn project_item(store: &HomeStore, storage: &SyndicStorage, item: SyndicItemId) {
     let canonical = storage
         .canonical_item(store, item, point_limit())
         .unwrap()
@@ -144,11 +156,11 @@ fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
 
 fn complete_turn(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     submitted: SubmittedTurn,
 ) {
-    let source = establish_turn(store, storage, thread, submitted.turn, timestamp(4));
+    let source = establish_turn(store, storage.clone(), thread, submitted.turn, timestamp(4));
     admit(
         store,
         storage,
@@ -160,7 +172,7 @@ fn complete_turn(
     );
     correlate_user_item(
         store,
-        storage,
+        storage.clone(),
         thread,
         submitted.turn,
         submitted.item,
@@ -222,7 +234,7 @@ struct PublicationTarget {
     expected_entry: TranscriptViewEntryRecord,
 }
 
-fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> PublicationTarget {
+fn prepare_final_publication(store: &HomeStore, storage: &SyndicStorage) -> PublicationTarget {
     let thread = create_thread(store, storage);
     let submitted = submit_turn(store, storage, thread);
     complete_turn(store, storage, thread, submitted);
@@ -315,7 +327,7 @@ struct PublicationSnapshot {
 
 fn observe(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: &PublicationTarget,
 ) -> PublicationSnapshot {
     let build = storage

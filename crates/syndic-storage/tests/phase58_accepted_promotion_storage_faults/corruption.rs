@@ -6,11 +6,11 @@ fn routine_reopen_defers_a_removed_promoted_leaf_witness_to_explicit_scrub() {
     let (home, store, storage) = seed("phase58-promotion-missing-witness", fixture.records.clone());
     let request = promotion(
         &store,
-        storage,
+        &storage,
         SyndicTurnId::from_bytes([150; 16]),
         SyndicItemId::from_bytes([151; 16]),
     );
-    match execute_promotion(&store, storage, request) {
+    match execute_promotion(&store, &storage, request) {
         CommandOutcome::Committed {
             later_failure: None,
             ..

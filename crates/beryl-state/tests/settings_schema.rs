@@ -23,6 +23,12 @@ impl StorageDomain for RawSettingsDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = SETTINGS_FAMILIES;
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -137,10 +143,11 @@ fn routine_reopen_defers_unknown_setting_schema_but_typed_read_and_explicit_vali
     ))
     .unwrap();
     let raw = store.register_domain::<RawSettingsDomain>().unwrap();
+    let raw_revision = store.domain_revision(&raw).unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(raw.contribution(
-            store.domain_revision(raw).unwrap(),
+            raw_revision,
             PutRawSetting {
                 key: 0,
                 value: [vec![0], 2_u32.to_be_bytes().to_vec()].concat(),

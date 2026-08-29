@@ -11,7 +11,7 @@ pub(super) fn begin(
     store: &HomeStore,
     expected_home_id: BerylHomeId,
     expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: BeginAcceptedInputDelivery,
     _limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {
@@ -27,7 +27,7 @@ pub(super) fn retry(
     store: &HomeStore,
     expected_home_id: BerylHomeId,
     expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: RetryAcceptedInputDelivery,
     _limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {
@@ -43,7 +43,7 @@ pub(super) fn complete(
     store: &HomeStore,
     expected_home_id: BerylHomeId,
     expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: CompleteAcceptedInputDelivery,
     _limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {
@@ -59,7 +59,7 @@ pub(super) fn reject(
     store: &HomeStore,
     expected_home_id: BerylHomeId,
     expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: SteeringRejection,
     _limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {

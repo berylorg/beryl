@@ -27,7 +27,7 @@ pub(super) fn require_matching_frontier(
 pub(super) fn settle_command(
     store: &HomeStore,
     outcome: CommandOutcome,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: DraftMarkerSealFlightRequest,
     fault: ReconcileFault,
 ) -> Result<DurableCommandResult, DraftMarkerSealServiceError> {
@@ -112,9 +112,14 @@ impl ReconcileFault {
     }
 
     #[cfg(feature = "test-faults")]
-    fn run(self, store: &HomeStore, storage: SyndicStorage, request: DraftMarkerSealFlightRequest) {
+    fn run(
+        self,
+        store: &HomeStore,
+        storage: &SyndicStorage,
+        request: DraftMarkerSealFlightRequest,
+    ) {
         if let Some(fault) = self.0 {
-            fault(store, storage, request);
+            fault(store, storage.clone(), request);
         }
     }
 
@@ -122,7 +127,7 @@ impl ReconcileFault {
     fn run(
         self,
         _store: &HomeStore,
-        _storage: SyndicStorage,
+        _storage: &SyndicStorage,
         _request: DraftMarkerSealFlightRequest,
     ) {
     }

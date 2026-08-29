@@ -42,12 +42,12 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
             let faults = FaultController::new();
             let mut store = open_with_faults(home.path(), faults.clone());
             let storage = SyndicStorage::register(&mut store).unwrap();
-            seed_operation(&store, storage, operation);
+            seed_operation(&store, &storage, operation);
 
             faults.fail_next(point);
             let reconciliation = match (
                 point,
-                store.execute_current(operation.current_command(storage)),
+                store.execute_current(operation.current_command(&storage)),
             ) {
                 (FaultPoint::BeforeCommit, CommandOutcome::NotCommitted { evidence }) => {
                     assert!(matches!(evidence, CommandError::Commit { .. }));
@@ -85,7 +85,7 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
                 assert_eq!(store.health().state(), HomeHealthState::Healthy);
                 (store, storage)
             };
-            let recovered = operation.status(&store, storage);
+            let recovered = operation.status(&store, &storage);
             assert_ne!(
                 recovered,
                 AcceptedInputDeliveryTransitionStatus::Collision,
@@ -95,7 +95,7 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
                 assert_eq!(recovered, expected);
             }
             if recovered == AcceptedInputDeliveryTransitionStatus::Exact {
-                assert_operation_committed(&store, storage, operation);
+                assert_operation_committed(&store, &storage, operation);
             }
             store
                 .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -112,9 +112,9 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
 
             let mut reopened = open_with_faults(home.path(), FaultController::new());
             let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
-            assert_eq!(operation.status(&reopened, reopened_storage), recovered);
+            assert_eq!(operation.status(&reopened, &reopened_storage), recovered);
             if recovered == AcceptedInputDeliveryTransitionStatus::Exact {
-                assert_operation_committed(&reopened, reopened_storage, operation);
+                assert_operation_committed(&reopened, &reopened_storage, operation);
             }
             reopened
                 .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

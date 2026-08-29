@@ -10,7 +10,7 @@ fn publish_duplicate_start_issue(
     let identity = issue.observation().identity();
     let event = next_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -106,7 +106,7 @@ fn published_issue_rejects_a_mutated_observation_digest_on_current_and_reopen_va
 
 fn inspect_large_agent_start(fixture: &Fixture) -> InspectedProviderObservation {
     let sealed = {
-        let mut callback = observation_callback(&fixture.store, fixture.storage);
+        let mut callback = observation_callback(&fixture.store, fixture.storage.clone());
         let mut stager = committed_stage_value(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([53; 16]),

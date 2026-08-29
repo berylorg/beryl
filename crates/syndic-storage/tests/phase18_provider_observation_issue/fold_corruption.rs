@@ -10,7 +10,7 @@ fn publish_duplicate_start_issue(fixture: &Fixture, observation_byte: u8) {
         .into_issue(ProviderObservationIssueReason::DuplicateItemStart);
     let event = next_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -28,7 +28,7 @@ fn publish_duplicate_start_issue(fixture: &Fixture, observation_byte: u8) {
 fn publish_completion_mismatch_terminal(fixture: &Fixture) {
     let event = next_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,

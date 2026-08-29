@@ -97,7 +97,7 @@ fn exact_source() -> CasTurnSource {
 
 fn source_event(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     payload: SourceEventPayload,
     observed_at: SyndicTimestamp,
 ) -> LiveSourceEvent {
@@ -161,10 +161,15 @@ fn agent_completion(
     )
 }
 
-fn start_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId, cas_item: &CasItemId) {
+fn start_item(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    item: SyndicItemId,
+    cas_item: &CasItemId,
+) {
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         id(40),
         active_turn(),
         item,
@@ -184,7 +189,7 @@ fn provider_content_id(item_id: SyndicItemId) -> SyndicContentId {
 
 fn prepare_item_frame(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item_id: SyndicItemId,
     frame: ProviderItemFrameV1,
 ) -> PreparedProviderFrame {
@@ -219,7 +224,7 @@ fn prepare_item_frame(
 
 fn prepared_item_target(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item_id: SyndicItemId,
     frame: ProviderItemFrameV1,
 ) -> SealedProviderFrameReference {
@@ -230,7 +235,7 @@ fn prepared_item_target(
 
 fn stage_item_frame_for_publication(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     item_id: SyndicItemId,
     frame: ProviderItemFrameV1,
 ) -> SealedProviderFrameReference {
@@ -298,7 +303,7 @@ fn stage_item_frame_for_publication(
     panic!("bounded provider completion comparison did not finish");
 }
 
-fn item_text(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) -> String {
+fn item_text(store: &HomeStore, storage: &SyndicStorage, item: SyndicItemId) -> String {
     let item = storage
         .canonical_item(store, item, limit())
         .unwrap()
@@ -351,7 +356,7 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
     let home = TestHome::new("phase6-external-identity");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     let item = SyndicItemId::from_bytes([70; 16]);
     let cas_item = CasItemId::new("phase6-exact-item").unwrap();
     let state = storage
@@ -364,7 +369,7 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
         .unwrap();
     let mismatched_frame = prepared_item_target(
         &store,
-        storage,
+        &storage,
         item,
         agent_start(cas_item.clone(), timestamp(9)),
     );
@@ -397,17 +402,17 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
         SyndicMutationError::SourceIdentityConflict
     ));
 
-    start_item(&store, storage, item, &cas_item);
+    start_item(&store, &storage, item, &cas_item);
     let colliding_item = SyndicItemId::from_bytes([72; 16]);
     let colliding_frame = stage_item_frame_for_publication(
         &store,
-        storage,
+        &storage,
         colliding_item,
         agent_start(cas_item.clone(), timestamp(10)),
     );
     let wrong_item = source_event(
         &store,
-        storage,
+        &storage,
         SourceEventPayload::ItemFrame {
             item_id: colliding_item,
             frame: Box::new(colliding_frame),
@@ -428,7 +433,7 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
 
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         id(40),
         active_turn(),
         item,
@@ -438,7 +443,7 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
     );
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         id(40),
         active_turn(),
         item,
@@ -455,7 +460,7 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
     assert_eq!(source.turn(), &exact_source());
     assert_eq!(source.item_id(), &cas_item);
     assert_eq!(record.source_event_count(), 3);
-    assert_eq!(item_text(&store, storage, item), "exact");
+    assert_eq!(item_text(&store, &storage, item), "exact");
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

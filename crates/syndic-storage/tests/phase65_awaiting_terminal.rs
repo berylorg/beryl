@@ -105,7 +105,7 @@ fn accept_text(
 ) -> SyndicAcceptedInputId {
     stop_support::admit_queued_text(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         text,
         next_draft,
@@ -264,7 +264,7 @@ fn unknown_terminal_without_queued_input_reactivates_the_exact_target() {
 
     admit_event(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -293,7 +293,7 @@ fn late_terminal_without_queued_input_enters_and_releases_terminal_history() {
     admit_unknown(&fixture, 6);
     admit_event(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -318,7 +318,7 @@ fn late_terminal_without_queued_input_enters_and_releases_terminal_history() {
     assert_eq!(gate.live_count(), 0);
     converge_and_release_terminal_history(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
     );
@@ -450,7 +450,7 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
 
     exact_cas::admit_item_frame(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         SyndicItemId::from_bytes([60; 16]),
@@ -487,7 +487,7 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
 
     admit_event(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         &fixture.source,

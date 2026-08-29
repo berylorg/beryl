@@ -3,8 +3,8 @@ use super::*;
 #[test]
 fn same_anchor_marker_pages_restart_seal_and_materialize_without_registry_residency() {
     let (home, mut store, mut storage, thread) = marker_fixture("phase184-same-anchor", 190);
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 191, 192);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 191, 192);
     session = complete_staged_bounded(
         &storage,
         &store,
@@ -68,7 +68,7 @@ fn same_anchor_marker_pages_restart_seal_and_materialize_without_registry_reside
     let seal = seal_with_page_limit(&storage, &store, root, 193, MARKER_PAGE);
     assert_eq!(seal.sequential().marker_count(), MARKER_COUNT as u64);
     assert_eq!(seal.ordered_assets().marker_count(), MARKER_COUNT as u64);
-    let mapping = materialize_bounded(storage, &store, root, 194);
+    let mapping = materialize_bounded(&storage, &store, root, 194);
     assert_eq!(mapping.source_marker_count(), MARKER_COUNT as u64);
     assert_eq!(mapping.source_utf8_bytes(), 6);
 }
@@ -77,8 +77,8 @@ fn same_anchor_marker_pages_restart_seal_and_materialize_without_registry_reside
 #[test]
 fn marker_bearing_third_full_window_charges_the_complete_acquisition_maximum() {
     let (_home, store, storage, thread) = fixture("phase184-window-maximum", 195);
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 196, 197);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 196, 197);
     session = complete_staged_bounded(
         &storage,
         &store,
@@ -143,7 +143,7 @@ fn marker_bearing_third_full_window_charges_the_complete_acquisition_maximum() {
             .unwrap()
             .unwrap();
         let page = prepare_one_page(
-            storage,
+            &storage,
             &head,
             &active,
             DraftMutationStagingPageItemV1::Proposal(replacement),

@@ -220,7 +220,7 @@ fn every_item_and_delta_schema_seals_through_durable_staging() {
             {
                 continue;
             }
-            let mut callback = commit_callback(&store, storage);
+            let mut callback = commit_callback(&store, &storage);
             let mut stager = clean_stage(
                 ProviderObservationStager::begin(
                     ProviderObservationId::from_bytes([identity_byte; 16]),
@@ -248,7 +248,7 @@ fn every_item_and_delta_schema_seals_through_durable_staging() {
         ProviderDeltaKind::McpToolCallProgress,
     ];
     for kind in deltas {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = clean_stage(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([identity_byte; 16]),
@@ -340,7 +340,7 @@ fn web_search_other_survives_restart_and_seals_unsupported_history_evidence() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     {
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = clean_stage(
             ProviderObservationStager::begin(
                 identity,
@@ -403,7 +403,7 @@ fn web_search_other_survives_restart_and_seals_unsupported_history_evidence() {
         .resume_provider_observation(&reopened, identity, limit())
         .unwrap()
         .unwrap();
-    let mut callback = commit_callback(&reopened, storage);
+    let mut callback = commit_callback(&reopened, &storage);
     clean_stage(
         stager
             .control(
@@ -435,7 +435,7 @@ fn web_search_other_survives_restart_and_seals_unsupported_history_evidence() {
     );
     reopened_handle.abandon();
 
-    let mut callback = commit_callback(&reopened, storage);
+    let mut callback = commit_callback(&reopened, &storage);
     let mut invalid =
         begin_agent(ProviderObservationId::from_bytes([74; 16]), &mut callback).unwrap();
     assert!(matches!(

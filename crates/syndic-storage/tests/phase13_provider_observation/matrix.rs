@@ -194,7 +194,7 @@ fn every_item_schema_rejects_a_schema_specific_type_or_shape_substitution() {
     let home = TestHome::new("provider-observation-item-negative-matrix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
     for (index, kind) in ITEMS.into_iter().enumerate() {
         let byte = 210 + index as u8;
         let identity = ProviderObservationId::from_bytes([byte; 16]);
@@ -245,7 +245,7 @@ fn every_delta_schema_rejects_a_schema_specific_type_or_shape_substitution() {
     let home = TestHome::new("provider-observation-delta-negative-matrix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
     for (index, kind) in DELTAS.into_iter().enumerate() {
         let byte = 230 + index as u8;
         let identity = ProviderObservationId::from_bytes([byte; 16]);
@@ -291,7 +291,7 @@ fn every_item_and_delta_schema_rejects_duplicate_identity_without_advancing_stat
     let home = TestHome::new("provider-observation-duplicate-matrix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
     for (index, kind) in ITEMS.into_iter().enumerate() {
         let byte = 10 + index as u8;
         let identity = ProviderObservationId::from_bytes([byte; 16]);
@@ -377,7 +377,7 @@ fn every_item_and_delta_schema_rejects_missing_required_state_without_sealing() 
     for (index, kind) in ITEMS.into_iter().enumerate() {
         let byte = 50 + index as u8;
         let identity = ProviderObservationId::from_bytes([byte; 16]);
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_item(byte, kind, &mut callback);
         let expected = if matches!(
             kind,
@@ -412,7 +412,7 @@ fn every_item_and_delta_schema_rejects_missing_required_state_without_sealing() 
     for (index, kind) in DELTAS.into_iter().enumerate() {
         let byte = 70 + index as u8;
         let identity = ProviderObservationId::from_bytes([byte; 16]);
-        let mut callback = commit_callback(&store, storage);
+        let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_delta(byte, kind, &mut callback);
         text(
             &mut stager,

@@ -101,7 +101,7 @@ pub fn submit_current_draft(
     let content = PreparedContent::composer(&payload).unwrap();
     submit_prepared_current_draft(
         store,
-        storage,
+        storage.clone(),
         thread_id,
         next_draft_id,
         submitted_item_id,
@@ -201,7 +201,8 @@ pub fn submit_prepared_current_draft(
                 .expect("exact-CAS submission parent state exists");
             assert!(parent_state.lifecycle().is_proven_terminal());
             let depth = parent_record.depth().checked_next().unwrap();
-            let ancestor_skip = child_ancestor_skip(store, storage, parent_record.clone(), depth);
+            let ancestor_skip =
+                child_ancestor_skip(store, storage.clone(), parent_record.clone(), depth);
             (
                 syndic_storage::ConversationParent::Turn(parent_id),
                 depth,
@@ -241,8 +242,12 @@ pub fn submit_prepared_current_draft(
             .is_none(),
         "exact-CAS detached draft staging identity is occupied"
     );
-    let next_root_history =
-        seed_detached_canonical_draft_backing(store, storage, staging_thread, next_draft_id);
+    let next_root_history = seed_detached_canonical_draft_backing(
+        store,
+        storage.clone(),
+        staging_thread,
+        next_draft_id,
+    );
 
     let next_activity_period = if activity.source().is_none() {
         activity.work_period()
@@ -421,7 +426,7 @@ pub fn submit_prepared_current_draft(
             .delete(FixtureDelete::ContextEnvelope(owner))
             .unwrap();
     }
-    commit(store, storage, fixture);
+    commit(store, storage.clone(), fixture);
     turn_id
 }
 
@@ -541,10 +546,18 @@ pub fn establish_turn(
         .unwrap();
     let selected = current.binding().selected_path();
     assert_eq!(selected.tail(), Some(turn));
-    let turn_record = storage.turn(store, turn, point_limit()).unwrap().unwrap();
+    let turn_record = storage
+        .clone()
+        .turn(store, turn, point_limit())
+        .unwrap()
+        .unwrap();
     let (parent, parent_digest) = match turn_record.parent().turn() {
         Some(parent) => {
-            let parent = storage.turn(store, parent, point_limit()).unwrap().unwrap();
+            let parent = storage
+                .clone()
+                .turn(store, parent, point_limit())
+                .unwrap()
+                .unwrap();
             (Some(parent.id()), parent.chain_digest())
         }
         None => (None, empty_selected_path_digest()),
@@ -599,8 +612,8 @@ pub fn establish_turn(
         };
     execute(
         store,
-        storage.publish_valid_binding(
-            storage.revision(store).unwrap(),
+        storage.clone().publish_valid_binding(
+            storage.clone().revision(store).unwrap(),
             PublishValidBinding::new(
                 thread,
                 current.binding().revision(),
@@ -626,8 +639,8 @@ pub fn establish_turn(
     let snapshot = SyndicExecutionSnapshotId::from_bytes(*turn.as_bytes());
     execute(
         store,
-        storage.activate_binding(
-            storage.revision(store).unwrap(),
+        storage.clone().activate_binding(
+            storage.clone().revision(store).unwrap(),
             ActivateBinding::new(
                 thread,
                 binding.binding().revision(),
@@ -652,8 +665,8 @@ pub fn establish_turn(
     let cas_turn = CasTurnId::new(format!("test-turn-{turn}")).unwrap();
     execute(
         store,
-        storage.publish_active_cas_turn(
-            storage.revision(store).unwrap(),
+        storage.clone().publish_active_cas_turn(
+            storage.clone().revision(store).unwrap(),
             PublishActiveCasTurn::new(
                 thread,
                 binding.binding().revision(),
@@ -699,7 +712,9 @@ pub fn admit_event(
     .unwrap();
     execute(
         store,
-        storage.admit_live_source_event(storage.revision(store).unwrap(), event),
+        storage
+            .clone()
+            .admit_live_source_event(storage.clone().revision(store).unwrap(), event),
         "live-source event admission",
     );
 }
@@ -755,54 +770,55 @@ pub fn admit_item_frame(
     let prepared = prepare_provider_frame(plan).unwrap();
     execute(
         store,
-        storage.begin_provider_frame_build(storage.revision(store).unwrap(), &prepared),
+        storage
+            .clone()
+            .begin_provider_frame_build(storage.clone().revision(store).unwrap(), &prepared),
         "provider-frame build begin",
     );
-    let mut build =
-        match stage_provider_frame(
-            &prepared,
-            prepared.initial_build().clone(),
-            &mut |stage: &syndic_storage::ProviderFrameStageBatch| {
-                let mut command = HomeCommand::new(store.home_revision().unwrap());
-                command
-                    .add(storage.stage_provider_frame_batch(
-                        storage.revision(store).unwrap(),
-                        stage.clone(),
-                    ))
-                    .unwrap();
-                store.execute(command)
-            },
-        )
-        .unwrap()
-        {
-            ProviderFrameStageOutcome::Unchanged { value } => value,
-            ProviderFrameStageOutcome::Committed {
-                value,
-                later_failure: None,
-                ..
-            } => value,
-            ProviderFrameStageOutcome::Committed {
-                later_failure: Some(failure),
-                ..
-            } => panic!("provider-frame staging committed with a later failure: {failure:?}"),
-            ProviderFrameStageOutcome::NotCommitted { evidence } => {
-                panic!("provider-frame staging did not commit: {evidence:?}")
-            }
-            ProviderFrameStageOutcome::Indeterminate {
-                failure,
-                reconciliation,
-            } => {
-                reconciliation.install();
-                panic!("provider-frame staging was indeterminate: {failure:?}")
-            }
-        };
+    let mut build = match stage_provider_frame(
+        &prepared,
+        prepared.initial_build().clone(),
+        &mut |stage: &syndic_storage::ProviderFrameStageBatch| {
+            let mut command = HomeCommand::new(store.home_revision().unwrap());
+            command
+                .add(storage.clone().stage_provider_frame_batch(
+                    storage.clone().revision(store).unwrap(),
+                    stage.clone(),
+                ))
+                .unwrap();
+            store.execute(command)
+        },
+    )
+    .unwrap()
+    {
+        ProviderFrameStageOutcome::Unchanged { value } => value,
+        ProviderFrameStageOutcome::Committed {
+            value,
+            later_failure: None,
+            ..
+        } => value,
+        ProviderFrameStageOutcome::Committed {
+            later_failure: Some(failure),
+            ..
+        } => panic!("provider-frame staging committed with a later failure: {failure:?}"),
+        ProviderFrameStageOutcome::NotCommitted { evidence } => {
+            panic!("provider-frame staging did not commit: {evidence:?}")
+        }
+        ProviderFrameStageOutcome::Indeterminate {
+            failure,
+            reconciliation,
+        } => {
+            reconciliation.install();
+            panic!("provider-frame staging was indeterminate: {failure:?}")
+        }
+    };
     for _ in 0..CONVERGENCE_LIMIT {
         if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
             let sealed = prepared.target().clone();
             assert_eq!(build.target(), &sealed);
             admit_event(
                 store,
-                storage,
+                storage.clone(),
                 thread,
                 turn,
                 source,
@@ -816,7 +832,9 @@ pub fn admit_item_frame(
         }
         execute(
             store,
-            storage.compare_provider_completion(storage.revision(store).unwrap(), build),
+            storage
+                .clone()
+                .compare_provider_completion(storage.clone().revision(store).unwrap(), build),
             "provider-frame completion comparison",
         );
         build = storage
@@ -844,7 +862,7 @@ pub fn admit_started_then_completed_item(
 ) {
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         item_id,
@@ -861,7 +879,7 @@ pub fn admit_started_then_completed_item(
     );
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         item_id,
@@ -901,7 +919,7 @@ pub fn correlate_user_item(
     });
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         item_id,
@@ -918,7 +936,7 @@ pub fn correlate_user_item(
     );
     admit_item_frame(
         store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         item_id,
@@ -941,8 +959,8 @@ pub fn converge_and_release_terminal_history(
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
 ) {
-    converge_items(store, storage, thread_id, turn_id);
-    converge_transcript(store, storage, thread_id);
+    converge_items(store, storage.clone(), thread_id, turn_id);
+    converge_transcript(store, storage.clone(), thread_id);
     let gate = storage
         .input_gate(store, thread_id, point_limit())
         .unwrap()
@@ -957,8 +975,8 @@ pub fn converge_and_release_terminal_history(
         .unwrap();
     execute(
         store,
-        storage.complete_terminal_history(
-            storage.revision(store).unwrap(),
+        storage.clone().complete_terminal_history(
+            storage.clone().revision(store).unwrap(),
             CompleteTerminalHistory::new(
                 thread_id,
                 turn_id,
@@ -1017,8 +1035,8 @@ fn converge_items(
             if manifest.lifecycle() == ContentLifecycle::Live {
                 execute(
                     store,
-                    storage.freeze_next_turn_item(
-                        storage.revision(store).unwrap(),
+                    storage.clone().freeze_next_turn_item(
+                        storage.clone().revision(store).unwrap(),
                         FreezeNextTurnItem::new(
                             thread_id,
                             turn_id,
@@ -1032,18 +1050,18 @@ fn converge_items(
                 );
             }
         }
-        if generated_media_is_waiting(store, storage, &item) {
+        if generated_media_is_waiting(store, storage.clone(), &item) {
             return;
         }
-        project_item_if_needed(store, storage, item.id());
+        project_item_if_needed(store, storage.clone(), item.id());
         let state = storage
             .turn_state(store, turn_id, point_limit())
             .unwrap()
             .unwrap();
         execute(
             store,
-            storage.finalize_next_turn_item(
-                storage.revision(store).unwrap(),
+            storage.clone().finalize_next_turn_item(
+                storage.clone().revision(store).unwrap(),
                 FinalizeNextTurnItem::new(
                     thread_id,
                     turn_id,
@@ -1104,8 +1122,8 @@ fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item_id: Sy
         });
     execute(
         store,
-        storage.start_item_projection_build(
-            storage.revision(store).unwrap(),
+        storage.clone().start_item_projection_build(
+            storage.clone().revision(store).unwrap(),
             StartItemProjectionBuild::new(item_id, item.revision(), generation),
         ),
         "item-projection build start",
@@ -1125,8 +1143,8 @@ fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item_id: Sy
             .unwrap();
         execute(
             store,
-            storage.advance_item_projection_build(
-                storage.revision(store).unwrap(),
+            storage.clone().advance_item_projection_build(
+                storage.clone().revision(store).unwrap(),
                 AdvanceItemProjectionBuild::new(item_id, generation, build.revision()),
             ),
             "item-projection build advance",
@@ -1150,8 +1168,8 @@ fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread_id: Syn
     let generation = head.generation();
     execute(
         store,
-        storage.start_transcript_build(
-            storage.revision(store).unwrap(),
+        storage.clone().start_transcript_build(
+            storage.clone().revision(store).unwrap(),
             StartTranscriptBuild::new(thread_id, thread.revision(), head.revision()),
         ),
         "transcript build start",
@@ -1166,8 +1184,8 @@ fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread_id: Syn
         }
         execute(
             store,
-            storage.advance_transcript_build(
-                storage.revision(store).unwrap(),
+            storage.clone().advance_transcript_build(
+                storage.clone().revision(store).unwrap(),
                 AdvanceTranscriptBuild::new(thread_id, generation, build.revision()),
             ),
             "transcript build advance",

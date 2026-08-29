@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn establish_turn(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     started_at: SyndicTimestamp,
@@ -140,7 +140,7 @@ pub(super) fn establish_turn(
 
 pub fn admit_event(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     source: &CasTurnSource,
@@ -183,7 +183,7 @@ fn provider_content_id(item_id: SyndicItemId) -> SyndicContentId {
 #[allow(clippy::too_many_arguments)]
 fn admit_item_frame(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     item_id: SyndicItemId,
@@ -296,7 +296,7 @@ fn admit_item_frame(
 
 pub fn correlate_user_item(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     item_id: SyndicItemId,

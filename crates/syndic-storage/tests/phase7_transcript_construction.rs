@@ -65,8 +65,8 @@ fn create_thread(store: &HomeStore, storage: SyndicStorage) -> SyndicThreadId {
     let thread = id(1);
     execute(
         store,
-        storage.create_thread(
-            storage.revision(store).unwrap(),
+        storage.clone().create_thread(
+            storage.clone().revision(store).unwrap(),
             CreateThread::ordinary(
                 thread,
                 draft_id(2),
@@ -89,7 +89,15 @@ fn submit_text(
     item: SyndicItemId,
     admitted_at: SyndicTimestamp,
 ) -> SubmittedTurn {
-    let turn = submit_current_draft(store, storage, thread, next_draft, item, text, admitted_at);
+    let turn = submit_current_draft(
+        store,
+        storage.clone(),
+        thread,
+        next_draft,
+        item,
+        text,
+        admitted_at,
+    );
     SubmittedTurn { turn, item }
 }
 
@@ -102,7 +110,15 @@ fn admit(
     payload: SourceEventPayload,
     observed_at: SyndicTimestamp,
 ) {
-    admit_event(store, storage, thread, turn, source, payload, observed_at);
+    admit_event(
+        store,
+        storage.clone(),
+        thread,
+        turn,
+        source,
+        payload,
+        observed_at,
+    );
 }
 
 fn project_item(
@@ -122,8 +138,8 @@ fn project_item(
         });
     execute(
         store,
-        storage.start_item_projection_build(
-            storage.revision(store).unwrap(),
+        storage.clone().start_item_projection_build(
+            storage.clone().revision(store).unwrap(),
             StartItemProjectionBuild::new(item, canonical.revision(), generation),
         ),
     );
@@ -141,8 +157,8 @@ fn project_item(
             .unwrap();
         execute(
             store,
-            storage.advance_item_projection_build(
-                storage.revision(store).unwrap(),
+            storage.clone().advance_item_projection_build(
+                storage.clone().revision(store).unwrap(),
                 AdvanceItemProjectionBuild::new(item, generation, build.revision()),
             ),
         );
@@ -159,10 +175,10 @@ fn complete_turn(
     completed_at: SyndicTimestamp,
     finalized_at: SyndicTimestamp,
 ) {
-    let source = establish_turn(store, storage, thread, submitted.turn, activated_at);
+    let source = establish_turn(store, storage.clone(), thread, submitted.turn, activated_at);
     admit(
         store,
-        storage,
+        storage.clone(),
         thread,
         submitted.turn,
         &source,
@@ -171,7 +187,7 @@ fn complete_turn(
     );
     correlate_user_item(
         store,
-        storage,
+        storage.clone(),
         thread,
         submitted.turn,
         submitted.item,
@@ -180,7 +196,7 @@ fn complete_turn(
     );
     admit(
         store,
-        storage,
+        storage.clone(),
         thread,
         submitted.turn,
         &source,
@@ -193,8 +209,8 @@ fn complete_turn(
         .unwrap();
     execute(
         store,
-        storage.freeze_next_turn_item(
-            storage.revision(store).unwrap(),
+        storage.clone().freeze_next_turn_item(
+            storage.clone().revision(store).unwrap(),
             FreezeNextTurnItem::new(
                 thread,
                 submitted.turn,
@@ -205,15 +221,15 @@ fn complete_turn(
             ),
         ),
     );
-    project_item(store, storage, submitted.item);
+    project_item(store, storage.clone(), submitted.item);
     let state = storage
         .turn_state(store, submitted.turn, point_limit())
         .unwrap()
         .unwrap();
     execute(
         store,
-        storage.finalize_next_turn_item(
-            storage.revision(store).unwrap(),
+        storage.clone().finalize_next_turn_item(
+            storage.clone().revision(store).unwrap(),
             FinalizeNextTurnItem::new(
                 thread,
                 submitted.turn,
@@ -296,8 +312,8 @@ fn start_transcript_build(
     let generation = head.generation();
     execute(
         store,
-        storage.start_transcript_build(
-            storage.revision(store).unwrap(),
+        storage.clone().start_transcript_build(
+            storage.clone().revision(store).unwrap(),
             StartTranscriptBuild::new(thread, thread_record.revision(), head.revision()),
         ),
     );
@@ -321,8 +337,8 @@ fn advance_transcript_build(
         .unwrap();
     execute(
         store,
-        storage.advance_transcript_build(
-            storage.revision(store).unwrap(),
+        storage.clone().advance_transcript_build(
+            storage.clone().revision(store).unwrap(),
             AdvanceTranscriptBuild::new(thread, generation, current.revision()),
         ),
     );
@@ -346,7 +362,7 @@ fn finish_transcript_build(
         if build.phase() == TranscriptBuildPhase::Complete {
             return build;
         }
-        advance_transcript_build(store, storage, thread, generation);
+        advance_transcript_build(store, storage.clone(), thread, generation);
     }
     panic!("bounded transcript construction did not finish");
 }

@@ -86,7 +86,7 @@ fn read_marker_bytes(
     end: u64,
 ) -> Result<([u8; ENCODED_MARKER_BYTES], usize), SyndicReadError> {
     let predecessor = store.read_cursor::<crate::domain::SyndicDomain, ContentByteSpansCodec>(
-        storage.handle,
+        &storage.handle,
         &CursorRange::closed(
             ContentByteSpanKey {
                 owner: content.id(),
@@ -130,7 +130,7 @@ fn read_marker_bytes(
             }
         }
         let page = store.read_cursor::<crate::domain::SyndicDomain, ContentByteSpansCodec>(
-            storage.handle,
+            &storage.handle,
             &CursorRange::after(
                 ContentByteSpanKey {
                     owner: content.id(),

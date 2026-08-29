@@ -16,7 +16,7 @@ use crate::input_admission::accepted_input_promotion_status;
 
 pub(super) fn classify_unbuilt_promotion(
     validator: &LeaseValidationAuthority,
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     promotion: &PromoteAcceptedInput,
 ) -> WorkerDisposition {
     if let Err(error) = validator.ensure_current() {
@@ -62,8 +62,8 @@ pub(super) fn pause_obsolete_generation(thread_id: SyndicThreadId, obsolete: boo
 
 pub(super) fn reconcile_promotion(
     validator: &LeaseValidationAuthority,
-    storage: syndic_storage::SyndicStorage,
-    assets: beryl_state::AssetState,
+    storage: &syndic_storage::SyndicStorage,
+    assets: &beryl_state::AssetState,
     promotion: &PromoteAcceptedInput,
 ) -> Result<AcceptedInputPromotionStatus, SchedulerFailure> {
     let read = || {
@@ -90,7 +90,7 @@ pub(super) fn reconcile_promotion(
 
 pub(in crate::cas_projection::accepted_input_scheduler) fn current_selected_path(
     home: &beryl_home_store::HomeStore,
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     thread_id: SyndicThreadId,
     home_generation: beryl_home_store::HomeGeneration,
 ) -> Result<SelectedPathProof, SchedulerFailure> {

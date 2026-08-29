@@ -91,7 +91,7 @@ fn current_domain_command_captures_physical_revisions_after_writer_admission() {
     });
 
     assert_eq!(store.home_revision().unwrap().get(), 3);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 3);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 3);
     assert_eq!(read(&store, alpha, 1), Some(b"first".to_vec()));
     assert_eq!(read(&store, alpha, 2), Some(b"second".to_vec()));
 }
@@ -163,7 +163,7 @@ fn current_domain_command_preserves_exact_logical_validation() {
         }
     ));
     assert_eq!(store.home_revision().unwrap().get(), 2);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(read(&store, alpha, 4), Some(b"current".to_vec()));
 }
 
@@ -171,7 +171,7 @@ fn commit_one(store: &HomeStore, domain: DomainHandle<AlphaDomain>, key: u64, va
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            store.domain_revision(&domain).unwrap(),
             PutBytes::<AlphaDomain>::new(key, value),
         ))
         .unwrap();

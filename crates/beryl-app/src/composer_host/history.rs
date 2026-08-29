@@ -294,7 +294,7 @@ impl SyndicComposerHost {
         }
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.history_before_execute_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         let mut command = HomeCommand::new(store.home_revision().map_err(|error| {
             (
@@ -410,7 +410,7 @@ impl SyndicComposerHost {
         }
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.history_after_commit_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         let request = settlement.request();
         let caret_request = request.caret();

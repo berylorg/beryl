@@ -9,7 +9,7 @@ use syndic_storage::{
 use super::support::*;
 
 fn committed_adoption(
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     store: &beryl_home_store::HomeStore,
     session: &syndic_storage::DraftEditorCandidateSessionV1,
     direction: DraftHistoricalRootDirectionV1,
@@ -60,7 +60,7 @@ fn undo_request(
 }
 
 fn committed_edit(
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     store: &beryl_home_store::HomeStore,
     session: &syndic_storage::DraftEditorCandidateSessionV1,
     operation: u8,
@@ -87,16 +87,16 @@ fn committed_edit(
 #[test]
 fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
     let (_home, store, storage, thread) = fixture("undo-redo-branch", 162);
-    let durable_before = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable_before, 3, 4);
-    let first = transaction(storage, &store, &session, 5, "one", point(0), point(3));
-    let first_settlement = settle(storage, &store, &first);
+    let durable_before = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable_before, 3, 4);
+    let first = transaction(&storage, &store, &session, 5, "one", point(0), point(3));
+    let first_settlement = settle(&storage, &store, &first);
     let DraftPieceSettlementClosureV1::Committed(first_adoption) = first_settlement.closure()
     else {
         panic!("first edit did not commit")
     };
     let second = transaction(
-        storage,
+        &storage,
         &store,
         first_adoption.adopted_session(),
         6,
@@ -104,7 +104,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
         point(3),
         point(6),
     );
-    let second_settlement = settle(storage, &store, &second);
+    let second_settlement = settle(&storage, &store, &second);
     let DraftPieceSettlementClosureV1::Committed(second_adoption) = second_settlement.closure()
     else {
         panic!("second edit did not commit")
@@ -112,7 +112,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
 
     for (operation, contribution) in [(17, 0_u8), (18, 1_u8), (19, 2_u8)] {
         let prepared = prepare_historical_selection(
-            storage,
+            &storage,
             &store,
             second_adoption.adopted_session(),
             operation,
@@ -122,21 +122,21 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
             0 => execute(
                 &store,
                 storage.reject_draft_historical_root_adoption(
-                    revision(storage, &store),
+                    revision(&storage, &store),
                     prepared.clone(),
                 ),
             ),
             1 => execute(
                 &store,
                 storage.cancel_draft_historical_root_adoption(
-                    revision(storage, &store),
+                    revision(&storage, &store),
                     prepared.clone(),
                 ),
             ),
             _ => execute(
                 &store,
                 storage.error_draft_historical_root_adoption(
-                    revision(storage, &store),
+                    revision(&storage, &store),
                     prepared.clone(),
                     DraftHistoricalRootAdoptionErrorReasonV1::InvalidAuthority,
                 ),
@@ -162,7 +162,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
     }
 
     let (undo, _) = committed_adoption(
-        storage,
+        &storage,
         &store,
         second_adoption.adopted_session(),
         DraftHistoricalRootDirectionV1::Undo,
@@ -184,7 +184,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
     assert!(undo_history.redo_head().is_some());
 
     let (redo, _) = committed_adoption(
-        storage,
+        &storage,
         &store,
         undo_session,
         DraftHistoricalRootDirectionV1::Redo,
@@ -202,7 +202,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
     );
 
     let (second_undo, _) = committed_adoption(
-        storage,
+        &storage,
         &store,
         redo_session,
         DraftHistoricalRootDirectionV1::Undo,
@@ -210,7 +210,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
     );
     let branch_session = second_undo.settlement().successor_candidate().unwrap();
     let branch = transaction(
-        storage,
+        &storage,
         &store,
         branch_session,
         10,
@@ -218,7 +218,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
         point(3),
         point(9),
     );
-    let branch_settlement = settle(storage, &store, &branch);
+    let branch_settlement = settle(&storage, &store, &branch);
     let DraftPieceSettlementClosureV1::Committed(branch_adoption) = branch_settlement.closure()
     else {
         panic!("branch did not commit")
@@ -227,7 +227,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
     assert_eq!(branch_adoption.transition().before_caret(), point(3));
     assert_eq!(branch_adoption.transition().after_caret(), point(9));
 
-    let durable_after = current(storage, &store, thread);
+    let durable_after = current(&storage, &store, thread);
     assert_eq!(
         durable_after.draft().piece_root(),
         durable_before.draft().piece_root()
@@ -241,10 +241,10 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
 #[test]
 fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
     let (home, mut store, mut storage, thread) = fixture("successful-reopen", 165);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 40, 41);
-    let first = committed_edit(storage, &store, &session, 42, "one", 0, 3);
-    let second = committed_edit(storage, &store, first.adopted_session(), 43, "two", 3, 6);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 40, 41);
+    let first = committed_edit(&storage, &store, &session, 42, "one", 0, 3);
+    let second = committed_edit(&storage, &store, first.adopted_session(), 43, "two", 3, 6);
     (store, storage) = reopen(&home, store);
     let second_session = match storage
         .draft_editor_candidate_session(
@@ -259,7 +259,7 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
     };
 
     let (undo, undo_prepared) = committed_adoption(
-        storage,
+        &storage,
         &store,
         &second_session,
         DraftHistoricalRootDirectionV1::Undo,
@@ -268,7 +268,7 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
     (store, storage) = reopen(&home, store);
     let undo_replay = execute(
         &store,
-        storage.adopt_draft_historical_root(revision(storage, &store), undo_prepared.clone()),
+        storage.adopt_draft_historical_root(revision(&storage, &store), undo_prepared.clone()),
     );
     assert!(matches!(
         storage
@@ -281,7 +281,7 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
 
     let undo_settlement = undo.settlement();
     let (redo, redo_prepared) = committed_adoption(
-        storage,
+        &storage,
         &store,
         undo_settlement.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Redo,
@@ -290,7 +290,7 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
     (store, storage) = reopen(&home, store);
     let redo_replay = execute(
         &store,
-        storage.adopt_draft_historical_root(revision(storage, &store), redo_prepared.clone()),
+        storage.adopt_draft_historical_root(revision(&storage, &store), redo_prepared.clone()),
     );
     assert!(matches!(
         storage
@@ -303,7 +303,7 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
 
     let redo_settlement = redo.settlement();
     let (second_undo, second_undo_prepared) = committed_adoption(
-        storage,
+        &storage,
         &store,
         redo_settlement.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
@@ -313,7 +313,7 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
     let second_undo_replay = execute(
         &store,
         storage
-            .adopt_draft_historical_root(revision(storage, &store), second_undo_prepared.clone()),
+            .adopt_draft_historical_root(revision(&storage, &store), second_undo_prepared.clone()),
     );
     assert!(matches!(
         storage
@@ -329,7 +329,7 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
     ));
 
     let branch = committed_edit(
-        storage,
+        &storage,
         &store,
         second_undo.settlement().successor_candidate().unwrap(),
         47,
@@ -349,23 +349,23 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
             .unwrap(),
         DraftEditorCandidateSessionReadOutcomeV1::Active(branch.adopted_session().clone())
     );
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[test]
 fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
     let (home, store, storage, thread) = fixture("identity-conflict", 163);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 20, 21);
-    let first = committed_edit(storage, &store, &session, 22, "one", 0, 3);
-    let second = committed_edit(storage, &store, first.adopted_session(), 23, "two", 3, 6);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 20, 21);
+    let first = committed_edit(&storage, &store, &session, 22, "one", 0, 3);
+    let second = committed_edit(&storage, &store, first.adopted_session(), 23, "two", 3, 6);
     let stale_intent = historical_selection_intent(
         second.adopted_session(),
         24,
         DraftHistoricalRootDirectionV1::Undo,
     );
     let stale = prepare_historical_selection(
-        storage,
+        &storage,
         &store,
         second.adopted_session(),
         24,
@@ -373,7 +373,7 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
     );
     let stale_request = stale.request();
     let third = committed_edit(
-        storage,
+        &storage,
         &store,
         second.adopted_session(),
         25,
@@ -410,7 +410,7 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
             .is_err()
     );
     let disagreeing = prepare_historical_selection(
-        storage,
+        &storage,
         &store,
         third.adopted_session(),
         24,
@@ -419,7 +419,7 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
 
     committed(execute(
         &store,
-        storage.adopt_draft_historical_root(revision(storage, &store), stale.clone()),
+        storage.adopt_draft_historical_root(revision(&storage, &store), stale.clone()),
     ));
     let (store, storage) = reopen(&home, store);
     assert!(matches!(
@@ -433,7 +433,7 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
 
     let replay = execute(
         &store,
-        storage.adopt_draft_historical_root(revision(storage, &store), stale.clone()),
+        storage.adopt_draft_historical_root(revision(&storage, &store), stale.clone()),
     );
     assert!(matches!(
         storage
@@ -445,7 +445,7 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
     ));
     let collision = execute(
         &store,
-        storage.adopt_draft_historical_root(revision(storage, &store), disagreeing.clone()),
+        storage.adopt_draft_historical_root(revision(&storage, &store), disagreeing.clone()),
     );
     assert!(matches!(
         collision,
@@ -467,20 +467,20 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
             .unwrap(),
         DraftEditorCandidateSessionReadOutcomeV1::Active(third.adopted_session().clone())
     );
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[test]
 fn settlement_only_outcomes_preserve_candidate_and_history_across_reopen() {
     let (home, mut store, mut storage, thread) = fixture("terminal-reopen", 164);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 30, 31);
-    let first = committed_edit(storage, &store, &session, 32, "one", 0, 3);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 30, 31);
+    let first = committed_edit(&storage, &store, &session, 32, "one", 0, 3);
     let source = first.adopted_session().clone();
 
     for (operation, terminal) in [(33, 0_u8), (34, 1_u8), (35, 2_u8)] {
         let prepared = prepare_historical_selection(
-            storage,
+            &storage,
             &store,
             &source,
             operation,
@@ -491,21 +491,21 @@ fn settlement_only_outcomes_preserve_candidate_and_history_across_reopen() {
             0 => execute(
                 &store,
                 storage.reject_draft_historical_root_adoption(
-                    revision(storage, &store),
+                    revision(&storage, &store),
                     prepared.clone(),
                 ),
             ),
             1 => execute(
                 &store,
                 storage.cancel_draft_historical_root_adoption(
-                    revision(storage, &store),
+                    revision(&storage, &store),
                     prepared.clone(),
                 ),
             ),
             _ => execute(
                 &store,
                 storage.error_draft_historical_root_adoption(
-                    revision(storage, &store),
+                    revision(&storage, &store),
                     prepared.clone(),
                     DraftHistoricalRootAdoptionErrorReasonV1::InvalidAuthority,
                 ),
@@ -529,17 +529,17 @@ fn settlement_only_outcomes_preserve_candidate_and_history_across_reopen() {
                 .unwrap(),
             DraftEditorCandidateSessionReadOutcomeV1::Active(source.clone())
         );
-        assert_eq!(current(storage, &store, thread), durable);
+        assert_eq!(current(&storage, &store, thread), durable);
     }
 }
 
 #[test]
 fn wrong_draft_session_transition_direction_target_and_detached_sibling_fail_closed() {
     let (_home, store, storage, thread) = fixture("wrong-routes", 166);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 50, 51);
-    let first = committed_edit(storage, &store, &session, 52, "one", 0, 3);
-    let second = committed_edit(storage, &store, first.adopted_session(), 53, "two", 3, 6);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 50, 51);
+    let first = committed_edit(&storage, &store, &session, 52, "one", 0, 3);
+    let second = committed_edit(&storage, &store, first.adopted_session(), 53, "two", 3, 6);
     let valid = undo_request(second.adopted_session(), second.transition(), 54);
     assert!(
         storage
@@ -640,8 +640,8 @@ fn wrong_draft_session_transition_direction_target_and_detached_sibling_fail_clo
         );
     }
 
-    let sibling = open_session(storage, &store, &durable, 55, 56);
-    let sibling_edit = committed_edit(storage, &store, &sibling, 57, "sibling", 0, 7);
+    let sibling = open_session(&storage, &store, &durable, 55, 56);
+    let sibling_edit = committed_edit(&storage, &store, &sibling, 57, "sibling", 0, 7);
     let detached = DraftHistoricalRootAdoptionRequestV1::new(
         valid.key().draft_id(),
         valid.key().session_id(),
@@ -668,18 +668,18 @@ fn wrong_draft_session_transition_direction_target_and_detached_sibling_fail_clo
             .unwrap(),
         DraftEditorCandidateSessionReadOutcomeV1::Active(second.adopted_session().clone())
     );
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[test]
 fn sixty_four_slot_witness_remains_bounded_and_authenticates_deep_undo() {
     let (home, store, storage, thread) = fixture("bounded-witness", 167);
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 60, 61);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 60, 61);
     let mut latest = None;
     for index in 0_u8..65 {
         let adoption = committed_edit(
-            storage,
+            &storage,
             &store,
             &session,
             62_u8.wrapping_add(index),
@@ -708,7 +708,7 @@ fn sixty_four_slot_witness_remains_bounded_and_authenticates_deep_undo() {
     }
 
     let (undo, _) = committed_adoption(
-        storage,
+        &storage,
         &store,
         latest.adopted_session(),
         DraftHistoricalRootDirectionV1::Undo,
@@ -737,5 +737,5 @@ fn sixty_four_slot_witness_remains_bounded_and_authenticates_deep_undo() {
             undo.settlement().successor_candidate().unwrap().clone()
         )
     );
-    assert_eq!(current(storage, &store, thread), durable);
+    assert_eq!(current(&storage, &store, thread), durable);
 }

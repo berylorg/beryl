@@ -68,14 +68,14 @@ struct Transaction {
 #[test]
 fn historical_replay_authenticates_the_current_session_fixed_point() {
     let (_home, store, storage, thread) = fixture("later-publication-closure", 130);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 131, 132);
-    let first_edit = transaction(storage, &store, &session, 133, point(0), point(1), "a");
-    settle(storage, &store, &first_edit);
-    let first = adopted_head(storage, &store, &first_edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 131, 132);
+    let first_edit = transaction(&storage, &store, &session, 133, point(0), point(1), "a");
+    settle(&storage, &store, &first_edit);
+    let first = adopted_head(&storage, &store, &first_edit);
     let first_request = publication_request(&durable, &first, 134, 2);
-    let first_retry_source = capture_publication_source(storage, &store, first_request).unwrap();
-    let first_prepared = prepare_publication_request(storage, &store, first_request).unwrap();
+    let first_retry_source = capture_publication_source(&storage, &store, first_request).unwrap();
+    let first_prepared = prepare_publication_request(&storage, &store, first_request).unwrap();
     let outcome = execute(
         &store,
         storage.publish_draft_editor_candidate(
@@ -87,13 +87,13 @@ fn historical_replay_authenticates_the_current_session_fixed_point() {
         .reconcile_draft_editor_candidate_publication(&store, &first_prepared, outcome)
         .unwrap();
 
-    let after_first = active_or_disposed(storage, &store, first.draft_id(), first.session_id());
-    let second_edit = transaction(storage, &store, &after_first, 135, point(1), point(2), "b");
-    settle(storage, &store, &second_edit);
-    let second = adopted_head(storage, &store, &second_edit);
-    let after_first_current = current(storage, &store, thread);
+    let after_first = active_or_disposed(&storage, &store, first.draft_id(), first.session_id());
+    let second_edit = transaction(&storage, &store, &after_first, 135, point(1), point(2), "b");
+    settle(&storage, &store, &second_edit);
+    let second = adopted_head(&storage, &store, &second_edit);
+    let after_first_current = current(&storage, &store, thread);
     let second_request = publication_request(&after_first_current, &second, 136, 4);
-    let second_prepared = prepare_publication_request(storage, &store, second_request).unwrap();
+    let second_prepared = prepare_publication_request(&storage, &store, second_request).unwrap();
     let outcome = execute(
         &store,
         storage.publish_draft_editor_candidate(
@@ -108,7 +108,7 @@ fn historical_replay_authenticates_the_current_session_fixed_point() {
         &store,
         inject_draft_candidate_publication_fault(
             &store,
-            storage,
+            storage.clone(),
             DraftCandidatePublicationFault::DeleteSessionRecord(
                 DraftEditorCandidateSessionRecordKeyV1::publication_receipt(
                     second.draft_id(),
@@ -120,7 +120,7 @@ fn historical_replay_authenticates_the_current_session_fixed_point() {
     );
     assert!(
         prepare_publication_source(
-            storage,
+            &storage,
             &store,
             first_retry_source,
             first_request.evidence(),
@@ -129,14 +129,14 @@ fn historical_replay_authenticates_the_current_session_fixed_point() {
     );
 
     let (_home, store, storage, thread) = fixture("later-adoption-closure", 140);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 141, 142);
-    let first_edit = transaction(storage, &store, &session, 143, point(0), point(1), "a");
-    settle(storage, &store, &first_edit);
-    let first = adopted_head(storage, &store, &first_edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 141, 142);
+    let first_edit = transaction(&storage, &store, &session, 143, point(0), point(1), "a");
+    settle(&storage, &store, &first_edit);
+    let first = adopted_head(&storage, &store, &first_edit);
     let first_request = publication_request(&durable, &first, 144, 2);
-    let first_retry_source = capture_publication_source(storage, &store, first_request).unwrap();
-    let first_prepared = prepare_publication_request(storage, &store, first_request).unwrap();
+    let first_retry_source = capture_publication_source(&storage, &store, first_request).unwrap();
+    let first_prepared = prepare_publication_request(&storage, &store, first_request).unwrap();
     let outcome = execute(
         &store,
         storage.publish_draft_editor_candidate(
@@ -147,10 +147,10 @@ fn historical_replay_authenticates_the_current_session_fixed_point() {
     storage
         .reconcile_draft_editor_candidate_publication(&store, &first_prepared, outcome)
         .unwrap();
-    let after_first = active_or_disposed(storage, &store, first.draft_id(), first.session_id());
-    let dirty_edit = transaction(storage, &store, &after_first, 145, point(1), point(2), "b");
-    settle(storage, &store, &dirty_edit);
-    let _ = adopted_head(storage, &store, &dirty_edit);
+    let after_first = active_or_disposed(&storage, &store, first.draft_id(), first.session_id());
+    let dirty_edit = transaction(&storage, &store, &after_first, 145, point(1), point(2), "b");
+    settle(&storage, &store, &dirty_edit);
+    let _ = adopted_head(&storage, &store, &dirty_edit);
     let key = DraftPieceSettlementKeyV1::new(
         dirty_edit.prepared.header().draft_id(),
         dirty_edit.prepared.header().session_id(),
@@ -158,11 +158,11 @@ fn historical_replay_authenticates_the_current_session_fixed_point() {
     );
     let _ = execute(
         &store,
-        delete_draft_piece_terminal_build(&store, storage, key),
+        delete_draft_piece_terminal_build(&store, &storage, key),
     );
     assert!(
         prepare_publication_source(
-            storage,
+            &storage,
             &store,
             first_retry_source,
             first_request.evidence(),
@@ -174,7 +174,7 @@ fn historical_replay_authenticates_the_current_session_fixed_point() {
 #[test]
 fn stale_disposal_expectations_do_not_mutate_and_identity_collision_is_typed() {
     let (_home, store, storage, thread) = fixture("stale-disposal", 1);
-    let (_publication, head, _source) = publish_one(storage, &store, thread, 2);
+    let (_publication, head, _source) = publish_one(&storage, &store, thread, 2);
     let pair = DraftRootHistoryPairV1::new(head.newest_root(), head.newest_history());
     for request in [
         DraftEditorCandidateSessionDisposeRequestV1::new(
@@ -266,7 +266,7 @@ fn publication_receipt_and_snapshot_partial_occupancy_fail_closed() {
         ("pub-receipt-corrupt", 2, 90),
     ] {
         let (_home, store, storage, thread) = fixture(name, seed);
-        let (request, head, replay_source) = publish_one(storage, &store, thread, 90);
+        let (request, head, replay_source) = publish_one(&storage, &store, thread, 90);
         let receipt_key = DraftEditorCandidateSessionRecordKeyV1::publication_receipt(
             head.draft_id(),
             head.session_id(),
@@ -275,15 +275,17 @@ fn publication_receipt_and_snapshot_partial_occupancy_fail_closed() {
         let contribution = match case {
             0 => inject_draft_candidate_publication_fault(
                 &store,
-                storage,
+                storage.clone(),
                 DraftCandidatePublicationFault::DeleteSessionRecord(receipt_key),
             ),
-            1 => {
-                delete_draft_edit_history_frontier(&store, storage, head.published_history().key())
-            }
+            1 => delete_draft_edit_history_frontier(
+                &store,
+                storage.clone(),
+                head.published_history().key(),
+            ),
             _ => inject_draft_candidate_publication_fault(
                 &store,
-                storage,
+                storage.clone(),
                 DraftCandidatePublicationFault::OccupyReceiptWithHead {
                     receipt_key,
                     draft_id: head.draft_id(),
@@ -297,7 +299,7 @@ fn publication_receipt_and_snapshot_partial_occupancy_fail_closed() {
             Ok(DraftEditorCandidateSessionReadOutcomeV1::InvariantFailure) | Err(_)
         ));
         assert!(
-            prepare_publication_source(storage, &store, replay_source, request.evidence(),)
+            prepare_publication_source(&storage, &store, replay_source, request.evidence(),)
                 .is_err()
         );
     }
@@ -307,7 +309,7 @@ fn publication_receipt_and_snapshot_partial_occupancy_fail_closed() {
 fn disposal_receipt_head_only_and_impossible_pointer_fail_closed() {
     for (case, seed) in [(0_u8, 100_u8), (1, 110), (2, 120)] {
         let (_home, store, storage, thread) = fixture("dispose-corruption", seed);
-        let (_publication, head, _source) = publish_one(storage, &store, thread, seed + 1);
+        let (_publication, head, _source) = publish_one(&storage, &store, thread, seed + 1);
         let operation = DraftPieceOperationIdV1::from_bytes([seed + 9; 16]);
         let request = DraftEditorCandidateSessionDisposeRequestV1::new(
             head.draft_id(),
@@ -349,7 +351,7 @@ fn disposal_receipt_head_only_and_impossible_pointer_fail_closed() {
         };
         let _ = execute(
             &store,
-            inject_draft_candidate_publication_fault(&store, storage, fault),
+            inject_draft_candidate_publication_fault(&store, storage.clone(), fault),
         );
         assert!(matches!(
             storage
@@ -368,13 +370,13 @@ fn disposal_receipt_head_only_and_impossible_pointer_fail_closed() {
 #[test]
 fn publication_replay_restart_and_clean_disposal_are_exact_and_nondeleting() {
     let (home, store, storage, thread) = fixture("publish-dispose", 10);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 20, 21);
-    let edit = transaction(storage, &store, &session, 22, point(0), point(3), "abc");
-    settle(storage, &store, &edit);
-    let adopted = adopted_head(storage, &store, &edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 20, 21);
+    let edit = transaction(&storage, &store, &session, 22, point(0), point(3), "abc");
+    settle(&storage, &store, &edit);
+    let adopted = adopted_head(&storage, &store, &edit);
     let request = publication_request(&durable, &adopted, 23, 2);
-    let prepared = prepare_publication_request(storage, &store, request).unwrap();
+    let prepared = prepare_publication_request(&storage, &store, request).unwrap();
     let outcome = execute(
         &store,
         storage.publish_draft_editor_candidate(storage.revision(&store).unwrap(), prepared.clone()),
@@ -390,7 +392,7 @@ fn publication_replay_restart_and_clean_disposal_are_exact_and_nondeleting() {
                 && pair.history() != request.candidate().history()
     ));
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(&storage, &store, thread).draft().piece_root(),
         adopted.newest_root()
     );
 
@@ -414,7 +416,7 @@ fn publication_replay_restart_and_clean_disposal_are_exact_and_nondeleting() {
     let mut store =
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let head = active_or_disposed(storage, &store, adopted.draft_id(), adopted.session_id());
+    let head = active_or_disposed(&storage, &store, adopted.draft_id(), adopted.session_id());
     let dispose_request = DraftEditorCandidateSessionDisposeRequestV1::new(
         head.draft_id(),
         head.session_id(),
@@ -439,7 +441,7 @@ fn publication_replay_restart_and_clean_disposal_are_exact_and_nondeleting() {
         DraftEditorCandidateSessionDisposeOutcomeV1::Disposed(_)
     ));
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(&storage, &store, thread).draft().piece_root(),
         adopted.newest_root()
     );
     let replay = storage
@@ -463,17 +465,18 @@ fn publication_replay_restart_and_clean_disposal_are_exact_and_nondeleting() {
 #[test]
 fn publishing_captured_generation_preserves_a_newer_dirty_candidate() {
     let (_home, store, storage, thread) = fixture("newer-dirty", 30);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 31, 32);
-    let first_edit = transaction(storage, &store, &session, 33, point(0), point(3), "abc");
-    settle(storage, &store, &first_edit);
-    let first = adopted_head(storage, &store, &first_edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 31, 32);
+    let first_edit = transaction(&storage, &store, &session, 33, point(0), point(3), "abc");
+    settle(&storage, &store, &first_edit);
+    let first = adopted_head(&storage, &store, &first_edit);
     let request = publication_request(&durable, &first, 35, 3);
-    let source = capture_publication_source(storage, &store, request).unwrap();
-    let second_edit = transaction(storage, &store, &first, 34, point(3), point(4), "d");
-    settle(storage, &store, &second_edit);
-    let second = adopted_head(storage, &store, &second_edit);
-    let prepared = prepare_publication_source(storage, &store, source, request.evidence()).unwrap();
+    let source = capture_publication_source(&storage, &store, request).unwrap();
+    let second_edit = transaction(&storage, &store, &first, 34, point(3), point(4), "d");
+    settle(&storage, &store, &second_edit);
+    let second = adopted_head(&storage, &store, &second_edit);
+    let prepared =
+        prepare_publication_source(&storage, &store, source, request.evidence()).unwrap();
     let outcome = execute(
         &store,
         storage.publish_draft_editor_candidate(storage.revision(&store).unwrap(), prepared.clone()),
@@ -484,7 +487,7 @@ fn publishing_captured_generation_preserves_a_newer_dirty_candidate() {
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
-    let head = active_or_disposed(storage, &store, second.draft_id(), second.session_id());
+    let head = active_or_disposed(&storage, &store, second.draft_id(), second.session_id());
     assert_eq!(
         head.published_candidate_generation(),
         first.newest_candidate_generation()
@@ -522,37 +525,45 @@ fn ordinary_undo_and_redo_sources_survive_two_later_candidates() {
         ("captured-redo-n-plus-two", 190, 2),
     ] {
         let (_home, store, storage, thread) = fixture(name, seed);
-        let durable = current(storage, &store, thread);
-        let session = open_session(storage, &store, &durable, seed + 1, seed + 2);
-        let first_edit = transaction(storage, &store, &session, seed + 3, point(0), point(1), "a");
-        settle(storage, &store, &first_edit);
-        let first = adopted_head(storage, &store, &first_edit);
+        let durable = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &durable, seed + 1, seed + 2);
+        let first_edit = transaction(
+            &storage,
+            &store,
+            &session,
+            seed + 3,
+            point(0),
+            point(1),
+            "a",
+        );
+        settle(&storage, &store, &first_edit);
+        let first = adopted_head(&storage, &store, &first_edit);
         let captured = match kind {
             0 => first,
             1 => {
                 let second_edit =
-                    transaction(storage, &store, &first, seed + 4, point(1), point(2), "b");
-                settle(storage, &store, &second_edit);
-                let second = adopted_head(storage, &store, &second_edit);
+                    transaction(&storage, &store, &first, seed + 4, point(1), point(2), "b");
+                settle(&storage, &store, &second_edit);
+                let second = adopted_head(&storage, &store, &second_edit);
                 direct_adopt(
                     &store,
-                    storage,
+                    &storage,
                     DraftHistoricalRootSelectionIntentV1::new(
                         syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(&second),
                         DraftPieceOperationIdV1::from_bytes([seed + 5; 16]),
                         DraftHistoricalRootDirectionV1::Undo,
                     ),
                 );
-                active_or_disposed(storage, &store, second.draft_id(), second.session_id())
+                active_or_disposed(&storage, &store, second.draft_id(), second.session_id())
             }
             _ => {
                 let second_edit =
-                    transaction(storage, &store, &first, seed + 4, point(1), point(2), "b");
-                settle(storage, &store, &second_edit);
-                let second = adopted_head(storage, &store, &second_edit);
+                    transaction(&storage, &store, &first, seed + 4, point(1), point(2), "b");
+                settle(&storage, &store, &second_edit);
+                let second = adopted_head(&storage, &store, &second_edit);
                 direct_adopt(
                     &store,
-                    storage,
+                    &storage,
                     DraftHistoricalRootSelectionIntentV1::new(
                         syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(&second),
                         DraftPieceOperationIdV1::from_bytes([seed + 5; 16]),
@@ -560,24 +571,24 @@ fn ordinary_undo_and_redo_sources_survive_two_later_candidates() {
                     ),
                 );
                 let undone =
-                    active_or_disposed(storage, &store, second.draft_id(), second.session_id());
+                    active_or_disposed(&storage, &store, second.draft_id(), second.session_id());
                 direct_adopt(
                     &store,
-                    storage,
+                    &storage,
                     DraftHistoricalRootSelectionIntentV1::new(
                         syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(&undone),
                         DraftPieceOperationIdV1::from_bytes([seed + 6; 16]),
                         DraftHistoricalRootDirectionV1::Redo,
                     ),
                 );
-                active_or_disposed(storage, &store, second.draft_id(), second.session_id())
+                active_or_disposed(&storage, &store, second.draft_id(), second.session_id())
             }
         };
         let request = publication_request(&durable, &captured, seed + 7, 9);
-        let source = capture_publication_source(storage, &store, request).unwrap();
+        let source = capture_publication_source(&storage, &store, request).unwrap();
         let start = captured.logical_extent().logical_utf8_bytes();
         let next_edit = transaction(
-            storage,
+            &storage,
             &store,
             &captured,
             seed + 8,
@@ -585,10 +596,10 @@ fn ordinary_undo_and_redo_sources_survive_two_later_candidates() {
             point(start + 1),
             "c",
         );
-        settle(storage, &store, &next_edit);
-        let next = adopted_head(storage, &store, &next_edit);
+        settle(&storage, &store, &next_edit);
+        let next = adopted_head(&storage, &store, &next_edit);
         let final_edit = transaction(
-            storage,
+            &storage,
             &store,
             &next,
             seed + 9,
@@ -596,10 +607,10 @@ fn ordinary_undo_and_redo_sources_survive_two_later_candidates() {
             point(start + 2),
             "d",
         );
-        settle(storage, &store, &final_edit);
-        let newest = adopted_head(storage, &store, &final_edit);
+        settle(&storage, &store, &final_edit);
+        let newest = adopted_head(&storage, &store, &final_edit);
         let prepared =
-            prepare_publication_source(storage, &store, source, request.evidence()).unwrap();
+            prepare_publication_source(&storage, &store, source, request.evidence()).unwrap();
         let outcome = execute(
             &store,
             storage.publish_draft_editor_candidate(
@@ -617,7 +628,7 @@ fn ordinary_undo_and_redo_sources_survive_two_later_candidates() {
                 .unwrap(),
             DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
         ));
-        let head = active_or_disposed(storage, &store, newest.draft_id(), newest.session_id());
+        let head = active_or_disposed(&storage, &store, newest.draft_id(), newest.session_id());
         assert_eq!(
             head.published_candidate_generation(),
             captured.newest_candidate_generation()
@@ -647,11 +658,11 @@ fn ordinary_undo_and_redo_sources_survive_two_later_candidates() {
 #[test]
 fn captured_source_rejects_foreign_store_session_and_evidence_mismatch() {
     let (_home, store, storage, thread) = fixture("captured-source-binding", 210);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 211, 212);
-    let edit = transaction(storage, &store, &session, 213, point(0), point(1), "x");
-    settle(storage, &store, &edit);
-    let adopted = adopted_head(storage, &store, &edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 211, 212);
+    let edit = transaction(&storage, &store, &session, 213, point(0), point(1), "x");
+    settle(&storage, &store, &edit);
+    let adopted = adopted_head(&storage, &store, &edit);
     let request = publication_request(&durable, &adopted, 214, 8);
     let candidate = syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(&adopted);
     let wrong_session = syndic_storage::DraftEditorCandidateActivationBindingV1::new(
@@ -676,7 +687,7 @@ fn captured_source_rejects_foreign_store_session_and_evidence_mismatch() {
         Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant)
     ));
 
-    let source = capture_publication_source(storage, &store, request).unwrap();
+    let source = capture_publication_source(&storage, &store, request).unwrap();
     let (_foreign_home, foreign_store, _foreign_storage, _foreign_thread) =
         fixture("captured-source-foreign", 220);
     let failure = match storage.prepare_draft_editor_candidate_publication(
@@ -726,13 +737,13 @@ fn captured_source_rejects_foreign_store_session_and_evidence_mismatch() {
 #[test]
 fn editing_after_publication_forks_from_the_immutable_snapshot() {
     let (_home, store, storage, thread) = fixture("edit-after-publish", 40);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 41, 42);
-    let first_edit = transaction(storage, &store, &session, 43, point(0), point(1), "x");
-    settle(storage, &store, &first_edit);
-    let first = adopted_head(storage, &store, &first_edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 41, 42);
+    let first_edit = transaction(&storage, &store, &session, 43, point(0), point(1), "x");
+    settle(&storage, &store, &first_edit);
+    let first = adopted_head(&storage, &store, &first_edit);
     let request = publication_request(&durable, &first, 44, 2);
-    let publication = prepare_publication_request(storage, &store, request).unwrap();
+    let publication = prepare_publication_request(&storage, &store, request).unwrap();
     let outcome = execute(
         &store,
         storage
@@ -744,9 +755,9 @@ fn editing_after_publication_forks_from_the_immutable_snapshot() {
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
-    let published_head = active_or_disposed(storage, &store, first.draft_id(), first.session_id());
+    let published_head = active_or_disposed(&storage, &store, first.draft_id(), first.session_id());
     let second_edit = transaction(
-        storage,
+        &storage,
         &store,
         &published_head,
         45,
@@ -754,8 +765,8 @@ fn editing_after_publication_forks_from_the_immutable_snapshot() {
         point(2),
         "y",
     );
-    settle(storage, &store, &second_edit);
-    let second = adopted_head(storage, &store, &second_edit);
+    settle(&storage, &store, &second_edit);
+    let second = adopted_head(&storage, &store, &second_edit);
     assert_eq!(
         second.published_history(),
         published_head.published_history()
@@ -777,11 +788,11 @@ fn editing_after_publication_forks_from_the_immutable_snapshot() {
 #[test]
 fn dirty_disposal_and_durable_base_conflict_are_typed_without_mutation() {
     let (_home, store, storage, thread) = fixture("conflicts", 50);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 51, 52);
-    let edit = transaction(storage, &store, &session, 53, point(0), point(1), "x");
-    settle(storage, &store, &edit);
-    let dirty = adopted_head(storage, &store, &edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 51, 52);
+    let edit = transaction(&storage, &store, &session, 53, point(0), point(1), "x");
+    settle(&storage, &store, &edit);
+    let dirty = adopted_head(&storage, &store, &edit);
     let request = DraftEditorCandidateSessionDisposeRequestV1::new(
         dirty.draft_id(),
         dirty.session_id(),
@@ -815,10 +826,10 @@ fn dirty_disposal_and_durable_base_conflict_are_typed_without_mutation() {
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(4),
     );
-    let source = capture_publication_source(storage, &store, publish).unwrap();
-    let competing_session = open_session(storage, &store, &durable, 56, 57);
+    let source = capture_publication_source(&storage, &store, publish).unwrap();
+    let competing_session = open_session(&storage, &store, &durable, 56, 57);
     let competing_edit = transaction(
-        storage,
+        &storage,
         &store,
         &competing_session,
         58,
@@ -826,11 +837,11 @@ fn dirty_disposal_and_durable_base_conflict_are_typed_without_mutation() {
         point(1),
         "y",
     );
-    settle(storage, &store, &competing_edit);
-    let competing = adopted_head(storage, &store, &competing_edit);
+    settle(&storage, &store, &competing_edit);
+    let competing = adopted_head(&storage, &store, &competing_edit);
     let competing_request = publication_request(&durable, &competing, 59, 5);
     let competing_prepared =
-        prepare_publication_request(storage, &store, competing_request).unwrap();
+        prepare_publication_request(&storage, &store, competing_request).unwrap();
     let competing_outcome = execute(
         &store,
         storage.publish_draft_editor_candidate(
@@ -848,7 +859,8 @@ fn dirty_disposal_and_durable_base_conflict_are_typed_without_mutation() {
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
-    let prepared = prepare_publication_source(storage, &store, source, publish.evidence()).unwrap();
+    let prepared =
+        prepare_publication_source(&storage, &store, source, publish.evidence()).unwrap();
     let outcome = execute(
         &store,
         storage.publish_draft_editor_candidate(storage.revision(&store).unwrap(), prepared.clone()),
@@ -865,9 +877,9 @@ fn dirty_disposal_and_durable_base_conflict_are_typed_without_mutation() {
 #[test]
 fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
     let (_home, store, storage, thread) = fixture("typed-outcomes", 60);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 61, 62);
-    let edit = transaction(storage, &store, &session, 63, point(0), point(1), "x");
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 61, 62);
+    let edit = transaction(&storage, &store, &session, 63, point(0), point(1), "x");
     committed(execute(
         &store,
         storage.begin_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
@@ -887,8 +899,8 @@ fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
         ),
         Err(DraftEditorCandidatePublicationCommandErrorV1::ActiveOperation)
     ));
-    settle_after_begin(storage, &store, &edit);
-    let adopted = adopted_head(storage, &store, &edit);
+    settle_after_begin(&storage, &store, &edit);
+    let adopted = adopted_head(&storage, &store, &edit);
     let request = publication_request(&durable, &adopted, 65, 3);
     let collision_request = DraftEditorCandidatePublicationRequestV1::new(
         request.selector(),
@@ -917,11 +929,11 @@ fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
         request.evidence(),
         request.published_at(),
     );
-    let collision_source = capture_publication_source(storage, &store, collision_request).unwrap();
+    let collision_source = capture_publication_source(&storage, &store, collision_request).unwrap();
     let superseded_source =
-        capture_publication_source(storage, &store, superseded_request).unwrap();
-    let disposed_source = capture_publication_source(storage, &store, disposed_request).unwrap();
-    let prepared = prepare_publication_request(storage, &store, request).unwrap();
+        capture_publication_source(&storage, &store, superseded_request).unwrap();
+    let disposed_source = capture_publication_source(&storage, &store, disposed_request).unwrap();
+    let prepared = prepare_publication_request(&storage, &store, request).unwrap();
     let outcome = execute(
         &store,
         storage.publish_draft_editor_candidate(storage.revision(&store).unwrap(), prepared.clone()),
@@ -934,7 +946,7 @@ fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
     ));
 
     let collision = prepare_publication_source(
-        storage,
+        &storage,
         &store,
         collision_source,
         collision_request.evidence(),
@@ -954,7 +966,7 @@ fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
     ));
 
     let superseded = prepare_publication_source(
-        storage,
+        &storage,
         &store,
         superseded_source,
         superseded_request.evidence(),
@@ -972,7 +984,7 @@ fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
             if generation == adopted.newest_candidate_generation()
     ));
 
-    let head = active_or_disposed(storage, &store, adopted.draft_id(), adopted.session_id());
+    let head = active_or_disposed(&storage, &store, adopted.draft_id(), adopted.session_id());
     let dispose_request = DraftEditorCandidateSessionDisposeRequestV1::new(
         head.draft_id(),
         head.session_id(),
@@ -997,7 +1009,7 @@ fn active_custody_collisions_supersession_and_already_disposed_are_typed() {
         DraftEditorCandidateSessionDisposeOutcomeV1::Disposed(_)
     ));
     let disposed = prepare_publication_source(
-        storage,
+        &storage,
         &store,
         disposed_source,
         disposed_request.evidence(),
@@ -1061,13 +1073,21 @@ fn publication_and_disposal_reconcile_every_atomic_command_cut() {
         ),
     ] {
         let (home, store, storage, faults, thread) = fault_fixture(name, seed);
-        let durable = current(storage, &store, thread);
-        let session = open_session(storage, &store, &durable, seed + 2, seed + 3);
-        let edit = transaction(storage, &store, &session, seed + 4, point(0), point(1), "x");
-        settle(storage, &store, &edit);
-        let adopted = adopted_head(storage, &store, &edit);
+        let durable = current(&storage, &store, thread);
+        let session = open_session(&storage, &store, &durable, seed + 2, seed + 3);
+        let edit = transaction(
+            &storage,
+            &store,
+            &session,
+            seed + 4,
+            point(0),
+            point(1),
+            "x",
+        );
+        settle(&storage, &store, &edit);
+        let adopted = adopted_head(&storage, &store, &edit);
         let request = publication_request(&durable, &adopted, seed + 5, 2);
-        let prepared = prepare_publication_request(storage, &store, request).unwrap();
+        let prepared = prepare_publication_request(&storage, &store, request).unwrap();
         faults.fail_next(fault);
         let outcome = execute(
             &store,
@@ -1105,7 +1125,7 @@ fn publication_and_disposal_reconcile_every_atomic_command_cut() {
                 DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
             ));
         }
-        let head = active_or_disposed(storage, &store, adopted.draft_id(), adopted.session_id());
+        let head = active_or_disposed(&storage, &store, adopted.draft_id(), adopted.session_id());
         let dispose_request = DraftEditorCandidateSessionDisposeRequestV1::new(
             head.draft_id(),
             head.session_id(),
@@ -1144,7 +1164,7 @@ fn publication_and_disposal_reconcile_every_atomic_command_cut() {
 }
 
 fn publish_one(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     seed: u8,
@@ -1271,7 +1291,7 @@ fn recover_if_failed(store: HomeStore, storage: SyndicStorage) -> (HomeStore, Sy
 }
 
 fn current(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
 ) -> syndic_storage::SyndicCurrentDraft {
@@ -1293,7 +1313,7 @@ fn selector(current: &syndic_storage::SyndicCurrentDraft) -> DraftEditorCurrentS
 }
 
 fn open_session(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     current: &syndic_storage::SyndicCurrentDraft,
     session: u8,
@@ -1325,7 +1345,7 @@ fn open_session(
 }
 
 fn transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,
@@ -1369,7 +1389,7 @@ fn transaction(
     }
 }
 
-fn settle(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) {
+fn settle(storage: &SyndicStorage, store: &HomeStore, transaction: &Transaction) {
     committed(execute(
         store,
         storage.begin_draft_piece_edit(
@@ -1380,7 +1400,7 @@ fn settle(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) 
     settle_after_begin(storage, store, transaction);
 }
 
-fn settle_after_begin(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) {
+fn settle_after_begin(storage: &SyndicStorage, store: &HomeStore, transaction: &Transaction) {
     for fragment in &transaction.fragments {
         committed(execute(
             store,
@@ -1415,7 +1435,7 @@ fn settle_after_begin(storage: SyndicStorage, store: &HomeStore, transaction: &T
 }
 
 fn adopted_head(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> DraftEditorCandidateSessionV1 {
@@ -1437,7 +1457,7 @@ fn adopted_head(
 
 fn direct_adopt(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     intent: DraftHistoricalRootSelectionIntentV1,
 ) {
     let DraftHistoricalRootSelectionV1::Prepared(prepared) = storage
@@ -1471,7 +1491,7 @@ fn publication_request(
 }
 
 fn capture_publication_source(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     request: DraftEditorCandidatePublicationRequestV1,
 ) -> Result<
@@ -1505,7 +1525,7 @@ fn capture_publication_source(
 }
 
 fn prepare_publication_source(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     source: CapturedDraftEditorCandidatePublicationSourceV1,
     evidence: DraftEditorCandidatePublicationEvidenceV1,
@@ -1519,7 +1539,7 @@ fn prepare_publication_source(
 }
 
 fn prepare_publication_request(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     request: DraftEditorCandidatePublicationRequestV1,
 ) -> Result<
@@ -1531,7 +1551,7 @@ fn prepare_publication_request(
 }
 
 fn active_or_disposed(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     draft: SyndicDraftId,
     session: DraftEditorCandidateSessionIdV1,

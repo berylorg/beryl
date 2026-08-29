@@ -50,7 +50,7 @@ fn setup(name: &str) -> Fixture {
     let thread = SyndicThreadId::from_bytes([1; 16]);
     committed_command(execute(
         &store,
-        storage.create_thread(
+        storage.clone().create_thread(
             storage.revision(&store).unwrap(),
             CreateThread::ordinary(
                 thread,
@@ -63,17 +63,17 @@ fn setup(name: &str) -> Fixture {
     ));
     let turn = exact_cas::submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         thread,
         SyndicDraftId::from_bytes([3; 16]),
         SyndicItemId::from_bytes([4; 16]),
         "question",
         timestamp(2),
     );
-    let source = exact_cas::establish_turn(&store, storage, thread, turn, timestamp(3));
+    let source = exact_cas::establish_turn(&store, storage.clone(), thread, turn, timestamp(3));
     exact_cas::admit_event(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         &source,
@@ -103,7 +103,7 @@ fn agent_value(text: &str) -> ProviderItemV1 {
 fn admit_agent_start(fixture: &Fixture) {
     exact_cas::admit_item_frame(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         fixture.assistant,
@@ -125,7 +125,11 @@ fn observation_callback(
     storage: SyndicStorage,
 ) -> impl FnMut(&ProviderObservationStageBatch) -> CommandOutcome + '_ {
     move |batch| {
-        store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
+        store.execute_current(
+            storage
+                .clone()
+                .current_stage_provider_observation_batch(batch.clone()),
+        )
     }
 }
 
@@ -294,7 +298,7 @@ fn text(
 
 fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProviderObservation {
     let sealed = {
-        let mut callback = observation_callback(&fixture.store, fixture.storage);
+        let mut callback = observation_callback(&fixture.store, fixture.storage.clone());
         let mut stager = committed_stage_value(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([observation_byte; 16]),
@@ -336,7 +340,7 @@ fn inspect_agent_start(fixture: &Fixture, observation_byte: u8) -> InspectedProv
 
 fn inspect_completion_only(fixture: &Fixture) -> InspectedProviderObservation {
     let sealed = {
-        let mut callback = observation_callback(&fixture.store, fixture.storage);
+        let mut callback = observation_callback(&fixture.store, fixture.storage.clone());
         let mut stager = committed_stage_value(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([31; 16]),
@@ -397,7 +401,11 @@ fn next_event(
     payload: SourceEventPayload,
     observed_at: SyndicTimestamp,
 ) -> LiveSourceEvent {
-    let state = storage.turn_state(store, turn, limit()).unwrap().unwrap();
+    let state = storage
+        .clone()
+        .turn_state(store, turn, limit())
+        .unwrap()
+        .unwrap();
     let gate = storage.input_gate(store, thread, limit()).unwrap().unwrap();
     LiveSourceEvent::new(
         thread,
@@ -415,6 +423,7 @@ fn next_event(
 fn canonical_item(fixture: &Fixture) -> CanonicalItemRecord {
     fixture
         .storage
+        .clone()
         .canonical_item(&fixture.store, fixture.assistant, limit())
         .unwrap()
         .unwrap()
@@ -430,7 +439,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         .into_issue(ProviderObservationIssueReason::DuplicateItemStart);
     let event = next_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -439,7 +448,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     );
     committed_command(execute(
         &fixture.store,
-        fixture.storage.admit_live_source_event(
+        fixture.storage.clone().admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
@@ -448,6 +457,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     assert_eq!(canonical_item(&fixture), canonical_before);
     let state = fixture
         .storage
+        .clone()
         .turn_state(&fixture.store, fixture.turn, limit())
         .unwrap()
         .unwrap();
@@ -467,6 +477,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     .unwrap();
     let stored = fixture
         .storage
+        .clone()
         .source_event(&fixture.store, fixture.turn, event.sequence(), limit())
         .unwrap()
         .unwrap();
@@ -474,6 +485,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     assert_eq!(
         fixture
             .storage
+            .clone()
             .live_source_event_status(&fixture.store, &event, limit())
             .unwrap(),
         LiveSourceEventStatus::Exact
@@ -481,7 +493,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
 
     let retry_error = not_committed_command(execute(
         &fixture.store,
-        fixture.storage.admit_live_source_event(
+        fixture.storage.clone().admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
         ),
@@ -504,6 +516,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     assert_eq!(
         fixture
             .storage
+            .clone()
             .live_source_event_status(&fixture.store, &collision, limit())
             .unwrap(),
         LiveSourceEventStatus::Collision
@@ -512,6 +525,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         &fixture.store,
         fixture
             .storage
+            .clone()
             .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), collision),
     ));
     assert!(matches!(
@@ -530,17 +544,20 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
     let reopened_event = storage
+        .clone()
         .source_event(&reopened, fixture.turn, event.sequence(), limit())
         .unwrap()
         .unwrap();
     assert_eq!(reopened_event, expected_record);
     assert_eq!(
         storage
+            .clone()
             .live_source_event_status(&reopened, &event, limit())
             .unwrap(),
         LiveSourceEventStatus::Exact
     );
     let reopened_item = storage
+        .clone()
         .canonical_item(&reopened, fixture.assistant, limit())
         .unwrap()
         .unwrap();
@@ -548,7 +565,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
 
     let rejected_terminal = next_event(
         &reopened,
-        storage,
+        storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -563,7 +580,9 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     );
     let terminal_error = not_committed_command(execute(
         &reopened,
-        storage.admit_live_source_event(storage.revision(&reopened).unwrap(), rejected_terminal),
+        storage
+            .clone()
+            .admit_live_source_event(storage.revision(&reopened).unwrap(), rejected_terminal),
     ));
     assert!(matches!(
         typed_error(&terminal_error),
@@ -572,7 +591,7 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
 
     let accepted_terminal = next_event(
         &reopened,
-        storage,
+        storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -587,9 +606,12 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     );
     committed_command(execute(
         &reopened,
-        storage.admit_live_source_event(storage.revision(&reopened).unwrap(), accepted_terminal),
+        storage
+            .clone()
+            .admit_live_source_event(storage.revision(&reopened).unwrap(), accepted_terminal),
     ));
     let terminal_state = storage
+        .clone()
         .turn_state(&reopened, fixture.turn, limit())
         .unwrap()
         .unwrap();

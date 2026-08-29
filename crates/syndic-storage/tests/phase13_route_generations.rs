@@ -36,9 +36,9 @@ fn accepted_id(ordinal: u64) -> SyndicAcceptedInputId {
     SyndicAcceptedInputId::from_bytes(bytes)
 }
 
-fn seed_large_route(store: &HomeStore, storage: SyndicStorage, last_ordinal: u64) {
+fn seed_large_route(store: &HomeStore, storage: &SyndicStorage, last_ordinal: u64) {
     assert!(last_ordinal > 256);
-    seed_populated(store, storage);
+    seed_populated(store, storage.clone());
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
     let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
@@ -56,9 +56,13 @@ fn seed_large_route(store: &HomeStore, storage: SyndicStorage, last_ordinal: u64
         .unwrap()
         .unwrap();
     let gate = storage.input_gate(store, thread, limit).unwrap().unwrap();
-    let route =
-        syndic_storage::test_faults::accepted_route_generation(store, storage, thread, generation)
-            .unwrap();
+    let route = syndic_storage::test_faults::accepted_route_generation(
+        store,
+        storage.clone(),
+        thread,
+        generation,
+    )
+    .unwrap();
     let final_thread_revision = ThreadRevision::new(last_ordinal + 1).unwrap();
     let final_gate_revision = InputGateRevision::new(last_ordinal + 1).unwrap();
     let content = next.content();
@@ -201,9 +205,9 @@ fn seed_large_route(store: &HomeStore, storage: SyndicStorage, last_ordinal: u64
     }
     let additions = records.split_off(8);
     for chunk in additions.chunks(96) {
-        commit(store, storage, batch(chunk.iter().cloned()));
+        commit(store, storage.clone(), batch(chunk.iter().cloned()));
     }
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
 }
 
 #[test]
@@ -212,7 +216,7 @@ fn route_generation_above_the_old_cap_pages_and_abandons_without_member_rewrites
     let home = TestHome::new("phase13-large-route-generation");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_large_route(&store, storage, INPUT_COUNT);
+    seed_large_route(&store, &storage, INPUT_COUNT);
 
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
@@ -237,7 +241,7 @@ fn route_generation_above_the_old_cap_pages_and_abandons_without_member_rewrites
         &store,
         storage.abandon_active_binding(
             storage.revision(&store).unwrap(),
-            abandonment_request(&store, storage),
+            abandonment_request(&store, &storage),
         ),
     );
     let gate = storage
@@ -262,7 +266,7 @@ fn route_pages_reject_stale_revisions_and_cross_revision_cursors() {
     let home = TestHome::new("phase13-route-page-revision");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_large_route(&store, storage, 302);
+    seed_large_route(&store, &storage, 302);
 
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
@@ -317,13 +321,13 @@ fn projection_loss_resolves_mixed_leaves_from_one_compact_generation_transition(
     let home = TestHome::new("phase13-mixed-route-abandonment");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_mixed_abandonment(&store, storage);
+    seed_mixed_abandonment(&store, &storage);
 
     execute(
         &store,
         storage.abandon_active_binding(
             storage.revision(&store).unwrap(),
-            abandonment_request(&store, storage),
+            abandonment_request(&store, &storage),
         ),
     );
     let gate = storage
@@ -398,7 +402,7 @@ fn scrub_rejects_route_generation_high_water_drift() {
     let home = TestHome::new("phase13-route-generation-high-water-drift");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     let gate = storage
         .input_gate(
             &store,
@@ -439,7 +443,7 @@ fn scrub_rejects_a_gap_in_monotonic_route_generations() {
     let home = TestHome::new("phase13-route-generation-gap");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     let gate = storage
         .input_gate(
             &store,

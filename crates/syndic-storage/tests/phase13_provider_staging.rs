@@ -238,7 +238,7 @@ fn clean_command(outcome: CommandOutcome, operation: &str) {
 #[cfg(feature = "test-faults")]
 fn next_source_event(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn: SyndicTurnId,
 ) -> SourceEventSequence {
     let state = storage
@@ -249,7 +249,7 @@ fn next_source_event(
 }
 
 #[cfg(feature = "test-faults")]
-fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread: SyndicThreadId) {
+fn converge_transcript(store: &HomeStore, storage: &SyndicStorage, thread: SyndicThreadId) {
     let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
     let thread_record = storage
         .thread(store, thread, limit)
@@ -294,7 +294,7 @@ fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread: Syndic
 #[cfg(feature = "test-faults")]
 fn stage_and_publish(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     source: &CasTurnSource,
     prepared: &PreparedProviderFrame,
@@ -404,7 +404,7 @@ fn stage_and_publish(
         ),
         "provider-frame live-source publication",
     );
-    converge_transcript(store, storage, thread);
+    converge_transcript(store, &storage, thread);
     (build, batches)
 }
 
@@ -536,7 +536,7 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
-    support::seed_populated(&store, storage);
+    support::seed_populated(&store, storage.clone());
 
     let thread = support::id(40);
     let turn = support::populated::active_turn();
@@ -553,12 +553,12 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
         syndic_item,
         turn,
         source.clone(),
-        next_source_event(&store, storage, turn),
+        next_source_event(&store, &storage, turn),
         agent_start(item, ""),
         0xf1,
     );
     let (first_final, first_batches) =
-        stage_and_publish(&store, storage, thread, source.turn(), &first, true);
+        stage_and_publish(&store, &storage, thread, source.turn(), &first, true);
     let first_narrative = first_final.target().narrative().unwrap();
     assert_eq!(first_narrative.span_count(), 0);
     assert_eq!(first_narrative.logical_utf8_bytes(), 0);
@@ -574,11 +574,11 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
         turn,
         first_final.target().clone(),
         source.clone(),
-        next_source_event(&store, storage, turn),
+        next_source_event(&store, &storage, turn),
         agent_delta(second_ordinal, item, "Hello"),
     );
     let (second_final, second_batches) =
-        stage_and_publish(&store, storage, thread, source.turn(), &second, true);
+        stage_and_publish(&store, &storage, thread, source.turn(), &second, true);
     let second_narrative = second_final.target().narrative().unwrap();
     let hello = only_narrative_span(&second_batches);
     assert_eq!(
@@ -600,11 +600,11 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
         turn,
         second_final.target().clone(),
         source.clone(),
-        next_source_event(&store, storage, turn),
+        next_source_event(&store, &storage, turn),
         agent_delta(third_ordinal, item, " world"),
     );
     let (third_final, third_batches) =
-        stage_and_publish(&store, storage, thread, source.turn(), &third, true);
+        stage_and_publish(&store, &storage, thread, source.turn(), &third, true);
     let third_narrative = third_final.target().narrative().unwrap();
     let world = only_narrative_span(&third_batches);
     assert_eq!(third_narrative.generation(), second_narrative.generation());
@@ -639,11 +639,11 @@ fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality
         turn,
         third_final.target().clone(),
         source.clone(),
-        next_source_event(&store, storage, turn),
+        next_source_event(&store, &storage, turn),
         agent_completion(fourth_ordinal, item, "Hello world"),
     );
     let (completed_final, completion_batches) =
-        stage_and_publish(&store, storage, thread, source.turn(), &completed, false);
+        stage_and_publish(&store, &storage, thread, source.turn(), &completed, false);
     assert_eq!(completed_final.target().narrative(), Some(third_narrative));
     assert_eq!(
         completed_final.lifecycle(),

@@ -54,7 +54,7 @@ fn exercise_physical_corruption_partition(partitions: usize, partition: usize) {
         let home = TestHome::new(&format!("physical-{}-{corruption:?}", family.name()));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        inject_physical_corruption(&store, storage, family, corruption).unwrap();
+        inject_physical_corruption(&store, storage.clone(), family, corruption).unwrap();
         assert!(matches!(
             store.scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit),
             Err(error) if matches!(
@@ -196,7 +196,7 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
     let home = TestHome::new("bounded-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_canonical_empty_thread(&store, storage, id(1), draft_id(2));
+    seed_canonical_empty_thread(&store, storage.clone(), id(1), draft_id(2));
     let mut records = empty_thread_records(id(1), draft_id(2));
     let final_thread_revision = ThreadRevision::new(3).unwrap();
     for record in &mut records {
@@ -325,7 +325,7 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
         )
         .unwrap(),
     ));
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
 
     assert!(matches!(
         storage.thread(&store, id(1), SyndicPointReadLimit::new(1).unwrap()),
@@ -386,7 +386,7 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
     let home = TestHome::new("populated-point-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    support::seed_populated(&store, storage);
+    support::seed_populated(&store, storage.clone());
     let limit = SyndicPointReadLimit::new(65_536).unwrap();
 
     assert_eq!(

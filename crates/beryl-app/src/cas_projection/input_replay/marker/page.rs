@@ -62,7 +62,7 @@ impl TextPageState {
         &mut self,
         source: &MarkerSource,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
         source_id: StreamedTextSourceId,
         start: u64,
@@ -152,7 +152,7 @@ impl TextPageState {
         &mut self,
         source: &MarkerSource,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<(), StreamedInputSourceError> {
         while !self.finished {
@@ -180,7 +180,7 @@ impl TextPageState {
         &mut self,
         source: &MarkerSource,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<(), StreamedInputSourceError> {
         let segment = source
@@ -213,7 +213,7 @@ impl TextPageState {
         &mut self,
         source: &MarkerSource,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
         output: &mut String,
         maximum: usize,
@@ -253,7 +253,7 @@ impl TextPageState {
         &mut self,
         source: &MarkerSource,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<(), StreamedInputSourceError> {
         let segment = self

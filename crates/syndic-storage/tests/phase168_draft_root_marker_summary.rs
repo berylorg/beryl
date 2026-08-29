@@ -17,7 +17,7 @@ use syndic_storage::{
 #[test]
 fn asset_identity_changes_structural_and_ordered_but_not_sequential_commitments() {
     let (_home, store, storage, thread) = fixture("phase169-asset-bound-marker", 211);
-    let durable = current(storage, &store, thread);
+    let durable = current(&storage, &store, thread);
     let first = marker(212, 9, 4);
     let second = DraftPieceMarkerV1::new(
         first.marker_id(),
@@ -27,7 +27,7 @@ fn asset_identity_changes_structural_and_ordered_but_not_sequential_commitments(
     );
 
     let build = |session_seed, operation_seed, marker| {
-        let session = open_session(storage, &store, &durable, session_seed, operation_seed);
+        let session = open_session(&storage, &store, &durable, session_seed, operation_seed);
         let session = complete_staged(
             &storage,
             &store,
@@ -76,13 +76,13 @@ fn asset_identity_changes_structural_and_ordered_but_not_sequential_commitments(
 #[test]
 fn marker_order_commitment_is_structural_reused_published_and_restart_visible() {
     let (home, store, storage, thread) = fixture_with_marker_limit("phase169-commitment", 180, 8);
-    let durable = current(storage, &store, thread);
+    let durable = current(&storage, &store, thread);
     let empty_root = durable.draft().piece_root();
     let empty = empty_root.marker_commitment();
     assert_eq!(empty, canonical_empty_draft_marker_commitment_v1());
     assert_eq!(empty_root.marker_order_root(), None);
 
-    let mut session = open_session(storage, &store, &durable, 181, 182);
+    let mut session = open_session(&storage, &store, &durable, 181, 182);
     session = complete_staged(
         &storage,
         &store,
@@ -176,8 +176,8 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
         asset_proof,
     };
     let request = publication_request(&durable, &session, 189, 2, evidence);
-    let source = capture_publication_source(storage, &store, request);
-    let replay_source = capture_publication_source(storage, &store, request);
+    let source = capture_publication_source(&storage, &store, request);
+    let replay_source = capture_publication_source(&storage, &store, request);
     reset_syndic_point_read_count();
     let prepared = storage
         .prepare_draft_editor_candidate_publication(&store, source, request.evidence())
@@ -220,7 +220,7 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
     let mut store =
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let reopened = current(storage, &store, thread).draft().piece_root();
+    let reopened = current(&storage, &store, thread).draft().piece_root();
     assert_eq!(reopened.marker_commitment(), ordered);
     assert_eq!(
         reopened.marker_order_root(),
@@ -239,8 +239,8 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
 #[test]
 fn persisted_marker_commitment_corruption_fails_publication_closed() {
     let (_home, store, storage, thread) = fixture("phase169-corruption", 200);
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 201, 202);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 201, 202);
     session = complete_staged(
         &storage,
         &store,
@@ -283,12 +283,12 @@ fn persisted_marker_commitment_corruption_fails_publication_closed() {
             asset_proof,
         },
     );
-    let source = capture_publication_source(storage, &store, request);
+    let source = capture_publication_source(&storage, &store, request);
     committed(execute(
         &store,
         inject_draft_piece_candidate_root_collision(
             &store,
-            storage,
+            &storage,
             session.newest_root(),
             DraftPieceCandidateRootCollision::MarkerCommitmentDigest,
         ),
@@ -341,7 +341,7 @@ fn publication_request(
 }
 
 fn capture_publication_source(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     request: DraftEditorCandidatePublicationRequestV1,
 ) -> CapturedDraftEditorCandidatePublicationSourceV1 {

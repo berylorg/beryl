@@ -425,7 +425,7 @@ impl SchedulerRuntime {
         let home = Arc::clone(&self.context.home);
         let home_id = self.context.home_id;
         let home_generation = self.context.home_generation;
-        let storage = self.context.storage;
+        let storage = self.context.storage.clone();
         let cancellation = self.context.cancellation.snapshot();
         let completions = self.completions.clone();
         let handle = std::thread::Builder::new()
@@ -440,7 +440,7 @@ impl SchedulerRuntime {
                         &home,
                         home_id,
                         home_generation,
-                        storage,
+                        &storage,
                         &permit,
                         target,
                         ready,

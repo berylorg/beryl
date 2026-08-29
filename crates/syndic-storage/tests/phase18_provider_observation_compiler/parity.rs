@@ -52,7 +52,7 @@ fn arbitrary_order_agent_observation_matches_materialized_encoding_and_staging()
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let bound = {
-        let mut callback = observation_callback(&store, storage);
+        let mut callback = observation_callback(&store, storage.clone());
         started_agent_observation(1, "agent-item", "hÃ©llo 🦀".as_bytes(), &mut callback)
     };
 
@@ -97,7 +97,7 @@ fn destination_item_disagreement_has_a_distinct_semantic_error() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let bound = {
-        let mut callback = observation_callback(&store, storage);
+        let mut callback = observation_callback(&store, storage.clone());
         started_agent_observation(2, "observed-item", b"text", &mut callback)
     };
     let inspected = inspect_provider_observation(&storage, &store, bound, limit()).unwrap();

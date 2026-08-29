@@ -17,12 +17,18 @@ use crate::{
     metadata::{DomainMetadata, PersistedFamily},
 };
 
+mod attachment;
 pub(crate) mod callback;
 mod definition;
 mod registration;
 pub(crate) mod reopen;
 mod validation;
 
+#[cfg(feature = "test-faults")]
+pub use attachment::capability_with_test_attachment_type;
+pub use attachment::{
+    DomainAttachmentAccessError, DomainAttachmentCapability, DomainRuntimeAttachment,
+};
 pub use callback::{DomainCallbackError, DomainCallbackSource};
 
 const MAX_COMPONENT_BYTES: usize = 64;
@@ -37,6 +43,10 @@ pub trait StorageDomain: Send + Sync + Sized + 'static {
     const FAMILIES: &'static [RecordFamily<Self>];
     /// Domain-owned invariant-validation failure.
     type ValidationError: DomainCallbackError;
+    type RuntimeAttachment: DomainRuntimeAttachment;
+    type RuntimeAttachmentError: Error + Send + Sync + 'static;
+
+    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>;
 
     /// Exhaustively validates authoritative invariants through bounded reads.
     ///
@@ -89,11 +99,14 @@ pub struct DomainHandle<D: StorageDomain> {
     _domain: PhantomData<fn(D) -> D>,
 }
 
-impl<D: StorageDomain> Copy for DomainHandle<D> {}
-
 impl<D: StorageDomain> Clone for DomainHandle<D> {
     fn clone(&self) -> Self {
-        *self
+        Self {
+            store: self.store,
+            slot: self.slot,
+            owner: self.owner,
+            _domain: PhantomData,
+        }
     }
 }
 
@@ -196,6 +209,13 @@ pub enum DomainRegistrationError {
     OwnerTypeMismatch {
         /// Stable domain name whose live owner differs.
         domain: &'static str,
+    },
+
+    #[error("domain `{domain}` runtime attachment construction failed: {source}")]
+    AttachmentConstruction {
+        domain: &'static str,
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
     },
 
     /// A fresh registration found a family already owned in-process or containing unregistered
@@ -425,6 +445,8 @@ pub(crate) struct DomainBlueprint {
     pub(crate) name: &'static str,
     pub(crate) schema: DomainSchemaVersion,
     pub(crate) owner: DomainOwnerId,
+    pub(crate) attachment_type: TypeId,
+    pub(crate) attachment_factory: attachment::ErasedAttachmentFactory,
     pub(crate) families: Vec<FamilyBlueprint>,
     pub(crate) reopen_validator: ErasedReopenValidator,
     pub(crate) reconciler: ErasedReconciler,
@@ -463,6 +485,7 @@ pub(crate) struct RegisteredDomain {
     pub(crate) name: &'static str,
     pub(crate) schema: DomainSchemaVersion,
     pub(crate) owner: DomainOwnerId,
+    pub(crate) attachment: attachment::RuntimeAttachmentSlot,
     pub(crate) families: Vec<RegisteredFamily>,
     family_slots: HashMap<&'static str, usize>,
     reopen_validator: ErasedReopenValidator,
@@ -529,5 +552,17 @@ impl DomainRegistry {
 
     pub(crate) fn slot_for(&self, name: &str) -> Option<usize> {
         self.names.get(name).copied()
+    }
+
+    pub(crate) fn retire_attachments(&mut self) {
+        for domain in &mut self.entries {
+            domain.attachment.retire();
+        }
+    }
+}
+
+impl Drop for DomainRegistry {
+    fn drop(&mut self) {
+        self.retire_attachments();
     }
 }

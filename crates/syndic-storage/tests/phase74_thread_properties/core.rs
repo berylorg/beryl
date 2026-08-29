@@ -133,7 +133,7 @@ fn from_tail_inherits_the_source_canonical_execution() {
     let home = TestHome::new("phase74-inherited-execution");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    crate::support::seed_populated(&store, storage);
+    crate::support::seed_populated(&store, storage.clone());
     let source = storage
         .thread_tail(&store, id(30), limit())
         .unwrap()
@@ -211,7 +211,7 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
     let child_home = TestHome::new("phase74-child-execution-conflict");
     let mut child_store = open(child_home.path());
     let child_storage = SyndicStorage::register(&mut child_store).unwrap();
-    crate::support::seed_populated(&child_store, child_storage);
+    crate::support::seed_populated(&child_store, child_storage.clone());
     commit(
         &child_store,
         child_storage,

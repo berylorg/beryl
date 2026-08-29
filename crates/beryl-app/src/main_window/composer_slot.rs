@@ -45,7 +45,7 @@ pub struct MainWindowComposerSlot {
 }
 
 impl MainWindowComposerSlot {
-    pub(in crate::main_window) const fn assets(&self) -> AssetState {
+    pub(in crate::main_window) fn assets(&self) -> AssetState {
         self.marker_authority.assets()
     }
 
@@ -246,7 +246,7 @@ impl MainWindowComposerSlot {
         let expected_prior = self
             .selected_identity()
             .ok_or(MainWindowComposerSlotError::Disposed)?;
-        let source_selector = current_selector(self.storage, store, request.thread_id())?;
+        let source_selector = current_selector(&self.storage, store, request.thread_id())?;
         let generation = self
             .last_activation_generation
             .checked_add(1)
@@ -260,7 +260,7 @@ impl MainWindowComposerSlot {
             presentation_generation: request.presentation_generation(),
             expected_prior,
         };
-        let mut host = SyndicComposerHost::new(self.storage);
+        let mut host = SyndicComposerHost::new(self.storage.clone());
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.activation_after_open_fault.take() {
             host.test_arm_activation_after_open_fault(fault);
@@ -590,7 +590,7 @@ impl MainWindowComposerSlot {
         let Some(expected) = pending.source_selector else {
             return Ok(false);
         };
-        if current_selector(self.storage, store, pending.claim.thread_id())? != expected {
+        if current_selector(&self.storage, store, pending.claim.thread_id())? != expected {
             return Ok(false);
         }
         let Some(binding) = pending.host.binding() else {
@@ -644,7 +644,7 @@ fn draft_state_for_host(
 }
 
 fn current_selector(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: beryl_model::SyndicThreadId,
 ) -> Result<DraftEditorCurrentSelectorV1, MainWindowComposerSlotError> {

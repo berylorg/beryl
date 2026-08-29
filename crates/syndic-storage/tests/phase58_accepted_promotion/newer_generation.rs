@@ -15,7 +15,7 @@ fn limits() -> CursorReadLimits {
 
 fn earliest_candidate(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: &super::Fixture,
     newer_head: AcceptedRouteGenerationHeadRecord,
 ) -> AcceptedNextCandidate {
@@ -43,7 +43,7 @@ fn earliest_candidate(
 
 fn assert_newer_authority(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: beryl_model::SyndicThreadId,
     newer_head: AcceptedRouteGenerationHeadRecord,
     newer_accepted_input: beryl_model::SyndicAcceptedInputId,
@@ -72,7 +72,7 @@ fn assert_newer_authority(
 
 fn assert_exact_with_preserved_head(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     promotion: &PromoteAcceptedInput,
 ) {
     // Exact reconciliation includes the complete candidate-captured route-head record. Its
@@ -104,7 +104,7 @@ fn promoting_generation_one_preserves_a_newer_same_thread_route_head() {
     }));
     let (home, store, storage, fixture) =
         seeded_fixture("phase58-promote-before-newer-head", fixture);
-    let candidate = earliest_candidate(&store, storage, &fixture, newer_head);
+    let candidate = earliest_candidate(&store, &storage, &fixture, newer_head);
     let promotion = PromoteAcceptedInput::new(
         candidate,
         SyndicTurnId::from_bytes([123; 16]),
@@ -130,8 +130,8 @@ fn promoting_generation_one_preserves_a_newer_same_thread_route_head() {
         outcome => panic!("expected promotion to commit without later failure, got {outcome:?}"),
     }
 
-    assert_exact_with_preserved_head(&store, storage, &promotion);
-    assert_newer_authority(&store, storage, thread, newer_head, newer_accepted_input);
+    assert_exact_with_preserved_head(&store, &storage, &promotion);
+    assert_newer_authority(&store, &storage, thread, newer_head, newer_accepted_input);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -141,12 +141,12 @@ fn promoting_generation_one_preserves_a_newer_same_thread_route_head() {
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
     assert_newer_authority(
         &reopened,
-        reopened_storage,
+        &reopened_storage,
         thread,
         newer_head,
         newer_accepted_input,
     );
-    assert_exact_with_preserved_head(&reopened, reopened_storage, &promotion);
+    assert_exact_with_preserved_head(&reopened, &reopened_storage, &promotion);
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

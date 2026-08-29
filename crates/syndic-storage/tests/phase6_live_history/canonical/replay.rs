@@ -5,14 +5,14 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     let home = TestHome::new("phase6-replay-terminal-finalization");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
+    let (thread, turn) = seed_pending_turn(&store, &storage);
     let assistant = SyndicItemId::from_bytes([20; 16]);
     let cas_assistant = CasItemId::new("phase6-replay-assistant").unwrap();
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
 
     let activation = admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -88,7 +88,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
 
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant,
@@ -103,7 +103,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     );
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant,
@@ -117,7 +117,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     );
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant,
@@ -133,7 +133,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     );
     let terminal = admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -168,7 +168,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     let closed_item = SyndicItemId::from_bytes([21; 16]);
     let closed_frame = prepared_item_target(
         &store,
-        storage,
+        &storage,
         turn,
         closed_item,
         &source,
@@ -181,7 +181,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     );
     let closed_event = next_event(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -202,10 +202,10 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         SyndicMutationError::TerminalTurnClosed
     ));
 
-    let items = turn_items(&store, storage, turn);
+    let items = turn_items(&store, &storage, turn);
     complete_item_frontier(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         items[0].ordinal(),
@@ -214,7 +214,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     );
     complete_item_frontier(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         TurnItemOrdinal::new(2).unwrap(),
@@ -239,7 +239,7 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         .unwrap();
     assert_eq!(manifest.lifecycle(), ContentLifecycle::Finalized);
     assert_eq!(
-        projected_item_text(&store, storage, assistant),
+        projected_item_text(&store, &storage, assistant),
         "unfinished but durable"
     );
 

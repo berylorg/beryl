@@ -14,7 +14,7 @@ use syndic_storage::{
 #[test]
 fn marker_free_seal_is_restartable_replayable_and_opaque_until_eof() {
     let (home, store, storage, thread) = fixture("phase169-empty-seal", 231);
-    let source = current(storage, &store, thread).draft().piece_root();
+    let source = current(&storage, &store, thread).draft().piece_root();
     let request =
         DraftMarkerSealRequestV1::new(source, DraftMarkerSealOperationIdV1::from_bytes([232; 16]));
     let begin = storage
@@ -90,7 +90,7 @@ fn marker_free_seal_is_restartable_replayable_and_opaque_until_eof() {
 #[test]
 fn cancellation_closes_progress_and_returns_fixed_release() {
     let (_home, store, storage, thread) = fixture("phase169-cancel-seal", 233);
-    let source = current(storage, &store, thread).draft().piece_root();
+    let source = current(&storage, &store, thread).draft().piece_root();
     let request =
         DraftMarkerSealRequestV1::new(source, DraftMarkerSealOperationIdV1::from_bytes([234; 16]));
     let begin = storage
@@ -127,7 +127,7 @@ fn cancellation_closes_progress_and_returns_fixed_release() {
 #[test]
 fn operational_failure_closes_with_one_replayable_fixed_release() {
     let (_home, store, storage, thread) = fixture("phase169-failed-seal", 243);
-    let source = current(storage, &store, thread).draft().piece_root();
+    let source = current(&storage, &store, thread).draft().piece_root();
     let request =
         DraftMarkerSealRequestV1::new(source, DraftMarkerSealOperationIdV1::from_bytes([244; 16]));
     let begin = storage
@@ -190,7 +190,7 @@ fn operational_failure_closes_with_one_replayable_fixed_release() {
 #[test]
 fn supersession_closes_with_exact_successor_and_replayable_release() {
     let (_home, store, storage, thread) = fixture("phase169-superseded-seal", 246);
-    let source = current(storage, &store, thread).draft().piece_root();
+    let source = current(&storage, &store, thread).draft().piece_root();
     let request =
         DraftMarkerSealRequestV1::new(source, DraftMarkerSealOperationIdV1::from_bytes([247; 16]));
     let successor = DraftMarkerSealOperationIdV1::from_bytes([248; 16]);
@@ -244,7 +244,7 @@ fn page_and_custody_values_remain_explicitly_bounded() {
     assert!(std::mem::size_of::<DraftMarkerSealCustodyReleaseV1>() <= 256);
 
     let (_home, store, storage, thread) = fixture("phase169-seal-bounds", 250);
-    let source = current(storage, &store, thread).draft().piece_root();
+    let source = current(&storage, &store, thread).draft().piece_root();
     let request =
         DraftMarkerSealRequestV1::new(source, DraftMarkerSealOperationIdV1::from_bytes([251; 16]));
     let begin = storage
@@ -278,7 +278,7 @@ fn page_and_custody_values_remain_explicitly_bounded() {
 #[test]
 fn natural_identity_collision_is_rejected_without_overwrite() {
     let (_home, store, storage, thread) = fixture("phase169-seal-collision", 252);
-    let source = current(storage, &store, thread).draft().piece_root();
+    let source = current(&storage, &store, thread).draft().piece_root();
     let request =
         DraftMarkerSealRequestV1::new(source, DraftMarkerSealOperationIdV1::from_bytes([253; 16]));
     let begin = storage
@@ -292,7 +292,7 @@ fn natural_identity_collision_is_rejected_without_overwrite() {
     let colliding_operation = DraftMarkerSealOperationIdV1::from_bytes([254; 16]);
     let (colliding_key, collision) = inject_draft_marker_seal_natural_identity_collision_for_test(
         &store,
-        storage,
+        storage.clone(),
         request.key(),
         colliding_operation,
     );
@@ -324,7 +324,7 @@ fn natural_identity_collision_is_rejected_without_overwrite() {
 #[test]
 fn persisted_seal_record_corruption_fails_closed() {
     let (_home, store, storage, thread) = fixture("phase169-seal-corruption", 255);
-    let source = current(storage, &store, thread).draft().piece_root();
+    let source = current(&storage, &store, thread).draft().piece_root();
     let request =
         DraftMarkerSealRequestV1::new(source, DraftMarkerSealOperationIdV1::from_bytes([0; 16]));
     let begin = storage
@@ -334,7 +334,7 @@ fn persisted_seal_record_corruption_fails_closed() {
         &store,
         storage.begin_draft_marker_seal(storage.revision(&store).unwrap(), begin),
     ));
-    inject_draft_marker_seal_record_corruption_for_test(&store, storage, request.key());
+    inject_draft_marker_seal_record_corruption_for_test(&store, storage.clone(), request.key());
 
     assert!(
         storage
@@ -350,8 +350,8 @@ fn persisted_seal_record_corruption_fails_closed() {
 #[test]
 fn ordered_markers_fold_incrementally_into_the_opaque_proof() {
     let (home, store, storage, thread) = fixture("phase169-ordered-seal", 235);
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 236, 237);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 236, 237);
     session = complete_staged(
         &storage,
         &store,

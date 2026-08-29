@@ -106,7 +106,7 @@ fn assert_witness_corruption_rejected(name: &str, corruption: WitnessCorruption)
     let (home, store, storage) = seeded_populated(name);
     let initial_generation = syndic_storage::test_faults::accepted_route_generation(
         &store,
-        storage,
+        storage.clone(),
         id(40),
         AcceptedRouteGeneration::FIRST,
     )
@@ -259,7 +259,7 @@ fn target_and_leaf_revision_drift_classify_collision() {
         outcome => panic!("expected definitive target-drift rejection, got {outcome:?}"),
     }
 
-    let abandonment = abandonment_request(&store, storage);
+    let abandonment = abandonment_request(&store, &storage);
     match store.execute_current(storage.current_abandon_active_binding(abandonment)) {
         CommandOutcome::Committed {
             later_failure: None,

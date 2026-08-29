@@ -22,7 +22,7 @@ pub(super) fn finish(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: &ActiveSteeringTarget,
     input_id: SyndicAcceptedInputId,
     attempt: ActiveSteeringAttemptPermit,

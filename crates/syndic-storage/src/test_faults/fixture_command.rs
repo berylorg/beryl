@@ -363,7 +363,7 @@ impl SyndicStorage {
         limits: CursorReadLimits,
     ) -> Result<(usize, bool), SyndicReadError> {
         let page = store.read_cursor::<SyndicDomain, ActivityQueryEntriesCodec>(
-            self.handle,
+            &self.handle,
             &CursorRange::closed(
                 ActivityQueryEntryKey::first_for_period(thread, work_period),
                 ActivityQueryEntryKey::last_for_period(thread, work_period),

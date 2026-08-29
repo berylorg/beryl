@@ -16,30 +16,26 @@ impl SyndicComposerHost {
         store: &HomeStore,
         ticket: ComposerHostPublicationTicket,
     ) -> Result<ComposerHostPublicationCompletion, ComposerHostError> {
-        let (binding, prepared, assets, cancellation) = {
+        let (binding, prepared, command) = {
             let pending = self.pending_publication(ticket)?;
             validate_store(pending.intent.binding, store)?;
             let PublicationStage::Ready(prepared) = &pending.stage else {
                 return Err(ComposerHostError::PublicationPending);
             };
-            (
-                pending.intent.binding,
-                prepared.clone(),
-                pending.intent.assets,
-                pending.intent.cancellation.clone(),
-            )
+            let prepared = prepared.clone();
+            let mut command = HomeCommand::new(store.home_revision()?)
+                .with_cancellation(pending.intent.cancellation.clone());
+            command.add(self.storage.publish_draft_editor_candidate(
+                self.storage.revision(store)?,
+                prepared.syndic.clone(),
+            ))?;
+            add_asset_participant(&mut command, store, &pending.intent.assets, prepared.asset)?;
+            (pending.intent.binding, prepared, command)
         };
-
-        let mut command = HomeCommand::new(store.home_revision()?).with_cancellation(cancellation);
-        command.add(self.storage.publish_draft_editor_candidate(
-            self.storage.revision(store)?,
-            prepared.syndic.clone(),
-        ))?;
-        add_asset_participant(&mut command, store, assets, prepared.asset)?;
 
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.publication_before_execute_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         let outcome = store.execute(command);
         match outcome {
@@ -202,7 +198,7 @@ impl SyndicComposerHost {
         let current_pair = DraftRootHistoryPairV1::new(selector.root(), selector.history());
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.publication.convergence_read_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         let session_outcome = self
             .storage
@@ -297,7 +293,7 @@ impl SyndicComposerHost {
 fn add_asset_participant(
     command: &mut HomeCommand,
     store: &HomeStore,
-    assets: AssetState,
+    assets: &AssetState,
     plan: PublicationAssetPlan,
 ) -> Result<(), ComposerHostError> {
     let revision = assets.revision(store)?;

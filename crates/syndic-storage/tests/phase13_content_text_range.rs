@@ -36,7 +36,7 @@ fn seed(name: &str, prepared: &PreparedContent) -> Fixture {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (content, records) = prepared_content_records(prepared);
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
     Fixture {
         store,
         _home: home,
@@ -242,7 +242,7 @@ fn missing_and_inexact_content_references_are_distinct() {
 
     let prepared = composer("exact");
     let (content, records) = prepared_content_records(&prepared);
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
     let wrong_revision = ContentReference::new(
         content.id(),
         ContentRevision::new(2).unwrap(),
@@ -277,7 +277,7 @@ fn nonsealed_lifecycle_and_missing_chunk_reject_without_fallback() {
     replace
         .put(FixtureRecord::ContentManifest(prepared.building_manifest()))
         .unwrap();
-    commit(&fixture.store, fixture.storage, replace);
+    commit(&fixture.store, fixture.storage.clone(), replace);
     let building_read =
         fixture
             .storage
@@ -300,7 +300,7 @@ fn nonsealed_lifecycle_and_missing_chunk_reject_without_fallback() {
             ordinal: syndic_storage::ContentChunkOrdinal::FIRST,
         })
         .unwrap();
-    commit(&fixture.store, fixture.storage, remove);
+    commit(&fixture.store, fixture.storage.clone(), remove);
     assert!(matches!(
         fixture
             .storage
@@ -348,13 +348,15 @@ fn manifest_change_during_page_assembly_is_concurrent_state() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let prepared = composer(&"concurrent".repeat(10_000));
     let (content, records) = prepared_content_records(&prepared);
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
 
     let block = faults.block_next(FaultPoint::BeforeReadConfirmation);
     let store = Arc::new(store);
     let reader_store = Arc::clone(&store);
-    let reader =
-        thread::spawn(move || storage.sealed_content_text_range(&reader_store, content, 0, 4_096));
+    let reader_storage = storage.clone();
+    let reader = thread::spawn(move || {
+        reader_storage.sealed_content_text_range(&reader_store, content, 0, 4_096)
+    });
     assert!(block.wait_until_reached(Duration::from_secs(10)));
 
     let replacement = syndic_storage::ContentManifestRecord::new(
@@ -407,7 +409,7 @@ fn sealed_manifest_identity_must_remain_content_addressed() {
     records
         .put(FixtureRecord::ContentManifest(corrupt))
         .unwrap();
-    commit(&store, storage, records);
+    commit(&store, storage.clone(), records);
     let corrupt_reference = ContentReference::new(
         corrupt_id,
         original.revision(),

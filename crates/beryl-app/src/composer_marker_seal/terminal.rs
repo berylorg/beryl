@@ -50,17 +50,17 @@ impl DraftMarkerSealService {
                 }
                 state.flights[index].driving = true;
                 break (
-                    state.storage,
+                    state.storage.clone(),
                     state.command_fault.take(),
                     state.reconcile_fault.take(),
                 );
             }
 
             if !supersession_authenticated {
-                let storage = state.storage;
+                let storage = state.storage.clone();
                 let request = state.flights[index].handle.request;
                 drop(state);
-                authenticate_supersession(storage, store, request, intent)?;
+                authenticate_supersession(&storage, store, request, intent)?;
                 supersession_authenticated = true;
                 continue;
             }
@@ -71,7 +71,7 @@ impl DraftMarkerSealService {
             }
             state.flights[index].driving = true;
             break (
-                state.storage,
+                state.storage.clone(),
                 state.command_fault.take(),
                 state.reconcile_fault.take(),
             );
@@ -79,7 +79,7 @@ impl DraftMarkerSealService {
 
         let update = settle_terminal(
             store,
-            storage,
+            &storage,
             flight.request,
             intent,
             command_fault,
@@ -172,7 +172,7 @@ impl DraftMarkerSealService {
 
 fn settle_terminal(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     request: DraftMarkerSealFlightRequest,
     intent: DraftMarkerSealReleaseIntent,
     command_fault: CommandFault,

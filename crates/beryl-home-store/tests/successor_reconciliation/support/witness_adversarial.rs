@@ -38,7 +38,7 @@ fn witness_case(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(source.contribution(
-            store.domain_revision(source).unwrap(),
+            store.domain_revision(&source).unwrap(),
             SourcePut {
                 key: 1,
                 value: 2,
@@ -48,7 +48,7 @@ fn witness_case(
         .unwrap();
     command
         .add(witness.contribution(
-            store.domain_revision(witness).unwrap(),
+            store.domain_revision(&witness).unwrap(),
             WitnessPut {
                 key: 7,
                 value: 2,
@@ -58,7 +58,7 @@ fn witness_case(
         .unwrap();
     command
         .add(passive.contribution(
-            store.domain_revision(passive).unwrap(),
+            store.domain_revision(&passive).unwrap(),
             Put::<PassiveDomain, PassiveRecord>::new(9, 2),
         ))
         .unwrap();
@@ -149,7 +149,7 @@ fn oversized_expected_decoded_value_is_rejected_before_current_read() {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(source.contribution(
-            store.domain_revision(source).unwrap(),
+            store.domain_revision(&source).unwrap(),
             SourcePut {
                 key: 1,
                 value: 2,
@@ -159,7 +159,7 @@ fn oversized_expected_decoded_value_is_rejected_before_current_read() {
         .unwrap();
     command
         .add(witness.contribution(
-            store.domain_revision(witness).unwrap(),
+            store.domain_revision(&witness).unwrap(),
             WitnessPut {
                 key: 7,
                 value: 2,
@@ -282,10 +282,10 @@ fn typed_unequal_correlations_collide_even_when_encodings_match() {
 
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(source.contribution(store.domain_revision(source).unwrap(), AliasedSourcePut))
+        .add(source.contribution(store.domain_revision(&source).unwrap(), AliasedSourcePut))
         .unwrap();
     command
-        .add(witness.contribution(store.domain_revision(witness).unwrap(), AliasedWitnessPut))
+        .add(witness.contribution(store.domain_revision(&witness).unwrap(), AliasedWitnessPut))
         .unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let handle = match store.execute(command) {

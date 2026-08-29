@@ -140,8 +140,8 @@ impl DraftMarkerSealService {
         let (storage, assets, page_limit, phase, command_fault, reconcile_fault, injected_failure) = {
             let mut state = lock_state(&self.inner);
             validate_store(&mut state, store)?;
-            let storage = state.storage;
-            let assets = state.assets;
+            let storage = state.storage.clone();
+            let assets = state.assets.clone();
             let page_limit = state.limits.markers_per_page.get();
             let current = state
                 .flights
@@ -180,16 +180,16 @@ impl DraftMarkerSealService {
             match phase {
                 FlightPhase::PendingBegin => drive_begin(
                     store,
-                    storage,
-                    assets,
+                    &storage,
+                    &assets,
                     flight.request,
                     command_fault,
                     reconcile_fault,
                 ),
                 FlightPhase::Streaming { staging } => drive_page(
                     store,
-                    storage,
-                    assets,
+                    &storage,
+                    &assets,
                     flight.request,
                     staging,
                     page_limit,
@@ -198,8 +198,8 @@ impl DraftMarkerSealService {
                 ),
                 FlightPhase::SealingAsset { staging, syndic } => drive_asset_seal(
                     store,
-                    storage,
-                    assets,
+                    &storage,
+                    &assets,
                     flight.request,
                     staging,
                     syndic,
@@ -345,7 +345,7 @@ fn acquire_shared_home_state(
     assets: AssetState,
     limits: DraftMarkerSealServiceLimits,
 ) -> Result<Arc<Mutex<ServiceState>>, DraftMarkerSealServiceConstructionError> {
-    validate_construction_authority(store, storage, assets)?;
+    validate_construction_authority(store, &storage, &assets)?;
     loop {
         let existing = {
             let registry =
@@ -357,7 +357,13 @@ fn acquire_shared_home_state(
             registry.homes.get(&home_id).and_then(Weak::upgrade)
         };
         let Some(existing) = existing else {
-            let state = new_shared_home_state(home_id, home_generation, storage, assets, limits);
+            let state = new_shared_home_state(
+                home_id,
+                home_generation,
+                storage.clone(),
+                assets.clone(),
+                limits,
+            );
             let registry =
                 SHARED_HOME_STATES.get_or_init(|| Mutex::new(SharedHomeRegistry::default()));
             let mut registry = registry
@@ -382,8 +388,8 @@ fn acquire_shared_home_state(
             let state = lock_state(&existing);
             (
                 state.home_generation,
-                state.storage,
-                state.assets,
+                state.storage.clone(),
+                state.assets.clone(),
                 state.limits,
                 state.flights.is_empty()
                     && matches!(
@@ -399,11 +405,17 @@ fn acquire_shared_home_state(
             if existing_limits != limits {
                 return Err(DraftMarkerSealServiceConstructionError::LimitsMismatch);
             }
-            validate_construction_authority(store, existing_storage, existing_assets)?;
+            validate_construction_authority(store, &existing_storage, &existing_assets)?;
             return Ok(existing);
         }
 
-        let replacement = new_shared_home_state(home_id, home_generation, storage, assets, limits);
+        let replacement = new_shared_home_state(
+            home_id,
+            home_generation,
+            storage.clone(),
+            assets.clone(),
+            limits,
+        );
         let registry = SHARED_HOME_STATES.get_or_init(|| Mutex::new(SharedHomeRegistry::default()));
         let mut registry = registry
             .lock()
@@ -451,8 +463,8 @@ fn new_shared_home_state(
 
 fn validate_construction_authority(
     store: &HomeStore,
-    storage: SyndicStorage,
-    assets: AssetState,
+    storage: &SyndicStorage,
+    assets: &AssetState,
 ) -> Result<(), DraftMarkerSealServiceConstructionError> {
     if storage.revision(store).is_err() || assets.revision(store).is_err() {
         return Err(DraftMarkerSealServiceConstructionError::DomainAuthorityMismatch);

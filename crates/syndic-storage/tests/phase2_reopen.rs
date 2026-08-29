@@ -31,10 +31,10 @@ fn empty_and_populated_domains_reopen_authoritatively() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    seed_canonical_empty_thread(&reopened, storage, id(1), draft_id(2));
+    seed_canonical_empty_thread(&reopened, storage.clone(), id(1), draft_id(2));
     commit(
         &reopened,
-        storage,
+        storage.clone(),
         batch(empty_thread_records(id(1), draft_id(2))),
     );
     reopened
@@ -58,12 +58,12 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
     let home = TestHome::new("large-history");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
 
     let thread_a = id(10);
     let thread_b = id(11);
-    seed_canonical_empty_thread(&store, storage, thread_a, draft_id(20));
-    seed_canonical_empty_thread(&store, storage, thread_b, draft_id(21));
+    seed_canonical_empty_thread(&store, storage.clone(), thread_a, draft_id(20));
+    seed_canonical_empty_thread(&store, storage.clone(), thread_b, draft_id(21));
     let mut history_delta = Vec::new();
     let mut parent = None;
     let mut parent_digest = None;
@@ -138,11 +138,15 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
         parent = Some(turn_id);
         parent_digest = Some(digest);
         if number % 32 == 0 {
-            commit(&store, storage, batch(std::mem::take(&mut history_delta)));
+            commit(
+                &store,
+                storage.clone(),
+                batch(std::mem::take(&mut history_delta)),
+            );
         }
     }
     if !history_delta.is_empty() {
-        commit(&store, storage, batch(history_delta));
+        commit(&store, storage.clone(), batch(history_delta));
     }
     let tail = parent.unwrap();
     let digest = parent_digest.unwrap();
@@ -177,7 +181,7 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
             unreachable_digest,
         )),
     ];
-    commit(&store, storage, batch(unreachable_delta));
+    commit(&store, storage.clone(), batch(unreachable_delta));
 
     for (thread, draft) in [(thread_a, draft_id(20)), (thread_b, draft_id(21))] {
         let mut thread_delta =
@@ -187,7 +191,7 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
             ThreadRevision::new(1).unwrap(),
             &transcript_path,
         ));
-        commit(&store, storage, batch(thread_delta));
+        commit(&store, storage.clone(), batch(thread_delta));
     }
     reset_validation_page_metrics();
     store

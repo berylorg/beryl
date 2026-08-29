@@ -61,6 +61,12 @@ macro_rules! simple_domain {
                     KeyspaceSchemaVersion::new(1),
                 )];
             type ValidationError = Infallible;
+            type RuntimeAttachment = ();
+            type RuntimeAttachmentError = Infallible;
+
+            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+                Ok(())
+            }
 
             fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
                 Ok(())
@@ -79,6 +85,12 @@ impl StorageDomain for AlphaDomainSchema2 {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -92,6 +104,12 @@ impl StorageDomain for AlphaFamilySchema2 {
         KeyspaceSchemaVersion::new(2),
     )];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -106,6 +124,12 @@ impl StorageDomain for DuplicateFamilyDomain {
         RecordFamily::new::<BytesRecord<Self>>(KeyspaceSchemaVersion::new(1)),
     ];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -117,6 +141,12 @@ impl StorageDomain for EmptyDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = &[];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -163,6 +193,12 @@ impl StorageDomain for ValidatedDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = ValidatedDomainError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         let value = reader

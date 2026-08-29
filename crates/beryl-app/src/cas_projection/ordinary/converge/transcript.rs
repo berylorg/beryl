@@ -10,7 +10,7 @@ use super::{command, snapshot};
 
 pub(super) fn converge_selected_transcript(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     limit: SyndicPointReadLimit,
 ) -> Result<(), OrdinaryTurnExecutionError> {
@@ -86,7 +86,7 @@ fn active_build(current: &snapshot::TranscriptSnapshot, build: &TranscriptBuildR
 
 fn start_build(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     _limit: SyndicPointReadLimit,
     before: &snapshot::TranscriptSnapshot,
@@ -98,7 +98,7 @@ fn start_build(
 
 fn advance_build(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     _limit: SyndicPointReadLimit,
     before: &snapshot::TranscriptSnapshot,

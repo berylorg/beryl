@@ -205,6 +205,11 @@
   submission can complete.
 - [x] Added exact bounded abandonment for authenticated pristine unpublished composer candidates,
   including typed replay, rejection, collision, and crash reconciliation.
+- [x] Established generation-owned typed domain runtime attachments with borrow-preserving clone-
+  stable non-`Copy` handle views, sole generation-slot ownership, exact synchronous retirement,
+  stale capability rejection, and failed-candidate cleanup.
+- [ ] Establish attachment-owned Syndic draft-marker admission with exact move-only page-attempt
+  replay custody.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.

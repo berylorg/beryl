@@ -71,7 +71,7 @@ fn continuation_fixture(name: &str, seed: u8) -> (CompactionFixture, CompactionO
 }
 
 fn commit(fixture: &CompactionFixture, batch: FixtureBatch) {
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 }
 
 fn replace_operation(fixture: &CompactionFixture, operation: CompactionOperationRecord) {

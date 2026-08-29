@@ -33,18 +33,18 @@ fn seeded(name: &str, fixture: Fixture) -> (TestHome, HomeStore, SyndicStorage, 
     let storage = SyndicStorage::register(&mut store).unwrap();
     let _ = seed_detached_canonical_draft_backing(
         &store,
-        storage,
+        storage.clone(),
         beryl_model::SyndicThreadId::from_bytes([0xf1; 16]),
         fixture.current_draft,
     );
-    commit(&store, storage, batch(fixture.records.clone()));
+    commit(&store, storage.clone(), batch(fixture.records.clone()));
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
     (home, store, storage, fixture)
 }
 
-fn promotion(store: &HomeStore, storage: SyndicStorage) -> PromoteAcceptedInput {
+fn promotion(store: &HomeStore, storage: &SyndicStorage) -> PromoteAcceptedInput {
     let limits = CursorReadLimits::new(256, ACCEPTED_NEXT_PAGE_MAX_BYTES).unwrap();
     let sources = storage
         .accepted_next_source_page(store, storage.revision(store).unwrap(), None, limits)
@@ -64,7 +64,7 @@ fn promotion(store: &HomeStore, storage: SyndicStorage) -> PromoteAcceptedInput 
 
 fn route_leaf(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     input: SyndicAcceptedInputId,
 ) -> AcceptedRouteLeafRecord {
     let route = storage
@@ -90,7 +90,7 @@ fn scrub_and_reopen_rejects_missing_transition_witness(
     storage: SyndicStorage,
     input: SyndicAcceptedInputId,
 ) {
-    let leaf = route_leaf(&store, storage, input);
+    let leaf = route_leaf(&store, &storage, input);
     assert!(leaf.last_transition().is_some());
     commit(
         &store,
@@ -138,7 +138,7 @@ fn durable_delivery_transition_witnesses_are_required_by_scrub_and_reopen() {
         let home = TestHome::new(&format!("phase57-transition-witness-{name}"));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        delivery_fixture::seed_mixed_abandonment(&store, storage);
+        delivery_fixture::seed_mixed_abandonment(&store, storage.clone());
         scrub_and_reopen_rejects_missing_transition_witness(&home, store, storage, input);
     }
 }
@@ -148,8 +148,8 @@ fn exact_projection_loss_transition_witness_is_required_by_scrub_and_reopen() {
     let home = TestHome::new("phase57-projection-loss-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    delivery_fixture::seed_mixed_abandonment(&store, storage);
-    let generic = delivery_fixture::abandonment_request(&store, storage);
+    delivery_fixture::seed_mixed_abandonment(&store, storage.clone());
+    let generic = delivery_fixture::abandonment_request(&store, &storage);
     let request = AbandonActiveBinding::after_exact_rejection(
         generic.thread_id(),
         generic.expected_binding_revision(),
@@ -181,7 +181,7 @@ fn exact_projection_loss_transition_witness_is_required_by_scrub_and_reopen() {
 fn durable_promotion_witness_is_required_by_explicit_scrub_and_survives_routine_reopen() {
     let fixture = promotion_fixture(57, id(57));
     let (home, store, storage, fixture) = seeded("phase57-promotion-witness", fixture);
-    let request = promotion(&store, storage);
+    let request = promotion(&store, &storage);
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(storage.promote_accepted_input(request))
@@ -196,7 +196,7 @@ fn durable_promotion_witness_is_required_by_explicit_scrub_and_survives_routine_
     let generation = AcceptedRouteGeneration::FIRST;
     let route = syndic_storage::test_faults::accepted_route_generation(
         &store,
-        storage,
+        storage.clone(),
         fixture.thread,
         generation,
     )
@@ -253,8 +253,8 @@ fn projection_loss_source_keeps_next_work_ineligible_while_the_gate_is_not_idle(
     let home = TestHome::new("phase57-projection-loss");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    delivery_fixture::seed_mixed_abandonment(&store, storage);
-    let request = delivery_fixture::abandonment_request(&store, storage);
+    delivery_fixture::seed_mixed_abandonment(&store, storage.clone());
+    let request = delivery_fixture::abandonment_request(&store, &storage);
     assert!(matches!(
         store.execute_current(storage.current_abandon_active_binding(request)),
         CommandOutcome::Committed {

@@ -160,7 +160,7 @@ impl SyndicStorage {
         )?;
         let entire_selected_path_title = derive_history_title(
             &StoreTitleSnapshot {
-                storage: *self,
+                storage: self,
                 store,
             },
             &thread,

@@ -9,9 +9,9 @@ use syndic_storage::{
 #[test]
 fn abandonment_and_mutation_serialize_to_one_winner() {
     let (_home, store, storage, thread) = fixture("abandon-race-mutation", 70, 65_536);
-    let selected = current(storage, &store, thread);
-    let opened = open_session(storage, &store, &selected, 72, 73);
-    let mutation = transaction(storage, &store, &opened, 74, "x", point(1));
+    let selected = current(&storage, &store, thread);
+    let opened = open_session(&storage, &store, &selected, 72, 73);
+    let mutation = transaction(&storage, &store, &opened, 74, "x", point(1));
     let request = abandon_request(&opened, 75);
     let prepared = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -33,9 +33,9 @@ fn abandonment_and_mutation_serialize_to_one_winner() {
     ));
 
     let (_home, store, storage, thread) = fixture("abandon-race-wins", 80, 65_536);
-    let selected = current(storage, &store, thread);
-    let opened = open_session(storage, &store, &selected, 82, 83);
-    let mutation = transaction(storage, &store, &opened, 84, "x", point(1));
+    let selected = current(&storage, &store, thread);
+    let opened = open_session(&storage, &store, &selected, 82, 83);
+    let mutation = transaction(&storage, &store, &opened, 84, "x", point(1));
     let request = abandon_request(&opened, 85);
     let prepared = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -60,24 +60,24 @@ fn abandonment_and_mutation_serialize_to_one_winner() {
 #[test]
 fn abandonment_and_publication_serialize_in_both_orders() {
     let (_home, store, storage, thread) = fixture("publication-race-wins", 130, 65_536);
-    let selected = current(storage, &store, thread);
+    let selected = current(&storage, &store, thread);
     let original_selector = selector(&selected);
-    let opened = open_session(storage, &store, &selected, 132, 133);
+    let opened = open_session(&storage, &store, &selected, 132, 133);
     let pristine_request = abandon_request(&opened, 134);
     let abandonment = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, pristine_request)
         .unwrap();
-    let edit = transaction(storage, &store, &opened, 135, "x", point(1));
-    build(storage, &store, &edit);
+    let edit = transaction(&storage, &store, &opened, 135, "x", point(1));
+    build(&storage, &store, &edit);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     ));
-    let dirty = match settled(storage, &store, &edit).closure() {
+    let dirty = match settled(&storage, &store, &edit).closure() {
         DraftPieceSettlementClosureV1::Committed(adoption) => adoption.adopted_session().clone(),
         other => panic!("publication race edit failed: {other:?}"),
     };
-    let publication = prepare_candidate_publication(storage, &store, &selected, &dirty, 136);
+    let publication = prepare_candidate_publication(&storage, &store, &selected, &dirty, 136);
     let published = execute(
         &store,
         storage
@@ -89,8 +89,8 @@ fn abandonment_and_publication_serialize_in_both_orders() {
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
-    let published_selector = selector(&current(storage, &store, thread));
-    let published_head = head(storage, &store, &opened);
+    let published_selector = selector(&current(&storage, &store, thread));
+    let published_head = head(&storage, &store, &opened);
     assert_ne!(published_selector, original_selector);
     let abandoned = execute(
         &store,
@@ -108,17 +108,17 @@ fn abandonment_and_publication_serialize_in_both_orders() {
         }
         other => panic!("published descendant did not reject stale abandonment: {other:?}"),
     }
-    assert_eq!(head(storage, &store, &opened), published_head);
+    assert_eq!(head(&storage, &store, &opened), published_head);
     assert_eq!(
-        selector(&current(storage, &store, thread)),
+        selector(&current(&storage, &store, thread)),
         published_selector
     );
 
     let (_home, store, storage, thread) = fixture("abandonment-race-wins", 140, 65_536);
-    let selected = current(storage, &store, thread);
+    let selected = current(&storage, &store, thread);
     let original_selector = selector(&selected);
-    let opened = open_session(storage, &store, &selected, 142, 143);
-    let edit = transaction(storage, &store, &opened, 144, "x", point(1));
+    let opened = open_session(&storage, &store, &selected, 142, 143);
+    let edit = transaction(&storage, &store, &opened, 144, "x", point(1));
     let request = abandon_request(&opened, 145);
     let abandonment = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -161,7 +161,7 @@ fn abandonment_and_publication_serialize_in_both_orders() {
         DraftEditorCandidateSessionReadOutcomeV1::Disposed(_)
     ));
     assert_eq!(
-        selector(&current(storage, &store, thread)),
+        selector(&current(&storage, &store, thread)),
         original_selector
     );
 }

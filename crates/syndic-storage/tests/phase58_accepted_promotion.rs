@@ -35,18 +35,21 @@ fn seeded_fixture(
     let storage = SyndicStorage::register(&mut store).unwrap();
     let _ = seed_detached_draft_backing(
         &store,
-        storage,
+        storage.clone(),
         beryl_model::SyndicThreadId::from_bytes([0xf0; 16]),
         fixture.current_draft,
     );
-    commit(&store, storage, batch(fixture.records.clone()));
+    commit(&store, storage.clone(), batch(fixture.records.clone()));
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
     (home, store, storage, fixture)
 }
 
-fn candidate(store: &beryl_home_store::HomeStore, storage: SyndicStorage) -> AcceptedNextCandidate {
+fn candidate(
+    store: &beryl_home_store::HomeStore,
+    storage: &SyndicStorage,
+) -> AcceptedNextCandidate {
     let limits = CursorReadLimits::new(256, ACCEPTED_NEXT_PAGE_MAX_BYTES).unwrap();
     let sources = storage
         .accepted_next_source_page(store, storage.revision(store).unwrap(), None, limits)
@@ -66,7 +69,7 @@ fn candidate(store: &beryl_home_store::HomeStore, storage: SyndicStorage) -> Acc
         .expect("fixture owns one effective next-turn input")
 }
 
-fn promotion(store: &beryl_home_store::HomeStore, storage: SyndicStorage) -> PromoteAcceptedInput {
+fn promotion(store: &beryl_home_store::HomeStore, storage: &SyndicStorage) -> PromoteAcceptedInput {
     PromoteAcceptedInput::new(
         candidate(store, storage),
         SyndicTurnId::from_bytes([120; 16]),
@@ -81,7 +84,7 @@ fn limit() -> SyndicPointReadLimit {
 
 fn execute_promotion(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     promotion: PromoteAcceptedInput,
 ) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -95,7 +98,7 @@ fn execute_promotion(
 fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
     let (home, store, storage, fixture) =
         seeded_fixture("phase58-promote-exact", promotion_fixture(90, id(90)));
-    let request = promotion(&store, storage);
+    let request = promotion(&store, &storage);
     let draft_before = storage
         .draft(&store, fixture.current_draft, limit())
         .unwrap()
@@ -107,7 +110,7 @@ fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
         AcceptedInputPromotionStatus::Prior
     );
     assert!(matches!(
-        execute_promotion(&store, storage, request.clone()),
+        execute_promotion(&store, &storage, request.clone()),
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -169,15 +172,15 @@ fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
 fn stale_candidate_and_fresh_identity_collision_do_not_partially_promote() {
     let (_home, store, storage, _fixture) =
         seeded_fixture("phase58-promote-races", promotion_fixture(91, id(91)));
-    let stale = promotion(&store, storage);
+    let stale = promotion(&store, &storage);
     let colliding = PromoteAcceptedInput::new(
-        candidate(&store, storage),
+        candidate(&store, &storage),
         stale.successor_turn_id(),
         SyndicItemId::from_bytes([122; 16]),
         timestamp(20),
     );
     assert!(matches!(
-        execute_promotion(&store, storage, colliding.clone()),
+        execute_promotion(&store, &storage, colliding.clone()),
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -190,7 +193,7 @@ fn stale_candidate_and_fresh_identity_collision_do_not_partially_promote() {
         AcceptedInputPromotionStatus::Exact
     );
     assert!(matches!(
-        execute_promotion(&store, storage, stale.clone()),
+        execute_promotion(&store, &storage, stale.clone()),
         CommandOutcome::NotCommitted { .. }
     ));
     assert_eq!(

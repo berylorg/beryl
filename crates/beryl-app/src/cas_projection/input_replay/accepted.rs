@@ -65,7 +65,7 @@ impl AcceptedInputReplayFactory {
         let asset_reference_set = record.asset_reference_set();
         let replay = InputReplayFactory::prepare(
             store,
-            storage,
+            &storage,
             assets,
             context.0,
             InputReplayRecord::accepted(record),
@@ -94,7 +94,7 @@ impl AcceptedInputReplayFactory {
 
     pub(in crate::cas_projection) fn fresh_source(&self) -> AcceptedInputReplaySource {
         AcceptedInputReplaySource {
-            storage: self.storage,
+            storage: self.storage.clone(),
             replay: self.replay.fresh_source(),
         }
     }
@@ -117,7 +117,7 @@ impl AcceptedInputReplaySource {
         cancellation: &ProjectionCancellationToken,
     ) -> Result<StreamedInputHeader, StreamedInputSourceError> {
         self.replay
-            .service(store, self.storage, cancellation)
+            .service(store, &self.storage, cancellation)
             .begin_pass()
     }
 
@@ -127,7 +127,7 @@ impl AcceptedInputReplaySource {
         cancellation: &ProjectionCancellationToken,
     ) -> Result<Option<StreamedInputDescriptor>, StreamedInputSourceError> {
         self.replay
-            .service(store, self.storage, cancellation)
+            .service(store, &self.storage, cancellation)
             .next_descriptor()
     }
 
@@ -140,7 +140,7 @@ impl AcceptedInputReplaySource {
         max_utf8_bytes: usize,
     ) -> Result<StreamedTextPage, StreamedInputSourceError> {
         self.replay
-            .service(store, self.storage, cancellation)
+            .service(store, &self.storage, cancellation)
             .read_text_page(source_id, start, max_utf8_bytes)
     }
 
@@ -149,7 +149,7 @@ impl AcceptedInputReplaySource {
         store: &'a HomeStore,
         cancellation: &'a ProjectionCancellationToken,
     ) -> super::authority::InputReplayService<'a> {
-        self.replay.service(store, self.storage, cancellation)
+        self.replay.service(store, &self.storage, cancellation)
     }
 }
 

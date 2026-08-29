@@ -19,7 +19,7 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
     let (content, content_records) = composer_content_records(&payload);
     let digest = syndic_storage::root_turn_chain_digest(turn);
 
-    seed_canonical_empty_thread(&store, storage, thread, draft);
+    seed_canonical_empty_thread(&store, storage.clone(), thread, draft);
     let initial_thread = storage
         .thread(&store, thread, point_limit())
         .unwrap()
@@ -182,8 +182,8 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
             projection_revision,
         )),
     ]);
-    commit(&store, storage, batch(records));
-    project_item(&store, storage, item);
+    commit(&store, storage.clone(), batch(records));
+    project_item(&store, storage.clone(), item);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

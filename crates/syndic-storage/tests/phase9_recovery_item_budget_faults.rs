@@ -27,7 +27,7 @@ fn point_limit() -> SyndicPointReadLimit {
 
 fn selected_path(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> SelectedPathProof {
     let thread = storage
@@ -59,7 +59,7 @@ fn build_budget_fixture(name: &str, root_item_count: u64) -> BudgetFixture {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
     let thread = id(30);
     let root = SyndicTurnId::from_bytes([29; 16]);
     let root_state = storage
@@ -70,8 +70,8 @@ fn build_budget_fixture(name: &str, root_item_count: u64) -> BudgetFixture {
         &root_state,
         root_item_count,
     ))]);
-    commit(&store, storage, fault);
-    let selected = selected_path(&store, storage, thread);
+    commit(&store, storage.clone(), fault);
+    let selected = selected_path(&store, &storage, thread);
     BudgetFixture {
         _home: home,
         store,

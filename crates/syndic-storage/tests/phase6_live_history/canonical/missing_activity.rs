@@ -5,25 +5,25 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
     let home = TestHome::new("phase13-activity-publication-corruption");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let (thread, turn) = seed_pending_turn(&store, &storage);
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     let item = SyndicItemId::from_bytes([12; 16]);
     let generated = SyndicItemId::from_bytes([13; 16]);
     let cas_item = CasItemId::new("phase13-activity-corruption").unwrap();
 
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    correlate_submitted_user_item(&store, storage, thread, turn, &source, timestamp(4));
+    correlate_submitted_user_item(&store, &storage, thread, turn, &source, timestamp(4));
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         generated,
@@ -43,7 +43,7 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
     assert_eq!(excluded_head.logical_row_count(), 0);
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         item,
@@ -72,7 +72,7 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
 
     let frame = stage_item_frame_for_publication(
         &store,
-        storage,
+        &storage,
         turn,
         item,
         &source,
@@ -84,7 +84,7 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
     );
     let event = next_event(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,

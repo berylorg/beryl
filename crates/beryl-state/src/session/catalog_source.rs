@@ -38,7 +38,7 @@ impl SessionState {
         thread_id: SyndicThreadId,
     ) -> Result<ThreadClaimCatalogSource, ThreadClaimCatalogSourceError> {
         let claim = store.read_point::<SessionDomain, ClaimByThreadCodec>(
-            self.handle,
+            &self.handle,
             &thread_id,
             point_limit(),
         )?;
@@ -52,7 +52,7 @@ impl SessionState {
             return Err(ThreadClaimCatalogSourceError::ThreadCopyMismatch { thread_id });
         }
         let by_window = store.read_point::<SessionDomain, ClaimByWindowCodec>(
-            self.handle,
+            &self.handle,
             &claim.window_id(),
             point_limit(),
         )?;

@@ -194,7 +194,7 @@ impl SyndicStorage {
         range: CursorRange<ThreadAcceptedKey>,
     ) -> Result<AcceptedRoutePage, SyndicReadError> {
         let page = store.read_cursor::<crate::domain::SyndicDomain, AcceptedOrderCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             CursorReadLimits::new(ACCEPTED_ROUTE_PAGE_MAX_RECORDS, 64 * 1024)

@@ -26,7 +26,7 @@ impl CasProjectionCoordinator {
     pub(super) fn publish_existing_loaded(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         request: &CasProjectionRequest,
         basis: NativeProjectionBasis,
         source: NativeProjectionSource,
@@ -58,7 +58,7 @@ impl CasProjectionCoordinator {
     pub(super) fn resume_remote_source(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -181,7 +181,7 @@ impl CasProjectionCoordinator {
     pub(super) fn fork_native_projection(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -310,7 +310,7 @@ impl CasProjectionCoordinator {
     fn retire_recovered_fork_source_then_replan(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,

@@ -62,7 +62,7 @@ fn parent_forced_cut_helper() {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(77, b"parent-forced cut".to_vec()),
         ))
         .unwrap();
@@ -111,7 +111,7 @@ fn assert_parent_forced_cut(point: &str, expected: ExpectedState) {
     let mut reopened = open(&home, FaultController::new());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
     let home_revision = reopened.home_revision().unwrap().get();
-    let domain_revision = reopened.domain_revision(alpha).unwrap().get();
+    let domain_revision = reopened.domain_revision(&alpha).unwrap().get();
     let value = reopened
         .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
             alpha,

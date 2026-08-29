@@ -46,7 +46,7 @@ fn sidecar_is_durable_before_its_first_metadata_reference_commits() {
     command.require_sidecar(sidecar).unwrap();
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, address.digest().as_bytes().to_vec()),
         ))
         .unwrap();
@@ -215,7 +215,7 @@ fn sidecar_token_from_an_obsolete_generation_cannot_authorize_metadata() {
     let mut failed = HomeCommand::new(store.home_revision().unwrap());
     failed
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(7, b"fail".to_vec()),
         ))
         .unwrap();
@@ -232,7 +232,7 @@ fn sidecar_token_from_an_obsolete_generation_cannot_authorize_metadata() {
     command.require_sidecar(sidecar).unwrap();
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(8, b"no".to_vec()),
         ))
         .unwrap();
@@ -339,7 +339,7 @@ fn assert_sidecar_crash_cut(point: &str, expected_residue: SidecarCrashResidue) 
     let mut reopened = open(directory.path(), FaultController::new());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
     assert_eq!(reopened.home_revision().unwrap().get(), 1);
-    assert_eq!(reopened.domain_revision(alpha).unwrap().get(), 1);
+    assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 1);
 
     let temporary_before = count_temporary_files(directory.path());
     let final_before = final_sidecar_files(directory.path());

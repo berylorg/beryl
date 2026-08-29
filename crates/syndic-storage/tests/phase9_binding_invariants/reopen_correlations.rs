@@ -2,7 +2,7 @@ use super::*;
 
 use crate::support::semantic::exercise_seeded_populated_case;
 
-fn populated_active_binding(store: &HomeStore, storage: SyndicStorage) -> BindingRecord {
+fn populated_active_binding(store: &HomeStore, storage: &SyndicStorage) -> BindingRecord {
     let binding = storage
         .current_binding(store, id(40), point_limit())
         .unwrap()
@@ -15,7 +15,7 @@ fn populated_active_binding(store: &HomeStore, storage: SyndicStorage) -> Bindin
 
 fn populated_execution_snapshot(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> ExecutionSnapshotRecord {
     let binding = populated_active_binding(store, storage);
     let BindingState::Active(active) = binding.state() else {
@@ -27,7 +27,7 @@ fn populated_execution_snapshot(
         .expect("populated fixture has an execution snapshot")
 }
 
-fn populated_active_cas_turn(store: &HomeStore, storage: SyndicStorage) -> ActiveCasTurnRecord {
+fn populated_active_cas_turn(store: &HomeStore, storage: &SyndicStorage) -> ActiveCasTurnRecord {
     let snapshot = populated_execution_snapshot(store, storage);
     let active = storage
         .active_cas_turn(store, snapshot.id(), point_limit())
@@ -37,7 +37,7 @@ fn populated_active_cas_turn(store: &HomeStore, storage: SyndicStorage) -> Activ
     active
 }
 
-fn populated_cas_turn_index(store: &HomeStore, storage: SyndicStorage) -> CasTurnIndexRecord {
+fn populated_cas_turn_index(store: &HomeStore, storage: &SyndicStorage) -> CasTurnIndexRecord {
     let active = populated_active_cas_turn(store, storage);
     storage
         .cas_turn_owner(
@@ -50,7 +50,7 @@ fn populated_cas_turn_index(store: &HomeStore, storage: SyndicStorage) -> CasTur
         .expect("populated fixture has a CAS-turn index")
 }
 
-fn populated_cas_thread_index(store: &HomeStore, storage: SyndicStorage) -> CasThreadIndexRecord {
+fn populated_cas_thread_index(store: &HomeStore, storage: &SyndicStorage) -> CasThreadIndexRecord {
     let active = populated_active_cas_turn(store, storage);
     storage
         .cas_thread_owner(store, active.cas_thread_id().clone(), point_limit())
@@ -58,7 +58,7 @@ fn populated_cas_thread_index(store: &HomeStore, storage: SyndicStorage) -> CasT
         .expect("populated fixture has a CAS-thread index")
 }
 
-fn populated_active_turn_state(store: &HomeStore, storage: SyndicStorage) -> TurnStateRecord {
+fn populated_active_turn_state(store: &HomeStore, storage: &SyndicStorage) -> TurnStateRecord {
     let active = populated_active_cas_turn(store, storage);
     storage
         .turn_state(store, active.turn_id(), point_limit())
@@ -68,7 +68,7 @@ fn populated_active_turn_state(store: &HomeStore, storage: SyndicStorage) -> Tur
 
 fn populated_active_transcript_path(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> TranscriptPathTurnRecord {
     let active = populated_active_cas_turn(store, storage);
     let head = storage
@@ -98,7 +98,7 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
         "phase9-binding-snapshot-link",
         "active binding snapshot is missing",
         |store, storage| {
-            let binding = populated_active_binding(store, storage);
+            let binding = populated_active_binding(store, &storage);
             let BindingState::Active(active) = binding.state() else {
                 unreachable!();
             };
@@ -122,7 +122,7 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
         "phase9-snapshot-binding-facts",
         "active binding and execution snapshot disagree",
         |store, storage| {
-            let snapshot = populated_execution_snapshot(store, storage);
+            let snapshot = populated_execution_snapshot(store, &storage);
             let later_start = SyndicTimestamp::from_unix_millis(
                 snapshot.started_at().unix_millis().checked_add(1).unwrap(),
             );
@@ -151,7 +151,7 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
         "phase10-snapshot-native-count",
         "active binding and execution snapshot disagree",
         |store, storage| {
-            let snapshot = populated_execution_snapshot(store, storage);
+            let snapshot = populated_execution_snapshot(store, &storage);
             batch([FixtureRecord::ExecutionSnapshot(
                 ExecutionSnapshotRecord::new(
                     snapshot.id(),
@@ -180,7 +180,7 @@ fn reopen_rejects_malformed_tool_profile_and_cas_turn_correlations() {
         "phase10-snapshot-tool-profile",
         "active binding and execution snapshot disagree",
         |store, storage| {
-            let snapshot = populated_execution_snapshot(store, storage);
+            let snapshot = populated_execution_snapshot(store, &storage);
             batch([FixtureRecord::ExecutionSnapshot(
                 ExecutionSnapshotRecord::new(
                     snapshot.id(),
@@ -206,8 +206,8 @@ fn reopen_rejects_malformed_tool_profile_and_cas_turn_correlations() {
         "phase9-cas-turn-pre-start",
         "active CAS-turn and immutable snapshot disagree",
         |store, storage| {
-            let active = populated_active_cas_turn(store, storage);
-            let snapshot = populated_execution_snapshot(store, storage);
+            let active = populated_active_cas_turn(store, &storage);
+            let snapshot = populated_execution_snapshot(store, &storage);
             let earlier = SyndicTimestamp::from_unix_millis(
                 snapshot.started_at().unix_millis().checked_sub(1).unwrap(),
             );
@@ -227,7 +227,7 @@ fn reopen_rejects_malformed_tool_profile_and_cas_turn_correlations() {
         "phase9-cas-turn-reverse-link",
         "active CAS-turn primary and index disagree",
         |store, storage| {
-            let index = populated_cas_turn_index(store, storage);
+            let index = populated_cas_turn_index(store, &storage);
             batch([FixtureRecord::CasTurn(CasTurnIndexRecord::new(
                 index.cas_thread_id().clone(),
                 index.cas_turn_id().clone(),
@@ -247,7 +247,7 @@ fn reopen_rejects_malformed_native_count_and_predecessor_correlations() {
         "phase10-cas-turn-native-count",
         "active CAS-turn primary and index disagree",
         |store, storage| {
-            let index = populated_cas_turn_index(store, storage);
+            let index = populated_cas_turn_index(store, &storage);
             batch([FixtureRecord::CasTurn(CasTurnIndexRecord::new(
                 index.cas_thread_id().clone(),
                 index.cas_turn_id().clone(),
@@ -264,9 +264,9 @@ fn reopen_rejects_malformed_native_count_and_predecessor_correlations() {
         "phase9-active-predecessor-state",
         "active binding does not succeed a valid binding",
         |store, storage| {
-            let active = populated_active_binding(store, storage);
+            let active = populated_active_binding(store, &storage);
             let prior = BindingRevision::new(active.revision().get() - 1).unwrap();
-            let index = populated_cas_thread_index(store, storage);
+            let index = populated_cas_thread_index(store, &storage);
             let mut corruption = FixtureBatch::new();
             corruption
                 .put(FixtureRecord::Binding(BindingRecord::new(
@@ -298,7 +298,7 @@ fn reopen_rejects_malformed_native_count_and_predecessor_correlations() {
         "phase9-active-predecessor-authority",
         "active binding does not preserve compatible prior valid authority",
         |store, storage| {
-            let active = populated_active_binding(store, storage);
+            let active = populated_active_binding(store, &storage);
             let BindingState::Active(current) = active.state() else {
                 unreachable!();
             };
@@ -327,7 +327,7 @@ fn reopen_rejects_malformed_membership_and_source_correlations() {
         "phase9-cas-thread-latest-rewind",
         "CAS thread reservation owner or revision range disagrees",
         |store, storage| {
-            let index = populated_cas_thread_index(store, storage);
+            let index = populated_cas_thread_index(store, &storage);
             batch([FixtureRecord::CasThread(CasThreadIndexRecord::with_latest(
                 index.cas_thread_id().clone(),
                 index.thread_id(),
@@ -341,7 +341,7 @@ fn reopen_rejects_malformed_membership_and_source_correlations() {
         "phase9-extra-cas-thread-membership",
         "CAS thread binding membership names a missing binding",
         |store, storage| {
-            let index = populated_cas_thread_index(store, storage);
+            let index = populated_cas_thread_index(store, &storage);
             batch([FixtureRecord::CasThreadBinding(
                 CasThreadBindingIndexRecord::new(
                     index.cas_thread_id().clone(),
@@ -356,9 +356,9 @@ fn reopen_rejects_malformed_membership_and_source_correlations() {
         "phase9-wrong-source-active-history",
         "active source event lacks exact CAS-turn authority",
         |store, storage| {
-            let state = populated_active_turn_state(store, storage);
-            let path = populated_active_transcript_path(store, storage);
-            let active = populated_active_cas_turn(store, storage);
+            let state = populated_active_turn_state(store, &storage);
+            let path = populated_active_transcript_path(store, &storage);
+            let active = populated_active_cas_turn(store, &storage);
             let activity_head = storage
                 .activity_query_head(store, active.thread_id(), point_limit())
                 .unwrap()

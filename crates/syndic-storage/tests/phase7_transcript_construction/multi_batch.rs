@@ -5,11 +5,11 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     let home = TestHome::new("phase7-transcript-multi-batch");
     let mut store = open(home.path());
     let mut storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(&store, storage);
+    let thread = create_thread(&store, storage.clone());
 
     let root = submit_text(
         &store,
-        storage,
+        storage.clone(),
         thread,
         "root",
         draft_id(3),
@@ -18,17 +18,17 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     );
     complete_turn(
         &store,
-        storage,
+        storage.clone(),
         thread,
         root,
         timestamp(4),
         timestamp(5),
         timestamp(6),
     );
-    converge_and_release_terminal_history(&store, storage, thread, root.turn);
+    converge_and_release_terminal_history(&store, storage.clone(), thread, root.turn);
     let middle = submit_text(
         &store,
-        storage,
+        storage.clone(),
         thread,
         "middle",
         draft_id(4),
@@ -37,18 +37,18 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     );
     complete_turn(
         &store,
-        storage,
+        storage.clone(),
         thread,
         middle,
         timestamp(9),
         timestamp(10),
         timestamp(11),
     );
-    converge_and_release_terminal_history(&store, storage, thread, middle.turn);
+    converge_and_release_terminal_history(&store, storage.clone(), thread, middle.turn);
     let large_tail = "x".repeat(MARKDOWN_SPAN_MAX_BYTES * 65);
     let tail = submit_text(
         &store,
-        storage,
+        storage.clone(),
         thread,
         &large_tail,
         draft_id(5),
@@ -57,7 +57,7 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     );
     complete_turn(
         &store,
-        storage,
+        storage.clone(),
         thread,
         tail,
         timestamp(14),
@@ -65,21 +65,22 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
         timestamp(16),
     );
 
-    let root_projections = item_projection_ids(&store, storage, root.item);
-    let middle_projections = item_projection_ids(&store, storage, middle.item);
-    let tail_projections = item_projection_ids(&store, storage, tail.item);
+    let root_projections = item_projection_ids(&store, storage.clone(), root.item);
+    let middle_projections = item_projection_ids(&store, storage.clone(), middle.item);
+    let tail_projections = item_projection_ids(&store, storage.clone(), tail.item);
     assert_eq!(root_projections.len(), 1);
     assert_eq!(middle_projections.len(), 1);
     assert_eq!(tail_projections.len(), 65);
 
-    let (generation, started) = start_transcript_build(&store, storage, thread);
+    let (generation, started) = start_transcript_build(&store, storage.clone(), thread);
     assert_eq!(
         started.phase(),
         TranscriptBuildPhase::Collecting {
             next_turn: Some(tail.turn),
         }
     );
-    let interrupted_collecting = advance_transcript_build(&store, storage, thread, generation);
+    let interrupted_collecting =
+        advance_transcript_build(&store, storage.clone(), thread, generation);
     assert_eq!(interrupted_collecting.path_turn_count(), 1);
     assert_eq!(
         interrupted_collecting.phase(),
@@ -102,7 +103,7 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
         interrupted_collecting
     );
 
-    let collecting_middle = advance_transcript_build(&store, storage, thread, generation);
+    let collecting_middle = advance_transcript_build(&store, storage.clone(), thread, generation);
     assert_eq!(collecting_middle.path_turn_count(), 2);
     assert_eq!(
         collecting_middle.phase(),
@@ -110,7 +111,7 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
             next_turn: Some(root.turn),
         }
     );
-    let ready_to_publish = advance_transcript_build(&store, storage, thread, generation);
+    let ready_to_publish = advance_transcript_build(&store, storage.clone(), thread, generation);
     assert_eq!(ready_to_publish.path_turn_count(), 3);
     assert_eq!(
         ready_to_publish.phase(),
@@ -121,7 +122,7 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
         }
     );
 
-    let path = path_turns(&store, storage, thread, generation);
+    let path = path_turns(&store, storage.clone(), thread, generation);
     assert_eq!(path.len(), 3);
     assert_eq!(
         path.iter()
@@ -129,13 +130,14 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
             .collect::<Vec<_>>(),
         [(1, root.turn), (2, middle.turn), (3, tail.turn)]
     );
-    assert_unpublished_head(&store, storage, thread, generation);
+    assert_unpublished_head(&store, storage.clone(), thread, generation);
 
-    let after_root = advance_transcript_build(&store, storage, thread, generation);
+    let after_root = advance_transcript_build(&store, storage.clone(), thread, generation);
     assert_eq!(after_root.entry_count(), 1);
-    let after_middle = advance_transcript_build(&store, storage, thread, generation);
+    let after_middle = advance_transcript_build(&store, storage.clone(), thread, generation);
     assert_eq!(after_middle.entry_count(), 2);
-    let interrupted_publishing = advance_transcript_build(&store, storage, thread, generation);
+    let interrupted_publishing =
+        advance_transcript_build(&store, storage.clone(), thread, generation);
     assert_eq!(interrupted_publishing.entry_count(), 66);
     assert_eq!(
         interrupted_publishing.phase(),
@@ -145,7 +147,7 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
             next_projection: syndic_storage::ProjectionOrdinal::new(65).unwrap(),
         }
     );
-    assert_unpublished_head(&store, storage, thread, generation);
+    assert_unpublished_head(&store, storage.clone(), thread, generation);
 
     store.close().unwrap();
     store = open(home.path());
@@ -161,7 +163,7 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
         interrupted_publishing
     );
 
-    let completed = advance_transcript_build(&store, storage, thread, generation);
+    let completed = advance_transcript_build(&store, storage.clone(), thread, generation);
     assert_eq!(completed.phase(), TranscriptBuildPhase::Complete);
     assert_eq!(completed.entry_count(), 67);
     let head = storage
@@ -198,7 +200,7 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
             .copied()
             .map(|projection| (tail.item, projection)),
     );
-    let entries = transcript_entries(&store, storage, thread, generation);
+    let entries = transcript_entries(&store, storage.clone(), thread, generation);
     assert_eq!(entries.len(), expected.len());
     for (index, (entry, (item, projection))) in entries.iter().zip(expected.into_iter()).enumerate()
     {

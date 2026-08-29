@@ -37,7 +37,7 @@ fn seed_large_delivering_generation(
     last_ordinal: u64,
 ) {
     assert!(last_ordinal > 256);
-    seed_mixed_abandonment(store, storage);
+    seed_mixed_abandonment(store, storage.clone());
     let point_limit = limit();
     let thread = id(40);
     let generation = AcceptedRouteGeneration::FIRST;
@@ -58,9 +58,13 @@ fn seed_large_delivering_generation(
         .input_gate(store, thread, point_limit)
         .unwrap()
         .unwrap();
-    let current_route =
-        syndic_storage::test_faults::accepted_route_generation(store, storage, thread, generation)
-            .unwrap();
+    let current_route = syndic_storage::test_faults::accepted_route_generation(
+        store,
+        storage.clone(),
+        thread,
+        generation,
+    )
+    .unwrap();
     let revision = AcceptedRouteRevision::new(3).unwrap();
     let final_thread_revision = ThreadRevision::new(last_ordinal + 1).unwrap();
     let final_gate_revision = InputGateRevision::new(last_ordinal + 1).unwrap();
@@ -315,7 +319,7 @@ fn seed_large_delivering_generation(
     }
     let additions = records.split_off(8);
     for chunk in additions.chunks(96) {
-        commit(store, storage, batch(chunk.iter().cloned()));
+        commit(store, storage.clone(), batch(chunk.iter().cloned()));
     }
     commit(store, storage, batch(records));
 }
@@ -325,7 +329,7 @@ fn exact_delivering_input_resolves_with_fixed_point_work_on_a_large_generation()
     let home = TestHome::new("phase52-exact-delivering-steering");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_large_delivering_generation(&store, storage, 384);
+    seed_large_delivering_generation(&store, storage.clone(), 384);
 
     reset_delivering_steering_read_metrics();
     let resolved = storage
@@ -383,7 +387,7 @@ fn missing_and_non_delivering_inputs_are_not_eligible() {
     let home = TestHome::new("phase52-ineligible-delivering-steering");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_populated(&store, storage);
+    seed_populated(&store, storage.clone());
 
     assert!(
         storage
@@ -411,10 +415,10 @@ fn inconsistent_active_cas_turn_relationship_is_an_invariant_failure() {
     let home = TestHome::new("phase52-corrupt-delivering-steering");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_mixed_abandonment(&store, storage);
+    seed_mixed_abandonment(&store, storage.clone());
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::ActiveCasTurn(ActiveCasTurnRecord::new(
             active_snapshot(),
             id(40),

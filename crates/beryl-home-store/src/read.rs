@@ -288,7 +288,7 @@ impl HomeStore {
     /// Reads the exact current revision of one registered typed domain.
     pub fn domain_revision<D: StorageDomain>(
         &self,
-        handle: DomainHandle<D>,
+        handle: &DomainHandle<D>,
     ) -> Result<DomainRevision, ReadError> {
         self.execute_read(|generation| {
             let domain = generation
@@ -306,7 +306,7 @@ impl HomeStore {
     /// Reads one typed point without exposing its physical keyspace or encoding.
     pub fn read_point<D: StorageDomain, R: RecordCodec<D>>(
         &self,
-        handle: DomainHandle<D>,
+        handle: &DomainHandle<D>,
         key: &R::Key,
         limit: PointReadLimit,
     ) -> Result<Option<R::Value>, ReadError> {
@@ -325,7 +325,7 @@ impl HomeStore {
     /// Reads one typed finite cursor range without returning a raw iterator.
     pub fn read_cursor<D: StorageDomain, R: RecordCodec<D>>(
         &self,
-        handle: DomainHandle<D>,
+        handle: &DomainHandle<D>,
         range: &CursorRange<R::Key>,
         direction: CursorDirection,
         limits: CursorReadLimits,

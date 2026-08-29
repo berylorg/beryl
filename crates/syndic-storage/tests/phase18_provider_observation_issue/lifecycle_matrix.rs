@@ -29,7 +29,7 @@ fn inspect_agent_item(
     value: &str,
 ) -> InspectedProviderObservation {
     let sealed = {
-        let mut callback = observation_callback(&fixture.store, fixture.storage);
+        let mut callback = observation_callback(&fixture.store, fixture.storage.clone());
         let mut stager = committed_stage_value(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([observation_byte; 16]),
@@ -71,7 +71,7 @@ fn inspect_subagent_start(
     item_id: &CasItemId,
 ) -> InspectedProviderObservation {
     let sealed = {
-        let mut callback = observation_callback(&fixture.store, fixture.storage);
+        let mut callback = observation_callback(&fixture.store, fixture.storage.clone());
         let mut stager = committed_stage_value(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([observation_byte; 16]),
@@ -134,7 +134,7 @@ fn publish_issue(
     assert_eq!(issue.reason(), reason);
     let event = next_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -171,7 +171,7 @@ fn publish_issue(
 fn complete_agent_item(fixture: &Fixture) {
     exact_cas::admit_item_frame(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         fixture.assistant,

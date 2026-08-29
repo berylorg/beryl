@@ -131,7 +131,7 @@ impl SyndicStorage {
             ),
             None => derive_history_title(
                 &StoreTitleSnapshot {
-                    storage: *self,
+                    storage: self,
                     store,
                 },
                 &thread,

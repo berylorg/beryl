@@ -10,7 +10,7 @@ fn multi_page_text_replays_with_bounded_compiler_batches() {
         .chunks(PROVIDER_OBSERVATION_CHUNK_MAX_BYTES)
         .collect::<Vec<_>>();
     let bound = {
-        let mut callback = observation_callback(&store, storage);
+        let mut callback = observation_callback(&store, storage.clone());
         let mut stager = committed_stage_value(
             ProviderObservationStager::begin(
                 ProviderObservationId::from_bytes([3; 16]),

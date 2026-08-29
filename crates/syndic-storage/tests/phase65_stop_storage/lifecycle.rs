@@ -753,7 +753,7 @@ fn matching_terminal_atomically_consumes_the_live_stop() {
     fixture.admit_stop();
     correlate_user_item(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         fixture.item,
@@ -880,7 +880,7 @@ fn consuming_transitions_win_cleanly_against_a_stale_cause_join() {
     );
     correlate_user_item(
         &terminal.store,
-        terminal.storage,
+        &terminal.storage,
         terminal.thread,
         terminal.turn,
         terminal.item,
@@ -889,7 +889,7 @@ fn consuming_transitions_win_cleanly_against_a_stale_cause_join() {
     );
     admit_event(
         &terminal.store,
-        terminal.storage,
+        &terminal.storage,
         terminal.thread,
         terminal.turn,
         &terminal.source,

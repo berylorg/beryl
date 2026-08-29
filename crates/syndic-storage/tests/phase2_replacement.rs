@@ -16,7 +16,7 @@ use support::*;
 
 fn replacement_mutation(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     target: SyndicTurnId,
     selected: SelectedPathProof,
@@ -52,7 +52,7 @@ fn replacement_mutation(
 
 fn seed_empty_replacement_thread(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
 ) {
@@ -80,7 +80,7 @@ fn seed_empty_replacement_thread(
 
 fn seed_real_replacement_target(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> (SyndicTurnId, SelectedPathProof, CurrentTranscriptEntryProof) {
     let turn = source_turn();
     let item = source_item();
@@ -115,7 +115,7 @@ fn seed_real_replacement_target(
 
 fn seed_local_user_replacement_target(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
 ) -> (SyndicTurnId, SelectedPathProof, CurrentTranscriptEntryProof) {
@@ -326,7 +326,7 @@ fn seed_local_user_replacement_target(
             ProjectionLifecycle::Current,
         )),
     ]);
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     (
         turn,
         selected,
@@ -355,7 +355,7 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread = id(90);
     let (turn, selected, entry) =
-        seed_local_user_replacement_target(&store, storage, thread, draft_id(91));
+        seed_local_user_replacement_target(&store, &storage, thread, draft_id(91));
     let current_draft = storage
         .current_draft(
             &store,
@@ -368,8 +368,8 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
         .id();
     commit(
         &store,
-        storage,
-        replacement_mutation(&store, storage, thread, turn, selected, entry),
+        storage.clone(),
+        replacement_mutation(&store, &storage, thread, turn, selected, entry),
     );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -408,7 +408,7 @@ fn replacement_intent_rejects_stale_proof_and_wrong_entry_target() {
         "replacement-selected-proof",
         "replacement edit selected-path proof disagrees with current thread",
         |store, storage| {
-            let (turn, _selected, entry) = seed_real_replacement_target(store, storage);
+            let (turn, _selected, entry) = seed_real_replacement_target(store, &storage);
             let current = storage
                 .current_draft(store, id(30), SyndicPointReadLimit::new(1_000_000).unwrap())
                 .unwrap()
@@ -418,17 +418,17 @@ fn replacement_intent_rejects_stale_proof_and_wrong_entry_target() {
                 current.thread().revision(),
                 empty_selected_path_digest(),
             );
-            replacement_mutation(store, storage, id(30), turn, selected, entry)
+            replacement_mutation(store, &storage, id(30), turn, selected, entry)
         },
     );
     exercise_seeded_populated_case(
         "replacement-off-path",
         "replacement edit transcript entry or user item disagrees",
         |store, storage| {
-            let (turn, selected, entry) = seed_real_replacement_target(store, storage);
+            let (turn, selected, entry) = seed_real_replacement_target(store, &storage);
             replacement_mutation(
                 store,
-                storage,
+                &storage,
                 id(30),
                 turn,
                 selected,
@@ -442,14 +442,14 @@ fn replacement_intent_rejects_stale_proof_and_wrong_entry_target() {
         |store, storage| {
             let thread = id(80);
             let target = SyndicTurnId::from_bytes([82; 16]);
-            seed_empty_replacement_thread(store, storage, thread, draft_id(81));
+            seed_empty_replacement_thread(store, &storage, thread, draft_id(81));
             let current = storage
                 .current_draft(store, thread, SyndicPointReadLimit::new(1_000_000).unwrap())
                 .unwrap()
                 .unwrap();
             let mut corrupt = replacement_mutation(
                 store,
-                storage,
+                &storage,
                 thread,
                 target,
                 SelectedPathProof::new(
@@ -497,8 +497,9 @@ fn replacement_intent_rejects_provider_operation_target() {
         "replacement-provider-operation",
         "replacement edit target is not an ordinary user turn",
         |store, storage| {
-            let (_turn, selected, entry) = seed_real_replacement_target(store, storage);
-            let mut corrupt = replacement_mutation(store, storage, id(30), target, selected, entry);
+            let (_turn, selected, entry) = seed_real_replacement_target(store, &storage);
+            let mut corrupt =
+                replacement_mutation(store, &storage, id(30), target, selected, entry);
             corrupt
                 .put(FixtureRecord::Turn(TurnRecord::new(
                     target,
@@ -532,10 +533,10 @@ fn replacement_validation_uses_one_exact_current_entry_instead_of_ancestry_walk(
         "replacement-wrong-current-entry",
         "replacement edit transcript entry or user item disagrees",
         |store, storage| {
-            let (turn, selected, entry) = seed_real_replacement_target(store, storage);
+            let (turn, selected, entry) = seed_real_replacement_target(store, &storage);
             replacement_mutation(
                 store,
-                storage,
+                &storage,
                 id(30),
                 turn,
                 selected,

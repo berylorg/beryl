@@ -19,8 +19,8 @@ fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
     let home = TestHome::new("canonical-empty");
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = create_thread(storage, &store, 1, 4_096);
-    let before = current(storage, &store, thread);
+    let thread = create_thread(&storage, &store, 1, 4_096);
+    let before = current(&storage, &store, thread);
     assert_eq!(before.draft().history().candidate_generation(), 0);
     assert_eq!(before.draft().history().frontier_revision(), 0);
     assert_eq!(before.draft().history().root(), before.draft().piece_root());
@@ -31,12 +31,12 @@ fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
         &store,
         storage.create_thread(storage.revision(&store).unwrap(), create_request(1, 4_096)),
     ));
-    assert_eq!(current(storage, &store, thread), before);
+    assert_eq!(current(&storage, &store, thread), before);
     drop(store);
 
     let mut reopened = open(&home);
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
-    assert_eq!(current(reopened_storage, &reopened, thread), before);
+    assert_eq!(current(&reopened_storage, &reopened, thread), before);
 
     let collision_home = TestHome::new("canonical-empty-collision");
     let mut collision_store = open(&collision_home);
@@ -46,7 +46,7 @@ fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
         &collision_store,
         occupy_canonical_empty_draft_edit_history(
             &collision_store,
-            collision_storage,
+            collision_storage.clone(),
             collision_request.draft_id(),
             DraftEditHistoryPolicyV1::new(4_097, 2).unwrap(),
         ),
@@ -73,7 +73,7 @@ fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
 #[test]
 fn session_forks_the_published_pair_and_missing_frontier_fails_closed() {
     let (_home, store, storage, thread) = fixture("session-fork", 10, 4_096);
-    let durable = current(storage, &store, thread);
+    let durable = current(&storage, &store, thread);
     let request = open_request(&durable, 12, 13);
     let prepared = storage
         .prepare_open_draft_editor_candidate_session(&store, request)
@@ -120,7 +120,7 @@ fn session_forks_the_published_pair_and_missing_frontier_fails_closed() {
 
     committed(execute(
         &store,
-        delete_draft_edit_history_frontier(&store, storage, session.newest_history().key()),
+        delete_draft_edit_history_frontier(&store, storage.clone(), session.newest_history().key()),
     ));
     let missing_replay = execute(
         &store,

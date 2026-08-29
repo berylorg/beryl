@@ -190,6 +190,13 @@ macro_rules! domain {
             const FAMILIES: &'static [RecordFamily<Self>] =
                 &[RecordFamily::new::<$codec>(KeyspaceSchemaVersion::new(1))];
             type ValidationError = TestError;
+            type RuntimeAttachment = ();
+            type RuntimeAttachmentError = std::convert::Infallible;
+
+            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+                Ok(())
+            }
+
             fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
                 VALIDATION_CALLS.fetch_add(1, Ordering::SeqCst);
                 Ok(())
@@ -213,6 +220,13 @@ impl StorageDomain for CollisionDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = TestError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
+
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
     }
@@ -375,12 +389,12 @@ fn mixed_and_neither_observations_seal_collision_without_health_failure() {
 
     let mut seed = HomeCommand::new(store.home_revision().unwrap());
     seed.add(alpha.contribution(
-        store.domain_revision(alpha).unwrap(),
+        store.domain_revision(&alpha).unwrap(),
         Put::<Alpha, AlphaRecord>::new(1, b"old"),
     ))
     .unwrap();
     seed.add(beta.contribution(
-        store.domain_revision(beta).unwrap(),
+        store.domain_revision(&beta).unwrap(),
         Put::<Beta, BetaRecord>::new(1, b"old"),
     ))
     .unwrap();
@@ -392,13 +406,13 @@ fn mixed_and_neither_observations_seal_collision_without_health_failure() {
     let mut ambiguous = HomeCommand::new(store.home_revision().unwrap());
     ambiguous
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             Put::<Alpha, AlphaRecord>::new(1, b"new"),
         ))
         .unwrap();
     ambiguous
         .add(beta.contribution(
-            store.domain_revision(beta).unwrap(),
+            store.domain_revision(&beta).unwrap(),
             Put::<Beta, BetaRecord>::new(1, b"new"),
         ))
         .unwrap();
@@ -567,7 +581,7 @@ fn duplicate_trigger_joins_and_four_workers_leave_unrelated_work_available() {
 
     assert_eq!(
         store
-            .read_point::<Beta, BetaRecord>(beta, &99, PointReadLimit::new(128).unwrap(),)
+            .read_point::<Beta, BetaRecord>(&beta, &99, PointReadLimit::new(128).unwrap(),)
             .unwrap(),
         None
     );
@@ -676,7 +690,7 @@ fn nonstructural_hook_access_failure_is_scope_local_joined_and_retryable() {
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     assert_eq!(
         store
-            .read_point::<Beta, BetaRecord>(beta, &77, PointReadLimit::new(128).unwrap(),)
+            .read_point::<Beta, BetaRecord>(&beta, &77, PointReadLimit::new(128).unwrap(),)
             .unwrap(),
         None
     );

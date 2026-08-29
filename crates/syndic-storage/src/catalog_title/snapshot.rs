@@ -1,6 +1,6 @@
 use super::*;
 
-impl TitleSnapshot for StoreTitleSnapshot<'_> {
+impl TitleSnapshot for StoreTitleSnapshot<'_, '_> {
     fn turn(&self, id: SyndicTurnId) -> Result<Option<TurnRecord>, HistoryTitleReadError> {
         self.point::<TurnsFamily>(&id)
     }
@@ -42,7 +42,7 @@ impl TitleSnapshot for StoreTitleSnapshot<'_> {
         let page = self
             .store
             .read_cursor::<SyndicDomain, ExactCodec<ContentTextSpansFamily>>(
-                self.storage.handle,
+                &self.storage.handle,
                 &text_span_range(content, after, through),
                 CursorDirection::Forward,
                 text_span_limits(),
@@ -58,11 +58,11 @@ impl TitleSnapshot for StoreTitleSnapshot<'_> {
     }
 }
 
-impl StoreTitleSnapshot<'_> {
+impl StoreTitleSnapshot<'_, '_> {
     fn point<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, HistoryTitleReadError> {
         self.store
             .read_point::<SyndicDomain, ExactCodec<F>>(
-                self.storage.handle,
+                &self.storage.handle,
                 key,
                 family_point_limit::<F>(),
             )

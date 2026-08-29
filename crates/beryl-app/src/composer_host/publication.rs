@@ -318,7 +318,7 @@ fn publication_point_limit() -> SyndicPointReadLimit {
 
 fn unchanged_evidence(
     store: &HomeStore,
-    assets: AssetState,
+    assets: &AssetState,
     candidate: DraftRootHistoryPairV1,
 ) -> Result<DraftEditorCandidatePublicationEvidenceV1, ComposerHostError> {
     let owner = AssetOwner::CurrentDraft(candidate.root().key().draft_id());
@@ -340,11 +340,11 @@ fn unchanged_evidence(
 
 fn prepare_publication(
     store: &HomeStore,
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     intent: &mut PublicationIntent,
     evidence: DraftEditorCandidatePublicationEvidenceV1,
 ) -> Result<PreparedPublication, ComposerHostError> {
-    let asset = prepare_asset_plan(store, intent.assets, intent.candidate_pair, evidence)?;
+    let asset = prepare_asset_plan(store, &intent.assets, intent.candidate_pair, evidence)?;
     let source = intent
         .source
         .take()
@@ -362,7 +362,7 @@ fn prepare_publication(
 
 fn prepare_asset_plan(
     store: &HomeStore,
-    assets: AssetState,
+    assets: &AssetState,
     candidate: DraftRootHistoryPairV1,
     evidence: DraftEditorCandidatePublicationEvidenceV1,
 ) -> Result<PublicationAssetPlan, ComposerHostError> {

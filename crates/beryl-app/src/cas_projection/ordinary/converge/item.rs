@@ -12,7 +12,7 @@ use super::{command, snapshot};
 
 pub(super) fn converge_turn_items(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     minimum_observed_at: SyndicTimestamp,
@@ -120,7 +120,7 @@ fn require_terminal(
 #[allow(clippy::too_many_arguments)]
 fn freeze_live_item(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     minimum_observed_at: SyndicTimestamp,
@@ -259,7 +259,7 @@ fn next_is(before: u64, after: u64) -> bool {
 #[allow(clippy::too_many_arguments)]
 fn finalize_item(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     minimum_observed_at: SyndicTimestamp,
@@ -283,7 +283,7 @@ fn finalize_item(
 
 fn converge_item_projection(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     source: &snapshot::CanonicalSnapshot,
     limit: SyndicPointReadLimit,
@@ -379,7 +379,7 @@ fn valid_parsing_build(
 
 fn start_projection(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     source: &snapshot::CanonicalSnapshot,
     _limit: SyndicPointReadLimit,
@@ -392,7 +392,7 @@ fn start_projection(
 
 fn advance_projection(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     source: &snapshot::CanonicalSnapshot,
     _limit: SyndicPointReadLimit,

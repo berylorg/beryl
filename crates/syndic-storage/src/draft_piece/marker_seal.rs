@@ -894,7 +894,7 @@ pub fn inject_draft_marker_seal_record_corruption_for_test(
         .expect("marker seal corruption fixture value is nonempty") ^= 0x80;
     store
         .inject_persisted_corrupt_record::<SyndicDomain, DraftMarkerSealsCodec>(
-            storage.handle,
+            &storage.handle,
             &encoded_key,
             &encoded_value,
         )

@@ -129,7 +129,7 @@ pub fn draft_piece_fragment_zero_ordinal_codec_rejections(
 
 pub fn draft_piece_fragment_is_stored_exactly(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fragment: &DraftPieceBuildFragmentV1,
 ) -> bool {
     matches!(
@@ -144,7 +144,7 @@ pub fn draft_piece_fragment_is_stored_exactly(
 
 pub fn delete_draft_piece_terminal_build(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
 ) -> MutationContribution {
     storage.handle.contribution(
@@ -155,7 +155,7 @@ pub fn delete_draft_piece_terminal_build(
 
 pub fn delete_draft_piece_build_progress_receipt(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceBuildProgressReceiptKeyV1,
 ) -> MutationContribution {
     storage.handle.contribution(
@@ -166,7 +166,7 @@ pub fn delete_draft_piece_build_progress_receipt(
 
 pub fn inject_draft_piece_candidate_root_collision(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     root: DraftPieceRootReferenceV1,
     collision: DraftPieceCandidateRootCollision,
 ) -> MutationContribution {
@@ -234,7 +234,7 @@ pub fn rekey_draft_piece_root_for_collision(
 
 pub fn inject_draft_piece_build_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
     corruption: DraftPieceBuildCorruption,
 ) -> MutationContribution {
@@ -630,7 +630,7 @@ pub fn inject_draft_piece_build_corruption(
 
 fn coordinated_build_replacement(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
     build: DraftPieceBuildRecordV1,
 ) -> MutationContribution {
@@ -699,7 +699,7 @@ fn coordinated_build_replacement(
 
 pub fn inject_draft_piece_progress_receipt_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
     corruption: DraftPieceProgressReceiptCorruption,
 ) -> MutationContribution {
@@ -840,7 +840,7 @@ pub fn inject_draft_piece_progress_receipt_corruption(
 
 pub fn inject_draft_piece_occupied_stage_target(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
     fragment: DraftPieceBuildFragmentV1,
 ) -> MutationContribution {
@@ -904,7 +904,7 @@ pub fn inject_draft_piece_occupied_stage_target(
 
 pub fn inject_draft_piece_fragment_ahead(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fragment: DraftPieceBuildFragmentV1,
 ) -> MutationContribution {
     storage.handle.contribution(
@@ -915,7 +915,7 @@ pub fn inject_draft_piece_fragment_ahead(
 
 pub fn inject_draft_piece_custody_endpoint_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     draft_id: beryl_model::SyndicDraftId,
     session_id: DraftEditorCandidateSessionIdV1,
 ) -> MutationContribution {
@@ -980,7 +980,7 @@ pub fn inject_draft_piece_custody_endpoint_corruption(
 
 pub fn inject_draft_piece_session_generation_inflation(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     draft_id: beryl_model::SyndicDraftId,
     session_id: DraftEditorCandidateSessionIdV1,
 ) -> MutationContribution {
@@ -1030,7 +1030,7 @@ pub fn inject_draft_piece_session_generation_inflation(
 
 pub fn inject_draft_piece_coordinated_stage_target_replacement(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
 ) -> MutationContribution {
     let limit = SyndicPointReadLimit::new(75_000).expect("fixture point bound is nonzero");
@@ -1134,7 +1134,7 @@ pub fn inject_draft_piece_coordinated_stage_target_replacement(
 
 pub fn inject_draft_editor_candidate_open_receipt_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     draft_id: beryl_model::SyndicDraftId,
     session_id: DraftEditorCandidateSessionIdV1,
     operation_id: DraftPieceOperationIdV1,
@@ -1170,7 +1170,7 @@ pub fn inject_draft_editor_candidate_open_receipt_corruption(
 
 pub fn inject_draft_piece_fragment_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceBuildFragmentKeyV1,
     corruption: DraftPieceFragmentCorruption,
 ) -> Result<(), beryl_home_store::test_faults::PersistedCorruptionError> {
@@ -1279,7 +1279,7 @@ pub fn inject_draft_piece_fragment_corruption(
     );
     encoded_value.extend_from_slice(&payload);
     store.inject_persisted_corrupt_record::<SyndicDomain, DraftPieceBuildFragmentsCodec>(
-        storage.handle,
+        &storage.handle,
         &encoded_key,
         &encoded_value,
     )
@@ -1287,7 +1287,7 @@ pub fn inject_draft_piece_fragment_corruption(
 
 pub fn inject_draft_editor_candidate_session_published_beyond_newest(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     draft_id: beryl_model::SyndicDraftId,
     session_id: DraftEditorCandidateSessionIdV1,
 ) -> MutationContribution {
@@ -1335,7 +1335,7 @@ pub fn inject_draft_editor_candidate_session_published_beyond_newest(
 
 pub fn delete_draft_piece_immutable_record(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     root: DraftPieceRootReferenceV1,
     deletion: DraftPieceImmutableDeletion,
 ) -> MutationContribution {
@@ -1403,7 +1403,7 @@ pub enum DraftPieceDescendantCorruption {
 
 pub fn inject_draft_piece_descendant_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     root: DraftPieceRootReferenceV1,
     target: DraftPieceDescendantTarget,
     corruption: DraftPieceDescendantCorruption,
@@ -1428,7 +1428,7 @@ pub fn inject_draft_piece_descendant_corruption(
 
 pub fn inject_draft_piece_progress_root_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
     corruption: DraftPieceProgressRootCorruption,
 ) -> MutationContribution {
@@ -1480,7 +1480,7 @@ pub fn inject_draft_piece_progress_root_corruption(
 
 fn inject_root_sequence(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     draft_id: beryl_model::SyndicDraftId,
     roots: DraftPieceBuildRootsV1,
 ) -> Replacement {
@@ -1507,7 +1507,7 @@ fn inject_root_sequence(
 
 fn inject_root_index(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     draft_id: beryl_model::SyndicDraftId,
     roots: DraftPieceBuildRootsV1,
 ) -> Replacement {
@@ -1543,7 +1543,7 @@ fn inject_root_index(
 
 fn inject_marker_order(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     draft_id: beryl_model::SyndicDraftId,
     roots: DraftPieceBuildRootsV1,
 ) -> Replacement {
@@ -1579,7 +1579,7 @@ fn inject_marker_order(
 
 pub fn inject_draft_piece_settlement_closure_corruption(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
 ) -> MutationContribution {
     let settlement = storage
@@ -1642,16 +1642,16 @@ pub fn inject_draft_piece_settlement_closure_corruption(
 
 pub fn draft_piece_position_record_count(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     root: DraftPieceRootReferenceV1,
     position: DraftCompositePositionV1,
 ) -> Result<u64, DraftPiecePrepareErrorV1> {
-    validate_position_record_count(&storage, store, root, position)
+    validate_position_record_count(storage, store, root, position)
 }
 
 fn inject_sequence(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     root: DraftPieceRootReferenceV1,
     corruption: DraftPieceDescendantCorruption,
 ) -> Replacement {
@@ -1912,7 +1912,7 @@ fn inject_sequence(
 
 fn inject_index(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     root: DraftPieceRootReferenceV1,
     corruption: DraftPieceDescendantCorruption,
 ) -> Replacement {

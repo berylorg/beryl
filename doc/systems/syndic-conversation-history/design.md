@@ -390,20 +390,27 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   labels. Every role is fenced to the exact owner, registration, home generation, and domain
   revision and returns the same fixed-size correlation from its private domain facts on one
   serialized snapshot. No raw cross-domain result or comparison reaches the app.
-- One home-generation-scoped Syndic coordinator owns a configured bounded set of fixed-size
-  operation-qualified transient label reservations and a compact destination reservation frontier.
-  It retains neither marker pages nor a per-label, historical, or whole-draft registry. Each
-  bounded canonical evidence page names its exact operation, page ordinal, prior cumulative digest,
-  and associations. Before dispatch the coordinator seals the complete HomeStore plan, retains its
-  paired move-only expectation consumer, and exposes only the opaque executable command to the app.
-  `compose_proof` returns only a receipt, which the app transports back; the coordinator consumes
-  its independently retained pre-dispatch expectation against that receipt and current generation
-  in immediate order. It retains only the next ordinal, cumulative count/digest/frontier,
-  immediate-last receipt, at most one pending expectation consumer, reservation, and operation
-  custody. Byte-equal immediate replay returns the same receipt, differing
-  reuse collides, and an older ordinal is obsolete. At exact EOF it revalidates the mutable head,
-  session, predecessor root, and reservation before issuing the final move-only proof and its
-  durable fixed-size binding.
+- Syndic registers one configured readiness coordinator as its typed HomeStore runtime attachment.
+  The registered-domain slot for one home generation is its sole strong owner, and every Syndic
+  handle clone or reacquisition resolves that same coordinator. It owns a bounded set of fixed-size
+  operation-qualified transient label reservations and a compact destination reservation frontier,
+  but no per-label, historical, whole-draft, or process-global registry.
+- Page preparation creates one opaque immutable bounded move-only page attempt. The attempt owns the
+  canonical evidence page and its exact home generation, operation, page ordinal, prior cumulative
+  frontier, sealed HomeStore executable command, paired expectation consumer, and unforgeable
+  attempt identity. The app may transport only the opaque attempt state, executable command, and
+  resulting receipt; it cannot inspect or reconstruct page facts, correlations, equality inputs,
+  or the consumer. Dispatch and receipt submission preserve that same linear attempt custody.
+- Receipt submission consumes the attempt's independently retained expectation against the receipt
+  and current home generation. Acceptance advances the coordinator exactly once and returns the
+  same attempt in accepted state. Immediate replay requires that exact accepted attempt object; a
+  freshly prepared attempt at the occupied ordinal is `Collision` even when its canonical bytes or
+  digest match, and an older ordinal is obsolete. Digest equality is a commitment and rejection
+  aid, never replay identity. Advancing to the next page consumes the prior accepted attempt, so the
+  coordinator retains only the next ordinal, cumulative count/digest/frontier, active attempt
+  identity, reservation, and operation custody rather than a page or association prefix. At exact
+  EOF it revalidates the mutable head, session, predecessor root, and reservation before issuing the
+  final move-only proof and its durable fixed-size binding.
 - The marker-effect proposal commits the binding while retaining marker effects in the existing
   bounded cursor stream. Staging, build, terminal settlement, and replay preserve the same binding;
   completion compares the actual storage-derived effect count, chain, associations, allocation,
@@ -421,8 +428,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   transfers the move-only proof and reservation to the exact operation reconciliation wrapper;
   `ExactNew` or terminal noncommit consumes and releases them, `ExactOld` retains them for retry or
   cancellation, and `Collision` retains the uncertain ordinal in a closed scope until home-
-  generation retirement. Retirement invalidates every remaining proof and releases the coordinator
-  wholesale.
+  generation retirement. HomeStore attachment retirement invalidates every remaining proof and
+  attempt, releases all reservations, and retires the coordinator exactly once.
 - Canonical hashing uses SHA-256 and the exact ASCII domains
   `syndic/draft-sequence-root/v1/empty`, `syndic/draft-marker-identity-index-root/v1/empty`,
   `syndic/draft-marker-order-commitment-root/v1/empty`, and `syndic/draft-combined-root/v1`.

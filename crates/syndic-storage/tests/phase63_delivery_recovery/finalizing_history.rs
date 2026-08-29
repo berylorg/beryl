@@ -24,7 +24,7 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
     assert!(matches!(
         recovery.storage.classify_delivery_recovery(
             &recovery.store,
-            &startup_source(&recovery.store, recovery.storage),
+            &startup_source(&recovery.store, recovery.storage.clone()),
             point_limit(),
         ),
         Ok(DeliveryRecoveryCase::FinalizingHistory {
@@ -44,7 +44,7 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
     assert!(matches!(
         storage.classify_delivery_recovery(
             &store,
-            &startup_source(&store, storage),
+            &startup_source(&store, storage.clone()),
             point_limit(),
         ),
         Ok(DeliveryRecoveryCase::FinalizingHistory {
@@ -54,7 +54,7 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
         }) if thread_id == thread && turn_id == turn
     ));
 
-    let input_id = queue_input(&store, storage, thread, 501, timestamp(12));
+    let input_id = queue_input(&store, storage.clone(), thread, 501, timestamp(12));
     let input = storage
         .accepted_input(&store, input_id, point_limit())
         .unwrap()
@@ -78,7 +78,7 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
         .input_gate(&store, thread, point_limit())
         .unwrap()
         .unwrap();
-    let stale = completion_request(&store, storage, thread, turn);
+    let stale = completion_request(&store, storage.clone(), thread, turn);
     let outcome = execute_result(
         &store,
         storage.complete_terminal_history(storage.revision(&store).unwrap(), stale),
@@ -92,8 +92,8 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
         Some(before.clone())
     );
 
-    finish_transcript(&store, storage, thread);
-    let request = completion_request(&store, storage, thread, turn);
+    finish_transcript(&store, storage.clone(), thread);
+    let request = completion_request(&store, storage.clone(), thread, turn);
     execute(
         &store,
         storage.complete_terminal_history(storage.revision(&store).unwrap(), request),
@@ -170,7 +170,7 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
 fn release_refuses_a_finalizable_item_until_item_and_transcript_converge() {
     let recovery = terminal_home("phase63-finalizing-item-refusal", 502, true);
     let item_id = SyndicItemId::from_bytes(*ordered_id(30_502).as_bytes());
-    finish_transcript(&recovery.store, recovery.storage, recovery.thread);
+    finish_transcript(&recovery.store, recovery.storage.clone(), recovery.thread);
     let before = recovery
         .storage
         .input_gate(&recovery.store, recovery.thread, point_limit())
@@ -178,7 +178,7 @@ fn release_refuses_a_finalizable_item_until_item_and_transcript_converge() {
         .unwrap();
     let request = completion_request(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
     );
@@ -203,15 +203,15 @@ fn release_refuses_a_finalizable_item_until_item_and_transcript_converge() {
 
     converge_first_item(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
         item_id,
     );
-    finish_transcript(&recovery.store, recovery.storage, recovery.thread);
+    finish_transcript(&recovery.store, recovery.storage.clone(), recovery.thread);
     let request = completion_request(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
     );
@@ -249,7 +249,7 @@ fn release_refuses_a_finalizable_item_until_item_and_transcript_converge() {
 #[test]
 fn stale_completion_proof_consumes_multiple_queued_admission_descendants() {
     let recovery = terminal_home("phase63-finalizing-compatible-descendants", 503, false);
-    finish_transcript(&recovery.store, recovery.storage, recovery.thread);
+    finish_transcript(&recovery.store, recovery.storage.clone(), recovery.thread);
     let observed_gate = recovery
         .storage
         .input_gate(&recovery.store, recovery.thread, point_limit())
@@ -272,21 +272,21 @@ fn stale_completion_proof_consumes_multiple_queued_admission_descendants() {
         .unwrap();
     let request = completion_request(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
     );
 
     queue_input(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         503,
         timestamp(12),
     );
     queue_input(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         504,
         timestamp(14),
@@ -382,12 +382,12 @@ fn successful_completed_history_stays_complete_across_queued_admission_and_relea
     let recovery = terminal_home("phase63-successful-history-preserved", 505, true);
     converge_first_item(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
         SyndicItemId::from_bytes(*ordered_id(30_505).as_bytes()),
     );
-    finish_transcript(&recovery.store, recovery.storage, recovery.thread);
+    finish_transcript(&recovery.store, recovery.storage.clone(), recovery.thread);
     let observed_gate = recovery
         .storage
         .input_gate(&recovery.store, recovery.thread, point_limit())
@@ -418,14 +418,14 @@ fn successful_completed_history_stays_complete_across_queued_admission_and_relea
     );
     let request = completion_request(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         recovery.turn,
     );
 
     queue_input(
         &recovery.store,
-        recovery.storage,
+        recovery.storage.clone(),
         recovery.thread,
         505,
         timestamp(12),
@@ -502,7 +502,7 @@ fn successful_completed_history_stays_complete_across_queued_admission_and_relea
 #[test]
 fn completion_rejects_an_impossible_finalizing_gate_descendant() {
     let recovery = terminal_home("phase63-impossible-finalizing-descendant", 506, false);
-    finish_transcript(&recovery.store, recovery.storage, recovery.thread);
+    finish_transcript(&recovery.store, recovery.storage.clone(), recovery.thread);
     let gate = recovery
         .storage
         .input_gate(&recovery.store, recovery.thread, point_limit())

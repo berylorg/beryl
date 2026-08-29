@@ -5,15 +5,15 @@ fn generic_abandonment_reopen_rejects_nonprior_gate_witness() {
     let home = TestHome::new("phase53-generic-abandonment-corrupt-gate-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    seed_mixed_abandonment(&store, storage);
+    seed_mixed_abandonment(&store, storage.clone());
     let source = syndic_storage::test_faults::accepted_route_generation(
         &store,
-        storage,
+        storage.clone(),
         id(40),
         AcceptedRouteGeneration::FIRST,
     )
     .unwrap();
-    let request = abandonment_request(&store, storage);
+    let request = abandonment_request(&store, &storage);
     assert!(matches!(
         store.execute_current(storage.current_abandon_active_binding(request.clone())),
         CommandOutcome::Committed {
@@ -60,7 +60,7 @@ fn generic_abandonment_reopen_rejects_nonprior_gate_witness() {
     .unwrap();
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::AcceptedRouteGeneration(corrupt)]),
     );
     assert!(

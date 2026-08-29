@@ -25,7 +25,7 @@ fn complete_staged_bounded(
         .unwrap()
         .unwrap();
     let page = prepare_one_page(
-        *storage,
+        storage,
         &head,
         &active,
         DraftMutationStagingPageItemV1::Proposal(replacement.clone()),
@@ -203,12 +203,12 @@ fn adopt_history(
 }
 
 fn capture_publication_source(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     request: DraftEditorCandidatePublicationRequestV1,
 ) -> syndic_storage::CapturedDraftEditorCandidatePublicationSourceV1 {
     let head = active_session(
-        &storage,
+        storage,
         store,
         request.selector().draft_id(),
         request.session_id(),
@@ -236,7 +236,7 @@ fn capture_publication_source(
 }
 
 fn materialize_bounded(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     root: syndic_storage::DraftPieceRootReferenceV1,
     operation: u8,

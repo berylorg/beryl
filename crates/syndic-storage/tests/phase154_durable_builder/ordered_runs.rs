@@ -51,8 +51,8 @@ fn assert_same_anchor_marker_order(
 #[test]
 fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
     let (_home, store, storage, thread) = fixture("sparse-same-anchor", 220);
-    let sparse_current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &sparse_current, 221, 222);
+    let sparse_current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &sparse_current, 221, 222);
     session = complete_staged(
         &storage,
         &store,
@@ -204,8 +204,8 @@ fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
     assert_eq!(terminal.markers(), &sparse_all[2..]);
 
     let (_same_home, store, storage, thread) = fixture("same-anchor-pages", 235);
-    let same_current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &same_current, 236, 237);
+    let same_current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &same_current, 236, 237);
     session = complete_staged(
         &storage,
         &store,
@@ -309,8 +309,7 @@ fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
         paged.sort_by_key(|marker| marker.marker().order_key());
         assert_eq!(
             paged,
-            same
-                .iter()
+            same.iter()
                 .copied()
                 .map(|marker| DraftPieceMarkerAtV1::new(2, marker))
                 .collect::<Vec<_>>()

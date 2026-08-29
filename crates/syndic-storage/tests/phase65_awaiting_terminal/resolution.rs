@@ -15,7 +15,7 @@ fn exact_late_terminal_enters_history_without_retargeting_unknown_interval_work(
 
     admit_event(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -82,7 +82,7 @@ fn late_terminal_releases_unknown_interval_work_for_exact_promotion() {
 
     admit_event(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -97,7 +97,7 @@ fn late_terminal_releases_unknown_interval_work_for_exact_promotion() {
     );
     converge_and_release_terminal_history(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
     );
@@ -170,7 +170,7 @@ fn exact_terminal_reclassifies_ready_work_into_terminal_history_atomically() {
 
     admit_event(
         &fixture.store,
-        fixture.storage,
+        &fixture.storage,
         fixture.thread,
         fixture.turn,
         &fixture.source,

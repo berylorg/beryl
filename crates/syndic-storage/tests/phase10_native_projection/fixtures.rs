@@ -49,7 +49,7 @@ pub(super) fn alternate_execution() -> ExecutionBinding {
 
 pub(super) fn seed_child_at_tail(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     source_thread: SyndicThreadId,
     child: SyndicThreadId,
     draft: SyndicDraftId,
@@ -81,7 +81,7 @@ pub(super) fn seed_child_at_tail(
 
 pub(super) fn finish_current_transcript(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) {
     let thread_record = storage
@@ -139,14 +139,14 @@ pub(super) fn finish_current_transcript(
 
 pub(super) fn seed_root_pending(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     byte: u8,
     valid_binding: bool,
 ) -> PendingFixture {
     let thread = SyndicThreadId::from_bytes([byte; 16]);
     let draft = SyndicDraftId::from_bytes([byte.checked_add(1).unwrap(); 16]);
     let pending = SyndicTurnId::from_bytes([byte.checked_add(2).unwrap(); 16]);
-    support::seed_canonical_empty_thread(store, storage, thread, draft);
+    support::seed_canonical_empty_thread(store, storage.clone(), thread, draft);
 
     let selected = SelectedPathProof::new(
         Some(pending),
@@ -295,7 +295,7 @@ pub(super) fn seed_root_pending(
             generation: TranscriptGeneration::FIRST,
         })
         .unwrap();
-    support::commit(store, storage, batch);
+    support::commit(store, storage.clone(), batch);
     PendingFixture {
         thread,
         pending,
@@ -308,7 +308,7 @@ pub(super) fn seed_root_pending(
 
 pub(super) fn append_pending(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     pending: SyndicTurnId,
     parent: SyndicTurnId,
@@ -441,7 +441,7 @@ pub(super) fn append_pending(
     ] {
         batch.put(record).unwrap();
     }
-    support::commit(store, storage, batch);
+    support::commit(store, storage.clone(), batch);
     PendingFixture {
         thread,
         pending,
@@ -454,7 +454,7 @@ pub(super) fn append_pending(
 
 pub(super) fn seed_accepted_input_admission_descendant(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: &PendingFixture,
 ) -> AcceptedAdmissionFixture {
     let current_thread = storage
@@ -483,7 +483,7 @@ pub(super) fn seed_accepted_input_admission_descendant(
     let detached_thread = SyndicThreadId::from_bytes([172; 16]);
     let replacement_root_history = support::seed_detached_canonical_draft_backing(
         store,
-        storage,
+        storage.clone(),
         detached_thread,
         replacement_draft,
     );
@@ -617,7 +617,7 @@ pub(super) fn seed_accepted_input_admission_descendant(
     batch
         .delete(FixtureDelete::Draft(source_draft.id()))
         .unwrap();
-    support::commit(store, storage, batch);
+    support::commit(store, storage.clone(), batch);
     AcceptedAdmissionFixture {
         selected,
         input,
@@ -627,7 +627,7 @@ pub(super) fn seed_accepted_input_admission_descendant(
 
 pub(super) fn advance_source_to_divergent_prefix(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
 ) -> AdvancedSourceFixture {
     let thread_id = support::id(30);
     let parent_id = support::populated::source_turn();
@@ -736,7 +736,7 @@ pub(super) fn advance_source_to_divergent_prefix(
     let catalog = ThreadCatalogSummaryRecord::initial(&thread, &execution, &attributes, &history);
     support::commit(
         store,
-        storage,
+        storage.clone(),
         support::batch([
             FixtureRecord::Thread(thread),
             FixtureRecord::DraftByThread(DraftByThreadRecord::new(

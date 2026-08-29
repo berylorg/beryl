@@ -65,7 +65,7 @@ fn execution_binding() -> ExecutionBinding {
 
 fn create_thread(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
 ) {
@@ -86,7 +86,7 @@ fn create_thread(
 
 fn current_binding_revision(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> BindingRevision {
     storage
@@ -99,7 +99,7 @@ fn current_binding_revision(
 
 fn current_gate_revision(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> InputGateRevision {
     storage
@@ -118,7 +118,7 @@ fn loaded_generation(process: u64, thread: u64) -> CasLoadedSessionGeneration {
 
 fn same_home_pending_path(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_byte: u8,
 ) -> (
     SyndicThreadId,
@@ -259,13 +259,13 @@ fn same_home_pending_path(
         thread_revision,
         &[(turn, digest, TurnLifecycle::Pending, 0, timestamp(4))],
     ));
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     (thread, draft, turn, selected)
 }
 
 fn valid_request(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     selected: SelectedPathProof,
     cas_thread: CasThreadId,
@@ -295,7 +295,7 @@ fn valid_request(
 
 fn seed_queued_input(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     source_draft: SyndicDraftId,
 ) -> SyndicAcceptedInputId {
@@ -421,13 +421,13 @@ fn seed_queued_input(
             .unwrap(),
         ),
     ]);
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     input
 }
 
 fn seed_active_queued_input(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     source_draft: SyndicDraftId,
 ) -> SyndicAcceptedInputId {
@@ -448,9 +448,13 @@ fn seed_active_queued_input(
         .unwrap()
         .unwrap();
     let selected_route = gate.selected_route().unwrap();
-    let route =
-        test_faults::accepted_route_generation(store, storage, thread, selected_route.generation())
-            .unwrap();
+    let route = test_faults::accepted_route_generation(
+        store,
+        storage.clone(),
+        thread,
+        selected_route.generation(),
+    )
+    .unwrap();
     let next_thread_revision = thread_record.revision().checked_next().unwrap();
     let next_gate_revision = gate.revision().checked_next().unwrap();
     let next_route_revision = route.revision().checked_next().unwrap();
@@ -568,13 +572,13 @@ fn seed_active_queued_input(
             .unwrap(),
         ),
     ]);
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     input
 }
 
 fn seed_child_pending_after_terminal(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     fixture: &ActiveFixture,
     child: SyndicTurnId,
 ) -> SelectedPathProof {
@@ -746,7 +750,7 @@ fn seed_child_pending_after_terminal(
         )),
     ];
     records.shrink_to_fit();
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     selected
 }
 
@@ -763,7 +767,7 @@ struct ActiveFixture {
 
 fn activate_pending(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_byte: u8,
     publish_cas_turn: bool,
 ) -> ActiveFixture {
@@ -822,7 +826,7 @@ fn activate_pending(
 
 fn abandonment(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     wrong_native_count: bool,
 ) -> AbandonActiveBinding {
@@ -843,7 +847,8 @@ fn abandonment(
         .unwrap();
     let route = gate.selected_route().unwrap();
     let route_record =
-        test_faults::accepted_route_generation(store, storage, thread, route.generation()).unwrap();
+        test_faults::accepted_route_generation(store, storage.clone(), thread, route.generation())
+            .unwrap();
     let target = match route_record.target() {
         AcceptedRouteTarget::AwaitingSteering(target) => {
             AcceptedRouteLostTarget::AwaitingSteering(target.clone())
@@ -886,7 +891,7 @@ fn invalid_abandonment_preserves_the_exact_active_binding_and_route() {
     let home = TestHome::new("phase9-invalid-abandonment-preserves-state");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = activate_pending(&store, storage, 40, false);
+    let fixture = activate_pending(&store, &storage, 40, false);
     let thread = fixture.thread;
     let before_revision = storage.revision(&store).unwrap();
     let before_binding = storage
@@ -902,7 +907,7 @@ fn invalid_abandonment_preserves_the_exact_active_binding_and_route() {
         &store,
         storage.abandon_active_binding(
             storage.revision(&store).unwrap(),
-            abandonment(&store, storage, thread, true),
+            abandonment(&store, &storage, thread, true),
         ),
     );
     assert!(matches!(
@@ -935,9 +940,9 @@ fn exact_active_abandonment_is_reconcilable_and_survives_reopen() {
     let home = TestHome::new("phase9-exact-active-abandonment");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = activate_pending(&store, storage, 50, false);
+    let fixture = activate_pending(&store, &storage, 50, false);
     let thread = fixture.thread;
-    let request = abandonment(&store, storage, thread, false);
+    let request = abandonment(&store, &storage, thread, false);
     assert_eq!(
         storage
             .abandoned_active_binding_publication_status(&store, &request, point_limit())
@@ -1000,7 +1005,7 @@ fn retired_projection_rejects_late_activation_and_source_less_complete() {
     let home = TestHome::new("phase9-retired-projection-rejects-late-events");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = activate_pending(&store, storage, 55, true);
+    let fixture = activate_pending(&store, &storage, 55, true);
     let state = storage
         .turn_state(&store, fixture.turn, point_limit())
         .unwrap()
@@ -1029,7 +1034,7 @@ fn retired_projection_rejects_late_activation_and_source_less_complete() {
             .unwrap(),
         ),
     );
-    let request = abandonment(&store, storage, fixture.thread, false);
+    let request = abandonment(&store, &storage, fixture.thread, false);
     execute(
         &store,
         storage.abandon_active_binding(storage.revision(&store).unwrap(), request.clone()),
@@ -1202,12 +1207,12 @@ fn queued_input_survives_active_abandonment_retry_and_activation() {
     let home = TestHome::new("phase9-queued-active-abandonment-retry");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = activate_pending(&store, storage, 60, true);
-    let accepted = seed_active_queued_input(&store, storage, fixture.thread, draft_id(73));
+    let fixture = activate_pending(&store, &storage, 60, true);
+    let accepted = seed_active_queued_input(&store, &storage, fixture.thread, draft_id(73));
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
-    let request = abandonment(&store, storage, fixture.thread, false);
+    let request = abandonment(&store, &storage, fixture.thread, false);
     assert_eq!(
         storage
             .abandoned_active_binding_publication_status(&store, &request, point_limit())
@@ -1267,7 +1272,7 @@ fn queued_input_survives_active_abandonment_retry_and_activation() {
 
     let retry = valid_request(
         &store,
-        storage,
+        &storage,
         fixture.thread,
         fixture.selected,
         CasThreadId::new("phase9-abandonment-retry-cas").unwrap(),
@@ -1283,8 +1288,8 @@ fn queued_input_survives_active_abandonment_retry_and_activation() {
             storage.revision(&store).unwrap(),
             ActivateBinding::new(
                 fixture.thread,
-                current_binding_revision(&store, storage, fixture.thread),
-                current_gate_revision(&store, storage, fixture.thread),
+                current_binding_revision(&store, &storage, fixture.thread),
+                current_gate_revision(&store, &storage, fixture.thread),
                 fixture.selected,
                 retry_snapshot,
                 fixture.turn,
@@ -1335,7 +1340,7 @@ fn reopen_rejects_idle_gate_leaving_abandoned_turn_blocking() {
     let home = TestHome::new("phase9-abandoned-idle-gate-corruption");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let fixture = activate_pending(&store, storage, 150, true);
+    let fixture = activate_pending(&store, &storage, 150, true);
     let state = storage
         .turn_state(&store, fixture.turn, point_limit())
         .unwrap()
@@ -1364,7 +1369,7 @@ fn reopen_rejects_idle_gate_leaving_abandoned_turn_blocking() {
             .unwrap(),
         ),
     );
-    let request = abandonment(&store, storage, fixture.thread, false);
+    let request = abandonment(&store, &storage, fixture.thread, false);
     execute(
         &store,
         storage.abandon_active_binding(storage.revision(&store).unwrap(), request),

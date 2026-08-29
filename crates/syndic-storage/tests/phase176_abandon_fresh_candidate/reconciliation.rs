@@ -30,8 +30,8 @@ fn abandonment_reconciles_every_atomic_fault_cut() {
         ),
     ] {
         let (home, store, storage, faults, thread) = fault_fixture(name, seed, 65_536);
-        let selected = current(storage, &store, thread);
-        let opened = open_session(storage, &store, &selected, seed + 2, seed + 3);
+        let selected = current(&storage, &store, thread);
+        let opened = open_session(&storage, &store, &selected, seed + 2, seed + 3);
         let request = abandon_request(&opened, seed + 4);
         let prepared = storage
             .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -73,11 +73,11 @@ fn abandonment_reconciles_every_atomic_fault_cut() {
                 DraftEditorCandidateSessionAbandonFreshOutcomeV1::Abandoned(_)
             ));
         }
-        let expected = head(storage, &store, &opened);
+        let expected = head(&storage, &store, &opened);
         drop(store);
         let mut store = open(&home);
         let storage = SyndicStorage::register(&mut store).unwrap();
-        assert_eq!(head(storage, &store, &opened), expected);
+        assert_eq!(head(&storage, &store, &opened), expected);
         drop(home);
     }
 }
@@ -86,8 +86,8 @@ fn abandonment_reconciles_every_atomic_fault_cut() {
 fn reconciliation_collision_is_typed_retained_and_does_not_fabricate_receipt() {
     let (home, store, storage, faults, thread) =
         fault_fixture("abandon-reconciliation-collision", 150, 65_536);
-    let selected = current(storage, &store, thread);
-    let opened = open_session(storage, &store, &selected, 152, 153);
+    let selected = current(&storage, &store, thread);
+    let opened = open_session(&storage, &store, &selected, 152, 153);
     let request = abandon_request(&opened, 154);
     let prepared = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)
@@ -106,7 +106,7 @@ fn reconciliation_collision_is_typed_retained_and_does_not_fabricate_receipt() {
         &store,
         inject_draft_candidate_publication_fault(
             &store,
-            storage,
+            storage.clone(),
             DraftCandidatePublicationFault::DeleteSessionRecord(
                 DraftEditorCandidateSessionRecordKeyV1::disposal_receipt(
                     request.draft_id(),
@@ -168,7 +168,7 @@ fn collision_and_unauthorized_successor_are_distinct_terminal_classes() {
     ));
 
     let (_home, store, storage, thread) = fixture("abandon-resolution-classes", 160, 65_536);
-    let selected = current(storage, &store, thread);
+    let selected = current(&storage, &store, thread);
     let receipt = match execute(
         &store,
         publish_draft_edit_history_pair(

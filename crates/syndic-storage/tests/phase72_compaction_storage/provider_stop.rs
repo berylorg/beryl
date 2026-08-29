@@ -98,7 +98,7 @@ fn replace_stop(
     .unwrap();
     let mut batch = FixtureBatch::new();
     batch.put(FixtureRecord::StopOperation(forged)).unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 }
 
 fn abandon_provider_stop(fixture: &CompactionFixture) {
@@ -328,7 +328,7 @@ fn reopened_provider_stop_with_missing_compaction_pair_is_corruption() {
     batch
         .delete(FixtureDelete::CompactionOperation(compaction_id))
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 
     assert!(matches!(
         fixture
@@ -375,7 +375,7 @@ fn provider_stop_rejects_impossible_stopping_compaction_revision() {
     batch
         .put(FixtureRecord::CompactionOperation(forged))
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 
     assert!(matches!(
         fixture
@@ -421,7 +421,7 @@ fn provider_stop_rejects_unwitnessed_higher_stopping_compaction_revision() {
     batch
         .put(FixtureRecord::CompactionOperation(forged))
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 
     assert!(matches!(
         fixture

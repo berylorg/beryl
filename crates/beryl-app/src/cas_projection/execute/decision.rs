@@ -17,7 +17,7 @@ impl CasProjectionCoordinator {
     pub fn retry_native_lineage(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         decision: NativeLineageRecoveryDecision,
         cancellation: &ProjectionCancellationToken,
@@ -54,7 +54,7 @@ impl CasProjectionCoordinator {
     pub fn validate_native_lineage_recovery(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &AdmittedProjectionSession,
         decision: &NativeLineageRecoveryDecision,
         cancellation: &ProjectionCancellationToken,
@@ -87,7 +87,7 @@ impl CasProjectionCoordinator {
     pub fn recover_native_lineage_from_syndic(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         decision: NativeLineageRecoveryDecision,
         cancellation: &ProjectionCancellationToken,
@@ -200,7 +200,7 @@ impl CasProjectionCoordinator {
     fn prepare_decision_plan(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         decision: &NativeLineageRecoveryDecision,
     ) -> Result<NativeProjectionPlan, ProjectionExecutionError> {
         storage
@@ -220,7 +220,7 @@ impl CasProjectionCoordinator {
     fn retire_decision_target(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &AdmittedProjectionSession,
         decision: &NativeLineageRecoveryDecision,
     ) -> Result<beryl_model::BindingRevision, ProjectionExecutionError> {

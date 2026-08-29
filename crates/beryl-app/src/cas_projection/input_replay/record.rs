@@ -153,7 +153,7 @@ impl InputReplayRecord {
     pub(super) fn check_durable(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
     ) -> Result<(), InputReplayPrepareError> {
         let Self::Accepted(expected) = self else {
             return Ok(());
@@ -175,7 +175,7 @@ impl InputReplayRecord {
     pub(super) fn check_durable_source(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
     ) -> Result<(), StreamedInputSourceError> {
         let Self::Accepted(expected) = self else {
             return Ok(());

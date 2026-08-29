@@ -56,8 +56,8 @@ fn markerless_nonempty_ranges_reject_without_implicit_marker_deletion() {
         ("markerless-range-two-markers", 50, 2_usize),
     ] {
         let (home, mut store, mut storage, thread) = fixture(case, seed);
-        let current = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &current, seed + 1, seed + 2);
+        let current = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &current, seed + 1, seed + 2);
         session = complete_staged(
             &storage,
             &store,
@@ -147,8 +147,8 @@ fn markerless_nonempty_ranges_reject_without_implicit_marker_deletion() {
 #[test]
 fn explicit_same_anchor_removals_precede_text_range_and_enumerate_every_effect() {
     let (_home, store, storage, thread) = fixture("same-anchor-removals-before-range", 60);
-    let current = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &current, 61, 62);
+    let current = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &current, 61, 62);
     session = complete_staged(
         &storage,
         &store,
@@ -275,8 +275,8 @@ fn repeated_empty_ranges_reject_when_either_item_lacks_a_marker_effect() {
         ("markerless-then-effect-empty", 90, false, true),
     ] {
         let (_home, store, storage, thread) = fixture(case, seed);
-        let current = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &current, seed + 1, seed + 2);
+        let current = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &current, seed + 1, seed + 2);
         session = complete_staged(
             &storage,
             &store,

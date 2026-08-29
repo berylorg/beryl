@@ -3,15 +3,15 @@ use super::support::*;
 #[test]
 fn ordinary_commit_appends_one_exact_transition_and_frontier() {
     let (_home, store, storage, thread) = fixture("ordinary", 20, 4_096);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 22, 23);
-    let edit = transaction(storage, &store, &session, 24, "history", point(7));
-    build(storage, &store, &edit);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 22, 23);
+    let edit = transaction(&storage, &store, &session, 24, "history", point(7));
+    build(&storage, &store, &edit);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     ));
-    let settlement = settled(storage, &store, &edit);
+    let settlement = settled(&storage, &store, &edit);
     let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
         panic!("ordinary edit was not committed");
     };
@@ -55,27 +55,27 @@ fn ordinary_commit_appends_one_exact_transition_and_frontier() {
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
     );
     replay_succeeded(replay);
-    assert_eq!(settled(storage, &store, &edit), settlement);
+    assert_eq!(settled(&storage, &store, &edit), settlement);
 }
 
 #[test]
 fn predecessor_caret_and_directed_selection_are_authenticated() {
     let (_home, store, storage, thread) = fixture("predecessor-positions", 140, 8_192);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 142, 143);
-    let seed = transaction(storage, &store, &session, 144, "history", point(7));
-    build(storage, &store, &seed);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 142, 143);
+    let seed = transaction(&storage, &store, &session, 144, "history", point(7));
+    build(&storage, &store, &seed);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), seed.prepared.clone()),
     ));
-    let seed_settlement = settled(storage, &store, &seed);
+    let seed_settlement = settled(&storage, &store, &seed);
     let DraftPieceSettlementClosureV1::Committed(seed_adoption) = seed_settlement.closure() else {
         panic!("position seed did not commit")
     };
 
     let directed = transaction_with_positions(
-        storage,
+        &storage,
         &store,
         seed_adoption.adopted_session(),
         145,
@@ -85,13 +85,13 @@ fn predecessor_caret_and_directed_selection_are_authenticated() {
         point(4),
         point(0),
     );
-    build(storage, &store, &directed);
+    build(&storage, &store, &directed);
     committed(execute(
         &store,
         storage
             .settle_draft_piece_edit(storage.revision(&store).unwrap(), directed.prepared.clone()),
     ));
-    let directed_settlement = settled(storage, &store, &directed);
+    let directed_settlement = settled(&storage, &store, &directed);
     let DraftPieceSettlementClosureV1::Committed(adoption) = directed_settlement.closure() else {
         panic!("directed position edit did not commit")
     };
@@ -180,16 +180,16 @@ fn predecessor_caret_and_directed_selection_are_authenticated() {
 #[test]
 fn stale_complete_pair_is_rejected_without_changing_current_history() {
     let (_home, store, storage, thread) = fixture("complete-pair-conflict", 160, 4_096);
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 162, 163);
-    let winner = transaction(storage, &store, &session, 164, "winner", point(6));
-    let stale = transaction(storage, &store, &session, 165, "stale", point(5));
-    build(storage, &store, &winner);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 162, 163);
+    let winner = transaction(&storage, &store, &session, 164, "winner", point(6));
+    let stale = transaction(&storage, &store, &session, 165, "stale", point(5));
+    build(&storage, &store, &winner);
     committed(execute(
         &store,
         storage.settle_draft_piece_edit(storage.revision(&store).unwrap(), winner.prepared.clone()),
     ));
-    let winner_settlement = settled(storage, &store, &winner);
+    let winner_settlement = settled(&storage, &store, &winner);
     let DraftPieceSettlementClosureV1::Committed(adoption) = winner_settlement.closure() else {
         panic!("winner did not commit")
     };

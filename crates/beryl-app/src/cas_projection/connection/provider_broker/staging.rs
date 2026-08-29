@@ -12,7 +12,7 @@ pub(super) struct StageCommitter<'a> {
     pub(super) home: &'a HomeStore,
     pub(super) home_id: BerylHomeId,
     pub(super) home_generation: HomeGeneration,
-    pub(super) storage: SyndicStorage,
+    pub(super) storage: &'a SyndicStorage,
     pub(super) identity: ProviderObservationId,
     pub(super) cancelled: &'a AtomicBool,
     pub(super) command: &'a crate::cas_projection::LiveCommandPermit,

@@ -80,8 +80,8 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
             .unwrap();
         let address = sidecar.address().clone();
         let home_before = store.home_revision().unwrap();
-        let alpha_before = store.domain_revision(alpha).unwrap();
-        let beta_before = store.domain_revision(beta).unwrap();
+        let alpha_before = store.domain_revision(&alpha).unwrap();
+        let beta_before = store.domain_revision(&beta).unwrap();
         let mut rejected = HomeCommand::new(home_before);
         rejected.require_sidecar(sidecar).unwrap();
         rejected
@@ -120,8 +120,8 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
             }
         };
         assert_eq!(store.home_revision().unwrap(), home_before);
-        assert_eq!(store.domain_revision(alpha).unwrap(), alpha_before);
-        assert_eq!(store.domain_revision(beta).unwrap(), beta_before);
+        assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
+        assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);
         assert_eq!(
             store
                 .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -148,11 +148,14 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
         let receipt = committed(store.execute(accepted));
         assert!(
             store
-                .receipt_domain_revision(&receipt, alpha)
+                .receipt_domain_revision(&receipt, &alpha)
                 .unwrap()
                 .is_some()
         );
-        assert_eq!(store.receipt_domain_revision(&receipt, beta).unwrap(), None);
+        assert_eq!(
+            store.receipt_domain_revision(&receipt, &beta).unwrap(),
+            None
+        );
         assert_eq!(
             store
                 .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(

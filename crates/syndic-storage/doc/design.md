@@ -65,7 +65,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 ## Public Boundary
 
 - This package implements the storage boundary consumed by `doc/systems/syndic-conversation-history/design.md` and `doc/systems/cas-live-syndic-transcript/design.md`.
-- The package exposes operations for constructing its opaque domain handle, creating threads and
+- The package exposes operations for registering its configured typed HomeStore runtime attachment,
+  constructing cloneable non-`Copy` opaque domain-handle views, creating threads and
   current drafts, opening, reading, publishing, and disposing bounded editor-candidate sessions,
   durable two-lane pre-finish mutation staging and reconciliation, authenticated finish-to-builder
   custody transfer, revisioned predecessor-linked combined sequence/index/marker-commitment candidate transactions, bounded draft text
@@ -85,13 +86,19 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   CAS-source provenance, reading historical summaries, reading
   thread/draft/turn metadata,
   reading thread-lineage pages, point-reading independently revisioned image-label authority heads
-  and origin authority, preparing, paging, replaying, releasing, and writer-validating bounded
-  operation-qualified draft-marker label-readiness reservations, HomeStore proof contributions,
-  receipts, move-only proofs, and durable bindings, reading
+  and origin authority, preparing, dispatching, replaying, releasing, and writer-validating bounded
+  operation-qualified draft-marker label-readiness reservations, opaque move-only page attempts,
+  HomeStore proof contributions and receipts, move-only final proofs, and durable bindings, reading
   activity-query pages, reading immutable branch-context envelopes by context-owner identity,
   reading transcript-view pages, reading projection records, reading resource metadata, and reading
   resource byte ranges, plus reading bounded logical UTF-8 pages from one exact sealed content
   reference.
+- Routine synchronous Syndic reads, observations, and command preparation borrow the cloneable
+  non-`Copy` storage view through their helper chain. A clone is created only when an owned runtime
+  object retains the view, a task or callback requires `'static` custody, or ownership is explicitly
+  returned or duplicated across retained owners. Linear prepared commands, proofs, receipts,
+  reconciliation authorities, and installation tokens remain move-only and are never weakened into
+  borrowed aliases.
 - The public pre-finish page boundary is one storage-neutral batch preparation, mutation-
   contribution, and reconciliation family. Preparation consumes one authenticated source staging
   head, its matching editor-candidate session, and one nonempty boxed slice of physical-page inputs;
@@ -1988,29 +1995,37 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   range strictly above the maximum of inherited/permanent frontiers, that predecessor maximum, and
   the destination's live reservation frontier. Checked arithmetic overflow returns `Exhausted`
   before reservation.
-- Readiness preparation returns an opaque operation-qualified page sink or a determinate stale,
-  unavailable, exhausted, capacity-unavailable, or occupied-identity-collision outcome. It does not
-  issue the final proof. Each canonical page names the operation, ordinal, prior cumulative digest,
-  associations, and expected EOF state. The package prepares one private typed Syndic source
+- Readiness preparation returns one opaque immutable bounded move-only
+  `DraftMarkerLabelReadinessPageAttemptV1` or a determinate stale, unavailable, exhausted,
+  capacity-unavailable, or occupied-identity-collision outcome. It does not issue the final proof.
+  The attempt owns its canonical page, unforgeable attempt identity, exact home generation,
+  operation, ordinal, prior cumulative frontier, associations, and expected EOF state. The package
+  prepares one private typed Syndic source
   contribution for `beryl-home-store` proof composition: current-candidate and cut evidence is
   source-only; local or inherited accepted evidence pairs it with Beryl-state's private typed
   witness contribution. Both roles independently derive the same fixed-size correlation while
   reading only their own domain on the one HomeStore snapshot. No public source result exposes
   origin records or permits app-side equality.
 - Once those roles and every protocol, operation, owner, generation, revision, page, and correlation
-  expectation are fixed, the coordinator seals the complete HomeStore plan. It retains the paired
-  move-only `ProofReceiptConsumer` under the exact operation/page and returns only the opaque
-  executable command for app transport. `HomeStore::compose_proof` returns only an opaque receipt;
-  no execution result can create or return the consumer or its expected facts.
-- Receipt submission moves the coordinator's independently retained consumer into exact HomeStore
-  consumption. Only a receipt matching that pre-dispatch expectation and the current home generation
-  advances the page. `DraftMarkerLabelReadinessPageOutcomeV1` then reports a newly accepted or byte-
-  equal immediate-replay receipt, or a determinate stale, unavailable, obsolete-page, capacity, or
-  collision result. The coordinator retains only the next ordinal, checked count, cumulative
-  digest/frontier, immediate-last receipt, at most one pending expectation consumer, reservation,
-  and operation custody. It retains no page or association prefix. Different canonical bytes at the
-  occupied operation/ordinal collide; any older ordinal is obsolete. A substituted executable and
-  receipt, or a receipt/consumer pair from another plan, cannot advance this operation.
+  expectation are fixed, the attempt seals and owns the complete HomeStore plan, including its
+  paired move-only `ProofReceiptConsumer`. It exposes only the opaque executable command for app
+  transport. `HomeStore::compose_proof` returns only an opaque receipt; no execution result can
+  create or return the consumer or its expected facts. The app may transport the attempt state,
+  executable command, and receipt but cannot inspect or reconstruct the canonical page or equality
+  inputs.
+- Receipt submission moves the same attempt custody and its independently retained consumer into
+  exact HomeStore consumption. Only a receipt matching that pre-dispatch expectation and current
+  home generation advances the coordinator exactly once.
+  `DraftMarkerLabelReadinessPageOutcomeV1` returns that same attempt in accepted state or a
+  determinate stale, unavailable, obsolete-page, capacity, or collision result. Immediate replay is
+  authorized only by re-presenting that exact accepted attempt object. A newly created attempt at
+  the occupied operation/ordinal is `Collision` even if its canonical bytes or digest match; an
+  older ordinal is obsolete. Digest equality is a commitment and rejection aid, never replay
+  identity. Preparing the next page consumes the prior accepted attempt. The coordinator retains
+  only the next ordinal, checked count, cumulative digest/frontier, active attempt identity,
+  reservation, and operation custody; the attempt, not the coordinator, owns the one bounded page.
+  A substituted attempt, executable, receipt, or receipt/consumer pair cannot advance the
+  operation.
 - Exact EOF revalidates the live label head, editor session, predecessor candidate root, operation,
   disposition, cumulative association identity, and reservation. It then returns the non-cloneable,
   move-only `DraftMarkerLabelReadinessProofV1` and fixed-size `Copy`
@@ -2018,13 +2033,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   head revision/frontiers, draft/session/candidate/predecessor, operation, disposition, association
   count/digest, and reserved allocation range. The binding is only the durable digest of that
   authority. Neither value accepts a caller-provided successor root or structural commitment.
-- The domain handle owns one home-generation-scoped configured-capacity coordinator containing only
-  fixed-size operation reservations and one compact reservation frontier per active destination.
-  It owns no durable record family, per-label map, marker registry, history cache, payload page, or
-  unbounded queue. The coordinator is configured and owned by the exact domain handle rather than a
-  process-global registry. Before durable mutation begin, explicit cancellation or terminal request
-  disposal releases the reservation. Home-generation retirement invalidates every remaining
-  transient proof and releases the coordinator wholesale.
+- Syndic domain registration supplies one home-generation-scoped configured-capacity coordinator as
+  its typed HomeStore runtime attachment. The registered-domain slot is its sole strong owner and
+  every same-generation Syndic handle clone or reacquisition resolves that exact instance. The
+  coordinator contains only fixed-size operation reservations, one compact reservation frontier per
+  active destination, cumulative page state, and active attempt identities. It owns no durable
+  record family, page, per-label map, marker registry, history cache, or unbounded queue. Before
+  durable mutation begin, explicit cancellation or terminal request disposal releases the
+  reservation. HomeStore attachment retirement invalidates every remaining attempt and transient
+  proof, releases all reservations, and retires the coordinator exactly once.
 - `DraftEditorCandidateSessionOpenOutcomeV1` is `Opened(head)`, `ExactReplay(head)`,
   `StaleDisposed(head)`, `SelectorConflict(current selector)`, or
   `OccupiedIdentityCollision(proof)`. Open atomically
@@ -2046,7 +2063,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `MutationBeginV1` is admitted only against the exact active session generation and predecessor
   candidate/root/history pair with an absent custody slot and absent staging/build/settlement/root
   natural keys. A marker-changing begin consumes the matching move-only readiness proof into the
-  operation coordinator and stores only its fixed-size `DraftMarkerLabelReadinessBindingV1` in the
+  runtime attachment's operation custody and stores only its fixed-size
+  `DraftMarkerLabelReadinessBindingV1` in the
   staging head and custody; text-only begin stores no synthetic binding. It atomically writes
   ordinal-one staging receipt and receiving head and installs `Staging` custody. A page-batch
   command names the head-selected source receipt, exact lane
@@ -2217,7 +2235,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   with no active effect and requires exact staging endpoint, effect count/chain, and root coherence.
   Premature EOF or cross-validation while active fails closed. Global marker uniqueness follows from
   the keyed index; it is never inferred by scanning sequence leaves.
-- Final marker-changing candidate adoption additionally requires the operation coordinator's sole
+- Final marker-changing candidate adoption additionally requires the runtime attachment's sole
   move-only `DraftMarkerLabelReadinessProofV1`, the byte-equal durable
   `DraftMarkerLabelReadinessBindingV1` carried from begin through the completed build, and the live
   transient reservation. A marker-unchanged adoption requires no synthetic proof, binding, or

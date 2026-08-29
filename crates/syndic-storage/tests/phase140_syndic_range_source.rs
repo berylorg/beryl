@@ -150,12 +150,12 @@ fn newline_and_logical_line_corruption_fail_closed_independently() {
         ),
     ] {
         let (_home, store, storage, thread) = fixture(name, 60);
-        let initial = current(storage, &store, thread);
+        let initial = current(&storage, &store, thread);
         let text_pieces = (0..130_u16)
             .map(|_| DraftPieceV1::Text("x\n".to_owned()))
             .collect();
         let transaction = transaction(
-            storage,
+            &storage,
             &store,
             &initial,
             61,
@@ -167,13 +167,13 @@ fn newline_and_logical_line_corruption_fail_closed_independently() {
             )],
             point(260),
         );
-        run_transaction(storage, &store, &transaction, 2);
-        let root = current(storage, &store, thread).draft().piece_root();
+        run_transaction(&storage, &store, &transaction, 2);
+        let root = current(&storage, &store, thread).draft().piece_root();
         committed(execute(
             &store,
             inject_draft_piece_descendant_corruption(
                 &store,
-                storage,
+                &storage,
                 root,
                 DraftPieceDescendantTarget::Sequence,
                 corruption,
@@ -202,12 +202,12 @@ fn missing_root_and_non_root_records_are_absent_through_all_selectors() {
     .enumerate()
     {
         let (_home, store, storage, thread) = fixture("missing-immutable", 70 + case as u8);
-        let initial = current(storage, &store, thread);
+        let initial = current(&storage, &store, thread);
         let pieces = (0..130)
             .map(|_| DraftPieceV1::Text("x".to_owned()))
             .collect();
         let transaction = transaction(
-            storage,
+            &storage,
             &store,
             &initial,
             72 + case as u8,
@@ -215,8 +215,8 @@ fn missing_root_and_non_root_records_are_absent_through_all_selectors() {
             vec![DraftPieceReplacementV1::new(point(0), point(0), pieces)],
             point(130),
         );
-        run_transaction(storage, &store, &transaction, 2);
-        let populated = current(storage, &store, thread);
+        run_transaction(&storage, &store, &transaction, 2);
+        let populated = current(&storage, &store, thread);
         let root = populated.draft().piece_root();
         let request = DraftEditorCandidateSessionOpenRequestV1::new(
             selector(&populated),
@@ -242,7 +242,7 @@ fn missing_root_and_non_root_records_are_absent_through_all_selectors() {
         let binding = DraftEditorCandidateActivationBindingV1::from_head(&populated.session);
         committed(execute(
             &store,
-            delete_draft_piece_immutable_record(&store, storage, root, deletion),
+            delete_draft_piece_immutable_record(&store, &storage, root, deletion),
         ));
         assert!(matches!(
             storage.draft_piece_text_demand(
@@ -289,7 +289,7 @@ fn missing_root_and_non_root_records_are_absent_through_all_selectors() {
 #[test]
 fn stale_session_candidate_and_disposed_open_are_typed() {
     let (_home, store, storage, thread) = fixture("stale", 50);
-    let current = current(storage, &store, thread);
+    let current = current(&storage, &store, thread);
     let request = DraftEditorCandidateSessionOpenRequestV1::new(
         selector(&current),
         DraftEditorCandidateSessionIdV1::from_bytes([95; 16]),
@@ -399,7 +399,7 @@ fn marker(seed: u8, order: u64) -> DraftPieceMarkerV1 {
 }
 
 fn transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     current: &CandidateCurrent,
     _session_seed: u8,
@@ -452,7 +452,7 @@ fn transaction(
 }
 
 fn run_transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
     _timestamp: u64,
@@ -484,7 +484,7 @@ fn run_transaction(
     }
 }
 
-fn stage_and_build(storage: SyndicStorage, store: &HomeStore, transaction: &Transaction) {
+fn stage_and_build(storage: &SyndicStorage, store: &HomeStore, transaction: &Transaction) {
     committed(execute(
         store,
         storage.begin_draft_piece_edit(
@@ -575,7 +575,7 @@ fn committed(outcome: CommandOutcome) {
     ));
 }
 
-fn current(storage: SyndicStorage, store: &HomeStore, thread: SyndicThreadId) -> CandidateCurrent {
+fn current(storage: &SyndicStorage, store: &HomeStore, thread: SyndicThreadId) -> CandidateCurrent {
     let durable = storage
         .current_draft(store, thread, SyndicPointReadLimit::new(65_536).unwrap())
         .unwrap()

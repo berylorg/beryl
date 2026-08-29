@@ -107,19 +107,22 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
             .unwrap();
         records.push(record);
     }
-    commit(&store, storage, fixture_batch);
+    commit(&store, storage.clone(), fixture_batch);
 
     let head = storage
+        .clone()
         .thread_lineage_head(&store, identity(DEPTH.into()), point_limit())
         .unwrap()
         .unwrap();
     assert_eq!(head.total_parent_count(), DEPTH - 1);
     let first_cursor = head.cursor().unwrap();
     let measured_first = storage
+        .clone()
         .thread_lineage_page(&store, &head, first_cursor, page_limits(1))
         .unwrap();
     let root_stored_bytes = measured_first.stored_bytes();
     let exact_first = storage
+        .clone()
         .thread_lineage_page(
             &store,
             &head,
@@ -131,6 +134,7 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
     assert_eq!(exact_first.stored_bytes(), root_stored_bytes);
     assert!(
         storage
+            .clone()
             .thread_lineage_page(
                 &store,
                 &head,
@@ -143,6 +147,7 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
     let mut observed = Vec::new();
     while let Some(current) = cursor {
         let page = storage
+            .clone()
             .thread_lineage_page(&store, &head, current, page_limits(1_000))
             .unwrap();
         assert!(page.records().len() <= QUERY_PAGE_MAX_RECORDS);
@@ -166,9 +171,15 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
         leaf.lineage(),
         leaf.context_owner_id(),
     );
-    commit(&store, storage, batch([FixtureRecord::Thread(replacement)]));
+    commit(
+        &store,
+        storage.clone(),
+        batch([FixtureRecord::Thread(replacement)]),
+    );
     assert!(matches!(
-        storage.thread_lineage_page(&store, &head, stale_cursor, page_limits(4)),
+        storage
+            .clone()
+            .thread_lineage_page(&store, &head, stale_cursor, page_limits(4)),
         Err(SyndicReadError::StaleThreadLineage)
     ));
 }
@@ -180,10 +191,10 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     let storage = SyndicStorage::register(&mut store).unwrap();
     let parent_id = support::id(30);
     let child_id = support::id(36);
-    support::seed_populated(&store, storage);
+    support::seed_populated(&store, storage.clone());
     support::converge_and_release_terminal_history(
         &store,
-        storage,
+        storage.clone(),
         parent_id,
         support::populated::source_turn(),
     );
@@ -207,7 +218,7 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     let item = SyndicItemId::from_bytes([91; 16]);
     submit_image_draft(
         &store,
-        storage,
+        storage.clone(),
         parent_id,
         draft_identity(92),
         item,
@@ -215,10 +226,12 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
         proof,
     );
     let parent = storage
+        .clone()
         .thread(&store, parent_id, point_limit())
         .unwrap()
         .unwrap();
     let child = storage
+        .clone()
         .thread(&store, child_id, point_limit())
         .unwrap()
         .unwrap();
@@ -246,7 +259,7 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     .unwrap();
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::Thread(parent),
             FixtureRecord::ImageLabelAuthorityHead(
@@ -272,6 +285,7 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
         ]),
     );
     let resolved = storage
+        .clone()
         .resolve_image_label_origin_span(&store, child_id, gap_label, point_limit())
         .unwrap()
         .unwrap();
@@ -280,6 +294,7 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     assert_eq!(resolved.span().asset_reference_set(), proof);
     assert!(resolved.span().contains(gap_label));
     let current = storage
+        .clone()
         .resolve_image_label_origin_span(&store, parent_id, label, point_limit())
         .unwrap()
         .unwrap();
@@ -288,10 +303,12 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
 
     let thread = support::id(40);
     let head = storage
+        .clone()
         .activity_query_head(&store, thread, point_limit())
         .unwrap();
     let head = head.unwrap().clone();
     let page = storage
+        .clone()
         .activity_query_page(&store, &head, None, page_limits(1))
         .unwrap();
     assert_eq!(page.records().len(), 1);
@@ -318,7 +335,7 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     .unwrap();
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::ActivityQueryHead(revised)]),
     );
     assert!(matches!(

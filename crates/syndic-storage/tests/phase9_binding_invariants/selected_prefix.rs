@@ -2,7 +2,7 @@ use super::*;
 
 fn publish_live_event(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     source: Option<CasTurnSource>,
@@ -39,14 +39,14 @@ fn pending_root_cannot_authenticate_the_undelivered_turn_as_represented_history(
     let home = TestHome::new("phase9-pending-root-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 190, false) else {
+    let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 190, false) else {
         unreachable!()
     };
     let represented =
         CasRepresentedPrefixProof::new(Some(turn), selected.thread_revision(), selected.digest());
     let request = valid_request_with_count(
         &store,
-        storage,
+        &storage,
         thread,
         selected,
         CasThreadId::new("claims-pending-root").unwrap(),
@@ -81,7 +81,8 @@ fn pending_non_root_accepts_only_its_exact_authenticated_parent_prefix() {
     let home = TestHome::new("phase9-pending-child-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, Some(parent), _, selected) = fault_pending_path(&store, storage, 210, true) else {
+    let (thread, Some(parent), _, selected) = fault_pending_path(&store, &storage, 210, true)
+    else {
         unreachable!()
     };
     let parent_record = storage
@@ -96,7 +97,7 @@ fn pending_non_root_accepts_only_its_exact_authenticated_parent_prefix() {
     );
     let empty_request = valid_request_with_count(
         &store,
-        storage,
+        &storage,
         thread,
         selected,
         CasThreadId::new("non-parent-prefix").unwrap(),
@@ -117,7 +118,7 @@ fn pending_non_root_accepts_only_its_exact_authenticated_parent_prefix() {
     let sibling_digest = child_turn_chain_digest(sibling, parent, parent_record.chain_digest());
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::Turn(TurnRecord::new(
                 sibling,
@@ -149,7 +150,7 @@ fn pending_non_root_accepts_only_its_exact_authenticated_parent_prefix() {
         CasRepresentedPrefixProof::new(Some(sibling), selected.thread_revision(), sibling_digest);
     let off_path_request = valid_request_with_count(
         &store,
-        storage,
+        &storage,
         thread,
         selected,
         CasThreadId::new("off-path-prefix").unwrap(),
@@ -173,10 +174,10 @@ fn pending_non_root_accepts_only_its_exact_authenticated_parent_prefix() {
     );
     publish_valid(
         &store,
-        storage,
+        &storage,
         valid_request_with_count(
             &store,
-            storage,
+            &storage,
             thread,
             selected,
             CasThreadId::new("exact-parent-prefix").unwrap(),
@@ -202,13 +203,13 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
     let home = TestHome::new("phase9-live-and-unknown-tail-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 214, false) else {
+    let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 214, false) else {
         unreachable!()
     };
     let activity_source = ActivityQuerySource::new(thread, turn);
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::ActivityQueryHead(
                 ActivityQueryHeadRecord::new(
@@ -244,8 +245,8 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
     let cas_thread = CasThreadId::new("live-tail-active-cas").unwrap();
     publish_valid(
         &store,
-        storage,
-        valid_request(&store, storage, thread, selected, cas_thread.clone()),
+        &storage,
+        valid_request(&store, &storage, thread, selected, cas_thread.clone()),
     );
     let snapshot = SyndicExecutionSnapshotId::from_bytes([217; 16]);
     execute(
@@ -254,8 +255,8 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
             storage.revision(&store).unwrap(),
             ActivateBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
-                current_gate_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
+                current_gate_revision(&store, &storage, thread),
                 selected,
                 snapshot,
                 turn,
@@ -271,8 +272,8 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
             storage.revision(&store).unwrap(),
             PublishActiveCasTurn::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
-                current_gate_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
+                current_gate_revision(&store, &storage, thread),
                 snapshot,
                 cas_thread.clone(),
                 cas_turn.clone(),
@@ -283,7 +284,7 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
     let source = CasTurnSource::new(cas_thread.clone(), cas_turn.clone());
     publish_live_event(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         Some(source.clone()),
@@ -293,7 +294,7 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
 
     let active_claim = valid_request_with_count(
         &store,
-        storage,
+        &storage,
         thread,
         selected,
         CasThreadId::new("live-full-prefix-claim").unwrap(),
@@ -312,7 +313,7 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
 
     publish_live_event(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         Some(source),
@@ -385,7 +386,7 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
             storage.revision(&store).unwrap(),
             PublishUnboundBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
                 selected,
                 "unknown terminal has no usable projection",
             )
@@ -395,7 +396,7 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
 
     let unknown_claim = valid_request_with_count(
         &store,
-        storage,
+        &storage,
         thread,
         selected,
         CasThreadId::new("terminal-unknown-full-prefix-claim").unwrap(),

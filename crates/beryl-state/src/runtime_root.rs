@@ -45,6 +45,13 @@ impl StorageDomain for RuntimeRootDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
     const FAMILIES: &'static [RecordFamily<Self>] = RUNTIME_ROOT_FAMILIES;
     type ValidationError = RuntimeRootValidationError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>
+    {
+        Ok(())
+    }
 
     fn validate(
         reader: &beryl_home_store::DomainReader<'_, Self>,
@@ -312,7 +319,7 @@ impl RootRecord {
 }
 
 /// Opaque typed access to the runtime/root registry domain.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct RuntimeRootState {
     handle: DomainHandle<RuntimeRootDomain>,
 }
@@ -349,7 +356,7 @@ impl RuntimeRootState {
     }
 
     pub fn revision(&self, store: &HomeStore) -> Result<beryl_model::DomainRevision, ReadError> {
-        store.domain_revision(self.handle)
+        store.domain_revision(&self.handle)
     }
 
     /// Returns this domain's revision from a still-current successful command.
@@ -358,7 +365,7 @@ impl RuntimeRootState {
         store: &HomeStore,
         receipt: &beryl_home_store::CommitReceipt,
     ) -> Result<Option<beryl_model::DomainRevision>, beryl_home_store::CommitReceiptError> {
-        store.receipt_domain_revision(receipt, self.handle)
+        store.receipt_domain_revision(receipt, &self.handle)
     }
 
     pub fn runtime(
@@ -367,7 +374,7 @@ impl RuntimeRootState {
         runtime_id: RuntimeId,
     ) -> Result<Option<RuntimeRecord>, ReadError> {
         store.read_point::<RuntimeRootDomain, RuntimeRecordCodec>(
-            self.handle,
+            &self.handle,
             &runtime_id,
             point_limit(RUNTIME_RECORD_LIMIT),
         )
@@ -379,7 +386,7 @@ impl RuntimeRootState {
         root_id: RootId,
     ) -> Result<Option<RootRecord>, ReadError> {
         let Some(runtime_id) = store.read_point::<RuntimeRootDomain, RootIdIndexCodec>(
-            self.handle,
+            &self.handle,
             &root_id,
             point_limit(32),
         )?
@@ -387,7 +394,7 @@ impl RuntimeRootState {
             return Ok(None);
         };
         store.read_point::<RuntimeRootDomain, RootRecordCodec>(
-            self.handle,
+            &self.handle,
             &RuntimeRootKey::new(runtime_id, root_id),
             point_limit(ROOT_RECORD_LIMIT),
         )
@@ -399,7 +406,7 @@ impl RuntimeRootState {
         canonical_executable: &AdmittedHostPath,
     ) -> Result<Option<RuntimeRecord>, ReadError> {
         let Some(runtime_id) = store.read_point::<RuntimeRootDomain, ExecutableIndexCodec>(
-            self.handle,
+            &self.handle,
             &codec::ExecutableKey::new(canonical_executable.clone()),
             point_limit(32),
         )?
@@ -416,7 +423,7 @@ impl RuntimeRootState {
         canonical_path: &RuntimeNativePath,
     ) -> Result<Option<RootRecord>, ReadError> {
         let Some(root_id) = store.read_point::<RuntimeRootDomain, RootPathIndexCodec>(
-            self.handle,
+            &self.handle,
             &codec::RootPathKey::new(runtime_id, canonical_path.clone()),
             point_limit(32),
         )?
@@ -440,7 +447,7 @@ impl RuntimeRootState {
             CursorRange::closed(start, end)
         };
         let page = store.read_cursor::<RuntimeRootDomain, RuntimeRecordCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,
@@ -478,7 +485,7 @@ impl RuntimeRootState {
             CursorRange::closed(start, end)
         };
         let page = store.read_cursor::<RuntimeRootDomain, RootRecordCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,

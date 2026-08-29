@@ -174,14 +174,14 @@ fn build_active_stop_fixture(
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         compaction_id,
         CompactionProviderEvent::ThreadStatus(CompactionThreadStatus::Active),
         1,
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         compaction_id,
         CompactionProviderEvent::TurnStarted(CasTurnId::new("phase65-stop-compaction").unwrap()),
         1,
@@ -189,7 +189,7 @@ fn build_active_stop_fixture(
     let marker = SyndicItemId::from_bytes([105; 16]);
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         compaction_id,
         CompactionProviderEvent::Marker {
             item_id: marker,
@@ -199,7 +199,7 @@ fn build_active_stop_fixture(
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         compaction_id,
         CompactionProviderEvent::Marker {
             item_id: marker,
@@ -209,21 +209,21 @@ fn build_active_stop_fixture(
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         compaction_id,
         CompactionProviderEvent::ThreadStatus(CompactionThreadStatus::Idle),
         1,
     );
     publish_compaction_provider(
         &store,
-        storage,
+        &storage,
         compaction_id,
         CompactionProviderEvent::Terminal(
             TurnEndStatus::new(TurnTerminalOutcome::Complete, None).unwrap(),
         ),
         1,
     );
-    let content = lifecycle_content(&store, storage);
+    let content = lifecycle_content(&store, &storage);
     let operation = storage
         .compaction_operation(&store, compaction_id, point_limit())
         .unwrap()
@@ -232,11 +232,11 @@ fn build_active_stop_fixture(
     let turn = settlement.turn_id();
     let item = settlement.item_id();
     assert_current(store.execute_current(storage.current_settle_lifecycle_compaction(settlement)));
-    let source = establish_turn(&store, storage, thread, turn, timestamp(1));
+    let source = establish_turn(&store, &storage, thread, turn, timestamp(1));
     if publish_activation {
         admit_event(
             &store,
-            storage,
+            &storage,
             thread,
             turn,
             &source,

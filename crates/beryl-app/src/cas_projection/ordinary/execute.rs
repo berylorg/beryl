@@ -27,8 +27,8 @@ impl CasProjectionCoordinator {
     pub fn execute_ordinary_turn(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
-        assets: AssetState,
+        storage: &SyndicStorage,
+        assets: &AssetState,
         projection: LoadedCasProjection,
         cancellation: &ProjectionCancellationToken,
         request: &OrdinaryTurnExecutionRequest,
@@ -53,8 +53,8 @@ impl CasProjectionCoordinator {
     pub(in crate::cas_projection) fn execute_ordinary_turn_in_flight(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
-        assets: AssetState,
+        storage: &SyndicStorage,
+        assets: &AssetState,
         projection: LoadedCasProjection,
         cancellation: &ProjectionCancellationToken,
         request: &OrdinaryTurnExecutionRequest,

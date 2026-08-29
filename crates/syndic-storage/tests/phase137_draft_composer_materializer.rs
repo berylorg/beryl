@@ -116,7 +116,7 @@ fn fixture_with_faults(
 }
 
 fn seal_root(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     root: syndic_storage::DraftPieceRootReferenceV1,
     operation: u8,
@@ -151,7 +151,7 @@ fn seal_root(
 }
 
 fn publish_candidate(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     evidence: DraftEditorCandidatePublicationEvidenceV1,
@@ -161,7 +161,7 @@ fn publish_candidate(
         .current_draft(store, thread, read_limit())
         .unwrap()
         .unwrap();
-    let head = candidate_head(storage, store, thread);
+    let head = candidate_head(&storage, store, thread);
     let candidate = DraftEditorCandidateActivationBindingV1::new(
         head.draft_id(),
         head.session_id(),
@@ -204,7 +204,7 @@ fn publish_candidate(
 
 #[allow(clippy::too_many_arguments)]
 fn acceptance_from_current(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     candidate: DraftEditorCandidateActivationBindingV1,
@@ -301,7 +301,7 @@ fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() 
         AssetId::sha256_v1([33; 32], std::num::NonZeroU64::MIN),
     );
     let root = apply_replacement(
-        storage,
+        &storage,
         &store,
         thread,
         34,
@@ -314,7 +314,7 @@ fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() 
                 ),
             )),
     );
-    let seal_proof = seal_root(storage, &store, root, 35);
+    let seal_proof = seal_root(&storage, &store, root, 35);
     let asset_reference_set = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([36; 16]),
         seal_proof.sequential(),
@@ -324,7 +324,7 @@ fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() 
     )
     .unwrap();
     publish_candidate(
-        storage,
+        &storage,
         &store,
         thread,
         DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
@@ -334,9 +334,9 @@ fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() 
         39,
     );
     let candidate = DraftEditorCandidateActivationBindingV1::from_head(&candidate_head(
-        storage, &store, thread,
+        &storage, &store, thread,
     ));
-    let materialization = materialize(storage, &store, materialization_key(root, 40));
+    let materialization = materialize(&storage, &store, materialization_key(root, 40));
     let current = storage
         .current_draft(&store, thread, read_limit())
         .unwrap()
@@ -481,25 +481,25 @@ fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() 
 fn direct_marker_free_first_acceptance_leaves_the_independent_head_unchanged() {
     let (_home, store, storage, thread) = fixture("direct-marker-free-acceptance", 54);
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         55,
         vec![DraftPieceV1::Text("direct".to_owned())],
     );
     publish_candidate(
-        storage,
+        &storage,
         &store,
         thread,
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         56,
     );
     let candidate = DraftEditorCandidateActivationBindingV1::from_head(&candidate_head(
-        storage, &store, thread,
+        &storage, &store, thread,
     ));
-    let materialization = materialize(storage, &store, materialization_key(root, 57));
+    let materialization = materialize(&storage, &store, materialization_key(root, 57));
     let (acceptance, head) = acceptance_from_current(
-        storage,
+        &storage,
         &store,
         thread,
         candidate,
@@ -555,7 +555,7 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
         AssetId::sha256_v1([64; 32], std::num::NonZeroU64::MIN),
     );
     let root = apply_replacement(
-        storage,
+        &storage,
         &store,
         thread,
         65,
@@ -568,7 +568,7 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
                 ),
             )),
     );
-    let seal_proof = seal_root(storage, &store, root, 66);
+    let seal_proof = seal_root(&storage, &store, root, 66);
     let asset_reference_set = SealedAssetReferenceSetProof::new(
         AssetReferenceSetId::from_bytes([67; 16]),
         seal_proof.sequential(),
@@ -578,7 +578,7 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
     )
     .unwrap();
     publish_candidate(
-        storage,
+        &storage,
         &store,
         thread,
         DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
@@ -588,9 +588,9 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
         69,
     );
     let candidate = DraftEditorCandidateActivationBindingV1::from_head(&candidate_head(
-        storage, &store, thread,
+        &storage, &store, thread,
     ));
-    let materialization = materialize(storage, &store, materialization_key(root, 70));
+    let materialization = materialize(&storage, &store, materialization_key(root, 70));
     let idle_gate = storage
         .input_gate(&store, thread, read_limit())
         .unwrap()
@@ -614,7 +614,7 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
         storage.fixture_contribution(storage.revision(&store).unwrap(), batch),
     ));
     let (acceptance, head) = acceptance_from_current(
-        storage,
+        &storage,
         &store,
         thread,
         candidate,
@@ -708,23 +708,23 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
 fn queued_marker_free_first_acceptance_leaves_the_independent_head_unchanged() {
     let (_home, store, storage, thread) = fixture("queued-marker-free-acceptance", 44);
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         45,
         vec![DraftPieceV1::Text("queued".to_owned())],
     );
     publish_candidate(
-        storage,
+        &storage,
         &store,
         thread,
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         47,
     );
     let candidate = DraftEditorCandidateActivationBindingV1::from_head(&candidate_head(
-        storage, &store, thread,
+        &storage, &store, thread,
     ));
-    let materialization = materialize(storage, &store, materialization_key(root, 48));
+    let materialization = materialize(&storage, &store, materialization_key(root, 48));
     let current = storage
         .current_draft(&store, thread, read_limit())
         .unwrap()
@@ -864,7 +864,7 @@ fn terminal_lifecycles_leave_orphans_invisible_and_successor_can_seal() {
     );
     let successor =
         DraftComposerBuildKeyV1::new(root, DraftComposerFormatV1::ComposerV1, successor_id);
-    let mapping = materialize(storage, &store, successor);
+    let mapping = materialize(&storage, &store, successor);
     assert_eq!(mapping.content().summary().encoded_bytes(), 9);
     assert_eq!(
         storage
@@ -888,12 +888,12 @@ fn multi_page_utf8_source_reopens_at_every_durable_frontier() {
     for _ in 0..130 {
         pieces.push(DraftPieceV1::Text("x".to_owned()));
     }
-    let root = replace_empty(storage, &store, thread, 72, pieces);
+    let root = replace_empty(&storage, &store, thread, 72, pieces);
     assert!(root.summary().height() >= 2);
-    let root = append_text(storage, &store, thread, 73, &"x".repeat(32_000));
+    let root = append_text(&storage, &store, thread, 73, &"x".repeat(32_000));
     assert_eq!(root.summary().piece_count(), 131);
     let suffix = format!("{}💎z", "a".repeat(32_207));
-    let root = append_text(storage, &store, thread, 74, &suffix);
+    let root = append_text(&storage, &store, thread, 74, &suffix);
     let key = materialization_key(root, 75);
     committed(execute(
         &store,
@@ -1033,7 +1033,7 @@ fn corrupt_build_mapping_manifest_and_output_are_rejected() {
         );
         let root = if planning_corruption {
             let root = replace_empty(
-                storage,
+                &storage,
                 &store,
                 thread,
                 80,
@@ -1064,7 +1064,9 @@ fn corrupt_build_mapping_manifest_and_output_are_rejected() {
             panic!("fixture build is not open")
         };
         assert!(draft_composer_build_truncation_is_rejected(
-            &store, storage, key
+            &store,
+            storage.clone(),
+            key
         ));
         if matches!(
             corruption,
@@ -1085,7 +1087,7 @@ fn corrupt_build_mapping_manifest_and_output_are_rejected() {
         }
         committed(execute(
             &store,
-            inject_draft_composer_build_corruption(&store, storage, key, corruption),
+            inject_draft_composer_build_corruption(&store, storage.clone(), key, corruption),
         ));
         assert!(
             storage
@@ -1096,18 +1098,18 @@ fn corrupt_build_mapping_manifest_and_output_are_rejected() {
 
     let (_home, store, storage, thread) = fixture("mapping", 83);
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         84,
         vec![DraftPieceV1::Text("sealed".to_owned())],
     );
     let key = materialization_key(root, 85);
-    let mapping = materialize(storage, &store, key);
+    let mapping = materialize(&storage, &store, key);
     assert!(draft_composer_mapping_truncation_is_rejected(&mapping));
     committed(execute(
         &store,
-        inject_draft_composer_mapping_corruption(&store, storage, mapping.key()),
+        inject_draft_composer_mapping_corruption(&store, storage.clone(), mapping.key()),
     ));
     assert!(
         storage
@@ -1117,17 +1119,17 @@ fn corrupt_build_mapping_manifest_and_output_are_rejected() {
 
     let (_home, store, storage, thread) = fixture("manifest", 86);
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         87,
         vec![DraftPieceV1::Text("sealed".to_owned())],
     );
     let key = materialization_key(root, 88);
-    let mapping = materialize(storage, &store, key);
+    let mapping = materialize(&storage, &store, key);
     committed(execute(
         &store,
-        inject_draft_composer_manifest_corruption(&store, storage, mapping.content().id()),
+        inject_draft_composer_manifest_corruption(&store, storage.clone(), mapping.content().id()),
     ));
     assert!(
         storage
@@ -1137,16 +1139,16 @@ fn corrupt_build_mapping_manifest_and_output_are_rejected() {
 
     let (_home, store, storage, thread) = fixture("chunk", 89);
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         90,
         vec![DraftPieceV1::Text("sealed text".to_owned())],
     );
-    let mapping = materialize(storage, &store, materialization_key(root, 91));
+    let mapping = materialize(&storage, &store, materialization_key(root, 91));
     committed(execute(
         &store,
-        inject_draft_composer_chunk_corruption(&store, storage, mapping.content().id()),
+        inject_draft_composer_chunk_corruption(&store, storage.clone(), mapping.content().id()),
     ));
     assert!(
         storage
@@ -1160,7 +1162,7 @@ fn corrupt_build_mapping_manifest_and_output_are_rejected() {
 fn corrupted_authenticated_source_is_rejected_before_output_publication() {
     let (_home, store, storage, thread) = fixture("source-corruption", 96);
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         97,
@@ -1173,7 +1175,7 @@ fn corrupted_authenticated_source_is_rejected_before_output_publication() {
         &store,
         inject_draft_piece_descendant_corruption(
             &store,
-            storage,
+            &storage,
             root,
             DraftPieceDescendantTarget::Sequence,
             DraftPieceDescendantCorruption::Digest,
@@ -1222,7 +1224,7 @@ fn indeterminate_writer_custody_resumes_from_each_committed_record() {
         ),
     ));
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         94,
@@ -1270,15 +1272,15 @@ fn indeterminate_writer_custody_resumes_from_each_committed_record() {
 fn ownerless_partial_output_is_unreachable_until_atomic_seal() {
     let (_home, store, storage, thread) = fixture("preseal-unreachable", 101);
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         102,
         vec![DraftPieceV1::Text("private until seal".to_owned())],
     );
     let cancelled = materialization_key(root, 103);
-    let cancelled_output = stage_partial_output(storage, &store, cancelled, true);
-    assert_public_content_unavailable(storage, &store, cancelled_output);
+    let cancelled_output = stage_partial_output(&storage, &store, cancelled, true);
+    assert_public_content_unavailable(&storage, &store, cancelled_output);
     committed(execute(
         &store,
         storage.cancel_draft_composer_materialization(storage.revision(&store).unwrap(), cancelled),
@@ -1289,10 +1291,10 @@ fn ownerless_partial_output_is_unreachable_until_atomic_seal() {
             .unwrap(),
         DraftComposerMaterializationStatusV1::Cancelled,
     );
-    assert_public_content_unavailable(storage, &store, cancelled_output);
+    assert_public_content_unavailable(&storage, &store, cancelled_output);
 
     let failed_root = apply_replacement(
-        storage,
+        &storage,
         &store,
         thread,
         104,
@@ -1303,8 +1305,8 @@ fn ownerless_partial_output_is_unreachable_until_atomic_seal() {
         ),
     );
     let failed = materialization_key(failed_root, 105);
-    let failed_output = stage_partial_output(storage, &store, failed, false);
-    assert_public_content_unavailable(storage, &store, failed_output);
+    let failed_output = stage_partial_output(&storage, &store, failed, false);
+    assert_public_content_unavailable(&storage, &store, failed_output);
     committed(execute(
         &store,
         storage.fail_draft_composer_materialization(storage.revision(&store).unwrap(), failed),
@@ -1315,10 +1317,10 @@ fn ownerless_partial_output_is_unreachable_until_atomic_seal() {
             .unwrap(),
         DraftComposerMaterializationStatusV1::Failed(_)
     ));
-    assert_public_content_unavailable(storage, &store, failed_output);
+    assert_public_content_unavailable(&storage, &store, failed_output);
 
     let sealed_root = apply_replacement(
-        storage,
+        &storage,
         &store,
         thread,
         106,
@@ -1328,7 +1330,7 @@ fn ownerless_partial_output_is_unreachable_until_atomic_seal() {
             vec![DraftPieceV1::Text("y".to_owned())],
         ),
     );
-    let sealed = materialize(storage, &store, materialization_key(sealed_root, 107));
+    let sealed = materialize(&storage, &store, materialization_key(sealed_root, 107));
     assert_eq!(
         storage
             .content_manifest(
@@ -1377,7 +1379,7 @@ fn advancing_step_has_not_committed_and_indeterminate_custody() {
         ),
     ));
     let root = replace_empty(
-        storage,
+        &storage,
         &store,
         thread,
         108,
@@ -1436,7 +1438,7 @@ fn advancing_step_has_not_committed_and_indeterminate_custody() {
         ),
         CommandOutcome::Indeterminate { .. }
     ));
-    let _ = materialize_existing(storage, &store, key);
+    let _ = materialize_existing(&storage, &store, key);
 }
 
 #[cfg(feature = "test-faults")]
@@ -1448,7 +1450,7 @@ fn output_natural_key_accepts_exact_replay_and_rejects_different_bytes() {
     ] {
         let (_home, store, storage, thread) = fixture(name, seed);
         let root = replace_empty(
-            storage,
+            &storage,
             &store,
             thread,
             seed + 1,
@@ -1480,7 +1482,7 @@ fn output_natural_key_accepts_exact_replay_and_rejects_different_bytes() {
         };
         committed(execute(
             &store,
-            inject_draft_composer_prepared_chunk(&store, storage, &prepared, collision),
+            inject_draft_composer_prepared_chunk(&store, storage.clone(), &prepared, collision),
         ));
         let outcome = execute(
             &store,
@@ -1493,7 +1495,7 @@ fn output_natural_key_accepts_exact_replay_and_rejects_different_bytes() {
             assert!(matches!(outcome, CommandOutcome::NotCommitted { .. }));
         } else {
             committed(outcome);
-            let _ = materialize_existing(storage, &store, key);
+            let _ = materialize_existing(&storage, &store, key);
         }
     }
 }
@@ -1509,7 +1511,7 @@ fn sealed_reuse_requires_source_origin_and_output_closure() {
     ] {
         let (_home, store, storage, thread) = fixture(name, 110 + corruption);
         let root = replace_empty(
-            storage,
+            &storage,
             &store,
             thread,
             120 + corruption,
@@ -1518,19 +1520,19 @@ fn sealed_reuse_requires_source_origin_and_output_closure() {
                 .collect(),
         );
         let key = materialization_key(root, 130 + corruption);
-        let mapping = materialize(storage, &store, key);
+        let mapping = materialize(&storage, &store, key);
         let contribution = match corruption {
-            0 => delete_draft_composer_source(&store, storage, root),
-            1 => delete_draft_composer_origin_build(&store, storage, mapping),
+            0 => delete_draft_composer_source(&store, storage.clone(), root),
+            1 => delete_draft_composer_origin_build(&store, storage.clone(), mapping),
             2 => inject_draft_composer_build_corruption(
                 &store,
-                storage,
+                storage.clone(),
                 key,
                 DraftComposerBuildCorruption::SealedLifecycle,
             ),
             3 => inject_draft_piece_descendant_corruption(
                 &store,
-                storage,
+                &storage,
                 root,
                 DraftPieceDescendantTarget::Sequence,
                 DraftPieceDescendantCorruption::Digest,
@@ -1579,17 +1581,22 @@ fn preseal_chunk_and_indexes_fail_closed() {
     {
         let (_home, store, storage, thread) = fixture("preseal-corruption", 150 + index as u8);
         let root = replace_empty(
-            storage,
+            &storage,
             &store,
             thread,
             160 + index as u8,
             vec![DraftPieceV1::Text("indexed output".to_owned())],
         );
         let key = materialization_key(root, 170 + index as u8);
-        let output = stage_partial_output(storage, &store, key, true);
+        let output = stage_partial_output(&storage, &store, key, true);
         committed(execute(
             &store,
-            inject_draft_composer_output_corruption(&store, storage, output.id(), corruption),
+            inject_draft_composer_output_corruption(
+                &store,
+                storage.clone(),
+                output.id(),
+                corruption,
+            ),
         ));
         assert!(
             storage
@@ -1616,7 +1623,7 @@ fn materialization_key(
 }
 
 fn materialize(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     key: DraftComposerBuildKeyV1,
 ) -> syndic_storage::DraftComposerMaterializationRecordV1 {
@@ -1650,7 +1657,7 @@ fn materialize(
 
 #[cfg(feature = "test-faults")]
 fn materialize_existing(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     key: DraftComposerBuildKeyV1,
 ) -> syndic_storage::DraftComposerMaterializationRecordV1 {
@@ -1676,7 +1683,7 @@ fn materialize_existing(
 
 #[cfg(feature = "test-faults")]
 fn stage_partial_output(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     key: DraftComposerBuildKeyV1,
     include_indexes: bool,
@@ -1699,7 +1706,7 @@ fn stage_partial_output(
             matches!(phase, DraftComposerBuildPhaseV1::Draining { .. })
         };
         if reached {
-            return draft_composer_provisional_output(store, storage, key).unwrap();
+            return draft_composer_provisional_output(store, storage.clone(), key).unwrap();
         }
         let prepared = storage
             .prepare_draft_composer_materialization_step(store, key)
@@ -1716,7 +1723,7 @@ fn stage_partial_output(
 
 #[cfg(feature = "test-faults")]
 fn assert_public_content_unavailable(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     content: syndic_storage::ContentReference,
 ) {
@@ -1770,14 +1777,14 @@ fn append_marker_atom(output: &mut Vec<u8>, marker: DraftPieceMarkerV1) {
 }
 
 fn replace_empty(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     operation: u8,
     pieces: Vec<DraftPieceV1>,
 ) -> syndic_storage::DraftPieceRootReferenceV1 {
     apply_replacement(
-        storage,
+        &storage,
         store,
         thread,
         operation,
@@ -1786,14 +1793,14 @@ fn replace_empty(
 }
 
 fn append_text(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     operation: u8,
     text: &str,
 ) -> syndic_storage::DraftPieceRootReferenceV1 {
     append_pieces(
-        storage,
+        &storage,
         store,
         thread,
         operation,
@@ -1802,16 +1809,16 @@ fn append_text(
 }
 
 fn append_pieces(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     operation: u8,
     pieces: Vec<DraftPieceV1>,
 ) -> syndic_storage::DraftPieceRootReferenceV1 {
-    let current = candidate_head(storage, store, thread);
+    let current = candidate_head(&storage, store, thread);
     let end = point(current.newest_root().summary().logical_utf8_bytes());
     apply_replacement(
-        storage,
+        &storage,
         store,
         thread,
         operation,
@@ -1820,13 +1827,13 @@ fn append_pieces(
 }
 
 fn apply_replacement(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     operation: u8,
     replacement: DraftPieceReplacementV1,
 ) -> syndic_storage::DraftPieceRootReferenceV1 {
-    let current = candidate_head(storage, store, thread);
+    let current = candidate_head(&storage, store, thread);
     let predecessor_positions = fixture_positions(&current);
     let caret = if replacement
         .inserted()
@@ -1896,7 +1903,7 @@ fn apply_replacement(
         store,
         storage.settle_draft_piece_edit(storage.revision(store).unwrap(), prepared),
     ));
-    let adopted = candidate_head(storage, store, thread);
+    let adopted = candidate_head(&storage, store, thread);
     if adopted.newest_candidate_generation() == current.newest_candidate_generation() + 1 {
         remember_fixture_positions(
             &adopted,
@@ -1952,7 +1959,7 @@ fn remember_fixture_positions(
 }
 
 fn candidate_head(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
 ) -> DraftEditorCandidateSessionV1 {

@@ -23,8 +23,8 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
         let faults = FaultController::new();
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        let target = prepare_final_publication(&store, storage);
-        let unpublished = observe(&store, storage, &target);
+        let target = prepare_final_publication(&store, &storage);
+        let unpublished = observe(&store, &storage, &target);
         assert!(unpublished.entries.is_empty() && unpublished.build.entry_count() == 0);
         assert!(
             unpublished.head.entry_count() == 0
@@ -85,7 +85,7 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
             store.close().unwrap();
             let mut reopened = open(home.path());
             let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
-            let durable = observe(&reopened, reopened_storage, &target);
+            let durable = observe(&reopened, &reopened_storage, &target);
             assert_state(&durable, &unpublished, &published, expected);
             reopened
                 .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -94,7 +94,7 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
             continue;
         }
 
-        let recovered = observe(&store, storage, &target);
+        let recovered = observe(&store, &storage, &target);
         assert_state(&recovered, &unpublished, &published, expected);
         store
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -116,7 +116,7 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
 
         let mut reopened = open(home.path());
         let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
-        let durable = observe(&reopened, reopened_storage, &target);
+        let durable = observe(&reopened, &reopened_storage, &target);
         assert_eq!(durable, recovered);
         assert_state(&durable, &unpublished, &published, expected);
         reopened

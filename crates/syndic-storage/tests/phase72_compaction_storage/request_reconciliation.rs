@@ -239,7 +239,7 @@ fn late_acknowledgement_survives_user_work_settlement() {
     batch
         .put(FixtureRecord::CompactionSettlementReceipt(forged_receipt))
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
     assert!(matches!(
         fixture.storage.compaction_request_disposition_status(
             &fixture.store,
@@ -254,7 +254,7 @@ fn late_acknowledgement_survives_user_work_settlement() {
     restore
         .put(FixtureRecord::CompactionSettlementReceipt(receipt))
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, restore);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), restore);
 
     let CompactionOperationState::Consumed(witness) = consumed.state() else {
         panic!("progressed operation must remain consumed")
@@ -285,7 +285,7 @@ fn late_acknowledgement_survives_user_work_settlement() {
     batch
         .put(FixtureRecord::CompactionOperation(forged))
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
     assert!(matches!(
         fixture
             .storage
@@ -299,12 +299,12 @@ fn late_acknowledgement_survives_user_work_settlement() {
     restore_operation
         .put(FixtureRecord::CompactionOperation(consumed.clone()))
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, restore_operation);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), restore_operation);
     let mut delete_accepted = FixtureBatch::new();
     delete_accepted
         .delete(FixtureDelete::AcceptedInput(accepted))
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, delete_accepted);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), delete_accepted);
     assert!(matches!(
         fixture.storage.compaction_request_disposition_status(
             &fixture.store,

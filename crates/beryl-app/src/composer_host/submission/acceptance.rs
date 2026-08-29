@@ -46,8 +46,8 @@ impl SyndicComposerHost {
         )?;
         let command = crate::input_admission::first_acceptance_command(
             store,
-            self.storage,
-            assets,
+            &self.storage,
+            &assets,
             acceptance.clone(),
         )?;
         let command = match command {
@@ -89,7 +89,7 @@ impl SyndicComposerHost {
         }
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.submission_before_execute_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         #[cfg(feature = "test-faults")]
         self.inject_submission_cancellation_fault(

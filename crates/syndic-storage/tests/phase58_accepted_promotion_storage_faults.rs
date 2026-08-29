@@ -63,12 +63,12 @@ fn seed(
     let storage = SyndicStorage::register(&mut store).unwrap();
     let root_history = seed_detached_draft_backing(
         &store,
-        storage,
+        storage.clone(),
         SyndicThreadId::from_bytes([0xf2; 16]),
         current_draft,
     );
     install_current_draft_root_history(&mut records, current_draft, root_history);
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
     (home, store, storage)
 }
 
@@ -96,7 +96,7 @@ fn install_current_draft_root_history(
     }
 }
 
-fn candidate(store: &HomeStore, storage: SyndicStorage) -> AcceptedNextCandidate {
+fn candidate(store: &HomeStore, storage: &SyndicStorage) -> AcceptedNextCandidate {
     let revision = storage.revision(store).unwrap();
     let sources = storage
         .accepted_next_source_page(store, revision, None, page_limits())
@@ -111,7 +111,7 @@ fn candidate(store: &HomeStore, storage: SyndicStorage) -> AcceptedNextCandidate
 
 fn promotion(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn: SyndicTurnId,
     item: SyndicItemId,
 ) -> PromoteAcceptedInput {
@@ -120,7 +120,7 @@ fn promotion(
 
 fn execute_promotion(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     promotion: PromoteAcceptedInput,
 ) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -163,16 +163,16 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
         let fixture = promotion_fixture(90, id(90));
         let root_history = seed_detached_draft_backing(
             &store,
-            storage,
+            storage.clone(),
             SyndicThreadId::from_bytes([0xf2; 16]),
             fixture.current_draft,
         );
         let mut records = fixture.records;
         install_current_draft_root_history(&mut records, fixture.current_draft, root_history);
-        commit(&store, storage, batch(records));
+        commit(&store, storage.clone(), batch(records));
         let request = promotion(
             &store,
-            storage,
+            &storage,
             SyndicTurnId::from_bytes([120; 16]),
             SyndicItemId::from_bytes([121; 16]),
         );
@@ -489,7 +489,7 @@ fn same_domain_revision_still_fences_every_exact_promotion_authority() {
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
     let request = PromoteAcceptedInput::new(
-        candidate(&source_store, source_storage),
+        candidate(&source_store, &source_storage),
         SyndicTurnId::from_bytes([140; 16]),
         SyndicItemId::from_bytes([141; 16]),
         timestamp(20),
@@ -516,7 +516,7 @@ fn same_domain_revision_still_fences_every_exact_promotion_authority() {
             "{} substitution must not preserve Prior",
             drift.name(),
         );
-        let error = match execute_promotion(&store, storage, request.clone()) {
+        let error = match execute_promotion(&store, &storage, request.clone()) {
             CommandOutcome::NotCommitted { evidence } => evidence,
             outcome => panic!("expected definitive promotion conflict, got {outcome:?}"),
         };

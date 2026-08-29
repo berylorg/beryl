@@ -3,8 +3,8 @@ use super::*;
 #[test]
 fn multi_megabyte_draft_stages_traverses_adopts_publishes_reopens_and_materializes_boundedly() {
     let (home, mut store, mut storage, thread) = fixture("phase184-large-draft", 184);
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 185, 186);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 185, 186);
 
     for chunk in 0..LARGE_CHUNK_COUNT {
         let offset = (chunk * LARGE_CHUNK_BYTES) as u64;
@@ -84,7 +84,7 @@ fn multi_megabyte_draft_stages_traverses_adopts_publishes_reopens_and_materializ
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(2),
     );
-    let source = capture_publication_source(storage, &store, request);
+    let source = capture_publication_source(&storage, &store, request);
     let publication = storage
         .prepare_draft_editor_candidate_publication(&store, source, request.evidence())
         .unwrap();
@@ -100,14 +100,14 @@ fn multi_megabyte_draft_stages_traverses_adopts_publishes_reopens_and_materializ
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
 
-    let mapping = materialize_bounded(storage, &store, edited_root, 106);
+    let mapping = materialize_bounded(&storage, &store, edited_root, 106);
     assert_eq!(mapping.source_utf8_bytes(), LARGE_DRAFT_BYTES);
     assert_eq!(mapping.source_marker_count(), 0);
 
     drop(store);
     store = HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
     storage = SyndicStorage::register(&mut store).unwrap();
-    let reopened = current(storage, &store, thread).draft().piece_root();
+    let reopened = current(&storage, &store, thread).draft().piece_root();
     assert_eq!(reopened, edited_root);
     assert_sparse_text(
         &storage,

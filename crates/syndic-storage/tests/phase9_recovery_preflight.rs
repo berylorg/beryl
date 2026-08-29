@@ -24,7 +24,7 @@ fn point_limit() -> SyndicPointReadLimit {
 
 fn same_home_path_records(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     draft: SyndicDraftId,
     tail: SyndicTurnId,
@@ -99,7 +99,7 @@ fn same_home_path_records(
 
 fn replay(
     store: &beryl_home_store::HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     projection: RecoveryProjection,
 ) -> Vec<(RecoveryItemSequenceRole, String)> {
     let mut cursor = storage.open_recovery_cursor(store, projection).unwrap();
@@ -137,7 +137,7 @@ fn empty_current_path_is_native_fresh_without_model_metadata_or_state_change() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread = id(41);
-    seed_canonical_empty_thread(&store, storage, thread, draft_id(42));
+    seed_canonical_empty_thread(&store, storage.clone(), thread, draft_id(42));
     let thread_record = storage
         .thread(&store, thread, point_limit())
         .unwrap()
@@ -214,13 +214,13 @@ fn current_preflight_equals_the_later_pending_parent_projection_without_state_ch
     let completed = SyndicTurnId::from_bytes([212; 16]);
     let item = SyndicItemId::from_bytes([213; 16]);
     let completed_digest = root_turn_chain_digest(completed);
-    seed_canonical_empty_thread(&store, storage, thread, draft);
+    seed_canonical_empty_thread(&store, storage.clone(), thread, draft);
     let payload = ComposerPayload::new(vec![ComposerAtom::text("retained user").unwrap()]).unwrap();
     let (content, content_records) = composer_content_records(&payload);
     let revision = ProjectionRevision::new(1).unwrap();
     let mut records = same_home_path_records(
         &store,
-        storage,
+        &storage,
         thread,
         draft,
         completed,
@@ -263,7 +263,7 @@ fn current_preflight_equals_the_later_pending_parent_projection_without_state_ch
             revision,
         )),
     ]);
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
     let current_selected = SelectedPathProof::new(
         Some(completed),
         ThreadRevision::new(1).unwrap(),
@@ -295,7 +295,7 @@ fn current_preflight_equals_the_later_pending_parent_projection_without_state_ch
     else {
         panic!("completed current path must be ready")
     };
-    let preflight_items = replay(&store, storage, preflight);
+    let preflight_items = replay(&store, &storage, preflight);
     assert_eq!(storage.revision(&store).unwrap(), before_revision);
     assert_eq!(
         storage
@@ -323,7 +323,7 @@ fn current_preflight_equals_the_later_pending_parent_projection_without_state_ch
     let pending_digest = child_turn_chain_digest(pending, completed, completed_digest);
     let mut pending_records = same_home_path_records(
         &store,
-        storage,
+        &storage,
         thread,
         draft,
         pending,
@@ -371,7 +371,7 @@ fn current_preflight_equals_the_later_pending_parent_projection_without_state_ch
             .unwrap(),
         ),
     ]);
-    commit(&store, storage, batch(pending_records));
+    commit(&store, storage.clone(), batch(pending_records));
     let pending_selected = SelectedPathProof::new(
         Some(pending),
         ThreadRevision::new(1).unwrap(),
@@ -397,7 +397,7 @@ fn current_preflight_equals_the_later_pending_parent_projection_without_state_ch
             "retained user".to_owned(),
         )]
     );
-    assert_eq!(preflight_items, replay(&store, storage, restarted));
+    assert_eq!(preflight_items, replay(&store, &storage, restarted));
     assert_eq!(preflight.version(), restarted.version());
     assert_eq!(preflight.item_count(), restarted.item_count());
     assert_eq!(preflight.utf8_bytes(), restarted.utf8_bytes());
@@ -424,10 +424,10 @@ fn cursor_and_ready_proof_reject_source_revision_drift_before_emitting_text() {
     let (content, content_records) = composer_content_records(&payload);
     let revision = ProjectionRevision::new(1).unwrap();
     let draft = draft_id(201);
-    seed_canonical_empty_thread(&store, storage, thread, draft);
+    seed_canonical_empty_thread(&store, storage.clone(), thread, draft);
     let mut records = same_home_path_records(
         &store,
-        storage,
+        &storage,
         thread,
         draft,
         turn,
@@ -470,7 +470,7 @@ fn cursor_and_ready_proof_reject_source_revision_drift_before_emitting_text() {
             revision,
         )),
     ]);
-    commit(&store, storage, batch(records));
+    commit(&store, storage.clone(), batch(records));
     let selected = SelectedPathProof::new(Some(turn), ThreadRevision::new(1).unwrap(), digest);
     let RecoveryAssembly::Ready(projection) = storage
         .prepare_recovery_projection(
@@ -483,7 +483,7 @@ fn cursor_and_ready_proof_reject_source_revision_drift_before_emitting_text() {
     };
     let mut cursor = storage.open_recovery_cursor(&store, projection).unwrap();
 
-    seed_canonical_empty_thread(&store, storage, id(203), draft_id(204));
+    seed_canonical_empty_thread(&store, storage.clone(), id(203), draft_id(204));
     let pool = PagePool::new(
         NonZeroUsize::new(RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES).unwrap(),
         NonZeroUsize::new(1).unwrap(),

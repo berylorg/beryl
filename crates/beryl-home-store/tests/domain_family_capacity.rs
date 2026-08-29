@@ -158,6 +158,12 @@ impl StorageDomain for SeventyThreeFamilyDomain {
         RecordFamily::new::<Family72>(KeyspaceSchemaVersion::new(1)),
     ];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -201,6 +207,12 @@ macro_rules! invalid_family_domain {
             const FAMILIES: &'static [RecordFamily<Self>] =
                 &[RecordFamily::new::<$record>(KeyspaceSchemaVersion::new(1))];
             type ValidationError = Infallible;
+            type RuntimeAttachment = ();
+            type RuntimeAttachmentError = Infallible;
+
+            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+                Ok(())
+            }
 
             fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
                 Ok(())
@@ -221,14 +233,14 @@ fn seventy_three_family_registration_reopens_exactly() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let domain = store.register_domain::<SeventyThreeFamilyDomain>().unwrap();
-    assert_eq!(store.domain_revision(domain).unwrap().get(), 1);
+    assert_eq!(store.domain_revision(&domain).unwrap().get(), 1);
     store.close().unwrap();
 
     let mut reopened = open_home(directory.path());
     let domain = reopened
         .register_domain::<SeventyThreeFamilyDomain>()
         .unwrap();
-    assert_eq!(reopened.domain_revision(domain).unwrap().get(), 1);
+    assert_eq!(reopened.domain_revision(&domain).unwrap().get(), 1);
     reopened.close().unwrap();
 }
 

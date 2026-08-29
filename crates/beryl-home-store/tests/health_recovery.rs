@@ -60,9 +60,9 @@ fn candidate_abort_retains_failed_authority_and_allows_a_fresh_retry() {
     let current = candidate.domain_handle::<AlphaDomain>().unwrap();
     let recovered = candidate.publish();
     assert_eq!(recovered.health().state(), HomeHealthState::Healthy);
-    assert!(recovered.domain_revision(stale).is_err());
-    assert!(recovered.domain_revision(aborted).is_err());
-    assert_eq!(recovered.domain_revision(current).unwrap().get(), 1);
+    assert!(recovered.domain_revision(&stale).is_err());
+    assert!(recovered.domain_revision(&aborted).is_err());
+    assert_eq!(recovered.domain_revision(&current).unwrap().get(), 1);
     recovered.close().unwrap();
 }
 

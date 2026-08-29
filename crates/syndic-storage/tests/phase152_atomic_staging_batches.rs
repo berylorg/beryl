@@ -171,7 +171,7 @@ fn two_page_commit_one_page_fast_path_replay_and_pre_admission_cancellation_are_
         assert_eq!(
             draft_mutation_staging_batch_target_records(
                 &cancelled.store,
-                cancelled.storage,
+                &cancelled.storage,
                 &abandoned,
                 index,
             )

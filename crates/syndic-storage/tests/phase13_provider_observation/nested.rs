@@ -75,7 +75,7 @@ fn typed_lists_objects_discriminants_and_agent_state_entries_seal() {
     let home = TestHome::new("provider-observation-nested-grammar");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
 
     let mut hook = begin_item(87, ProviderObservationItemKind::HookPrompt, &mut callback);
     let fragments = ProviderValueContext::Field(ProviderField::HookFragments);
@@ -316,7 +316,7 @@ fn recursive_structured_object_and_list_contexts_seal() {
     let home = TestHome::new("provider-observation-structured-grammar");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut callback = commit_callback(&store, storage);
+    let mut callback = commit_callback(&store, &storage);
     let mut stager = begin_item(
         91,
         ProviderObservationItemKind::DynamicToolCall,

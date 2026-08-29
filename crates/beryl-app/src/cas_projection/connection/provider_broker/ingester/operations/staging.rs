@@ -136,7 +136,7 @@ impl Ingester {
                 );
             }
         };
-        let mut commit = self.committer(identity, home_generation, storage);
+        let mut commit = self.committer(identity, home_generation, &storage);
         let staged = ProviderObservationStager::begin(identity, translated, &mut commit)
             .map_err(|error| ProviderStagingOutcome::Rejection(staging_rejection(&error)))
             .and_then(classify_stage_outcome);
@@ -177,7 +177,7 @@ impl Ingester {
                 let mut commit = self.committer(
                     observation.identity,
                     observation.home_generation,
-                    observation.storage,
+                    &observation.storage,
                 );
                 observation
                     .stager
@@ -259,7 +259,7 @@ impl Ingester {
                 let mut commit = self.committer(
                     observation.identity,
                     observation.home_generation,
-                    observation.storage,
+                    &observation.storage,
                 );
                 observation
                     .stager

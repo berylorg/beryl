@@ -37,6 +37,12 @@ macro_rules! empty_domain {
                     support::BytesRecord<Self>,
                 >(KeyspaceSchemaVersion::new(1))];
             type ValidationError = Infallible;
+            type RuntimeAttachment = ();
+            type RuntimeAttachmentError = Infallible;
+
+            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+                Ok(())
+            }
 
             fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
                 Ok(())
@@ -303,7 +309,7 @@ fn command(
     HomeProofCommand::new(
         generation(store),
         store.home_revision().unwrap(),
-        alpha.proof_source::<AgreementProtocol>(store.domain_revision(alpha).unwrap(), source),
+        alpha.proof_source::<AgreementProtocol>(store.domain_revision(&alpha).unwrap(), source),
     )
     .unwrap()
 }
@@ -342,10 +348,10 @@ fn source_only_and_multi_domain_agreement_leave_durable_and_reconciliation_state
     let role1 = store.register_domain::<RoleDomain1>().unwrap();
     let role2 = store.register_domain::<RoleDomain2>().unwrap();
     let home_before = store.home_revision().unwrap();
-    let alpha_before = store.domain_revision(alpha).unwrap();
-    let beta_before = store.domain_revision(beta).unwrap();
-    let role1_before = store.domain_revision(role1).unwrap();
-    let role2_before = store.domain_revision(role2).unwrap();
+    let alpha_before = store.domain_revision(&alpha).unwrap();
+    let beta_before = store.domain_revision(&beta).unwrap();
+    let role1_before = store.domain_revision(&role1).unwrap();
+    let role2_before = store.domain_revision(&role2).unwrap();
     let correlation = [7; 16];
 
     let source = alpha.proof_source::<AgreementProtocol>(alpha_before, Role::agreeing(correlation));
@@ -372,10 +378,10 @@ fn source_only_and_multi_domain_agreement_leave_durable_and_reconciliation_state
         .consume_proof_receipt(multi_consumer, receipt)
         .unwrap();
     assert_eq!(store.home_revision().unwrap(), home_before);
-    assert_eq!(store.domain_revision(alpha).unwrap(), alpha_before);
-    assert_eq!(store.domain_revision(beta).unwrap(), beta_before);
-    assert_eq!(store.domain_revision(role1).unwrap(), role1_before);
-    assert_eq!(store.domain_revision(role2).unwrap(), role2_before);
+    assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
+    assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);
+    assert_eq!(store.domain_revision(&role1).unwrap(), role1_before);
+    assert_eq!(store.domain_revision(&role2).unwrap(), role2_before);
     assert!(store.pending_reconciliations().is_empty());
     let source = alpha.proof_source::<AgreementProtocol>(alpha_before, Role::agreeing(correlation));
     let (stale_receipt, stale_consumer) = compose(
@@ -409,8 +415,8 @@ fn source_consumer_rejects_same_fence_cross_page_receipts_and_consumes_the_exact
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
-    let alpha_revision = store.domain_revision(alpha).unwrap();
-    let beta_revision = store.domain_revision(beta).unwrap();
+    let alpha_revision = store.domain_revision(&alpha).unwrap();
+    let beta_revision = store.domain_revision(&beta).unwrap();
     let home = store.home_revision().unwrap();
     let generation = generation(&store);
 
@@ -540,8 +546,8 @@ fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutatin
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
     let home_before = store.home_revision().unwrap();
-    let alpha_before = store.domain_revision(alpha).unwrap();
-    let beta_before = store.domain_revision(beta).unwrap();
+    let alpha_before = store.domain_revision(&alpha).unwrap();
+    let beta_before = store.domain_revision(&beta).unwrap();
     let mut disagreement = command(&store, alpha, Role::agreeing([1; 16]));
     disagreement
         .add_witness(beta.proof_witness(beta_before, Role::agreeing([2; 16])))
@@ -579,7 +585,7 @@ fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutatin
         .unwrap();
     committed(store.execute(advance_beta));
     let home_after_advance = store.home_revision().unwrap();
-    let beta_after_advance = store.domain_revision(beta).unwrap();
+    let beta_after_advance = store.domain_revision(&beta).unwrap();
     let mut stale_domain = command(&store, alpha, Role::agreeing([1; 16]));
     stale_domain
         .add_witness(beta.proof_witness(beta_before, Role::agreeing([1; 16])))
@@ -589,8 +595,8 @@ fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutatin
         Err(ProofCompositionError::Conflict { .. })
     ));
     assert_eq!(store.home_revision().unwrap(), home_after_advance);
-    assert_eq!(store.domain_revision(alpha).unwrap(), alpha_before);
-    assert_eq!(store.domain_revision(beta).unwrap(), beta_after_advance);
+    assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
+    assert_eq!(store.domain_revision(&beta).unwrap(), beta_after_advance);
     assert!(store.pending_reconciliations().is_empty());
 }
 
@@ -638,7 +644,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
     let role6 = store.register_domain::<RoleDomain6>().unwrap();
     let role7 = store.register_domain::<RoleDomain7>().unwrap();
     let foreign_alpha = foreign.register_domain::<AlphaDomain>().unwrap();
-    let revision = store.domain_revision(alpha).unwrap();
+    let revision = store.domain_revision(&alpha).unwrap();
 
     let mut duplicate = command(&store, alpha, Role::agreeing([3; 16]));
     assert!(matches!(
@@ -650,7 +656,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
         generation(&store),
         store.home_revision().unwrap(),
         foreign_alpha.proof_source::<AgreementProtocol>(
-            foreign.domain_revision(foreign_alpha).unwrap(),
+            foreign.domain_revision(&foreign_alpha).unwrap(),
             Role::agreeing([3; 16]),
         ),
     )
@@ -679,7 +685,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
     let mut admitted = command(&store, alpha, Role::agreeing([3; 16]));
     admitted
         .add_witness(beta.proof_witness(
-            store.domain_revision(beta).unwrap(),
+            store.domain_revision(&beta).unwrap(),
             Role::agreeing([3; 16]).cancelling(admitted_cancellation.clone()),
         ))
         .unwrap();
@@ -692,7 +698,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
         generation(&store),
         store.home_revision().unwrap(),
         oversized_domain.proof_source::<OversizedProtocol>(
-            store.domain_revision(oversized_domain).unwrap(),
+            store.domain_revision(&oversized_domain).unwrap(),
             Role::<[u8; MAX_PROOF_CORRELATION_BYTES]>::agreeing([0; MAX_PROOF_CORRELATION_BYTES]),
         ),
     );
@@ -711,7 +717,7 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
         generation(&store),
         store.home_revision().unwrap(),
         malformed.proof_source::<AgreementProtocol>(
-            store.domain_revision(malformed).unwrap(),
+            store.domain_revision(&malformed).unwrap(),
             Role::agreeing([0; 16]),
         ),
     );
@@ -726,43 +732,43 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
     let mut bounded = command(&store, alpha, Role::agreeing([4; 16]));
     bounded
         .add_witness(beta.proof_witness(
-            store.domain_revision(beta).unwrap(),
+            store.domain_revision(&beta).unwrap(),
             Role::agreeing([4; 16]),
         ))
         .unwrap()
         .add_witness(role1.proof_witness(
-            store.domain_revision(role1).unwrap(),
+            store.domain_revision(&role1).unwrap(),
             Role::agreeing([4; 16]),
         ))
         .unwrap()
         .add_witness(role2.proof_witness(
-            store.domain_revision(role2).unwrap(),
+            store.domain_revision(&role2).unwrap(),
             Role::agreeing([4; 16]),
         ))
         .unwrap()
         .add_witness(role3.proof_witness(
-            store.domain_revision(role3).unwrap(),
+            store.domain_revision(&role3).unwrap(),
             Role::agreeing([4; 16]),
         ))
         .unwrap()
         .add_witness(role4.proof_witness(
-            store.domain_revision(role4).unwrap(),
+            store.domain_revision(&role4).unwrap(),
             Role::agreeing([4; 16]),
         ))
         .unwrap()
         .add_witness(role5.proof_witness(
-            store.domain_revision(role5).unwrap(),
+            store.domain_revision(&role5).unwrap(),
             Role::agreeing([4; 16]),
         ))
         .unwrap()
         .add_witness(role6.proof_witness(
-            store.domain_revision(role6).unwrap(),
+            store.domain_revision(&role6).unwrap(),
             Role::agreeing([4; 16]),
         ))
         .unwrap();
     assert!(matches!(
         bounded.add_witness(role7.proof_witness(
-            store.domain_revision(role7).unwrap(),
+            store.domain_revision(&role7).unwrap(),
             Role::agreeing([4; 16])
         )),
         Err(ProofCommandBuildError::RoleLimit {

@@ -2,7 +2,7 @@ use super::*;
 
 fn activate_empty_epoch(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     selected: SelectedPathProof,
@@ -37,7 +37,7 @@ fn activate_empty_epoch(
 
 fn cancel_empty_epoch(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     selected: SelectedPathProof,
@@ -61,7 +61,7 @@ fn cancel_empty_epoch(
 
 fn seed_unselected_accepted_input(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     source_draft: SyndicDraftId,
 ) -> beryl_model::SyndicAcceptedInputId {
@@ -187,7 +187,7 @@ fn seed_unselected_accepted_input(
             .unwrap(),
         ),
     ]);
-    commit(store, storage, batch(records));
+    commit(store, storage.clone(), batch(records));
     input
 }
 
@@ -196,15 +196,15 @@ fn consecutive_empty_active_epochs_allocate_distinct_route_generations() {
     let home = TestHome::new("phase9-consecutive-empty-route-generations");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 120, false) else {
+    let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 120, false) else {
         unreachable!()
     };
     publish_valid(
         &store,
-        storage,
+        &storage,
         valid_request(
             &store,
-            storage,
+            &storage,
             thread,
             selected,
             CasThreadId::new("phase9-consecutive-empty-cas").unwrap(),
@@ -215,7 +215,7 @@ fn consecutive_empty_active_epochs_allocate_distinct_route_generations() {
     assert_eq!(
         activate_empty_epoch(
             &store,
-            storage,
+            &storage,
             thread,
             turn,
             selected,
@@ -225,13 +225,13 @@ fn consecutive_empty_active_epochs_allocate_distinct_route_generations() {
         ),
         AcceptedRouteGeneration::FIRST
     );
-    cancel_empty_epoch(&store, storage, thread, turn, selected, first_snapshot);
+    cancel_empty_epoch(&store, &storage, thread, turn, selected, first_snapshot);
 
     let second_generation = AcceptedRouteGeneration::new(2).unwrap();
     assert_eq!(
         activate_empty_epoch(
             &store,
-            storage,
+            &storage,
             thread,
             turn,
             selected,
@@ -257,11 +257,11 @@ fn unselected_generations_and_later_activation_share_one_route_allocator() {
     let home = TestHome::new("phase9-route-generation-interleaving");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 130, false) else {
+    let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 130, false) else {
         unreachable!()
     };
     let source_draft = draft_id(143);
-    let accepted = seed_unselected_accepted_input(&store, storage, thread, source_draft);
+    let accepted = seed_unselected_accepted_input(&store, &storage, thread, source_draft);
     let first_generation = AcceptedRouteGeneration::FIRST;
     let gate = storage
         .input_gate(&store, thread, point_limit())
@@ -306,10 +306,10 @@ fn unselected_generations_and_later_activation_share_one_route_allocator() {
 
     publish_valid(
         &store,
-        storage,
+        &storage,
         valid_request(
             &store,
-            storage,
+            &storage,
             thread,
             selected,
             CasThreadId::new("phase9-shared-route-allocator-cas").unwrap(),
@@ -319,7 +319,7 @@ fn unselected_generations_and_later_activation_share_one_route_allocator() {
     assert_eq!(
         activate_empty_epoch(
             &store,
-            storage,
+            &storage,
             thread,
             turn,
             selected,
@@ -357,7 +357,7 @@ fn route_generation_exhaustion_rejects_without_overwrite() {
     let home = TestHome::new("phase9-route-generation-exhaustion");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, None, turn, selected) = fault_pending_path(&store, storage, 230, false) else {
+    let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 230, false) else {
         unreachable!()
     };
     let gate = storage
@@ -378,15 +378,15 @@ fn route_generation_exhaustion_rejects_without_overwrite() {
     .unwrap();
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::InputGate(exhausted)]),
     );
     publish_valid(
         &store,
-        storage,
+        &storage,
         valid_request(
             &store,
-            storage,
+            &storage,
             thread,
             selected,
             CasThreadId::new("phase9-route-exhaustion-cas").unwrap(),
@@ -407,8 +407,8 @@ fn route_generation_exhaustion_rejects_without_overwrite() {
             storage.revision(&store).unwrap(),
             ActivateBinding::new(
                 thread,
-                current_binding_revision(&store, storage, thread),
-                current_gate_revision(&store, storage, thread),
+                current_binding_revision(&store, &storage, thread),
+                current_gate_revision(&store, &storage, thread),
                 selected,
                 snapshot,
                 turn,

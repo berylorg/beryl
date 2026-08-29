@@ -9,7 +9,7 @@ fn duplicate_start_issue_with_the_wrong_reason_is_rejected_atomically() {
         .into_issue(ProviderObservationIssueReason::EventAfterCompletion);
     let event = next_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,
@@ -56,7 +56,7 @@ fn legally_admissible_completion_only_observation_cannot_be_published_as_an_issu
         .into_issue(ProviderObservationIssueReason::MissingItemStart);
     let event = next_event(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.thread,
         fixture.turn,
         &fixture.source,

@@ -153,7 +153,7 @@ impl SyndicStorage {
         )
         .expect("clamped nonzero query limits remain nonzero");
         let page = store.read_cursor::<crate::domain::SyndicDomain, ActivityQueryEntriesCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,
@@ -239,7 +239,7 @@ impl SyndicStorage {
         )
         .expect("clamped nonzero query limits remain nonzero");
         let page = store.read_cursor::<crate::domain::SyndicDomain, ActivityQuerySourcesCodec>(
-            self.handle,
+            &self.handle,
             &range,
             CursorDirection::Forward,
             limits,

@@ -76,7 +76,7 @@ pub(super) fn project_user_payload(
     });
     submit_prepared_current_draft(
         &store,
-        storage,
+        storage.clone(),
         thread,
         draft_id(3),
         item,

@@ -23,7 +23,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) enum PendingTurnExecutio
 
 pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
     validator: &LeaseValidationAuthority,
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     cancellation: &ProjectionCancellationToken,
     observed_at: SyndicTimestamp,
     selected_path: SelectedPathProof,

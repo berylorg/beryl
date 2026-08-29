@@ -7,8 +7,8 @@ fn cancellation_during_an_effect_and_between_effects_preserves_candidate_state()
         let (home, store, storage, thread) = fixture(case, seed);
         let mut store = store;
         let mut storage = storage;
-        let current = current(storage, &store, thread);
-        let mut session = open_session(storage, &store, &current, seed + 1, seed + 2);
+        let current = current(&storage, &store, thread);
+        let mut session = open_session(&storage, &store, &current, seed + 1, seed + 2);
         session = complete_staged(
             &storage,
             &store,

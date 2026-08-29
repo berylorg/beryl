@@ -33,7 +33,7 @@ pub(super) struct TurnFrontierSnapshot {
 
 pub(super) fn terminal_turn(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     limit: SyndicPointReadLimit,
@@ -69,7 +69,7 @@ pub(super) fn terminal_turn(
 
 pub(super) fn turn_frontier(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     limit: SyndicPointReadLimit,
@@ -134,7 +134,7 @@ pub(super) fn turn_frontier(
 
 fn next_item_index(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn_id: SyndicTurnId,
     state: Option<&TurnStateRecord>,
     limits: CursorReadLimits,
@@ -156,7 +156,7 @@ fn next_item_index(
 
 fn reread_manifest(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     manifest: &Option<ContentManifestRecord>,
     limit: SyndicPointReadLimit,
 ) -> Result<Option<ContentManifestRecord>, OrdinaryTurnExecutionError> {
@@ -168,7 +168,7 @@ fn reread_manifest(
 
 fn reread_resource(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     resource: &Option<ResourceMetadataRecord>,
     limit: SyndicPointReadLimit,
 ) -> Result<Option<ResourceMetadataRecord>, OrdinaryTurnExecutionError> {
@@ -308,7 +308,7 @@ pub(super) struct ProjectionSnapshot {
 
 pub(super) fn item_projection(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     item_id: SyndicItemId,
     limit: SyndicPointReadLimit,
@@ -445,7 +445,7 @@ pub(super) struct TranscriptSnapshot {
 
 pub(super) fn transcript(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     limit: SyndicPointReadLimit,
 ) -> Result<TranscriptSnapshot, OrdinaryTurnExecutionError> {

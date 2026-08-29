@@ -100,7 +100,7 @@ fn receiving_fixture_in(home: TestHome, mut store: HomeStore, seed: u8) -> Recei
             ),
         ),
     ));
-    let current = current(storage, &store, thread);
+    let current = current(&storage, &store, thread);
     let request = DraftEditorCandidateSessionOpenRequestV1::new(
         selector(&current),
         DraftEditorCandidateSessionIdV1::from_bytes([seed.wrapping_add(4); 16]),
@@ -237,7 +237,7 @@ pub fn committed(outcome: CommandOutcome) {
 }
 
 pub fn current(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
 ) -> SyndicCurrentDraft {

@@ -26,7 +26,7 @@ pub(super) fn prepare_replay(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     route: &SyndicDeliveringSteeringInput,
     cancellation: &ProjectionCancellationToken,
 ) -> Result<AcceptedInputReplayFactory, ActiveSteeringPreparationFailure> {
@@ -37,7 +37,7 @@ pub(super) fn prepare_replay(
         .map_err(ActiveSteeringPreparationFailure::Asset)?;
     AcceptedInputReplayFactory::prepare(
         home,
-        storage,
+        storage.clone(),
         state.assets(),
         AcceptedInputReplayContext::new(
             home_id,
@@ -70,7 +70,7 @@ pub(super) fn handle_arm_failure(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: &ActiveSteeringTarget,
     attempt: ActiveSteeringAttemptPermit,
     route: &SyndicDeliveringSteeringInput,
@@ -106,7 +106,7 @@ pub(super) fn retry_before_dispatch(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: &ActiveSteeringTarget,
     attempt: ActiveSteeringAttemptPermit,
     mut owner: CheckedSteeringLifecycleOwner,
@@ -150,7 +150,7 @@ pub(super) fn handle_authorization_failure(
     home: &HomeStore,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     target: &ActiveSteeringTarget,
     attempt: ActiveSteeringAttemptPermit,
     mut owner: CheckedSteeringLifecycleOwner,

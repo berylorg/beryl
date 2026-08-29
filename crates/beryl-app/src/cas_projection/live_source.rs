@@ -75,7 +75,7 @@ impl LiveSourceTarget {
 
     pub(super) fn resolve(
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         expected_thread_id: SyndicThreadId,
         cas_thread_id: &CasThreadId,
         cas_turn_id: &CasTurnId,
@@ -132,7 +132,7 @@ pub(super) struct LiveSourceFrontier {
 impl LiveSourceFrontier {
     pub(super) fn read(
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         target: &LiveSourceTarget,
         limit: SyndicPointReadLimit,
     ) -> Result<Self, LiveSourcePublicationError> {
@@ -149,7 +149,7 @@ impl LiveSourceFrontier {
         store: &HomeStore,
         expected_home_id: BerylHomeId,
         expected_home_generation: HomeGeneration,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         target: &LiveSourceTarget,
         limit: SyndicPointReadLimit,
         command: &crate::cas_projection::LiveCommandPermit,
@@ -171,7 +171,7 @@ impl LiveSourceFrontier {
 
     pub(super) fn read_at_least(
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         target: &LiveSourceTarget,
         minimum_observed_at: SyndicTimestamp,
         limit: SyndicPointReadLimit,
@@ -245,7 +245,7 @@ pub(super) fn publish_reconciled(
     store: &HomeStore,
     expected_home_id: BerylHomeId,
     expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     event: &LiveSourceEvent,
     limit: SyndicPointReadLimit,
 ) -> Result<(), LiveSourcePublicationError> {
@@ -267,7 +267,7 @@ pub(super) fn publish_provider_reconciled(
     store: &HomeStore,
     expected_home_id: BerylHomeId,
     expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     event: &LiveSourceEvent,
     _limit: SyndicPointReadLimit,
     command: &crate::cas_projection::LiveCommandPermit,
@@ -332,7 +332,7 @@ fn read_provider_event_status(
     store: &HomeStore,
     expected_home_id: BerylHomeId,
     expected_home_generation: HomeGeneration,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     event: &LiveSourceEvent,
     limit: SyndicPointReadLimit,
     command: &crate::cas_projection::LiveCommandPermit,

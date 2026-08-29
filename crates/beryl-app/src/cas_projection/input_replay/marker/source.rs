@@ -39,7 +39,7 @@ impl MarkerSource {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn prepare(
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         assets: AssetState,
         context: InputReplayContext,
         record: InputReplayRecord,
@@ -95,7 +95,7 @@ impl MarkerSource {
             content: self.content,
             asset_proof: self.asset_proof,
             owner_head: self.owner_head.clone(),
-            assets: self.assets,
+            assets: self.assets.clone(),
             source_identity: self.source_identity,
             source_revision: self.source_revision,
             #[cfg(feature = "test-faults")]
@@ -135,7 +135,7 @@ impl MarkerSource {
     pub(super) fn check_authority(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<(), MarkerReplayError> {
         check_cancelled(cancellation)?;
@@ -182,7 +182,7 @@ impl MarkerSource {
     pub(super) fn prove_segment(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
         after_marker: Option<SyndicContentTextSegmentBoundary>,
     ) -> Result<SyndicContentTextSegment, MarkerReplayError> {
@@ -200,7 +200,7 @@ impl MarkerSource {
     pub(super) fn read_segment_range(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
         segment: &SyndicContentTextSegment,
         start: u64,
@@ -295,7 +295,7 @@ impl MarkerSource {
     pub(super) fn validate_marker_entry(
         &self,
         store: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         cancellation: &ProjectionCancellationToken,
         entry: &AssetReferenceEntryRecord,
     ) -> Result<(), MarkerReplayError> {

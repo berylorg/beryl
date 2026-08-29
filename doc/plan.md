@@ -34,19 +34,24 @@ the Operator so the laptop can remain connected to AC power. Use one independent
 per phase; add another review only after a concrete high-risk finding. Time-box delegated audits and
 keep one implementation worker per disjoint ownership boundary.
 
-# Phase 194: Cut Over The Sole Image-Label Authority (finished)
+# Phase 195: Establish Generation-Owned Typed Runtime Attachments (finished)
 
-Removed the permanent label frontiers from `ThreadRecord` and made the independently revisioned
-image-label head the sole authority. Direct and queued image-bearing first acceptance now atomically
-advance that head with the exact immutable origin span; marker-free acceptance leaves it unchanged.
-The app captures and fences the exact head, while validation, reconciliation, bounded origin lookup,
-schema fixtures, and direct-admission footprint accounting use the same authority.
+HomeStore now gives every registered domain one typed runtime attachment owned solely by its live
+generation slot. Cloneable non-`Copy` handles and storage views remain non-owning, routine APIs
+borrow them, and explicit clones remain only at retained, asynchronous, callback, or returned-
+custody boundaries. Retirement drains access and retires each attachment exactly once; failed and
+aborted recovery candidates dispose every constructed attachment, while successful recovery creates
+a fresh identity. No global registry, per-wrapper attachment state, compatibility bridge, durable
+schema change, or Phase 196 Syndic coordinator was introduced.
 
-Serial focused storage and app checks passed with locked metadata, formatting, and diff validation.
-A fresh adversarial review passed after the direct footprint and four-branch acceptance matrix were
-corrected; no obsolete frontier or premature draft-marker readiness residue remains.
+Locked metadata, production checks for HomeStore, Beryl state, Syndic storage, and the app, complete
+Syndic test-target compilation with test faults, 7/7 focused attachment lifecycle tests, and 21/21
+focused state tests passed serially. Formatting, diff, source-documentation, accidental-`Copy`,
+global-attachment, and routine-clone residue checks passed. A fresh architectural review identified
+and then verified closure of routine clone residue, exact attachment-type mismatch evidence, and
+late recovery-candidate cleanup; its final verdict was pass.
 
-# Phase 195: Establish Exact Draft-Marker Label Admission (wip)
+# Phase 196: Establish Exact Draft-Marker Label Admission (pending)
 
 Add one compact Syndic readiness and writer-admission proof that binds marker-label allocation to the
 exact destination thread label frontier and editor-candidate root without using a whole-thread
@@ -55,38 +60,28 @@ cross-conversation label allocation against inherited, accepted, current-draft, 
 reserved authority. The final marker-changing candidate adoption validates this proof atomically;
 stale, exhausted, conflicting, missing, or corrupt authority commits no marker or partial edit.
 
-Use the accepted proof-composition boundary to stream bounded Syndic source and Beryl-state
-witness pages without exposing their facts or correlation to the app. Build on the accepted sole
-independent label-head authority and implement the handle-owned generation-scoped reservation/page
-coordinator, strict receipt
-folding, move-only final proof plus durable binding, exact same-conversation evidence and cross-
-conversation allocation, and atomic proof-bearing adoption. Replace the invalid partial shapes
-recorded in `doc/failures/syndic-draft-marker-cross-domain-proof-composition.md`: readiness binds
-association intent rather than a caller-predicted successor root, durable state stores only the
-binding, and candidate adoption never advances the permanent frontier.
+Register the configured Syndic coordinator through the accepted generation-owned runtime attachment
+and stream bounded Syndic source and Beryl-state witness pages through HomeStore proof composition
+without exposing facts or correlation to the app. Move each canonical page through one opaque
+immutable bounded attempt that owns its exact identity, executable command, and expectation
+consumer. Immediate replay requires that same accepted attempt; a fresh attempt at an occupied
+ordinal collides even when bytes or digests match. Fold receipts strictly, issue one move-only final
+proof plus durable binding, and validate marker-changing candidate adoption atomically without
+advancing the permanent frontier.
 
-Mount bounded Beryl-app orchestration that never allocates labels, compares cross-domain facts, or
-owns a registry and releases proof, reservation, page, and operation custody on every exact terminal
-lifecycle boundary.
+Mount bounded Beryl-app orchestration that never allocates labels, compares cross-domain facts, owns
+a registry, or reconstructs attempt identity, and releases attempt, proof, reservation, page, and
+operation custody on every exact terminal lifecycle boundary.
 
 Prove bounded point/range reads, concurrent label-head change, candidate drift, same-label same-asset
 reuse and disagreement, local and inherited origins, cross-conversation allocation over permanent,
-candidate, and transient frontiers, checked exhaustion, replay and occupied-operation collision,
-pre-admission cancellation, admitted reconciliation, stale/missing/corrupt proof, exact noncommit,
-unrelated-thread progress, and no resident label registry or history scan through serial focused
-nextest, locked metadata, checks, formatting, diff checks, and one fresh independent adversarial
-completion review.
+candidate, and transient frontiers, checked exhaustion, same-attempt replay, fresh-attempt and
+occupied-operation collision, substitution rejection, pre-admission cancellation, admitted
+reconciliation, stale/missing/corrupt proof, exact noncommit, attachment retirement, unrelated-thread
+progress, and no resident label registry or history scan through serial focused nextest, locked
+metadata, checks, formatting, diff checks, and one fresh independent adversarial completion review.
 
-Blocker: the controlling target docs do not yet define the generic generation-owned typed domain
-runtime attachment needed to make one coordinator structurally unique across every clone and
-reacquisition of the currently `Copy` domain handle. They also require exact byte-equal page replay
-while forbidding retained page payload without defining a lossless custody identity. Correct the
-target authority first, then reslice the runtime-attachment foundation as its own acceptance phase
-before this admission boundary. The recommended replay contract moves one opaque immutable bounded
-page-attempt object through dispatch and requires that same move-only attempt for replay; a fresh
-attempt at an occupied ordinal is collision.
-
-# Phase 196: Mount Bounded Rich Paste (pending)
+# Phase 197: Mount Bounded Rich Paste (pending)
 
 Mount the composer's propagated rich-paste command over the accepted range-backed ordinary-edit
 transaction and the accepted exact clipboard and label authorities. Capture one exact
@@ -113,7 +108,7 @@ late-result isolation, eviction, generation disposal, and repeated resource rele
 mounted and boundary nextest, locked metadata, checks, formatting, diff checks, and one fresh
 independent completion review. Sustained stress remains behind the Operator AC-power gate.
 
-# Phase 197: Mount Exact Composer Submission (pending)
+# Phase 198: Mount Exact Composer Submission (pending)
 
 Connect propagated submission to the accepted exact-root coordinator through mutation fencing,
 newest-root flush, capacity pre-admission, bounded materialization, atomic accepted clear and history
@@ -121,21 +116,21 @@ reset, queued versus direct routing, exact noncommit/collision reconciliation, d
 and lifecycle release. Prove every rejected or uncertain pre-acceptance outcome preserves the
 coherent draft and that no executable-shell or transcript-renderer bootstrap is introduced.
 
-# Phase 198: Mount Native-Lineage Recovery And Editor Restoration (pending)
+# Phase 199: Mount Native-Lineage Recovery And Editor Restoration (pending)
 
 Mount the native-lineage recovery prompt and its accepted loading, unavailable, failure, and ready
 states. Unmount the composer coherently, retain only the Beryl-owned compact restoration seed, and
 validate revision, logical extent, caret, selection, scroll anchor, and target identity before
 rebind. Prove stale recovery, cancellation, window close, failed rebind, and whole-value release.
 
-# Phase 199: Build The Multi-Window Shell And Runtime Bootstrap (pending)
+# Phase 200: Build The Multi-Window Shell And Runtime Bootstrap (pending)
 
 Mount window claims and restoration, close versus Exit, progressive bootstrap, runtime/root and
 zero-runtime flows, exact activation, and the practical process window-count limit. Prove ordinary
 close and Exit across idle, active, compacting, unavailable, and failure states. Running-session
 same-home recovery remains explicitly unavailable rather than using retained-service authority.
 
-# Phase 200: Mount Paged Navigation And Settings (pending)
+# Phase 201: Mount Paged Navigation And Settings (pending)
 
 Mount revision-bound paged catalog, search, lineage, activity, model, composer-history, and settings
 sources with virtualized presentation. Mount each window's fixed-capacity navigation-history ring
@@ -143,21 +138,21 @@ directly into its Back and Forward controls without paging or virtualization. Pr
 rejection, focus and popover preservation, loading and failure states, bounded row residency, and
 page release.
 
-# Phase 201: Mount Main-Window Notices (pending)
+# Phase 202: Mount Main-Window Notices (pending)
 
 Mount the bounded notice queue, warned best-effort-home startup notice, exact soft-stop feedback,
 lifecycle-yield outcomes, and accepted disabled/error states. Repair and running-session recovery
 remain explicit unavailable states; mount no fabricated progress or retained-service fallback.
 Prove admission, priority, preemption, replacement, dismissal, overflow, close/Exit, and stale timers.
 
-# Phase 202: Implement Notification Audio Ownership (pending)
+# Phase 203: Implement Notification Audio Ownership (pending)
 
 Add bounded notification-audio admission, encoded and decoded capacity transfer, the single
 process-wide active/latest-waiting playback lane, cancellation, shutdown, and exact release. Prove
 replacement, decode and device failure, settings change, close/Exit, and fail-closed runtime behavior
 without changing turn semantics.
 
-# Phase 203: Mount Transcript Presentation (pending)
+# Phase 204: Mount Transcript Presentation (pending)
 
 Move the transcript prototype onto immutable shared pages without deep snapshot clones, then mount
 realized-frame rendering, semantic anchors, selection, nested widgets, resource demand, explicit
@@ -165,7 +160,7 @@ repair-required provenance, and local page/cache release proofs. Prove atomic au
 without whole-turn residency and release superseded resident state after handoff. Deferred repair
 dispatch remains unmounted.
 
-# Phase 204: Verify And Close The Useful GUI Checkpoint (pending)
+# Phase 205: Verify And Close The Useful GUI Checkpoint (pending)
 
 Verify multi-window lifecycle, activation, restoration, large drafts, logical marker scale, paged
 navigation and settings, notices and audio, long transcript traversal, local cache/page release,
@@ -173,7 +168,7 @@ configured working-set behavior, and explicit fail-closed repair/recovery states
 feature, system, package, and dependency authority, then close one fresh independent review before
 Checkpoint 5.
 
-# Phase 205: Prove The Exact 0.146.0 Terminal-Repair Surface (pending)
+# Phase 206: Prove The Exact 0.146.0 Terminal-Repair Surface (pending)
 
 Inspect exact commit-scoped 0.146.0 processor, reducer, and generated-schema evidence for
 `thread/turns/list`, both item-list spellings, the complete item union, history identity synthesis,
@@ -183,15 +178,15 @@ commit-scoped memory note with reproducible sources. Proceed only if the one des
 turn and complete semantic item view under the no-successor gate; otherwise stop and revise
 authority without implementing a fallback.
 
-# Phase 206: Implement The Private Terminal-Repair Adapter (pending)
+# Phase 207: Implement The Private Terminal-Repair Adapter (pending)
 
-Implement the private release-pinned adapter proven by Phase 205: one no-successor-gated
+Implement the private release-pinned adapter proven by Phase 206: one no-successor-gated
 `thread/turns/list` request, one matching terminal turn, and one bounded semantic-final-item stream
 with exact provenance and historical user-input correlation. Prove complete item coverage,
 backpressure, typed incomplete outcomes, cursor discard without traversal, and no adjacent-turn,
 item-history, whole-thread, general-history, or fabricated-live-event path.
 
-# Phase 207: Add Snapshot-Specific Syndic Repair Storage (pending)
+# Phase 208: Add Snapshot-Specific Syndic Repair Storage (pending)
 
 Add snapshot-specific paged Syndic records, codecs, reads, and one atomic repair mutation. It
 validates exact CAS/Syndic correlation, terminal outcome, complete ordered item identities and
@@ -203,7 +198,7 @@ identity and digest rejection, scoped reconciliation, zero partial publication, 
 and ordinary Syndic-only reads; image-bearing snapshots remain inadmissible until Checkpoint 7
 admits authenticated `savedPath` bytes.
 
-# Phase 208: Enforce Repair-Required Successor Gates (pending)
+# Phase 209: Enforce Repair-Required Successor Gates (pending)
 
 Keep same-thread successor, fork, replacement, rollback, and compaction gated from the first exact
 repair-required transition until coherent repaired or explicitly incomplete finalization releases
@@ -211,21 +206,21 @@ the gate. Other threads and structurally healthy unrelated work remain independe
 gated command family, concurrent joins, restart persistence, unrelated progress, and rejection of
 live-prefix, buffered-content, or GUI-state bypasses before any repair dispatch can be mounted.
 
-# Phase 209: Claim Terminal Repair Durably (pending)
+# Phase 210: Claim Terminal Repair Durably (pending)
 
 Implement the durable target-scoped Syndic repair-request claim and derive the only private backend
 capability from its consumed disposition. A consumed but unsettled claim survives process loss as
 terminal incomplete authority and can never authorize a second repair request. Keep runtime claim
-consumption and backend dispatch unmounted until Phase 219 installs cross-domain repair-media
+consumption and backend dispatch unmounted until Phase 220 installs cross-domain repair-media
 admission; every repair-required target remains gated with its claim unconsumed. Prove the unmounted
 boundary, concurrent admission, every dispatch crash cut, backend refusal, store loss, restart
 recovery, unrelated-thread progress, and permanent rejection of duplicate dispatch.
 
-# Phase 210: Integrate Atomic Terminal-Turn Repair (pending)
+# Phase 211: Integrate Atomic Terminal-Turn Repair (pending)
 
 Connect the private backend sink to snapshot staging and the one atomic Syndic replacement behind
 the unmounted runtime boundary. Once later mounted, a repair-required target consumes the
-no-successor proof and durable Phase 209 claim, then converges to exactly repaired or explicitly
+no-successor proof and durable Phase 210 claim, then converges to exactly repaired or explicitly
 incomplete. Both dispositions enter
 `FinalizingHistory`; repaired selects the complete snapshot while incomplete selects no replacement.
 Bounded durable work reaches a fixed point, publishes one coherent transcript generation, and only
@@ -233,7 +228,7 @@ then atomically releases the gate. Prove request/store-loss convergence, bounded
 generation-atomic presentation, same-thread exclusion, unrelated progress, and exactly-once
 repaired-or-incomplete release.
 
-# Phase 211: Add Bounded Outage Capture (pending)
+# Phase 212: Add Bounded Outage Capture (pending)
 
 Add the fixed-capacity prioritized outage buffer for already active exact targets. Identity,
 terminal outcome, final answer, narrative, user correlation, and generated-media handoff metadata
@@ -241,7 +236,7 @@ precede operational content. Any rejected, evicted, partial, or unrepresentable 
 the whole turn repair-required; buffered content is transient presentation only. Prove priority and
 hard limits, complete versus dropped capture, loss behavior, repair classification, and no replay.
 
-# Phase 212: Publish Entirely Fresh Same-Home Recovery (pending)
+# Phase 213: Publish Entirely Fresh Same-Home Recovery (pending)
 
 Rebuild running-session recovery as: fence new durable commands; close and dispose the failed
 service; recover the same home into a newer healthy generation with fresh writer and handles;
@@ -252,7 +247,7 @@ projection, loaded session, lease, candidate, scheduler, or worker crosses the b
 ordered fence, complete disposal, zero old-authority reuse, durable obligation convergence, atomic
 publication, post-publication reacquisition, and failure before publication.
 
-# Phase 213: Verify And Close The Repair And Recovery Checkpoint (pending)
+# Phase 214: Verify And Close The Repair And Recovery Checkpoint (pending)
 
 Run the complete functional storage, protocol, concurrency, restart, configured-limit, static-
 boundary, and source-residue gates. Factor proofs by Fjall, home-store, domain, sidecar, app, backend,
@@ -262,83 +257,83 @@ counters as observational evidence only.
 Reconcile API docs, memory/failure notes, and the tracker, then close a fresh independent review
 before Checkpoint 6. Sustained stress still requires the Operator's AC-power gate and proves
 configured correctness bounds rather than performance targets. Verify the declared runtime repair
-gap remains fail-closed: no target dispatches and no durable claim is consumed before Phase 219.
+gap remains fail-closed: no target dispatches and no durable claim is consumed before Phase 220.
 
-# Phase 214: Implement Branch Discussion Creation (pending)
+# Phase 215: Implement Branch Discussion Creation (pending)
 
 Implement immutable branch selection provenance, readonly context, durable child conversation
 creation, first submission, ordinary child conversation, inherited image-label authority, and exact
 branch-local label allocation. Prove creation failure leaves no runnable child or premature CAS work.
 
-# Phase 215: Implement Resolution Handoff (pending)
+# Phase 216: Implement Resolution Handoff (pending)
 
 Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent ordering,
 restart recovery, idempotency, retry, successful archive, and post-archive navigation outcomes.
 Prove no lost input, duplicate handoff, early archive, or parent-order violation.
 
-# Phase 216: Verify And Close Checkpoint 6 (pending)
+# Phase 217: Verify And Close Checkpoint 6 (pending)
 
 Verify child creation, inherited label authority, first submission, resolution ordering, restart,
 retry, archive, navigation, and failure states. Reconcile feature, system, package, GUI, and storage
 authority, then close a fresh independent review before Checkpoint 7.
 
-# Phase 217: Implement Asset Admission And Durable Ownership (pending)
+# Phase 218: Implement Asset Admission And Durable Ownership (pending)
 
 Implement Beryl-home image admission for paste and generated output, content-addressed sidecars,
 byte-for-byte collision verification, labels, references, Host/WSL projection, and generated-output
 ownership. Prove arbitrary-size streaming, cancellation, collision, and durable reopen behavior.
 
-# Phase 218: Implement Media Rendition Resources (pending)
+# Phase 219: Implement Media Rendition Resources (pending)
 
 Implement bounded file reads, header parsing, on-demand thumbnail and tile decode workers, CPU
 surfaces, upload staging, shared media identity, GPU residency, eviction, and device-loss recovery.
 Prove adversarial dimensions, concurrent windows, cancellation, and exact capacity release.
 
-# Phase 219: Implement Generated-Image Repair Media (pending)
+# Phase 220: Implement Generated-Image Repair Media (pending)
 
 Authenticate `savedPath`, stream admitted bytes into inert sidecar and asset staging, then publish
 the repaired Syndic snapshot and Beryl asset metadata through one atomic cross-domain cut. Missing,
 unusable, incomplete, or failed media remains inert and finalizes the owning turn incomplete; never
-retain inline base64. After this admission path is installed, mount the Phase 209 claim-consumption
-and Phase 210 repair-dispatch path for all eligible targets. Prove crash cuts, collision, orphan
+retain inline base64. After this admission path is installed, mount the Phase 210 claim-consumption
+and Phase 211 repair-dispatch path for all eligible targets. Prove crash cuts, collision, orphan
 invisibility, coherent publication, and no pre-admission claim consumption.
 
-# Phase 220: Mount Maintenance Presentation And Deferred Cleanup (pending)
+# Phase 221: Mount Maintenance Presentation And Deferred Cleanup (pending)
 
 Mount generated-title maintenance and successful branch-archive presentation through established
 Syndic authority and bounded Beryl projections. Preserve unreachable turns and resources until a
 separately designed future garbage-collection operation; add no graph-dependent semantic search.
 
-# Phase 221: Verify And Close Checkpoint 7 (pending)
+# Phase 222: Verify And Close Checkpoint 7 (pending)
 
 Verify arbitrary asset size, adversarial dimensions, concurrent windows, cancellation, collisions,
 generated-image repair, atomic cross-domain publication, device loss, cache eviction, and deferred
 cleanup boundaries. Reconcile authority and close a fresh independent review before Checkpoint 8.
 
-# Phase 222: Reconcile Final Live Authority (pending)
+# Phase 223: Reconcile Final Live Authority (pending)
 
 Reconcile root, feature, system, package, GUI, settings, hotkey, diagnostics, source, dependency,
 memory, failure, plan, and tracker authority against the implemented target state.
 
-# Phase 223: Remove Obsolete Surfaces (pending)
+# Phase 224: Remove Obsolete Surfaces (pending)
 
 Remove every remaining shim, obsolete export, test, key, diagnostic, role, archived-source
 membership edge, and forbidden API reference. Prove the live source graph exposes only target-state
 authority and no compatibility path.
 
-# Phase 224: Verify Named Resource Boundaries (pending)
+# Phase 225: Verify Named Resource Boundaries (pending)
 
 Verify every named Beryl-owned queue, cache, pool, page set, editor window, transcript window, media
 decoder, CPU surface cache, GPU texture cache, and worker set obeys its configured limit and releases
 or evicts after repetition. Treat RSS and renderer counters as observational diagnostics only.
 
-# Phase 225: Run End-To-End Functional Verification (pending)
+# Phase 226: Run End-To-End Functional Verification (pending)
 
 Run storage, runtime/CAS, multi-window, conversation, branch, asset, recovery, and Windows functional
 verification. Coordinate with the Operator before sustained stress or performance measurement so
 the laptop can remain on AC power.
 
-# Phase 226: Close The Rework (pending)
+# Phase 227: Close The Rework (pending)
 
 Obtain fresh independent architectural completion review, close every finding, compact and archive
 the rework tracker under the project convention, and leave no unresolved target-state authority.

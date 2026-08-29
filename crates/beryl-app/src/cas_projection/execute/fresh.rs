@@ -17,7 +17,7 @@ impl CasProjectionCoordinator {
     pub(super) fn start_fresh_native(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -50,7 +50,7 @@ impl CasProjectionCoordinator {
     pub(super) fn publish_fresh_native_target(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &AdmittedProjectionSession,
         request: &CasProjectionRequest,
         basis: NativeProjectionBasis,

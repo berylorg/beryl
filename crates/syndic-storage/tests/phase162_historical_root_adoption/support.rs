@@ -146,7 +146,7 @@ pub fn reopen(home: &TestHome, store: HomeStore) -> (HomeStore, SyndicStorage) {
 }
 
 pub fn current(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
 ) -> SyndicCurrentDraft {
@@ -157,7 +157,7 @@ pub fn current(
 }
 
 pub fn open_session(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     current: &SyndicCurrentDraft,
     session: u8,
@@ -199,7 +199,7 @@ pub fn open_session(
 }
 
 pub fn transaction(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,
@@ -248,7 +248,7 @@ pub fn transaction(
 }
 
 pub fn settle(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     transaction: &Transaction,
 ) -> syndic_storage::DraftPieceSettlementV1 {
@@ -318,7 +318,7 @@ pub fn historical_selection_intent(
 }
 
 pub fn prepare_historical_selection(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
     operation: u8,
@@ -361,6 +361,6 @@ pub fn committed(outcome: CommandOutcome) {
     );
 }
 
-pub fn revision(storage: SyndicStorage, store: &HomeStore) -> DomainRevision {
+pub fn revision(storage: &SyndicStorage, store: &HomeStore) -> DomainRevision {
     storage.revision(store).unwrap()
 }

@@ -2,7 +2,7 @@ use super::*;
 
 fn recovery_source(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread_id: SyndicThreadId,
 ) -> DeliveryRecoverySource {
     let page = storage
@@ -36,7 +36,7 @@ fn restart_classifies_awaiting_terminal_as_active_possible_dispatch_and_abandons
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    let source = recovery_source(&reopened, storage, thread);
+    let source = recovery_source(&reopened, &storage, thread);
     let DeliveryRecoveryCase::Active(active) = storage
         .classify_delivery_recovery(&reopened, &source, point_limit())
         .unwrap()
@@ -108,7 +108,7 @@ fn restart_classifies_awaiting_terminal_as_active_possible_dispatch_and_abandons
             .unwrap()
             .is_some()
     );
-    let recovered = recovery_source(&reopened, storage, thread);
+    let recovered = recovery_source(&reopened, &storage, thread);
     assert!(matches!(
         storage.classify_delivery_recovery(&reopened, &recovered, point_limit()),
         Ok(DeliveryRecoveryCase::PostAbandonment {
@@ -143,7 +143,7 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
-    let source = recovery_source(&reopened, storage, thread);
+    let source = recovery_source(&reopened, &storage, thread);
     let DeliveryRecoveryCase::Active(active) = storage
         .classify_delivery_recovery(&reopened, &source, point_limit())
         .unwrap()
@@ -194,7 +194,7 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
         &reopened,
         storage.admit_live_source_event(storage.revision(&reopened).unwrap(), terminal),
     ));
-    converge_and_release_terminal_history(&reopened, storage, thread, turn);
+    converge_and_release_terminal_history(&reopened, &storage, thread, turn);
     let gate = storage
         .input_gate(&reopened, thread, point_limit())
         .unwrap()
@@ -208,7 +208,7 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
 
 fn assert_uncertain_transition_whole(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
     turn: SyndicTurnId,
 ) -> bool {
@@ -322,7 +322,7 @@ fn uncertain_terminal_fault_cuts_recover_only_prior_or_exact_whole_states() {
         let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
         let store = candidate.publish();
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
-        let exact = assert_uncertain_transition_whole(&store, storage, thread, turn);
+        let exact = assert_uncertain_transition_whole(&store, &storage, thread, turn);
         assert_eq!(
             exact,
             expected_exact.expect("direct fault must have an exact whole state")
@@ -334,7 +334,7 @@ fn uncertain_terminal_fault_cuts_recover_only_prior_or_exact_whole_states() {
         let mut reopened = open(home.path());
         let storage = SyndicStorage::register(&mut reopened).unwrap();
         assert_eq!(
-            assert_uncertain_transition_whole(&reopened, storage, thread, turn),
+            assert_uncertain_transition_whole(&reopened, &storage, thread, turn),
             exact
         );
         reopened

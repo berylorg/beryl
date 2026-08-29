@@ -642,7 +642,7 @@ fn inject_encoded<F: Family>(
     let encoded_key = <ExactCodec<F> as RecordCodec<SyndicDomain>>::encode_key(&key)
         .expect("representative physical fixture key must encode");
     store.inject_persisted_corrupt_record::<SyndicDomain, ExactCodec<F>>(
-        storage.handle,
+        &storage.handle,
         &encoded_key,
         &encoded_value,
     )
@@ -673,7 +673,7 @@ fn inject<F: Family>(
         }
     };
     store.inject_persisted_corrupt_record::<SyndicDomain, ExactCodec<F>>(
-        storage.handle,
+        &storage.handle,
         &encoded_key,
         &encoded_value,
     )

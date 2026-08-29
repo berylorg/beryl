@@ -90,6 +90,12 @@ impl StorageDomain for AggregateReservationDomain {
         AggregateReservationRecord,
     >(KeyspaceSchemaVersion::new(1))];
     type ValidationError = Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -177,7 +183,7 @@ fn put_command(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            store.domain_revision(&domain).unwrap(),
             PutBytes::<AlphaDomain>::new(key, value.to_vec()),
         ))
         .unwrap();
@@ -218,7 +224,7 @@ fn assert_recovered_state(
     expected: ExpectedRecoveredState,
 ) {
     let home_revision = store.home_revision().unwrap().get();
-    let domain_revision = store.domain_revision(domain).unwrap().get();
+    let domain_revision = store.domain_revision(&domain).unwrap().get();
     let value = read_value(store, domain, 41);
     let old = home_revision == 1 && domain_revision == 1 && value.is_none();
     let new = home_revision == 2
@@ -242,7 +248,7 @@ fn fixed_batch_limit_counts_application_and_package_owned_revision_records() {
     let mut exact = HomeCommand::new(store.home_revision().unwrap());
     exact
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutMany {
                 count: exact_application_records,
             },
@@ -250,12 +256,12 @@ fn fixed_batch_limit_counts_application_and_package_owned_revision_records() {
         .unwrap();
     let receipt = committed(store.execute(exact));
     assert_eq!(receipt.home_revision().get(), 2);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
 
     let mut one_over = HomeCommand::new(store.home_revision().unwrap());
     one_over
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutMany {
                 count: exact_application_records + 1,
             },
@@ -269,7 +275,7 @@ fn fixed_batch_limit_counts_application_and_package_owned_revision_records() {
     ));
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     assert_eq!(store.home_revision().unwrap().get(), 2);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
 }
 
 #[test]
@@ -281,7 +287,7 @@ fn theoretical_reconciliation_descriptor_limit_rejects_before_writer_admission()
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutMany { count: 50_000_000 },
         ))
         .unwrap();
@@ -294,7 +300,7 @@ fn theoretical_reconciliation_descriptor_limit_rejects_before_writer_admission()
     ));
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     assert_eq!(store.home_revision().unwrap().get(), 1);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 1);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 1);
 }
 
 #[test]
@@ -522,7 +528,7 @@ fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
     let store = recovery.publish();
     assert_eq!(store.home_revision().unwrap().get(), 1);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 1);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 1);
     assert_eq!(read_value(&store, alpha, 42), None);
 }
 
@@ -576,7 +582,7 @@ fn owned_fjall_buffer_committed_failure_stays_indeterminate_until_sync_all() {
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
     let store = recovery.publish();
     assert_eq!(store.home_revision().unwrap().get(), 2);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
         read_value(&store, alpha, 43).as_deref(),
         Some(b"durable despite previsible failure".as_slice())
@@ -592,8 +598,8 @@ fn validator_panic_fails_health_and_recovers_without_any_command_effect() {
     let beta = store.register_domain::<BetaDomain>().unwrap();
     let generation_before = store.health().generation().unwrap();
     let home_before = store.home_revision().unwrap();
-    let alpha_before = store.domain_revision(alpha).unwrap();
-    let beta_before = store.domain_revision(beta).unwrap();
+    let alpha_before = store.domain_revision(&alpha).unwrap();
+    let beta_before = store.domain_revision(&beta).unwrap();
     let mut command = HomeCommand::new(home_before);
     command
         .add(alpha.contribution(
@@ -616,8 +622,8 @@ fn validator_panic_fails_health_and_recovers_without_any_command_effect() {
     let beta = recovery.domain_handle::<BetaDomain>().unwrap();
     let store = recovery.publish();
     assert_eq!(store.home_revision().unwrap(), home_before);
-    assert_eq!(store.domain_revision(alpha).unwrap(), alpha_before);
-    assert_eq!(store.domain_revision(beta).unwrap(), beta_before);
+    assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
+    assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);
     assert_eq!(read_value(&store, alpha, 40), None);
 }
 
@@ -716,7 +722,7 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
     let store = recovery.publish();
     assert_eq!(store.home_revision().unwrap().get(), 2);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
         read_value(&store, alpha, 22).as_deref(),
         Some(b"already durable".as_slice())
@@ -733,14 +739,14 @@ fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
 
     let mut seed = HomeCommand::new(store.home_revision().unwrap());
     seed.add(beta.contribution(
-        store.domain_revision(beta).unwrap(),
+        store.domain_revision(&beta).unwrap(),
         PutBytes::<BetaDomain>::new(7, b"guarded".to_vec()),
     ))
     .unwrap();
     committed(store.execute(seed));
     let home_before = store.home_revision().unwrap();
-    let alpha_before = store.domain_revision(alpha).unwrap();
-    let beta_before = store.domain_revision(beta).unwrap();
+    let alpha_before = store.domain_revision(&alpha).unwrap();
+    let beta_before = store.domain_revision(&beta).unwrap();
 
     let mut command = HomeCommand::new(home_before);
     command
@@ -766,10 +772,10 @@ fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
     let store = recovery.publish();
     assert_eq!(store.home_revision().unwrap().get(), home_before.get() + 1);
     assert_eq!(
-        store.domain_revision(alpha).unwrap().get(),
+        store.domain_revision(&alpha).unwrap().get(),
         alpha_before.get() + 1
     );
-    assert_eq!(store.domain_revision(beta).unwrap(), beta_before);
+    assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);
     assert_eq!(
         read_value(&store, alpha, 24).as_deref(),
         Some(b"mixed durable".as_slice())
@@ -811,7 +817,7 @@ fn current_domain_command_shares_post_sync_durability_and_health_semantics() {
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
     let store = recovery.publish();
     assert_eq!(store.home_revision().unwrap().get(), 2);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
         read_value(&store, alpha, 23).as_deref(),
         Some(b"current already durable".as_slice())

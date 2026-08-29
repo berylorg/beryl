@@ -59,6 +59,12 @@ impl StorageDomain for ReferenceDomain {
         KeyspaceSchemaVersion::new(1),
     )];
     type ValidationError = ReferenceError;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -192,7 +198,7 @@ fn put_reference(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(domain).unwrap(),
+            store.domain_revision(&domain).unwrap(),
             PutReference(address),
         ))
         .unwrap();

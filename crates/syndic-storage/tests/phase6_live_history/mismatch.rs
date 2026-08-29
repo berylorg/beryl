@@ -6,7 +6,7 @@ const MISMATCH_OFFSET: u64 = 65_600;
 
 fn stage_mismatched_completion(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     turn: SyndicTurnId,
     item: SyndicItemId,
     source: &CasTurnSource,
@@ -76,7 +76,7 @@ fn stage_mismatched_completion(
 
 fn selected_path(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> SelectedPathProof {
     let thread = storage.thread(store, thread, limit()).unwrap().unwrap();
@@ -92,24 +92,24 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
     let home = TestHome::new("phase6-segmented-completion-mismatch");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    let (thread, turn) = seed_pending_turn(&store, storage);
-    let source = establish_turn(&store, storage, thread, turn, timestamp(4));
+    let (thread, turn) = seed_pending_turn(&store, &storage);
+    let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
         SourceEventPayload::TurnActivated,
         timestamp(4),
     );
-    correlate_submitted_user_item(&store, storage, thread, turn, &source, timestamp(4));
+    correlate_submitted_user_item(&store, &storage, thread, turn, &source, timestamp(4));
 
     let assistant = SyndicItemId::from_bytes([61; 16]);
     let cas_item = CasItemId::new("phase6-segmented-mismatch-assistant").unwrap();
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant,
@@ -126,7 +126,7 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
     let second = "a".repeat(SECOND_SEGMENT_BYTES);
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant,
@@ -140,7 +140,7 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
     );
     admit_item_frame(
         &store,
-        storage,
+        storage.clone(),
         thread,
         turn,
         assistant,
@@ -172,10 +172,10 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
         timestamp(8),
     );
     let completion =
-        stage_mismatched_completion(&store, storage, turn, assistant, &source, completion_frame);
+        stage_mismatched_completion(&store, &storage, turn, assistant, &source, completion_frame);
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -210,7 +210,7 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
         .capture_item_text_range(&store, &capture, MISMATCH_OFFSET - 8, 32, limit())
         .unwrap();
     assert_eq!(page.text(), "a".repeat(32));
-    assert!(source_events(&store, storage, turn).iter().any(|event| {
+    assert!(source_events(&store, &storage, turn).iter().any(|event| {
         event.payload()
             == &SourceEventPayload::ItemFrame {
                 item_id: assistant,
@@ -222,7 +222,7 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
     assert_eq!(state.history_blocking_item_count(), 1);
     let rejected = next_event(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -241,7 +241,7 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
     ));
     admit(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         &source,
@@ -255,11 +255,11 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
         timestamp(9),
     );
 
-    let items = turn_items(&store, storage, turn);
+    let items = turn_items(&store, &storage, turn);
     assert_eq!(items.len(), 2);
     complete_item_frontier(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         TurnItemOrdinal::FIRST,
@@ -268,14 +268,14 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
     );
     complete_item_frontier(
         &store,
-        storage,
+        &storage,
         thread,
         turn,
         TurnItemOrdinal::new(2).unwrap(),
         assistant,
         timestamp(11),
     );
-    assert_eq!(projected_item_text(&store, storage, assistant), live_text);
+    assert_eq!(projected_item_text(&store, &storage, assistant), live_text);
     assert!(
         !storage
             .history_summary(&store, thread, limit())
@@ -283,7 +283,7 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
             .unwrap()
             .complete()
     );
-    let selected = selected_path(&store, storage, thread);
+    let selected = selected_path(&store, &storage, thread);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -322,15 +322,19 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
             .lifecycle(),
         ContentLifecycle::Finalized
     );
-    assert!(source_events(&reopened, storage, turn).iter().any(|event| {
-        event.payload()
-            == &SourceEventPayload::ItemFrame {
-                item_id: assistant,
-                frame: Box::new(completion.clone()),
-            }
-    }));
+    assert!(
+        source_events(&reopened, &storage, turn)
+            .iter()
+            .any(|event| {
+                event.payload()
+                    == &SourceEventPayload::ItemFrame {
+                        item_id: assistant,
+                        frame: Box::new(completion.clone()),
+                    }
+            })
+    );
     assert_eq!(
-        projected_item_text(&reopened, storage, assistant),
+        projected_item_text(&reopened, &storage, assistant),
         live_text
     );
 

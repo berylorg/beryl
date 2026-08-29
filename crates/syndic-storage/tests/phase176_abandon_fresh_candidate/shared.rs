@@ -22,7 +22,7 @@ pub(crate) fn abandon_request(
 }
 
 pub(crate) fn head(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     session: &DraftEditorCandidateSessionV1,
 ) -> DraftEditorCandidateSessionV1 {
@@ -50,7 +50,7 @@ pub(crate) fn recover_if_failed(
 }
 
 pub(crate) fn prepare_candidate_publication(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     selected: &syndic_storage::SyndicCurrentDraft,
     candidate: &DraftEditorCandidateSessionV1,
@@ -82,7 +82,7 @@ pub(crate) fn prepare_candidate_publication(
 }
 
 pub(crate) fn publish_candidate(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     selected: &syndic_storage::SyndicCurrentDraft,
     candidate: &DraftEditorCandidateSessionV1,

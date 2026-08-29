@@ -131,7 +131,7 @@ impl SyndicStorage {
         };
         let value = read(selector.root())?;
         #[cfg(feature = "test-faults")]
-        crate::test_faults::run_draft_piece_current_read_fault(store, *self);
+        crate::test_faults::run_draft_piece_current_read_fault(store, self.clone());
         if self.current_range_selector(store, thread_id)? != Some(selector) {
             return Err(DraftPieceRangeSourceErrorV1::ConcurrentChange);
         }
@@ -175,7 +175,7 @@ impl SyndicStorage {
         }
         let value = read(expected.root())?;
         #[cfg(feature = "test-faults")]
-        crate::test_faults::run_draft_piece_candidate_read_fault(store, *self);
+        crate::test_faults::run_draft_piece_candidate_read_fault(store, self.clone());
         match self.draft_editor_candidate_session(
             store,
             expected.draft_id(),
@@ -386,7 +386,7 @@ impl SyndicStorage {
         };
         let value = read(before.draft().root_history())?;
         #[cfg(feature = "test-faults")]
-        crate::test_faults::run_draft_piece_current_read_fault(store, *self);
+        crate::test_faults::run_draft_piece_current_read_fault(store, self.clone());
         let after = self.current_draft(store, thread_id, limit)?;
         if after.as_ref() != Some(&before) {
             return Err(DraftPiecePrepareErrorV1::ConcurrentChange);

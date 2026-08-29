@@ -10,7 +10,7 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
         AssetOwner::AcceptedInput(beryl_model::SyndicAcceptedInputId::from_bytes([1; 16]));
     let home_before = store.home_revision().unwrap();
     let assets_before = state.assets().revision(&store).unwrap();
-    let probe_before = store.domain_revision(probe).unwrap();
+    let probe_before = store.domain_revision(&probe).unwrap();
 
     let mut command = HomeCommand::new(home_before);
     command
@@ -25,7 +25,11 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
             ),
         )
         .unwrap()
-        .add(probe.contribution(probe_before, PutProbe { key: 1, value: 9 }))
+        .add(
+            probe
+                .clone()
+                .contribution(probe_before, PutProbe { key: 1, value: 9 }),
+        )
         .unwrap();
     let receipt = match store.execute(command) {
         CommandOutcome::Committed {
@@ -41,13 +45,13 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
         None
     );
     assert_eq!(
-        store.receipt_domain_revision(&receipt, probe).unwrap(),
+        store.receipt_domain_revision(&receipt, &probe).unwrap(),
         Some(probe_before.checked_next().unwrap())
     );
     assert_eq!(
         store
             .read_point::<ProbeDomain, ProbeRecord>(
-                probe,
+                &probe,
                 &1,
                 beryl_home_store::PointReadLimit::new(5).unwrap(),
             )
@@ -84,7 +88,7 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
     assert_eq!(
         reopened
             .read_point::<ProbeDomain, ProbeRecord>(
-                reopened_probe,
+                &reopened_probe,
                 &1,
                 beryl_home_store::PointReadLimit::new(5).unwrap(),
             )

@@ -500,7 +500,7 @@ impl std::fmt::Debug for ValidationContribution {
 impl<D: StorageDomain> DomainHandle<D> {
     /// Seals one domain-owned plan with the revision it expects to mutate.
     pub fn contribution<M: DomainMutation<D>>(
-        self,
+        &self,
         expected_revision: DomainRevision,
         mutation: M,
     ) -> MutationContribution {
@@ -512,7 +512,7 @@ impl<D: StorageDomain> DomainHandle<D> {
 
     /// Seals one validation-only participant with the domain revision it expects to guard.
     pub fn validation<V: DomainValidator<D>>(
-        self,
+        &self,
         expected_revision: DomainRevision,
         validator: V,
     ) -> ValidationContribution {
@@ -524,7 +524,7 @@ impl<D: StorageDomain> DomainHandle<D> {
 
     /// Seals one domain-owned plan whose physical revisions will be captured under writer
     /// admission.
-    pub fn current_command<M: DomainMutation<D>>(self, mutation: M) -> CurrentDomainCommand {
+    pub fn current_command<M: DomainMutation<D>>(&self, mutation: M) -> CurrentDomainCommand {
         CurrentDomainCommand {
             plan: mutation_plan::<D, M>(self.store, self.slot, self.owner, mutation),
             cancellation: CommandCancellation::new(),

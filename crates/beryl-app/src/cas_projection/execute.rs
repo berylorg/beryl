@@ -28,7 +28,7 @@ impl CasProjectionCoordinator {
     pub fn obtain_projection(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -50,7 +50,7 @@ impl CasProjectionCoordinator {
     pub(super) fn obtain_projection_in_flight(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -105,7 +105,7 @@ impl CasProjectionCoordinator {
     fn obtain_projection_with_prepared_flight(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -135,7 +135,7 @@ impl CasProjectionCoordinator {
     fn execute_plan(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -199,7 +199,7 @@ impl CasProjectionCoordinator {
     fn use_current_source(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -277,7 +277,7 @@ impl CasProjectionCoordinator {
     fn use_resume_source(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
@@ -349,7 +349,7 @@ impl CasProjectionCoordinator {
     fn retire_current_then_recover(
         &self,
         home: &HomeStore,
-        storage: SyndicStorage,
+        storage: &SyndicStorage,
         session: &mut AdmittedProjectionSession,
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,

@@ -102,7 +102,7 @@ pub fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContri
 
 fn stage_prepared_content(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     prepared: &PreparedContent,
 ) -> ContentManifestRecord {
     let mut manifest = prepared.building_manifest();
@@ -393,7 +393,7 @@ impl CompactionFixture {
 
     pub fn prepare_lifecycle_content(&self) -> syndic_storage::ContentReference {
         let prepared = prepare_lifecycle_continuation_content().unwrap();
-        let manifest = stage_prepared_content(&self.store, self.storage, &prepared);
+        let manifest = stage_prepared_content(&self.store, &self.storage, &prepared);
         match self
             .store
             .execute_current(self.storage.current_seal_lifecycle_continuation_content(
@@ -445,7 +445,7 @@ impl CompactionFixture {
         let replacement = beryl_model::SyndicDraftId::from_bytes([next_draft_byte; 16]);
         let replacement_roots = crate::support::seed_detached_canonical_draft_backing(
             &self.store,
-            self.storage,
+            self.storage.clone(),
             SyndicThreadId::from_bytes([next_draft_byte.wrapping_add(1); 16]),
             replacement,
         );
@@ -582,7 +582,7 @@ impl CompactionFixture {
         batch
             .delete(FixtureDelete::Draft(source_draft.id()))
             .unwrap();
-        crate::support::commit(&self.store, self.storage, batch);
+        crate::support::commit(&self.store, self.storage.clone(), batch);
         input_id
     }
 }

@@ -32,7 +32,7 @@ fn receipt_revision_rejects_an_unobserved_fjall_maintenance_terminal() {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
-            store.domain_revision(alpha).unwrap(),
+            store.domain_revision(&alpha).unwrap(),
             PutBytes::<AlphaDomain>::new(1, b"durable".to_vec()),
         ))
         .unwrap();
@@ -41,7 +41,7 @@ fn receipt_revision_rejects_an_unobserved_fjall_maintenance_terminal() {
     store.inject_retained_maintenance_terminal();
 
     assert!(matches!(
-        store.receipt_domain_revision(&receipt, alpha),
+        store.receipt_domain_revision(&receipt, &alpha),
         Err(CommitReceiptError::StorageHealth { .. })
     ));
     assert_failed(&store);

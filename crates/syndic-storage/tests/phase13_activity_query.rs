@@ -34,13 +34,13 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     let home = TestHome::new("phase13-activity-child-handoff");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
-    populated::seed_populated(&store, storage);
+    populated::seed_populated(&store, storage.clone());
     let owner = id(30);
     let child = id(36);
-    converge_and_release_terminal_history(&store, storage, owner, populated::source_turn());
+    converge_and_release_terminal_history(&store, storage.clone(), owner, populated::source_turn());
     submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         owner,
         draft_id(200),
         SyndicItemId::from_bytes([201; 16]),
@@ -50,17 +50,17 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     let submitted_child_item = SyndicItemId::from_bytes([202; 16]);
     let child_turn = submit_current_draft(
         &store,
-        storage,
+        storage.clone(),
         child,
         draft_id(203),
         submitted_child_item,
         "child question",
         timestamp(11),
     );
-    let source = establish_turn(&store, storage, child, child_turn, timestamp(12));
+    let source = establish_turn(&store, storage.clone(), child, child_turn, timestamp(12));
     admit_event(
         &store,
-        storage,
+        storage.clone(),
         child,
         child_turn,
         &source,
@@ -69,7 +69,7 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     );
     correlate_user_item(
         &store,
-        storage,
+        storage.clone(),
         child,
         child_turn,
         submitted_child_item,
@@ -84,7 +84,7 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     });
     admit_started_then_completed_item(
         &store,
-        storage,
+        storage.clone(),
         child,
         child_turn,
         final_answer,
@@ -128,7 +128,7 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     ));
     admit_event(
         &store,
-        storage,
+        storage.clone(),
         child,
         child_turn,
         &source,
@@ -159,7 +159,7 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     .unwrap();
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([
             FixtureRecord::ActivityQueryHead(preexisting_head),
             FixtureRecord::ActivityQuerySource(ActivityQuerySourceRecord::new(
@@ -379,7 +379,7 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     .unwrap();
     commit(
         &store,
-        storage,
+        storage.clone(),
         batch([FixtureRecord::ActivityQueryHead(revised.clone())]),
     );
     assert!(matches!(

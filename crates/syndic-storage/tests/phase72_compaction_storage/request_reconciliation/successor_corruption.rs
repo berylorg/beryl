@@ -82,7 +82,7 @@ fn late_terminal_reconciliation_rejects_corrupted_provider_lifecycle_successor()
     .unwrap();
     let mut batch = FixtureBatch::new();
     batch.put(FixtureRecord::TurnState(forged)).unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 
     assert!(matches!(
         fixture.storage.compaction_request_disposition_status(
@@ -113,7 +113,7 @@ fn late_terminal_reconciliation_rejects_missing_preserved_binding_successor() {
             revision: operation.target().binding_revision(),
         })
         .unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 
     assert!(matches!(
         fixture.storage.compaction_request_disposition_status(
@@ -143,7 +143,7 @@ fn late_terminal_reconciliation_rejects_continuation_outside_admission_path() {
     );
     let mut batch = FixtureBatch::new();
     batch.put(FixtureRecord::Turn(forged)).unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 
     assert!(matches!(
         fixture.storage.compaction_request_disposition_status(
@@ -173,7 +173,7 @@ fn late_terminal_reconciliation_rejects_wrong_continuation_depth() {
     );
     let mut batch = FixtureBatch::new();
     batch.put(FixtureRecord::Turn(forged)).unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 
     assert!(matches!(
         fixture.storage.compaction_request_disposition_status(
@@ -203,7 +203,7 @@ fn late_terminal_reconciliation_rejects_wrong_continuation_ancestor_skip() {
     );
     let mut batch = FixtureBatch::new();
     batch.put(FixtureRecord::Turn(forged)).unwrap();
-    crate::support::commit(&fixture.store, fixture.storage, batch);
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
 
     assert!(matches!(
         fixture.storage.compaction_request_disposition_status(

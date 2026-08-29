@@ -30,7 +30,7 @@ fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStor
 
 fn create_command(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     creation: CreateThread,
 ) -> HomeCommand {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -65,7 +65,7 @@ fn creation_faults_reconcile_to_whole_old_or_whole_new_state() {
             timestamp(1),
             syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
         );
-        let command = create_command(&store, storage, creation.clone());
+        let command = create_command(&store, &storage, creation.clone());
 
         faults.fail_next(point);
         match (point, store.execute(command)) {
@@ -116,7 +116,7 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
         timestamp(1),
         syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
     );
-    match store.execute(create_command(&store, storage, creation)) {
+    match store.execute(create_command(&store, &storage, creation)) {
         beryl_home_store::CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -149,9 +149,11 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
     let block = faults.block_next(FaultPoint::BeforeReadConfirmation);
     let store = Arc::new(store);
     let reader_store = Arc::clone(&store);
-    let reader = thread::spawn(move || storage.current_draft(&reader_store, thread_id, limit()));
+    let reader_storage = storage.clone();
+    let reader =
+        thread::spawn(move || reader_storage.current_draft(&reader_store, thread_id, limit()));
     assert!(block.wait_until_reached(Duration::from_secs(10)));
-    commit(&store, storage, publication);
+    commit(&store, storage.clone(), publication);
     block.release();
 
     assert!(matches!(

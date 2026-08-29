@@ -70,7 +70,7 @@ impl SyndicComposerHost {
         let selector = selector_probe.selector();
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.activation_after_selector_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         let open_request = DraftEditorCandidateSessionOpenRequestV1::new(
             selector,
@@ -148,7 +148,7 @@ impl SyndicComposerHost {
         }));
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.activation_after_open_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         if let Some(restoration) = request.restoration() {
             if restoration.root() != binding.root()

@@ -493,7 +493,7 @@ impl SyndicComposerHost {
     ) -> CommandOutcome {
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.mutation_before_execute_fault.take() {
-            fault(store, self.storage);
+            fault(store, self.storage.clone());
         }
         store.execute(command)
     }
