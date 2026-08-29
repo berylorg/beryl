@@ -18,18 +18,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 199: Convert Runtime And Root Mutation Preparation (finished)
+# Phase 200: Convert Catalog Mutation Preparation (finished)
 
-The five runtime/root production mutations and reopen-validation fixture now prepare package-owned
-state once and contribute reader-free while `RuntimeRootCatalogSource` remains validation-only.
-Edition-2024 format and scoped diff checks passed; independent semantic review confirmed unchanged
-record, revision, reservation, reconciliation, index, activity, and failure-provenance behavior.
-The intentional package compile gap remains through Phases 200-204.
-
-# Phase 200: Convert Catalog Mutation Preparation (pending)
-
-Convert the catalog production and test-support mutations to package-owned prepared state while
-preserving exact projection/index expectations, reconciliation records, and failure provenance.
+The two catalog production mutations and corruption-test mutation now prepare package-owned state
+once and contribute reader-free with unchanged row/index records, revisions, reservations,
+reconciliation identities, and typed failure provenance. Edition-2024 format, scoped diff, and
+structural checks passed; independent semantic review closed without findings. The intentional
+package compile gap remains through Phases 201-204.
 
 # Phase 201: Convert Durable-Job Mutation Preparation (pending)
 

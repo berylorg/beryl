@@ -42,26 +42,41 @@ impl PublishCatalogRow {
 
 impl DomainMutation<CatalogDomain> for PublishCatalogRow {
     type Error = CatalogMutationError;
+    type Prepared = (SyndicThreadId, Option<CatalogRow>, CatalogRow);
 
-    fn validate(&self, reader: &DomainReader<'_, CatalogDomain>) -> Result<(), Self::Error> {
-        self.facts.validate_for(self.thread_id, self.sources)?;
-        let current = read_pair(reader, self.thread_id)?;
-        match (self.expectation, current.as_ref()) {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, CatalogDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let Self {
+            thread_id,
+            expectation,
+            sources,
+            facts,
+        } = self;
+        facts.validate_for(thread_id, sources)?;
+        let current = read_pair(reader, thread_id)?;
+        match (expectation, current.as_ref()) {
             (CatalogRowExpectation::Missing, None) => Ok(()),
-            (CatalogRowExpectation::Missing, Some(_)) => Err(CatalogMutationError::RowExists {
-                thread_id: self.thread_id,
-            }),
-            (CatalogRowExpectation::Revision(_), None) => Err(CatalogMutationError::RowMissing {
-                thread_id: self.thread_id,
-            }),
+            (CatalogRowExpectation::Missing, Some(_)) => {
+                Err(CatalogMutationError::RowExists { thread_id })
+            }
+            (CatalogRowExpectation::Revision(_), None) => {
+                Err(CatalogMutationError::RowMissing { thread_id })
+            }
             (CatalogRowExpectation::Revision(expected), Some(current)) => {
                 ensure_revision(expected, current.revision())?;
-                if let Some(kind) = self.sources.regression_from(current.sources()) {
+                if let Some(kind) = sources.regression_from(current.sources()) {
                     return Err(CatalogMutationError::SourceRevisionRegressed { kind });
                 }
-                Ok(())
             }
-        }
+        };
+        let revision = match current.as_ref() {
+            Some(current) => current.revision().checked_next()?,
+            None => CatalogRevision::INITIAL,
+        };
+        let row = CatalogRow::current(thread_id, sources, facts, revision)?;
+        Ok((thread_id, current, row))
     }
 
     fn reserve_reconciliation(
@@ -74,17 +89,10 @@ impl DomainMutation<CatalogDomain> for PublishCatalogRow {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, CatalogDomain>,
+        (thread_id, current, row): Self::Prepared,
         mutations: &mut MutationBuilder<'_, CatalogDomain>,
     ) -> Result<(), Self::Error> {
-        let current = read_pair(reader, self.thread_id)?;
-        let revision = match current.as_ref() {
-            Some(current) => current.revision().checked_next()?,
-            None => CatalogRevision::INITIAL,
-        };
-        let row = CatalogRow::current(self.thread_id, self.sources, self.facts.clone(), revision)?;
-        mutations.put::<CatalogRowCodec>(&self.thread_id, &row)?;
+        mutations.put::<CatalogRowCodec>(&thread_id, &row)?;
         replace_recency_copy(mutations, current.as_ref(), &row)?;
         Ok(())
     }
@@ -102,8 +110,12 @@ impl MarkCatalogRowStale {
 
 impl DomainMutation<CatalogDomain> for MarkCatalogRowStale {
     type Error = CatalogMutationError;
+    type Prepared = (SyndicThreadId, CatalogRow);
 
-    fn validate(&self, reader: &DomainReader<'_, CatalogDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, CatalogDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let row = required_pair(reader, self.thread_id)?;
         ensure_revision(self.expected_revision, row.revision())?;
         if row.freshness() == CatalogFreshness::Stale {
@@ -111,7 +123,10 @@ impl DomainMutation<CatalogDomain> for MarkCatalogRowStale {
                 thread_id: self.thread_id,
             });
         }
-        Ok(())
+        Ok((
+            self.thread_id,
+            row.mark_stale(row.revision().checked_next()?)?,
+        ))
     }
 
     fn reserve_reconciliation(
@@ -124,13 +139,10 @@ impl DomainMutation<CatalogDomain> for MarkCatalogRowStale {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, CatalogDomain>,
+        (thread_id, stale): Self::Prepared,
         mutations: &mut MutationBuilder<'_, CatalogDomain>,
     ) -> Result<(), Self::Error> {
-        let current = required_pair(reader, self.thread_id)?;
-        let stale = current.mark_stale(current.revision().checked_next()?)?;
-        mutations.put::<CatalogRowCodec>(&self.thread_id, &stale)?;
+        mutations.put::<CatalogRowCodec>(&thread_id, &stale)?;
         mutations.put::<CatalogRecencyCodec>(&stale.recency_cursor(), &stale)?;
         Ok(())
     }

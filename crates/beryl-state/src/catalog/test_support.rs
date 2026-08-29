@@ -12,9 +12,13 @@ pub(super) struct CorruptRecencyCopy {
 
 impl DomainMutation<CatalogDomain> for CorruptRecencyCopy {
     type Error = CatalogMutationError;
+    type Prepared = (CatalogRecencyCursor, CatalogRow);
 
-    fn validate(&self, _reader: &DomainReader<'_, CatalogDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, CatalogDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok((self.key, self.row))
     }
 
     fn reserve_reconciliation(
@@ -26,11 +30,10 @@ impl DomainMutation<CatalogDomain> for CorruptRecencyCopy {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, CatalogDomain>,
+        (key, row): Self::Prepared,
         mutations: &mut MutationBuilder<'_, CatalogDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<CatalogRecencyCodec>(&self.key, &self.row)?;
+        mutations.put::<CatalogRecencyCodec>(&key, &row)?;
         Ok(())
     }
 }
