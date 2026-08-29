@@ -22,7 +22,7 @@ use crate::{
 mod participant;
 mod result;
 
-pub(crate) use participant::{DomainMutationPlan, DomainParticipant};
+pub(crate) use participant::{DomainMutationPlan, DomainParticipant, PreparedDomainMutation};
 use participant::{mutation_plan, validation_plan};
 pub(crate) use result::RetainedReconciliationDescriptor;
 pub use result::{
@@ -212,16 +212,11 @@ impl CommandCancellation {
     }
 }
 
-/// One domain-owned revision-checked mutation plan.
 pub trait DomainMutation<D: StorageDomain>: Send + 'static {
-    /// Domain-owned validation or contribution failure.
     type Error: DomainCallbackError;
+    type Prepared: Send + 'static;
 
-    /// Validates current authoritative state before any batch is assembled.
-    ///
-    /// This method must be deterministic, bounded, and free of external I/O or
-    /// side effects. Same-store writer reentry is rejected.
-    fn validate(&self, reader: &DomainReader<'_, D>) -> Result<(), Self::Error>;
+    fn prepare(self, reader: &DomainReader<'_, D>) -> Result<Self::Prepared, Self::Error>;
 
     /// Reserves the exact codec-family quotas that this mutation may change.
     ///
@@ -232,14 +227,8 @@ pub trait DomainMutation<D: StorageDomain>: Send + 'static {
         reservation: &mut ReconciliationReservation<'_, D>,
     ) -> Result<(), Self::Error>;
 
-    /// Adds typed puts and deletes after every participant validates.
-    ///
-    /// Contribution must perform only bounded typed reads and builder calls;
-    /// CAS, filesystem, windowing, and other external work belongs outside the
-    /// short admitted command.
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, D>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, D>,
     ) -> Result<(), Self::Error>;
 }

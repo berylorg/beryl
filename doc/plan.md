@@ -18,23 +18,37 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 197: Simplify HomeStore Proof And Read Publication (finished)
+# Phase 198: Establish The HomeStore Prepared-Mutation Boundary (finished)
 
-Read-only proof composition no longer waits for the writer, and ordinary read, proof, and receipt
-publication use exact generation and affected-gate confirmation without a global post-read health
-canary. Focused single-job nextest coverage passed for nonserialization, admission-edge cancellation,
-coherent old-or-new atomic snapshots, unrelated maintenance, and actual structural failures; scoped
-format/diff checks passed and fresh independent semantic review closed every applicable finding.
+`DomainMutation` now produces package-owned state in one consuming writer-snapshot preparation pass
+and contributes it exactly once without a reader; validation-only participants remain distinct.
+Bounded library checking, format and diff checks passed, and independent semantic review confirmed
+that reservations, descriptor capture, batch refusal, durability classification, custody, and
+reconciliation remain intact. Phases 199-201 own the intentional downstream compile gap.
 
-# Phase 198: Collapse Duplicate Mutation Preparation (pending)
+# Phase 199: Convert Beryl-State Mutation Preparation (pending)
 
-Replace mandatory same-snapshot `validate` plus `contribute` rereads with one bounded preparation
-boundary that returns validated package-owned state for atomic contribution. Preserve exact family
-reservations, validation-only cross-domain participants, CAS checks, batch refusal before commit,
-and acknowledgement-loss reconciliation. Convert packages in bounded ownership batches and verify
-representative state, collision, and failure paths without a second semantic pass.
+Convert all `beryl-state` production and test mutation implementations to package-owned prepared
+state while preserving its validation-only participants, exact asset successor-witness behavior,
+record fences, reconciliation records, and failure provenance. Verify the package boundary without
+restoring the removed two-pass API.
 
-# Phase 199: Establish Monotonic Draft-Label Protection (pending)
+# Phase 200: Convert Syndic Mutation Preparation (pending)
+
+Convert all `syndic-storage` production and test-fault mutation implementations to package-owned
+prepared state while preserving its validation-only participant, CAS, route, binding, record, and
+reconciliation checks. Reconcile the overlapping draft-marker WIP against the target design without
+committing superseded marker architecture, and verify the package boundary without a compatibility
+adapter.
+
+# Phase 201: Complete Prepared-Mutation Integration (pending)
+
+Convert `beryl-home-store` integration fixtures and support mutations, then verify representative
+single-domain, cross-domain, validation-only, collision, capacity-refusal, persisted-failure, and
+acknowledgement-loss reconciliation paths across all converted packages. Remove every live use of
+the old two-pass mutation surface and obtain independent semantic completion review.
+
+# Phase 202: Establish Monotonic Draft-Label Protection (pending)
 
 Add the independently revisioned thread-keyed draft-label protection head before rebuilding
 readiness. Initialize it from accepted authority, advance it only with committed draft allocation,
@@ -42,7 +56,7 @@ reserve above it and live transient reservations, and keep permanent accepted au
 spans distinct. Prove monotonicity, affected-record corruption, restart, acceptance, and
 reconciliation with focused tests and independent semantic review.
 
-# Phase 200: Replace Draft-Marker Readiness With Lean Admission Indexes (pending)
+# Phase 203: Replace Draft-Marker Readiness With Lean Admission Indexes (pending)
 
 Delete the superseded source-order stream digest and current invalid WIP. Implement operation-owned
 source-order staging and target-id admission indexes with arbitrary page arrival, bounded post-EOF
@@ -52,7 +66,7 @@ head/receipt needed for replay and reconciliation. Preserve the fixed HomeStore 
 cross-domain Asset witness while removing same-object replay, repeated identical witness reads, and
 caller binding injection.
 
-# Phase 201: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
+# Phase 204: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
 
 Consume only package-issued readiness custody at mutation begin, point-consume exact target
 associations during builder progress, and publish candidate, history, settlement, and protection
@@ -60,7 +74,7 @@ authority only from canonical empty admission closure. Verify substitution, canc
 acknowledgement uncertainty, collision, restart, and resource release with focused state-machine
 tests and independent semantic review.
 
-# Phase 202: Integrate Exact Historical Draft-Marker Adoption (pending)
+# Phase 205: Integrate Exact Historical Draft-Marker Adoption (pending)
 
 Resolve the historical target entirely inside Syndic, authenticate its retained lineage, root,
 marker commitment, selection, and protection containment, then adopt it without ordinary readiness,

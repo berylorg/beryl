@@ -8,7 +8,7 @@ use crate::{
     RevisionConflict,
     command::{
         DomainParticipant, MaterializedDomainDescriptor, MaterializedRecordDescriptor,
-        PendingAction, PendingMutation, ReconciliationReservationOutput,
+        PendingAction, PendingMutation, PreparedDomainMutation, ReconciliationReservationOutput,
     },
     domain::{RegisteredDomain, StoreInstanceId},
     fault::FaultPoint,
@@ -73,16 +73,30 @@ impl Drop for ActiveWriter {
     }
 }
 
-struct PreparedParticipant<'a> {
-    participant: &'a DomainParticipant,
+struct FencedParticipant<'a> {
     domain: &'a RegisteredDomain,
     current_revision: beryl_model::DomainRevision,
 }
 
-struct PreparedMutation<'a> {
-    participant: &'a DomainParticipant,
+struct PreparedContribution<'a> {
+    participant: PreparedDomainMutation,
     domain: &'a RegisteredDomain,
     current_revision: beryl_model::DomainRevision,
+}
+
+struct PreparedMutationParticipant {
+    slot: usize,
+}
+
+impl PreparedMutationParticipant {
+    const fn slot(&self) -> usize {
+        self.slot
+    }
+}
+
+struct PreparedMutation<'a> {
+    participant: PreparedMutationParticipant,
+    domain: &'a RegisteredDomain,
     pending: Vec<PendingMutation>,
 }
 
@@ -410,19 +424,24 @@ impl HomeStore {
         fault_context: CommandFaultContext,
         reservation: &mut CommandReservation,
     ) -> ExecutionOutcome {
+        let HomeCommand {
+            expected_home_revision,
+            participants,
+            sidecars,
+            ..
+        } = command;
         let prepared_result = (|| {
-            if command.participants.is_empty() {
+            if participants.is_empty() {
                 return Err(CommandError::EmptyCommand);
             }
-            let mutation_count = command
-                .participants
+            let mutation_count = participants
                 .iter()
                 .filter(|participant| participant.is_mutation())
                 .count();
             if mutation_count == 0 {
                 return Err(CommandError::ValidationOnlyCommand);
             }
-            if command.sidecars.iter().any(|sidecar| {
+            if sidecars.iter().any(|sidecar| {
                 sidecar.store != generation.instance_id || sidecar.generation != health_generation
             }) {
                 return Err(CommandError::ForeignSidecar);
@@ -433,17 +452,17 @@ impl HomeStore {
                 .map_err(|source| revision_snapshot_error(ReadStage::HomeRevision, source))?;
             let current_home = read_home_revision(&snapshot, generation.header_keyspace())
                 .map_err(|source| CommandError::RevisionRead { source })?;
-            let mut prepared = Vec::with_capacity(command.participants.len());
+            let mut prepared = Vec::with_capacity(participants.len());
             let mut conflicts = Vec::new();
 
-            if current_home != command.expected_home_revision {
+            if current_home != expected_home_revision {
                 conflicts.push(RevisionConflict::Home {
-                    expected: command.expected_home_revision,
+                    expected: expected_home_revision,
                     current: current_home,
                 });
             }
 
-            for participant in &command.participants {
+            for participant in &participants {
                 if participant.store() != generation.instance_id {
                     return Err(CommandError::ForeignDomain {
                         domain: participant.domain(),
@@ -476,8 +495,7 @@ impl HomeStore {
                         current: metadata.revision,
                     });
                 }
-                prepared.push(PreparedParticipant {
-                    participant,
+                prepared.push(FencedParticipant {
                     domain,
                     current_revision: metadata.revision,
                 });
@@ -491,56 +509,67 @@ impl HomeStore {
                 });
             }
 
-            for participant in &prepared {
-                participant
-                    .participant
-                    .validate(&snapshot, participant.domain)
-                    .map_err(|source| {
-                        callback_command_error(
-                            participant.participant.domain(),
-                            ContributorCallbackStage::Validation,
-                            source,
-                        )
-                    })?;
-            }
             let mut mutations = Vec::with_capacity(mutation_count);
-            for participant in prepared {
-                let Some(pending) = participant
-                    .participant
-                    .assemble_mutation(&snapshot, participant.domain)
+            for (participant, fenced) in participants.into_iter().zip(prepared) {
+                let domain_name = participant.domain();
+                let Some(prepared) =
+                    participant
+                        .prepare(&snapshot, fenced.domain)
+                        .map_err(|source| {
+                            callback_command_error(
+                                domain_name,
+                                ContributorCallbackStage::Validation,
+                                source,
+                            )
+                        })?
                 else {
                     continue;
                 };
-                let pending = pending.map_err(|source| {
-                    callback_command_error(
-                        participant.participant.domain(),
-                        ContributorCallbackStage::Contribution,
-                        source,
-                    )
-                })?;
-                if pending.is_empty() {
-                    return Err(CommandError::EmptyContribution {
-                        domain: participant.participant.domain(),
-                    });
-                }
-                mutations.push(PreparedMutation {
-                    participant: participant.participant,
-                    domain: participant.domain,
-                    current_revision: participant.current_revision,
-                    pending,
+                mutations.push(PreparedContribution {
+                    participant: prepared,
+                    domain: fenced.domain,
+                    current_revision: fenced.current_revision,
                 });
             }
             Ok((snapshot, current_home, mutations))
         })();
-        let (snapshot, current_home, mutations) = match prepared_result {
+        let (snapshot, current_home, prepared) = match prepared_result {
             Ok(prepared) => prepared,
             Err(error) => return ExecutionOutcome::NotCommitted(error),
         };
-        let receipt =
-            match intended_receipt(generation, health_generation, current_home, &mutations) {
-                Ok(receipt) => receipt,
+        let receipt = match intended_receipt(generation, health_generation, current_home, &prepared)
+        {
+            Ok(receipt) => receipt,
+            Err(error) => return ExecutionOutcome::NotCommitted(error),
+        };
+        let mut mutations = Vec::with_capacity(prepared.len());
+        for participant in prepared {
+            let slot = participant.participant.slot();
+            let pending = participant
+                .participant
+                .assemble(participant.domain)
+                .map_err(|source| {
+                    callback_command_error(
+                        participant.domain.name,
+                        ContributorCallbackStage::Contribution,
+                        source,
+                    )
+                });
+            let pending = match pending {
+                Ok(pending) => pending,
                 Err(error) => return ExecutionOutcome::NotCommitted(error),
             };
+            if pending.is_empty() {
+                return ExecutionOutcome::NotCommitted(CommandError::EmptyContribution {
+                    domain: participant.domain.name,
+                });
+            }
+            mutations.push(PreparedMutation {
+                participant: PreparedMutationParticipant { slot },
+                domain: participant.domain,
+                pending,
+            });
+        }
         if let Err(error) =
             materialize_reservation(&snapshot, &mutations, reservation, receipt.clone())
         {
@@ -642,7 +671,7 @@ fn intended_receipt(
     generation: &StoreGeneration,
     health_generation: crate::HomeGeneration,
     current_home: beryl_model::HomeRevision,
-    prepared: &[PreparedMutation<'_>],
+    prepared: &[PreparedContribution<'_>],
 ) -> Result<CommitReceipt, CommandError> {
     let home_revision =
         current_home

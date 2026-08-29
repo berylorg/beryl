@@ -19,14 +19,21 @@ trait ErasedValidation: Send {
     ) -> Result<(), ErasedCallbackError>;
 }
 
-trait ErasedMutation: ErasedValidation {
+trait ErasedMutation: Send {
     fn reserve_reconciliation(
         &self,
     ) -> Result<ReconciliationReservationOutput, ErasedCallbackError>;
 
-    fn assemble(
-        &self,
+    fn prepare(
+        self: Box<Self>,
         snapshot: &fjall::Snapshot,
+        domain: &RegisteredDomain,
+    ) -> Result<Box<dyn ErasedPreparedMutation>, ErasedCallbackError>;
+}
+
+trait ErasedPreparedMutation: Send {
+    fn assemble(
+        self: Box<Self>,
         domain: &RegisteredDomain,
     ) -> Result<Vec<PendingMutation>, ErasedCallbackError>;
 }
@@ -36,16 +43,9 @@ struct TypedMutation<D: StorageDomain, M: DomainMutation<D>> {
     _typed: PhantomData<fn(D) -> D>,
 }
 
-impl<D: StorageDomain, M: DomainMutation<D>> ErasedValidation for TypedMutation<D, M> {
-    fn validate(
-        &self,
-        snapshot: &fjall::Snapshot,
-        domain: &RegisteredDomain,
-    ) -> Result<(), ErasedCallbackError> {
-        self.mutation
-            .validate(&DomainReader::new(snapshot, domain))
-            .map_err(ErasedCallbackError::from_typed)
-    }
+struct TypedPreparedMutation<D: StorageDomain, M: DomainMutation<D>> {
+    prepared: M::Prepared,
+    _typed: PhantomData<fn(D) -> D>,
 }
 
 impl<D: StorageDomain, M: DomainMutation<D>> ErasedMutation for TypedMutation<D, M> {
@@ -59,16 +59,38 @@ impl<D: StorageDomain, M: DomainMutation<D>> ErasedMutation for TypedMutation<D,
         Ok(reservation.into_output())
     }
 
-    fn assemble(
-        &self,
+    fn prepare(
+        self: Box<Self>,
         snapshot: &fjall::Snapshot,
         domain: &RegisteredDomain,
-    ) -> Result<Vec<PendingMutation>, ErasedCallbackError> {
-        let reader = DomainReader::new(snapshot, domain);
-        let mut builder = MutationBuilder::<D>::new(domain);
-        self.mutation
-            .contribute(&reader, &mut builder)
+    ) -> Result<Box<dyn ErasedPreparedMutation>, ErasedCallbackError> {
+        let Self {
+            mutation,
+            _typed: _,
+        } = *self;
+        let prepared = mutation
+            .prepare(&DomainReader::new(snapshot, domain))
             .map_err(ErasedCallbackError::from_typed)?;
+        Ok(Box::new(TypedPreparedMutation::<D, M> {
+            prepared,
+            _typed: PhantomData,
+        }))
+    }
+}
+
+impl<D: StorageDomain, M: DomainMutation<D>> ErasedPreparedMutation
+    for TypedPreparedMutation<D, M>
+{
+    fn assemble(
+        self: Box<Self>,
+        domain: &RegisteredDomain,
+    ) -> Result<Vec<PendingMutation>, ErasedCallbackError> {
+        let Self {
+            prepared,
+            _typed: _,
+        } = *self;
+        let mut builder = MutationBuilder::<D>::new(domain);
+        M::contribute(prepared, &mut builder).map_err(ErasedCallbackError::from_typed)?;
         Ok(builder.into_pending())
     }
 }
@@ -103,6 +125,36 @@ impl DomainMutationPlan {
         &self,
     ) -> Result<ReconciliationReservationOutput, ErasedCallbackError> {
         self.mutation.reserve_reconciliation()
+    }
+
+    fn prepare(
+        self,
+        snapshot: &fjall::Snapshot,
+        domain: &RegisteredDomain,
+    ) -> Result<PreparedDomainMutation, ErasedCallbackError> {
+        let prepared = self.mutation.prepare(snapshot, domain)?;
+        Ok(PreparedDomainMutation {
+            slot: self.slot,
+            prepared,
+        })
+    }
+}
+
+pub(crate) struct PreparedDomainMutation {
+    slot: usize,
+    prepared: Box<dyn ErasedPreparedMutation>,
+}
+
+impl PreparedDomainMutation {
+    pub(crate) const fn slot(&self) -> usize {
+        self.slot
+    }
+
+    pub(crate) fn assemble(
+        self,
+        domain: &RegisteredDomain,
+    ) -> Result<Vec<PendingMutation>, ErasedCallbackError> {
+        self.prepared.assemble(domain)
     }
 }
 
@@ -195,15 +247,16 @@ impl DomainParticipant {
         matches!(self, Self::Mutation(_))
     }
 
-    pub(crate) fn validate(
-        &self,
+    pub(crate) fn prepare(
+        self,
         snapshot: &fjall::Snapshot,
         domain: &RegisteredDomain,
-    ) -> Result<(), ErasedCallbackError> {
+    ) -> Result<Option<PreparedDomainMutation>, ErasedCallbackError> {
         match self {
-            Self::Mutation(contribution) => contribution.plan.mutation.validate(snapshot, domain),
+            Self::Mutation(contribution) => contribution.plan.prepare(snapshot, domain).map(Some),
             Self::Validation(contribution) => {
-                contribution.plan.validator.validate(snapshot, domain)
+                contribution.plan.validator.validate(snapshot, domain)?;
+                Ok(None)
             }
         }
     }
@@ -213,19 +266,6 @@ impl DomainParticipant {
     ) -> Option<Result<ReconciliationReservationOutput, ErasedCallbackError>> {
         match self {
             Self::Mutation(contribution) => Some(contribution.plan.reserve_reconciliation()),
-            Self::Validation(_) => None,
-        }
-    }
-
-    pub(crate) fn assemble_mutation(
-        &self,
-        snapshot: &fjall::Snapshot,
-        domain: &RegisteredDomain,
-    ) -> Option<Result<Vec<PendingMutation>, ErasedCallbackError>> {
-        match self {
-            Self::Mutation(contribution) => {
-                Some(contribution.plan.mutation.assemble(snapshot, domain))
-            }
             Self::Validation(_) => None,
         }
     }
