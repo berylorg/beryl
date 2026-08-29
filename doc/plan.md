@@ -46,7 +46,7 @@ Serial focused storage and app checks passed with locked metadata, formatting, a
 A fresh adversarial review passed after the direct footprint and four-branch acceptance matrix were
 corrected; no obsolete frontier or premature draft-marker readiness residue remains.
 
-# Phase 195: Establish Exact Draft-Marker Label Admission (pending)
+# Phase 195: Establish Exact Draft-Marker Label Admission (wip)
 
 Add one compact Syndic readiness and writer-admission proof that binds marker-label allocation to the
 exact destination thread label frontier and editor-candidate root without using a whole-thread
@@ -56,8 +56,9 @@ reserved authority. The final marker-changing candidate adoption validates this 
 stale, exhausted, conflicting, missing, or corrupt authority commits no marker or partial edit.
 
 Use the accepted proof-composition boundary to stream bounded Syndic source and Beryl-state
-witness pages without exposing their facts or correlation to the app. Implement the compact label-
-head family and codecs, handle-owned generation-scoped reservation/page coordinator, strict receipt
+witness pages without exposing their facts or correlation to the app. Build on the accepted sole
+independent label-head authority and implement the handle-owned generation-scoped reservation/page
+coordinator, strict receipt
 folding, move-only final proof plus durable binding, exact same-conversation evidence and cross-
 conversation allocation, and atomic proof-bearing adoption. Replace the invalid partial shapes
 recorded in `doc/failures/syndic-draft-marker-cross-domain-proof-composition.md`: readiness binds
@@ -75,6 +76,15 @@ pre-admission cancellation, admitted reconciliation, stale/missing/corrupt proof
 unrelated-thread progress, and no resident label registry or history scan through serial focused
 nextest, locked metadata, checks, formatting, diff checks, and one fresh independent adversarial
 completion review.
+
+Blocker: the controlling target docs do not yet define the generic generation-owned typed domain
+runtime attachment needed to make one coordinator structurally unique across every clone and
+reacquisition of the currently `Copy` domain handle. They also require exact byte-equal page replay
+while forbidding retained page payload without defining a lossless custody identity. Correct the
+target authority first, then reslice the runtime-attachment foundation as its own acceptance phase
+before this admission boundary. The recommended replay contract moves one opaque immutable bounded
+page-attempt object through dispatch and requires that same move-only attempt for replay; a fresh
+attempt at an occupied ordinal is collision.
 
 # Phase 196: Mount Bounded Rich Paste (pending)
 
