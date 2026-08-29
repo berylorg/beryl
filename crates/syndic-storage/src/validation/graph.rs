@@ -31,6 +31,14 @@ fn validate_threads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndi
         if *key != thread.id() {
             return invariant("thread key and record identity disagree");
         }
+        let label_head = require::<ImageLabelAuthorityHeadsFamily>(
+            reader,
+            &thread.id(),
+            "thread image-label authority head is missing",
+        )?;
+        if !label_head.is_exact() || label_head.thread_id() != thread.id() {
+            return invariant("thread image-label authority head is corrupt");
+        }
         let draft = require::<DraftsFamily>(
             reader,
             &thread.current_draft_id(),
@@ -65,8 +73,7 @@ fn validate_threads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndi
                 if thread.lineage_depth() != crate::ThreadLineageDepth::FIRST
                     || thread.lineage_ancestor_skip().is_some()
                     || thread.lineage_digest() != root_thread_lineage_digest(thread.id())
-                    || thread.image_label_frontiers().inherited()
-                        != crate::ImageLabelFrontier::EMPTY
+                    || label_head.inherited() != crate::ImageLabelFrontier::EMPTY
                 {
                     return invariant("top-level thread lineage or inherited-label facts disagree");
                 }
@@ -77,7 +84,14 @@ fn validate_threads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndi
                 if parent == thread.id() {
                     return invariant("thread parent is self-owned");
                 }
-                let parent_labels = parent_record.image_label_frontiers();
+                let parent_labels = require::<ImageLabelAuthorityHeadsFamily>(
+                    reader,
+                    &parent,
+                    "parent image-label authority head is missing",
+                )?;
+                if !parent_labels.is_exact() || parent_labels.thread_id() != parent {
+                    return invariant("parent image-label authority head is corrupt");
+                }
                 let (depth, digest, skip) = crate::thread_lineage::child_shape(
                     thread.id(),
                     parent_record,
@@ -87,7 +101,7 @@ fn validate_threads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndi
                 if thread.lineage_depth() != depth
                     || thread.lineage_digest() != digest
                     || thread.lineage_ancestor_skip() != Some(skip)
-                    || thread.image_label_frontiers().inherited() > parent_labels.current()
+                    || label_head.inherited() > parent_labels.permanent()
                 {
                     return invariant("child thread lineage or inherited-label facts disagree");
                 }

@@ -53,7 +53,6 @@ pub struct ThreadRecord {
     selected_path: SelectedPathProof,
     current_draft_id: SyndicDraftId,
     lineage: ThreadLineageProof,
-    image_label_frontiers: ThreadImageLabelFrontiers,
     context_owner_id: Option<DiscussionContextOwnerId>,
 }
 
@@ -64,7 +63,6 @@ impl ThreadRecord {
         selected_path: SelectedPathProof,
         current_draft_id: SyndicDraftId,
         lineage: ThreadLineageProof,
-        image_label_frontiers: ThreadImageLabelFrontiers,
         context_owner_id: Option<DiscussionContextOwnerId>,
     ) -> Self {
         Self {
@@ -72,7 +70,6 @@ impl ThreadRecord {
             selected_path,
             current_draft_id,
             lineage,
-            image_label_frontiers,
             context_owner_id,
         }
     }
@@ -107,10 +104,6 @@ impl ThreadRecord {
     #[must_use]
     pub const fn lineage_digest(&self) -> SyndicPathDigest {
         self.lineage.digest()
-    }
-    #[must_use]
-    pub const fn image_label_frontiers(&self) -> ThreadImageLabelFrontiers {
-        self.image_label_frontiers
     }
     #[must_use]
     pub const fn context_owner_id(&self) -> Option<DiscussionContextOwnerId> {

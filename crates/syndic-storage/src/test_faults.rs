@@ -526,6 +526,7 @@ pub fn fixture_inline_paragraph_projection(
 #[derive(Clone, Debug)]
 pub enum FixtureRecord {
     Thread(ThreadRecord),
+    ImageLabelAuthorityHead(ImageLabelAuthorityHeadV1),
     ThreadExecution(ThreadExecutionRecord),
     ThreadAttributes(ThreadAttributesRecord),
     ThreadUsage(ThreadUsageRecord),
@@ -628,6 +629,7 @@ impl FixtureRecord {
     pub const fn family(&self) -> PhysicalFamily {
         match self {
             Self::Thread(_) => PhysicalFamily::Threads,
+            Self::ImageLabelAuthorityHead(_) => PhysicalFamily::ImageLabelAuthorityHeads,
             Self::ThreadExecution(_) => PhysicalFamily::ThreadExecutions,
             Self::ThreadAttributes(_) => PhysicalFamily::ThreadAttributes,
             Self::ThreadUsage(_) => PhysicalFamily::ThreadUsage,
@@ -693,6 +695,7 @@ impl FixtureRecord {
 #[derive(Clone, Debug)]
 pub enum FixtureDelete {
     Thread(beryl_model::SyndicThreadId),
+    ImageLabelAuthorityHead(beryl_model::SyndicThreadId),
     ThreadExecution(beryl_model::SyndicThreadId),
     ThreadAttributes(beryl_model::SyndicThreadId),
     ThreadUsage(beryl_model::SyndicThreadId),

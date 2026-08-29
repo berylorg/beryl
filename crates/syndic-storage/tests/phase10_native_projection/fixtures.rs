@@ -163,7 +163,6 @@ pub(super) fn seed_root_pending(
             ThreadLineageDepth::FIRST,
             root_thread_lineage_digest(thread),
         ),
-        ThreadImageLabelFrontiers::empty(),
         None,
     );
     let execution = support::exact_cas::execution_binding();
@@ -360,7 +359,6 @@ pub(super) fn append_pending(
         selected,
         current_draft.draft().id(),
         current_thread.lineage(),
-        current_thread.image_label_frontiers(),
         current_thread.context_owner_id(),
     );
     let mut batch = FixtureBatch::new();
@@ -508,7 +506,6 @@ pub(super) fn seed_accepted_input_admission_descendant(
         selected,
         replacement_draft,
         current_thread.lineage(),
-        current_thread.image_label_frontiers(),
         current_thread.context_owner_id(),
     );
     let history = HistorySummaryRecord::new(
@@ -725,7 +722,6 @@ pub(super) fn advance_source_to_divergent_prefix(
         selected,
         current_draft.draft().id(),
         current_thread.lineage(),
-        current_thread.image_label_frontiers(),
         current_thread.context_owner_id(),
     );
     let history = HistorySummaryRecord::new(

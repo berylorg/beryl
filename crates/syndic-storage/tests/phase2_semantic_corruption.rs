@@ -94,7 +94,6 @@ fn draft_tail_and_turn_topology_corruption_fail_registration_verification_and_re
                     syndic_storage::ThreadLineageDepth::FIRST,
                     syndic_storage::root_thread_lineage_digest(id(1)),
                 ),
-                syndic_storage::ThreadImageLabelFrontiers::empty(),
                 None,
             ))])
         },
@@ -320,7 +319,6 @@ fn ordering_event_item_and_projection_corruption_fail_closed() {
                         ThreadLineageDepth::FIRST,
                         root_thread_lineage_digest(id(1)),
                     ),
-                    ThreadImageLabelFrontiers::empty(),
                     None,
                 )),
                 FixtureRecord::DraftByThread(DraftByThreadRecord::new(

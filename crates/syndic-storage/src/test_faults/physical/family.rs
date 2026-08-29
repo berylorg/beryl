@@ -2,6 +2,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PhysicalFamily {
     Threads,
+    ImageLabelAuthorityHeads,
     ThreadExecutions,
     ThreadAttributes,
     ThreadUsage,
@@ -65,8 +66,9 @@ pub enum PhysicalFamily {
 }
 
 impl PhysicalFamily {
-    pub const ALL: [Self; 61] = [
+    pub const ALL: [Self; 62] = [
         Self::Threads,
+        Self::ImageLabelAuthorityHeads,
         Self::ThreadExecutions,
         Self::ThreadAttributes,
         Self::ThreadUsage,
@@ -133,6 +135,7 @@ impl PhysicalFamily {
     pub const fn name(self) -> &'static str {
         match self {
             Self::Threads => "threads",
+            Self::ImageLabelAuthorityHeads => "image-label-authority-heads",
             Self::ThreadExecutions => "thread-executions",
             Self::ThreadAttributes => "thread-attributes",
             Self::ThreadUsage => "thread-usage",

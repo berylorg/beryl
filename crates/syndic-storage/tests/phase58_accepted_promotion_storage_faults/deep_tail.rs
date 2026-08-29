@@ -40,7 +40,6 @@ fn deep_fixture() -> DeepFixture {
                     SelectedPathProof::new(Some(tail), thread.revision(), tail_digest),
                     thread.current_draft_id(),
                     thread.lineage(),
-                    thread.image_label_frontiers(),
                     thread.context_owner_id(),
                 );
             }

@@ -25,12 +25,13 @@ use syndic_storage::test_faults::{FixtureBatch, FixtureRecord, fixture_transcrip
 use syndic_storage::{
     BindingHeadRecord, BindingState, ComposerPayload, ContentByteSpanRecord, ContentManifestRecord,
     ContentReference, DraftByThreadRecord, DraftRecord, DraftSubmissionIntent,
-    HistorySummaryRecord, InputGateRecord, PreparedContent, ProjectionLifecycle, SelectedPathProof,
-    SyndicStorage, SyndicTimestamp, ThreadAttributesRecord, ThreadCatalogSummaryRecord,
-    ThreadExecutionRecord, ThreadLineageProof, ThreadRecord, ThreadUsageRecord,
-    TranscriptBuildPhase, TranscriptBuildRecord, TranscriptGeneration, TranscriptPathTurnRecord,
-    TranscriptViewHeadRecord, TurnDepth, TurnEndStatus, TurnIncompleteReason, TurnLifecycle,
-    TurnStateRecord, TurnStateRevision, TurnTerminalOutcome,
+    HistorySummaryRecord, ImageLabelAuthorityHeadV1, ImageLabelFrontier, InputGateRecord,
+    PreparedContent, ProjectionLifecycle, SelectedPathProof, SyndicStorage, SyndicTimestamp,
+    ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadLineageProof,
+    ThreadRecord, ThreadUsageRecord, TranscriptBuildPhase, TranscriptBuildRecord,
+    TranscriptGeneration, TranscriptPathTurnRecord, TranscriptViewHeadRecord, TurnDepth,
+    TurnEndStatus, TurnIncompleteReason, TurnLifecycle, TurnStateRecord, TurnStateRevision,
+    TurnTerminalOutcome,
 };
 
 use lifecycle::lifecycle_end_status;
@@ -399,7 +400,6 @@ pub fn thread_records_with_activity(
             syndic_storage::ThreadLineageDepth::FIRST,
             syndic_storage::root_thread_lineage_digest(thread_id),
         ),
-        syndic_storage::ThreadImageLabelFrontiers::empty(),
         None,
     );
     let (_, content_records) = composer_content_records(&ComposerPayload::default());
@@ -433,6 +433,15 @@ pub fn thread_records_with_activity(
     let catalog = ThreadCatalogSummaryRecord::initial(&thread, &execution, &attributes, &history);
     let mut records = vec![
         FixtureRecord::Thread(thread),
+        FixtureRecord::ImageLabelAuthorityHead(
+            ImageLabelAuthorityHeadV1::new(
+                thread_id,
+                1,
+                ImageLabelFrontier::EMPTY,
+                ImageLabelFrontier::EMPTY,
+            )
+            .unwrap(),
+        ),
         FixtureRecord::ThreadExecution(execution),
         FixtureRecord::ThreadAttributes(attributes),
         FixtureRecord::ThreadUsage(usage),

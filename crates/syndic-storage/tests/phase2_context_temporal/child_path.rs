@@ -79,7 +79,6 @@ fn submitted_context_owner_need_not_remain_on_child_selected_path() {
                         syndic_storage::root_thread_lineage_digest(id(30)),
                     ),
                 ),
-                syndic_storage::ThreadImageLabelFrontiers::empty(),
                 Some(owner),
             )),
             FixtureRecord::Draft(DraftRecord::new(

@@ -461,7 +461,7 @@ fn durable_start_budget_is_exact_and_covers_the_owner_composed_maximum() {
     )
     .unwrap();
 
-    assert_eq!(direct.logical().encoded_key_value_bytes().unwrap(), 1_263_194);
+    assert_eq!(direct.logical().encoded_key_value_bytes().unwrap(), 1_328_750);
     assert_eq!(queued.logical().encoded_key_value_bytes().unwrap(), 1_328_212);
     assert_eq!(queued.journal_append_bytes(), 1_328_763);
     assert!(direct.journal_append_bytes() <= DURABLE_START_ADMISSION_BUDGET_BYTES);

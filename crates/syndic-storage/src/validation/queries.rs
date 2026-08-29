@@ -24,12 +24,15 @@ fn validate_image_label_origins(
                 finish_span_owner(reader, previous, previous_end)?;
             }
             owner = Some(key.thread);
-            let thread = require::<ThreadsFamily>(
+            let head = require::<ImageLabelAuthorityHeadsFamily>(
                 reader,
                 &key.thread,
-                "image-label origin-span thread is missing",
+                "image-label origin-span authority head is missing",
             )?;
-            previous_end = thread.image_label_frontiers().inherited().get();
+            if !head.is_exact() || head.thread_id() != key.thread {
+                return invariant("image-label origin-span authority head is corrupt");
+            }
+            previous_end = head.inherited().get();
         }
         if key.thread != span.thread_id()
             || key.end_label != span.end_label()
@@ -50,9 +53,16 @@ fn validate_image_label_origins(
         finish_span_owner(reader, owner, previous_end)?;
     }
     scan::<ThreadsFamily>(reader, |_, thread| {
-        let frontiers = thread.image_label_frontiers();
-        if frontiers.current() > frontiers.inherited() {
-            let end_label = crate::ImageLabelOrdinal::new(frontiers.current().get())
+        let head = require::<ImageLabelAuthorityHeadsFamily>(
+            reader,
+            &thread.id(),
+            "thread image-label authority head is missing",
+        )?;
+        if !head.is_exact() || head.thread_id() != thread.id() {
+            return invariant("thread image-label authority head is corrupt");
+        }
+        if head.permanent() > head.inherited() {
+            let end_label = crate::ImageLabelOrdinal::new(head.permanent().get())
                 .map_err(|_| SyndicValidationError::Invariant("image-label frontier is invalid"))?;
             if point::<ImageLabelOriginSpansFamily>(
                 reader,
@@ -67,6 +77,17 @@ fn validate_image_label_origins(
             }
         }
         Ok(())
+    })?;
+    scan::<ImageLabelAuthorityHeadsFamily>(reader, |key, head| {
+        if *key != head.thread_id() || !head.is_exact() {
+            return invariant("image-label authority key or record is corrupt");
+        }
+        let thread =
+            require::<ThreadsFamily>(reader, key, "image-label authority thread is missing")?;
+        if thread.id() != head.thread_id() {
+            return invariant("image-label authority thread disagrees");
+        }
+        Ok(())
     })
 }
 
@@ -75,10 +96,13 @@ fn finish_span_owner(
     owner: beryl_model::SyndicThreadId,
     observed_end: u64,
 ) -> Result<(), SyndicValidationError> {
-    let thread =
-        require::<ThreadsFamily>(reader, &owner, "image-label origin-span thread is missing")?;
-    if observed_end != thread.image_label_frontiers().current().get() {
-        return invariant("image-label origin spans disagree with the thread frontier");
+    let head = require::<ImageLabelAuthorityHeadsFamily>(
+        reader,
+        &owner,
+        "image-label origin-span authority head is missing",
+    )?;
+    if !head.is_exact() || head.thread_id() != owner || observed_end != head.permanent().get() {
+        return invariant("image-label origin spans disagree with the authority head");
     }
     Ok(())
 }

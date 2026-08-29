@@ -237,7 +237,6 @@ pub fn admit_queued_text(
         ),
         next_draft_id,
         thread.lineage(),
-        thread.image_label_frontiers(),
         thread.context_owner_id(),
     );
     let mut staging_thread_bytes = *next_draft_id.as_bytes();

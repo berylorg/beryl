@@ -491,7 +491,6 @@ impl CompactionFixture {
                 ),
                 replacement,
                 source_thread.lineage(),
-                source_thread.image_label_frontiers(),
                 source_thread.context_owner_id(),
             )),
             FixtureRecord::Draft(DraftRecord::new(

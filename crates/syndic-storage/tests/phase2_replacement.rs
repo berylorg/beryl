@@ -157,7 +157,6 @@ fn seed_local_user_replacement_target(
             ThreadLineageDepth::FIRST,
             root_thread_lineage_digest(thread),
         ),
-        ThreadImageLabelFrontiers::empty(),
         None,
     );
     let execution = ThreadExecutionRecord::new(thread, support::exact_cas::execution_binding());

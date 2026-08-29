@@ -34,6 +34,7 @@ fn idle_submission_mutation_footprint() -> Result<CheckedBatchFootprint, Durable
         put::<CanonicalItemsCodec>()?,
         put::<TurnItemsCodec>()?,
         put::<ImageLabelOriginSpansCodec>()?,
+        put::<ImageLabelAuthorityHeadsCodec>()?,
         put::<TranscriptHeadsCodec>()?,
         put::<TranscriptBuildsCodec>()?,
         put::<HistorySummariesCodec>()?,
@@ -113,9 +114,15 @@ mod tests {
     #[test]
     fn idle_submission_max_includes_every_optional_write_branch() {
         let footprint = idle_submission_mutation_footprint().expect("checked footprint");
-        assert_eq!(21, footprint.records());
-        assert_eq!(442, footprint.encoded_key_bytes());
-        assert_eq!(1_245_772, footprint.encoded_value_bytes());
+        assert_eq!(22, footprint.records());
+        assert_eq!(458, footprint.encoded_key_bytes());
+        assert_eq!(1_311_312, footprint.encoded_value_bytes());
+
+        let head = put::<ImageLabelAuthorityHeadsCodec>().expect("head footprint");
+        assert_eq!(1, head.records());
+        assert_eq!(16, head.encoded_key_bytes());
+        assert_eq!(65_540, head.encoded_value_bytes());
+        assert_eq!(65_556, head.encoded_key_value_bytes().expect("head total"));
     }
 
     #[test]

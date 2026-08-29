@@ -98,7 +98,6 @@ fn seed_unselected_accepted_input(
             ),
             current.draft().id(),
             thread_record.lineage(),
-            thread_record.image_label_frontiers(),
             thread_record.context_owner_id(),
         )),
         FixtureRecord::DraftByThread(DraftByThreadRecord::new(

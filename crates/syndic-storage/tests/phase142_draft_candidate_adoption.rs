@@ -107,6 +107,20 @@ fn fixture_positions(session: &DraftEditorCandidateSessionV1) -> FixturePosition
     })
 }
 
+#[test]
+fn created_thread_has_an_independent_empty_image_label_authority_head() {
+    let (_home, store, storage, thread) = fixture("label-authority-head", 5);
+    let head = storage
+        .image_label_authority_head(&store, thread, SyndicPointReadLimit::new(65_536).unwrap())
+        .unwrap()
+        .expect("created thread has a label authority head");
+    assert_eq!(head.thread_id(), thread);
+    assert_eq!(head.revision(), 1);
+    assert_eq!(head.inherited(), syndic_storage::ImageLabelFrontier::EMPTY);
+    assert_eq!(head.permanent(), syndic_storage::ImageLabelFrontier::EMPTY);
+    assert!(head.is_exact());
+}
+
 fn remember_fixture_positions(
     session: &DraftEditorCandidateSessionV1,
     positions: FixturePositions,

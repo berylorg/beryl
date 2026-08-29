@@ -57,12 +57,17 @@ pub(super) fn promotion_records(
     let projection_revision = ProjectionRevision::new(1).unwrap();
     let parent_digest = root_turn_chain_digest(parent);
     let selected = SelectedPathProof::new(Some(parent), thread_revision, parent_digest);
-    let frontiers = if image_bearing {
-        ThreadImageLabelFrontiers::new(ImageLabelFrontier::EMPTY, ImageLabelFrontier::from_raw(1))
-            .unwrap()
-    } else {
-        ThreadImageLabelFrontiers::empty()
-    };
+    let image_label_authority = ImageLabelAuthorityHeadV1::new(
+        thread,
+        2,
+        ImageLabelFrontier::EMPTY,
+        if image_bearing {
+            ImageLabelFrontier::from_raw(1)
+        } else {
+            ImageLabelFrontier::EMPTY
+        },
+    )
+    .unwrap();
     let accepted_input = source_draft.accepted_input_id();
     let accepted_ordinal = AcceptedInputOrdinal::FIRST;
     let route_generation = AcceptedRouteGeneration::FIRST;
@@ -77,7 +82,6 @@ pub(super) fn promotion_records(
             ThreadLineageDepth::FIRST,
             root_thread_lineage_digest(thread),
         ),
-        frontiers,
         None,
     );
     let history_summary = HistorySummaryRecord::new(
@@ -99,6 +103,7 @@ pub(super) fn promotion_records(
     );
     let mut records = vec![
         FixtureRecord::Thread(thread_record),
+        FixtureRecord::ImageLabelAuthorityHead(image_label_authority),
         FixtureRecord::ThreadExecution(thread_execution),
         FixtureRecord::ThreadAttributes(thread_attributes),
         FixtureRecord::ThreadUsage(ThreadUsageRecord::empty(thread)),

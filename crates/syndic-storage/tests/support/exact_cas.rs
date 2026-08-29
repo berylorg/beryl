@@ -18,16 +18,16 @@ use syndic_storage::{
     ComposerPayload, ContentEncoding, ContentLifecycle, ContentReference, ContextEnvelopeRecord,
     DraftByThreadRecord, DraftRecord, DraftSubmissionIntent, FinalizeNextTurnItem,
     FreezeNextTurnItem, GeneratedMediaResourceDisposition, HistorySummaryRecord,
-    ImageLabelFrontier, ImageLabelOrdinal, ImageLabelOriginOwner, ImageLabelOriginSpanRecord,
-    InputGateRecord, InputGateState, ItemProjectionGeneration, LiveSourceEvent, NativeCasLineage,
-    PreparedContent, ProjectionLifecycle, ProviderFrameOrdinalV1, ProviderFramePreparationPlan,
-    ProviderFrameStageOutcome, ProviderItemBuildLifecycle, ProviderItemFrameV1,
-    ProviderItemLifecycle, ProviderItemObservationV1, ProviderItemV1,
-    ProviderLifecycleTimestampMsV1, ProviderSubmittedContentV1, ProviderUserMessageV1,
-    PublishActiveCasTurn, PublishValidBinding, ResourceBacking, SealedProviderFrameReference,
-    SelectedPathProof, SourceEventPayload, SourceEventSequence, StartItemProjectionBuild,
-    StartTranscriptBuild, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    ThreadImageLabelFrontiers, ThreadParentIndexRecord, ThreadRecord, TranscriptBuildPhase,
+    ImageLabelAuthorityHeadV1, ImageLabelFrontier, ImageLabelOrdinal, ImageLabelOriginOwner,
+    ImageLabelOriginSpanRecord, InputGateRecord, InputGateState, ItemProjectionGeneration,
+    LiveSourceEvent, NativeCasLineage, PreparedContent, ProjectionLifecycle,
+    ProviderFrameOrdinalV1, ProviderFramePreparationPlan, ProviderFrameStageOutcome,
+    ProviderItemBuildLifecycle, ProviderItemFrameV1, ProviderItemLifecycle,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
+    ProviderSubmittedContentV1, ProviderUserMessageV1, PublishActiveCasTurn, PublishValidBinding,
+    ResourceBacking, SealedProviderFrameReference, SelectedPathProof, SourceEventPayload,
+    SourceEventSequence, StartItemProjectionBuild, StartTranscriptBuild, SyndicPointReadLimit,
+    SyndicStorage, SyndicTimestamp, ThreadParentIndexRecord, ThreadRecord, TranscriptBuildPhase,
     TranscriptViewHeadRecord, TurnChildIndexRecord, TurnDepth, TurnItemIndexRecord,
     TurnItemOrdinal, TurnKind, TurnLifecycle, TurnStateRecord, TurnStateRevision,
     child_turn_chain_digest, empty_selected_path_digest, prepare_provider_frame,
@@ -222,8 +222,16 @@ pub fn submit_prepared_current_draft(
     let (content, content_records) = prepared_content_records(prepared_content);
     assert_eq!(content.encoding(), ContentEncoding::ComposerV1);
     validate_asset_reference_set(content, asset_reference_set);
-    let (image_label_frontiers, image_label_origin) =
-        submission_image_label_authority(&thread, content, asset_reference_set, submitted_item_id);
+    let image_label_head = storage
+        .image_label_authority_head(store, thread_id, point_limit())
+        .unwrap()
+        .unwrap();
+    let (advanced_image_label_head, image_label_origin) = submission_image_label_authority(
+        image_label_head,
+        content,
+        asset_reference_set,
+        submitted_item_id,
+    );
 
     let staging_thread = detached_staging_thread(thread_id, next_draft_id);
     assert!(
@@ -265,7 +273,6 @@ pub fn submit_prepared_current_draft(
         selected,
         next_draft_id,
         thread.lineage(),
-        image_label_frontiers,
         next_context_owner,
     );
     let next_history = HistorySummaryRecord::new(
@@ -402,6 +409,9 @@ pub fn submit_prepared_current_draft(
     if let Some(origin) = image_label_origin {
         records.push(FixtureRecord::ImageLabelOriginSpan(origin));
     }
+    if let Some(head) = advanced_image_label_head {
+        records.push(FixtureRecord::ImageLabelAuthorityHead(head));
+    }
     let mut fixture = batch(records);
     fixture
         .delete(FixtureDelete::Draft(current.draft().id()))
@@ -434,41 +444,38 @@ fn validate_asset_reference_set(
 }
 
 fn submission_image_label_authority(
-    thread: &ThreadRecord,
+    head: ImageLabelAuthorityHeadV1,
     content: ContentReference,
     asset_reference_set: Option<SealedAssetReferenceSetProof>,
     submitted_item_id: SyndicItemId,
 ) -> (
-    ThreadImageLabelFrontiers,
+    Option<ImageLabelAuthorityHeadV1>,
     Option<ImageLabelOriginSpanRecord>,
 ) {
     validate_asset_reference_set(content, asset_reference_set);
-    let frontiers = thread.image_label_frontiers();
     let Some(proof) = asset_reference_set else {
-        return (frontiers, None);
+        return (None, None);
     };
     let end = proof
         .sequential()
         .maximum_image_label()
         .expect("exact-CAS marker-bearing content has a maximum label");
-    if frontiers.current().contains(end) {
-        return (frontiers, None);
+    if head.permanent().contains(end) {
+        return (None, None);
     }
-    let start = ImageLabelOrdinal::new(frontiers.current().get().checked_add(1).unwrap()).unwrap();
+    let start = ImageLabelOrdinal::new(head.permanent().get().checked_add(1).unwrap()).unwrap();
     let origin = ImageLabelOriginSpanRecord::new(
-        thread.id(),
+        head.thread_id(),
         start,
         end,
         ImageLabelOriginOwner::CanonicalItem(submitted_item_id),
         proof,
     )
     .unwrap();
-    let advanced = ThreadImageLabelFrontiers::new(
-        frontiers.inherited(),
-        ImageLabelFrontier::from_raw(end.get()),
-    )
-    .unwrap();
-    (advanced, Some(origin))
+    let advanced = head
+        .advanced(ImageLabelFrontier::from_raw(end.get()))
+        .unwrap();
+    (Some(advanced), Some(origin))
 }
 
 fn detached_staging_thread(owner: SyndicThreadId, next_draft: SyndicDraftId) -> SyndicThreadId {

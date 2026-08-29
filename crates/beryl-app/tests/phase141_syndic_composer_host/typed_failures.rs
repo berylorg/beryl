@@ -142,7 +142,6 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
         ),
         before.thread().current_draft_id(),
         before.thread().lineage(),
-        before.thread().image_label_frontiers(),
         before.thread().context_owner_id(),
     );
     let advanced_index = DraftByThreadRecord::new(

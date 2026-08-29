@@ -428,7 +428,6 @@ fn substitute_exact_authority(
                             current.selected_path(),
                             replacement,
                             current.lineage(),
-                            current.image_label_frontiers(),
                             current.context_owner_id(),
                         );
                     }

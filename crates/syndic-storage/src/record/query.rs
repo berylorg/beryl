@@ -1,3 +1,5 @@
+use sha2::{Digest, Sha256};
+
 use beryl_model::{
     SealedAssetReferenceSetProof, SyndicAcceptedInputId, SyndicItemId, SyndicThreadId,
 };
@@ -8,40 +10,87 @@ mod activity;
 
 pub use activity::*;
 
-/// Compact inherited/current permanent image-label authority on one thread.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ThreadImageLabelFrontiers {
+pub struct ImageLabelAuthorityHeadV1 {
+    thread_id: SyndicThreadId,
+    revision: u64,
     inherited: crate::ImageLabelFrontier,
-    current: crate::ImageLabelFrontier,
+    permanent: crate::ImageLabelFrontier,
+    digest: [u8; 32],
 }
 
-impl ThreadImageLabelFrontiers {
+impl ImageLabelAuthorityHeadV1 {
     pub fn new(
+        thread_id: SyndicThreadId,
+        revision: u64,
         inherited: crate::ImageLabelFrontier,
-        current: crate::ImageLabelFrontier,
+        permanent: crate::ImageLabelFrontier,
     ) -> Result<Self, SyndicRecordError> {
-        if inherited > current {
+        if revision == 0 || permanent < inherited {
             return Err(SyndicRecordError::InvalidImageLabelFrontier);
         }
-        Ok(Self { inherited, current })
+        let digest = Self::digest_for(thread_id, revision, inherited, permanent);
+        Ok(Self {
+            thread_id,
+            revision,
+            inherited,
+            permanent,
+            digest,
+        })
     }
 
-    #[must_use]
-    pub const fn empty() -> Self {
-        Self {
-            inherited: crate::ImageLabelFrontier::EMPTY,
-            current: crate::ImageLabelFrontier::EMPTY,
-        }
+    pub const fn thread_id(self) -> SyndicThreadId {
+        self.thread_id
     }
-
-    #[must_use]
+    pub const fn revision(self) -> u64 {
+        self.revision
+    }
     pub const fn inherited(self) -> crate::ImageLabelFrontier {
         self.inherited
     }
+    pub const fn permanent(self) -> crate::ImageLabelFrontier {
+        self.permanent
+    }
+    pub const fn digest(self) -> [u8; 32] {
+        self.digest
+    }
 
-    #[must_use]
-    pub const fn current(self) -> crate::ImageLabelFrontier {
-        self.current
+    pub fn is_exact(self) -> bool {
+        self.revision != 0
+            && self.permanent >= self.inherited
+            && self.digest
+                == Self::digest_for(
+                    self.thread_id,
+                    self.revision,
+                    self.inherited,
+                    self.permanent,
+                )
+    }
+
+    pub fn advanced(self, permanent: crate::ImageLabelFrontier) -> Result<Self, SyndicRecordError> {
+        if permanent < self.permanent {
+            return Err(SyndicRecordError::InvalidImageLabelFrontier);
+        }
+        let revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(SyndicRecordError::InvalidImageLabelFrontier)?;
+        Self::new(self.thread_id, revision, self.inherited, permanent)
+    }
+
+    fn digest_for(
+        thread_id: SyndicThreadId,
+        revision: u64,
+        inherited: crate::ImageLabelFrontier,
+        permanent: crate::ImageLabelFrontier,
+    ) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"syndic/image-label-authority-head/v1");
+        hasher.update(thread_id.as_bytes());
+        hasher.update(revision.to_be_bytes());
+        hasher.update(inherited.get().to_be_bytes());
+        hasher.update(permanent.get().to_be_bytes());
+        hasher.finalize().into()
     }
 }
 

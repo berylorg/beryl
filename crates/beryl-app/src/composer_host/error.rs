@@ -34,6 +34,8 @@ pub enum ComposerHostError {
     InvalidInitialRequestOrder,
     #[error("the selected thread has no current draft")]
     MissingCurrentDraft,
+    #[error("the selected thread has no image-label authority head")]
+    MissingImageLabelAuthority,
     #[error("restoration does not match the activated root and logical extent")]
     RestorationBindingMismatch,
     #[error("request belongs to an inactive or replaced binding")]

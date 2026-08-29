@@ -98,6 +98,21 @@ id_family!(
     beryl_home_store::RecordVersion::new(2)
 );
 id_family!(
+    ImageLabelAuthorityHeadsFamily,
+    ImageLabelAuthorityHeadsCodec,
+    "image-label-authority-heads",
+    SyndicThreadId,
+    ImageLabelAuthorityHeadV1,
+    |b| key16(
+        b,
+        "image-label authority head key",
+        SyndicThreadId::from_bytes
+    ),
+    encode_image_label_authority_head,
+    decode_image_label_authority_head,
+    SMALL_MAX
+);
+id_family!(
     ThreadExecutionsFamily,
     ThreadExecutionsCodec,
     "thread-executions",

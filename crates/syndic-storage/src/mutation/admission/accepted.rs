@@ -242,12 +242,14 @@ pub(super) fn records(
         next_count,
         live_bytes,
     )?;
-    let (image_label_frontiers, origin_span) = super::shared::advance_image_label_authority(
-        reader,
-        &base.thread,
-        crate::ImageLabelOriginOwner::AcceptedInput(input_id),
-        acceptance.asset_reference_set(),
-    )?;
+    let (advanced_image_label_authority, origin_span) =
+        super::shared::advance_image_label_authority(
+            reader,
+            &base.thread,
+            base.image_label_authority,
+            crate::ImageLabelOriginOwner::AcceptedInput(input_id),
+            acceptance.asset_reference_set(),
+        )?;
     let admission = AcceptedInputAdmissionProof::new(
         acceptance.expected_thread_revision(),
         acceptance.draft_id(),
@@ -296,7 +298,6 @@ pub(super) fn records(
         ),
         acceptance.next_draft_id(),
         base.thread.lineage(),
-        image_label_frontiers,
         base.thread.context_owner_id(),
     );
     let (draft, draft_index) = super::shared::fresh_draft(acceptance, &base, &thread)?;
@@ -320,6 +321,7 @@ pub(super) fn records(
             fresh_history: base.fresh_history,
             disposed_session: base.disposed_session,
             origin_span,
+            advanced_image_label_authority,
             summary,
             gate,
             thread_parent_index,

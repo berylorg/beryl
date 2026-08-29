@@ -7,11 +7,12 @@ use beryl_model::{
 use crate::{
     BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState, DraftByThreadRecord,
     DraftPieceRootRecordV1, DraftRecord, DraftSubmissionIntent, HistorySummaryRecord,
-    InputGateRecord, ProjectionLifecycle, SelectedPathProof, SyndicStorage, SyndicThreadTail,
-    SyndicTimestamp, ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord,
-    ThreadLineageProof, ThreadRecord, ThreadUsageRecord, TranscriptGeneration,
-    TranscriptViewHeadRecord, canonical_empty_draft_piece_root_v1, codec::*, domain::SyndicDomain,
-    draft_piece::*, empty_selected_path_digest, root_thread_lineage_digest,
+    ImageLabelAuthorityHeadV1, InputGateRecord, ProjectionLifecycle, SelectedPathProof,
+    SyndicStorage, SyndicThreadTail, SyndicTimestamp, ThreadAttributesRecord,
+    ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadLineageProof, ThreadRecord,
+    ThreadUsageRecord, TranscriptGeneration, TranscriptViewHeadRecord,
+    canonical_empty_draft_piece_root_v1, codec::*, domain::SyndicDomain, draft_piece::*,
+    empty_selected_path_digest, root_thread_lineage_digest,
 };
 
 mod accepted;
@@ -166,6 +167,7 @@ impl CreateThread {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct InitialThreadRecords {
     pub(crate) thread: ThreadRecord,
+    pub(crate) image_label_authority_head: ImageLabelAuthorityHeadV1,
     pub(crate) execution: ThreadExecutionRecord,
     pub(crate) attributes: ThreadAttributesRecord,
     pub(crate) usage: ThreadUsageRecord,
@@ -209,7 +211,6 @@ impl CreateThread {
                 crate::ThreadLineageDepth::FIRST,
                 root_thread_lineage_digest(self.thread_id),
             ),
-            crate::ThreadImageLabelFrontiers::empty(),
             None,
         );
         let draft_piece_root = canonical_empty_draft_piece_root_v1(
@@ -276,6 +277,13 @@ impl CreateThread {
         );
         InitialThreadRecords {
             thread,
+            image_label_authority_head: ImageLabelAuthorityHeadV1::new(
+                self.thread_id,
+                1,
+                crate::ImageLabelFrontier::EMPTY,
+                crate::ImageLabelFrontier::EMPTY,
+            )
+            .expect("initial image-label authority head is valid"),
             execution,
             attributes,
             usage,
@@ -439,6 +447,7 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             None => false,
         };
         if point::<ThreadsFamily>(reader, &records.thread.id())?.is_some()
+            || point::<ImageLabelAuthorityHeadsFamily>(reader, &records.thread.id())?.is_some()
             || point::<ThreadExecutionsFamily>(reader, &records.thread.id())?.is_some()
             || point::<ThreadAttributesFamily>(reader, &records.thread.id())?.is_some()
             || point::<ThreadUsageFamily>(reader, &records.thread.id())?.is_some()
@@ -488,6 +497,7 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
     ) -> Result<(), Self::Error> {
         let records = self.creation.records();
         reservation.reserve_records::<ThreadsCodec>(1)?;
+        reservation.reserve_records::<ImageLabelAuthorityHeadsCodec>(1)?;
         reservation.reserve_records::<ThreadExecutionsCodec>(1)?;
         reservation.reserve_records::<ThreadAttributesCodec>(1)?;
         reservation.reserve_records::<ThreadUsageCodec>(1)?;
@@ -515,6 +525,10 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
     ) -> Result<(), Self::Error> {
         let records = self.creation.records();
         mutations.put::<ThreadsCodec>(&records.thread.id(), &records.thread)?;
+        mutations.put::<ImageLabelAuthorityHeadsCodec>(
+            &records.thread.id(),
+            &records.image_label_authority_head,
+        )?;
         mutations.put::<ThreadExecutionsCodec>(&records.thread.id(), &records.execution)?;
         mutations.put::<ThreadAttributesCodec>(&records.thread.id(), &records.attributes)?;
         mutations.put::<ThreadUsageCodec>(&records.thread.id(), &records.usage)?;

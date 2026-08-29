@@ -10,8 +10,9 @@ use beryl_home_store::{
     MutationContribution,
 };
 use beryl_model::{
-    ExecutionBinding, ImageLabelOrdinal, PathFlavor, RootId, RuntimeId, RuntimeMode,
-    RuntimeNativePath, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
+    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ExecutionBinding, ImageLabelOrdinal,
+    PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SealedAssetReferenceSetProof,
+    SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
 #[cfg(feature = "test-faults")]
 use syndic_storage::test_faults::{
@@ -25,17 +26,24 @@ use syndic_storage::test_faults::{
     inject_draft_composer_output_corruption, inject_draft_composer_prepared_chunk,
     inject_draft_piece_descendant_corruption, syndic_v7_family_names,
 };
+#[cfg(feature = "test-faults")]
+use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 use syndic_storage::{
     CreateThread, DRAFT_COMPOSER_INPUT_MAX_BYTES, DRAFT_COMPOSER_READ_MAX_RECORDS,
     DRAFT_COMPOSER_RESIDENT_MAX_BYTES, DRAFT_COMPOSER_WRITE_MAX_RECORDS, DraftComposerBuildKeyV1,
     DraftComposerBuildPhaseV1, DraftComposerFormatV1, DraftComposerMaterializationOperationIdV1,
     DraftComposerMaterializationStatusV1, DraftCompositeGapWitnessV1, DraftCompositePositionV1,
-    DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionOpenOutcomeV1,
-    DraftEditorCandidateSessionOpenRequestV1, DraftEditorCandidateSessionReadOutcomeV1,
-    DraftEditorCandidateSessionV1, DraftEditorCurrentSelectorV1, DraftPieceEditHeaderV1,
-    DraftPieceMarkerV1, DraftPieceOperationIdV1, DraftPieceReplacementV1, DraftPieceV1,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, canonical_draft_piece_fragment_chain_v1,
-    canonical_empty_draft_piece_fragment_chain_v1,
+    DraftEditorCandidateActivationBindingV1, DraftEditorCandidatePublicationEvidenceV1,
+    DraftEditorCandidatePublicationSourceCaptureRequestV1, DraftEditorCandidateSessionIdV1,
+    DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionOpenRequestV1,
+    DraftEditorCandidateSessionReadOutcomeV1, DraftEditorCandidateSessionV1,
+    DraftEditorCurrentSelectorV1, DraftMarkerSealOperationIdV1, DraftMarkerSealRequestV1,
+    DraftMarkerSealStatusV1, DraftPieceEditHeaderV1, DraftPieceMarkerEffectChargesV1,
+    DraftPieceMarkerEffectV1, DraftPieceMarkerInsertionV1, DraftPieceMarkerV1,
+    DraftPieceOperationIdV1, DraftPieceReplacementV1, DraftPieceV1, FirstAcceptance,
+    FirstAcceptanceKind, FirstAcceptanceStatus, ImageLabelAuthorityHeadV1, InputGateRecord,
+    InputGateState, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    canonical_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_fragment_chain_v1,
 };
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
@@ -67,6 +75,720 @@ impl Drop for TestHome {
             }
         }
     }
+}
+
+fn read_limit() -> SyndicPointReadLimit {
+    SyndicPointReadLimit::new(65_536).unwrap()
+}
+
+#[cfg(feature = "test-faults")]
+fn fixture_with_faults(
+    name: &str,
+    seed: u8,
+) -> (
+    TestHome,
+    HomeStore,
+    SyndicStorage,
+    SyndicThreadId,
+    FaultController,
+) {
+    let home = TestHome::new(name);
+    let faults = FaultController::new();
+    let mut store = HomeStore::open_with_faults(
+        HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let thread = SyndicThreadId::from_bytes([seed; 16]);
+    let creation = CreateThread::ordinary(
+        thread,
+        SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
+        execution(),
+        SyndicTimestamp::from_unix_millis(1),
+        syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+    );
+    committed(execute(
+        &store,
+        storage.create_thread(storage.revision(&store).unwrap(), creation),
+    ));
+    (home, store, storage, thread, faults)
+}
+
+fn seal_root(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    root: syndic_storage::DraftPieceRootReferenceV1,
+    operation: u8,
+) -> syndic_storage::DraftMarkerSealProofV1 {
+    let request = DraftMarkerSealRequestV1::new(
+        root,
+        DraftMarkerSealOperationIdV1::from_bytes([operation; 16]),
+    );
+    let begin = storage
+        .prepare_draft_marker_seal_begin(store, request)
+        .unwrap();
+    committed(execute(
+        store,
+        storage.begin_draft_marker_seal(storage.revision(store).unwrap(), begin),
+    ));
+    while let Some(advance) = storage
+        .prepare_draft_marker_seal_advance(store, request.key())
+        .unwrap()
+    {
+        committed(execute(
+            store,
+            storage.advance_draft_marker_seal(storage.revision(store).unwrap(), &advance),
+        ));
+    }
+    let DraftMarkerSealStatusV1::Sealed(proof, _) = storage
+        .draft_marker_seal_status(store, request.key())
+        .unwrap()
+    else {
+        panic!("marker seal did not close")
+    };
+    proof
+}
+
+fn publish_candidate(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    thread: SyndicThreadId,
+    evidence: DraftEditorCandidatePublicationEvidenceV1,
+    operation: u8,
+) {
+    let current = storage
+        .current_draft(store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let head = candidate_head(storage, store, thread);
+    let candidate = DraftEditorCandidateActivationBindingV1::new(
+        head.draft_id(),
+        head.session_id(),
+        head.session_generation(),
+        head.newest_candidate_generation(),
+        head.newest_root(),
+        head.newest_history(),
+        head.newest_root().summary().logical_extent(),
+    );
+    let selector = DraftEditorCurrentSelectorV1::new(
+        current.thread().id(),
+        current.thread().revision(),
+        current.draft().id(),
+        current.draft().revision(),
+        current.draft().piece_root(),
+        current.draft().history(),
+    );
+    let source = storage
+        .capture_draft_editor_candidate_publication_source(
+            store,
+            DraftEditorCandidatePublicationSourceCaptureRequestV1::new(
+                selector,
+                candidate,
+                DraftPieceOperationIdV1::from_bytes([operation; 16]),
+                SyndicTimestamp::from_unix_millis(u64::from(operation)),
+            ),
+        )
+        .unwrap();
+    let prepared = storage
+        .prepare_draft_editor_candidate_publication(store, source, evidence)
+        .unwrap();
+    let outcome = execute(
+        store,
+        storage.publish_draft_editor_candidate(storage.revision(store).unwrap(), prepared.clone()),
+    );
+    storage
+        .reconcile_draft_editor_candidate_publication(store, &prepared, outcome)
+        .unwrap();
+}
+
+#[allow(clippy::too_many_arguments)]
+fn acceptance_from_current(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    thread: SyndicThreadId,
+    candidate: DraftEditorCandidateActivationBindingV1,
+    materialization: syndic_storage::DraftComposerMaterializationRecordV1,
+    asset_reference_set: Option<SealedAssetReferenceSetProof>,
+    next_draft: u8,
+    idle_item: u8,
+    disposal: u8,
+    admitted_at: u64,
+) -> (FirstAcceptance, ImageLabelAuthorityHeadV1) {
+    let current = storage
+        .current_draft(store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let gate = storage
+        .input_gate(store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let head = storage
+        .image_label_authority_head(store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    (
+        FirstAcceptance::new(
+            thread,
+            current.thread().revision(),
+            head,
+            current.draft().id(),
+            current.draft().revision(),
+            candidate,
+            materialization,
+            gate.revision(),
+            gate.state().clone(),
+            SyndicDraftId::from_bytes([next_draft; 16]),
+            SyndicItemId::from_bytes([idle_item; 16]),
+            asset_reference_set,
+            DraftPieceOperationIdV1::from_bytes([disposal; 16]),
+            SyndicTimestamp::from_unix_millis(admitted_at),
+        ),
+        head,
+    )
+}
+
+fn acceptance_with_head(
+    acceptance: &FirstAcceptance,
+    head: ImageLabelAuthorityHeadV1,
+) -> FirstAcceptance {
+    FirstAcceptance::new(
+        acceptance.thread_id(),
+        acceptance.expected_thread_revision(),
+        head,
+        acceptance.draft_id(),
+        acceptance.expected_draft_revision(),
+        acceptance.candidate(),
+        acceptance.materialization(),
+        acceptance.expected_gate_revision(),
+        acceptance.expected_gate_state().clone(),
+        acceptance.next_draft_id(),
+        acceptance.idle_user_item_id(),
+        acceptance.asset_reference_set(),
+        acceptance.session_disposal_operation_id(),
+        acceptance.admitted_at(),
+    )
+}
+
+fn acceptance_with_timestamp(acceptance: &FirstAcceptance, admitted_at: u64) -> FirstAcceptance {
+    FirstAcceptance::new(
+        acceptance.thread_id(),
+        acceptance.expected_thread_revision(),
+        acceptance.expected_image_label_authority(),
+        acceptance.draft_id(),
+        acceptance.expected_draft_revision(),
+        acceptance.candidate(),
+        acceptance.materialization(),
+        acceptance.expected_gate_revision(),
+        acceptance.expected_gate_state().clone(),
+        acceptance.next_draft_id(),
+        acceptance.idle_user_item_id(),
+        acceptance.asset_reference_set(),
+        acceptance.session_disposal_operation_id(),
+        SyndicTimestamp::from_unix_millis(admitted_at),
+    )
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() {
+    let (_home, store, storage, thread, faults) = fixture_with_faults("image-first-acceptance", 31);
+    let label = ImageLabelOrdinal::FIRST;
+    let marker = DraftPieceMarkerV1::new(
+        SyndicDraftMarkerId::from_bytes([32; 16]),
+        1,
+        label,
+        AssetId::sha256_v1([33; 32], std::num::NonZeroU64::MIN),
+    );
+    let root = apply_replacement(
+        storage,
+        &store,
+        thread,
+        34,
+        DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Marker(marker)])
+            .with_marker_effect(DraftPieceMarkerEffectV1::Insert(
+                DraftPieceMarkerInsertionV1::new(
+                    0,
+                    marker,
+                    DraftPieceMarkerEffectChargesV1::for_marker(marker),
+                ),
+            )),
+    );
+    let seal_proof = seal_root(storage, &store, root, 35);
+    let asset_reference_set = SealedAssetReferenceSetProof::new(
+        AssetReferenceSetId::from_bytes([36; 16]),
+        seal_proof.sequential(),
+        seal_proof.ordered_assets(),
+        seal_proof.sequential().marker_count(),
+        AssetReferenceSetDigest::from_bytes([38; 32]),
+    )
+    .unwrap();
+    publish_candidate(
+        storage,
+        &store,
+        thread,
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+            seal_proof,
+            asset_proof: asset_reference_set,
+        },
+        39,
+    );
+    let candidate = DraftEditorCandidateActivationBindingV1::from_head(&candidate_head(
+        storage, &store, thread,
+    ));
+    let materialization = materialize(storage, &store, materialization_key(root, 40));
+    let current = storage
+        .current_draft(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let gate = storage
+        .input_gate(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let head = storage
+        .image_label_authority_head(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let acceptance = FirstAcceptance::new(
+        thread,
+        current.thread().revision(),
+        head,
+        current.draft().id(),
+        current.draft().revision(),
+        candidate,
+        materialization,
+        gate.revision(),
+        gate.state().clone(),
+        SyndicDraftId::from_bytes([41; 16]),
+        SyndicItemId::from_bytes([42; 16]),
+        Some(asset_reference_set),
+        DraftPieceOperationIdV1::from_bytes([43; 16]),
+        SyndicTimestamp::from_unix_millis(44),
+    );
+
+    let wrong_head = head.advanced(head.permanent()).unwrap();
+    let noncommitting = FirstAcceptance::new(
+        acceptance.thread_id(),
+        acceptance.expected_thread_revision(),
+        wrong_head,
+        acceptance.draft_id(),
+        acceptance.expected_draft_revision(),
+        acceptance.candidate(),
+        acceptance.materialization(),
+        acceptance.expected_gate_revision(),
+        acceptance.expected_gate_state().clone(),
+        acceptance.next_draft_id(),
+        acceptance.idle_user_item_id(),
+        acceptance.asset_reference_set(),
+        acceptance.session_disposal_operation_id(),
+        acceptance.admitted_at(),
+    );
+    let revision_before = store.home_revision().unwrap();
+    assert!(matches!(
+        execute(
+            &store,
+            storage.first_acceptance(storage.revision(&store).unwrap(), noncommitting),
+        ),
+        CommandOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(store.home_revision().unwrap(), revision_before);
+    assert_eq!(
+        storage
+            .image_label_authority_head(&store, thread, read_limit())
+            .unwrap(),
+        Some(head)
+    );
+    assert!(
+        storage
+            .resolve_image_label_origin_span(&store, thread, label, read_limit())
+            .unwrap()
+            .is_none()
+    );
+
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    assert!(matches!(
+        execute(
+            &store,
+            storage.first_acceptance(storage.revision(&store).unwrap(), acceptance.clone()),
+        ),
+        CommandOutcome::Indeterminate { .. }
+    ));
+    let advanced = storage
+        .image_label_authority_head(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(advanced.revision(), head.revision() + 1);
+    assert_eq!(advanced.inherited(), head.inherited());
+    assert_eq!(advanced.permanent().get(), label.get());
+    let resolved = storage
+        .resolve_image_label_origin_span(&store, thread, label, read_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(resolved.span().start_label(), label);
+    assert_eq!(resolved.span().end_label(), label);
+    assert_eq!(
+        resolved.span().admitted_owner(),
+        syndic_storage::ImageLabelOriginOwner::CanonicalItem(acceptance.idle_user_item_id())
+    );
+    assert_eq!(
+        storage
+            .first_acceptance_status(&store, &acceptance, read_limit())
+            .unwrap(),
+        FirstAcceptanceStatus::ExactNew(FirstAcceptanceKind::Idle {
+            user_item_id: acceptance.idle_user_item_id(),
+        })
+    );
+    assert!(matches!(
+        execute(
+            &store,
+            storage.first_acceptance(storage.revision(&store).unwrap(), acceptance.clone()),
+        ),
+        CommandOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(
+        storage
+            .first_acceptance_status(&store, &acceptance, read_limit())
+            .unwrap(),
+        FirstAcceptanceStatus::ExactNew(FirstAcceptanceKind::Idle {
+            user_item_id: acceptance.idle_user_item_id(),
+        })
+    );
+    let collision = FirstAcceptance::new(
+        acceptance.thread_id(),
+        acceptance.expected_thread_revision(),
+        acceptance.expected_image_label_authority(),
+        acceptance.draft_id(),
+        acceptance.expected_draft_revision(),
+        acceptance.candidate(),
+        acceptance.materialization(),
+        acceptance.expected_gate_revision(),
+        acceptance.expected_gate_state().clone(),
+        acceptance.next_draft_id(),
+        acceptance.idle_user_item_id(),
+        acceptance.asset_reference_set(),
+        acceptance.session_disposal_operation_id(),
+        SyndicTimestamp::from_unix_millis(45),
+    );
+    assert_eq!(
+        storage
+            .first_acceptance_status(&store, &collision, read_limit())
+            .unwrap(),
+        FirstAcceptanceStatus::Collision
+    );
+}
+
+#[test]
+fn direct_marker_free_first_acceptance_leaves_the_independent_head_unchanged() {
+    let (_home, store, storage, thread) = fixture("direct-marker-free-acceptance", 54);
+    let root = replace_empty(
+        storage,
+        &store,
+        thread,
+        55,
+        vec![DraftPieceV1::Text("direct".to_owned())],
+    );
+    publish_candidate(
+        storage,
+        &store,
+        thread,
+        DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
+        56,
+    );
+    let candidate = DraftEditorCandidateActivationBindingV1::from_head(&candidate_head(
+        storage, &store, thread,
+    ));
+    let materialization = materialize(storage, &store, materialization_key(root, 57));
+    let (acceptance, head) = acceptance_from_current(
+        storage,
+        &store,
+        thread,
+        candidate,
+        materialization,
+        None,
+        58,
+        59,
+        60,
+        61,
+    );
+
+    committed(execute(
+        &store,
+        storage.first_acceptance(storage.revision(&store).unwrap(), acceptance.clone()),
+    ));
+    assert_eq!(
+        storage
+            .image_label_authority_head(&store, thread, read_limit())
+            .unwrap(),
+        Some(head)
+    );
+    assert!(
+        storage
+            .resolve_image_label_origin_span(
+                &store,
+                thread,
+                ImageLabelOrdinal::FIRST,
+                read_limit(),
+            )
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        storage
+            .first_acceptance_status(&store, &acceptance, read_limit())
+            .unwrap(),
+        FirstAcceptanceStatus::ExactNew(FirstAcceptanceKind::Idle {
+            user_item_id: acceptance.idle_user_item_id(),
+        })
+    );
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origin() {
+    let (_home, store, storage, thread, faults) =
+        fixture_with_faults("queued-image-acceptance", 62);
+    let label = ImageLabelOrdinal::FIRST;
+    let marker = DraftPieceMarkerV1::new(
+        SyndicDraftMarkerId::from_bytes([63; 16]),
+        1,
+        label,
+        AssetId::sha256_v1([64; 32], std::num::NonZeroU64::MIN),
+    );
+    let root = apply_replacement(
+        storage,
+        &store,
+        thread,
+        65,
+        DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Marker(marker)])
+            .with_marker_effect(DraftPieceMarkerEffectV1::Insert(
+                DraftPieceMarkerInsertionV1::new(
+                    0,
+                    marker,
+                    DraftPieceMarkerEffectChargesV1::for_marker(marker),
+                ),
+            )),
+    );
+    let seal_proof = seal_root(storage, &store, root, 66);
+    let asset_reference_set = SealedAssetReferenceSetProof::new(
+        AssetReferenceSetId::from_bytes([67; 16]),
+        seal_proof.sequential(),
+        seal_proof.ordered_assets(),
+        seal_proof.sequential().marker_count(),
+        AssetReferenceSetDigest::from_bytes([68; 32]),
+    )
+    .unwrap();
+    publish_candidate(
+        storage,
+        &store,
+        thread,
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+            seal_proof,
+            asset_proof: asset_reference_set,
+        },
+        69,
+    );
+    let candidate = DraftEditorCandidateActivationBindingV1::from_head(&candidate_head(
+        storage, &store, thread,
+    ));
+    let materialization = materialize(storage, &store, materialization_key(root, 70));
+    let idle_gate = storage
+        .input_gate(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let pending_gate = InputGateRecord::new(
+        thread,
+        idle_gate.revision().checked_next().unwrap(),
+        InputGateState::PendingTurn(SyndicTurnId::from_bytes([71; 16])),
+        0,
+        None,
+        None,
+        0,
+        0,
+        0,
+    )
+    .unwrap();
+    let mut batch = FixtureBatch::new();
+    batch.put(FixtureRecord::InputGate(pending_gate)).unwrap();
+    committed(execute(
+        &store,
+        storage.fixture_contribution(storage.revision(&store).unwrap(), batch),
+    ));
+    let (acceptance, head) = acceptance_from_current(
+        storage,
+        &store,
+        thread,
+        candidate,
+        materialization,
+        Some(asset_reference_set),
+        72,
+        73,
+        74,
+        75,
+    );
+
+    let wrong_head = head.advanced(head.permanent()).unwrap();
+    let noncommitting = acceptance_with_head(&acceptance, wrong_head);
+    let revision_before = store.home_revision().unwrap();
+    assert!(matches!(
+        execute(
+            &store,
+            storage.first_acceptance(storage.revision(&store).unwrap(), noncommitting),
+        ),
+        CommandOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(store.home_revision().unwrap(), revision_before);
+    assert_eq!(
+        storage
+            .image_label_authority_head(&store, thread, read_limit())
+            .unwrap(),
+        Some(head)
+    );
+    assert!(
+        storage
+            .resolve_image_label_origin_span(&store, thread, label, read_limit())
+            .unwrap()
+            .is_none()
+    );
+
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    assert!(matches!(
+        execute(
+            &store,
+            storage.first_acceptance(storage.revision(&store).unwrap(), acceptance.clone()),
+        ),
+        CommandOutcome::Indeterminate { .. }
+    ));
+    let advanced = storage
+        .image_label_authority_head(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(advanced.revision(), head.revision() + 1);
+    assert_eq!(advanced.inherited(), head.inherited());
+    assert_eq!(advanced.permanent().get(), label.get());
+    let resolved = storage
+        .resolve_image_label_origin_span(&store, thread, label, read_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(resolved.span().start_label(), label);
+    assert_eq!(resolved.span().end_label(), label);
+    assert_eq!(
+        resolved.span().admitted_owner(),
+        syndic_storage::ImageLabelOriginOwner::AcceptedInput(acceptance.accepted_input_id())
+    );
+    assert_eq!(
+        storage
+            .first_acceptance_status(&store, &acceptance, read_limit())
+            .unwrap(),
+        FirstAcceptanceStatus::ExactNew(FirstAcceptanceKind::Accepted)
+    );
+    assert!(matches!(
+        execute(
+            &store,
+            storage.first_acceptance(storage.revision(&store).unwrap(), acceptance.clone()),
+        ),
+        CommandOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(
+        storage
+            .first_acceptance_status(&store, &acceptance, read_limit())
+            .unwrap(),
+        FirstAcceptanceStatus::ExactNew(FirstAcceptanceKind::Accepted)
+    );
+    let collision = acceptance_with_timestamp(&acceptance, 76);
+    assert_eq!(
+        storage
+            .first_acceptance_status(&store, &collision, read_limit())
+            .unwrap(),
+        FirstAcceptanceStatus::Collision
+    );
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn queued_marker_free_first_acceptance_leaves_the_independent_head_unchanged() {
+    let (_home, store, storage, thread) = fixture("queued-marker-free-acceptance", 44);
+    let root = replace_empty(
+        storage,
+        &store,
+        thread,
+        45,
+        vec![DraftPieceV1::Text("queued".to_owned())],
+    );
+    publish_candidate(
+        storage,
+        &store,
+        thread,
+        DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
+        47,
+    );
+    let candidate = DraftEditorCandidateActivationBindingV1::from_head(&candidate_head(
+        storage, &store, thread,
+    ));
+    let materialization = materialize(storage, &store, materialization_key(root, 48));
+    let current = storage
+        .current_draft(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let idle_gate = storage
+        .input_gate(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let pending_gate = InputGateRecord::new(
+        thread,
+        idle_gate.revision().checked_next().unwrap(),
+        InputGateState::PendingTurn(SyndicTurnId::from_bytes([49; 16])),
+        0,
+        None,
+        None,
+        0,
+        0,
+        0,
+    )
+    .unwrap();
+    let mut batch = FixtureBatch::new();
+    batch
+        .put(FixtureRecord::InputGate(pending_gate.clone()))
+        .unwrap();
+    committed(execute(
+        &store,
+        storage.fixture_contribution(storage.revision(&store).unwrap(), batch),
+    ));
+    let head = storage
+        .image_label_authority_head(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let acceptance = FirstAcceptance::new(
+        thread,
+        current.thread().revision(),
+        head,
+        current.draft().id(),
+        current.draft().revision(),
+        candidate,
+        materialization,
+        pending_gate.revision(),
+        pending_gate.state().clone(),
+        SyndicDraftId::from_bytes([50; 16]),
+        SyndicItemId::from_bytes([51; 16]),
+        None,
+        DraftPieceOperationIdV1::from_bytes([52; 16]),
+        SyndicTimestamp::from_unix_millis(53),
+    );
+    committed(execute(
+        &store,
+        storage.first_acceptance(storage.revision(&store).unwrap(), acceptance.clone()),
+    ));
+    assert_eq!(
+        storage
+            .image_label_authority_head(&store, thread, read_limit())
+            .unwrap(),
+        Some(head)
+    );
+    assert_eq!(
+        storage
+            .first_acceptance_status(&store, &acceptance, read_limit())
+            .unwrap(),
+        FirstAcceptanceStatus::ExactNew(FirstAcceptanceKind::Accepted)
+    );
 }
 
 #[test]

@@ -110,7 +110,6 @@ fn seed_ordinary_ready_source(
                 ),
                 current_thread.current_draft_id(),
                 current_thread.lineage(),
-                current_thread.image_label_frontiers(),
                 current_thread.context_owner_id(),
             )),
             FixtureRecord::DraftByThread(DraftByThreadRecord::new(

@@ -100,7 +100,6 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
                 ThreadLineageDepth::new(depth).unwrap(),
                 digest,
             ),
-            ThreadImageLabelFrontiers::empty(),
             None,
         );
         fixture_batch
@@ -165,7 +164,6 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
         ),
         leaf.current_draft_id(),
         leaf.lineage(),
-        leaf.image_label_frontiers(),
         leaf.context_owner_id(),
     );
     commit(&store, storage, batch([FixtureRecord::Thread(replacement)]));
@@ -229,11 +227,6 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
         parent.selected_path(),
         parent.current_draft_id(),
         parent.lineage(),
-        ThreadImageLabelFrontiers::new(
-            ImageLabelFrontier::EMPTY,
-            ImageLabelFrontier::from_raw(label.get()),
-        )
-        .unwrap(),
         parent.context_owner_id(),
     );
     let child = ThreadRecord::new(
@@ -241,11 +234,6 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
         child.selected_path(),
         child.current_draft_id(),
         child.lineage(),
-        ThreadImageLabelFrontiers::new(
-            ImageLabelFrontier::from_raw(label.get()),
-            ImageLabelFrontier::from_raw(label.get()),
-        )
-        .unwrap(),
         child.context_owner_id(),
     );
     let origin = ImageLabelOriginSpanRecord::new(
@@ -261,7 +249,25 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
         storage,
         batch([
             FixtureRecord::Thread(parent),
+            FixtureRecord::ImageLabelAuthorityHead(
+                ImageLabelAuthorityHeadV1::new(
+                    parent_id,
+                    2,
+                    ImageLabelFrontier::EMPTY,
+                    ImageLabelFrontier::from_raw(label.get()),
+                )
+                .unwrap(),
+            ),
             FixtureRecord::Thread(child),
+            FixtureRecord::ImageLabelAuthorityHead(
+                ImageLabelAuthorityHeadV1::new(
+                    child_id,
+                    2,
+                    ImageLabelFrontier::from_raw(label.get()),
+                    ImageLabelFrontier::from_raw(label.get()),
+                )
+                .unwrap(),
+            ),
             FixtureRecord::ImageLabelOriginSpan(origin),
         ]),
     );

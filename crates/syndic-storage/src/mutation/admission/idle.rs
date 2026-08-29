@@ -49,12 +49,14 @@ pub(super) fn records(
     };
     let (depth, digest, ancestor_skip) =
         crate::mutation::admission_helpers::turn_shape(reader, turn_id, parent)?;
-    let (image_label_frontiers, origin_span) = super::shared::advance_image_label_authority(
-        reader,
-        &base.thread,
-        crate::ImageLabelOriginOwner::CanonicalItem(acceptance.idle_user_item_id()),
-        acceptance.asset_reference_set(),
-    )?;
+    let (advanced_image_label_authority, origin_span) =
+        super::shared::advance_image_label_authority(
+            reader,
+            &base.thread,
+            base.image_label_authority,
+            crate::ImageLabelOriginOwner::CanonicalItem(acceptance.idle_user_item_id()),
+            acceptance.asset_reference_set(),
+        )?;
     let thread_revision = base.thread.revision().checked_next()?;
     let selected_path = SelectedPathProof::new(Some(turn_id), thread_revision, digest);
     let thread = ThreadRecord::new(
@@ -62,7 +64,6 @@ pub(super) fn records(
         selected_path,
         acceptance.next_draft_id(),
         base.thread.lineage(),
-        image_label_frontiers,
         context_owner.or(base.thread.context_owner_id()),
     );
     let (draft, draft_index) = super::shared::fresh_draft(acceptance, &base, &thread)?;
@@ -210,6 +211,7 @@ pub(super) fn records(
             fresh_history: base.fresh_history,
             disposed_session: base.disposed_session,
             origin_span,
+            advanced_image_label_authority,
             summary,
             gate,
             thread_parent_index,

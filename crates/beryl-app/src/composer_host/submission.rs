@@ -241,6 +241,10 @@ impl SyndicComposerHost {
             .storage
             .current_draft(store, thread_id, submission_point_limit())?
             .ok_or(ComposerHostError::MissingCurrentDraft)?;
+        let image_label_authority = self
+            .storage
+            .image_label_authority_head(store, thread_id, submission_point_limit())?
+            .ok_or(ComposerHostError::MissingImageLabelAuthority)?;
         if current.draft().id() != candidate.draft_id()
             || current.draft().root_history() != published_pair
         {
@@ -274,6 +278,7 @@ impl SyndicComposerHost {
                 thread_id,
                 candidate,
                 thread_revision: current.thread().revision(),
+                image_label_authority,
                 draft_revision: current.draft().revision(),
                 gate_revision: gate.revision(),
                 gate_state: gate.state().clone(),
@@ -355,6 +360,7 @@ impl SyndicComposerHost {
                 let acceptance = FirstAcceptance::new(
                     captured.thread_id,
                     captured.thread_revision,
+                    captured.image_label_authority,
                     captured.candidate.draft_id(),
                     captured.draft_revision,
                     captured.candidate,

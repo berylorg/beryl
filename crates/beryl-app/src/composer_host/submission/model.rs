@@ -4,7 +4,7 @@ use beryl_home_store::{
 use beryl_model::{SyndicDraftId, SyndicItemId};
 use syndic_storage::{
     DraftComposerBuildKeyV1, DraftComposerMaterializationOperationIdV1, DraftPieceOperationIdV1,
-    FirstAcceptance, FirstAcceptanceKind, SyndicTimestamp,
+    FirstAcceptance, FirstAcceptanceKind, ImageLabelAuthorityHeadV1, SyndicTimestamp,
 };
 
 use super::super::{ComposerHostBinding, ComposerHostError, ComposerHostFlushTicket};
@@ -198,6 +198,7 @@ pub(super) struct CapturedSubmission {
     pub(super) thread_id: beryl_model::SyndicThreadId,
     pub(super) candidate: syndic_storage::DraftEditorCandidateActivationBindingV1,
     pub(super) thread_revision: beryl_model::ThreadRevision,
+    pub(super) image_label_authority: ImageLabelAuthorityHeadV1,
     pub(super) draft_revision: beryl_model::DraftRevision,
     pub(super) gate_revision: beryl_model::InputGateRevision,
     pub(super) gate_state: syndic_storage::InputGateState,

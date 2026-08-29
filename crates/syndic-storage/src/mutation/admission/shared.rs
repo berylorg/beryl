@@ -13,15 +13,17 @@ use crate::{
     DraftEditorCandidateSessionRecordV1, DraftEditorCandidateSessionV1,
     DraftEditorCandidateSessionsCodec, DraftEditorCandidateSessionsFamily, DraftPieceRootRecordV1,
     DraftPieceRootsCodec, DraftPieceRootsFamily, DraftRecord, DraftRootHistoryPairV1,
-    DraftSubmissionIntent, HistorySummaryRecord, ImageLabelOriginSpanRecord, InputGateRecord,
-    ThreadParentIndexRecord, ThreadRecord, TranscriptBuildRecord, TranscriptViewHeadRecord,
-    TurnChildIndexRecord, TurnItemIndexRecord, TurnRecord, TurnStateRecord,
-    authenticate_draft_edit_history_frontier_v1, canonical_empty_draft_edit_history_v1,
-    canonical_empty_draft_piece_root_v1, canonical_empty_draft_root_operation_id_v1,
+    DraftSubmissionIntent, HistorySummaryRecord, ImageLabelAuthorityHeadV1,
+    ImageLabelOriginSpanRecord, InputGateRecord, ThreadParentIndexRecord, ThreadRecord,
+    TranscriptBuildRecord, TranscriptViewHeadRecord, TurnChildIndexRecord, TurnItemIndexRecord,
+    TurnRecord, TurnStateRecord, authenticate_draft_edit_history_frontier_v1,
+    canonical_empty_draft_edit_history_v1, canonical_empty_draft_piece_root_v1,
+    canonical_empty_draft_root_operation_id_v1,
 };
 
 pub(super) struct AcceptanceBase {
     pub(super) thread: ThreadRecord,
+    pub(super) image_label_authority: ImageLabelAuthorityHeadV1,
     pub(super) draft: DraftRecord,
     pub(super) gate: InputGateRecord,
     pub(super) summary: HistorySummaryRecord,
@@ -69,6 +71,7 @@ pub(super) fn reserve_acceptance_records(
     reservation.reserve_records::<AcceptedReadySourcesCodec>(1)?;
     reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
     reservation.reserve_records::<ImageLabelOriginSpansCodec>(1)?;
+    reservation.reserve_records::<ImageLabelAuthorityHeadsCodec>(1)?;
     reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
     reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
     reservation.reserve_records::<HistorySummariesCodec>(1)?;
@@ -92,6 +95,14 @@ pub(super) fn load_base(
             expected: acceptance.expected_thread_revision(),
             current: thread.revision(),
         });
+    }
+    let image_label_authority =
+        required::<ImageLabelAuthorityHeadsFamily>(reader, &acceptance.thread_id())?;
+    if !image_label_authority.is_exact()
+        || image_label_authority.thread_id() != thread.id()
+        || image_label_authority != acceptance.expected_image_label_authority()
+    {
+        return Err(SyndicMutationError::ImageLabelAuthorityConflict);
     }
     let draft = current_draft(reader, acceptance.thread_id())?;
     if draft.id() != acceptance.draft_id() {
@@ -205,6 +216,7 @@ pub(super) fn load_base(
     }
     Ok(AcceptanceBase {
         thread,
+        image_label_authority,
         draft,
         gate,
         summary,
@@ -260,6 +272,7 @@ pub(super) struct CommonRecords {
     pub(super) fresh_history: DraftEditHistoryFrontierV1,
     pub(super) disposed_session: DraftEditorCandidateSessionV1,
     pub(super) origin_span: Option<ImageLabelOriginSpanRecord>,
+    pub(super) advanced_image_label_authority: Option<ImageLabelAuthorityHeadV1>,
     pub(super) summary: HistorySummaryRecord,
     pub(super) gate: InputGateRecord,
     pub(super) thread_parent_index: Option<ThreadParentIndexRecord>,
@@ -295,6 +308,9 @@ impl CommonRecords {
                 },
                 span,
             )?;
+        }
+        if let Some(head) = &self.advanced_image_label_authority {
+            mutations.put::<ImageLabelAuthorityHeadsCodec>(&head.thread_id(), head)?;
         }
         mutations.put::<HistorySummariesCodec>(&self.thread.id(), &self.summary)?;
         mutations.put::<InputGatesCodec>(&self.thread.id(), &self.gate)?;
@@ -370,29 +386,31 @@ pub(super) fn thread_parent_index(thread: &ThreadRecord) -> Option<ThreadParentI
 pub(super) fn advance_image_label_authority(
     reader: &DomainReader<'_, SyndicDomain>,
     thread: &ThreadRecord,
+    head: ImageLabelAuthorityHeadV1,
     owner: crate::ImageLabelOriginOwner,
     proof: Option<SealedAssetReferenceSetProof>,
 ) -> Result<
     (
-        crate::ThreadImageLabelFrontiers,
+        Option<ImageLabelAuthorityHeadV1>,
         Option<ImageLabelOriginSpanRecord>,
     ),
     SyndicMutationError,
 > {
-    let frontiers = thread.image_label_frontiers();
+    if !head.is_exact() || head.thread_id() != thread.id() {
+        return Err(SyndicMutationError::ImageLabelAuthorityConflict);
+    }
     let Some(proof) = proof else {
-        return Ok((frontiers, None));
+        return Ok((None, None));
     };
     let end = proof
         .sequential()
         .maximum_image_label()
         .ok_or(SyndicMutationError::AssetReferenceSetConflict)?;
-    if frontiers.current().contains(end) {
-        return Ok((frontiers, None));
+    if head.permanent().contains(end) {
+        return Ok((None, None));
     }
     let start = crate::ImageLabelOrdinal::new(
-        frontiers
-            .current()
+        head.permanent()
             .get()
             .checked_add(1)
             .ok_or(SyndicMutationError::AssetReferenceSetConflict)?,
@@ -410,11 +428,8 @@ pub(super) fn advance_image_label_authority(
     {
         return Err(SyndicMutationError::AssetReferenceSetConflict);
     }
-    let advanced = crate::ThreadImageLabelFrontiers::new(
-        frontiers.inherited(),
-        crate::ImageLabelFrontier::from_raw(end.get()),
-    )?;
-    Ok((advanced, Some(span)))
+    let advanced = head.advanced(crate::ImageLabelFrontier::from_raw(end.get()))?;
+    Ok((Some(advanced), Some(span)))
 }
 
 pub(super) fn validate_replacement_intent(

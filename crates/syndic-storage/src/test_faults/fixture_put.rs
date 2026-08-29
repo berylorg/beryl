@@ -10,6 +10,9 @@ pub(super) fn put_record(
 ) -> Result<(), FixtureMutationError> {
     match record {
         FixtureRecord::Thread(v) => builder.put::<ThreadsCodec>(&v.id(), v)?,
+        FixtureRecord::ImageLabelAuthorityHead(v) => {
+            builder.put::<ImageLabelAuthorityHeadsCodec>(&v.thread_id(), v)?
+        }
         FixtureRecord::ThreadExecution(v) => {
             builder.put::<ThreadExecutionsCodec>(&v.thread_id(), v)?
         }

@@ -133,6 +133,7 @@ pub enum SyndicMutationError {
     EmptySubmission,
     AdmissionIdentityCollision,
     AssetReferenceSetConflict,
+    ImageLabelAuthorityConflict,
     ReplacementEditAlreadyActive,
     ReplacementEditNotActive,
     ReplacementDraftNotEmpty,
@@ -363,6 +364,9 @@ impl fmt::Display for SyndicMutationError {
             }
             Self::AssetReferenceSetConflict => {
                 formatter.write_str("sealed asset-reference proof disagrees with the content")
+            }
+            Self::ImageLabelAuthorityConflict => {
+                formatter.write_str("image-label authority head changed or is corrupt")
             }
             Self::ReplacementEditAlreadyActive => {
                 formatter.write_str("the current draft already has replacement-edit intent")

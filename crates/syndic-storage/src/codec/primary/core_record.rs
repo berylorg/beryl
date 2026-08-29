@@ -1,5 +1,40 @@
 use super::*;
 
+pub(super) fn encode_image_label_authority_head(
+    value: &ImageLabelAuthorityHeadV1,
+) -> Result<Vec<u8>, CodecError> {
+    if !value.is_exact() {
+        return Err(CodecError::InvalidLength("image-label authority head"));
+    }
+    let mut e = Encoder::new();
+    enc_thread(&mut e, value.thread_id());
+    e.u64(value.revision());
+    enc_image_label_frontier(&mut e, value.inherited());
+    enc_image_label_frontier(&mut e, value.permanent());
+    e.fixed32(&value.digest());
+    Ok(e.finish())
+}
+
+pub(super) fn decode_image_label_authority_head(
+    bytes: &[u8],
+) -> Result<ImageLabelAuthorityHeadV1, CodecError> {
+    let mut d = Decoder::new(bytes);
+    let thread_id = dec_thread(&mut d)?;
+    let revision = d.u64()?;
+    let inherited = dec_image_label_frontier(&mut d)?;
+    let permanent = dec_image_label_frontier(&mut d)?;
+    let digest = d.fixed32()?;
+    d.finish()?;
+    let value = ImageLabelAuthorityHeadV1::new(thread_id, revision, inherited, permanent)
+        .map_err(|source| invalid("image-label authority head", source))?;
+    if value.digest() != digest {
+        return Err(CodecError::InvalidLength(
+            "image-label authority head digest",
+        ));
+    }
+    Ok(value)
+}
+
 pub(super) fn encode_thread_record(value: &ThreadRecord) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
     enc_thread(&mut e, value.id());
@@ -10,8 +45,6 @@ pub(super) fn encode_thread_record(value: &ThreadRecord) -> Result<Vec<u8>, Code
     enc_opt(&mut e, value.lineage_ancestor_skip(), enc_thread);
     enc_thread_lineage_depth(&mut e, value.lineage_depth());
     enc_path_digest(&mut e, value.lineage_digest());
-    enc_image_label_frontier(&mut e, value.image_label_frontiers().inherited());
-    enc_image_label_frontier(&mut e, value.image_label_frontiers().current());
     enc_opt(&mut e, value.context_owner_id(), enc_context_owner);
     enc_path_digest(&mut e, value.selected_path_digest());
     Ok(e.finish())
@@ -27,11 +60,6 @@ pub(super) fn decode_thread_record(bytes: &[u8]) -> Result<ThreadRecord, CodecEr
     let lineage_ancestor_skip = dec_opt(&mut d, "thread-lineage ancestor skip", dec_thread)?;
     let lineage_depth = dec_thread_lineage_depth(&mut d)?;
     let lineage_digest = dec_path_digest(&mut d)?;
-    let image_label_frontiers = crate::ThreadImageLabelFrontiers::new(
-        dec_image_label_frontier(&mut d)?,
-        dec_image_label_frontier(&mut d)?,
-    )
-    .map_err(|source| invalid("thread image-label frontiers", source))?;
     let context_owner_id = dec_opt(&mut d, "context owner", dec_context_owner)?;
     let selected_path_digest = dec_path_digest(&mut d)?;
     let value = ThreadRecord::new(
@@ -44,7 +72,6 @@ pub(super) fn decode_thread_record(bytes: &[u8]) -> Result<ThreadRecord, CodecEr
             lineage_depth,
             lineage_digest,
         ),
-        image_label_frontiers,
         context_owner_id,
     );
     d.finish()?;

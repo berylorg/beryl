@@ -65,7 +65,6 @@ fn same_home_path_records(
             ThreadLineageDepth::FIRST,
             root_thread_lineage_digest(thread),
         ),
-        ThreadImageLabelFrontiers::empty(),
         None,
     );
     let execution = ThreadExecutionRecord::new(

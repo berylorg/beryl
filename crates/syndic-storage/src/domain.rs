@@ -10,6 +10,7 @@ use crate::{codec::*, draft_piece::*, error::SyndicValidationError};
 
 const V7_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<ThreadsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<ImageLabelAuthorityHeadsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ThreadExecutionsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ThreadAttributesCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ThreadUsageCodec>(KeyspaceSchemaVersion::new(1)),
@@ -90,7 +91,7 @@ const V7_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<CasTurnIndexCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ProviderObservationChunksCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 80] = [(); V7_FAMILIES.len()];
+const _: [(); 81] = [(); V7_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
 pub(crate) fn v7_family_names() -> impl Iterator<Item = &'static str> {
@@ -121,6 +122,7 @@ impl StorageDomain for SyndicDomain {
             };
         }
         classify!(ThreadsCodec);
+        classify!(ImageLabelAuthorityHeadsCodec);
         classify!(ThreadExecutionsCodec);
         classify!(ThreadAttributesCodec);
         classify!(ThreadUsageCodec);

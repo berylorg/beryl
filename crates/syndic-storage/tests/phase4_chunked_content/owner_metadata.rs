@@ -45,7 +45,6 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
             ),
             initial_thread.current_draft_id(),
             initial_thread.lineage(),
-            initial_thread.image_label_frontiers(),
             initial_thread.context_owner_id(),
         )),
         FixtureRecord::DraftByThread(DraftByThreadRecord::new(

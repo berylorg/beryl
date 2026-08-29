@@ -181,7 +181,6 @@ impl SettleLifecycleMutation {
             selected,
             current_thread.current_draft_id(),
             current_thread.lineage(),
-            current_thread.image_label_frontiers(),
             current_thread.context_owner_id(),
         );
         let draft_index = crate::DraftByThreadRecord::new(

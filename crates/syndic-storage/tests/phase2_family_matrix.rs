@@ -154,7 +154,7 @@ fn exercise_accepted_deletion(family: PhysicalFamily, delete: FixtureDelete) {
 #[test]
 fn populated_fixture_covers_every_resting_family_and_reopens_cleanly() {
     let records = populated_records();
-    assert_eq!(PhysicalFamily::ALL.len(), 61);
+    assert_eq!(PhysicalFamily::ALL.len(), 62);
     // Provider staging, stop-operation, and compaction families are covered by their dedicated
     // phase fixtures rather than this legacy populated aggregate. Resource families are
     // intentionally unrepresented because the fixture's plain provider text produces no typed

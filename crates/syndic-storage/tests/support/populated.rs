@@ -130,9 +130,17 @@ pub fn populated_records() -> Vec<FixtureRecord> {
                 syndic_storage::ThreadLineageDepth::FIRST,
                 syndic_storage::root_thread_lineage_digest(source_thread),
             ),
-            syndic_storage::ThreadImageLabelFrontiers::empty(),
             None,
         )),
+        FixtureRecord::ImageLabelAuthorityHead(
+            ImageLabelAuthorityHeadV1::new(
+                source_thread,
+                1,
+                ImageLabelFrontier::EMPTY,
+                ImageLabelFrontier::EMPTY,
+            )
+            .unwrap(),
+        ),
         FixtureRecord::ThreadExecution(source_execution),
         FixtureRecord::ThreadAttributes(source_attributes),
         FixtureRecord::ThreadUsage(source_usage),

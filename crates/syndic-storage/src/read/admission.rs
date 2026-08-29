@@ -8,7 +8,8 @@ use crate::{
     DraftEditorCandidateSessionRecordV1, DraftEditorCandidateSessionV1,
     DraftEditorCandidateSessionsFamily, DraftPieceRootKeyV1, DraftPieceRootRecordV1,
     DraftPieceRootsFamily, DraftRecord, FirstAcceptance, FirstAcceptanceKind,
-    FirstAcceptanceStatus, InputGateRecord, SyndicReadError, ThreadRecord, TurnItemOrdinal,
+    FirstAcceptanceStatus, ImageLabelAuthorityHeadV1, ImageLabelOriginOwner,
+    ImageLabelOriginSpanRecord, InputGateRecord, SyndicReadError, ThreadRecord, TurnItemOrdinal,
     TurnKind, TurnRecord, canonical_empty_draft_edit_history_v1,
     canonical_empty_draft_piece_root_v1, canonical_empty_draft_root_operation_id_v1, codec::*,
     domain::SyndicStorage,
@@ -21,6 +22,8 @@ use super::SyndicPointReadLimit;
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct FirstAcceptanceObservation {
     thread: Option<ThreadRecord>,
+    image_label_authority: Option<ImageLabelAuthorityHeadV1>,
+    image_label_origin_span: Option<ImageLabelOriginSpanRecord>,
     source_draft: Option<DraftRecord>,
     next_draft: Option<DraftRecord>,
     gate: Option<InputGateRecord>,
@@ -92,8 +95,28 @@ impl FirstAcceptanceObservation {
             acceptance.accepted_input_id(),
             limit,
         )?;
+        let image_label_origin_span = match acceptance
+            .asset_reference_set()
+            .and_then(|proof| proof.sequential().maximum_image_label())
+        {
+            Some(end_label) => storage.point::<ImageLabelOriginSpansFamily>(
+                store,
+                ImageLabelOriginSpanKey {
+                    thread: acceptance.thread_id(),
+                    end_label,
+                },
+                limit,
+            )?,
+            None => None,
+        };
         Ok(Self {
             thread: storage.point::<ThreadsFamily>(store, acceptance.thread_id(), limit)?,
+            image_label_authority: storage.point::<ImageLabelAuthorityHeadsFamily>(
+                store,
+                acceptance.thread_id(),
+                limit,
+            )?,
+            image_label_origin_span,
             source_draft: storage.point::<DraftsFamily>(store, acceptance.draft_id(), limit)?,
             next_draft: storage.point::<DraftsFamily>(store, acceptance.next_draft_id(), limit)?,
             gate: storage.point::<InputGatesFamily>(store, acceptance.thread_id(), limit)?,
@@ -141,16 +164,18 @@ impl FirstAcceptanceObservation {
             thread.id() == acceptance.thread_id()
                 && thread.revision() == acceptance.expected_thread_revision()
                 && thread.current_draft_id() == acceptance.draft_id()
-        }) && self.source_draft.as_ref().is_some_and(|draft| {
-            draft.id() == acceptance.draft_id()
-                && draft.thread_id() == acceptance.thread_id()
-                && draft.revision() == acceptance.expected_draft_revision()
-                && draft.root_history()
-                    == crate::DraftRootHistoryPairV1::new(
-                        acceptance.candidate().root(),
-                        acceptance.candidate().history(),
-                    )
-        }) && self.next_draft.is_none()
+        }) && self.image_label_authority == Some(acceptance.expected_image_label_authority())
+            && self.source_draft.as_ref().is_some_and(|draft| {
+                draft.id() == acceptance.draft_id()
+                    && draft.thread_id() == acceptance.thread_id()
+                    && draft.revision() == acceptance.expected_draft_revision()
+                    && draft.root_history()
+                        == crate::DraftRootHistoryPairV1::new(
+                            acceptance.candidate().root(),
+                            acceptance.candidate().history(),
+                        )
+            })
+            && self.next_draft.is_none()
             && self.gate.as_ref().is_some_and(|gate| {
                 gate.revision() == acceptance.expected_gate_revision()
                     && gate.state() == acceptance.expected_gate_state()
@@ -168,6 +193,9 @@ impl FirstAcceptanceObservation {
     }
 
     fn is_exact_new(&self, acceptance: &FirstAcceptance) -> Result<bool, SyndicReadError> {
+        let Some((expected_head, expected_span)) = expected_image_label_records(acceptance) else {
+            return Ok(false);
+        };
         let session_exact = self.session.as_ref().is_some_and(|record| {
             matches!(record, DraftEditorCandidateSessionRecordV1::Head(session)
                 if disposed_session_is_exact(session, acceptance))
@@ -179,6 +207,10 @@ impl FirstAcceptanceObservation {
             self.fresh_history.as_ref(),
         )?;
         let common = self.source_draft.is_none()
+            && self.image_label_authority == Some(expected_head)
+            && expected_span
+                .as_ref()
+                .is_none_or(|span| self.image_label_origin_span.as_ref() == Some(span))
             && self.source_authority_is_exact(acceptance)
             && session_exact
             && fresh_exact;
@@ -300,6 +332,40 @@ fn expected_kind(acceptance: &FirstAcceptance) -> FirstAcceptanceKind {
     } else {
         FirstAcceptanceKind::Accepted
     }
+}
+
+fn expected_image_label_records(
+    acceptance: &FirstAcceptance,
+) -> Option<(
+    ImageLabelAuthorityHeadV1,
+    Option<ImageLabelOriginSpanRecord>,
+)> {
+    let head = acceptance.expected_image_label_authority();
+    if !head.is_exact() || head.thread_id() != acceptance.thread_id() {
+        return None;
+    }
+    let Some(proof) = acceptance.asset_reference_set() else {
+        return Some((head, None));
+    };
+    let end = proof.sequential().maximum_image_label()?;
+    if head.permanent().contains(end) {
+        return Some((head, None));
+    }
+    let start = crate::ImageLabelOrdinal::new(head.permanent().get().checked_add(1)?).ok()?;
+    let owner = match expected_kind(acceptance) {
+        FirstAcceptanceKind::Idle { user_item_id } => {
+            ImageLabelOriginOwner::CanonicalItem(user_item_id)
+        }
+        FirstAcceptanceKind::Accepted => {
+            ImageLabelOriginOwner::AcceptedInput(acceptance.accepted_input_id())
+        }
+    };
+    let span =
+        ImageLabelOriginSpanRecord::new(acceptance.thread_id(), start, end, owner, proof).ok()?;
+    let advanced = head
+        .advanced(crate::ImageLabelFrontier::from_raw(end.get()))
+        .ok()?;
+    Some((advanced, Some(span)))
 }
 
 fn active_session_is_exact(

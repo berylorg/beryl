@@ -78,7 +78,6 @@ pub fn next_turn_records(
                     ),
                     current.current_draft_id(),
                     current.lineage(),
-                    current.image_label_frontiers(),
                     current.context_owner_id(),
                 );
             }

@@ -332,7 +332,6 @@ pub fn seed_large_ready_generation(store: &HomeStore, storage: SyndicStorage, la
             ),
             thread_record.current_draft_id(),
             thread_record.lineage(),
-            thread_record.image_label_frontiers(),
             thread_record.context_owner_id(),
         )),
         FixtureRecord::DraftByThread(DraftByThreadRecord::new(

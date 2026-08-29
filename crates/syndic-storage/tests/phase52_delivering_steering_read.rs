@@ -75,7 +75,6 @@ fn seed_large_delivering_generation(
             ),
             current_thread.current_draft_id(),
             current_thread.lineage(),
-            current_thread.image_label_frontiers(),
             current_thread.context_owner_id(),
         )),
         FixtureRecord::DraftByThread(DraftByThreadRecord::new(
@@ -174,7 +173,6 @@ fn seed_large_delivering_generation(
                     ),
                     record.current_draft_id(),
                     record.lineage(),
-                    record.image_label_frontiers(),
                     record.context_owner_id(),
                 );
             }

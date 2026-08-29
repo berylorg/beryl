@@ -7,8 +7,8 @@ use beryl_model::{
 use crate::{
     AcceptedInputOrdinal, AcceptedRouteGeneration, ContentReference, ContextEnvelopeRevision,
     ConversationParent, CurrentTranscriptEntryProof, DiscussionContextEnvelope, SelectedPathProof,
-    SyndicTimestamp, ThreadImageLabelFrontiers, ThreadLineageDepth, TurnDepth, TurnEndStatus,
-    TurnIncompleteReason, TurnKind, TurnLifecycle, TurnStateRevision, TurnTerminalOutcome,
+    SyndicTimestamp, ThreadLineageDepth, TurnDepth, TurnEndStatus, TurnIncompleteReason, TurnKind,
+    TurnLifecycle, TurnStateRevision, TurnTerminalOutcome,
 };
 
 mod accepted;

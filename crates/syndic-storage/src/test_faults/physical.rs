@@ -70,6 +70,9 @@ pub fn inject_physical_corruption(
 
     match family {
         PhysicalFamily::Threads => inject::<ThreadsFamily>(store, storage, thread, corruption),
+        PhysicalFamily::ImageLabelAuthorityHeads => {
+            inject::<ImageLabelAuthorityHeadsFamily>(store, storage, thread, corruption)
+        }
         PhysicalFamily::ThreadExecutions => {
             inject::<ThreadExecutionsFamily>(store, storage, thread, corruption)
         }
@@ -617,7 +620,6 @@ fn representative_thread(thread: SyndicThreadId, draft: SyndicDraftId) -> crate:
             crate::ThreadLineageDepth::FIRST,
             crate::root_thread_lineage_digest(thread),
         ),
-        crate::ThreadImageLabelFrontiers::empty(),
         None,
     )
 }

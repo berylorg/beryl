@@ -24,6 +24,9 @@ impl FixtureOperation {
             Self::Put(record) => record.family(),
             Self::Delete(key) => match key {
                 FixtureDelete::Thread(_) => super::PhysicalFamily::Threads,
+                FixtureDelete::ImageLabelAuthorityHead(_) => {
+                    super::PhysicalFamily::ImageLabelAuthorityHeads
+                }
                 FixtureDelete::ThreadExecution(_) => super::PhysicalFamily::ThreadExecutions,
                 FixtureDelete::ThreadAttributes(_) => super::PhysicalFamily::ThreadAttributes,
                 FixtureDelete::ThreadUsage(_) => super::PhysicalFamily::ThreadUsage,
@@ -250,6 +253,9 @@ fn reserve_fixture_family(
 
     match family {
         super::PhysicalFamily::Threads => reserve!(ThreadsCodec),
+        super::PhysicalFamily::ImageLabelAuthorityHeads => {
+            reserve!(ImageLabelAuthorityHeadsCodec)
+        }
         super::PhysicalFamily::ThreadExecutions => reserve!(ThreadExecutionsCodec),
         super::PhysicalFamily::ThreadAttributes => reserve!(ThreadAttributesCodec),
         super::PhysicalFamily::ThreadUsage => reserve!(ThreadUsageCodec),

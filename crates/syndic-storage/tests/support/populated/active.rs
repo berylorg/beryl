@@ -210,13 +210,17 @@ pub(super) fn records() -> Vec<FixtureRecord> {
                 syndic_storage::ThreadLineageDepth::FIRST,
                 syndic_storage::root_thread_lineage_digest(thread),
             ),
-            syndic_storage::ThreadImageLabelFrontiers::new(
-                syndic_storage::ImageLabelFrontier::EMPTY,
-                syndic_storage::ImageLabelFrontier::from_raw(1),
-            )
-            .unwrap(),
             None,
         )),
+        FixtureRecord::ImageLabelAuthorityHead(
+            ImageLabelAuthorityHeadV1::new(
+                thread,
+                2,
+                ImageLabelFrontier::EMPTY,
+                ImageLabelFrontier::from_raw(1),
+            )
+            .unwrap(),
+        ),
         FixtureRecord::ThreadExecution(thread_execution),
         FixtureRecord::ThreadAttributes(thread_attributes),
         FixtureRecord::ThreadUsage(thread_usage),

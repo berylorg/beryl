@@ -72,7 +72,6 @@ fn seed_large_route(store: &HomeStore, storage: SyndicStorage, last_ordinal: u64
             ),
             thread_record.current_draft_id(),
             thread_record.lineage(),
-            thread_record.image_label_frontiers(),
             thread_record.context_owner_id(),
         )),
         FixtureRecord::DraftByThread(DraftByThreadRecord::new(

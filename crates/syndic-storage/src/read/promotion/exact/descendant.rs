@@ -29,14 +29,6 @@ pub(super) fn accepted_admission_descendant_count(
         (None, None) => 0,
         _ => return None,
     };
-    let expected_labels = expected_thread.image_label_frontiers();
-    let current_labels = thread.image_label_frontiers();
-    let labels_agree = current_labels.inherited() == expected_labels.inherited()
-        && if thread_advance == 0 {
-            current_labels.current() == expected_labels.current()
-        } else {
-            current_labels.current() >= expected_labels.current()
-        };
     let draft_identity_agrees = if thread_advance == 0 {
         thread.current_draft_id() == expected_thread.current_draft_id()
     } else {
@@ -52,7 +44,6 @@ pub(super) fn accepted_admission_descendant_count(
         && thread.selected_path_digest() == expected_thread.selected_path_digest()
         && thread.lineage() == expected_thread.lineage()
         && thread.context_owner_id() == expected_thread.context_owner_id()
-        && labels_agree
         && draft_identity_agrees
         && gate.thread_id() == expected_gate.thread_id()
         && gate.state() == expected_gate.state()

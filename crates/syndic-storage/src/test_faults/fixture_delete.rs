@@ -10,6 +10,9 @@ pub(super) fn delete_record(
 ) -> Result<(), FixtureMutationError> {
     match key {
         FixtureDelete::Thread(v) => builder.delete::<ThreadsCodec>(v)?,
+        FixtureDelete::ImageLabelAuthorityHead(v) => {
+            builder.delete::<ImageLabelAuthorityHeadsCodec>(v)?
+        }
         FixtureDelete::ThreadExecution(v) => builder.delete::<ThreadExecutionsCodec>(v)?,
         FixtureDelete::ThreadAttributes(v) => builder.delete::<ThreadAttributesCodec>(v)?,
         FixtureDelete::ThreadUsage(v) => builder.delete::<ThreadUsageCodec>(v)?,

@@ -328,7 +328,6 @@ pub(super) fn queue_input(
             ),
             replacement,
             current.thread().lineage(),
-            current.thread().image_label_frontiers(),
             current.thread().context_owner_id(),
         )),
         FixtureRecord::Draft(DraftRecord::new(

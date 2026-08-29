@@ -77,7 +77,6 @@ impl PromotionRecords {
             selected_path,
             basis.thread().current_draft_id(),
             basis.thread().lineage(),
-            basis.thread().image_label_frontiers(),
             basis.thread().context_owner_id(),
         );
         let draft_index = DraftByThreadRecord::new(

@@ -8,8 +8,8 @@ use beryl_model::{
 
 use crate::{
     DraftComposerMaterializationRecordV1, DraftEditorCandidateActivationBindingV1,
-    DraftPieceOperationIdV1, InputGateState, SyndicMutationError, SyndicStorage, SyndicTimestamp,
-    codec::*, domain::SyndicDomain,
+    DraftPieceOperationIdV1, ImageLabelAuthorityHeadV1, InputGateState, SyndicMutationError,
+    SyndicStorage, SyndicTimestamp, codec::*, domain::SyndicDomain,
 };
 
 mod accepted;
@@ -36,6 +36,7 @@ pub enum FirstAcceptanceStatus {
 pub struct FirstAcceptance {
     thread_id: SyndicThreadId,
     expected_thread_revision: ThreadRevision,
+    expected_image_label_authority: ImageLabelAuthorityHeadV1,
     draft_id: SyndicDraftId,
     expected_draft_revision: DraftRevision,
     candidate: DraftEditorCandidateActivationBindingV1,
@@ -54,6 +55,7 @@ impl FirstAcceptance {
     pub const fn new(
         thread_id: SyndicThreadId,
         expected_thread_revision: ThreadRevision,
+        expected_image_label_authority: ImageLabelAuthorityHeadV1,
         draft_id: SyndicDraftId,
         expected_draft_revision: DraftRevision,
         candidate: DraftEditorCandidateActivationBindingV1,
@@ -69,6 +71,7 @@ impl FirstAcceptance {
         Self {
             thread_id,
             expected_thread_revision,
+            expected_image_label_authority,
             draft_id,
             expected_draft_revision,
             candidate,
@@ -88,6 +91,9 @@ impl FirstAcceptance {
     }
     pub const fn expected_thread_revision(&self) -> ThreadRevision {
         self.expected_thread_revision
+    }
+    pub const fn expected_image_label_authority(&self) -> ImageLabelAuthorityHeadV1 {
+        self.expected_image_label_authority
     }
     pub const fn draft_id(&self) -> SyndicDraftId {
         self.draft_id

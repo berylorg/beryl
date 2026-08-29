@@ -39,8 +39,8 @@ const PHYSICAL_CORRUPTIONS: [PhysicalCorruption; 3] = [
 ];
 
 fn exercise_physical_corruption_partition(partitions: usize, partition: usize) {
-    assert_eq!(PhysicalFamily::ALL.len(), 61);
-    assert_eq!(PhysicalFamily::ALL.len() * PHYSICAL_CORRUPTIONS.len(), 183);
+    assert_eq!(PhysicalFamily::ALL.len(), 62);
+    assert_eq!(PhysicalFamily::ALL.len() * PHYSICAL_CORRUPTIONS.len(), 186);
     for (family, corruption) in PhysicalFamily::ALL
         .into_iter()
         .flat_map(|family| {
@@ -211,7 +211,6 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
                     ),
                     thread.current_draft_id(),
                     thread.lineage(),
-                    thread.image_label_frontiers(),
                     thread.context_owner_id(),
                 );
             }

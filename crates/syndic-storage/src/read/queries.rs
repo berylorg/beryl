@@ -2,8 +2,8 @@ use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, HomeStore
 use beryl_model::{SyndicPathDigest, SyndicThreadId, ThreadRevision};
 
 use crate::{
-    ImageLabelOrdinal, ImageLabelOriginSpanRecord, SyndicReadError, ThreadLineageDepth, codec::*,
-    domain::SyndicStorage,
+    ImageLabelAuthorityHeadV1, ImageLabelOrdinal, ImageLabelOriginSpanRecord, SyndicReadError,
+    ThreadLineageDepth, codec::*, domain::SyndicStorage,
 };
 
 use super::SyndicPointReadLimit;
@@ -137,6 +137,21 @@ impl SyndicResolvedImageLabelOriginSpan {
 }
 
 impl SyndicStorage {
+    pub fn image_label_authority_head(
+        &self,
+        store: &HomeStore,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ImageLabelAuthorityHeadV1>, SyndicReadError> {
+        let head = self.point::<ImageLabelAuthorityHeadsFamily>(store, thread_id, limit)?;
+        if head.as_ref().is_some_and(|head| !head.is_exact()) {
+            return Err(SyndicReadError::Invariant(
+                "image-label authority head is invalid",
+            ));
+        }
+        Ok(head)
+    }
+
     pub fn thread_lineage_head(
         &self,
         store: &HomeStore,
@@ -263,10 +278,11 @@ impl SyndicStorage {
         let Some(leaf) = self.point::<ThreadsFamily>(store, thread_id, limit)? else {
             return Ok(None);
         };
-        if !leaf.image_label_frontiers().current().contains(label) {
+        let leaf_head = required_image_label_head(self, store, leaf.id(), limit)?;
+        if !leaf_head.permanent().contains(label) {
             return Ok(None);
         }
-        let origin_depth = if !leaf.image_label_frontiers().inherited().contains(label) {
+        let origin_depth = if !leaf_head.inherited().contains(label) {
             leaf.lineage_depth()
         } else {
             let mut last_without_inherited_label = 1_u64;
@@ -287,7 +303,8 @@ impl SyndicStorage {
                     },
                     SyndicReadError::Invariant,
                 )?;
-                if ancestor.image_label_frontiers().inherited().contains(label) {
+                let ancestor_head = required_image_label_head(self, store, ancestor.id(), limit)?;
+                if ancestor_head.inherited().contains(label) {
                     first_with_inherited_label = middle;
                 } else {
                     last_without_inherited_label = middle;
@@ -307,6 +324,12 @@ impl SyndicStorage {
             },
             SyndicReadError::Invariant,
         )?;
+        let origin_head = required_image_label_head(self, store, origin_thread.id(), limit)?;
+        if !origin_head.permanent().contains(label) || origin_head.inherited().contains(label) {
+            return Err(SyndicReadError::Invariant(
+                "image-label origin head disagrees with lineage",
+            ));
+        }
         let page = store.read_cursor::<crate::domain::SyndicDomain, ImageLabelOriginSpansCodec>(
             self.handle,
             &CursorRange::closed(
@@ -339,6 +362,25 @@ impl SyndicStorage {
             origin_depth,
         }))
     }
+}
+
+fn required_image_label_head(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    thread_id: SyndicThreadId,
+    limit: SyndicPointReadLimit,
+) -> Result<ImageLabelAuthorityHeadV1, SyndicReadError> {
+    let head = storage
+        .point::<ImageLabelAuthorityHeadsFamily>(store, thread_id, limit)?
+        .ok_or(SyndicReadError::Invariant(
+            "image-label authority head is missing",
+        ))?;
+    if !head.is_exact() || head.thread_id() != thread_id {
+        return Err(SyndicReadError::Invariant(
+            "image-label authority head is corrupt",
+        ));
+    }
+    Ok(head)
 }
 
 fn query_point_limit() -> SyndicPointReadLimit {

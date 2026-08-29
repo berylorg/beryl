@@ -41,14 +41,7 @@ pub(super) fn records() -> Vec<FixtureRecord> {
             root_thread_lineage_digest(source_thread),
         ),
     );
-    let thread = ThreadRecord::new(
-        child_thread,
-        selected,
-        child_draft,
-        lineage,
-        ThreadImageLabelFrontiers::empty(),
-        Some(owner),
-    );
+    let thread = ThreadRecord::new(child_thread, selected, child_draft, lineage, Some(owner));
     let execution = ThreadExecutionRecord::new(child_thread, super::source::execution_binding());
     let attributes = syndic_storage::test_faults::open_branch_thread_attributes(child_thread);
     let usage = ThreadUsageRecord::empty(child_thread);
@@ -65,6 +58,15 @@ pub(super) fn records() -> Vec<FixtureRecord> {
 
     let records = vec![
         FixtureRecord::Thread(thread),
+        FixtureRecord::ImageLabelAuthorityHead(
+            ImageLabelAuthorityHeadV1::new(
+                child_thread,
+                1,
+                ImageLabelFrontier::EMPTY,
+                ImageLabelFrontier::EMPTY,
+            )
+            .unwrap(),
+        ),
         FixtureRecord::ThreadExecution(execution),
         FixtureRecord::ThreadAttributes(attributes),
         FixtureRecord::ThreadUsage(usage),
