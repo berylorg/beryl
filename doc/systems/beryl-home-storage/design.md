@@ -141,6 +141,46 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Exhaustive work runs away from the serialized writer and GPUI thread. It may take total work
   proportional to durable domain size but retains only bounded records and state at once.
 
+## Process-Local Cross-Domain Proof Composition
+
+- `beryl-home-store` exposes one generic process-local proof-composition command for validation
+  that must combine private facts from distinct logical domains without a durable mutation. A
+  command declares exactly one statically typed source role and zero or more statically typed
+  witness roles. Each role belongs to a distinct live domain owner and may read only that domain's
+  registered typed families through the command snapshot; duplicate participation by one domain
+  across any role is invalid.
+- Writer admission serializes the command with mutations and fixes one snapshot. Immediately before
+  callbacks, the store checks the exact home generation, every expected domain revision, every
+  role's exact live Rust owner, and its complete persistent registration declaration. Each callback
+  then performs only its domain-owned bounded validation and returns one fixed-size inline
+  `Copy + Eq` correlation. The store accepts only when the source and every witness return equal
+  correlations; a source-only command accepts its source correlation after the same fences.
+- The generic correlation wrapper and comparison contract are owned by `beryl-home-store`.
+  Domain packages own their private contribution types and correlation construction. The app
+  receives neither a raw cross-domain reader nor the contributed correlations and cannot compare,
+  reinterpret, or synthesize agreement.
+- Before dispatch, the source requester seals the complete protocol, operation, role set, revision
+  fences, callbacks, and correlation expectation into exactly one opaque executable command plus
+  one paired move-only expectation consumer. Their unforgeable process-local plan identity and home
+  generation are fixed together. The requester retains the consumer; the app transports only the
+  executable command and its resulting opaque receipt. Neither plan half can be reconstructed from
+  the other.
+- `HomeStore::compose_proof` consumes the executable command and returns only one opaque, fixed-size,
+  home-generation-bound composition receipt on agreement. It never returns or mints the expectation
+  consumer or exposes expected role/correlation facts. The source requester later moves its retained
+  consumer with that receipt into exact receipt consumption, which rechecks the pre-dispatch plan
+  expectation and current home generation before accepting the page. A substituted command,
+  receipt, consumer, or complete receipt/consumer pair cannot satisfy another retained expectation;
+  consumption returns no consumer or expected facts.
+- Proof composition changes no record, registration, domain revision, home revision, sidecar, or
+  durable schema. It creates no Fjall batch, `CommitReceipt`, `SyncAll` barrier, reconciliation
+  descriptor, reconciliation scope, or `Indeterminate` outcome and cannot authorize publication by
+  itself. It is distinct from validation-only mutation participants and from the durable successor
+  reconciliation protocol.
+- Cancellation may win only before writer admission. Once admitted, the bounded callbacks run to a
+  determinate accepted or rejected result against their one snapshot; the caller drains that result
+  and cannot classify cancellation as validation failure or nonpublication evidence.
+
 ## Home Ownership Lock
 
 - Before opening Fjall, Beryl creates or opens one fixed lock file inside the requested home and attempts a non-blocking exclusive OS file lock.

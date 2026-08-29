@@ -41,8 +41,8 @@ pub(crate) struct ActiveWriter {
     store: StoreInstanceId,
 }
 
-struct FailClosedOnWriterPanic<'a> {
-    health: &'a crate::health::HealthGate,
+pub(crate) struct FailClosedOnWriterPanic<'a> {
+    pub(crate) health: &'a crate::health::HealthGate,
 }
 
 impl Drop for FailClosedOnWriterPanic<'_> {
@@ -398,7 +398,7 @@ impl HomeStore {
         )
     }
 
-    fn acquire_writer(&self) -> Result<MutexGuard<'_, ()>, CommandError> {
+    pub(crate) fn acquire_writer(&self) -> Result<MutexGuard<'_, ()>, CommandError> {
         self.writer.lock().map_err(|_| CommandError::WriterPoisoned)
     }
 

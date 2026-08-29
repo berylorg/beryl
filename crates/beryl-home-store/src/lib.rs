@@ -255,6 +255,7 @@ mod health;
 mod layout;
 mod metadata;
 mod ownership;
+mod proof;
 mod read;
 mod reconciliation;
 mod recovery;
@@ -295,6 +296,13 @@ pub use free_space::FreeSpaceOutcome;
 pub use header::HomeSchemaVersion;
 pub use health::{
     HealthGateError, HomeGeneration, HomeHealthSnapshot, HomeHealthState, RecoveryRetrySchedule,
+};
+pub use proof::{
+    ExecutableHomeProofCommand, HomeProofCommand, HomeProofProtocol, HomeProofReceipt,
+    InlineProofCorrelation, MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES, ProofCommandBuildError,
+    ProofCommandSealError, ProofCompositionError, ProofCorrelation, ProofCorrelationBytes,
+    ProofDomain, ProofProtocolIdentity, ProofReceiptConsumer, ProofReceiptError,
+    ProofSourceContribution, ProofWitnessContribution,
 };
 pub use read::{CodecOperation, DomainReader, ReadError, ReadStage};
 pub use reconciliation::{
@@ -337,6 +345,7 @@ pub mod test_faults {
         PersistedCorruptionError, PersistedCorruptionStage,
     };
     pub use crate::metadata::{decode_test_domain_metadata, encode_test_domain_metadata};
+    pub use crate::proof::ProofCommandIdentityTestHarness;
     pub use crate::scrub::{ScrubTerminalDecisionBlock, ScrubTestSnapshot};
 }
 

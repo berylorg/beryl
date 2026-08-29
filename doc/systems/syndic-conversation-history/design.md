@@ -57,10 +57,13 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   one immutable parent-thread binding, lineage depth, chain digest, and deterministic ancestor skip.
   Syndic exposes exact total parent count and revision-bound top-to-bottom ancestor cursor pages;
   callers never construct the complete thread lineage to render breadcrumbs.
-- Every thread also owns compact inherited and current image-label frontiers. Immutable local
-  origin spans bind each monotonic frontier advance to one admitted owner and sealed asset-set
-  proof; a child inherits only its parent's frontier and resolves inherited origins through bounded
-  lineage traversal instead of copying a history-sized label map.
+- Every thread also owns one independently revisioned compact image-label-authority head outside its
+  broad thread record. The head stores its immutable inherited frontier and current permanent
+  accepted frontier. Immutable local origin spans bind each monotonic accepted-frontier advance to
+  one admitted owner and sealed asset-set proof; a child initializes its head from only the
+  parent's permanent frontier and resolves inherited origins through bounded lineage traversal
+  instead of copying a history-sized label map. Unrelated tail, draft, activity, title, or lifecycle
+  changes neither advance nor invalidate the label-head revision.
 - The visible submitted transcript path is obtained by walking immutable turn parents backward from the committed tail to a root. The current draft is excluded.
 - A current draft is a durable typed pre-submission metadata record with stable id and selector
   revision, one exact immutable published combined draft-root reference, its exact published edit-
@@ -68,8 +71,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   branch-context, or replacement. The reference binds the composite sequence piece-tree root,
   persistent marker-identity-index root, and persistent marker-order-commitment-tree root and
   `DraftMarkerCommitmentV1` as one revision. Sequence leaves are UTF-8 text or
-  zero-width image markers; each marker includes its stable identity, same-anchor order, and final
-  label ordinal, while Beryl asset references resolve that marker to bytes.
+  zero-width image markers; each marker includes and commits its stable identity, same-anchor order,
+  final label ordinal, and exact `AssetId`, while Beryl asset records resolve that identity to bytes.
 - An ordinary current draft has no parent or branch context. It is only mutable unsent composer
   state and remains independent of later committed-tail movement. A branch-context intent names
   the exact immutable envelope whose source turn is the branch point; a replacement intent names
@@ -97,6 +100,15 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   active-operation custody until terminal settlement. Cancelled, conflicting, or superseded work
   retains immutable terminal closure. Only never-admitted, never-claimed staging from a cleanly
   disposed session is an orphan candidate for future garbage collection.
+- Every marker-changing edit additionally carries one non-cloneable, move-only Syndic label-
+  readiness proof bound to the current home generation, destination thread and exact label-head
+  revision/frontiers, draft, editor session and candidate generation, exact predecessor candidate
+  root, operation, closed reuse or allocation disposition, association digest, and any reserved
+  range. `MutationBegin` consumes that process proof into the operation's custody and persists only
+  its fixed-size `Copy` binding digest. The final candidate-adoption command validates the binding,
+  marker-effect closure, and live transient reservation under serialized writer admission. Text-
+  only edits require neither proof nor binding. Stale, exhausted, conflicting, missing, malformed,
+  or corrupt label authority writes no candidate, settlement, history transition, or marker subset.
 - A physical record or chunk is bounded, but one logical draft has no fixed whole-content byte ceiling. Storage preserves a draft even when later CAS request assembly rejects it against an exact provider/model limit.
 - An idle-thread submission first flushes the active editor candidate session, then requires one
   sealed `ComposerV1` materialization proven to come from the exact published combined root selected
@@ -113,8 +125,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   branch-discussion submission derives its parent from the exact source turn in the draft-owned
   context envelope and requires that source to agree with the thread's selected branch point.
 - First acceptance of draft markers in either idle or queued/steering admission atomically advances
-  the owning thread's permanent image-label frontier and creates at most one immutable local origin
-  span, regardless of marker or newly reserved label count.
+  the owning thread's independently revisioned permanent image-label frontier and creates at most
+  one immutable local origin span, regardless of marker or newly reserved label count.
   Later delivery transitions reuse that authority and never maintain separate label collections.
 - The draft-to-turn transition preserves the draft's exact 128-bit identity payload while changing its typed identity from `SyndicDraftId` to `SyndicTurnId`; it does not allocate an unrelated submitted-turn identity.
 - A context-bearing draft's owner descriptor follows that same deterministic typed transition while its immutable context envelope remains byte-for-byte unchanged.
@@ -319,18 +331,21 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   competing same-thread children.
 - Different threads may submit distinct children from the same historical turn without conflict.
 
-## Durable Draft Piece Tree, Candidate Sessions, Marker Identity, And Marker Commitment
+## Durable Draft Piece Tree, Candidate Sessions, Marker Identity, Label Admission, And Marker Commitment
 
 - The autosave backing for a current draft is one durable immutable combined draft root, not
   `ComposerV1`. It binds a copy-on-write composite sequence piece tree, a copy-on-write marker-
-  identity index keyed by stable marker id, and an immutable marker-order commitment tree. Sequence leaves contain either nonempty UTF-8 ranges or
-  one zero-width marker; bounded sequence nodes retain child extents, disjoint composite search
+  identity index keyed by stable marker id, and an immutable marker-order commitment tree. Sequence
+  leaves contain either nonempty UTF-8 ranges or
+  one zero-width marker committing its exact marker id, label, `AssetId`, and same-anchor order;
+  bounded sequence nodes retain child extents, disjoint composite search
   envelopes, and integrity summaries. Those envelopes authenticate one bounded descent to a byte
   boundary, exact sequence marker, or adjacent-marker gap even when an arbitrarily long marker run
   consumes no UTF-8 bytes. Unchanged subtrees in all three structures are shared by reference between
   candidate roots.
 - The marker-identity index maps each stable marker id only to stable occurrence facts: final label,
-  same-anchor order key, and sequence marker-leaf identity and digest. It stores no absolute UTF-8
+  exact `AssetId`, same-anchor order key, and sequence marker-leaf identity and digest. It stores no
+  absolute UTF-8
   anchor, composite position, sequence ordinal, or rebased location. Its immutable bounded-fanout
   nodes commit disjoint stable-id search envelopes, checked record counts, child identities, and
   child digests; its bounded leaves commit those occurrence facts. A caller that needs to validate
@@ -339,7 +354,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   named occurrence. ID-only location discovery is not required. Sequence ordering summaries are
   never treated as global marker-id absence authority.
 - The marker-order commitment tree preserves exact composite marker order while each leaf carries
-  only stable marker id and final label. It carries no text position, same-anchor order key, or
+  only stable marker id, final label, and exact `AssetId`. It carries no text position, same-anchor
+  order key, or
   sequence-leaf identity. Bounded internal nodes commit ordered child identities, structural
   digests, checked counts, and optional maximum labels. Its root yields
   `DraftMarkerCommitmentV1`; equal commitments mean the same authenticated structural root, not a
@@ -360,6 +376,53 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   Readers and mutations bind to the complete combined reference and summary; a current-draft
   selector revision and an editor-candidate revision are distinct authorities. Either detached root,
   a detached digest, or a byte offset detached from that exact root is not authority.
+- A label-readiness operation stabilizes one exact label-authority head and one exact active editor-
+  candidate head/root through bounded point reads. It reserves any cross-conversation contiguous
+  destination range monotonically above the inherited and permanent accepted frontiers,
+  authenticated predecessor-root maximum label, and every live destination reservation before
+  evidence pages can become authoritative. Checked ordinal exhaustion is an ordinary unavailable
+  result and creates no reservation.
+- Same-conversation candidate and cut evidence is validated by a source-only HomeStore proof
+  composition. Accepted local or inherited evidence uses one typed Syndic source role to validate
+  immutable origin authority and one typed Beryl-state witness role to validate the proof-gated
+  sealed-set label-first entry and exact `AssetId`. Cross-conversation source associations use the
+  applicable typed roles but ignore the source ordinal when deriving the reserved destination
+  labels. Every role is fenced to the exact owner, registration, home generation, and domain
+  revision and returns the same fixed-size correlation from its private domain facts on one
+  serialized snapshot. No raw cross-domain result or comparison reaches the app.
+- One home-generation-scoped Syndic coordinator owns a configured bounded set of fixed-size
+  operation-qualified transient label reservations and a compact destination reservation frontier.
+  It retains neither marker pages nor a per-label, historical, or whole-draft registry. Each
+  bounded canonical evidence page names its exact operation, page ordinal, prior cumulative digest,
+  and associations. Before dispatch the coordinator seals the complete HomeStore plan, retains its
+  paired move-only expectation consumer, and exposes only the opaque executable command to the app.
+  `compose_proof` returns only a receipt, which the app transports back; the coordinator consumes
+  its independently retained pre-dispatch expectation against that receipt and current generation
+  in immediate order. It retains only the next ordinal, cumulative count/digest/frontier,
+  immediate-last receipt, at most one pending expectation consumer, reservation, and operation
+  custody. Byte-equal immediate replay returns the same receipt, differing
+  reuse collides, and an older ordinal is obsolete. At exact EOF it revalidates the mutable head,
+  session, predecessor root, and reservation before issuing the final move-only proof and its
+  durable fixed-size binding.
+- The marker-effect proposal commits the binding while retaining marker effects in the existing
+  bounded cursor stream. Staging, build, terminal settlement, and replay preserve the same binding;
+  completion compares the actual storage-derived effect count, chain, associations, allocation,
+  and successor roots to it. Readiness never accepts a caller-provided successor structural
+  commitment.
+- Final candidate adoption validates the current label-head revision/frontiers, active session and
+  predecessor candidate root, completed proposal closure, binding, and live reservation on the
+  serialized Syndic snapshot. It publishes the complete three-structure candidate, settlement, and
+  history transition atomically or publishes none, but does not advance the permanent accepted
+  frontier or create origin authority. First acceptance alone performs that permanent transition.
+- Cancellation before durable begin releases the reservation. After begin it must first win a
+  durable or reconciled terminal staging/build settlement. Cancellation may win before final writer
+  admission; after admission the coordinator drains the classified result. A determinate terminal
+  noncommit releases custody, while an exact-old retryable result retains it. `Indeterminate`
+  transfers the move-only proof and reservation to the exact operation reconciliation wrapper;
+  `ExactNew` or terminal noncommit consumes and releases them, `ExactOld` retains them for retry or
+  cancellation, and `Collision` retains the uncertain ordinal in a closed scope until home-
+  generation retirement. Retirement invalidates every remaining proof and releases the coordinator
+  wholesale.
 - Canonical hashing uses SHA-256 and the exact ASCII domains
   `syndic/draft-sequence-root/v1/empty`, `syndic/draft-marker-identity-index-root/v1/empty`,
   `syndic/draft-marker-order-commitment-root/v1/empty`, and `syndic/draft-combined-root/v1`.

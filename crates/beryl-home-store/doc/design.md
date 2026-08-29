@@ -38,6 +38,37 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - Logical domains register private record families, exact codecs, exhaustive validation hooks,
   operation-scoped natural-record reconciliation hooks, typed reads, typed mutation contributors,
   and typed validation-only command participants through package-owned traits.
+- The package also exposes `HomeProofCommand<P>` and `HomeStore::compose_proof` as the generic
+  process-local boundary for read-only proof composition. A command has exactly one statically
+  typed source role and zero or more statically typed witness roles, with at most one role for each
+  exact live domain owner. Role registration fixes the protocol and fixed-size inline `Copy + Eq`
+  correlation type; each domain package owns only its private role contribution and correlation
+  construction.
+- Sealing a complete proof plan before dispatch returns exactly one opaque one-shot executable
+  `HomeProofCommand<P>` plus its paired move-only `ProofReceiptConsumer<P>`. The seal binds an
+  unforgeable process-local plan identity, current home generation, protocol, operation, exact role
+  and owner set, revision fences, callbacks, and expected correlation contract. The source
+  requester retains the consumer. Only the executable command may cross app orchestration into
+  `HomeStore::compose_proof`; neither half can mint or recover the other.
+- Proof composition acquires the serialized writer, fixes one Fjall snapshot, and revalidates the
+  exact home generation, every caller-fenced domain revision, every role's live Rust owner, and its
+  complete persistent registration before callbacks. A role receives typed access only to its own
+  registered domain. The source and all witnesses must independently return equal correlations;
+  the source-only shape is valid. Duplicate-domain roles, stale fences, missing registrations,
+  callback failures, or disagreement reject determinately.
+- `HomeStore::compose_proof` consumes only the executable command and returns only an opaque fixed-
+  size generation-bound receipt on accepted composition. It does not return or create a
+  `ProofReceiptConsumer<P>` or expose raw role results, expected roles, revision facts, or the agreed
+  correlation to the app. The source requester later passes its retained consumer and the receipt
+  to exact receipt consumption, which consumes the consumer, rechecks its pre-dispatch expectation
+  against the receipt and current home generation, and returns only determinate match or rejection.
+  A receipt plus a consumer obtained for another sealed plan cannot be substituted as a pair, and no
+  execution or consumption result returns a consumer or its expected facts. The receipt grants no
+  publication authority. The command performs no mutation, durable registration or
+  schema write, revision advance, sidecar action, Fjall batch, `CommitReceipt`, `SyncAll`,
+  reconciliation reservation, descriptor, registry transition, or `Indeterminate` classification.
+  Cancellation is effective only before writer admission; an admitted command runs to a
+  determinate result on that snapshot.
 - A command participant may also register its typed role in one command-scoped successor protocol.
   The package exposes typed source and witness reservation builders plus a quota-enforcing
   successor point reader, and erases those hooks only after their protocol, correlation, owner,
@@ -164,6 +195,12 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 ## Atomicity And Durability
 
 - The serialized writer validates expected revisions and each participant's exact live owner plus persistent registration immediately before commit.
+- Read-only proof composition uses that writer solely to linearize one typed cross-domain snapshot.
+  It is not a `HomeCommand`, cannot contain mutation or validation-only command participants, and
+  never yields a commit receipt or reconciliation state. Its opaque receipt must match the
+  requesting package's independently retained pre-dispatch `ProofReceiptConsumer<P>` before any
+  later mutation can treat the package's own derived proof as authority; the receipt itself cannot
+  be submitted as a write capability.
 - `CurrentDomainCommand` is an opaque single-domain boundary for mutations that already carry
   exact logical record fences. `execute_current` captures only that command's physical home and
   domain revisions after serialized writer admission, then uses the ordinary validation,

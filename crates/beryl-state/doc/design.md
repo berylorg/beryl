@@ -367,6 +367,14 @@ absorbing Syndic thread ownership.
   returning data; a different proof for the same set identity is rejected. Unsealed construction
   inspection uses separate typed build authority and cannot select sealed state. A bare set id
   never authorizes a sealed-manifest read.
+- For draft-marker label readiness, this package exposes one private typed Asset witness
+  contribution for `beryl-home-store` process-local proof composition. On the command's serialized
+  snapshot and exact Asset-domain revision fence, it revalidates the complete
+  `SealedAssetReferenceSetProof`, exact sealed manifest and completion evidence, the requested
+  label-first entry, and the complete `AssetId`, then emits only the fixed-size generic correlation
+  expected by the protocol. The witness cannot read Syndic records, mutate Asset state, advance a
+  revision, or return its private facts or correlation to the app. Missing, stale, malformed, or
+  disagreeing evidence rejects the composition determinately.
 - Exhaustive asset-domain validation walks owner heads and sealed set entries in bounded pages,
   proves every selected asset metadata record and sidecar, and checks exact set
   counts/digests/frontiers. It does not build a reverse reference set or trust a mutable metadata

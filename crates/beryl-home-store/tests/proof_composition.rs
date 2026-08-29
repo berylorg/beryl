@@ -1,0 +1,821 @@
+mod support;
+
+use std::{
+    convert::Infallible,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+use beryl_home_store::{
+    CommandCancellation, DomainHandle, DomainReader, DomainSchemaVersion,
+    ExecutableHomeProofCommand, HomeCommand, HomeProofCommand, HomeProofProtocol, HomeStore,
+    KeyspaceSchemaVersion, MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES, ProofCommandBuildError,
+    ProofCompositionError, ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity,
+    ProofReceiptError, StorageDomain,
+};
+use tempfile::tempdir;
+
+use support::{AlphaDomain, BetaDomain, FixtureMutationError, PutBytes, committed, open_home};
+
+#[cfg(feature = "test-faults")]
+use beryl_home_store::{
+    HomeHealthState, HomeOpenOptions, HomeSchemaVersion,
+    test_faults::{FaultController, FaultPoint},
+};
+
+macro_rules! empty_domain {
+    ($domain:ident, $name:literal) => {
+        struct $domain;
+
+        impl StorageDomain for $domain {
+            const NAME: &'static str = $name;
+            const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
+            const FAMILIES: &'static [beryl_home_store::RecordFamily<Self>] =
+                &[beryl_home_store::RecordFamily::new::<
+                    support::BytesRecord<Self>,
+                >(KeyspaceSchemaVersion::new(1))];
+            type ValidationError = Infallible;
+
+            fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
+                Ok(())
+            }
+        }
+    };
+}
+
+empty_domain!(RoleDomain1, "proof_role_1");
+empty_domain!(RoleDomain2, "proof_role_2");
+empty_domain!(RoleDomain3, "proof_role_3");
+empty_domain!(RoleDomain4, "proof_role_4");
+empty_domain!(RoleDomain5, "proof_role_5");
+empty_domain!(RoleDomain6, "proof_role_6");
+empty_domain!(RoleDomain7, "proof_role_7");
+empty_domain!(OversizedDomain, "proof_oversized");
+empty_domain!(MalformedExpectationDomain, "proof_malformed_expectation");
+
+pub struct AgreementProtocol;
+
+impl HomeProofProtocol for AgreementProtocol {
+    type Correlation = [u8; 16];
+
+    const PROTOCOL_ID: u64 = 0x706f6f66;
+    const OPERATION_ID: u64 = 0x7631;
+    const CORRELATION_BYTES: usize = 16;
+}
+
+pub struct OversizedProtocol;
+
+impl HomeProofProtocol for OversizedProtocol {
+    type Correlation = [u8; MAX_PROOF_CORRELATION_BYTES];
+
+    const PROTOCOL_ID: u64 = 1;
+    const OPERATION_ID: u64 = 2;
+    const CORRELATION_BYTES: usize = MAX_PROOF_CORRELATION_BYTES + 1;
+}
+
+pub struct Role<P> {
+    correlation: P,
+    reject: bool,
+    called: Option<Arc<AtomicBool>>,
+    cancellation: Option<CommandCancellation>,
+    reentry: Option<ProofReentry>,
+}
+
+struct ProofReentry {
+    store: Arc<HomeStore>,
+    command: Mutex<Option<ExecutableHomeProofCommand<AgreementProtocol>>>,
+    result: Arc<Mutex<Option<Result<(), ProofCompositionError>>>>,
+}
+
+impl<P> Role<P> {
+    fn agreeing(correlation: P) -> Self {
+        Self {
+            correlation,
+            reject: false,
+            called: None,
+            cancellation: None,
+            reentry: None,
+        }
+    }
+
+    fn rejecting(correlation: P) -> Self {
+        Self {
+            correlation,
+            reject: true,
+            called: None,
+            cancellation: None,
+            reentry: None,
+        }
+    }
+
+    fn tracking(mut self, called: Arc<AtomicBool>) -> Self {
+        self.called = Some(called);
+        self
+    }
+
+    fn cancelling(mut self, cancellation: CommandCancellation) -> Self {
+        self.cancellation = Some(cancellation);
+        self
+    }
+
+    fn reentering(mut self, reentry: ProofReentry) -> Self {
+        self.reentry = Some(reentry);
+        self
+    }
+}
+
+fn prove_agreement_role(
+    role: &Role<[u8; 16]>,
+) -> Result<ProofCorrelationBytes, FixtureMutationError> {
+    if let Some(called) = &role.called {
+        called.store(true, Ordering::SeqCst);
+    }
+    if let Some(cancellation) = &role.cancellation {
+        cancellation.cancel();
+    }
+    if let Some(reentry) = &role.reentry {
+        let command = reentry
+            .command
+            .lock()
+            .unwrap()
+            .take()
+            .expect("proof reentry fixture command is consumed once");
+        let result = reentry.store.compose_proof(command).map(|_| ());
+        *reentry.result.lock().unwrap() = Some(result);
+    }
+    if role.reject {
+        return Err(FixtureMutationError::Rejected("proof role rejected"));
+    }
+    Ok(ProofCorrelationBytes::new(role.correlation))
+}
+
+impl ProofDomain for AlphaDomain {
+    type SourceInput = Role<[u8; 16]>;
+    type WitnessInput = Role<[u8; 16]>;
+    type Error = FixtureMutationError;
+
+    fn source_protocol(_input: &Self::SourceInput) -> ProofProtocolIdentity {
+        ProofProtocolIdentity::of::<AgreementProtocol>()
+    }
+
+    fn expected_source_correlation(input: &Self::SourceInput) -> ProofCorrelationBytes {
+        ProofCorrelationBytes::new(input.correlation)
+    }
+
+    fn witness_protocol(_input: &Self::WitnessInput) -> ProofProtocolIdentity {
+        ProofProtocolIdentity::of::<AgreementProtocol>()
+    }
+
+    fn prove_source(
+        input: &Self::SourceInput,
+        _reader: &DomainReader<'_, Self>,
+    ) -> Result<ProofCorrelationBytes, Self::Error> {
+        prove_agreement_role(input)
+    }
+    fn prove_witness(
+        input: &Self::WitnessInput,
+        _reader: &DomainReader<'_, Self>,
+    ) -> Result<ProofCorrelationBytes, Self::Error> {
+        prove_agreement_role(input)
+    }
+}
+
+macro_rules! agreement_proof_domain {
+    ($domain:ty) => {
+        impl ProofDomain for $domain {
+            type SourceInput = Role<[u8; 16]>;
+            type WitnessInput = Role<[u8; 16]>;
+            type Error = FixtureMutationError;
+
+            fn source_protocol(_input: &Self::SourceInput) -> ProofProtocolIdentity {
+                ProofProtocolIdentity::of::<AgreementProtocol>()
+            }
+
+            fn expected_source_correlation(input: &Self::SourceInput) -> ProofCorrelationBytes {
+                ProofCorrelationBytes::new(input.correlation)
+            }
+
+            fn witness_protocol(_input: &Self::WitnessInput) -> ProofProtocolIdentity {
+                ProofProtocolIdentity::of::<AgreementProtocol>()
+            }
+
+            fn prove_source(
+                input: &Self::SourceInput,
+                _reader: &DomainReader<'_, Self>,
+            ) -> Result<ProofCorrelationBytes, Self::Error> {
+                prove_agreement_role(input)
+            }
+
+            fn prove_witness(
+                input: &Self::WitnessInput,
+                _reader: &DomainReader<'_, Self>,
+            ) -> Result<ProofCorrelationBytes, Self::Error> {
+                prove_agreement_role(input)
+            }
+        }
+    };
+}
+
+agreement_proof_domain!(BetaDomain);
+agreement_proof_domain!(RoleDomain1);
+agreement_proof_domain!(RoleDomain2);
+agreement_proof_domain!(RoleDomain3);
+agreement_proof_domain!(RoleDomain4);
+agreement_proof_domain!(RoleDomain5);
+agreement_proof_domain!(RoleDomain6);
+agreement_proof_domain!(RoleDomain7);
+
+impl ProofDomain for OversizedDomain {
+    type SourceInput = Role<[u8; MAX_PROOF_CORRELATION_BYTES]>;
+    type WitnessInput = Role<[u8; MAX_PROOF_CORRELATION_BYTES]>;
+    type Error = FixtureMutationError;
+
+    fn source_protocol(_input: &Self::SourceInput) -> ProofProtocolIdentity {
+        ProofProtocolIdentity::of::<OversizedProtocol>()
+    }
+
+    fn expected_source_correlation(input: &Self::SourceInput) -> ProofCorrelationBytes {
+        ProofCorrelationBytes::new(input.correlation)
+    }
+
+    fn witness_protocol(_input: &Self::WitnessInput) -> ProofProtocolIdentity {
+        ProofProtocolIdentity::of::<OversizedProtocol>()
+    }
+
+    fn prove_source(
+        input: &Self::SourceInput,
+        _reader: &DomainReader<'_, Self>,
+    ) -> Result<ProofCorrelationBytes, Self::Error> {
+        Ok(ProofCorrelationBytes::new(input.correlation))
+    }
+
+    fn prove_witness(
+        input: &Self::WitnessInput,
+        _reader: &DomainReader<'_, Self>,
+    ) -> Result<ProofCorrelationBytes, Self::Error> {
+        Ok(ProofCorrelationBytes::new(input.correlation))
+    }
+}
+
+impl ProofDomain for MalformedExpectationDomain {
+    type SourceInput = Role<[u8; 16]>;
+    type WitnessInput = Role<[u8; 16]>;
+    type Error = FixtureMutationError;
+
+    fn source_protocol(_input: &Self::SourceInput) -> ProofProtocolIdentity {
+        ProofProtocolIdentity::of::<AgreementProtocol>()
+    }
+
+    fn expected_source_correlation(_input: &Self::SourceInput) -> ProofCorrelationBytes {
+        ProofCorrelationBytes::new([0; 8])
+    }
+
+    fn witness_protocol(_input: &Self::WitnessInput) -> ProofProtocolIdentity {
+        ProofProtocolIdentity::of::<AgreementProtocol>()
+    }
+
+    fn prove_source(
+        input: &Self::SourceInput,
+        _reader: &DomainReader<'_, Self>,
+    ) -> Result<ProofCorrelationBytes, Self::Error> {
+        prove_agreement_role(input)
+    }
+
+    fn prove_witness(
+        input: &Self::WitnessInput,
+        _reader: &DomainReader<'_, Self>,
+    ) -> Result<ProofCorrelationBytes, Self::Error> {
+        prove_agreement_role(input)
+    }
+}
+
+fn generation(store: &HomeStore) -> beryl_home_store::HomeGeneration {
+    store.health().generation().unwrap()
+}
+
+fn command(
+    store: &HomeStore,
+    alpha: DomainHandle<AlphaDomain>,
+    source: Role<[u8; 16]>,
+) -> HomeProofCommand<AgreementProtocol> {
+    HomeProofCommand::new(
+        generation(store),
+        store.home_revision().unwrap(),
+        alpha.proof_source::<AgreementProtocol>(store.domain_revision(alpha).unwrap(), source),
+    )
+    .unwrap()
+}
+
+fn compose<P: HomeProofProtocol>(
+    store: &HomeStore,
+    command: HomeProofCommand<P>,
+) -> Result<
+    (
+        beryl_home_store::HomeProofReceipt<P>,
+        beryl_home_store::ProofReceiptConsumer<P>,
+    ),
+    ProofCompositionError,
+> {
+    let (command, consumer) = command.seal().unwrap();
+    store
+        .compose_proof(command)
+        .map(|receipt| (receipt, consumer))
+}
+
+#[cfg(feature = "test-faults")]
+fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
+    HomeStore::open_with_faults(
+        HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
+        faults,
+    )
+    .unwrap()
+}
+
+#[test]
+fn source_only_and_multi_domain_agreement_leave_durable_and_reconciliation_state_unchanged() {
+    let directory = tempdir().unwrap();
+    let mut store = open_home(directory.path());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let beta = store.register_domain::<BetaDomain>().unwrap();
+    let role1 = store.register_domain::<RoleDomain1>().unwrap();
+    let role2 = store.register_domain::<RoleDomain2>().unwrap();
+    let home_before = store.home_revision().unwrap();
+    let alpha_before = store.domain_revision(alpha).unwrap();
+    let beta_before = store.domain_revision(beta).unwrap();
+    let role1_before = store.domain_revision(role1).unwrap();
+    let role2_before = store.domain_revision(role2).unwrap();
+    let correlation = [7; 16];
+
+    let source = alpha.proof_source::<AgreementProtocol>(alpha_before, Role::agreeing(correlation));
+    let (receipt, source_consumer) = compose(
+        &store,
+        HomeProofCommand::new(generation(&store), home_before, source).unwrap(),
+    )
+    .unwrap();
+    store
+        .consume_proof_receipt(source_consumer, receipt)
+        .unwrap();
+
+    let source = alpha.proof_source::<AgreementProtocol>(alpha_before, Role::agreeing(correlation));
+    let mut multi = HomeProofCommand::new(generation(&store), home_before, source).unwrap();
+    multi
+        .add_witness(beta.proof_witness(beta_before, Role::agreeing(correlation)))
+        .unwrap()
+        .add_witness(role1.proof_witness(role1_before, Role::agreeing(correlation)))
+        .unwrap()
+        .add_witness(role2.proof_witness(role2_before, Role::agreeing(correlation)))
+        .unwrap();
+    let (receipt, multi_consumer) = compose(&store, multi).unwrap();
+    store
+        .consume_proof_receipt(multi_consumer, receipt)
+        .unwrap();
+    assert_eq!(store.home_revision().unwrap(), home_before);
+    assert_eq!(store.domain_revision(alpha).unwrap(), alpha_before);
+    assert_eq!(store.domain_revision(beta).unwrap(), beta_before);
+    assert_eq!(store.domain_revision(role1).unwrap(), role1_before);
+    assert_eq!(store.domain_revision(role2).unwrap(), role2_before);
+    assert!(store.pending_reconciliations().is_empty());
+    let source = alpha.proof_source::<AgreementProtocol>(alpha_before, Role::agreeing(correlation));
+    let (stale_receipt, stale_consumer) = compose(
+        &store,
+        HomeProofCommand::new(generation(&store), home_before, source).unwrap(),
+    )
+    .unwrap();
+    let stale_source =
+        alpha.proof_source::<AgreementProtocol>(alpha_before, Role::agreeing(correlation));
+    let (stale_executable, _stale_consumer) =
+        HomeProofCommand::new(generation(&store), home_before, stale_source)
+            .unwrap()
+            .seal()
+            .unwrap();
+    store.close().unwrap();
+    let mut reopened = open_home(directory.path());
+    reopened.register_domain::<AlphaDomain>().unwrap();
+    assert!(matches!(
+        reopened.consume_proof_receipt(stale_consumer, stale_receipt),
+        Err(ProofReceiptError::StaleOrForeign)
+    ));
+    assert!(matches!(
+        reopened.compose_proof(stale_executable),
+        Err(ProofCompositionError::ForeignDomain { domain: "alpha" })
+    ));
+}
+
+#[test]
+fn source_consumer_rejects_same_fence_cross_page_receipts_and_consumes_the_exact_receipt() {
+    let directory = tempdir().unwrap();
+    let mut store = open_home(directory.path());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let beta = store.register_domain::<BetaDomain>().unwrap();
+    let alpha_revision = store.domain_revision(alpha).unwrap();
+    let beta_revision = store.domain_revision(beta).unwrap();
+    let home = store.home_revision().unwrap();
+    let generation = generation(&store);
+
+    let mut alpha_source = HomeProofCommand::new(
+        generation,
+        home,
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([1; 16])),
+    )
+    .unwrap();
+    alpha_source
+        .add_witness(beta.proof_witness(beta_revision, Role::agreeing([1; 16])))
+        .unwrap();
+    let (alpha_receipt, alpha_consumer) = compose(&store, alpha_source).unwrap();
+    let mut beta_source = HomeProofCommand::new(
+        generation,
+        home,
+        beta.proof_source::<AgreementProtocol>(beta_revision, Role::agreeing([1; 16])),
+    )
+    .unwrap();
+    beta_source
+        .add_witness(alpha.proof_witness(alpha_revision, Role::agreeing([1; 16])))
+        .unwrap();
+    let (beta_receipt, beta_consumer) = compose(&store, beta_source).unwrap();
+    assert!(matches!(
+        store.consume_proof_receipt(alpha_consumer, beta_receipt),
+        Err(ProofReceiptError::SourceFenceMismatch)
+    ));
+    assert!(matches!(
+        store.consume_proof_receipt(beta_consumer, alpha_receipt),
+        Err(ProofReceiptError::SourceFenceMismatch)
+    ));
+
+    let first_source =
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([2; 16]));
+    let (first_receipt, first_consumer) = compose(
+        &store,
+        HomeProofCommand::new(generation, home, first_source).unwrap(),
+    )
+    .unwrap();
+    let mut advance = HomeCommand::new(store.home_revision().unwrap());
+    advance
+        .add(beta.contribution(
+            beta_revision,
+            PutBytes::<BetaDomain>::new(10, b"advance home fence".to_vec()),
+        ))
+        .unwrap();
+    committed(store.execute(advance));
+    let second_source =
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([2; 16]));
+    let (second_receipt, second_consumer) = compose(
+        &store,
+        HomeProofCommand::new(generation, store.home_revision().unwrap(), second_source).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        store.consume_proof_receipt(first_consumer, second_receipt),
+        Err(ProofReceiptError::SourceFenceMismatch)
+    ));
+    assert!(matches!(
+        store.consume_proof_receipt(second_consumer, first_receipt),
+        Err(ProofReceiptError::SourceFenceMismatch)
+    ));
+    let third_source =
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([2; 16]));
+    let (third_receipt, third_consumer) = compose(
+        &store,
+        HomeProofCommand::new(generation, store.home_revision().unwrap(), third_source).unwrap(),
+    )
+    .unwrap();
+    store
+        .consume_proof_receipt(third_consumer, third_receipt)
+        .unwrap();
+
+    let mismatch_source =
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([3; 16]));
+    let (_mismatch_receipt, mismatch_consumer) = compose(
+        &store,
+        HomeProofCommand::new(generation, store.home_revision().unwrap(), mismatch_source).unwrap(),
+    )
+    .unwrap();
+    let other_source =
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([4; 16]));
+    let (other_receipt, _other_consumer) = compose(
+        &store,
+        HomeProofCommand::new(generation, store.home_revision().unwrap(), other_source).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        store.consume_proof_receipt(mismatch_consumer, other_receipt),
+        Err(ProofReceiptError::SourceFenceMismatch)
+    ));
+
+    let command_a = HomeProofCommand::new(
+        generation,
+        store.home_revision().unwrap(),
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([5; 16])),
+    )
+    .unwrap();
+    let command_b = HomeProofCommand::new(
+        generation,
+        store.home_revision().unwrap(),
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([5; 16])),
+    )
+    .unwrap();
+    let (_executable_a, consumer_a) = command_a.seal().unwrap();
+    let (executable_b, _consumer_b) = command_b.seal().unwrap();
+    let receipt_b = store.compose_proof(executable_b).unwrap();
+    assert!(matches!(
+        store.consume_proof_receipt(consumer_a, receipt_b),
+        Err(ProofReceiptError::SourceFenceMismatch)
+    ));
+    let command_a = HomeProofCommand::new(
+        generation,
+        store.home_revision().unwrap(),
+        alpha.proof_source::<AgreementProtocol>(alpha_revision, Role::agreeing([5; 16])),
+    )
+    .unwrap();
+    let (executable_a, consumer_a) = command_a.seal().unwrap();
+    let receipt_a = store.compose_proof(executable_a).unwrap();
+    store.consume_proof_receipt(consumer_a, receipt_a).unwrap();
+}
+
+#[test]
+fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutating() {
+    let directory = tempdir().unwrap();
+    let mut store = open_home(directory.path());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let beta = store.register_domain::<BetaDomain>().unwrap();
+    let home_before = store.home_revision().unwrap();
+    let alpha_before = store.domain_revision(alpha).unwrap();
+    let beta_before = store.domain_revision(beta).unwrap();
+    let mut disagreement = command(&store, alpha, Role::agreeing([1; 16]));
+    disagreement
+        .add_witness(beta.proof_witness(beta_before, Role::agreeing([2; 16])))
+        .unwrap();
+    assert!(matches!(
+        compose(&store, disagreement),
+        Err(ProofCompositionError::Disagreement { domain: "beta" })
+    ));
+
+    assert!(matches!(
+        compose(&store, command(&store, alpha, Role::rejecting([1; 16]))),
+        Err(ProofCompositionError::Callback {
+            domain: "alpha",
+            ..
+        })
+    ));
+
+    let stale = HomeProofCommand::<AgreementProtocol>::new(
+        generation(&store),
+        beryl_model::HomeRevision::new(home_before.get() + 1).unwrap(),
+        alpha.proof_source::<AgreementProtocol>(alpha_before, Role::agreeing([1; 16])),
+    )
+    .unwrap();
+    assert!(matches!(
+        compose(&store, stale),
+        Err(ProofCompositionError::Conflict { .. })
+    ));
+
+    let mut advance_beta = HomeCommand::new(store.home_revision().unwrap());
+    advance_beta
+        .add(beta.contribution(
+            beta_before,
+            PutBytes::<BetaDomain>::new(9, b"advance beta".to_vec()),
+        ))
+        .unwrap();
+    committed(store.execute(advance_beta));
+    let home_after_advance = store.home_revision().unwrap();
+    let beta_after_advance = store.domain_revision(beta).unwrap();
+    let mut stale_domain = command(&store, alpha, Role::agreeing([1; 16]));
+    stale_domain
+        .add_witness(beta.proof_witness(beta_before, Role::agreeing([1; 16])))
+        .unwrap();
+    assert!(matches!(
+        compose(&store, stale_domain),
+        Err(ProofCompositionError::Conflict { .. })
+    ));
+    assert_eq!(store.home_revision().unwrap(), home_after_advance);
+    assert_eq!(store.domain_revision(alpha).unwrap(), alpha_before);
+    assert_eq!(store.domain_revision(beta).unwrap(), beta_after_advance);
+    assert!(store.pending_reconciliations().is_empty());
+}
+
+#[test]
+fn proof_callbacks_cannot_reenter_the_active_home_writer() {
+    let directory = tempdir().unwrap();
+    let mut opened = open_home(directory.path());
+    let alpha = opened.register_domain::<AlphaDomain>().unwrap();
+    let store = Arc::new(opened);
+    let (nested, _nested_consumer) = command(&store, alpha, Role::agreeing([6; 16]))
+        .seal()
+        .unwrap();
+    let observed = Arc::new(Mutex::new(None));
+    let outer = command(
+        &store,
+        alpha,
+        Role::agreeing([6; 16]).reentering(ProofReentry {
+            store: Arc::clone(&store),
+            command: Mutex::new(Some(nested)),
+            result: Arc::clone(&observed),
+        }),
+    );
+    let (outer, consumer) = outer.seal().unwrap();
+    let receipt = store.compose_proof(outer).unwrap();
+    store.consume_proof_receipt(consumer, receipt).unwrap();
+    assert!(matches!(
+        observed.lock().unwrap().as_ref(),
+        Some(Err(ProofCompositionError::ReentrantWriter))
+    ));
+}
+
+#[test]
+fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconciliation() {
+    let directory = tempdir().unwrap();
+    let foreign_directory = tempdir().unwrap();
+    let mut store = open_home(directory.path());
+    let mut foreign = open_home(foreign_directory.path());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let beta = store.register_domain::<BetaDomain>().unwrap();
+    let role1 = store.register_domain::<RoleDomain1>().unwrap();
+    let role2 = store.register_domain::<RoleDomain2>().unwrap();
+    let role3 = store.register_domain::<RoleDomain3>().unwrap();
+    let role4 = store.register_domain::<RoleDomain4>().unwrap();
+    let role5 = store.register_domain::<RoleDomain5>().unwrap();
+    let role6 = store.register_domain::<RoleDomain6>().unwrap();
+    let role7 = store.register_domain::<RoleDomain7>().unwrap();
+    let foreign_alpha = foreign.register_domain::<AlphaDomain>().unwrap();
+    let revision = store.domain_revision(alpha).unwrap();
+
+    let mut duplicate = command(&store, alpha, Role::agreeing([3; 16]));
+    assert!(matches!(
+        duplicate.add_witness(alpha.proof_witness(revision, Role::agreeing([3; 16]))),
+        Err(ProofCommandBuildError::DuplicateDomain { domain: "alpha" })
+    ));
+
+    let foreign_command = HomeProofCommand::<AgreementProtocol>::new(
+        generation(&store),
+        store.home_revision().unwrap(),
+        foreign_alpha.proof_source::<AgreementProtocol>(
+            foreign.domain_revision(foreign_alpha).unwrap(),
+            Role::agreeing([3; 16]),
+        ),
+    )
+    .unwrap();
+    assert!(matches!(
+        compose(&store, foreign_command),
+        Err(ProofCompositionError::ForeignDomain { domain: "alpha" })
+    ));
+
+    let called = Arc::new(AtomicBool::new(false));
+    let cancellation = CommandCancellation::new();
+    cancellation.cancel();
+    let cancelled = command(
+        &store,
+        alpha,
+        Role::agreeing([3; 16]).tracking(Arc::clone(&called)),
+    )
+    .with_cancellation(cancellation);
+    assert!(matches!(
+        compose(&store, cancelled),
+        Err(ProofCompositionError::CancelledBeforeAdmission)
+    ));
+    assert!(!called.load(Ordering::SeqCst));
+
+    let admitted_cancellation = CommandCancellation::new();
+    let mut admitted = command(&store, alpha, Role::agreeing([3; 16]));
+    admitted
+        .add_witness(beta.proof_witness(
+            store.domain_revision(beta).unwrap(),
+            Role::agreeing([3; 16]).cancelling(admitted_cancellation.clone()),
+        ))
+        .unwrap();
+    admitted = admitted.with_cancellation(admitted_cancellation.clone());
+    assert!(compose(&store, admitted).is_ok());
+    assert!(admitted_cancellation.is_cancelled());
+
+    let oversized_domain = store.register_domain::<OversizedDomain>().unwrap();
+    let oversized = HomeProofCommand::<OversizedProtocol>::new(
+        generation(&store),
+        store.home_revision().unwrap(),
+        oversized_domain.proof_source::<OversizedProtocol>(
+            store.domain_revision(oversized_domain).unwrap(),
+            Role::<[u8; MAX_PROOF_CORRELATION_BYTES]>::agreeing([0; MAX_PROOF_CORRELATION_BYTES]),
+        ),
+    );
+    assert!(matches!(
+        oversized,
+        Err(ProofCommandBuildError::CorrelationSize {
+            limit: MAX_PROOF_CORRELATION_BYTES,
+            ..
+        })
+    ));
+
+    let malformed = store
+        .register_domain::<MalformedExpectationDomain>()
+        .unwrap();
+    let malformed = HomeProofCommand::<AgreementProtocol>::new(
+        generation(&store),
+        store.home_revision().unwrap(),
+        malformed.proof_source::<AgreementProtocol>(
+            store.domain_revision(malformed).unwrap(),
+            Role::agreeing([0; 16]),
+        ),
+    );
+    assert!(matches!(
+        malformed,
+        Err(ProofCommandBuildError::ExpectedCorrelationShape {
+            actual: 8,
+            expected: 16,
+        })
+    ));
+
+    let mut bounded = command(&store, alpha, Role::agreeing([4; 16]));
+    bounded
+        .add_witness(beta.proof_witness(
+            store.domain_revision(beta).unwrap(),
+            Role::agreeing([4; 16]),
+        ))
+        .unwrap()
+        .add_witness(role1.proof_witness(
+            store.domain_revision(role1).unwrap(),
+            Role::agreeing([4; 16]),
+        ))
+        .unwrap()
+        .add_witness(role2.proof_witness(
+            store.domain_revision(role2).unwrap(),
+            Role::agreeing([4; 16]),
+        ))
+        .unwrap()
+        .add_witness(role3.proof_witness(
+            store.domain_revision(role3).unwrap(),
+            Role::agreeing([4; 16]),
+        ))
+        .unwrap()
+        .add_witness(role4.proof_witness(
+            store.domain_revision(role4).unwrap(),
+            Role::agreeing([4; 16]),
+        ))
+        .unwrap()
+        .add_witness(role5.proof_witness(
+            store.domain_revision(role5).unwrap(),
+            Role::agreeing([4; 16]),
+        ))
+        .unwrap()
+        .add_witness(role6.proof_witness(
+            store.domain_revision(role6).unwrap(),
+            Role::agreeing([4; 16]),
+        ))
+        .unwrap();
+    assert!(matches!(
+        bounded.add_witness(role7.proof_witness(
+            store.domain_revision(role7).unwrap(),
+            Role::agreeing([4; 16])
+        )),
+        Err(ProofCommandBuildError::RoleLimit {
+            limit: MAX_PROOF_ROLES
+        })
+    ));
+    assert!(store.pending_reconciliations().is_empty());
+}
+
+#[test]
+#[cfg(feature = "test-faults")]
+fn registration_invariant_fault_rejects_before_proof_callbacks() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open_with_faults(directory.path(), faults.clone());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let called = Arc::new(AtomicBool::new(false));
+    faults.fail_next(FaultPoint::BeforeVerification);
+
+    assert!(matches!(
+        compose(
+            &store,
+            command(
+                &store,
+                alpha,
+                Role::agreeing([9; 16]).tracking(Arc::clone(&called)),
+            ),
+        ),
+        Err(ProofCompositionError::DomainRegistrationInvariant { domain: "alpha" })
+    ));
+    assert!(!called.load(Ordering::SeqCst));
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert!(store.pending_reconciliations().is_empty());
+}
+
+#[test]
+#[cfg(feature = "test-faults")]
+fn stale_executable_is_rejected_after_same_home_generation_recovery() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open_with_faults(directory.path(), faults.clone());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let (stale, _consumer) = command(&store, alpha, Role::agreeing([11; 16]))
+        .seal()
+        .unwrap();
+    faults.fail_next(FaultPoint::BeforeVerification);
+    assert!(matches!(
+        compose(&store, command(&store, alpha, Role::agreeing([12; 16]))),
+        Err(ProofCompositionError::DomainRegistrationInvariant { domain: "alpha" })
+    ));
+    let recovered = store.recover_same_home().unwrap().publish();
+    assert!(matches!(
+        recovered.compose_proof(stale),
+        Err(ProofCompositionError::StaleGeneration)
+    ));
+}
