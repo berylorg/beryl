@@ -18,35 +18,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 195: Establish Generation-Owned Typed Runtime Attachments (finished)
+# Phase 197: Simplify HomeStore Proof And Read Publication (finished)
 
-HomeStore now owns one typed runtime attachment per registered live-generation slot with exact
-retirement, stale-capability rejection, and failed-candidate cleanup. Locked checks, focused
-lifecycle/state tests, formatting, diff checks, and independent semantic review passed.
-
-# Phase 196: Reconcile Engineering Rigor And Simplify Live Authority (finished)
-
-All 33 live design authorities have one valid rigor declaration. Live authority now credits Fjall's
-coherent snapshots and atomic durability, removes writer serialization from read-only proof and the
-global post-read health canary, and defines one-pass mutation preparation. Draft-marker authority is
-protection-first and uses arbitrary-order staging plus bounded post-EOF assignment, two current
-authenticated indexes, package-owned custody, incremental reclamation, and one home-wide cross-
-restart ceiling of 64 heads, 65,536 associations, and 67,108,864 encoded bytes. The plan and tracker
-were compacted, the invalidated defensive-proof assumption was preserved, scoped checks passed, and
-fresh independent semantic review closed every applicable finding.
-
-# Phase 197: Simplify HomeStore Proof And Read Publication (wip)
-
-Remove global writer serialization from read-only proof composition and narrow ordinary read
-publication to affected-slice health and generation guarantees. Preserve coherent Fjall snapshots,
-revision fencing, proof correlation, cancellation, and actual storage-access failure propagation.
-Prove concurrent proof/write outcomes and coherent reads across unrelated mutation-health changes
-with focused tests and independent semantic review.
-
-Resumable milestone: the implementation and four focused single-job nextest targets pass. Exact
-phase diffs are clean; owned files are formatted. Independent semantic completion review remains
-before phase acceptance and compaction. Workspace-wide formatting is currently obstructed only by
-pre-existing unowned import ordering in `src/proof/command.rs`.
+Read-only proof composition no longer waits for the writer, and ordinary read, proof, and receipt
+publication use exact generation and affected-gate confirmation without a global post-read health
+canary. Focused single-job nextest coverage passed for nonserialization, admission-edge cancellation,
+coherent old-or-new atomic snapshots, unrelated maintenance, and actual structural failures; scoped
+format/diff checks passed and fresh independent semantic review closed every applicable finding.
 
 # Phase 198: Collapse Duplicate Mutation Preparation (pending)
 

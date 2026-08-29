@@ -3,29 +3,31 @@ mod support;
 use std::{
     convert::Infallible,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        Arc, Condvar, Mutex,
     },
 };
 
-#[cfg(feature = "test-faults")]
 use std::time::Duration;
+
+#[cfg(feature = "test-faults")]
+use std::sync::mpsc;
 
 use beryl_home_store::{
     CommandCancellation, DomainHandle, DomainReader, DomainSchemaVersion,
     ExecutableHomeProofCommand, HomeCommand, HomeProofCommand, HomeProofProtocol, HomeStore,
-    KeyspaceSchemaVersion, MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES, ProofCommandBuildError,
-    ProofCompositionError, ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity,
-    ProofReceiptError, StorageDomain,
+    KeyspaceSchemaVersion, PointReadLimit, ProofCommandBuildError, ProofCompositionError,
+    ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity, ProofReceiptError, StorageDomain,
+    MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES,
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BetaDomain, FixtureMutationError, PutBytes, committed, open_home};
+use support::{committed, open_home, AlphaDomain, BetaDomain, FixtureMutationError, PutBytes};
 
 #[cfg(feature = "test-faults")]
 use beryl_home_store::{
-    HomeHealthState, HomeOpenOptions, HomeSchemaVersion,
     test_faults::{FaultController, FaultPoint},
+    HomeHealthState, HomeOpenOptions, HomeSchemaVersion,
 };
 
 macro_rules! empty_domain {
@@ -63,6 +65,8 @@ empty_domain!(RoleDomain6, "proof_role_6");
 empty_domain!(RoleDomain7, "proof_role_7");
 empty_domain!(OversizedDomain, "proof_oversized");
 empty_domain!(MalformedExpectationDomain, "proof_malformed_expectation");
+empty_domain!(CorrelatedSourceDomain, "proof_correlated_source");
+empty_domain!(CorrelatedWitnessDomain, "proof_correlated_witness");
 
 pub struct AgreementProtocol;
 
@@ -83,6 +87,129 @@ impl HomeProofProtocol for OversizedProtocol {
     const OPERATION_ID: u64 = 2;
     const CORRELATION_BYTES: usize = MAX_PROOF_CORRELATION_BYTES + 1;
 }
+
+pub struct StoredValueProtocol;
+
+impl HomeProofProtocol for StoredValueProtocol {
+    type Correlation = [u8; 16];
+
+    const PROTOCOL_ID: u64 = 0x706f6f67;
+    const OPERATION_ID: u64 = 0x7631;
+    const CORRELATION_BYTES: usize = 16;
+}
+
+#[derive(Clone)]
+struct CallbackBlock {
+    state: Arc<(Mutex<(bool, bool)>, Condvar)>,
+}
+
+impl CallbackBlock {
+    fn new() -> Self {
+        Self {
+            state: Arc::new((Mutex::new((false, false)), Condvar::new())),
+        }
+    }
+
+    fn wait_until_reached(&self, timeout: Duration) -> bool {
+        let (state, changed) = &*self.state;
+        let guard = state.lock().unwrap();
+        let (guard, _) = changed
+            .wait_timeout_while(guard, timeout, |status| !status.0)
+            .unwrap();
+        guard.0
+    }
+
+    fn release(&self) {
+        let (state, changed) = &*self.state;
+        state.lock().unwrap().1 = true;
+        changed.notify_all();
+    }
+
+    fn reach_and_wait(&self) {
+        let (state, changed) = &*self.state;
+        let mut status = state.lock().unwrap();
+        status.0 = true;
+        changed.notify_all();
+        while !status.1 {
+            status = changed.wait(status).unwrap();
+        }
+    }
+}
+
+struct StoredValueRole {
+    expected: [u8; 16],
+    block: Option<CallbackBlock>,
+}
+
+impl StoredValueRole {
+    fn plain(expected: [u8; 16]) -> Self {
+        Self {
+            expected,
+            block: None,
+        }
+    }
+
+    fn blocked(expected: [u8; 16], block: CallbackBlock) -> Self {
+        Self {
+            expected,
+            block: Some(block),
+        }
+    }
+}
+
+fn prove_stored_value_role<D: StorageDomain>(
+    input: &StoredValueRole,
+    reader: &DomainReader<'_, D>,
+) -> Result<ProofCorrelationBytes, Infallible> {
+    let value = reader
+        .point::<support::BytesRecord<D>>(&1, PointReadLimit::new(32).unwrap())
+        .unwrap()
+        .unwrap();
+    if let Some(block) = &input.block {
+        block.reach_and_wait();
+    }
+    let correlation: [u8; 16] = value.try_into().unwrap();
+    Ok(ProofCorrelationBytes::new(correlation))
+}
+
+macro_rules! stored_value_proof_domain {
+    ($domain:ty) => {
+        impl ProofDomain for $domain {
+            type SourceInput = StoredValueRole;
+            type WitnessInput = StoredValueRole;
+            type Error = Infallible;
+
+            fn source_protocol(_input: &Self::SourceInput) -> ProofProtocolIdentity {
+                ProofProtocolIdentity::of::<StoredValueProtocol>()
+            }
+
+            fn expected_source_correlation(input: &Self::SourceInput) -> ProofCorrelationBytes {
+                ProofCorrelationBytes::new(input.expected)
+            }
+
+            fn witness_protocol(_input: &Self::WitnessInput) -> ProofProtocolIdentity {
+                ProofProtocolIdentity::of::<StoredValueProtocol>()
+            }
+
+            fn prove_source(
+                input: &Self::SourceInput,
+                reader: &DomainReader<'_, Self>,
+            ) -> Result<ProofCorrelationBytes, Self::Error> {
+                prove_stored_value_role(input, reader)
+            }
+
+            fn prove_witness(
+                input: &Self::WitnessInput,
+                reader: &DomainReader<'_, Self>,
+            ) -> Result<ProofCorrelationBytes, Self::Error> {
+                prove_stored_value_role(input, reader)
+            }
+        }
+    };
+}
+
+stored_value_proof_domain!(CorrelatedSourceDomain);
+stored_value_proof_domain!(CorrelatedWitnessDomain);
 
 pub struct Role<P> {
     correlation: P,
@@ -675,6 +802,175 @@ fn proof_completes_while_a_writer_remains_blocked() {
 
     blocked.release();
     committed(writer.join().unwrap());
+}
+
+#[cfg(feature = "test-faults")]
+fn put_correlated_pair(
+    store: &HomeStore,
+    source: &DomainHandle<CorrelatedSourceDomain>,
+    witness: &DomainHandle<CorrelatedWitnessDomain>,
+    value: [u8; 16],
+) -> beryl_home_store::CommandOutcome {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command
+        .add(source.contribution(
+            store.domain_revision(source).unwrap(),
+            PutBytes::<CorrelatedSourceDomain>::new(1, value.to_vec()),
+        ))
+        .unwrap();
+    command
+        .add(witness.contribution(
+            store.domain_revision(witness).unwrap(),
+            PutBytes::<CorrelatedWitnessDomain>::new(1, value.to_vec()),
+        ))
+        .unwrap();
+    store.execute(command)
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn proof_snapshot_is_one_complete_old_or_new_cross_domain_state() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut opened = open_with_faults(directory.path(), faults);
+    let source = opened.register_domain::<CorrelatedSourceDomain>().unwrap();
+    let witness = opened.register_domain::<CorrelatedWitnessDomain>().unwrap();
+    let old = [1; 16];
+    let new = [2; 16];
+    committed(put_correlated_pair(&opened, &source, &witness, old));
+
+    let callback_block = CallbackBlock::new();
+    let mut command = HomeProofCommand::new(
+        generation(&opened),
+        opened.home_revision().unwrap(),
+        source.proof_source::<StoredValueProtocol>(
+            opened.domain_revision(&source).unwrap(),
+            StoredValueRole::blocked(old, callback_block.clone()),
+        ),
+    )
+    .unwrap();
+    command
+        .add_witness(witness.proof_witness(
+            opened.domain_revision(&witness).unwrap(),
+            StoredValueRole::plain(old),
+        ))
+        .unwrap();
+    let (command, consumer) = command.seal().unwrap();
+    let store = Arc::new(opened);
+    let proving = Arc::clone(&store);
+    let proof = std::thread::spawn(move || proving.compose_proof(command));
+
+    let snapshot_exists = callback_block.wait_until_reached(Duration::from_secs(10));
+    let mutation = snapshot_exists.then(|| put_correlated_pair(&store, &source, &witness, new));
+    callback_block.release();
+    let racing = proof.join().unwrap();
+
+    assert!(snapshot_exists);
+    committed(mutation.unwrap());
+    let receipt = racing.unwrap();
+    store.consume_proof_receipt(consumer, receipt).unwrap();
+
+    let mut command = HomeProofCommand::new(
+        generation(&store),
+        store.home_revision().unwrap(),
+        source.proof_source::<StoredValueProtocol>(
+            store.domain_revision(&source).unwrap(),
+            StoredValueRole::plain(new),
+        ),
+    )
+    .unwrap();
+    command
+        .add_witness(witness.proof_witness(
+            store.domain_revision(&witness).unwrap(),
+            StoredValueRole::plain(new),
+        ))
+        .unwrap();
+    let (receipt, consumer) = compose(&store, command).unwrap();
+    store.consume_proof_receipt(consumer, receipt).unwrap();
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn cancellation_after_waiting_for_health_admission_skips_proof_callbacks() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut opened = open_with_faults(directory.path(), faults.clone());
+    let alpha = opened.register_domain::<AlphaDomain>().unwrap();
+    let cancellation = CommandCancellation::new();
+    let callbacks = Arc::new(AtomicBool::new(false));
+    let command = command(
+        &opened,
+        &alpha,
+        Role::agreeing([9; 16]).tracking(Arc::clone(&callbacks)),
+    )
+    .with_cancellation(cancellation.clone());
+    let (command, _consumer) = command.seal().unwrap();
+    let blocks = (0..64)
+        .map(|_| faults.block_next(FaultPoint::BeforeReadConfirmation))
+        .collect::<Vec<_>>();
+    let store = Arc::new(opened);
+    let mut readers = Vec::with_capacity(64);
+    for _ in 0..64 {
+        let reading = Arc::clone(&store);
+        readers.push(
+            std::thread::Builder::new()
+                .stack_size(256 * 1024)
+                .spawn(move || reading.home_revision())
+                .unwrap(),
+        );
+    }
+    let admissions_full = blocks
+        .iter()
+        .all(|block| block.wait_until_reached(Duration::from_secs(10)));
+
+    let (started_sender, started_receiver) = mpsc::sync_channel(1);
+    let (result_sender, result_receiver) = mpsc::sync_channel(1);
+    let proving = Arc::clone(&store);
+    let proof = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            started_sender.send(()).unwrap();
+            result_sender.send(proving.compose_proof(command)).unwrap();
+        })
+        .unwrap();
+    let proof_started = started_receiver
+        .recv_timeout(Duration::from_secs(10))
+        .is_ok();
+    let early_result = proof_started
+        .then(|| {
+            result_receiver
+                .recv_timeout(Duration::from_millis(100))
+                .ok()
+        })
+        .flatten();
+    let completed_early = early_result.is_some();
+
+    cancellation.cancel();
+    if admissions_full && proof_started && early_result.is_none() {
+        blocks[0].release();
+    } else {
+        for block in &blocks {
+            block.release();
+        }
+    }
+    let result =
+        early_result.or_else(|| result_receiver.recv_timeout(Duration::from_secs(10)).ok());
+    for block in &blocks {
+        block.release();
+    }
+    for reader in readers {
+        reader.join().unwrap().unwrap();
+    }
+    proof.join().unwrap();
+
+    assert!(admissions_full);
+    assert!(proof_started);
+    assert!(!completed_early);
+    assert!(matches!(
+        result,
+        Some(Err(ProofCompositionError::CancelledBeforeAdmission))
+    ));
+    assert!(!callbacks.load(Ordering::SeqCst));
 }
 
 #[test]

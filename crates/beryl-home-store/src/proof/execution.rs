@@ -15,6 +15,9 @@ impl crate::HomeStore {
             return Err(ProofCompositionError::ReentrantWriter);
         }
         let admission = self.health.admit()?;
+        if cancellation.is_cancelled() {
+            return Err(ProofCompositionError::CancelledBeforeAdmission);
+        }
         let generation_guard = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {

@@ -1,12 +1,12 @@
-use std::{any::TypeId, error::Error};
+use std::any::TypeId;
 
 use beryl_model::{DomainRevision, HomeRevision};
 use thiserror::Error;
 
-use crate::{HealthGateError, HomeGeneration, domain::StoreInstanceId, health::FailureSeverity};
+use crate::{domain::StoreInstanceId, health::FailureSeverity, HealthGateError, HomeGeneration};
 
 use super::{
-    HomeProofCommand, HomeProofProtocol, MAX_PROOF_ROLES, PreparedProofRole, ProofCorrelation,
+    HomeProofCommand, HomeProofProtocol, PreparedProofRole, ProofCorrelation, MAX_PROOF_ROLES,
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -72,11 +72,6 @@ impl<P: HomeProofProtocol> std::fmt::Debug for HomeProofReceipt<P> {
 pub enum ProofReceiptError {
     #[error(transparent)]
     HealthGate(#[from] HealthGateError),
-    #[error("proof receipt validation could not confirm storage health: {source}")]
-    StorageHealth {
-        #[source]
-        source: Box<dyn Error + Send + Sync>,
-    },
     #[error("the Beryl-home generation lock is poisoned")]
     GenerationPoisoned,
     #[error("proof receipt belongs to another or obsolete Beryl-home generation")]
