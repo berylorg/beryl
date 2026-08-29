@@ -159,24 +159,33 @@ Keep independent main-window presentation responsive while process-wide services
 - Before staging an edit that can insert, remove, move, replace, or reintroduce a marker, the
   composer host
   asks the higher-level Syndic service to prepare one opaque label-readiness operation. The request
-  names the current home generation, destination thread and exact independently revisioned label-
-  authority head, draft, active editor session and candidate generation/root, operation, and
-  closed same-conversation reuse or cross-conversation allocation intent. The app neither chooses a
-  destination label nor constructs, edits, copies, refreshes, or compares the resulting authority.
-- The host streams bounded canonical association pages through the operation. For each page it
-  asks the Syndic coordinator to seal the complete HomeStore proof plan after all required opaque
-  domain contributions are fixed. Syndic retains the paired move-only expectation consumer; the app
-  receives and transports only the opaque executable command into `HomeStore::compose_proof`, which
-  returns only an opaque receipt. The host passes that receipt immediately to the coordinator for
-  exact consumption against its independently retained pre-dispatch expectation and current home
-  generation. It never receives the consumer, an origin span, label-first result, expected role or
-  revision facts, shared correlation, or cross-domain reader and cannot substitute a complete
-  executable/receipt or receipt/consumer pair as authority.
+  supplies the exact destination/editor operation identity and closed same-conversation reuse or
+  cross-conversation allocation intent while Syndic requires the already-established monotonic
+  protection head and binds the operation to current home, label-authority, draft, session,
+  candidate, and predecessor authority. Syndic derives every final destination label and owns the
+  durable authenticated admission index. The app neither chooses a destination label nor
+  constructs, edits, copies, refreshes, or compares that authority.
+- The host transports bounded source-association page inputs, including each entry's opaque target-
+  marker intent, through the operation without sorting, deduplicating, allocating, comparing, or
+  retaining a label registry. Pages may carry labels in arbitrary caller/source order. For each page
+  it asks Syndic to resolve private evidence, canonicalize that bounded page, and seal the complete
+  HomeStore proof plan after all required opaque domain contributions are fixed. Syndic retains the
+  paired move-only expectation
+  consumer; the app receives and transports only the opaque executable command into
+  `HomeStore::compose_proof`, which returns only an opaque receipt. The host passes that receipt
+  immediately to the coordinator for exact consumption against its independently retained pre-
+  dispatch expectation and current home generation. It never receives the consumer, an origin
+  span, label-first result, expected role or revision facts, shared correlation, or cross-domain
+  reader and cannot substitute a complete executable/receipt or receipt/consumer pair as authority.
   Cross-conversation source ordinals never select destination labels; only Syndic reserves the
   monotonic destination range.
-- At exact EOF the host asks Syndic to fold the ordered receipts and revalidate the mutable head,
-  session, candidate, and reservation. The returned final readiness proof is move-only and remains
-  in Syndic operation custody; only its fixed-size `Copy` binding may enter durable mutation input.
+- At exact EOF the host drives Syndic's bounded durable post-EOF continuation. Syndic derives any
+  reservation from authenticated staged occurrences, consumes the source-order index to assign
+  labels in bounded steps, and revalidates the mutable heads, session, candidate, and reservation
+  only after the source root is canonical empty. The returned final readiness proof is move-only and
+  remains in Syndic operation custody. Syndic alone derives and persists its fixed-size binding
+  while transferring that proof through the mutation boundary; the app never receives, constructs,
+  injects, or compares that binding.
   Missing, stale, exhausted, conflicting, obsolete, or disagreeing readiness reports the feature-
   owned unavailable outcome before draft mutation.
 - The host maps typing, paste, deletion, and marker commands to exact predecessor-candidate
@@ -189,19 +198,18 @@ Keep independent main-window presentation responsive while process-wide services
   checked charges,
   and complete predecessor occurrence proof when removal applies. It carries no caller-selected gap
   or immediate-neighbor witness; storage derives those facts from its current working roots after
-  any removal. Alongside that bounded widget page, the host supplies exact insertion-time marker
-  metadata keyed by the same stable object identity: Syndic's proof-selected final label and the
-  authenticated `AssetId` admitted for that marker. Translation requires a one-to-one match for
-  every inserted marker and
-  passes the resulting canonical `(marker id, label, AssetId)` association into Syndic. Move and
+  any removal. Alongside that bounded widget page, mutation-effect translation supplies Syndic's
+  bounded point-consumption boundary with the exact target marker id, Syndic-derived final label,
+  and authenticated `AssetId` admitted for that marker. Translation requires a one-to-one match for
+  every inserted marker. Move and
   same-id replacement preserve the existing authenticated `AssetId`; changing the referenced asset
   requires a new marker identity. This metadata is canonical draft state captured at insertion, not
   a caller-authored seal mapping or a late Asset lookup. The host does not force marker effects
   into the first page, pre-scan or reorder the widget stream, or retain earlier pages to complete a
   later effect. Marker-changing begin consumes the move-only readiness proof into Syndic custody;
-  finish and final candidate adoption carry its durable binding and compact source-association
-  identity. No label or asset from a different operation may be
-  substituted. No partial replacement is exposed to the widget,
+  finish and final candidate adoption remain behind Syndic's durable binding and authenticated
+  admission-index validation without accepting either from the app. No label or asset from a
+  different operation may be substituted. No partial replacement is exposed to the widget,
   session head, history frontier, or current-draft selector, and no whole-operation fragment vector
   or hardcoded cumulative page cap exists.
 - Propagated Cut captures one immutable activation binding and logical selection range before
@@ -287,8 +295,10 @@ Keep independent main-window presentation responsive while process-wide services
 - The host coordinates but does not own undo/redo authority. Syndic's compact durable root-
   transition journal and frontier advance atomically with every adopted ordinary candidate and
   clear redo only in that committed command. Undo and redo authenticate exact retained lineage,
-  then request the dedicated direct historical-root adoption that creates one new candidate
-  generation, advances the durable frontier, and restores exact caret and directed selection.
+  then transport only one opaque Syndic-resolved historical target into the dedicated direct root-
+  adoption operation. Historical adoption uses no label-readiness proof or transient reservation;
+  it creates one new candidate generation, advances the durable frontier, and restores exact caret
+  and directed selection.
   Rejection, conflict, cancellation, error, collision, late response, or indeterminate custody
   preserves both frontiers. The widget and window retain only current availability and one bounded
   operation cursor; neither retains inverse text, a marker registry, a root graph, or history-sized
@@ -388,25 +398,27 @@ Keep independent main-window presentation responsive while process-wide services
   expected role or correlation fact, completed page prefix, proof copy, label registry, historical
   label cache, marker collection, or whole-draft scan.
   Allocation and same-label proof use only the typed package contributions described above.
-- Exact immediate-page replay reuses the same operation and receipt. Different bytes at that page
-  collide, older pages are obsolete, and candidate, session, label-head, home-generation, or source-
-  association drift makes completion stale without retargeting it to the current editor. The app
-  never trusts a receipt directly; only Syndic may fold it into the next page frontier and issue the
-  final proof/binding.
+- Exact immediate-page replay resubmits the same durable operation/page identity and canonical
+  request bytes for Syndic to classify from its selected head and replay receipt; it never depends
+  on retaining the same in-memory attempt. Different bytes at that identity collide, older pages
+  are obsolete, and candidate, session, label-head, home-generation, or source-evidence drift makes
+  completion stale without retargeting it to the current editor. The app never trusts a receipt
+  directly; only Syndic may reconcile byte-equal source/target closure, advance ingestion, run post-
+  EOF assignment, and issue the final proof.
 - Before durable mutation begin, cancellation, supersession, unmount, service disposal, or terminal
   readiness failure asks Syndic to release the reservation. After begin, the host first drives the
   exact staging/build operation to a durable or reconciled terminal settlement. Before final writer
   admission cancellation may win; after admission the host drains the result and immediately hands
   `Indeterminate` custody to the existing operation-scoped reconciliation owner. An exact terminal
   noncommit or `ExactNew` consumes/releases custody, `ExactOld` keeps it for retry or cancellation,
-  and `Collision` leaves the uncertain reservation closed until home-generation retirement. The app
+  and `Collision` leaves the uncertain reservation closed until exact durable reconciliation. The app
   never releases or reuses that ordinal from its own observation. `Committed` consumes custody even
   when it carries a later failure; the host publishes only from the exact receipt after the ordinary
   current-generation health check.
 - The host publishes a successful marker edit only from the final candidate-adoption receipt bound
-  to the durable readiness binding. That one-domain Syndic adoption validates the storage-derived
-  successor and does not advance permanent label authority; first acceptance owns that later
-  transition. Stale, exhausted, conflicting, missing, or corrupt authority publishes no marker,
+  to Syndic's package-owned durable readiness binding. That one-domain Syndic adoption validates the
+  storage-derived successor and does not advance permanent label authority; first acceptance owns
+  that later transition. Stale, exhausted, conflicting, missing, or corrupt authority publishes no marker,
   candidate, caret/selection change, history transition, or partial widget edit. Text-only edits
   and marker-unchanged candidates carry no synthetic label proof.
 - Replacement-edit start validates the target content and sealed reference-set digest, retains the

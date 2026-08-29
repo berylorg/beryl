@@ -39,6 +39,11 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - `beryl-model` owns only pure identities and values shared across packages.
 - `beryl-backend` does not access the Beryl-home store.
 - Cross-domain atomic operations are expressed as typed home-store commands whose participants contribute validated mutations to one physical commit.
+- The owned Fjall fork supplies the dependency-owned coherence and durability primitives: one
+  sequence-coherent snapshot across all keyspaces, atomic write-batch publication, surfaced batch
+  commit state and failures, and the explicit `SyncAll` durability barrier. Beryl applies those
+  guarantees through typed ownership, revision fences, and classified command outcomes rather than
+  re-proving them with duplicate reads or whole-store runtime validation.
 
 ## Physical Home Layout
 
@@ -168,16 +173,24 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   witness roles. Each role belongs to a distinct live domain owner and may read only that domain's
   registered typed families through the command snapshot; duplicate participation by one domain
   across any role is invalid.
-- Writer admission serializes the command with mutations and fixes one snapshot. Immediately before
-  callbacks, the store checks the exact home generation, every expected domain revision, every
-  role's exact live Rust owner, and its complete persistent registration declaration. Each callback
-  then performs only its domain-owned bounded validation and returns one fixed-size inline
-  `Copy + Eq` correlation. The store accepts only when the source and every witness return equal
-  correlations; a source-only command accepts its source correlation after the same fences.
+- Proof admission does not acquire or wait for the serialized writer. It fixes one Fjall coherent
+  snapshot, checks the exact home generation, every expected snapshot domain revision, every role's
+  exact live Rust owner, and its complete persistent registration declaration, then runs each
+  domain-owned bounded callback against that snapshot. The store accepts only when the source and
+  every witness return equal fixed-size inline `Copy + Eq` correlations; a source-only command
+  accepts its source correlation after the same fences. A concurrent atomic mutation is wholly
+  before or after the snapshot. A later race may make the resulting receipt stale or cause the
+  consuming mutation's revision checks to return conflict, but it cannot create false proof
+  authority.
 - The generic correlation wrapper and comparison contract are owned by `beryl-home-store`.
   Domain packages own their private contribution types and correlation construction. The app
   receives neither a raw cross-domain reader nor the contributed correlations and cannot compare,
   reinterpret, or synthesize agreement.
+- When isolated domain packages must name the same protocol without depending on one another,
+  `beryl-home-store` supplies a generic fixed-32-byte-digest protocol marker parameterized by exact
+  system-owned `u64` protocol and operation identifiers. Instantiating that generic marker with the
+  same identifiers yields one process-local Rust protocol type; it carries no domain fact, input,
+  callback, registry, or durable schema and does not weaken the exact `TypeId` fence.
 - Before dispatch, the source requester seals the complete protocol, operation, role set, revision
   fences, callbacks, and correlation expectation into exactly one opaque executable command plus
   one paired move-only expectation consumer. Their unforgeable process-local plan identity and home
@@ -196,7 +209,7 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   descriptor, reconciliation scope, or `Indeterminate` outcome and cannot authorize publication by
   itself. It is distinct from validation-only mutation participants and from the durable successor
   reconciliation protocol.
-- Cancellation may win only before writer admission. Once admitted, the bounded callbacks run to a
+- Cancellation may win only before proof admission. Once admitted, the bounded callbacks run to a
   determinate accepted or rejected result against their one snapshot; the caller drains that result
   and cannot classify cancellation as validation failure or nonpublication evidence.
 
@@ -230,7 +243,13 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Caller-sampled physical revisions remain required for heterogeneous cross-domain and
   sidecar-retaining commands because their participants must share one explicitly prepared atomic
   basis.
-- The writer validates all expected revisions, exact participant owner identities, and persistent registration declarations immediately before assembling the commit. It then runs only operation-bounded contributor validation and assembly; it never performs a whole-domain scan. A mismatch rejects the whole command with a typed conflict; it never merges opaque payloads or creates a competing same-thread child.
+- The writer validates all expected revisions, exact participant owner identities, and persistent
+  registration declarations against one coherent writer-time snapshot immediately before
+  assembling the commit. Each mutation participant then gets one bounded preparation pass that may
+  perform its operation-owned reads and validation and returns package-owned validated contribution
+  state for one-time batch assembly. No mandatory second validation or contribution reread is
+  required, and the writer never performs a whole-domain scan. A mismatch rejects the whole command
+  with a typed conflict; it never merges opaque payloads or creates a competing same-thread child.
 - One explicitly typed validation-only domain participant may join a command that contains at least
   one mutation participant. It runs against the same writer-time snapshot and caller-sampled domain
   revision, but has no mutation builder, cannot retain a sidecar, advances neither home nor domain
@@ -240,9 +259,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   write path.
 - Current-draft publication that changes marker ownership uses exactly one mutating Syndic
   participant and one Asset participant in the same command. Syndic's proof checks remain part of
-  that one mutating participant; a second Syndic validation-only participant would be duplicate
-  same-domain participation and is invalid. This specialization does not weaken the generic
-  duplicate-participant rule.
+  that one mutating participant's preparation; a second Syndic validation-only participant would
+  be duplicate same-domain participation and is invalid. This specialization does not weaken the
+  generic duplicate-participant rule.
 - One accepted command writes every participating keyspace mutation in one Fjall write batch. A
   successful Fjall `SyncAll` outcome means that complete batch committed atomically and is durable;
   only then may Beryl report durable success.
@@ -300,9 +319,10 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   budget fits that ceiling. A declared successor protocol includes in that proof its protocol and
   role identities, resolver state, maximum correlation, each derived-read codec family and count,
   maximum key/stored/decoded bytes, and the extended sealed-collision facts; none of those charges
-  may be discovered after admission. After writer admission, the command materializes the exact old state,
-  intended new state, and intended receipt facts from the admitted snapshot into that reserved
-  budget before batch construction or any Fjall mutation. Scope saturation returns
+  may be discovered after admission. After writer admission, the mutation participants' single
+  bounded preparation passes materialize the exact old state, intended new state, and intended
+  receipt facts from the admitted snapshot into that reserved budget before batch construction or
+  any Fjall mutation. Scope saturation returns
   `NotCommitted { evidence: ReconciliationCapacity }`; an oversized descriptor returns the
   exact `NotCommitted { evidence: ReconciliationDescriptorTooLarge }` result. Neither rejection
   enters writer admission, creates a scope, or changes structural health.
@@ -445,16 +465,24 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   operation-scoped publication gates separately move through `open`, `verifying`, and `closed`;
   scoped verification is never a structural store lifecycle state.
 - Acceptance of a surfaced `Indeterminate` custody value rejects publication and moves only its
-  affected gate from `open` to `verifying`. `ExactOld` or `ExactNew` reopens that gate; `Collision` moves it to
-  `closed`. Malformed durable records, invalid trusted codec or registration contracts, poisoned
-  current authority, missing required keyspaces, and sidecar invariant violations separately move
-  the structural store lifecycle to `failed`. Semantic mutation rejection leaves both lifecycle
-  and unrelated gates unchanged.
-- Every state-dependent result passes one store-owned publication confirmation that first observes
-  the exact admitted Fjall database's retained autonomous-maintenance terminal and then confirms
-  the Beryl health generation. This includes reads, writes, domain registration and reacquisition,
-  command-receipt revision projection, and sidecar admission and verification; no result path may
-  invoke only the cached Beryl gate check.
+  affected gate from `open` to `verifying`. `ExactOld`, `ExactNew`, or `ExactSuccessor` reopens that
+  gate; `Collision` moves it to `closed`. Malformed durable records, invalid trusted codec or
+  registration contracts, poisoned current authority, missing required keyspaces, and sidecar
+  invariant violations separately move the structural store lifecycle to `failed`. Semantic
+  mutation rejection leaves both lifecycle and unrelated gates unchanged.
+- An ordinary typed read is admitted only while its structural lifecycle and affected operation
+  gate are open, executes against one Fjall coherent snapshot, and publishes only if that exact
+  Beryl generation and affected gate remain current and the snapshot's selection, acquisition,
+  envelope, decode, and I/O work succeeded. It does not poll Fjall's database-wide mutation or
+  autonomous-maintenance health after the read merely to reject coherent unaffected data. A
+  concurrent mutation or maintenance transition may make a later dependent command stale or close
+  its affected gate, but cannot make the published snapshot a mixed authority.
+- Mutation, registration, recovery, sidecar publication, and other state-changing or lifecycle
+  publication boundaries observe the exact Fjall operation failure and retained maintenance state
+  that can affect their result before confirming the Beryl generation. Direct policy denial remains
+  a typed bounded operation failure; corruption, integrity, keyspace-identity, poison, and
+  durability failures retain their actual provenance and applicable structural or operation-scope
+  consequence rather than being erased by a generic health result.
 - A panic unwinding through an admitted writer fails the store closed immediately. Recovery does not
   reuse that poisoned writer; it creates a fresh store service and fresh writer after the physical
   database and required schema are reopened successfully.
@@ -689,7 +717,13 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   canonical path aliases, initial `state` symlink, junction, and other reparse-point collision
   rejection, fully supported local NTFS homes, best-effort filesystem tiers, unreliable-lock
   rejection, and explicit orderly release.
-- Concurrency tests cover competing draft saves, simultaneous different-thread submissions, claim-or-create races, session close versus Exit, resolution admission versus queued input, CAS binding transitions, and stale expected revisions.
+- Concurrency tests cover competing draft saves, simultaneous different-thread submissions,
+  claim-or-create races, session close versus Exit, resolution admission versus queued input, CAS
+  binding transitions, and stale expected revisions. They also prove read-only proof composition
+  does not wait for the writer, observes one complete old or new atomic snapshot while racing a
+  mutation, and can yield only later stale/conflict rejection rather than false authority. Ordinary
+  coherent reads remain publishable across an unrelated maintenance transition while actual
+  snapshot-access and generation failures still propagate.
 - Admission tests prove the owner-derived direct footprint of 26 records and 1,263,194 encoded key-
   plus-value bytes, queued footprint of 25 records and 1,328,212 bytes, and current journal-framed
   shared maximum of 1,328,763 bytes remain beneath the immutable 256-MiB product budget. They prove
@@ -736,4 +770,8 @@ Modifiers: none
 
 The Operator-selected home is trusted storage. Same-user out-of-band replacement, rollback, or
 tampering is outside the supported envelope; malformed records and supported external theme edits
-remain validated inputs.
+remain validated inputs. Within that envelope, surfaced storage failures must not publish a mixed
+atomic state or falsely acknowledge a new durable state. Coherent Fjall snapshots, atomic batches,
+the explicit `SyncAll` barrier, and exact acknowledgement-loss reconciliation cover those affected
+consequences without requiring unrelated whole-home revalidation or a global post-read health
+canary.

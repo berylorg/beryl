@@ -23,8 +23,9 @@ absorbing Syndic thread ownership.
 - `beryl-state` registers the Beryl-owned logical record families required by `doc/systems/beryl-home-storage/design.md` through the typed-domain boundary exposed by `beryl-home-store`.
 - It owns each domain's exact Rust owner type, one exact codec type per family, record schemas,
   exhaustive domain validation, operation-scoped natural-record reconciliation hooks, typed bounded
-  queries, mutation validation, revision rules, and batch contributions. Stable names and schema
-  versions remain durable declarations rather than substitutes for live type identity.
+  queries, one-pass mutation preparation, revision rules, and validated batch contributions. Stable
+  names and schema versions remain durable declarations rather than substitutes for live type
+  identity.
 - Every owned codec enforces its stored and decoded schema limits through the bounded home-store read
   boundary. Ordinary point and fixed bootstrap values carry no accounting wrapper; their limits
   pass before publication. Natural pages and composite paged reads report checked item,
@@ -368,13 +369,38 @@ absorbing Syndic thread ownership.
   inspection uses separate typed build authority and cannot select sealed state. A bare set id
   never authorizes a sealed-manifest read.
 - For draft-marker label readiness, this package exposes one private typed Asset witness
-  contribution for `beryl-home-store` process-local proof composition. On the command's serialized
-  snapshot and exact Asset-domain revision fence, it revalidates the complete
-  `SealedAssetReferenceSetProof`, exact sealed manifest and completion evidence, the requested
-  label-first entry, and the complete `AssetId`, then emits only the fixed-size generic correlation
-  expected by the protocol. The witness cannot read Syndic records, mutate Asset state, advance a
-  revision, or return its private facts or correlation to the app. Missing, stale, malformed, or
-  disagreeing evidence rejects the composition determinately.
+  contribution for `beryl-home-store` process-local proof composition. On the proof command's
+  coherent snapshot and exact Asset-domain revision fence, it revalidates the complete
+  accepted `SealedAssetReferenceSetProof`, exact sealed manifest and completion evidence, the
+  requested source-label-first entry, and the complete source `AssetId`, then emits only the fixed-
+  size generic correlation expected by the protocol. Target marker identity and opaque target-
+  marker intent remain Syndic-private and are excluded from this witness input and the shared
+  correlation. The witness cannot read Syndic records, mutate Asset state, advance a revision, or
+  return its private facts or correlation to the app. Missing, stale, malformed, or disagreeing
+  accepted evidence rejects the composition determinately.
+- That witness uses HomeStore's generic fixed-32-byte-digest protocol marker instantiated with the
+  system-owned protocol id `0x53444d5244595631` and operation id `0x5244595041474531`. Its private
+  input derives the agreed SHA-256 correlation under
+  `syndic/draft-marker-label-readiness-page/v1` from page ordinal, EOF, ordered complete sealed-set
+  proofs, source labels, and exact source `AssetId` values without target marker identity, importing
+  a Syndic type, or publishing a shared domain value through `beryl-model`.
+- Its accepted-entry encoding is fixed at 194 raw bytes: tag `1`; 16-byte sealed-set id; 32-byte
+  sequential digest; little-endian `u64` sequential count and maximum label, with zero meaning no
+  maximum; 32-byte ordered-asset digest; little-endian `u64` ordered count and entry frontier;
+  32-byte asset-chain digest; little-endian `u64` source label; and complete asset identity as its
+  version byte, 32-byte digest, and nonzero little-endian `u64` length. The page hash is the domain
+  bytes, little-endian `u64` ordinal, one `0`/`1` EOF byte, little-endian `u64` entry count, then
+  those entries with no serializer or hasher framing. The 65,536-byte evidence ceiling counts only
+  the entry bytes.
+- The typed witness constructor validates the immutable Syndic-canonicalized bounded accepted-
+  evidence page shape exactly once, including nondecreasing source labels, page-local sealed-proof
+  evidence order, and exact source `AssetId` agreement across every equal-label run, then seals a
+  representation the snapshot callback cannot reshape. On each proof-composition snapshot the
+  callback still revalidates the selected durable Asset records, but performs at most one manifest,
+  label-first, and asset-metadata read for each byte-identical `(complete sealed proof, source label,
+  AssetId)` lookup in that page. Every ordered occurrence remains in the page correlation and is
+  hashed separately, so deduplicating identical reads never deduplicates occurrence authority. The
+  package retains no cross-page or per-label state.
 - Exhaustive asset-domain validation walks owner heads and sealed set entries in bounded pages,
   proves every selected asset metadata record and sidecar, and checks exact set
   counts/digests/frontiers. It does not build a reverse reference set or trust a mutable metadata
@@ -392,7 +418,9 @@ absorbing Syndic thread ownership.
   values for both transfer operations, cover the marker-free validation-only shape, and checked-sum
   their record and byte totals. An unrepresentable result is a package contract failure; the
   package never saturates, wraps, or accepts a caller-provided replacement estimate.
-- Ordinary mutation validation and contribution perform only operation-bounded typed reads. They never invoke a complete domain scan while holding the home writer.
+- Each ordinary mutation's single preparation pass performs only operation-bounded typed reads and
+  returns package-owned validated contribution state for one-time batch assembly. It never invokes
+  a complete domain scan while holding the home writer or repeats those reads in a second callback.
 - Routine open, same-home reopen, and typed-handle reacquisition validate the exact owner and codec
   types, durable domain and family declarations, required physical families, and generation. They
   do not visit every application record or run complete domain invariants.

@@ -208,8 +208,11 @@
 - [x] Established generation-owned typed domain runtime attachments with borrow-preserving clone-
   stable non-`Copy` handle views, sole generation-slot ownership, exact synchronous retirement,
   stale capability rejection, and failed-candidate cleanup.
-- [ ] Establish attachment-owned Syndic draft-marker admission with exact move-only page-attempt
-  replay custody.
+- [x] Reconciled proportional engineering-rigor authority and compacted the remaining execution
+  window without weakening bounded streaming, durable reconciliation, or Syndic/CAS fencing.
+- [ ] Establish attachment-owned Syndic draft-marker admission with monotonic label protection,
+  bounded authenticated indexes, home-wide cross-restart retained-resource limits, and exact
+  package-owned replay custody.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.
@@ -224,9 +227,8 @@
   unavailable states without pretending deferred capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
   mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.
-- [ ] Gate: verify multi-window lifecycle, activation, large drafts, logical marker scale, long
-  transcript traversal, local cache/page release, and configured working-set behavior before
-  Checkpoint 5.
+- [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release
+  before Checkpoint 5.
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
@@ -250,14 +252,12 @@
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff
 
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
-  first submission, and ordinary child conversation.
+  first submission, ordinary child conversation, and inherited image-label authority without
+  copying historical label maps.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
-- [ ] Prove production child creation and inherited image-label authority without copying historical
-  label maps.
-- [ ] Gate: verify child creation, inherited labels, first submission, resolution ordering, restart,
-  retry, archive, navigation, failure states, and independent architectural review before
-  Checkpoint 7.
+- [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,
+  before Checkpoint 7.
 
 ## Checkpoint 7: Implement Assets And Deferred Cleanup Boundaries
 
@@ -274,25 +274,21 @@
   established Syndic authority and bounded Beryl projections.
 - [ ] Preserve unreachable turns and resources until a separately designed future garbage-
   collection operation.
-- [ ] Gate: verify arbitrary asset size, adversarial dimensions, concurrent windows, cancellation,
-  collisions, generated-image repair, atomic publication, device loss, eviction, deferred cleanup,
-  and independent architectural review before Checkpoint 8.
+- [ ] Gate: confirm representative large inputs and configured admission limits, hostile dimensions,
+  generated-image repair, atomic publication, owned-resource release, and deferred cleanup before
+  Checkpoint 8.
 
 ## Checkpoint 8: Integrate, Harden, And Close The Rework
 
-- [ ] Reconcile final root, feature, system, package, GUI, settings, hotkey, diagnostics, source,
-  dependency, memory, failure, and plan authority after implementation exposes the target state.
 - [ ] Remove every remaining shim, obsolete export, test, key, diagnostic, role, archived-source
   membership edge, and forbidden API reference.
-- [ ] Verify every named Beryl-owned queue, cache, pool, page set, editor window, transcript window,
-  media decoder, CPU surface cache, GPU texture cache, and worker set obeys its configured limit and
-  releases or evicts capacity after repetition.
-- [ ] Treat process RSS and renderer counters as observational diagnostics only; do not require an
-  exact global CPU/GPU high-water theorem, allocator accounting, CAS memory accounting, or
-  GPU-driver residency proof.
+- [ ] Close evidence gaps, if any remain after owning phases, for named Beryl-owned queues, caches,
+  pools, page sets, editor and transcript windows, media resources, and workers. Require configured
+  limits and owned-capacity release or eviction; treat process RSS and renderer counters as
+  observational diagnostics rather than exact global accounting.
 - [ ] Run end-to-end storage, runtime/CAS, multi-window, conversation, branch, asset, recovery, and
   Windows functional verification.
-- [ ] Coordinate with the Operator before sustained stress or performance measurement so the laptop
-  can remain on AC power.
-- [ ] Obtain independent architectural completion review and close every finding before archiving
-  this tracker under the project convention.
+- [ ] Run sustained stress or performance measurement only for a concrete unresolved supported-
+  envelope question, after coordinating with the Operator so the laptop can remain on AC power.
+- [ ] Obtain independent architectural completion review, resolve applicable findings, perform
+  targeted live-authority/reference checks, and archive this tracker under the project convention.

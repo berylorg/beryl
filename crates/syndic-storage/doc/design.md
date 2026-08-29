@@ -25,7 +25,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 ## Storage Engine
 
 - `syndic-storage` uses Fjall only through `beryl-home-store`; it has no direct Fjall dependency or physical database handle.
-- The package owns Syndic record schemas, codecs, typed queries, mutation validation, and batch contributions for its private keyspace family.
+- The package owns Syndic record schemas, codecs, typed queries, and one-pass mutation preparation
+  that returns validated batch contributions for its private keyspace family.
 - The physical database, home lock, serialized writer, and persistence barrier are owned by `beryl-home-store` under `doc/systems/beryl-home-storage/design.md`.
 - Callers interact through typed Syndic APIs rather than Fjall keyspaces, byte encodings, transaction handles, or home-store domain registration.
 - Readers may perform bounded cursor and point reads while writes commit through short revision-checked home-store commands.
@@ -85,10 +86,11 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   the exact terminal item-finalization frontier, exact terminal-turn historical repair with
   CAS-source provenance, reading historical summaries, reading
   thread/draft/turn metadata,
-  reading thread-lineage pages, point-reading independently revisioned image-label authority heads
-  and origin authority, preparing, dispatching, replaying, releasing, and writer-validating bounded
-  operation-qualified draft-marker label-readiness reservations, opaque move-only page attempts,
-  HomeStore proof contributions and receipts, move-only final proofs, and durable bindings, reading
+  reading thread-lineage pages, point-reading independently revisioned image-label authority and
+  draft-label protection heads and origin authority, preparing, dispatching, replaying, releasing,
+  and writer-validating bounded operation-qualified draft-marker label-readiness reservations,
+  authenticated admission indexes, opaque move-only page attempts, HomeStore proof contributions
+  and receipts, move-only final proofs, and durable bindings, reading
   activity-query pages, reading immutable branch-context envelopes by context-owner identity,
   reading transcript-view pages, reading projection records, reading resource metadata, and reading
   resource byte ranges, plus reading bounded logical UTF-8 pages from one exact sealed content
@@ -223,9 +225,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - One compact image-label-authority head is keyed by thread and independently revisioned from the
   thread record. It stores the immutable inherited frontier and current permanent accepted frontier;
   a top-level thread begins with both at zero. A child begins with both equal to its parent's exact
-  permanent frontier. Only branch creation and first acceptance consume this head as mutation
-  authority, while label readiness and candidate adoption validate its exact revision and frontier
-  fields without fencing unrelated thread changes.
+  permanent frontier. Branch creation and first acceptance consume this head as mutation authority,
+  while label readiness and candidate adoption validate its exact revision and frontier fields
+  without fencing unrelated thread changes.
+- One separate `DraftImageLabelProtectionHeadV1` is keyed by thread and independently revisioned.
+  Thread creation initializes it to the applicable inherited/permanent accepted frontier. It stores
+  the greatest label protected by any committed ordinary draft allocation, never decreases, and is
+  mutation authority for readiness allocation and candidate adoption without changing permanent
+  accepted authority or origin spans.
 - A thread-execution record is keyed one-to-one by stable thread id and stores the exact immutable
   `ExecutionBinding` accepted at creation. It has no replacement mutation or mutable record
   revision. A child thread inherits its parent's exact value. CAS binding and execution-snapshot
@@ -1212,11 +1219,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `DraftPieceBuildProgressReceiptV1`, and `DraftPieceSettlementV1`. Those suffixes name their
   semantic API shapes; the enclosing family codec version is V3 and the digest domains are
   `/v3`.
-- The 62 primary V7 families are `threads`, `image-label-authority-heads`, `thread-executions`,
+- The primary families are `threads`, `image-label-authority-heads`,
+  `draft-image-label-protection-heads`, `thread-executions`,
   `thread-attributes`,
   `thread-usage`, `thread-catalog-summaries`, `drafts`, `draft-piece-roots`,
   `draft-piece-nodes`, `draft-piece-leaves`, `draft-marker-identity-index`,
   `draft-marker-order-commitments`, `draft-marker-seals`,
+  `draft-marker-label-admission-capacity`, `draft-marker-label-admission-heads`,
+  `draft-marker-label-admission-nodes`,
+  `draft-marker-label-admission-receipts`,
   `draft-editor-candidate-sessions`, `draft-piece-builds`,
   `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
   `draft-mutation-staging-progress`,
@@ -1238,11 +1249,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `item-projection-builds`, `transcript-view-heads`, `transcript-builds`, `projections`,
   `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`.
 - `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`,
+  `draft-marker-label-admission-capacity`, `draft-marker-label-admission-heads`,
+  `draft-marker-label-admission-nodes`,
+  `draft-marker-label-admission-receipts`,
   `draft-editor-candidate-sessions`,
   `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
   `draft-mutation-staging-progress`,
   `draft-piece-build-progress`, `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
-  and `draft-historical-root-adoptions` are distinct V7 primary families. The marker index uses tagged
+  and `draft-historical-root-adoptions` are distinct primary families. The marker index uses tagged
   internal-node and leaf records, and the candidate-session family uses tagged head and immutable
   receipt records. Marker-order commitments use tagged immutable internal-node and leaf records;
   marker seals use compact durable cursor/lifecycle records. Build progress instead requires its own append-only family so canonical proposal
@@ -1254,7 +1268,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V7 inventory is exactly 62 primary plus 23 index families, or 85 total. Family names,
+- The complete V7 inventory is exactly 67 primary plus 23 index families, or 90 total. Family names,
   natural key encodings, and the complete primary/index inventory are closed. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
@@ -1576,6 +1590,55 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   ordinals, key/value disagreement, revision overflow, frontier regression, or digest disagreement
   are invalid encodings. The head stores no marker, `AssetId`, origin-span collection, transient
   reservation, or broad thread revision.
+- A `draft-image-label-protection-heads` key contains exactly one thread id. Its canonical
+  `DraftImageLabelProtectionHeadV1` value repeats that id and stores a nonzero monotonic revision,
+  protected maximum label, and digest. Creation initializes the maximum from the thread's applicable
+  inherited/permanent accepted authority. Allocation commit may increase it; no operation may
+  decrease it. Key/value disagreement, zero revision, noncanonical ordinal, revision overflow,
+  regression, or digest disagreement is invalid encoding. Thread creation commits this head before
+  ordinary readiness can be admitted; readiness never synthesizes a missing head.
+- `draft-marker-label-admission-capacity` has one singleton key. Its canonical value stores a
+  monotonic revision, the count of all retained admission heads, total retained associations, exact
+  total encoded bytes charged by every admission head/tree/replay receipt/terminal cleanup residue,
+  the profile limits, and a digest. Every creation, successor, cleanup step, settlement transfer,
+  and final removal atomically replaces the operation head and this aggregate value by subtracting
+  the exact prior charge and adding the exact successor charge. The production maxima are 64
+  retained heads, 65,536 retained associations, and 67,108,864 retained encoded bytes across the
+  whole home, including state left by prior process generations. A completely empty V7 admission
+  subsystem canonically represents zero by absence of the singleton together with empty head, node,
+  and receipt families; first admission atomically creates the zero-to-first-successor singleton,
+  and it remains present after later return to zero. An absent singleton beside any admission
+  record, arithmetic overflow, aggregate disagreement, or a recorded charge above any limit is
+  invalid.
+- `draft-marker-label-admission-heads` keys canonically encode exact draft, editor session, and
+  operation identity. Values repeat that owner and commit package-owned request/proof-custody
+  authority, lifecycle, ingestion frontier, optional head-selected replay-receipt reference while
+  readiness is active, source-order and
+  target-id root identities/heights/digests/counts, occurrence commitment, unassigned count,
+  assignment continuation, remaining builder count, exact retained-association and encoded-byte
+  charges and limits, terminal cleanup cursor, and their digest. Each canonical empty root contains
+  no node and has count zero.
+- `draft-marker-label-admission-nodes` keys add a closed internal-or-leaf tag and operation-local
+  opaque record identity to that complete owner. Source-order leaves are keyed by `(source label,
+  target marker id)` and retain complete validated source-selector/evidence bytes and exact
+  `AssetId`; target-id leaves are keyed by target marker id and
+  retain admitted page identity, complete validated source-selector/evidence bytes, source label,
+  and exact `AssetId`, plus either an unassigned disposition or the assigned final label. Those
+  occurrence bytes are point-compared for immediate page replay and remain until builder
+  consumption.
+  Internal nodes store bounded ordered child identities, digests, checked counts, and disjoint
+  tree-specific key envelopes. Both trees have fanout 128 and maximum height 64. Values repeat owner,
+  tree/tag, and record identity; unknown tags, wrong owners, malformed envelopes, inconsistent
+  counts, over-height trees, or digest disagreement are invalid.
+- `draft-marker-label-admission-receipts` keys add the head-selected command identity to the
+  complete operation owner. The sole live replay receipt binds the exact durable command/page
+  identity, canonical request commitment, byte-equal source and target heads and roots, bounded
+  immediate-predecessor path closure retained for target reproduction, lifecycle/custody
+  transition, and digest. Each successful successor atomically removes the prior receipt and any
+  prior replay-only paths, retains only the newly superseded paths required by its own receipt, and
+  selects that receipt from the current head. Digest equality never replaces canonical byte
+  comparison. An inert terminal head instead owns a bounded cleanup cursor and retains only one
+  compact terminal receipt after operation nodes and replay paths are reclaimed across restart.
 - A thread image-label origin span is immutable and maps one admission's monotonic frontier advance
   to its exact admitted owner and compact sealed asset-set proof. A child records its parent's
   current permanent frontier as its immutable inherited frontier and copies no spans. Label lookup finds the
@@ -1624,9 +1687,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - One content chunk carries at most 65,536 encoded bytes, and one staged append command carries a
   fixed bounded chunk count. Content manifests use `u64` counts and lengths; no smaller whole-draft,
   whole-submitted-input, or whole-provider-item byte ceiling is encoded in V7.
-- Every image-label-authority head, draft combined-root, sequence node/leaf, tagged marker-identity-
+- Every image-label-authority or draft-label-protection head, draft combined-root, sequence
+  node/leaf, tagged marker-identity-
   index internal/leaf, tagged
-  marker-order-commitment internal/leaf, marker-seal record, build,
+  marker-order-commitment internal/leaf, admission capacity/head/node/replay receipt, marker-seal record, build,
   mutation-staging head, canonical staging page, immutable staging-progress receipt, canonical
   fragment, immutable build-progress receipt, settlement, candidate-session head or
   receipt, and materialization record fits the 65,536-byte value ceiling. Internal
@@ -1912,8 +1976,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   per-operation record and byte totals. An unrepresentable total is a package contract failure; it
   is never saturated, wrapped, or replaced by a caller estimate.
 - Home-store page, item, stored-byte, and decoded-byte limit failures remain typed read failures and
-  do not imply durable corruption. Mutation and validation callbacks perform only operation-bounded
-  reads and never wait for resource capacity while holding the serialized writer.
+  do not imply durable corruption. Each mutation's single preparation callback and each validation-
+  only callback perform only operation-bounded reads and never wait for resource capacity while
+  holding the serialized writer; mutation batch assembly does not repeat those reads.
 
 ## V1 Structural Proofs
 
@@ -1932,6 +1997,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   origin spans against parent-frontier inheritance, contiguous permanent-frontier advances, and exact admitted
   sealed-set proofs. It scans indexes in bounded pages and never constructs a per-thread used-label
   set.
+- The same explicit maintenance validates each draft-label protection head for monotonic agreement
+  with accepted authority and committed allocation transitions. It validates the singleton
+  admission-capacity totals against all admission heads, head-selected replay receipts, and
+  reachable B-tree nodes through bounded pages and authenticated descents;
+  ordinary readiness, build, replay, reconciliation, and cleanup never scan a whole draft or all
+  operation records.
 - An empty selected path uses the V1 digest of the dedicated empty-path domain separator. A nonempty thread's selected-path digest equals its committed tail's chain digest.
 - A pending, active, or unknown-terminal turn must be the committed tail of its origin thread. Because one thread has one committed tail, this is also the bounded durable proof that one thread cannot retain competing execution-blocking turns.
 - A `RepairRequired` target is a proven-terminal ordinary turn and must equal the owning thread's
@@ -1981,25 +2052,23 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 ## Revisions And Ordering
 
-- Thread, image-label-authority-head, durable draft-selector, and editor-candidate session revisions
-  are monotonic and independently checked. A candidate revision is meaningful only with its exact
-  draft, session, combined root, and edit-history frontier revision. Label admission never requires
-  the broad thread revision merely because it read the independently revisioned label head.
+- Thread, image-label-authority-head, draft-label-protection-head, durable draft-selector, and
+  editor-candidate session revisions are monotonic and independently checked. A candidate revision
+  is meaningful only with its exact draft, session, combined root, and edit-history frontier
+  revision. Label admission never requires the broad thread revision merely because it read either
+  independently revisioned label head.
 - `DraftMarkerLabelReadinessRequestV1` canonically names the current home generation, destination
-  thread, expected label-head revision and frontiers, draft, active editor session and generation,
-  predecessor candidate generation/root, operation identity, and one closed disposition. Reuse
-  names the expected compact stream identity over exact same-conversation marker provenance,
-  labels, and `AssetId` values. Allocation names the authenticated source-association stream
-  identity and checked distinct-label demand but never a caller-selected destination ordinal. The
-  package obtains the predecessor root's authenticated maximum label and reserves a contiguous
-  range strictly above the maximum of inherited/permanent frontiers, that predecessor maximum, and
-  the destination's live reservation frontier. Checked arithmetic overflow returns `Exhausted`
-  before reservation.
+  thread, expected label-authority and protection-head revisions/frontiers, draft, active editor session and generation,
+  predecessor candidate generation/root, operation identity, and one closed reuse or allocation
+  disposition. It accepts no caller stream summary, association chain/count/maximum, destination
+  ordinal, distinct-label demand, admission root, or binding. The existing protection head must
+  already be at least the applicable inherited and permanent accepted frontiers and every prior
+  committed ordinary draft allocation; absence or disagreement makes readiness unavailable.
 - Readiness preparation returns one opaque immutable bounded move-only
   `DraftMarkerLabelReadinessPageAttemptV1` or a determinate stale, unavailable, exhausted,
   capacity-unavailable, or occupied-identity-collision outcome. It does not issue the final proof.
-  The attempt owns its canonical page, unforgeable attempt identity, exact home generation,
-  operation, ordinal, prior cumulative frontier, associations, and expected EOF state. The package
+  The attempt owns its canonical page, unforgeable dispatch identity, exact home generation,
+  durable operation/page identity, source-head closure, associations, and expected EOF state. The package
   prepares one private typed Syndic source
   contribution for `beryl-home-store` proof composition: current-candidate and cut evidence is
   source-only; local or inherited accepted evidence pairs it with Beryl-state's private typed
@@ -2013,35 +2082,128 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   create or return the consumer or its expected facts. The app may transport the attempt state,
   executable command, and receipt but cannot inspect or reconstruct the canonical page or equality
   inputs.
-- Receipt submission moves the same attempt custody and its independently retained consumer into
-  exact HomeStore consumption. Only a receipt matching that pre-dispatch expectation and current
+- The page command uses HomeStore's generic fixed-32-byte-digest protocol marker instantiated with
+  protocol id `0x53444d5244595631` and operation id `0x5244595041474531`. The private Syndic source
+  input, private Asset witness input, and source expectation independently derive the same SHA-256
+  page correlation under `syndic/draft-marker-label-readiness-page/v1`; accepted-origin entries
+  commit the complete sealed Asset-reference-set proof, source label, and exact `AssetId`, while
+  source-only entries commit their complete candidate selector. The shared marker carries no
+  association facts.
+- Each unresolved association additionally carries its caller-intended target marker identity for
+  Syndic alone. That identity is excluded from the shared page correlation and private Asset witness
+  input. The app supplies neither a final label nor an admission root; Syndic binds the intended id
+  to its derived final label and exact `AssetId` only after source and witness evidence agree.
+- The exact digest preimage is the domain bytes followed directly by little-endian `u64` page
+  ordinal, one `0`/`1` EOF byte, little-endian `u64` entry count, and the ordered fixed-width
+  entries. Candidate tag `0` precedes complete candidate root/marker selector, label, and complete
+  asset identity. Accepted tag `1` precedes sealed-set id, sequential digest/count/maximum,
+  ordered-asset digest/count, entry frontier, asset-chain digest, label, and complete asset
+  identity. Optional maximum uses zero for absent and its nonzero `u64` otherwise; asset identity
+  uses its version byte, digest, and nonzero length. All integers are little-endian. The evidence
+  byte ceiling counts entry bytes only, excluding domain, page header, and library framing.
+- The package resolves private evidence and canonicalizes each bounded page internally before it
+  seals the proof plan; the app neither sorts nor compares cross-domain facts. Within one page the
+  package orders source evidence only for the fixed shared correlation. Page ordinals fence durable
+  ingestion and replay but impose no source-label ordering: pages and associations may arrive in
+  arbitrary caller/source order. Each validated association is inserted into an authenticated source-
+  order staging tree keyed by `(source label, target marker id)` and an authenticated target-id tree
+  keyed by target marker id with unassigned source label and exact `AssetId`. Duplicate target ids
+  reject within or across pages.
+- Exact evidence EOF closes ingestion, freezes the source tree's canonical root digest/count as the
+  occurrence commitment, and starts a durable assignment continuation. For allocation, the package
+  first reserves a contiguous range no larger than that authenticated occurrence count and strictly
+  above the protection head and every live destination reservation; no caller count selects it.
+  Each assignment step
+  authenticates and deletes the least source-order leaf, retains only the prior source label/asset
+  and allocation cursor, and updates the matching target leaf from unassigned to assigned. Reuse
+  assigns the validated source label. Allocation advances to the next reserved label only for the
+  first occurrence of a distinct source label and reuses it for agreeing repetitions. Equal-label
+  `AssetId` disagreement, reservation/root disagreement, or ordinal exhaustion terminalizes the
+  operation. Only canonical-empty source root and zero unassigned count permit writer sealing.
+- Both trees have fanout 128 and maximum height `H = 64`. At most one association changes durable
+  trees per command, so each update reads, path-copies, and reclaims only bounded-height paths.
+  Preparation sums the exact encoded family-key and value bytes of every selected read, write, and
+  deletion and refuses before any write when that sum exceeds the existing 4,194,304-byte command
+  limit. Each readiness-ingestion or assignment successor atomically deletes the prior replay
+  receipt and replay-only paths, replaces the current head, and retains only its own bounded
+  immediate-predecessor path closure for exact replay. Builder-consumption successors instead update
+  the admission head, target root, and aggregate charge beside their build-progress receipt and
+  create no admission replay receipt. The head's checked retained-association and exact encoded-byte accounting covers both
+  current trees, this one replay closure, and any terminal cleanup residue. The same command
+  atomically exchanges that head's prior and successor charges in the singleton aggregate capacity
+  record. One operation may consume no more than the aggregate 65,536-association and 67,108,864-
+  byte ceilings, and all retained operations together may never exceed those ceilings or 64 heads.
+  A page or continuation that would exceed any per-operation or aggregate charge is refused before
+  mutation and cannot produce readiness authority. The package accumulates no operation-wide
+  transition history and uses no resident registry, whole-draft scan, caller tree commitment, or
+  unbounded memory.
+- Receipt submission moves the live dispatch-attempt custody and its independently retained
+  consumer into exact HomeStore consumption. Only a receipt matching that pre-dispatch expectation and current
   home generation advances the coordinator exactly once.
-  `DraftMarkerLabelReadinessPageOutcomeV1` returns that same attempt in accepted state or a
-  determinate stale, unavailable, obsolete-page, capacity, or collision result. Immediate replay is
-  authorized only by re-presenting that exact accepted attempt object. A newly created attempt at
-  the occupied operation/ordinal is `Collision` even if its canonical bytes or digest match; an
-  older ordinal is obsolete. Digest equality is a commitment and rejection aid, never replay
-  identity. Preparing the next page consumes the prior accepted attempt. The coordinator retains
-  only the next ordinal, checked count, cumulative digest/frontier, active attempt identity,
-  reservation, and operation custody; the attempt, not the coordinator, owns the one bounded page.
+  `DraftMarkerLabelReadinessPageOutcomeV1` returns accepted durable identity or a determinate stale,
+  unavailable, obsolete-page, capacity, or collision result. Re-preparing the same durable
+  operation/page identity is exact replay only when the head-selected receipt, exact target-leaf
+  point reads for every page occurrence, and retained source/target closure are canonically byte-
+  equal to the request and proposed outcome. A different closure at the
+  occupied identity is `Collision`; an identity older than the head-selected replay receipt is
+  obsolete. Digest equality is a commitment and rejection aid, never replay identity. No outcome
+  depends on retaining or re-presenting the same process object. Accepted custody inserts at most
+  one association into both trees per durable quantum and retains the rest of only that bounded page until its exact cursor reaches page EOF. Only then
+  may the next page advance. The coordinator retains fixed operation/page identities and reservation
+  state, not an association prefix.
   A substituted attempt, executable, receipt, or receipt/consumer pair cannot advance the
   operation.
-- Exact EOF revalidates the live label head, editor session, predecessor candidate root, operation,
-  disposition, cumulative association identity, and reservation. It then returns the non-cloneable,
-  move-only `DraftMarkerLabelReadinessProofV1` and fixed-size `Copy`
-  `DraftMarkerLabelReadinessBindingV1`. The proof binds the exact home generation, destination and
-  head revision/frontiers, draft/session/candidate/predecessor, operation, disposition, association
-  count/digest, and reserved allocation range. The binding is only the durable digest of that
-  authority. Neither value accepts a caller-provided successor root or structural commitment.
+- Exact EOF plus completed source-order assignment revalidates the live label and protection heads,
+  editor session, predecessor candidate root, operation, disposition, occurrence commitment,
+  reservation, canonical-empty source root, zero unassigned count, and exact durable
+  target-id head. It then returns the non-cloneable, move-only
+  `DraftMarkerLabelReadinessProofV1`. The proof binds the exact home generation, destination and
+  head revisions/frontiers, draft/session/candidate/predecessor, operation, disposition, sealed
+  assigned target-root identity/height/digest/count, occurrence commitment, and reserved allocation
+  range. The package derives its fixed-size durable binding only when moving that proof into mutation
+  custody; no public input can construct, inject, or replace the binding. Neither proof nor binding
+  accepts a caller-provided successor root or structural commitment.
 - Syndic domain registration supplies one home-generation-scoped configured-capacity coordinator as
   its typed HomeStore runtime attachment. The registered-domain slot is its sole strong owner and
   every same-generation Syndic handle clone or reacquisition resolves that exact instance. The
   coordinator contains only fixed-size operation reservations, one compact reservation frontier per
-  active destination, cumulative page state, and active attempt identities. It owns no durable
-  record family, page, per-label map, marker registry, history cache, or unbounded queue. Before
-  durable mutation begin, explicit cancellation or terminal request disposal releases the
-  reservation. HomeStore attachment retirement invalidates every remaining attempt and transient
-  proof, releases all reservations, and retires the coordinator exactly once.
+  active destination, current page state, and active dispatch identities. It owns no durable page,
+  per-label map, marker registry, history cache, or unbounded queue; package-owned admission
+  families hold durable operation state outside the attachment. Before any durable index state,
+  explicit cancellation or terminal request disposal releases any live reservation. Once records exist,
+  cancellation first publishes an inert terminal head with a bounded cleanup cursor. Across restart,
+  bounded operation-prefix cleanup deletes every source/target node, replay-only path, and
+  superseded receipt. Attachment retirement invalidates process attempts/proofs and retires the
+  coordinator exactly once, but never deletes or reclassifies durable admission custody.
+  Registration point-reads the singleton aggregate and cursor-reads at most 65 head records under
+  an exact byte bound before publishing the new attachment. If the singleton is absent, it instead
+  proves the head, node, and receipt families empty with one bounded first-record read each. More
+  than 64 heads, charge disagreement, or malformed authority fails registration. A head fenced to a prior home generation cannot
+  recreate a live attempt, proof, or reservation; because prior-process unpublished editor sessions
+  are not recovery authority, it is scheduled for inert incremental cleanup. A head already
+  transferred to staging/build remains the sole charged owner of its target tree, is cross-checked
+  against that settlement, and is cleaned jointly; neither boundary resumes the user operation.
+- Readiness-ingestion and assignment commands classify replay from the exact head-selected
+  before/after admission receipt and source/target root closure. Builder-consumption commands use
+  their build-progress receipt plus the admission-head, target-root, and aggregate-charge
+  before/after closure and create no admission receipt. `ExactOld` retains move-only custody for
+  retry or cancellation, `ExactNew` advances it once, `Indeterminate` transfers it to exact
+  reconciliation, and a same-key disagreement is `Collision` that closes the uncertain scope until
+  reconciliation. Cleanup retains only one compact terminal closure needed for replay/collision, or
+  transfers replay authority to the durable mutation settlement and then removes the operation head
+  and terminal closure. Cleanup failure cannot reactivate records or release uncertain custody;
+  attachment retirement never performs durable cleanup or reclassification.
+- The package-owned V1 production profile constructs that attachment through the ordinary
+  parameterless Syndic domain factory; it does not add a generic HomeStore configuration path or an
+  app-selected readiness setting. The whole home retains at most 64 readiness heads across process
+  generations, at most 65,536 associations, and at most 67,108,864 encoded bytes charged to their
+  current trees, replay closures, and cleanup residue. The runtime attachment therefore owns at most
+  64 live reservations, destination-frontier entries, and active attempt identities. A canonical
+  evidence page has at most 256 associations and at most 65,536 encoded bytes. Admission checks the
+  page bounds, aggregate durable capacity, and runtime slot before retaining custody. The dispatch
+  attempt, not the coordinator, owns the one bounded page. These aggregate limits, tree height/count
+  validation, exact command preflight, and available storage capacity are the production ceilings;
+  they do not cap a draft's marker population across multiple completed edits.
 - `DraftEditorCandidateSessionOpenOutcomeV1` is `Opened(head)`, `ExactReplay(head)`,
   `StaleDisposed(head)`, `SelectorConflict(current selector)`, or
   `OccupiedIdentityCollision(proof)`. Open atomically
@@ -2063,10 +2225,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - `MutationBeginV1` is admitted only against the exact active session generation and predecessor
   candidate/root/history pair with an absent custody slot and absent staging/build/settlement/root
   natural keys. A marker-changing begin consumes the matching move-only readiness proof into the
-  runtime attachment's operation custody and stores only its fixed-size
-  `DraftMarkerLabelReadinessBindingV1` in the
-  staging head and custody; text-only begin stores no synthetic binding. It atomically writes
-  ordinal-one staging receipt and receiving head and installs `Staging` custody. A page-batch
+  operation's durable custody, requires its sealed admission head/root/count, derives the fixed-size
+  `DraftMarkerLabelReadinessBindingV1` inside the package from that proof, and carries the binding
+  plus the exact assigned target-root/head reference through the staging head and custody; no public
+  begin field can supply either authority. A text-only begin stores no synthetic authority. The
+  marker-changing command atomically moves the admission head lifecycle from ready to staging,
+  removes its no-longer-needed readiness replay receipt, exchanges the reduced retained charge in
+  the singleton capacity record, writes ordinal-one staging receipt and receiving head, and installs
+  `Staging` custody while leaving the admission head as sole charged owner of the assigned target
+  tree. A text-only command only writes its staging state. A page-batch
   command names the head-selected source receipt, exact lane
   frontier, and one through 257 consecutive page inputs. Preparation derives every next cursor,
   ordinal, prior cumulative identity, page, and matching receipt and requires every target page and
@@ -2202,6 +2369,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   scanned-prefix endpoint and carries a checked completed-effect count plus the cumulative
   `syndic/draft-marker-effect-chain/v1` digest. A fragment without an effect advances that frontier
   without changing the count or chain.
+- A marker-changing build additionally carries the current authenticated target-id admission root and checked
+  remaining count. Each completed `Insert`, `Move`, or `SameIdReplacement` point-looks up its target
+  marker id, requires the leaf's exact final label and `AssetId`, and path-copy deletes that leaf in
+  the same atomic quantum as the build-progress receipt. `Remove` consumes no admission entry.
+  Effect order may differ arbitrarily from readiness source-label order. Missing, repeated, or
+  substituted entries reject before either build or target root advances. Completion requires
+  the canonical empty target root and exact zero remaining count.
 - A fragment with an effect starts only when the one optional active slot is empty. The slot contains
   exactly that fragment's identity and canonical digest, source roots, unreachable working roots,
   fixed logical UTF-8 source and successor mapping frontiers, and one bounded removal, range-
@@ -2235,14 +2409,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   with no active effect and requires exact staging endpoint, effect count/chain, and root coherence.
   Premature EOF or cross-validation while active fails closed. Global marker uniqueness follows from
   the keyed index; it is never inferred by scanning sequence leaves.
-- Final marker-changing candidate adoption additionally requires the runtime attachment's sole
-  move-only `DraftMarkerLabelReadinessProofV1`, the byte-equal durable
-  `DraftMarkerLabelReadinessBindingV1` carried from begin through the completed build, and the live
-  transient reservation. A marker-unchanged adoption requires no synthetic proof, binding, or
-  reservation. The actual storage-derived marker-effect count and chain, canonical label/asset
-  associations, allocation use, proposal closure, and completed successor roots must agree with the
-  binding; the proposal cannot introduce another label, reinterpret a reserved range, or supply the
-  structural successor commitment as readiness authority.
+- Final marker-changing candidate adoption additionally requires the sole move-only
+  `DraftMarkerLabelReadinessProofV1`, byte-equal durable
+  `DraftMarkerLabelReadinessBindingV1`, its exact sealed assigned target-root authority, the build's
+  canonical empty target root and zero remaining count, and the live transient reservation. A
+  marker-unchanged adoption requires no synthetic proof, binding, index, or reservation. The
+  storage-derived marker effects, exact admission deletions, allocation use, proposal closure, and
+  completed successor roots must agree; the proposal cannot substitute a marker, label, or asset,
+  reinterpret a reserved range, or supply structural successor authority.
 - Final candidate adoption requires the settlement absent, an active session with the exact
   predecessor root/history pair as its newest checkpoint and the exact matching active-operation custody, a
   complete matching build, the exact matching edit-history frontier, and the exact per-session
@@ -2261,15 +2435,17 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   settlement bound to that terminal receipt and
   predecessor/root closure; terminalizes the build to that settlement; and clears the custody slot.
   For a marker-changing edit the same writer-admitted Syndic-domain command point-reads the exact
-  independent label-authority head, requires its revision and frontiers to equal the proof,
+  independent label-authority and draft-label-protection heads, requires their revisions and
+  frontiers to equal the proof,
   validates the exact home generation, thread, draft, session, predecessor candidate, disposition,
-  completed proposal/effect closure, binding, and live reservation, and consumes the move-only proof
+  completed proposal/effect closure, binding, empty target root, zero remaining count, and live
+  reservation, and consumes the move-only proof
   into terminal outcome custody. It has no Beryl-state participant because immutable Asset evidence
   was already validated by HomeStore proof composition in this same still-current home generation.
-  Candidate, history, session, settlement, and readiness disposition therefore publish or reject
-  through this one HomeStore atomic command. The command neither advances the permanent accepted
-  label frontier nor creates an origin span; first acceptance alone performs that independently
-  revisioned authority transition. Per-effect progress remains unreachable durable
+  Candidate, history, session, settlement, readiness disposition, terminal admission head, and any
+  monotonic protection-head advance therefore publish or reject through this one HomeStore atomic
+  command. The command neither advances the permanent accepted label frontier nor creates an origin
+  span; first acceptance alone performs that independently revisioned authority transition. Per-effect progress remains unreachable durable
   builder state and is
   never a sequential candidate, draft, history, or current-selector commit.
   Eligible eviction that makes the successor fit never blocks ordinary editing. Only a required
@@ -2279,8 +2455,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   custody.
   Replay and indeterminate reconciliation recompute the exact eviction amount and threshold from
   the recorded source/successor accounting, prove the canonical source-versus-target command closure
-  and every atomic publication effect byte-for-byte, including the durable readiness binding and
-  reservation disposition when present, repeat the at-most-64-transition-read selected-
+  and every atomic publication effect byte-for-byte, including durable readiness/admission roots,
+  protection-head transition, and reservation disposition when present, repeat the at-most-64-transition-read selected-
   head lifting, and require its unique floor plus complete frontier/session/settlement closure to
   equal the committed result. They do not recursively re-prove witness derivation for already
   committed immutable ancestors. A
@@ -2300,15 +2476,16 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   cancellation election. `Indeterminate` installs the move-only proof and reservation immediately
   into the exact operation reconciliation wrapper. `ExactNew` or a proven terminal noncommit
   consumes and releases them, `ExactOld` retains them for retry or cancellation, and `Collision`
-  retains the uncertain reserved ordinal in a closed scope until home-generation retirement. A
+  retains the uncertain reserved ordinal in a closed scope until exact durable reconciliation. A
   `Committed` result consumes and releases proof/reservation custody even when it carries a
   `later_failure`, because the settlement is already durable; publication still requires the exact
   receipt and the ordinary current-generation health gate.
-- Historical-root adoption requires no piece build or candidate-root creation. When the historical
-  root changes the marker commitment, it requires the same package-issued move-only label-readiness
-  proof, durable binding, and writer-time head/reservation validation as an ordinary marker-changing
-  adoption, with reuse disposition bound to the authenticated historical marker associations. The command
-  authenticates the active session, exact current candidate/history frontier, retained transition
+- Historical-root adoption requires no piece build, candidate-root creation, ordinary readiness
+  proof, reservation, or admission index. Syndic resolves the selected history action to one opaque
+  exact target containing the complete same-draft combined-root reference and authenticated
+  `DraftMarkerCommitmentV1`; the app cannot construct or inspect substitute structural authority.
+  The command validates that target's maximum label does not exceed the monotonic
+  `DraftImageLabelProtectionHeadV1`, then authenticates the active session, exact current candidate/history frontier, retained transition
   and stack link, the transition's membership in the selected head ancestry through the same fixed
   skip commitment, same-draft target root and node closure, operation identity, and target caret and
   directed selection. A committed undo or redo directly advances the session to that existing root
@@ -2531,7 +2708,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `SealedContentMarkerSummary`'s embedded `SequentialMarkerSummaryV1` and the seal proof's ordered
   association summary to equal the compact sealed-set proof's respective summaries, validates the
   identity-index count, validates and advances the independently revisioned thread label-authority
-  head's permanent frontier monotonically,
+  head's permanent frontier monotonically, and requires the independent draft-label protection head
+  to remain at least that successor permanent frontier,
   and creates at most one immutable
   local origin span. Per-marker validation already completed through bounded set-staging pages;
   later delivery disposition changes never rescan or rewrite label authority.
@@ -2862,11 +3040,12 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   Work and writes for an edit are proportional to its inserted fragments, affected base ranges, and
   copied paths in the three bounded-height structures, not to unchanged prefix or suffix length.
 - The final ordinary adoption command also appends one compact root transition and advances the
-  durable history frontier. A marker-changing adoption validates its durable readiness binding and
-  consumes the sole move-only proof and transient reservation on that same writer snapshot; a
-  marker-unchanged edit carries neither. Undo and redo instead use the dedicated direct historical-
-  root adoption command and apply the same proof rule when their authenticated target changes
-  marker commitment. Neither
+  durable history frontier. A marker-changing adoption validates its durable readiness binding,
+  consumes the operation-owned admission index to canonical empty/zero, and consumes the sole move-
+  only proof and transient reservation on that same writer snapshot; a marker-unchanged edit carries
+  none of them. Undo and redo instead use a Syndic-resolved opaque exact target root and marker
+  commitment, require its maximum label within `DraftImageLabelProtectionHeadV1`, and use no
+  readiness proof, reservation, admission index, or marker scan. Neither
   path copies inverse content or scans unchanged root/history state; both publish candidate and
   history authority atomically or publish neither.
 - Mutation intake, draft-piece construction, candidate adoption, autosave publication, and
@@ -3071,7 +3250,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 ## Ordinary Thread And Draft Mutation Boundary
 
 - Empty ordinary-thread creation atomically contributes the thread, immutable execution record,
-  initial zero/zero image-label-authority head, initial attributes and usage records, empty current
+  initial zero/zero image-label-authority head, matching zero draft-label protection head, initial
+  attributes and usage records, empty current
   draft referencing the canonical immutable
   empty combined sequence/index/commitment root and deterministic canonical-empty edit-history reference,
   draft reverse index, current zero-entry transcript head,
@@ -3417,3 +3597,4 @@ Profile: `production-application/v1`
 Modifiers:
 
 - `persistent-state-integrity/v1`
+- `shared-resource-protection/v1`

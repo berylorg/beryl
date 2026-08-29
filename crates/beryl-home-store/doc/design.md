@@ -36,15 +36,15 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   configuration from the same values for every same-home recovery, so later internal tuning does
   not churn Beryl-state or Syndic caller APIs.
 - Logical domains register private record families, exact codecs, exhaustive validation hooks,
-  operation-scoped natural-record reconciliation hooks, typed reads, typed mutation contributors,
-  typed validation-only command participants, and one exact process-local runtime-attachment type
+  operation-scoped natural-record reconciliation hooks, typed reads, typed bounded mutation
+  preparation, typed validation-only command participants, and one exact process-local runtime-attachment type
   and factory through package-owned traits.
 - Each registered-domain slot constructs exactly one runtime attachment for its home generation
   and is that attachment's sole strong owner. Typed domain handles are cloneable non-`Copy` views
   that resolve the slot's existing attachment after the ordinary store, owner, registration, and
   generation fences; handle cloning, routine reacquisition, and stable name/schema/type agreement
   cannot construct another attachment or prolong its lifetime.
-- Store reads, receipt revision inspection, mutation and validation contribution construction,
+- Store reads, receipt revision inspection, mutation-preparation and validation-only construction,
   current-revision command construction, and proof-source or proof-witness construction borrow a
   typed handle. They copy only its fixed identity into the resulting plan. Cloning is reserved for
   a retained view or an explicit asynchronous or cross-owner custody boundary, not required for
@@ -60,18 +60,25 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   exact live domain owner. Role registration fixes the protocol and fixed-size inline `Copy + Eq`
   correlation type; each domain package owns only its private role contribution and correlation
   construction.
+- The package exposes one zero-state generic fixed-digest protocol marker parameterized by exact
+  `u64` protocol and operation identifiers. It implements `HomeProofProtocol` with a 32-byte
+  correlation so isolated domain packages can instantiate one identical Rust protocol type from
+  system-owned stable identifiers without a dependency between those domains. The marker contains
+  no domain-specific value, callback, registry, or durable identity.
 - Sealing a complete proof plan before dispatch returns exactly one opaque one-shot executable
   `HomeProofCommand<P>` plus its paired move-only `ProofReceiptConsumer<P>`. The seal binds an
   unforgeable process-local plan identity, current home generation, protocol, operation, exact role
   and owner set, revision fences, callbacks, and expected correlation contract. The source
   requester retains the consumer. Only the executable command may cross app orchestration into
   `HomeStore::compose_proof`; neither half can mint or recover the other.
-- Proof composition acquires the serialized writer, fixes one Fjall snapshot, and revalidates the
-  exact home generation, every caller-fenced domain revision, every role's live Rust owner, and its
-  complete persistent registration before callbacks. A role receives typed access only to its own
-  registered domain. The source and all witnesses must independently return equal correlations;
-  the source-only shape is valid. Duplicate-domain roles, stale fences, missing registrations,
-  callback failures, or disagreement reject determinately.
+- Proof composition is read admission independent of the serialized writer. It fixes one Fjall
+  coherent snapshot and revalidates the exact home generation, every caller-fenced snapshot domain
+  revision, every role's live Rust owner, and its complete persistent registration before callbacks.
+  A role receives typed access only to its own registered domain. The source and all witnesses must
+  independently return equal correlations; the source-only shape is valid. A concurrent atomic
+  write is wholly before or after the snapshot, so a race may later yield a stale receipt or typed
+  mutation conflict but never false proof authority. Duplicate-domain roles, stale fences, missing
+  registrations, callback or snapshot-access failures, or disagreement reject determinately.
 - `HomeStore::compose_proof` consumes only the executable command and returns only an opaque fixed-
   size generation-bound receipt on accepted composition. It does not return or create a
   `ProofReceiptConsumer<P>` or expose raw role results, expected roles, revision facts, or the agreed
@@ -83,7 +90,7 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   publication authority. The command performs no mutation, durable registration or
   schema write, revision advance, sidecar action, Fjall batch, `CommitReceipt`, `SyncAll`,
   reconciliation reservation, descriptor, registry transition, or `Indeterminate` classification.
-  Cancellation is effective only before writer admission; an admitted command runs to a
+  Cancellation is effective only before proof admission; an admitted command runs to a
   determinate result on that snapshot.
 - A command participant may also register its typed role in one command-scoped successor protocol.
   The package exposes typed source and witness reservation builders plus a quota-enforcing
@@ -214,8 +221,13 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 
 ## Atomicity And Durability
 
-- The serialized writer validates expected revisions and each participant's exact live owner plus persistent registration immediately before commit.
-- Read-only proof composition uses that writer solely to linearize one typed cross-domain snapshot.
+- The owned Fjall fork supplies one coherent cross-keyspace snapshot that remains fixed across
+  concurrent writes, atomic publication of one complete write batch, stable surfaced commit state
+  and failures, and the explicit `SyncAll` durability barrier. This package uses those guarantees
+  directly and owns the typed identities, revision fences, result bounds, and outcome classification
+  around them.
+- The serialized writer validates expected revisions and each participant's exact live owner plus persistent registration against one coherent writer-time snapshot immediately before commit.
+- Read-only proof composition uses a Fjall coherent snapshot without writer serialization.
   It is not a `HomeCommand`, cannot contain mutation or validation-only command participants, and
   never yields a commit receipt or reconciliation state. Its opaque receipt must match the
   requesting package's independently retained pre-dispatch `ProofReceiptConsumer<P>` before any
@@ -223,8 +235,8 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   be submitted as a write capability.
 - `CurrentDomainCommand` is an opaque single-domain boundary for mutations that already carry
   exact logical record fences. `execute_current` captures only that command's physical home and
-  domain revisions after serialized writer admission, then uses the ordinary validation,
-  contribution, batch, fault, persistence, receipt, health, cancellation, and reentry paths. It
+  domain revisions after serialized writer admission, then uses the ordinary preparation, batch,
+  fault, persistence, receipt, health, cancellation, and reentry paths. It
   performs no retry and cannot combine domains or retain a sidecar token.
 - `HomeCommand` remains the caller-fenced boundary for cross-domain and sidecar-retaining atomic
   work. A current-domain command is not a blind-write escape from record-level revision checks.
@@ -235,15 +247,22 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   advance the validated domain revision, or appear in the receipt's affected-domain revisions. A
   command containing only validation participants fails before callbacks with a typed
   `ValidationOnlyCommand` error and produces no commit receipt. A mutation participant whose
-  contribution callback emits nothing still fails as an `EmptyContribution`.
+  prepared contribution contains no mutation still fails as an `EmptyContribution`.
 - One domain may participate at most once in a home command across both roles. A domain mutation
-  carries every same-domain guard in its own validation callback; combining a separate validator
+  carries every same-domain guard in its own preparation callback; combining a separate validator
   and mutation for the same domain is rejected as duplicate participation rather than assigning
   ambiguous revision or receipt effects.
-- Ordinary commands run only each participant's bounded validation and mutation-contribution callbacks. They never rerun an exhaustive domain validator or scan unrelated records; one-record command work is independent of total domain size unless that participant's own documented bounded reads reject.
-- A validation or mutation callback performs only operation-bounded reads. A page, item, stored-byte,
-  or decoded-byte limit failure returns through typed read-error provenance without waiting while
-  the serialized writer is held, mutating health, or partially assembling a contribution.
+- Each mutation participant runs one bounded preparation callback against the writer-time snapshot.
+  That pass performs its operation-owned reads and semantic validation and returns package-owned
+  prepared contribution state, bounded by its declared read, record, and byte shapes, for one-time
+  consumption into the batch. There is no mandatory separate validation callback or second
+  contribution reread. Validation-only participants retain their bounded callback and contribute no
+  prepared mutation state. Neither role reruns an exhaustive domain validator or scans unrelated
+  records; one-record command work is independent of total domain size unless that participant's
+  own documented bounded reads reject.
+- A validation-only or mutation-preparation callback performs only operation-bounded reads. A page,
+  item, stored-byte, or decoded-byte limit failure returns immediately through typed read-error
+  provenance without mutating health or leaving a partially assembled contribution.
 - The opener applies the validated Fjall block, value, topology, cache, memtable, and batch policy
   before opening the database. This package neither requests exact dependency residency quotes nor
   reconstructs dependency-private allocation formulas.
@@ -259,7 +278,8 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   complete domain in a set or collection. Cross-record invariants use durable indexes, ordered
   traversal, staged durable proof, or another bounded validation algorithm.
 - Callback errors explicitly separate typed `ReadError` or `SidecarError` access provenance from domain-owned semantic rejection. The store never guesses provenance by walking an erased error chain.
-- A failure at any validation or contribution stage drops the complete uncommitted command.
+- A failure at any validation-only or mutation-preparation stage drops the complete uncommitted
+  command and its prepared state.
 - Before physical batch construction, the writer checks exact mutation count plus encoded key and
   value totals against the configured batch limits and passes that same `BatchCapacity` to Fjall.
   Oversized batches fail before commit; no exact dependency allocation quote or structural-slot
@@ -273,7 +293,7 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   `Committed { receipt, later_failure }`.
 - Before writer admission, every mutation that could become indeterminate proves a conservative
   encoded descriptor-byte budget from command-owned identities and
-  declared schema limits. After admission, validation and operation-bounded reads materialize the
+  declared schema limits. After admission, the single bounded preparation pass materializes the
   exact natural-record old state, intended exact new state, and intended receipt facts into that
   reservation before batch construction or any Fjall mutation. The package rejects a budget above
   the configured ceiling as
@@ -377,17 +397,21 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   contracts, poisoned current authority, and other separately proven structural disagreement move
   the store to `failed`. Domain-owned semantic mutation rejection and reconciliation collision do
   not change structural health.
-- Admission also observes Fjall's retained autonomous-maintenance health before a newly completed
-  state-dependent result may publish. A direct pre-commit policy denial remains a typed bounded
-  operation failure and leaves home health unchanged. Corruption, integrity, keyspace-identity, or
-  poison disagreement fails structurally. `Committed` still returns its exact receipt when a later
-  maintenance observation separately closes publication or fails the lifecycle; `Indeterminate`
-  closes only its operation gate for reconciliation. The package retains the stable Fjall class
-  and commit state before erasing any dependency error.
-- Dependency-health observation and exact-generation confirmation are one store-owned publication
-  operation. Reads, writes, registration, reacquisition, receipt revision projection, sidecar
-  admission, sidecar verification, and test-only durable fixtures cannot invoke generation
-  confirmation without first observing the exact admitted Fjall database.
+- Ordinary point, cursor, and proof reads publish from their exact coherent Fjall snapshot only
+  when snapshot selection and acquisition, stored-envelope and decode work, the admitted home
+  generation, and the affected operation gate all succeed. They do not invoke `Database::health`
+  after completing the read or reject a coherent unaffected result because an unrelated mutation
+  maintenance terminal appeared concurrently. Snapshot or decode corruption and actual I/O or
+  access failures still propagate through their typed provenance and apply the corresponding
+  affected structural consequence.
+- Mutation, registration, recovery, sidecar publication, and other state-changing or lifecycle
+  publication paths observe Fjall's retained autonomous-maintenance health at the relevant
+  boundary. A direct pre-commit policy denial remains a typed bounded operation failure and leaves
+  home health unchanged. Corruption, integrity, keyspace-identity, or poison disagreement fails
+  structurally. `Committed` still returns its exact receipt when a later maintenance observation
+  separately closes mutation publication or fails the lifecycle; `Indeterminate` closes only its
+  operation gate for reconciliation. The package retains the stable Fjall class, commit state,
+  original I/O kind, and actual failure before erasing dependency types.
 - An unwind from an admitted writer operation moves the store directly to `failed` before writer
   admission drains. Recovery drops the poisoned writer with the failed service and creates a fresh
   writer; it does not cross or clear the old mutex poison.
@@ -554,18 +578,21 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - The corruption seam enforces fixed fixture-byte ceilings, exposes neither Fjall handles nor a reusable raw reader/writer, and rejects every envelope the exact codec would accept. It is absent from production builds and cannot bypass registration, recovery, or validation there.
 - The feature also exposes one no-input maintenance-terminal fixture. It installs an actual retained
   terminal through Fjall's non-production fault boundary while deliberately leaving the Beryl gate
-  healthy, exposes no database handle or generic engine operation, and exists only to prove that
-  every state-dependent result observes dependency health before publication.
+  healthy, exposes no database handle or generic engine operation, and proves the affected mutation
+  and lifecycle publication boundaries observe dependency health without turning ordinary reads
+  into a global post-read health canary.
 - Package tests inject surfaced errors with exact I/O kinds, typed sidecar write/rename/sync
   barriers, all four reserve-query outcomes, ordinary `ENOSPC`, deterministic concurrency blocks, writer
   panics, subprocess aborts, parent-forced termination, callback-stage failures, closed-generation
   raw corruption, and bounded post-registration exact-codec-rejected envelopes. They prove exact
   owner and codec identity, bounded command work, writer-reentry rejection, whole-home scrub
-  behavior, ordinary-read fail-closed classification, stale-read publication rejection, all three
+  behavior, ordinary-read access-failure classification, coherent unaffected reads across unrelated
+  maintenance transitions, stale-generation and affected-gate publication rejection, all three
   command-result payload contracts, exact-old and receipt-reconstructing exact-new reconciliation,
   source-only and source-plus-witness exact-successor reconciliation, incomplete or mismatched
   protocol collision closure, derived-read quota rejection, mixed-and-neither collision closure,
-  and obsolete-generation rejection. Capacity tests fill all
+  obsolete-generation rejection, and proof/write races that do not serialize behind the writer and
+  observe one coherent old or new atomic state before any later stale/conflict rejection. Capacity tests fill all
   1,024 retained scopes and the aggregate byte budget independently, prove the next potentially
   indeterminate mutation returns pre-writer `NotCommitted` without disturbing admitted work,
   reject a descriptor above 64 MiB, join duplicate
@@ -602,9 +629,10 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - This package depends on the unpublishable owned Fjall fork at `../fjall-fork` and may depend on
   platform file-lock primitives.
 - The Fjall fork must require bounded block, value, cursor-topology, cache, memtable, and batch
-  policy, expose metadata-first stored-value inspection, reject configured limit violations, and
-  propagate journal write failures. Its independently versioned `lsm-tree` fork owns the lower
-  storage-engine implementation.
+  policy; expose metadata-first stored-value inspection and one coherent cross-keyspace snapshot;
+  publish one write batch atomically; preserve commit state, journal-write failures, and `SyncAll`
+  failures; and reject configured limit violations. Its independently versioned `lsm-tree` fork
+  owns the lower storage-engine implementation.
 - It must not depend on `gpui`, `beryl-app`, `beryl-backend`, or CAS protocol types.
 - `syndic-storage` and Beryl metadata packages consume or register through this boundary without depending on one another's private records.
 
@@ -615,3 +643,10 @@ Profile: `production-application/v1`
 Modifiers:
 
 - `persistent-state-integrity/v1`
+
+Within the supported trusted-home envelope, an affected write or durability failure must not
+corrupt previously valid published state or falsely acknowledge a new durable state. The package
+uses Fjall's coherent snapshots, atomic batches, exact surfaced failure and commit state, and
+`SyncAll` barrier together with operation-scoped reconciliation for acknowledgement uncertainty;
+this consequence does not require a post-read global health canary or exhaustive validation of
+unrelated persisted state.

@@ -47,3 +47,14 @@ the lower authority failed but the upper cache still healthy.
 - `doc/systems/beryl-home-storage/design.md`
 - `crates/beryl-home-store/doc/design.md`
 - Root `doc/plan.md` Phase 43
+
+## Later Correction
+
+Phase 196 invalidated the breadth of this course correction after the engineering-rigor contract
+was made consequence-scoped. Fjall maintenance health remains relevant to mutation, registration,
+recovery, sidecar publication, and other state-changing or lifecycle boundaries whose result it can
+affect. An ordinary coherent read no longer performs a global post-read health poll merely to reject
+unaffected data, because that poll neither protects the sampled snapshot nor closes a concrete race.
+The current authority is `doc/systems/beryl-home-storage/design.md` and
+`crates/beryl-home-store/doc/design.md`; `doc/failures/defensive-runtime-proof-overreach.md`
+preserves the later invalidation.
