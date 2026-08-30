@@ -24,9 +24,18 @@ pub(super) struct CorruptOwnerHeadProof {
 
 impl DomainMutation<AssetDomain> for CorruptOwnerHeadProof {
     type Error = AssetMutationError;
+    type Prepared = PreparedCorruptOwnerHeadProof;
 
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
-        require_expected(reader, self.owner, self.expected).map(drop)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let current = require_expected(reader, self.owner, self.expected)?;
+        Ok(PreparedCorruptOwnerHeadProof {
+            owner: self.owner,
+            replacement: self.replacement,
+            owner_revision: current.owner_revision,
+        })
     }
 
     fn reserve_reconciliation(
@@ -38,17 +47,15 @@ impl DomainMutation<AssetDomain> for CorruptOwnerHeadProof {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, AssetDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
-        let current = require_expected(reader, self.owner, self.expected)?;
         mutations.put::<AssetOwnerHeadCodec>(
-            &self.owner,
+            &prepared.owner,
             &AssetOwnerHeadRecord {
-                owner: self.owner,
-                set: self.replacement,
-                owner_revision: current.owner_revision,
+                owner: prepared.owner,
+                set: prepared.replacement,
+                owner_revision: prepared.owner_revision,
             },
         )?;
         Ok(())
@@ -62,27 +69,12 @@ pub(super) struct CorruptReferenceSetManifest {
 
 impl DomainMutation<AssetDomain> for CorruptReferenceSetManifest {
     type Error = AssetMutationError;
+    type Prepared = AssetReferenceSetManifest;
 
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
-        reader
-            .point::<AssetReferenceManifestCodec>(&self.set_id, manifest_limit())?
-            .ok_or(AssetMutationError::ReferenceSetMissing(self.set_id))
-            .map(drop)
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<AssetReferenceManifestCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        &self,
+    fn prepare(
+        self,
         reader: &DomainReader<'_, AssetDomain>,
-        mutations: &mut MutationBuilder<'_, AssetDomain>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<Self::Prepared, Self::Error> {
         let mut manifest = reader
             .point::<AssetReferenceManifestCodec>(&self.set_id, manifest_limit())?
             .ok_or(AssetMutationError::ReferenceSetMissing(self.set_id))?;
@@ -107,7 +99,22 @@ impl DomainMutation<AssetDomain> for CorruptReferenceSetManifest {
                 manifest.asset_chain_digest = AssetReferenceSetDigest::from_bytes([u8::MAX; 32]);
             }
         }
-        mutations.put::<AssetReferenceManifestCodec>(&self.set_id, &manifest)?;
+        Ok(manifest)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AssetReferenceManifestCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        prepared: Self::Prepared,
+        mutations: &mut MutationBuilder<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        mutations.put::<AssetReferenceManifestCodec>(&prepared.set_id, &prepared)?;
         Ok(())
     }
 }
@@ -118,12 +125,16 @@ pub(super) struct RemoveReferenceSetCompletionEvidence {
 
 impl DomainMutation<AssetDomain> for RemoveReferenceSetCompletionEvidence {
     type Error = AssetMutationError;
+    type Prepared = AssetReferenceSetId;
 
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         reader
             .point::<AssetReferenceManifestCodec>(&self.set_id, manifest_limit())?
-            .ok_or(AssetMutationError::ReferenceSetMissing(self.set_id))
-            .map(drop)
+            .ok_or(AssetMutationError::ReferenceSetMissing(self.set_id))?;
+        Ok(self.set_id)
     }
 
     fn reserve_reconciliation(
@@ -135,13 +146,18 @@ impl DomainMutation<AssetDomain> for RemoveReferenceSetCompletionEvidence {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AssetDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.delete::<AssetReferenceCompletionEvidenceCodec>(&self.set_id)?;
+        mutations.delete::<AssetReferenceCompletionEvidenceCodec>(&prepared)?;
         Ok(())
     }
+}
+
+pub(crate) struct PreparedCorruptOwnerHeadProof {
+    owner: AssetOwner,
+    replacement: SealedAssetReferenceSetProof,
+    owner_revision: crate::RecordRevision,
 }
 
 fn require_expected(

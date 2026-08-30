@@ -81,9 +81,13 @@ struct PutProbe {
 
 impl DomainMutation<ProbeDomain> for PutProbe {
     type Error = Infallible;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, ProbeDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, ProbeDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -95,12 +99,11 @@ impl DomainMutation<ProbeDomain> for PutProbe {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, ProbeDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, ProbeDomain>,
     ) -> Result<(), Self::Error> {
         mutations
-            .put::<ProbeRecord>(&self.key, &self.value)
+            .put::<ProbeRecord>(&prepared.key, &prepared.value)
             .expect("probe codec is infallible");
         Ok(())
     }

@@ -73,12 +73,16 @@ impl PublishAssetMetadata {
 
 impl DomainMutation<AssetDomain> for PublishAssetMetadata {
     type Error = AssetMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if read_metadata(reader, self.asset_id)?.is_some() {
             return Err(AssetMutationError::MetadataAlreadyExists(self.asset_id));
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -90,17 +94,16 @@ impl DomainMutation<AssetDomain> for PublishAssetMetadata {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AssetDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
         mutations.put::<AssetMetadataCodec>(
-            &self.asset_id,
+            &prepared.asset_id,
             &AssetMetadataRecord {
-                asset_id: self.asset_id,
-                media_type: self.media_type.clone(),
-                dimensions: self.dimensions,
-                creation_revision: self.creation_revision,
+                asset_id: prepared.asset_id,
+                media_type: prepared.media_type,
+                dimensions: prepared.dimensions,
+                creation_revision: prepared.creation_revision,
                 sidecar_state: AssetSidecarState::Committed,
                 revision: RecordRevision::INITIAL,
             },

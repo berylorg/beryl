@@ -18,20 +18,14 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 203: Convert Session Mutation Preparation (finished)
+# Phase 204: Convert Asset Mutation Preparation (finished)
 
-All nine session production and raw-schema mutations now prepare package-owned state once and
-contribute reader-free while preserving exact header, window, claim, restore, revision, reservation,
-reconciliation, and typed failure behavior. `ThreadClaimCatalogSource` remains validation-only.
-Edition-2024 format, scoped diff, visibility, and structural checks passed, and independent semantic
-review closed without findings. The intentional package compile gap remains through Phase 204.
-
-# Phase 204: Convert Asset Mutation Preparation (pending)
-
-Convert Asset production and fault-support mutations to package-owned prepared state without
-touching the invalid draft-marker WIP in `asset.rs` or `lib.rs`. Keep `ValidateAssetOwnerHeads`
-validation-only and preserve exact sealed-proof, owner-head, successor-witness, reservation, and
-reconciliation behavior.
+All nine Asset production, fault-support, and probe mutations now prepare package-owned state once
+and contribute reader-free while preserving exact metadata, reference-set, owner-head, revision,
+reservation, reconciliation, successor-witness, and typed failure behavior. `ValidateAssetOwnerHeads`
+remains validation-only, and the excluded draft-marker WIP is untouched. Edition-2024 format,
+scoped diff and structural checks passed, and independent semantic review closed without findings;
+Phase 205 retains compile and cargo-nextest acceptance.
 
 # Phase 205: Accept The Beryl-State Prepared-Mutation Boundary (pending)
 

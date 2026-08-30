@@ -18,14 +18,18 @@ impl BeginAssetReferenceSet {
 
 impl DomainMutation<AssetDomain> for BeginAssetReferenceSet {
     type Error = AssetMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if read_manifest(reader, self.authority.set_id)?.is_some() {
             return Err(AssetMutationError::ReferenceSetAlreadyExists(
                 self.authority.set_id,
             ));
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -38,24 +42,23 @@ impl DomainMutation<AssetDomain> for BeginAssetReferenceSet {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AssetDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
         let manifest = AssetReferenceSetManifest {
-            set_id: self.authority.set_id,
+            set_id: prepared.authority.set_id,
             sequential: SequentialMarkerSummaryV1::new(sequential_marker_digest_seed(), 0, None)
                 .expect("canonical empty sequential marker summary is valid"),
             ordered_assets: OrderedMarkerAssetSummaryV1::new(ordered_marker_asset_digest_seed(), 0),
             lifecycle: AssetReferenceSetLifecycle::Building,
             entry_frontier: 0,
-            asset_chain_digest: digest::seed(self.authority.set_id),
+            asset_chain_digest: digest::seed(prepared.authority.set_id),
             revision: RecordRevision::INITIAL,
         };
         mutations.put::<AssetReferenceManifestCodec>(&manifest.set_id, &manifest)?;
         mutations.put::<AssetReferenceCompletionEvidenceCodec>(
             &manifest.set_id,
-            &completion::initial_evidence(self.authority, &manifest),
+            &completion::initial_evidence(prepared.authority, &manifest),
         )?;
         Ok(())
     }
@@ -118,7 +121,7 @@ impl AppendAssetReferencePage {
     }
 }
 
-struct PreparedPage {
+pub(crate) struct PreparedPage {
     manifest: AssetReferenceSetManifest,
     evidence: AssetReferenceSetCompletionEvidence,
     entries: Vec<AssetReferenceEntryRecord>,
@@ -127,9 +130,13 @@ struct PreparedPage {
 
 impl DomainMutation<AssetDomain> for AppendAssetReferencePage {
     type Error = AssetMutationError;
+    type Prepared = PreparedPage;
 
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
-        self.prepare(reader).map(drop)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.prepare_page(reader)
     }
 
     fn reserve_reconciliation(
@@ -146,11 +153,9 @@ impl DomainMutation<AssetDomain> for AppendAssetReferencePage {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, AssetDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
-        let prepared = self.prepare(reader)?;
         for entry in &prepared.entries {
             let entry_key = AssetEntryKey {
                 set_id: entry.set_id,
@@ -179,8 +184,8 @@ impl DomainMutation<AssetDomain> for AppendAssetReferencePage {
 }
 
 impl AppendAssetReferencePage {
-    fn prepare(
-        &self,
+    fn prepare_page(
+        self,
         reader: &DomainReader<'_, AssetDomain>,
     ) -> Result<PreparedPage, AssetMutationError> {
         let mut manifest = require_manifest(reader, self.expected.set_id)?;
@@ -348,12 +353,25 @@ impl SealAssetReferenceSet {
 
 impl DomainMutation<AssetDomain> for SealAssetReferenceSet {
     type Error = AssetMutationError;
+    type Prepared = PreparedSeal;
 
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
-        let manifest = require_manifest(reader, self.expected.set_id)?;
-        require_building_evidence(reader, &manifest)?;
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let mut manifest = require_manifest(reader, self.expected.set_id)?;
+        let evidence = require_building_evidence(reader, &manifest)?;
         require_build_proof(&manifest, self.expected)?;
-        require_complete_marker_summaries(&manifest, self.sequential, self.ordered_assets)
+        require_complete_marker_summaries(&manifest, self.sequential, self.ordered_assets)?;
+        manifest.lifecycle = AssetReferenceSetLifecycle::Sealed;
+        manifest.revision = manifest
+            .revision
+            .checked_next()
+            .map_err(|_| AssetMutationError::ManifestRevisionExhausted(manifest.set_id))?;
+        Ok(PreparedSeal {
+            evidence: completion::seal_evidence(evidence, &manifest, self.sealed),
+            manifest,
+        })
     }
 
     fn reserve_reconciliation(
@@ -366,24 +384,20 @@ impl DomainMutation<AssetDomain> for SealAssetReferenceSet {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, AssetDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
-        let mut manifest = require_manifest(reader, self.expected.set_id)?;
-        let evidence = require_building_evidence(reader, &manifest)?;
-        require_build_proof(&manifest, self.expected)?;
-        require_complete_marker_summaries(&manifest, self.sequential, self.ordered_assets)?;
-        manifest.lifecycle = AssetReferenceSetLifecycle::Sealed;
-        manifest.revision = manifest
-            .revision
-            .checked_next()
-            .map_err(|_| AssetMutationError::ManifestRevisionExhausted(manifest.set_id))?;
-        mutations.put::<AssetReferenceManifestCodec>(&manifest.set_id, &manifest)?;
+        mutations
+            .put::<AssetReferenceManifestCodec>(&prepared.manifest.set_id, &prepared.manifest)?;
         mutations.put::<AssetReferenceCompletionEvidenceCodec>(
-            &manifest.set_id,
-            &completion::seal_evidence(evidence, &manifest, self.sealed),
+            &prepared.manifest.set_id,
+            &prepared.evidence,
         )?;
         Ok(())
     }
+}
+
+pub(crate) struct PreparedSeal {
+    manifest: AssetReferenceSetManifest,
+    evidence: AssetReferenceSetCompletionEvidence,
 }

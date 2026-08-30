@@ -185,12 +185,16 @@ impl UpdateAssetOwnerHeads {
 
 impl DomainMutation<AssetDomain> for UpdateAssetOwnerHeads {
     type Error = AssetMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         for update in &self.updates {
             validate_head_update(reader, *update)?;
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -213,12 +217,10 @@ impl DomainMutation<AssetDomain> for UpdateAssetOwnerHeads {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, AssetDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
-        for update in &self.updates {
-            validate_head_update(reader, *update)?;
+        for update in &prepared.updates {
             if matches!(update.action, AssetOwnerHeadAction::Assert) {
                 continue;
             }
