@@ -158,65 +158,75 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   resident state instead of copying the parent label index or origin spans.
 - Syndic owns one opaque operation-qualified draft-marker label-readiness lifecycle. Its public
   final proof is non-cloneable, move-only, and bound to the current home generation, destination
-  thread and exact label-head revision/frontiers, destination draft, editor-candidate session and
-  generation, exact predecessor candidate root, operation, closed same-conversation reuse or
-  cross-conversation allocation disposition, canonical association count and digest, and any exact
-  contiguous allocation range. A separate fixed-size `Copy` readiness binding contains only the
-  digest needed in durable mutation records; it is not the process proof and grants no independent
-  authority.
+  thread and exact label-authority and draft-label-protection heads, destination draft, editor-
+  candidate session and generation, exact predecessor candidate root, operation, closed same-
+  conversation reuse or cross-conversation allocation disposition, frozen occurrence commitment,
+  sealed assigned target-id root, and any exact contiguous allocation range. Syndic derives the
+  fixed-size durable readiness binding only while moving that proof into mutation custody; no
+  public input can construct, inject, replace, or use the binding as independent authority.
 - Same-conversation reuse preserves the existing label only when exact destination authority proves
   the same `AssetId`. A live candidate occurrence is proved through its root-bound marker lookup. A
   retained private marker whose occurrence was removed by its captured cut is proved through the
   exact source and successor candidate provenance. For a local or inherited accepted label, a
   typed Syndic source contribution validates the immutable origin span while a typed Beryl-state
   witness contribution validates the sealed-set proof, exact sealed manifest/completion evidence,
-  label-first entry, and complete `AssetId`. `beryl-home-store` runs those roles on one serialized
-  snapshot and accepts only their equal fixed-size correlation. Neither domain reads the other's
-  records, and the app never receives or compares the private facts. Missing provenance, stale
+  label-first entry, and complete `AssetId`. `beryl-home-store` runs those roles on one coherent
+  read snapshot independent of writer serialization and accepts only their equal fixed-size
+  correlation. Neither domain reads the other's records, and the app never receives or compares
+  the private facts. Missing provenance, stale
   candidate binding, an absent origin or label-first entry, or correlation disagreement makes
   readiness unavailable and cannot authorize insertion.
-- Cross-conversation admission never imports the source conversation's label. Syndic allocates the
-  destination labels monotonically above the maximum of its inherited and permanent accepted
-  frontiers, the exact predecessor candidate root's authenticated maximum label, and every live
-  transient reservation for that destination. Repeated source references may share one destination
-  label only when their authenticated source label and `AssetId` agree; a compact streamed
-  association identity proves that equivalence without retaining a source-label map. Checked label
-  exhaustion rejects before candidate mutation and never guesses, wraps, or fills a gap.
-- One home-generation-scoped Syndic coordinator owns a configured bounded set of fixed-size,
-  operation-qualified transient reservations and one compact reservation frontier per active
-  destination. It owns no resident label registry, historical label map, marker collection,
-  retained page prefix, or unbounded waiter queue. Readiness evidence is submitted in bounded
-  canonical pages. Each new page binds its ordinal, prior cumulative digest, canonical associations,
-  and current authority fences. Before dispatch the coordinator seals the complete HomeStore plan,
-  retains its move-only expectation consumer, and gives the app only the paired executable command.
-  The app returns only the opaque composition receipt; the coordinator consumes its retained
-  expectation against that receipt and current home generation in strict order. It retains only the
-  next ordinal, count, cumulative digest, frontier, immediate-last receipt, at most one pending
-  expectation consumer, operation custody, and reservation. Byte-equal immediate replay returns the same
-  receipt, differing reuse collides, and older pages are obsolete.
-- Exact EOF revalidates the mutable label head, candidate, session, and reservation before the
-  coordinator issues the final proof and fixed-size durable binding. `MutationBegin` consumes the
-  proof into Syndic custody and durably records only the binding; every staging, build, settlement,
-  and replay step preserves that binding. The completed marker-effect count, chain, associations,
-  and actual storage-derived successor roots must equal it. A caller-supplied successor structural
-  commitment is never readiness authority.
-- Final marker-changing candidate adoption is one Syndic-domain mutation. It validates the exact
-  binding, label head, candidate session/root, proposal closure, marker-effect chain, and live
-  reservation on the serialized writer snapshot, then atomically publishes the complete candidate,
-  settlement, and edit-history transition. It neither joins a Beryl-state participant nor advances
-  the permanent accepted frontier or creates an origin span. Only later first acceptance advances
-  that independently revisioned permanent frontier and creates the immutable local origin span.
-- Exact replay retains the same operation and custody. Before durable begin, cancellation or a
-  terminal rejection releases the reservation. After begin, cancellation first durably or through
-  reconciliation terminalizes staging/build, then releases it. Before final writer admission
-  cancellation may win; after admission the owner drains the outcome. Proven terminal noncommit
-  releases custody, while a retryable exact-old result retains it. An indeterminate final adoption
-  transfers the move-only proof and reservation into the operation's reconciliation wrapper.
-  Exact-new or terminal noncommit consumes and releases it; exact-old permits retry or cancellation;
-  collision closes the operation while retaining its uncertain ordinal until home-generation
-  retirement. A committed result consumes and releases custody even with a later surfaced failure,
-  because adoption is durable; publication still requires the exact receipt and current-generation
-  health. Retirement invalidates all remaining proofs and releases the coordinator wholesale.
+- Readiness evidence may arrive in arbitrary caller or source order. Each move-only operation page
+  attempt owns one bounded canonical page and the complete sealed HomeStore proof plan with its
+  independently retained receipt consumer. The app may transport only the opaque attempt state,
+  executable command, and receipt; only the executable enters `HomeStore::compose_proof`, and the
+  attempt retains the consumer. After private Syndic and Asset evidence agrees, Syndic inserts
+  every occurrence into
+  operation-owned authenticated source-order and target-id indexes and rejects duplicate target
+  marker ids. No caller cumulative digest, resident label map, or page prefix is readiness
+  authority.
+- Exact evidence EOF freezes the authenticated source-order root and count as the occurrence
+  commitment, then starts bounded durable post-EOF assignment. For cross-conversation allocation,
+  Syndic reserves a contiguous range derived from the authenticated occurrence count and strictly
+  above the draft-label-protection head and every live destination reservation. Assignment consumes
+  source-order leaves, reuses one label only for agreeing repeated source-label/`AssetId` pairs, and
+  writes each final label into the matching target-id leaf. Same-conversation reuse writes the
+  already authenticated label. Checked exhaustion or disagreement terminalizes without candidate
+  mutation. Only a canonical-empty source root and zero unassigned targets permit final proof
+  issuance.
+- Durable readiness heads and indexes own operation progress. Syndic's home-generation runtime
+  attachment owns only the configured bounded live reservations, compact destination reservation
+  frontiers, and active attempt identities; it owns no page, cumulative stream state, replay
+  history, durable index, label registry, marker collection, or unbounded waiter queue. The declared
+  head, association, encoded-byte, and runtime-slot ceilings refuse new custody before exceeding
+  their bounds without limiting a draft's marker population across completed edits.
+- Replay is selected from durable authority rather than process-object continuity. The exact head-
+  selected receipt, relevant target-leaf point reads, and retained source/target closure must be
+  canonically byte-equal to the requested old or new closure. Digest equality alone is only a
+  commitment and rejection aid; a differing occupied closure collides, an older receipt is
+  obsolete, and re-presenting an equal-looking attempt grants no authority.
+- `MutationBegin` moves the final proof into Syndic custody, derives the durable binding inside the
+  package, and carries the sealed assigned target-root authority into the operation. Builder
+  progress point-consumes the exact target-id entry for each marker-producing effect in actual
+  effect order; no app-supplied label, association root, successor commitment, or structural digest
+  can substitute for that entry. Final marker-changing adoption requires canonical-empty target
+  authority, zero remaining entries, the exact proof, binding, reservation, proposal/effect closure,
+  and storage-derived successor roots. One Syndic-domain command atomically publishes candidate,
+  history, session, settlement, terminal readiness disposition, and any monotonic protection-head
+  advance. It repeats no Asset participant because the immutable Asset evidence was already
+  validated on the still-current HomeStore generation. Only later first acceptance advances the
+  permanent accepted frontier and creates the immutable local origin span.
+- Before durable begin, cancellation or terminal rejection releases the reservation. Once durable
+  admission exists, cancellation first reaches a durable or exactly reconciled terminal staging or
+  build settlement; after final writer admission the operation owner drains the classified outcome.
+  Exact-old retains move-only custody for retry or cancellation, indeterminate transfers it to the
+  exact reconciliation wrapper, exact-new and proven terminal noncommit release it, and collision
+  keeps the scope closed until exact durable reconciliation. Attachment retirement invalidates
+  process attempts and proofs but neither deletes nor reclassifies durable admission custody;
+  bounded durable cleanup removes terminal operation records and retained replay closure. A
+  committed result releases proof and reservation custody even with a later surfaced failure,
+  because the settlement is already durable; publication still requires the exact receipt and
+  current-generation health.
 - Label caches contain only the thread identity, exact label-head revision/frontiers, exact
   candidate-root binding, and bounded resident pages or query results. Cache eviction makes label-
   affecting operations repeat bounded point or range reads; no synchronization path loads the whole

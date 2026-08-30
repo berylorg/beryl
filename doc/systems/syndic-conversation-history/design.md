@@ -440,7 +440,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Syndic, not the app, canonicalizes each bounded page after resolving its domain-local evidence.
   Within one page it orders entries by source label and exact page-digest evidence bytes only to
   derive the fixed shared correlation. Pages and associations may arrive in any caller/source order;
-  no coordinator frontier requires one page's labels to follow another's. Every validated
+  no operation ingestion frontier requires one page's labels to follow another's. Every validated
   association is inserted into both operation trees, and duplicate target identities reject even
   when they occur on different pages.
 - The package owns dedicated durable admission-head, authenticated-node, and replay-receipt
@@ -450,9 +450,10 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   selector/evidence bytes and exact `AssetId`. One target-id
   admission tree is keyed by target marker id and retains that occurrence's admitted page identity,
   exact validated source-selector/evidence bytes, source label, and `AssetId`; it first stores an
-  unassigned disposition, then the Syndic-derived assigned final label. These exact occurrence bytes
-  let immediate page replay compare the canonical request rather than trust a digest. Both use fanout
-  128, maximum height 64, checked record counts, disjoint key envelopes, and canonical empty roots.
+  unassigned disposition, then the Syndic-derived assigned final label. These exact occurrence
+  bytes let head-selected byte-exact page replay compare the canonical request rather than trust a
+  digest. Both use fanout 128, maximum height 64, checked record counts, disjoint key envelopes, and
+  canonical empty roots.
   The current head commits request and proof-custody authority, lifecycle, ingestion frontier,
   occurrence commitment, one head-selected replay receipt while readiness is active, both root identities/heights/digests/counts,
   unassigned count, assignment continuation, remaining builder count, and exact retained-
@@ -483,12 +484,12 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   mutation and can produce no readiness proof. This permits bounded streaming without accumulated
   transition history, a resident registry, whole-draft scan, caller tree commitment, or unbounded
   memory.
-- Syndic registers one configured readiness coordinator as its typed HomeStore runtime attachment.
-  The registered-domain slot for one home generation is its sole strong owner, and every Syndic
-  handle clone or reacquisition resolves that same coordinator. It owns a bounded set of fixed-size
+- Syndic registers one configured-capacity typed HomeStore runtime attachment. The registered-domain
+  slot for one home generation is its sole strong owner, and every Syndic handle clone or
+  reacquisition resolves that same attachment. It owns a bounded set of fixed-size
   operation-qualified transient label reservations and a compact destination reservation frontier,
   but no per-label, historical, whole-draft, or process-global registry. The durable source-order
-  and target-id trees are package-owned operation state in HomeStore, not coordinator-resident state.
+  and target-id trees are package-owned operation state in HomeStore, not attachment-resident state.
 - V1 uses one Syndic-package-owned readiness production profile rather than a HomeStore registration
   option or app-selected tuning surface. The complete home retains at most 64 readiness heads across
   process generations, at most 65,536 associations, and at most 67,108,864 encoded bytes charged to
@@ -514,8 +515,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   exact durable source/target reconciliation. The accepted custody drives at most one association
   into both durable trees per authenticated update quantum and retains the remainder of only that
   bounded page until its exact cursor reaches page EOF. Only then may the next page advance. The
-  coordinator retains fixed operation/page identities and transient reservation state, not an
-  association prefix. Exact evidence EOF closes ingestion but does not issue the final proof: the
+  operation attempt retains fixed operation/page identities while the runtime attachment retains
+  transient reservation state; neither retains an association prefix. Exact evidence EOF closes
+  ingestion but does not issue the final proof: the
   durable head enters bounded source-order assignment, whose continuation reaches canonical-empty
   source root and zero unassigned count before Syndic revalidates both mutable heads, the session,
   predecessor root, reservation, and exact durable admission head and seals the assigned target
@@ -541,17 +543,17 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Cancellation before any admitted durable index state releases any live reservation. Once admission
   records exist, cancellation first publishes an inert terminal head with an exact bounded cleanup
   cursor. Across restart, bounded operation-prefix cleanup deletes every source/target node,
-  immediate replay path, and superseded receipt. It retains only one compact terminal closure
+  replay-only path, and superseded receipt. It retains only one compact terminal closure
   needed for replay/collision, or transfers that authority to the durable mutation settlement and then removes
   the operation head and terminal closure. After begin it must first win a
   durable or reconciled terminal staging/build settlement. Cancellation may win before final writer
-  admission; after admission the coordinator drains the classified result. A determinate terminal
+  admission; after admission the operation owner drains the classified result. A determinate terminal
   noncommit releases custody, while an exact-old retryable result retains it. `Indeterminate`
   transfers the move-only proof and reservation to the exact operation reconciliation wrapper;
   `ExactNew` or terminal noncommit consumes and releases them, `ExactOld` retains them for retry or
   cancellation, and `Collision` retains the uncertain ordinal in a closed scope until exact durable
   reconciliation. HomeStore attachment retirement invalidates remaining process attempts and
-  proofs and retires the coordinator exactly once, but never deletes, releases, or reclassifies
+  proofs and retires the attachment exactly once, but never deletes, releases, or reclassifies
   durable admission custody. New attachment registration reads the singleton aggregate and at most
   65 operation heads under an exact byte limit; the completely empty domain instead proves the
   head, node, and receipt families empty with one bounded first-record read each and treats the

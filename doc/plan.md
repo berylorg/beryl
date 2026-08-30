@@ -18,22 +18,15 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 209: Reconcile Durable-Start Footprint Authority (finished)
+# Phase 210: Reconcile Draft-Marker Admission Authority (finished)
 
-Reconciled system and HomeStore authority plus exact fixtures with the accepted Syndic image-label-
-authority footprint: direct admission is 27 records and 1,328,750 logical bytes, and its 1,329,343-
-byte Fjall envelope is the shared maximum. No source behavior or persisted schema changed.
+Reconciled image-assets, Syndic-conversation-history, and Syndic package authority around
+operation-owned authenticated indexes, bounded post-EOF assignment, durable byte-exact replay,
+minimal runtime-attachment ownership, and package-derived mutation binding. Corrected the tracker
+ownership wording; no feature behavior, source, test, or persisted schema changed.
 
-All-test/all-feature compilation passed, the complete HomeStore gate passed 206 of 206 tests, and
-the three package-owner footprint tests passed. Independent authority review closed after resolving
-one stale package-policy ownership sentence; scoped diff validation passed.
-
-# Phase 210: Reconcile Draft-Marker Admission Authority (pending)
-
-Reconcile the image-assets system's removed coordinator, cumulative-digest, and immediate-replay
-wording with the controlling Syndic arbitrary-order durable-index, post-EOF assignment, byte-exact
-replay, and package-derived binding contracts before replacement implementation begins. Obtain
-independent authority review and change no source or persisted schema.
+Independent authority review closed after resolving reservation and opaque app-transport custody;
+scoped stale-term searches and diff validation passed.
 
 # Phase 211: Establish Monotonic Draft-Label Protection (pending)
 

@@ -1624,8 +1624,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `AssetId`; target-id leaves are keyed by target marker id and
   retain admitted page identity, complete validated source-selector/evidence bytes, source label,
   and exact `AssetId`, plus either an unassigned disposition or the assigned final label. Those
-  occurrence bytes are point-compared for immediate page replay and remain until builder
-  consumption.
+  occurrence bytes are point-compared for head-selected byte-exact page replay and remain until
+  builder consumption.
   Internal nodes store bounded ordered child identities, digests, checked counts, and disjoint
   tree-specific key envelopes. Both trees have fanout 128 and maximum height 64. Values repeat owner,
   tree/tag, and record identity; unknown tags, wrong owners, malformed envelopes, inconsistent
@@ -2139,7 +2139,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   unbounded memory.
 - Receipt submission moves the live dispatch-attempt custody and its independently retained
   consumer into exact HomeStore consumption. Only a receipt matching that pre-dispatch expectation and current
-  home generation advances the coordinator exactly once.
+  home generation advances the operation exactly once.
   `DraftMarkerLabelReadinessPageOutcomeV1` returns accepted durable identity or a determinate stale,
   unavailable, obsolete-page, capacity, or collision result. Re-preparing the same durable
   operation/page identity is exact replay only when the head-selected receipt, exact target-leaf
@@ -2149,8 +2149,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   obsolete. Digest equality is a commitment and rejection aid, never replay identity. No outcome
   depends on retaining or re-presenting the same process object. Accepted custody inserts at most
   one association into both trees per durable quantum and retains the rest of only that bounded page until its exact cursor reaches page EOF. Only then
-  may the next page advance. The coordinator retains fixed operation/page identities and reservation
-  state, not an association prefix.
+  may the next page advance. The operation attempt retains fixed operation/page identities while
+  the runtime attachment retains transient reservation state; neither retains an association prefix.
   A substituted attempt, executable, receipt, or receipt/consumer pair cannot advance the
   operation.
 - Exact EOF plus completed source-order assignment revalidates the live label and protection heads,
@@ -2163,18 +2163,18 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   range. The package derives its fixed-size durable binding only when moving that proof into mutation
   custody; no public input can construct, inject, or replace the binding. Neither proof nor binding
   accepts a caller-provided successor root or structural commitment.
-- Syndic domain registration supplies one home-generation-scoped configured-capacity coordinator as
-  its typed HomeStore runtime attachment. The registered-domain slot is its sole strong owner and
+- Syndic domain registration supplies one home-generation-scoped configured-capacity HomeStore
+  runtime attachment. The registered-domain slot is its sole strong owner and
   every same-generation Syndic handle clone or reacquisition resolves that exact instance. The
-  coordinator contains only fixed-size operation reservations, one compact reservation frontier per
-  active destination, current page state, and active dispatch identities. It owns no durable page,
+  attachment contains only fixed-size operation reservations, one compact reservation frontier per
+  active destination, and active dispatch identities. It owns no page or durable operation state,
   per-label map, marker registry, history cache, or unbounded queue; package-owned admission
   families hold durable operation state outside the attachment. Before any durable index state,
   explicit cancellation or terminal request disposal releases any live reservation. Once records exist,
   cancellation first publishes an inert terminal head with a bounded cleanup cursor. Across restart,
   bounded operation-prefix cleanup deletes every source/target node, replay-only path, and
   superseded receipt. Attachment retirement invalidates process attempts/proofs and retires the
-  coordinator exactly once, but never deletes or reclassifies durable admission custody.
+  attachment exactly once, but never deletes or reclassifies durable admission custody.
   Registration point-reads the singleton aggregate and cursor-reads at most 65 head records under
   an exact byte bound before publishing the new attachment. If the singleton is absent, it instead
   proves the head, node, and receipt families empty with one bounded first-record read each. More
@@ -2201,8 +2201,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   64 live reservations, destination-frontier entries, and active attempt identities. A canonical
   evidence page has at most 256 associations and at most 65,536 encoded bytes. Admission checks the
   page bounds, aggregate durable capacity, and runtime slot before retaining custody. The dispatch
-  attempt, not the coordinator, owns the one bounded page. These aggregate limits, tree height/count
-  validation, exact command preflight, and available storage capacity are the production ceilings;
+  attempt owns the one bounded page; the runtime attachment does not. These aggregate limits, tree
+  height/count validation, exact command preflight, and available storage capacity are the production ceilings;
   they do not cap a draft's marker population across multiple completed edits.
 - `DraftEditorCandidateSessionOpenOutcomeV1` is `Opened(head)`, `ExactReplay(head)`,
   `StaleDisposed(head)`, `SelectorConflict(current selector)`, or
@@ -2470,7 +2470,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   terminal command is admitted first fixes the outcome. Before durable begin, cancellation releases
   the proof and reservation directly. After begin it releases them only after a durable or
   reconciled terminal staging/build settlement. Before final writer admission cancellation may win;
-  after admission the coordinator drains the classified result and does not release from a later
+  after admission the operation owner drains the classified result and does not release from a later
   cancellation request. Direct `NotCommitted` with an exact terminal settlement consumes and
   releases custody, while `NotCommitted` without terminal settlement retains it for retry or the
   cancellation election. `Indeterminate` installs the move-only proof and reservation immediately

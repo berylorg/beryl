@@ -214,7 +214,9 @@
   integration fixtures without a compatibility path.
 - [x] Reconciled durable-start footprint authority and fixtures with the accepted Syndic image-label-
   authority family before further draft-marker implementation.
-- [ ] Establish attachment-owned Syndic draft-marker admission with monotonic label protection,
+- [x] Reconciled draft-marker admission authority around operation-owned durable indexes, post-EOF
+  assignment, byte-exact replay, and package-derived binding.
+- [ ] Establish operation-owned Syndic draft-marker admission with monotonic label protection,
   bounded authenticated indexes, home-wide cross-restart retained-resource limits, and exact
   package-owned replay custody.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
