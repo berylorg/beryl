@@ -31,7 +31,8 @@ use syndic_storage::{
         DraftMarkerAdmissionFixtureSnapshotV1,
         draft_marker_admission_capacity_without_heads_contribution,
         draft_marker_admission_fixture_contribution,
-        inject_malformed_draft_marker_admission_capacity, reset_validation_page_metrics,
+        inject_malformed_draft_marker_admission_capacity,
+        inject_malformed_draft_marker_admission_head, reset_validation_page_metrics,
         syndic_v7_family_names, validation_page_metrics,
     },
 };
@@ -75,16 +76,27 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
 }
 
 fn owner() -> DraftMarkerAdmissionOwnerV1 {
+    owner_with_seed(1)
+}
+
+fn owner_with_seed(seed: u8) -> DraftMarkerAdmissionOwnerV1 {
     DraftMarkerAdmissionOwnerV1::new(
-        SyndicDraftId::from_bytes([1; 16]),
-        DraftEditorCandidateSessionIdV1::from_bytes([2; 16]),
-        DraftMarkerAdmissionOperationIdV1::from_bytes([3; 16]),
+        SyndicDraftId::from_bytes([seed; 16]),
+        DraftEditorCandidateSessionIdV1::from_bytes([seed.wrapping_add(1); 16]),
+        DraftMarkerAdmissionOperationIdV1::from_bytes([seed.wrapping_add(2); 16]),
     )
 }
 
 fn settled_head(encoded_bytes: u64) -> DraftMarkerAdmissionHeadV1 {
+    settled_head_for(owner(), encoded_bytes)
+}
+
+fn settled_head_for(
+    owner: DraftMarkerAdmissionOwnerV1,
+    encoded_bytes: u64,
+) -> DraftMarkerAdmissionHeadV1 {
     DraftMarkerAdmissionHeadV1::new(
-        owner(),
+        owner,
         NonZeroU64::MIN,
         NonZeroU64::MIN,
         DraftMarkerAdmissionLifecycleV1::Settled,
@@ -722,6 +734,183 @@ fn explicit_validation_refuses_malformed_and_aggregate_only_capacity_state() {
             .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
             .is_err()
     );
+}
+
+#[test]
+fn registration_reconstructs_empty_and_bounded_persisted_admission_state() {
+    let empty = TestHome::new("attachment-empty");
+    let mut store = open(&empty);
+    SyndicStorage::register(&mut store).unwrap();
+    store.close().unwrap();
+    let mut reopened = open(&empty);
+    SyndicStorage::register(&mut reopened).unwrap();
+    reopened.close().unwrap();
+
+    let populated = TestHome::new("attachment-populated");
+    let mut store = open(&populated);
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let provisional = settled_head(0);
+    let head = settled_head(draft_marker_admission_head_encoded_charge_v1(&provisional).unwrap());
+    let capacity =
+        syndic_storage::DraftMarkerAdmissionCapacityV1::new(NonZeroU64::MIN, head.charge())
+            .unwrap();
+    execute(
+        &store,
+        draft_marker_admission_fixture_contribution(
+            &storage,
+            storage.revision(&store).unwrap(),
+            DraftMarkerAdmissionFixtureSnapshotV1::new(
+                capacity,
+                vec![head],
+                Vec::new(),
+                Vec::new(),
+            ),
+        ),
+    );
+    store.close().unwrap();
+    let mut reopened = open(&populated);
+    SyndicStorage::register(&mut reopened).unwrap();
+    reopened.close().unwrap();
+}
+
+#[test]
+fn registration_refuses_capacity_disagreement_without_publishing_the_domain() {
+    let home = TestHome::new("attachment-capacity-disagreement");
+    let mut store = open(&home);
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let provisional = settled_head(0);
+    let head = settled_head(draft_marker_admission_head_encoded_charge_v1(&provisional).unwrap());
+    let capacity = syndic_storage::DraftMarkerAdmissionCapacityV1::new(
+        NonZeroU64::MIN,
+        DraftMarkerAdmissionRetainedChargeV1::ZERO,
+    )
+    .unwrap();
+    execute(
+        &store,
+        draft_marker_admission_fixture_contribution(
+            &storage,
+            storage.revision(&store).unwrap(),
+            DraftMarkerAdmissionFixtureSnapshotV1::new(
+                capacity,
+                vec![head],
+                Vec::new(),
+                Vec::new(),
+            ),
+        ),
+    );
+    store.close().unwrap();
+    let mut reopened = open(&home);
+    assert!(SyndicStorage::register(&mut reopened).is_err());
+    assert!(SyndicStorage::reacquire(&reopened).is_err());
+    reopened.close().unwrap();
+}
+
+fn settled_heads(count: u8) -> Vec<DraftMarkerAdmissionHeadV1> {
+    (1..=count)
+        .map(|seed| {
+            let owner = owner_with_seed(seed);
+            let provisional = settled_head_for(owner, 0);
+            settled_head_for(
+                owner,
+                draft_marker_admission_head_encoded_charge_v1(&provisional).unwrap(),
+            )
+        })
+        .collect()
+}
+
+fn capacity_for_heads(
+    heads: &[DraftMarkerAdmissionHeadV1],
+) -> syndic_storage::DraftMarkerAdmissionCapacityV1 {
+    let charge = heads
+        .iter()
+        .fold(DraftMarkerAdmissionRetainedChargeV1::ZERO, |total, head| {
+            total.checked_add(head.charge()).unwrap()
+        });
+    syndic_storage::DraftMarkerAdmissionCapacityV1::new(NonZeroU64::MIN, charge).unwrap()
+}
+
+#[test]
+fn registration_reconstructs_exactly_sixty_four_distinct_heads() {
+    let home = TestHome::new("attachment-sixty-four-heads");
+    let mut store = open(&home);
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let heads = settled_heads(64);
+    execute(
+        &store,
+        draft_marker_admission_fixture_contribution(
+            &storage,
+            storage.revision(&store).unwrap(),
+            DraftMarkerAdmissionFixtureSnapshotV1::new(
+                capacity_for_heads(&heads),
+                heads,
+                Vec::new(),
+                Vec::new(),
+            ),
+        ),
+    );
+    store.close().unwrap();
+    let mut reopened = open(&home);
+    SyndicStorage::register(&mut reopened).unwrap();
+    reopened.close().unwrap();
+}
+
+#[test]
+fn registration_refuses_the_sixty_fifth_distinct_head_without_publishing() {
+    let home = TestHome::new("attachment-sixty-five-heads");
+    let mut store = open(&home);
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let heads = settled_heads(65);
+    execute(
+        &store,
+        draft_marker_admission_fixture_contribution(
+            &storage,
+            storage.revision(&store).unwrap(),
+            DraftMarkerAdmissionFixtureSnapshotV1::new(
+                capacity_for_heads(&heads[..64]),
+                heads,
+                Vec::new(),
+                Vec::new(),
+            ),
+        ),
+    );
+    store.close().unwrap();
+    let mut reopened = open(&home);
+    assert!(SyndicStorage::register(&mut reopened).is_err());
+    assert!(SyndicStorage::reacquire(&reopened).is_err());
+    reopened.close().unwrap();
+}
+
+#[test]
+fn registration_refuses_malformed_persisted_singleton_and_head_authority() {
+    for malformed_head in [false, true] {
+        let home = TestHome::new("attachment-malformed-authority");
+        let mut store = open(&home);
+        let storage = SyndicStorage::register(&mut store).unwrap();
+        let head = settled_heads(1).pop().unwrap();
+        execute(
+            &store,
+            draft_marker_admission_fixture_contribution(
+                &storage,
+                storage.revision(&store).unwrap(),
+                DraftMarkerAdmissionFixtureSnapshotV1::new(
+                    capacity_for_heads(std::slice::from_ref(&head)),
+                    vec![head.clone()],
+                    Vec::new(),
+                    Vec::new(),
+                ),
+            ),
+        );
+        if malformed_head {
+            inject_malformed_draft_marker_admission_head(&store, storage, head.owner()).unwrap();
+        } else {
+            inject_malformed_draft_marker_admission_capacity(&store, storage).unwrap();
+        }
+        store.close().unwrap();
+        let mut reopened = open(&home);
+        assert!(SyndicStorage::register(&mut reopened).is_err());
+        assert!(SyndicStorage::reacquire(&reopened).is_err());
+        reopened.close().unwrap();
+    }
 }
 
 #[test]

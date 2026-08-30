@@ -60,6 +60,7 @@ pub use draft_marker_admission::{
     DraftMarkerAdmissionFixtureSnapshotV1,
     draft_marker_admission_capacity_without_heads_contribution,
     draft_marker_admission_fixture_contribution, inject_malformed_draft_marker_admission_capacity,
+    inject_malformed_draft_marker_admission_head,
 };
 pub use draft_piece_candidate_drift::arm_draft_piece_candidate_read_fault;
 pub(crate) use draft_piece_candidate_drift::run_draft_piece_candidate_read_fault;

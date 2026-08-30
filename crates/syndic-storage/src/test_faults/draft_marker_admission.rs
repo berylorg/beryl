@@ -13,7 +13,8 @@ use crate::{
     draft_piece::{
         DraftMarkerAdmissionCapacityFamily, DraftMarkerAdmissionCapacityKeyV1,
         DraftMarkerAdmissionCapacityV1, DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionHeadsCodec,
-        DraftMarkerAdmissionNodeV1, DraftMarkerAdmissionNodesCodec,
+        DraftMarkerAdmissionHeadsFamily, DraftMarkerAdmissionNodeV1,
+        DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionOwnerV1,
         DraftMarkerAdmissionReceiptKeyV1, DraftMarkerAdmissionReceiptsCodec,
         DraftMarkerAdmissionReplayReceiptV1, DraftMarkerAdmissionRetainedChargeV1,
     },
@@ -32,6 +33,23 @@ pub fn inject_malformed_draft_marker_admission_capacity(
             .get()
             .to_be_bytes()
             .to_vec(),
+    )
+}
+
+pub fn inject_malformed_draft_marker_admission_head(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    owner: DraftMarkerAdmissionOwnerV1,
+) -> Result<(), beryl_home_store::test_faults::PersistedCorruptionError> {
+    let encoded_key =
+        <DraftMarkerAdmissionHeadsCodec as RecordCodec<SyndicDomain>>::encode_key(&owner)
+            .expect("admission head fixture key encodes");
+    store.inject_persisted_corrupt_record::<SyndicDomain, DraftMarkerAdmissionHeadsCodec>(
+        &storage.handle,
+        &encoded_key,
+        &DraftMarkerAdmissionHeadsFamily::RECORD_VERSION
+            .get()
+            .to_be_bytes(),
     )
 }
 

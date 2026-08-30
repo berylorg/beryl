@@ -222,6 +222,8 @@
   reads, exact failure classification, and no second initialization stage.
 - [x] Established canonical durable draft-marker admission schemas, bounded authenticated index and
   charge primitives, and explicit semantic validation without routine-open scans.
+- [x] Reconstructed the bounded generation-owned draft-marker admission attachment before domain
+  publication without reviving process capabilities or performing durable cleanup.
 - [ ] Establish operation-owned Syndic draft-marker admission with bounded authenticated indexes,
   home-wide cross-restart retained-resource limits, and exact package-owned replay custody.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-

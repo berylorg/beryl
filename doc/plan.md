@@ -17,21 +17,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 213: Establish The Durable Draft-Marker Admission Substrate (finished)
+# Phase 214: Reconstruct The Draft-Marker Admission Runtime Attachment (finished)
 
-Established canonical admission capacity, head, authenticated-node, and replay-receipt families with
-exact package-owned charge accounting and bounded explicit semantic validation. Focused single-job
-checks and 15 persisted schema/tree tests passed; routine registration performed no validation scan,
-and independent semantic review closed after cross-record membership, replay, assignment, and
-target-disposition faults were exercised.
-
-# Phase 214: Reconstruct The Draft-Marker Admission Runtime Attachment (pending)
-
-Replace the empty Syndic domain attachment with the configured-capacity home-generation attachment
-and reconstruct it from the persisted singleton plus at most 64 heads through the typed bounded
-registration reader. Verify empty and populated registration, restart reconstruction, exact charge
-and profile agreement, 65-head refusal, malformed/read-failure nonpublication, retirement, and
-retry behavior with focused tests and independent semantic review.
+Replaced the empty Syndic attachment with bounded prepublication reconstruction from the capacity
+singleton and at most 64 durable heads, including exact empty-family probes, aggregate agreement,
+nonpublication on malformed or excessive state, and transient-only retirement. Focused Syndic and
+generic HomeStore attachment suites passed 16 and 11 cases respectively, and independent semantic
+review closed without requiring later cleanup or settlement authority.
 
 # Phase 215: Admit Arbitrary-Order Draft-Marker Evidence (pending)
 

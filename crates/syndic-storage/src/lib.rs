@@ -782,6 +782,7 @@
 //! The storage flow is also kept as the compiling Cargo example `domain`.
 #![forbid(unsafe_code)]
 
+mod admission_attachment;
 mod catalog_title;
 mod codec;
 mod compaction;

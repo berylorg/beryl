@@ -1,5 +1,3 @@
-use std::convert::Infallible;
-
 use beryl_home_store::{
     CommitReceipt, CommitReceiptError, DomainHandle, DomainHandleError, DomainReconciliation,
     DomainRegistrationError, DomainSchemaVersion, HomeRecoveryCandidate, HomeStore,
@@ -112,13 +110,13 @@ impl StorageDomain for SyndicDomain {
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(7);
     const FAMILIES: &'static [RecordFamily<Self>] = V7_FAMILIES;
     type ValidationError = SyndicValidationError;
-    type RuntimeAttachment = ();
-    type RuntimeAttachmentError = Infallible;
+    type RuntimeAttachment = crate::admission_attachment::DraftMarkerAdmissionAttachment;
+    type RuntimeAttachmentError = crate::admission_attachment::DraftMarkerAdmissionAttachmentError;
 
     fn create_runtime_attachment(
-        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+        reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
     ) -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError> {
-        Ok(())
+        crate::admission_attachment::DraftMarkerAdmissionAttachment::reconstruct(reader)
     }
 
     fn validate(
