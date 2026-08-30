@@ -583,9 +583,10 @@ fn contribution(
 
 impl DomainMutation<SyndicDomain> for Replace {
     type Error = Infallible;
+    type Prepared = Self;
 
-    fn validate(&self, _: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(self, _: &DomainReader<'_, SyndicDomain>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -625,11 +626,10 @@ impl DomainMutation<SyndicDomain> for Replace {
     }
 
     fn contribute(
-        &self,
-        _: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        match &self.0 {
+        match &prepared.0 {
             Replacement::Build(key, value) => mutations
                 .put::<DraftComposerBuildsCodec>(key, value)
                 .unwrap(),

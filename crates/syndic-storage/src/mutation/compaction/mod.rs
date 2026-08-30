@@ -379,9 +379,13 @@ struct SettleLifecycleMutation(SettleLifecycleCompaction);
 
 impl DomainMutation<SyndicDomain> for SealLifecycleContentMutation {
     type Error = SyndicMutationError;
+    type Prepared = ContentManifestRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.successor(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.successor(reader)
     }
 
     fn reserve_reconciliation(
@@ -393,12 +397,10 @@ impl DomainMutation<SyndicDomain> for SealLifecycleContentMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let successor = self.successor(reader)?;
-        mutations.put::<ContentManifestsCodec>(&successor.id(), &successor)?;
+        mutations.put::<ContentManifestsCodec>(&prepared.id(), &prepared)?;
         Ok(())
     }
 }

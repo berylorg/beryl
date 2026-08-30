@@ -1346,8 +1346,12 @@ fn validate_record(record: &DraftMarkerSealRecordV1) -> Result<(), DraftMarkerSe
 
 impl DomainMutation<SyndicDomain> for BeginMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedDraftMarkerSealBeginV1>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let source = point::<DraftPieceRootsFamily>(reader, &self.prepared.source.key())?.ok_or(
             SyndicMutationError::RequiredRecordMissing {
                 family: "draft-piece-roots",
@@ -1356,13 +1360,13 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
         if source.reference() != self.prepared.source {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        if let Some(existing) = point::<DraftMarkerSealsFamily>(reader, &self.prepared.initial.key)?
-        {
+        let existing = point::<DraftMarkerSealsFamily>(reader, &self.prepared.initial.key)?;
+        if let Some(existing) = &existing {
             if validate_record(&existing).is_err() || existing.key != self.prepared.initial.key {
                 return Err(SyndicMutationError::IdentityCollision);
             }
         }
-        Ok(())
+        Ok(existing.is_none().then_some(self.prepared))
     }
 
     fn reserve_reconciliation(
@@ -1374,13 +1378,11 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if point::<DraftMarkerSealsFamily>(reader, &self.prepared.initial.key)?.is_none() {
-            mutations
-                .put::<DraftMarkerSealsCodec>(&self.prepared.initial.key, &self.prepared.initial)?;
+        if let Some(prepared) = prepared {
+            mutations.put::<DraftMarkerSealsCodec>(&prepared.initial.key, &prepared.initial)?;
         }
         Ok(())
     }
@@ -1388,8 +1390,12 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
 
 impl DomainMutation<SyndicDomain> for AdvanceMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedDraftMarkerSealAdvanceV1>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let current = point::<DraftMarkerSealsFamily>(reader, &self.prepared.expected.key)?.ok_or(
             SyndicMutationError::RequiredRecordMissing {
                 family: "draft-marker-seals",
@@ -1404,7 +1410,7 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
         {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        Ok(())
+        Ok((current == self.prepared.expected).then_some(self.prepared))
     }
 
     fn reserve_reconciliation(
@@ -1416,17 +1422,11 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let current = point::<DraftMarkerSealsFamily>(reader, &self.prepared.expected.key)?.ok_or(
-            SyndicMutationError::RequiredRecordMissing {
-                family: "draft-marker-seals",
-            },
-        )?;
-        if current == self.prepared.expected {
-            mutations.put::<DraftMarkerSealsCodec>(&self.prepared.next.key, &self.prepared.next)?;
+        if let Some(prepared) = prepared {
+            mutations.put::<DraftMarkerSealsCodec>(&prepared.next.key, &prepared.next)?;
         }
         Ok(())
     }
@@ -1434,9 +1434,18 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
 
 impl DomainMutation<SyndicDomain> for CancelMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedDraftMarkerSealCancelV1>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        validate_terminal_mutation(reader, &self.prepared.expected, &self.prepared.next)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let current =
+            validate_terminal_mutation(reader, &self.prepared.expected, &self.prepared.next)?;
+        Ok(
+            (current == self.prepared.expected && self.prepared.expected != self.prepared.next)
+                .then_some(self.prepared),
+        )
     }
 
     fn reserve_reconciliation(
@@ -1448,24 +1457,30 @@ impl DomainMutation<SyndicDomain> for CancelMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        contribute_terminal_mutation(
-            reader,
-            mutations,
-            &self.prepared.expected,
-            &self.prepared.next,
-        )
+        if let Some(prepared) = prepared {
+            mutations.put::<DraftMarkerSealsCodec>(&prepared.next.key, &prepared.next)?;
+        }
+        Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for FailMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedDraftMarkerSealFailV1>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        validate_terminal_mutation(reader, &self.prepared.expected, &self.prepared.next)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let current =
+            validate_terminal_mutation(reader, &self.prepared.expected, &self.prepared.next)?;
+        Ok(
+            (current == self.prepared.expected && self.prepared.expected != self.prepared.next)
+                .then_some(self.prepared),
+        )
     }
 
     fn reserve_reconciliation(
@@ -1477,24 +1492,30 @@ impl DomainMutation<SyndicDomain> for FailMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        contribute_terminal_mutation(
-            reader,
-            mutations,
-            &self.prepared.expected,
-            &self.prepared.next,
-        )
+        if let Some(prepared) = prepared {
+            mutations.put::<DraftMarkerSealsCodec>(&prepared.next.key, &prepared.next)?;
+        }
+        Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for SupersedeMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedDraftMarkerSealSupersedeV1>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        validate_terminal_mutation(reader, &self.prepared.expected, &self.prepared.next)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let current =
+            validate_terminal_mutation(reader, &self.prepared.expected, &self.prepared.next)?;
+        Ok(
+            (current == self.prepared.expected && self.prepared.expected != self.prepared.next)
+                .then_some(self.prepared),
+        )
     }
 
     fn reserve_reconciliation(
@@ -1506,25 +1527,23 @@ impl DomainMutation<SyndicDomain> for SupersedeMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        contribute_terminal_mutation(
-            reader,
-            mutations,
-            &self.prepared.expected,
-            &self.prepared.next,
-        )
+        if let Some(prepared) = prepared {
+            mutations.put::<DraftMarkerSealsCodec>(&prepared.next.key, &prepared.next)?;
+        }
+        Ok(())
     }
 }
 
 #[cfg(feature = "test-faults")]
 impl DomainMutation<SyndicDomain> for MarkerSealCollisionMutation {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(self, _: &DomainReader<'_, SyndicDomain>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -1536,11 +1555,10 @@ impl DomainMutation<SyndicDomain> for MarkerSealCollisionMutation {
     }
 
     fn contribute(
-        &self,
-        _: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<DraftMarkerSealsCodec>(&self.physical_key, &self.record)?;
+        mutations.put::<DraftMarkerSealsCodec>(&prepared.physical_key, &prepared.record)?;
         Ok(())
     }
 }
@@ -1549,7 +1567,7 @@ fn validate_terminal_mutation(
     reader: &DomainReader<'_, SyndicDomain>,
     expected: &DraftMarkerSealRecordV1,
     next: &DraftMarkerSealRecordV1,
-) -> Result<(), SyndicMutationError> {
+) -> Result<DraftMarkerSealRecordV1, SyndicMutationError> {
     let current = point::<DraftMarkerSealsFamily>(reader, &expected.key)?.ok_or(
         SyndicMutationError::RequiredRecordMissing {
             family: "draft-marker-seals",
@@ -1563,24 +1581,7 @@ fn validate_terminal_mutation(
     {
         return Err(SyndicMutationError::IdentityCollision);
     }
-    Ok(())
-}
-
-fn contribute_terminal_mutation(
-    reader: &DomainReader<'_, SyndicDomain>,
-    mutations: &mut MutationBuilder<'_, SyndicDomain>,
-    expected: &DraftMarkerSealRecordV1,
-    next: &DraftMarkerSealRecordV1,
-) -> Result<(), SyndicMutationError> {
-    let current = point::<DraftMarkerSealsFamily>(reader, &expected.key)?.ok_or(
-        SyndicMutationError::RequiredRecordMissing {
-            family: "draft-marker-seals",
-        },
-    )?;
-    if current == *expected && expected != next {
-        mutations.put::<DraftMarkerSealsCodec>(&next.key, next)?;
-    }
-    Ok(())
+    Ok(current)
 }
 
 fn point<F: Family>(

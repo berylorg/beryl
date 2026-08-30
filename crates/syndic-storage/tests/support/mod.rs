@@ -185,6 +185,7 @@ pub fn seed_detached_canonical_draft_backing(
     let mut cleanup = FixtureBatch::new();
     for delete in [
         FixtureDelete::Thread(staging_thread),
+        FixtureDelete::ImageLabelAuthorityHead(staging_thread),
         FixtureDelete::ThreadExecution(staging_thread),
         FixtureDelete::ThreadAttributes(staging_thread),
         FixtureDelete::ThreadUsage(staging_thread),

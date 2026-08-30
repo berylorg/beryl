@@ -11,7 +11,7 @@ use crate::{
 
 use super::{AdmitStopOperationMutation, authority::validate_execution_target};
 
-struct AdmissionRecords {
+pub struct AdmissionRecords {
     route: Option<AcceptedRouteGenerationRecord>,
     route_head: Option<AcceptedRouteGenerationHeadRecord>,
     next_source: Option<AcceptedNextSourceRecord>,
@@ -22,9 +22,13 @@ struct AdmissionRecords {
 
 impl DomainMutation<SyndicDomain> for AdmitStopOperationMutation {
     type Error = SyndicMutationError;
+    type Prepared = AdmissionRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -42,11 +46,10 @@ impl DomainMutation<SyndicDomain> for AdmitStopOperationMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 

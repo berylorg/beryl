@@ -1,22 +1,78 @@
 use super::*;
 
-pub(super) fn contribute(
+pub(super) struct PreparedSettlementContribution {
+    root: Option<DraftPieceRootRecordV1>,
+    transition: Option<DraftEditHistoryTransitionV1>,
+    history: Option<DraftEditHistoryFrontierV1>,
+    target_session: DraftEditorCandidateSessionV1,
+    settlement: DraftPieceSettlementV1,
+    terminal: DraftPieceBuildRecordV1,
+    receipt: DraftPieceBuildProgressReceiptV1,
+}
+
+pub(super) fn prepare(
     prepared: &PreparedDraftPieceEditV1,
     reader: &DomainReader<'_, SyndicDomain>,
+) -> Result<Option<PreparedSettlementContribution>, SyndicMutationError> {
+    if let Some(settlement) =
+        point::<DraftPieceSettlementsFamily>(reader, &settlement_key(prepared))?
+    {
+        return if settlement_is_settle_target(&settlement)
+            && settlement_matches(reader, &settlement, prepared)?
+        {
+            Ok(None)
+        } else {
+            Err(SyndicMutationError::IdentityCollision)
+        };
+    }
+    let build = required_build(reader, &settlement_key(prepared))?;
+    if !build_matches(&build, prepared)
+        || build.lifecycle() != DraftPieceBuildLifecycleV1::Complete
+        || build.successor().is_none()
+        || build.build_digest().is_none()
+    {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    let expected_session = expected_active_session(prepared, &build)?;
+    authenticate_source_transition(
+        reader,
+        &build,
+        &expected_session,
+        next_progress_key(&build)?,
+    )?;
+    let successor = build
+        .successor()
+        .ok_or(SyndicMutationError::IdentityCollision)?;
+    if point::<DraftPieceRootsFamily>(reader, &successor.key())?.is_some() {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    read_and_authenticate(prepared, reader, build).map(Some)
+}
+
+pub(super) fn contribute(
+    prepared: PreparedSettlementContribution,
     mutations: &mut MutationBuilder<'_, SyndicDomain>,
 ) -> Result<(), SyndicMutationError> {
-    if point::<DraftPieceSettlementsFamily>(reader, &settlement_key(prepared))?.is_some() {
-        return Ok(());
+    if let Some(root) = prepared.root {
+        mutations.put::<DraftPieceRootsCodec>(&root.reference().key(), &root)?;
     }
-    read_and_authenticate(prepared, reader, mutations)
+    if let Some(transition) = prepared.transition {
+        mutations.put::<DraftEditHistoryTransitionsCodec>(&transition.key(), &transition)?;
+    }
+    if let Some(history) = prepared.history {
+        mutations.put::<DraftEditHistoryFrontiersCodec>(&history.reference().key(), &history)?;
+    }
+    put_session_head(mutations, &prepared.target_session)?;
+    mutations
+        .put::<DraftPieceSettlementsCodec>(&prepared.settlement.key(), &prepared.settlement)?;
+    put_build_transition(mutations, &prepared.terminal, &prepared.receipt)
 }
 
 fn read_and_authenticate(
     prepared: &PreparedDraftPieceEditV1,
     reader: &DomainReader<'_, SyndicDomain>,
-    mutations: &mut MutationBuilder<'_, SyndicDomain>,
-) -> Result<(), SyndicMutationError> {
-    let build = required_build(reader, &settlement_key(prepared))?;
+    build: DraftPieceBuildRecordV1,
+) -> Result<PreparedSettlementContribution, SyndicMutationError> {
     let current = session_head(reader, build.draft_id(), build.session_id())?;
     if current.active_operation() != Some(&custody_for(&build)) {
         return Err(SyndicMutationError::IdentityCollision);
@@ -36,33 +92,24 @@ fn read_and_authenticate(
         contribute_committed(
             prepared,
             reader,
-            mutations,
             build,
             current,
             successor,
             fragment_endpoint,
         )
     } else {
-        contribute_conflict(
-            prepared,
-            reader,
-            mutations,
-            build,
-            current,
-            fragment_endpoint,
-        )
+        contribute_conflict(prepared, reader, build, current, fragment_endpoint)
     }
 }
 
 fn contribute_committed(
     prepared: &PreparedDraftPieceEditV1,
     reader: &DomainReader<'_, SyndicDomain>,
-    mutations: &mut MutationBuilder<'_, SyndicDomain>,
     build: DraftPieceBuildRecordV1,
     current: DraftEditorCandidateSessionV1,
     successor: DraftPieceRootReferenceV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
-) -> Result<(), SyndicMutationError> {
+) -> Result<PreparedSettlementContribution, SyndicMutationError> {
     let observed_history = authenticated_history_frontier(reader, current.newest_history())?;
     let append_history = if matches!(
         observed_history.reference().key(),
@@ -90,7 +137,6 @@ fn contribute_committed(
     ) {
         Ok((transition, adopted_history)) => write_committed(
             prepared,
-            mutations,
             build,
             current,
             successor,
@@ -101,7 +147,6 @@ fn contribute_committed(
         ),
         Err(DraftEditHistoryRetentionErrorV1::CapacityUnavailable) => write_noncommit(
             prepared,
-            mutations,
             build,
             current,
             observed_history,
@@ -120,11 +165,10 @@ fn contribute_committed(
 fn contribute_conflict(
     prepared: &PreparedDraftPieceEditV1,
     reader: &DomainReader<'_, SyndicDomain>,
-    mutations: &mut MutationBuilder<'_, SyndicDomain>,
     build: DraftPieceBuildRecordV1,
     current: DraftEditorCandidateSessionV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
-) -> Result<(), SyndicMutationError> {
+) -> Result<PreparedSettlementContribution, SyndicMutationError> {
     let observed_history = authenticated_history_frontier(reader, current.newest_history())?;
     if matches!(
         observed_history.reference().key(),
@@ -141,7 +185,6 @@ fn contribute_conflict(
     };
     write_noncommit(
         prepared,
-        mutations,
         build,
         current,
         observed_history,
@@ -153,7 +196,6 @@ fn contribute_conflict(
 
 fn write_committed(
     prepared: &PreparedDraftPieceEditV1,
-    mutations: &mut MutationBuilder<'_, SyndicDomain>,
     build: DraftPieceBuildRecordV1,
     current: DraftEditorCandidateSessionV1,
     successor: DraftPieceRootReferenceV1,
@@ -161,17 +203,11 @@ fn write_committed(
     transition: DraftEditHistoryTransitionV1,
     adopted_history: DraftEditHistoryFrontierV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
-) -> Result<(), SyndicMutationError> {
+) -> Result<PreparedSettlementContribution, SyndicMutationError> {
     let root = DraftPieceRootRecordV1::new(successor);
     let next = current
         .adopted(successor, adopted_history.reference())
         .ok_or(SyndicMutationError::IdentityCollision)?;
-    mutations.put::<DraftPieceRootsCodec>(&successor.key(), &root)?;
-    mutations.put::<DraftEditHistoryTransitionsCodec>(&transition.key(), &transition)?;
-    mutations.put::<DraftEditHistoryFrontiersCodec>(
-        &adopted_history.reference().key(),
-        &adopted_history,
-    )?;
     let outcome = DraftPieceSettlementOutcomeV1::Committed {
         candidate_generation: next.newest_candidate_generation(),
         successor,
@@ -183,34 +219,36 @@ fn write_committed(
         DraftPieceCommittedAdoptionV1::new(
             current,
             next.clone(),
-            root,
+            root.clone(),
             observed_history,
-            transition,
-            adopted_history,
+            transition.clone(),
+            adopted_history.clone(),
         ),
     ));
-    write_settlement(
+    let mut contribution = write_settlement(
         prepared,
-        mutations,
         build,
         next,
         outcome,
         closure,
         DraftPieceBuildLifecycleV1::Committed,
         fragment_endpoint,
-    )
+    )?;
+    contribution.root = Some(root);
+    contribution.transition = Some(transition);
+    contribution.history = Some(adopted_history);
+    Ok(contribution)
 }
 
 fn write_noncommit(
     prepared: &PreparedDraftPieceEditV1,
-    mutations: &mut MutationBuilder<'_, SyndicDomain>,
     build: DraftPieceBuildRecordV1,
     current: DraftEditorCandidateSessionV1,
     observed_history: DraftEditHistoryFrontierV1,
     outcome: DraftPieceSettlementOutcomeV1,
     lifecycle: DraftPieceBuildLifecycleV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
-) -> Result<(), SyndicMutationError> {
+) -> Result<PreparedSettlementContribution, SyndicMutationError> {
     let cleared = current
         .clear_active_operation(&custody_for(&build))
         .ok_or(SyndicMutationError::IdentityCollision)?;
@@ -219,7 +257,6 @@ fn write_noncommit(
     ));
     write_settlement(
         prepared,
-        mutations,
         build,
         cleared,
         outcome,
@@ -231,14 +268,13 @@ fn write_noncommit(
 
 fn write_settlement(
     prepared: &PreparedDraftPieceEditV1,
-    mutations: &mut MutationBuilder<'_, SyndicDomain>,
     build: DraftPieceBuildRecordV1,
     target_session: DraftEditorCandidateSessionV1,
     outcome: DraftPieceSettlementOutcomeV1,
     closure: Box<DraftPieceSettlementClosureV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
-) -> Result<(), SyndicMutationError> {
+) -> Result<PreparedSettlementContribution, SyndicMutationError> {
     let key = settlement_key(prepared);
     let (terminal, receipt) = terminal_build(&build, lifecycle, fragment_endpoint)?;
     let settlement = DraftPieceSettlementV1::new_boxed(
@@ -260,8 +296,13 @@ fn write_settlement(
         outcome,
         closure,
     );
-    put_session_head(mutations, &target_session)?;
-    mutations.put::<DraftPieceSettlementsCodec>(&key, &settlement)?;
-    put_build_transition(mutations, &terminal, &receipt)?;
-    Ok(())
+    Ok(PreparedSettlementContribution {
+        root: None,
+        transition: None,
+        history: None,
+        target_session,
+        settlement,
+        terminal,
+        receipt,
+    })
 }

@@ -51,9 +51,14 @@ impl SyndicStorage {
 
 impl DomainMutation<SyndicDomain> for RebuildThreadCatalogSummary {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        validate_prepared(reader, &self.prepared)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        validate_prepared(reader, &self.prepared)?;
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -65,14 +70,12 @@ impl DomainMutation<SyndicDomain> for RebuildThreadCatalogSummary {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        validate_prepared(reader, &self.prepared)?;
         mutations.put::<ThreadCatalogSummariesCodec>(
-            &self.prepared.replacement.thread_id(),
-            &self.prepared.replacement,
+            &prepared.prepared.replacement.thread_id(),
+            &prepared.prepared.replacement,
         )?;
         Ok(())
     }

@@ -3,18 +3,20 @@ use super::support::*;
 #[test]
 fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 80);
-    assert_eq!(names[10], "draft-marker-order-commitments");
-    assert_eq!(names[11], "draft-marker-seals");
-    assert_eq!(names[16], "draft-editor-candidate-sessions");
-    assert_eq!(names[17], "draft-mutation-staging-heads");
-    assert_eq!(names[18], "draft-mutation-staging-pages");
-    assert_eq!(names[19], "draft-mutation-staging-progress");
-    assert_eq!(names[20], "draft-edit-history-frontiers");
-    assert_eq!(names[21], "draft-edit-history-transitions");
-    assert_eq!(names[22], "draft-historical-root-adoptions");
-    assert_eq!(names[23], "draft-composer-builds");
-    assert_eq!(names[24], "draft-composer-materializations");
+    assert_eq!(names.len(), 81);
+    assert_eq!(names[0], "threads");
+    assert_eq!(names[1], "image-label-authority-heads");
+    assert_eq!(names[11], "draft-marker-order-commitments");
+    assert_eq!(names[12], "draft-marker-seals");
+    assert_eq!(names[17], "draft-editor-candidate-sessions");
+    assert_eq!(names[18], "draft-mutation-staging-heads");
+    assert_eq!(names[19], "draft-mutation-staging-pages");
+    assert_eq!(names[20], "draft-mutation-staging-progress");
+    assert_eq!(names[21], "draft-edit-history-frontiers");
+    assert_eq!(names[22], "draft-edit-history-transitions");
+    assert_eq!(names[23], "draft-historical-root-adoptions");
+    assert_eq!(names[24], "draft-composer-builds");
+    assert_eq!(names[25], "draft-composer-materializations");
 
     let home = TestHome::new("canonical-empty");
     let mut store = open(&home);

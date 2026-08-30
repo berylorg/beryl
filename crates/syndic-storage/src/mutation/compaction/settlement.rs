@@ -18,9 +18,13 @@ struct SettlementRetirement {
 
 impl DomainMutation<SyndicDomain> for SettleMutation {
     type Error = SyndicMutationError;
+    type Prepared = SettlementRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -40,11 +44,10 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let records = self.records(reader)?;
+        let records = prepared;
         mutations.put::<CompactionOperationsCodec>(&records.operation.id(), &records.operation)?;
         mutations.put::<CompactionSettlementReceiptsCodec>(
             &records.receipt.operation_id(),

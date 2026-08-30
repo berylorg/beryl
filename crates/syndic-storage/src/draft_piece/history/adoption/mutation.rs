@@ -295,33 +295,29 @@ impl SyndicStorage {
 
 impl DomainMutation<SyndicDomain> for AdoptMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedAdoptMutation>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        validate_replay_or_absence(reader, &self.prepared)
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<DraftHistoricalRootAdoptionsCodec>(1)?;
-        reservation.reserve_records::<DraftEditHistoryTransitionsCodec>(1)?;
-        reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;
-        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        &self,
+    fn prepare(
+        self,
         reader: &DomainReader<'_, SyndicDomain>,
-        mutations: &mut MutationBuilder<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        if point::<DraftHistoricalRootAdoptionsFamily>(reader, &self.prepared.request.key())?
-            .is_some()
+    ) -> Result<Self::Prepared, Self::Error> {
+        if let Some(settlement) =
+            point::<DraftHistoricalRootAdoptionsFamily>(reader, &self.prepared.request.key())?
         {
-            return Ok(());
+            if settlement.request_bytes() == self.prepared.request_bytes
+                && settlement_is_exact(reader, &settlement)?
+            {
+                return Ok(None);
+            }
+            return Err(SyndicMutationError::IdentityCollision);
         }
         let current = current_session(reader, self.prepared.request.key())?;
+        if current.active_operation().is_some()
+            || (current == self.prepared.source_session
+                && !prepared_closure_is_exact(reader, &self.prepared)?)
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         let source_is_current = current == self.prepared.source_session
             && current.active_operation().is_none()
             && current.newest_history() == self.prepared.request.source_history()
@@ -384,21 +380,6 @@ impl DomainMutation<SyndicDomain> for AdoptMutation {
                                     history.reference(),
                                 )
                                 .ok_or(SyndicMutationError::IdentityCollision)?;
-                            mutations.put::<DraftEditHistoryTransitionsCodec>(
-                                &transition.key(),
-                                &transition,
-                            )?;
-                            mutations.put::<DraftEditHistoryFrontiersCodec>(
-                                &history.reference().key(),
-                                &history,
-                            )?;
-                            mutations.put::<DraftEditorCandidateSessionsCodec>(
-                                &DraftEditorCandidateSessionRecordKeyV1::head(
-                                    candidate.draft_id(),
-                                    candidate.session_id(),
-                                ),
-                                &DraftEditorCandidateSessionRecordV1::Head(candidate.clone()),
-                            )?;
                             outcome = DraftHistoricalRootAdoptionSettlementOutcomeV1::Committed;
                             successor_transition = Some(transition);
                             successor_history = Some(history);
@@ -408,7 +389,7 @@ impl DomainMutation<SyndicDomain> for AdoptMutation {
                     Err(DraftEditHistoryRetentionErrorV1::CapacityUnavailable) => {
                         outcome = DraftHistoricalRootAdoptionSettlementOutcomeV1::Error(
                             DraftHistoricalRootAdoptionErrorReasonV1::HistoryCapacityUnavailable,
-                        );
+                        )
                     }
                     Err(DraftEditHistoryRetentionErrorV1::Invalid) => {
                         return Err(SyndicMutationError::IdentityCollision);
@@ -418,25 +399,108 @@ impl DomainMutation<SyndicDomain> for AdoptMutation {
         }
         let settlement = DraftHistoricalRootAdoptionV1::new(
             self.prepared.request,
-            self.prepared.request_bytes.clone(),
-            Box::new(self.prepared.source_history.clone()),
-            Box::new(self.prepared.selected_transition.clone()),
-            Box::new(self.prepared.target_root.clone()),
+            self.prepared.request_bytes,
+            Box::new(self.prepared.source_history),
+            Box::new(self.prepared.selected_transition),
+            Box::new(self.prepared.target_root),
             outcome,
-            successor_transition.map(Box::new),
-            successor_history.map(Box::new),
-            successor_candidate.map(Box::new),
+            successor_transition.clone().map(Box::new),
+            successor_history.clone().map(Box::new),
+            successor_candidate.clone().map(Box::new),
         );
-        mutations.put::<DraftHistoricalRootAdoptionsCodec>(&settlement.key(), &settlement)?;
+        Ok(Some(PreparedAdoptMutation {
+            settlement,
+            successor_transition,
+            successor_history,
+            successor_candidate,
+        }))
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftHistoricalRootAdoptionsCodec>(1)?;
+        reservation.reserve_records::<DraftEditHistoryTransitionsCodec>(1)?;
+        reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;
+        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        prepared: Self::Prepared,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        if let Some(prepared) = prepared {
+            if let Some(transition) = prepared.successor_transition {
+                mutations
+                    .put::<DraftEditHistoryTransitionsCodec>(&transition.key(), &transition)?;
+            }
+            if let Some(history) = prepared.successor_history {
+                mutations
+                    .put::<DraftEditHistoryFrontiersCodec>(&history.reference().key(), &history)?;
+            }
+            if let Some(candidate) = prepared.successor_candidate {
+                mutations.put::<DraftEditorCandidateSessionsCodec>(
+                    &DraftEditorCandidateSessionRecordKeyV1::head(
+                        candidate.draft_id(),
+                        candidate.session_id(),
+                    ),
+                    &DraftEditorCandidateSessionRecordV1::Head(candidate),
+                )?;
+            }
+            mutations.put::<DraftHistoricalRootAdoptionsCodec>(
+                &prepared.settlement.key(),
+                &prepared.settlement,
+            )?;
+        }
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for TerminalMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<DraftHistoricalRootAdoptionV1>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        validate_replay_or_absence(reader, &self.prepared)
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        if let Some(settlement) =
+            point::<DraftHistoricalRootAdoptionsFamily>(reader, &self.prepared.request.key())?
+        {
+            if settlement.request_bytes() == self.prepared.request_bytes
+                && settlement_is_exact(reader, &settlement)?
+            {
+                return Ok(None);
+            }
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        let current = current_session(reader, self.prepared.request.key())?;
+        if current.active_operation().is_some()
+            || (current == self.prepared.source_session
+                && !prepared_closure_is_exact(reader, &self.prepared)?)
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        let outcome = match self.kind {
+            TerminalKind::Rejected => DraftHistoricalRootAdoptionSettlementOutcomeV1::Rejected,
+            TerminalKind::Cancelled => DraftHistoricalRootAdoptionSettlementOutcomeV1::Cancelled,
+            TerminalKind::Error(reason) => {
+                DraftHistoricalRootAdoptionSettlementOutcomeV1::Error(reason)
+            }
+        };
+        Ok(Some(DraftHistoricalRootAdoptionV1::new(
+            self.prepared.request,
+            self.prepared.request_bytes,
+            Box::new(self.prepared.source_history),
+            Box::new(self.prepared.selected_transition),
+            Box::new(self.prepared.target_root),
+            outcome,
+            None,
+            None,
+            None,
+        )))
     }
 
     fn reserve_reconciliation(
@@ -448,60 +512,21 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if point::<DraftHistoricalRootAdoptionsFamily>(reader, &self.prepared.request.key())?
-            .is_some()
-        {
-            return Ok(());
+        if let Some(settlement) = prepared {
+            mutations.put::<DraftHistoricalRootAdoptionsCodec>(&settlement.key(), &settlement)?;
         }
-        let outcome = match self.kind {
-            TerminalKind::Rejected => DraftHistoricalRootAdoptionSettlementOutcomeV1::Rejected,
-            TerminalKind::Cancelled => DraftHistoricalRootAdoptionSettlementOutcomeV1::Cancelled,
-            TerminalKind::Error(reason) => {
-                DraftHistoricalRootAdoptionSettlementOutcomeV1::Error(reason)
-            }
-        };
-        let settlement = DraftHistoricalRootAdoptionV1::new(
-            self.prepared.request,
-            self.prepared.request_bytes.clone(),
-            Box::new(self.prepared.source_history.clone()),
-            Box::new(self.prepared.selected_transition.clone()),
-            Box::new(self.prepared.target_root.clone()),
-            outcome,
-            None,
-            None,
-            None,
-        );
-        mutations.put::<DraftHistoricalRootAdoptionsCodec>(&settlement.key(), &settlement)?;
         Ok(())
     }
 }
 
-fn validate_replay_or_absence(
-    reader: &DomainReader<'_, SyndicDomain>,
-    prepared: &PreparedDraftHistoricalRootAdoptionV1,
-) -> Result<(), SyndicMutationError> {
-    if let Some(settlement) =
-        point::<DraftHistoricalRootAdoptionsFamily>(reader, &prepared.request.key())?
-    {
-        return if settlement.request_bytes() == prepared.request_bytes
-            && settlement_is_exact(reader, &settlement)?
-        {
-            Ok(())
-        } else {
-            Err(SyndicMutationError::IdentityCollision)
-        };
-    }
-    let current = current_session(reader, prepared.request.key())?;
-    if current.active_operation().is_some()
-        || (current == prepared.source_session && !prepared_closure_is_exact(reader, prepared)?)
-    {
-        return Err(SyndicMutationError::IdentityCollision);
-    }
-    Ok(())
+struct PreparedAdoptMutation {
+    settlement: DraftHistoricalRootAdoptionV1,
+    successor_transition: Option<super::super::DraftEditHistoryTransitionV1>,
+    successor_history: Option<super::super::DraftEditHistoryFrontierV1>,
+    successor_candidate: Option<super::super::super::DraftEditorCandidateSessionV1>,
 }
 
 fn prepared_closure_is_exact(

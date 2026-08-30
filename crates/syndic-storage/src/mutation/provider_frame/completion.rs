@@ -69,14 +69,17 @@ struct CompareProviderCompletionMutation {
 
 impl DomainMutation<SyndicDomain> for CompareProviderCompletionMutation {
     type Error = ProviderCompletionComparisonMutationError;
+    type Prepared = ProviderItemBuildRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let current = current_build(reader, self.expected.item_id())?;
         if current != self.expected {
             return Err(ProviderCompletionComparisonMutationError::BuildConflict);
         }
-        derive_next(reader, &current)?;
-        Ok(())
+        derive_next(reader, &current)
     }
 
     fn reserve_reconciliation(
@@ -88,16 +91,10 @@ impl DomainMutation<SyndicDomain> for CompareProviderCompletionMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let current = current_build(reader, self.expected.item_id())?;
-        if current != self.expected {
-            return Err(ProviderCompletionComparisonMutationError::BuildConflict);
-        }
-        let next = derive_next(reader, &current)?;
-        mutations.put::<ProviderItemBuildsCodec>(&next.item_id(), &next)?;
+        mutations.put::<ProviderItemBuildsCodec>(&prepared.item_id(), &prepared)?;
         Ok(())
     }
 }

@@ -77,8 +77,12 @@ pub fn test_abandon_fresh_reconciliation_resolution(
 
 impl DomainMutation<SyndicDomain> for AbandonFreshMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedAbandonFreshMutation>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let request = self.prepared.request;
         if let Some(record) =
             point::<DraftEditorCandidateSessionsFamily>(reader, &disposal_key(request))?
@@ -86,12 +90,13 @@ impl DomainMutation<SyndicDomain> for AbandonFreshMutation {
             let DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt) = record else {
                 return Err(SyndicMutationError::IdentityCollision);
             };
-            return validate_disposal_receipt(
+            validate_disposal_receipt(
                 reader,
                 receipt
                     .disposal()
                     .ok_or(SyndicMutationError::IdentityCollision)?,
-            );
+            )?;
+            return Ok(None);
         }
         let DraftEditorCandidateSessionRecordV1::Head(head) =
             required::<DraftEditorCandidateSessionsFamily>(
@@ -117,14 +122,27 @@ impl DomainMutation<SyndicDomain> for AbandonFreshMutation {
             || open != self.prepared.open_receipt
             || !request_matches_head_and_open(request, &head, &open)
         {
-            return Ok(());
+            return Ok(None);
         }
         let newest =
             required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
         if !history_is_exact(reader, &head, &newest)? {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        Ok(())
+        let after = head
+            .abandoned_fresh(request.operation_id())
+            .ok_or(SyndicMutationError::IdentityCollision)?;
+        let receipt = DraftEditorCandidateSessionDisposeReceiptV1::new(
+            self.prepared.canonical_request,
+            head,
+            after.clone(),
+            newest,
+        );
+        Ok(Some(PreparedAbandonFreshMutation {
+            request,
+            after,
+            receipt,
+        }))
     }
 
     fn reserve_reconciliation(
@@ -136,66 +154,30 @@ impl DomainMutation<SyndicDomain> for AbandonFreshMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let request = self.prepared.request;
-        if point::<DraftEditorCandidateSessionsFamily>(reader, &disposal_key(request))?.is_some() {
+        let Some(prepared) = prepared else {
             return Ok(());
-        }
-        let DraftEditorCandidateSessionRecordV1::Head(head) =
-            required::<DraftEditorCandidateSessionsFamily>(
-                reader,
-                &session_key(request.draft_id(), request.session_id()),
-            )?
-        else {
-            return Err(SyndicMutationError::IdentityCollision);
         };
-        let DraftEditorCandidateSessionRecordV1::OpenReceipt(open) =
-            required::<DraftEditorCandidateSessionsFamily>(
-                reader,
-                &DraftEditorCandidateSessionRecordKeyV1::open_receipt(
-                    head.draft_id(),
-                    head.session_id(),
-                    head.open_operation_id(),
-                ),
-            )?
-        else {
-            return Err(SyndicMutationError::IdentityCollision);
-        };
-        if head != self.prepared.before_head
-            || open != self.prepared.open_receipt
-            || !request_matches_head_and_open(request, &head, &open)
-        {
-            return Ok(());
-        }
-        let newest =
-            required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
-        if !history_is_exact(reader, &head, &newest)? {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let after = head
-            .abandoned_fresh(request.operation_id())
-            .ok_or(SyndicMutationError::IdentityCollision)?;
-        let receipt = DraftEditorCandidateSessionDisposeReceiptV1::new(
-            self.prepared.canonical_request.clone(),
-            head,
-            after.clone(),
-            newest,
-        );
         mutations.put::<DraftEditorCandidateSessionsCodec>(
-            &session_key(after.draft_id(), after.session_id()),
-            &DraftEditorCandidateSessionRecordV1::Head(after),
+            &session_key(prepared.after.draft_id(), prepared.after.session_id()),
+            &DraftEditorCandidateSessionRecordV1::Head(prepared.after),
         )?;
         mutations.put::<DraftEditorCandidateSessionsCodec>(
-            &disposal_key(request),
+            &disposal_key(prepared.request),
             &DraftEditorCandidateSessionRecordV1::OpenReceipt(
-                DraftEditorCandidateSessionOpenReceiptV1::from_disposal(receipt),
+                DraftEditorCandidateSessionOpenReceiptV1::from_disposal(prepared.receipt),
             ),
         )?;
         Ok(())
     }
+}
+
+struct PreparedAbandonFreshMutation {
+    request: DraftEditorCandidateSessionDisposeRequestV1,
+    after: DraftEditorCandidateSessionV1,
+    receipt: DraftEditorCandidateSessionDisposeReceiptV1,
 }
 
 impl SyndicStorage {

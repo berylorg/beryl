@@ -264,9 +264,13 @@ impl HandoffRecords {
 
 impl DomainMutation<SyndicDomain> for PublishActivityChildHandoffMutation {
     type Error = SyndicMutationError;
+    type Prepared = HandoffRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -282,10 +286,9 @@ impl DomainMutation<SyndicDomain> for PublishActivityChildHandoffMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }

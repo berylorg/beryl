@@ -155,9 +155,13 @@ struct FirstAcceptanceMutation {
 
 impl DomainMutation<SyndicDomain> for FirstAcceptanceMutation {
     type Error = SyndicMutationError;
+    type Prepared = AcceptanceRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -175,11 +179,10 @@ impl DomainMutation<SyndicDomain> for FirstAcceptanceMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 

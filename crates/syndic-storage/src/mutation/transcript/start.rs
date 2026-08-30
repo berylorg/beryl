@@ -24,9 +24,13 @@ impl StartMutation {
 
 impl DomainMutation<SyndicDomain> for StartMutation {
     type Error = SyndicMutationError;
+    type Prepared = StartRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -40,11 +44,10 @@ impl DomainMutation<SyndicDomain> for StartMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let records = self.records(reader)?;
+        let records = prepared;
         mutations.put::<TranscriptBuildsCodec>(
             &ThreadTranscriptBuildKey {
                 thread: records.build.thread_id(),
@@ -116,7 +119,7 @@ fn generation_has_entries(
         .is_empty())
 }
 
-struct StartRecords {
+pub struct StartRecords {
     build: TranscriptBuildRecord,
     head: Option<crate::TranscriptViewHeadRecord>,
     summary: Option<crate::HistorySummaryRecord>,

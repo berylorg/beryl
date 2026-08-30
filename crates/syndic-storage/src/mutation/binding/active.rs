@@ -21,9 +21,13 @@ pub(crate) struct ActivateBindingMutation {
 
 impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
     type Error = SyndicMutationError;
+    type Prepared = ActivateBindingRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -42,15 +46,14 @@ impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 
-struct ActivateBindingRecords {
+pub struct ActivateBindingRecords {
     binding: BindingRecord,
     head: BindingHeadRecord,
     snapshot: ExecutionSnapshotRecord,
@@ -269,9 +272,13 @@ pub(crate) struct PublishActiveCasTurnMutation {
 
 impl DomainMutation<SyndicDomain> for PublishActiveCasTurnMutation {
     type Error = SyndicMutationError;
+    type Prepared = PublishActiveCasTurnRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -289,15 +296,14 @@ impl DomainMutation<SyndicDomain> for PublishActiveCasTurnMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 
-struct PublishActiveCasTurnRecords {
+pub struct PublishActiveCasTurnRecords {
     active_turn: ActiveCasTurnRecord,
     cas_turn_index: CasTurnIndexRecord,
     route_head: AcceptedRouteGenerationHeadRecord,

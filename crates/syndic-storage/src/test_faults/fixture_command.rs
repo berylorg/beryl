@@ -196,9 +196,10 @@ impl DomainCallbackError for FixtureMutationError {
 
 impl DomainMutation<SyndicDomain> for FixtureBatch {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(self, _: &DomainReader<'_, SyndicDomain>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -226,11 +227,10 @@ impl DomainMutation<SyndicDomain> for FixtureBatch {
     }
 
     fn contribute(
-        &self,
-        _: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         builder: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        for operation in &self.operations {
+        for operation in &prepared.operations {
             match operation {
                 FixtureOperation::Put(record) => put_record(builder, record.as_ref())?,
                 FixtureOperation::Delete(key) => delete_record(builder, key)?,

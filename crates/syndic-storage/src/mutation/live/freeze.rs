@@ -8,7 +8,7 @@ use crate::{
     TranscriptViewHeadRecord, TurnItemIndexRecord, TurnStateRecord,
 };
 
-pub(super) struct FreezeRecords {
+pub struct FreezeRecords {
     state: TurnStateRecord,
     summary: Option<HistorySummaryRecord>,
     changed: FrozenItem,

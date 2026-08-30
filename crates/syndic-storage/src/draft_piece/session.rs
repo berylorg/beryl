@@ -59,6 +59,13 @@ struct OpenSessionMutation {
     prepared: PreparedDraftEditorCandidateSessionOpenV1,
 }
 
+struct PreparedOpenSessionMutation {
+    request: DraftEditorCandidateSessionOpenRequestV1,
+    head: DraftEditorCandidateSessionV1,
+    receipt: DraftEditorCandidateSessionOpenReceiptV1,
+    forked_history: DraftEditHistoryFrontierV1,
+}
+
 fn head_key(
     request: DraftEditorCandidateSessionOpenRequestV1,
 ) -> DraftEditorCandidateSessionRecordKeyV1 {
@@ -514,8 +521,12 @@ pub(super) fn progress_receipt_closure_is_exact(
 
 impl DomainMutation<SyndicDomain> for OpenSessionMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedOpenSessionMutation>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let (head, receipt) = occupied_records(reader, self.prepared.request)?;
         if let Some(DraftEditorCandidateSessionRecordV1::Head(head)) = head {
             let _ = occupied_open_receipt(reader, &head)?;
@@ -530,27 +541,42 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
                     receipt,
                     Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(_))
                 ) {
-                Ok(())
+                Ok(None)
             } else {
                 Err(SyndicMutationError::IdentityCollision)
             };
         } else if head.is_some() || receipt.is_some() {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        let _ = selector_matches(reader, self.prepared.request)?;
+        let selector_matches = selector_matches(reader, self.prepared.request)?;
         let source = selected_history(reader, self.prepared.request)?;
         let target_key = DraftEditHistoryFrontierKeyV1::session(
             self.prepared.request.selector().draft_id(),
             self.prepared.request.session_id(),
         );
-        if source
+        let forked_history = source
             .fork_session(self.prepared.request.session_id())
-            .is_none()
-            || point::<DraftEditHistoryFrontiersFamily>(reader, &target_key)?.is_some()
-        {
+            .ok_or(SyndicMutationError::IdentityCollision)?;
+        if point::<DraftEditHistoryFrontiersFamily>(reader, &target_key)?.is_some() {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        Ok(())
+        if !selector_matches {
+            return Ok(None);
+        }
+        let head = DraftEditorCandidateSessionV1::opened(
+            self.prepared.request,
+            forked_history.reference(),
+        );
+        let receipt = DraftEditorCandidateSessionOpenReceiptV1::new(
+            self.prepared.canonical_request,
+            head.clone(),
+        );
+        Ok(Some(PreparedOpenSessionMutation {
+            request: self.prepared.request,
+            head,
+            receipt,
+            forked_history,
+        }))
     }
 
     fn reserve_reconciliation(
@@ -563,40 +589,23 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let (occupied_head, occupied_receipt) = occupied_records(reader, self.prepared.request)?;
-        if occupied_head.is_some() || occupied_receipt.is_some() {
+        let Some(prepared) = prepared else {
             return Ok(());
-        }
-        if !selector_matches(reader, self.prepared.request)? {
-            return Ok(());
-        }
-        let source_history = selected_history(reader, self.prepared.request)?;
-        let forked_history = source_history
-            .fork_session(self.prepared.request.session_id())
-            .ok_or(SyndicMutationError::IdentityCollision)?;
-        let head = DraftEditorCandidateSessionV1::opened(
-            self.prepared.request,
-            forked_history.reference(),
-        );
-        let receipt = DraftEditorCandidateSessionOpenReceiptV1::new(
-            self.prepared.canonical_request.clone(),
-            head.clone(),
-        );
+        };
         mutations.put::<DraftEditorCandidateSessionsCodec>(
-            &head_key(self.prepared.request),
-            &DraftEditorCandidateSessionRecordV1::Head(head),
+            &head_key(prepared.request),
+            &DraftEditorCandidateSessionRecordV1::Head(prepared.head),
         )?;
         mutations.put::<DraftEditHistoryFrontiersCodec>(
-            &forked_history.reference().key(),
-            &forked_history,
+            &prepared.forked_history.reference().key(),
+            &prepared.forked_history,
         )?;
         mutations.put::<DraftEditorCandidateSessionsCodec>(
-            &receipt_key(self.prepared.request),
-            &DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt),
+            &receipt_key(prepared.request),
+            &DraftEditorCandidateSessionRecordV1::OpenReceipt(prepared.receipt),
         )?;
         Ok(())
     }
@@ -814,6 +823,14 @@ struct DisposeSessionFixtureMutation {
 }
 
 #[cfg(feature = "test-faults")]
+struct PreparedDisposeSessionFixtureMutation {
+    head_key: DraftEditorCandidateSessionRecordKeyV1,
+    disposal_key: DraftEditorCandidateSessionRecordKeyV1,
+    after_head: DraftEditorCandidateSessionV1,
+    receipt: DraftEditorCandidateSessionDisposeReceiptV1,
+}
+
+#[cfg(feature = "test-faults")]
 fn fixture_disposal_operation_id(head: &DraftEditorCandidateSessionV1) -> DraftPieceOperationIdV1 {
     let mut bytes = *head.open_operation_id().as_bytes();
     bytes[0] ^= 0xff;
@@ -823,8 +840,12 @@ fn fixture_disposal_operation_id(head: &DraftEditorCandidateSessionV1) -> DraftP
 #[cfg(feature = "test-faults")]
 impl DomainMutation<SyndicDomain> for DisposeSessionFixtureMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedDisposeSessionFixtureMutation>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let value = required::<DraftEditorCandidateSessionsFamily>(
             reader,
             &DraftEditorCandidateSessionRecordKeyV1::head(self.draft_id, self.session_id),
@@ -842,7 +863,41 @@ impl DomainMutation<SyndicDomain> for DisposeSessionFixtureMutation {
         ) {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        Ok(())
+        let DraftEditorCandidateSessionRecordV1::Head(head) = value else {
+            return Err(SyndicMutationError::IdentityCollision);
+        };
+        if head.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Disposed {
+            return Ok(None);
+        }
+        let operation_id = fixture_disposal_operation_id(&head);
+        let request = DraftEditorCandidateSessionDisposeRequestV1::new(
+            head.draft_id(),
+            head.session_id(),
+            operation_id,
+            head.session_generation(),
+            DraftRootHistoryPairV1::new(head.newest_root(), head.newest_history()),
+        );
+        let frontier =
+            required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
+        let after_head = head
+            .abandoned_fresh(operation_id)
+            .ok_or(SyndicMutationError::IdentityCollision)?;
+        let receipt = DraftEditorCandidateSessionDisposeReceiptV1::new(
+            canonical_candidate_disposal_request_bytes(request),
+            head,
+            after_head.clone(),
+            frontier,
+        );
+        Ok(Some(PreparedDisposeSessionFixtureMutation {
+            head_key: DraftEditorCandidateSessionRecordKeyV1::head(self.draft_id, self.session_id),
+            disposal_key: DraftEditorCandidateSessionRecordKeyV1::disposal_receipt(
+                self.draft_id,
+                self.session_id,
+                operation_id,
+            ),
+            after_head,
+            receipt,
+        }))
     }
 
     fn reserve_reconciliation(
@@ -854,77 +909,20 @@ impl DomainMutation<SyndicDomain> for DisposeSessionFixtureMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let DraftEditorCandidateSessionRecordV1::Head(head) =
-            required::<DraftEditorCandidateSessionsFamily>(
-                reader,
-                &DraftEditorCandidateSessionRecordKeyV1::head(self.draft_id, self.session_id),
-            )?
-        else {
-            return Err(SyndicMutationError::IdentityCollision);
-        };
-        if head.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Disposed {
+        let Some(prepared) = prepared else {
             return Ok(());
-        }
-        let clean = if head.published_history() == head.newest_history() {
-            head
-        } else {
-            DraftEditorCandidateSessionV1::from_parts(
-                head.thread_id(),
-                head.draft_id(),
-                head.session_id(),
-                head.open_operation_id(),
-                head.session_generation(),
-                head.durable_base_selector_revision(),
-                head.durable_base_root(),
-                head.durable_base_history(),
-                head.published_candidate_generation(),
-                head.published_selector_revision(),
-                head.published_root(),
-                head.published_history(),
-                head.newest_candidate_generation(),
-                head.newest_root(),
-                head.published_history(),
-                head.dirty_generation(),
-                head.logical_extent(),
-                DraftEditorCandidateSessionLifecycleV1::Active,
-                None,
-            )
         };
-        let operation_id = fixture_disposal_operation_id(&clean);
-        let request = DraftEditorCandidateSessionDisposeRequestV1::new(
-            clean.draft_id(),
-            clean.session_id(),
-            operation_id,
-            clean.session_generation(),
-            DraftRootHistoryPairV1::new(clean.newest_root(), clean.newest_history()),
-        );
-        let frontier =
-            required::<DraftEditHistoryFrontiersFamily>(reader, &clean.newest_history().key())?;
-        let disposed = clean
-            .disposed(operation_id)
-            .ok_or(SyndicMutationError::IdentityCollision)?;
-        let receipt = DraftEditorCandidateSessionDisposeReceiptV1::new(
-            canonical_candidate_disposal_request_bytes(request),
-            clean,
-            disposed.clone(),
-            frontier,
-        );
         mutations.put::<DraftEditorCandidateSessionsCodec>(
-            &DraftEditorCandidateSessionRecordKeyV1::head(self.draft_id, self.session_id),
-            &DraftEditorCandidateSessionRecordV1::Head(disposed),
+            &prepared.head_key,
+            &DraftEditorCandidateSessionRecordV1::Head(prepared.after_head),
         )?;
         mutations.put::<DraftEditorCandidateSessionsCodec>(
-            &DraftEditorCandidateSessionRecordKeyV1::disposal_receipt(
-                self.draft_id,
-                self.session_id,
-                operation_id,
-            ),
+            &prepared.disposal_key,
             &DraftEditorCandidateSessionRecordV1::OpenReceipt(
-                DraftEditorCandidateSessionOpenReceiptV1::from_disposal(receipt),
+                DraftEditorCandidateSessionOpenReceiptV1::from_disposal(prepared.receipt),
             ),
         )?;
         Ok(())

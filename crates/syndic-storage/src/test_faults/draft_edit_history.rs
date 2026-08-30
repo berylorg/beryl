@@ -318,51 +318,49 @@ struct PublishDraftEditHistoryPair {
 #[derive(Clone)]
 struct InjectDraftCandidatePublicationFault(DraftCandidatePublicationFault);
 
+enum PreparedDraftCandidatePublicationFault {
+    Delete(DraftEditorCandidateSessionRecordKeyV1),
+    Occupy {
+        receipt_key: DraftEditorCandidateSessionRecordKeyV1,
+        value: DraftEditorCandidateSessionRecordV1,
+    },
+    Retarget {
+        key: DraftEditorCandidateSessionRecordKeyV1,
+        replacement: DraftEditorCandidateSessionRecordV1,
+    },
+}
+
 impl DomainMutation<SyndicDomain> for InjectDraftCandidatePublicationFault {
     type Error = SyndicMutationError;
+    type Prepared = PreparedDraftCandidatePublicationFault;
 
-    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        &self,
+    fn prepare(
+        self,
         reader: &DomainReader<'_, SyndicDomain>,
-        mutations: &mut MutationBuilder<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<Self::Prepared, Self::Error> {
         match self.0 {
             DraftCandidatePublicationFault::DeleteSessionRecord(key) => {
-                mutations.delete::<DraftEditorCandidateSessionsCodec>(&key)?;
+                Ok(PreparedDraftCandidatePublicationFault::Delete(key))
             }
             DraftCandidatePublicationFault::OccupyReceiptWithHead {
                 receipt_key,
                 draft_id,
                 session_id,
-            } => {
-                let value = required::<DraftEditorCandidateSessionsFamily>(
+            } => Ok(PreparedDraftCandidatePublicationFault::Occupy {
+                receipt_key,
+                value: required::<DraftEditorCandidateSessionsFamily>(
                     reader,
                     &DraftEditorCandidateSessionRecordKeyV1::head(draft_id, session_id),
-                )?;
-                mutations.put::<DraftEditorCandidateSessionsCodec>(&receipt_key, &value)?;
-            }
+                )?,
+            }),
             DraftCandidatePublicationFault::RetargetDisposedHead {
                 draft_id,
                 session_id,
                 operation_id,
             } => {
+                let key = DraftEditorCandidateSessionRecordKeyV1::head(draft_id, session_id);
                 let DraftEditorCandidateSessionRecordV1::Head(head) =
-                    required::<DraftEditorCandidateSessionsFamily>(
-                        reader,
-                        &DraftEditorCandidateSessionRecordKeyV1::head(draft_id, session_id),
-                    )?
+                    required::<DraftEditorCandidateSessionsFamily>(reader, &key)?
                 else {
                     return Err(SyndicMutationError::IdentityCollision);
                 };
@@ -388,10 +386,35 @@ impl DomainMutation<SyndicDomain> for InjectDraftCandidatePublicationFault {
                     Some(operation_id),
                     head.active_operation().cloned(),
                 );
-                mutations.put::<DraftEditorCandidateSessionsCodec>(
-                    &DraftEditorCandidateSessionRecordKeyV1::head(draft_id, session_id),
-                    &DraftEditorCandidateSessionRecordV1::Head(replacement),
-                )?;
+                Ok(PreparedDraftCandidatePublicationFault::Retarget {
+                    key,
+                    replacement: DraftEditorCandidateSessionRecordV1::Head(replacement),
+                })
+            }
+        }
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        prepared: Self::Prepared,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        match prepared {
+            PreparedDraftCandidatePublicationFault::Delete(key) => {
+                mutations.delete::<DraftEditorCandidateSessionsCodec>(&key)?;
+            }
+            PreparedDraftCandidatePublicationFault::Occupy { receipt_key, value } => {
+                mutations.put::<DraftEditorCandidateSessionsCodec>(&receipt_key, &value)?;
+            }
+            PreparedDraftCandidatePublicationFault::Retarget { key, replacement } => {
+                mutations.put::<DraftEditorCandidateSessionsCodec>(&key, &replacement)?;
             }
         }
         Ok(())
@@ -400,9 +423,13 @@ impl DomainMutation<SyndicDomain> for InjectDraftCandidatePublicationFault {
 
 impl DomainMutation<SyndicDomain> for DeleteDraftEditHistoryFrontier {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -414,20 +441,23 @@ impl DomainMutation<SyndicDomain> for DeleteDraftEditHistoryFrontier {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.delete::<DraftEditHistoryFrontiersCodec>(&self.0)?;
+        mutations.delete::<DraftEditHistoryFrontiersCodec>(&prepared.0)?;
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for DeleteDraftEditHistoryRecord {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -446,11 +476,10 @@ impl DomainMutation<SyndicDomain> for DeleteDraftEditHistoryRecord {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        match self.0 {
+        match prepared.0 {
             DraftEditHistoryRecordDeletion::Frontier(key) => {
                 mutations.delete::<DraftEditHistoryFrontiersCodec>(&key)?;
             }
@@ -464,9 +493,13 @@ impl DomainMutation<SyndicDomain> for DeleteDraftEditHistoryRecord {
 
 impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryFrontier {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -478,20 +511,24 @@ impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryFrontier {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<DraftEditHistoryFrontiersCodec>(&self.stored_key, &self.replacement)?;
+        mutations
+            .put::<DraftEditHistoryFrontiersCodec>(&prepared.stored_key, &prepared.replacement)?;
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryFrontierAndSession {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -505,11 +542,10 @@ impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryFrontierAndSession 
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let source = &self.session;
+        let source = &prepared.session;
         let replacement_session = DraftEditorCandidateSessionV1::from_parts(
             source.thread_id(),
             source.draft_id(),
@@ -524,18 +560,18 @@ impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryFrontierAndSession 
             source.published_root(),
             source.published_history(),
             source.newest_candidate_generation(),
-            self.replacement.reference().root(),
-            self.replacement.reference(),
+            prepared.replacement.reference().root(),
+            prepared.replacement.reference(),
             source.dirty_generation(),
             source.logical_extent(),
             source.lifecycle(),
             source.active_operation().cloned(),
         );
         mutations.put::<DraftEditHistoryFrontiersCodec>(
-            &self.replacement.reference().key(),
-            &self.replacement,
+            &prepared.replacement.reference().key(),
+            &prepared.replacement,
         )?;
-        if let Some(transition) = &self.replacement_transition {
+        if let Some(transition) = &prepared.replacement_transition {
             mutations.put::<DraftEditHistoryTransitionsCodec>(&transition.key(), transition)?;
         }
         mutations.put::<DraftEditorCandidateSessionsCodec>(
@@ -548,25 +584,12 @@ impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryFrontierAndSession 
 
 impl DomainMutation<SyndicDomain> for PublishDraftEditHistoryPair {
     type Error = SyndicMutationError;
+    type Prepared = (DraftRecord, DraftByThreadRecord);
 
-    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<DraftsCodec>(1)?;
-        reservation.reserve_records::<DraftByThreadCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        &self,
+    fn prepare(
+        self,
         reader: &DomainReader<'_, SyndicDomain>,
-        mutations: &mut MutationBuilder<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<Self::Prepared, Self::Error> {
         let revision = self
             .draft
             .revision()
@@ -582,25 +605,43 @@ impl DomainMutation<SyndicDomain> for PublishDraftEditHistoryPair {
             self.draft.created_at(),
             self.draft.updated_at(),
         );
+        let by_thread = DraftByThreadRecord::new(
+            replacement.thread_id(),
+            replacement.id(),
+            revision,
+            thread.revision(),
+        );
+        Ok((replacement, by_thread))
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftsCodec>(1)?;
+        reservation.reserve_records::<DraftByThreadCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        (replacement, by_thread): Self::Prepared,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
         mutations.put::<DraftsCodec>(&replacement.id(), &replacement)?;
-        mutations.put::<DraftByThreadCodec>(
-            &replacement.thread_id(),
-            &DraftByThreadRecord::new(
-                replacement.thread_id(),
-                replacement.id(),
-                revision,
-                thread.revision(),
-            ),
-        )?;
+        mutations.put::<DraftByThreadCodec>(&replacement.thread_id(), &by_thread)?;
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryTransition {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -612,11 +653,11 @@ impl DomainMutation<SyndicDomain> for ReplaceDraftEditHistoryTransition {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<DraftEditHistoryTransitionsCodec>(&self.stored_key, &self.replacement)?;
+        mutations
+            .put::<DraftEditHistoryTransitionsCodec>(&prepared.stored_key, &prepared.replacement)?;
         Ok(())
     }
 }

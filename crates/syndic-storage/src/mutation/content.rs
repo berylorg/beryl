@@ -1,11 +1,11 @@
 use beryl_home_store::{
     DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
 };
-use beryl_model::{DomainRevision, SyndicContentId};
+use beryl_model::DomainRevision;
 
 use crate::{
-    ContentChunkRecord, ContentLifecycle, ContentManifestRecord, ContentSummary, PreparedContent,
-    SyndicStorage, advance_content_chain, codec::*, domain::SyndicDomain,
+    ContentChunkRecord, ContentLifecycle, ContentManifestRecord, PreparedContent, SyndicStorage,
+    advance_content_chain, codec::*, domain::SyndicDomain,
 };
 
 mod validation;
@@ -166,12 +166,16 @@ struct AppendContentMutation {
 
 impl DomainMutation<SyndicDomain> for BeginContentMutation {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if point::<ContentManifestsFamily>(reader, &self.build.manifest.id())?.is_some() {
             return Err(SyndicMutationError::ContentIdentityCollision);
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -183,19 +187,25 @@ impl DomainMutation<SyndicDomain> for BeginContentMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<ContentManifestsCodec>(&self.build.manifest.id(), &self.build.manifest)?;
+        mutations.put::<ContentManifestsCodec>(
+            &prepared.build.manifest.id(),
+            &prepared.build.manifest,
+        )?;
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for AppendContentMutation {
     type Error = SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let current = required::<ContentManifestsFamily>(reader, &self.append.expected.id())?;
         if current != self.append.expected {
             return Err(SyndicMutationError::ContentManifestConflict);
@@ -236,7 +246,7 @@ impl DomainMutation<SyndicDomain> for AppendContentMutation {
                 return Err(SyndicMutationError::ContentChunkConflict);
             }
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -253,11 +263,10 @@ impl DomainMutation<SyndicDomain> for AppendContentMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        for chunk in &self.append.chunks {
+        for chunk in &prepared.append.chunks {
             mutations.put::<ContentChunksCodec>(
                 &ContentChunkKey {
                     owner: chunk.content_id(),
@@ -266,7 +275,7 @@ impl DomainMutation<SyndicDomain> for AppendContentMutation {
                 chunk,
             )?;
         }
-        for span in &self.append.spans {
+        for span in &prepared.append.spans {
             mutations.put::<ContentByteSpansCodec>(
                 &ContentByteSpanKey {
                     owner: span.content_id(),
@@ -275,7 +284,7 @@ impl DomainMutation<SyndicDomain> for AppendContentMutation {
                 span,
             )?;
         }
-        for span in &self.append.text_spans {
+        for span in &prepared.append.text_spans {
             mutations.put::<ContentTextSpansCodec>(
                 &ContentTextSpanKey {
                     owner: span.content_id(),
@@ -284,7 +293,7 @@ impl DomainMutation<SyndicDomain> for AppendContentMutation {
                 span,
             )?;
         }
-        for piece in &self.append.pieces {
+        for piece in &prepared.append.pieces {
             mutations.put::<ContentPiecesCodec>(
                 &ContentPieceKey {
                     owner: piece.content_id(),
@@ -293,7 +302,8 @@ impl DomainMutation<SyndicDomain> for AppendContentMutation {
                 piece,
             )?;
         }
-        mutations.put::<ContentManifestsCodec>(&self.append.next.id(), &self.append.next)?;
+        mutations
+            .put::<ContentManifestsCodec>(&prepared.append.next.id(), &prepared.append.next)?;
         Ok(())
     }
 }

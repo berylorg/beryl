@@ -9,7 +9,7 @@ use crate::{
 use super::{StartBuildMutation, lifecycle};
 use crate::mutation::{point, required};
 
-struct StartBuildRecords {
+pub struct StartBuildRecords {
     build: ItemProjectionBuildRecord,
     superseded: Option<ItemProjectionBuildRecord>,
 }
@@ -98,9 +98,13 @@ impl StartBuildMutation {
 
 impl DomainMutation<SyndicDomain> for StartBuildMutation {
     type Error = SyndicMutationError;
+    type Prepared = StartBuildRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -112,11 +116,10 @@ impl DomainMutation<SyndicDomain> for StartBuildMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let records = self.records(reader)?;
+        let records = prepared;
         if let Some(build) = records.superseded {
             mutations.put::<ItemProjectionBuildsCodec>(
                 &ItemProjectionSetKey {

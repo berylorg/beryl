@@ -246,10 +246,12 @@ fn adoption_reuses_immutable_roots_and_preserves_canonical_records_and_current_p
     );
     assert_eq!(current(&storage, &store, thread), durable);
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 80);
-    assert_eq!(names[22], "draft-historical-root-adoptions");
-    assert_eq!(names[23], "draft-composer-builds");
-    assert_eq!(names[24], "draft-composer-materializations");
+    assert_eq!(names.len(), 81);
+    assert_eq!(names[0], "threads");
+    assert_eq!(names[1], "image-label-authority-heads");
+    assert_eq!(names[23], "draft-historical-root-adoptions");
+    assert_eq!(names[24], "draft-composer-builds");
+    assert_eq!(names[25], "draft-composer-materializations");
 }
 
 #[test]

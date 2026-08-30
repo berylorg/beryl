@@ -18,7 +18,11 @@ pub(super) struct AbandonmentRecords {
     pub(super) activity: ActivityEffect,
 }
 
-pub(super) enum StopAbandonmentRecords {
+pub struct StopAbandonmentRecords {
+    state: StopAbandonmentState,
+}
+
+enum StopAbandonmentState {
     Ordinary(Box<AbandonmentRecords>),
     ProviderOperation(ProviderAbandonmentRecords),
 }
@@ -37,13 +41,25 @@ pub(super) struct ProviderAbandonmentRecords {
 }
 
 impl StopAbandonmentRecords {
+    pub(super) fn ordinary(records: AbandonmentRecords) -> Self {
+        Self {
+            state: StopAbandonmentState::Ordinary(Box::new(records)),
+        }
+    }
+
+    pub(super) fn provider_operation(records: ProviderAbandonmentRecords) -> Self {
+        Self {
+            state: StopAbandonmentState::ProviderOperation(records),
+        }
+    }
+
     pub(super) fn contribute(
         self,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), SyndicMutationError> {
-        match self {
-            Self::Ordinary(records) => records.contribute(mutations),
-            Self::ProviderOperation(records) => records.contribute(mutations),
+        match self.state {
+            StopAbandonmentState::Ordinary(records) => records.contribute(mutations),
+            StopAbandonmentState::ProviderOperation(records) => records.contribute(mutations),
         }
     }
 }

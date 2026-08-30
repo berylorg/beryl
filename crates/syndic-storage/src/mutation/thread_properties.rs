@@ -113,8 +113,12 @@ impl crate::SyndicStorage {
 
 impl DomainMutation<SyndicDomain> for AcceptGeneratedThreadTitle {
     type Error = SyndicMutationError;
+    type Prepared = (SyndicThreadId, crate::ThreadAttributesRecord);
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let attributes = required::<ThreadAttributesFamily>(reader, &self.thread_id)?;
         if attributes.revision() != self.expected_attributes_revision {
             return Err(SyndicMutationError::ThreadAttributesRevisionConflict {
@@ -125,7 +129,9 @@ impl DomainMutation<SyndicDomain> for AcceptGeneratedThreadTitle {
         if attributes.generated_title().is_some() {
             return Err(SyndicMutationError::GeneratedTitleAlreadyAccepted);
         }
-        validate_title_eligibility(reader, self.thread_id, &self.title)
+        validate_title_eligibility(reader, self.thread_id, &self.title)?;
+        let next = attributes.accept_generated_title(self.title)?;
+        Ok((self.thread_id, next))
     }
 
     fn reserve_reconciliation(
@@ -137,21 +143,22 @@ impl DomainMutation<SyndicDomain> for AcceptGeneratedThreadTitle {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let attributes = required::<ThreadAttributesFamily>(reader, &self.thread_id)?;
-        let next = attributes.accept_generated_title(self.title.clone())?;
-        mutations.put::<ThreadAttributesCodec>(&self.thread_id, &next)?;
+        mutations.put::<ThreadAttributesCodec>(&prepared.0, &prepared.1)?;
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for ArchiveBranchDiscussionThread {
     type Error = SyndicMutationError;
+    type Prepared = (SyndicThreadId, crate::ThreadAttributesRecord);
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let thread = required::<ThreadsFamily>(reader, &self.thread_id)?;
         let attributes = required::<ThreadAttributesFamily>(reader, &self.thread_id)?;
         if attributes.revision() != self.expected_attributes_revision {
@@ -165,7 +172,8 @@ impl DomainMutation<SyndicDomain> for ArchiveBranchDiscussionThread {
         {
             return Err(SyndicMutationError::ThreadArchiveStateConflict);
         }
-        Ok(())
+        let next = attributes.archive_branch_discussion(self.handoff_job_id, self.archived_at)?;
+        Ok((self.thread_id, next))
     }
 
     fn reserve_reconciliation(
@@ -177,21 +185,22 @@ impl DomainMutation<SyndicDomain> for ArchiveBranchDiscussionThread {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let attributes = required::<ThreadAttributesFamily>(reader, &self.thread_id)?;
-        let next = attributes.archive_branch_discussion(self.handoff_job_id, self.archived_at)?;
-        mutations.put::<ThreadAttributesCodec>(&self.thread_id, &next)?;
+        mutations.put::<ThreadAttributesCodec>(&prepared.0, &prepared.1)?;
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for PublishThreadUsage {
     type Error = SyndicMutationError;
+    type Prepared = (SyndicThreadId, crate::ThreadUsageRecord);
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let usage = required::<ThreadUsageFamily>(reader, &self.thread_id)?;
         if usage.revision() != self.expected_usage_revision {
             return Err(SyndicMutationError::ThreadUsageRevisionConflict {
@@ -204,7 +213,9 @@ impl DomainMutation<SyndicDomain> for PublishThreadUsage {
         }) {
             return Err(SyndicMutationError::UsageProviderOrdinalConflict);
         }
-        validate_current_usage_route(reader, self.thread_id, &self.observation)
+        validate_current_usage_route(reader, self.thread_id, &self.observation)?;
+        let next = usage.publish(self.observation)?;
+        Ok((self.thread_id, next))
     }
 
     fn reserve_reconciliation(
@@ -216,13 +227,10 @@ impl DomainMutation<SyndicDomain> for PublishThreadUsage {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let usage = required::<ThreadUsageFamily>(reader, &self.thread_id)?;
-        let next = usage.publish(self.observation.clone())?;
-        mutations.put::<ThreadUsageCodec>(&self.thread_id, &next)?;
+        mutations.put::<ThreadUsageCodec>(&prepared.0, &prepared.1)?;
         Ok(())
     }
 }

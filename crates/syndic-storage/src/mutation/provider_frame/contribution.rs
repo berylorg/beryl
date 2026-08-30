@@ -143,8 +143,12 @@ struct BeginProviderFrameBuildMutation {
 
 impl DomainMutation<SyndicDomain> for BeginProviderFrameBuildMutation {
     type Error = ProviderFrameMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if provider_point::<ProviderItemBuildsFamily>(reader, &self.build.item_id())?.is_some() {
             return Err(ProviderFrameMutationError::BuildIdentityCollision);
         }
@@ -157,7 +161,7 @@ impl DomainMutation<SyndicDomain> for BeginProviderFrameBuildMutation {
             Some(_) => validate_provider_manifest(&self.build, manifest.as_ref())?,
             None => {}
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -170,15 +174,14 @@ impl DomainMutation<SyndicDomain> for BeginProviderFrameBuildMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if self.build.prior().is_none() {
-            let manifest = first_provider_manifest(&self.build);
+        if prepared.build.prior().is_none() {
+            let manifest = first_provider_manifest(&prepared.build);
             mutations.put::<ContentManifestsCodec>(&manifest.id(), &manifest)?;
         }
-        mutations.put::<ProviderItemBuildsCodec>(&self.build.item_id(), &self.build)?;
+        mutations.put::<ProviderItemBuildsCodec>(&prepared.build.item_id(), &prepared.build)?;
         Ok(())
     }
 }
@@ -189,8 +192,12 @@ struct StageProviderFrameBatchMutation {
 
 impl DomainMutation<SyndicDomain> for StageProviderFrameBatchMutation {
     type Error = ProviderFrameMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         self.batch.validate()?;
         let item_id = self.batch.expected_build().item_id();
         let Some(current) = provider_point::<ProviderItemBuildsFamily>(reader, &item_id)? else {
@@ -238,7 +245,7 @@ impl DomainMutation<SyndicDomain> for StageProviderFrameBatchMutation {
                 return Err(ProviderFrameMutationError::NarrativeSpanIdentityCollision);
             }
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -259,11 +266,10 @@ impl DomainMutation<SyndicDomain> for StageProviderFrameBatchMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        for chunk in self.batch.chunks() {
+        for chunk in prepared.batch.chunks() {
             mutations.put::<ContentChunksCodec>(
                 &ContentChunkKey {
                     owner: chunk.content_id(),
@@ -272,7 +278,7 @@ impl DomainMutation<SyndicDomain> for StageProviderFrameBatchMutation {
                 chunk,
             )?;
         }
-        for span in self.batch.byte_spans() {
+        for span in prepared.batch.byte_spans() {
             mutations.put::<ContentByteSpansCodec>(
                 &ContentByteSpanKey {
                     owner: span.content_id(),
@@ -281,7 +287,7 @@ impl DomainMutation<SyndicDomain> for StageProviderFrameBatchMutation {
                 span,
             )?;
         }
-        for record in self.batch.narrative_spans() {
+        for record in prepared.batch.narrative_spans() {
             mutations.put::<ProviderNarrativeSpansCodec>(
                 &ProviderNarrativeSpanKey::new(
                     record.content_id(),
@@ -292,8 +298,8 @@ impl DomainMutation<SyndicDomain> for StageProviderFrameBatchMutation {
             )?;
         }
         mutations.put::<ProviderItemBuildsCodec>(
-            &self.batch.next_build().item_id(),
-            self.batch.next_build(),
+            &prepared.batch.next_build().item_id(),
+            prepared.batch.next_build(),
         )?;
         Ok(())
     }

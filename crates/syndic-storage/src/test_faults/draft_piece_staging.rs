@@ -409,9 +409,10 @@ fn limit() -> SyndicPointReadLimit {
 
 impl DomainMutation<SyndicDomain> for StagingCorruption {
     type Error = super::FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(self, _: &DomainReader<'_, SyndicDomain>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -449,11 +450,10 @@ impl DomainMutation<SyndicDomain> for StagingCorruption {
     }
 
     fn contribute(
-        &self,
-        _: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         builder: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        match self {
+        match &prepared {
             Self::DeleteHead(key) => builder.delete::<DraftMutationStagingHeadsCodec>(key)?,
             Self::DeletePage(key) => builder.delete::<DraftMutationStagingPagesCodec>(key)?,
             Self::DeleteReceipt(key) => builder.delete::<DraftMutationStagingProgressCodec>(key)?,

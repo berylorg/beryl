@@ -18,20 +18,21 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 206: Remove Superseded Syndic Draft-Marker WIP (finished)
+# Phase 207: Convert Syndic Mutation Preparation (finished)
 
-Removed the unaccepted Phase-196 Syndic readiness prototype without replacement architecture or a
-compatibility adapter: 13 tracked source/test paths returned to their accepted contents and seven
-untracked prototype paths were removed. Scoped cleanliness and live-symbol checks passed; Cargo was
-inapplicable while the intentional mutation-trait cutover gap remains. Independent semantic review
-closed without blocking findings.
+Converted all 80 `syndic-storage` production and test-fault mutations to consuming package-owned
+preparation and reader-free one-time contribution while retaining the sole validation-only
+participant and exhaustive domain validator. Operation-bounded typed reads now occur once,
+prepared carriers expose only minimum owned contribution state, and reconciliation reservations,
+descriptors, schemas, failure provenance, collision behavior, capacity refusal, and shared-resource
+guarantees remain unchanged. Six stale fixtures were aligned with the already-accepted 81-family
+image-label-authority schema and the authenticated fresh-abandonment closure.
 
-# Phase 207: Convert Syndic Mutation Preparation (pending)
-
-Convert all 80 `syndic-storage` production and test-fault mutation implementations to package-owned
-prepared state while preserving its one validation-only participant, exhaustive domain validator,
-reader-free reconciliation reservations, CAS, route, binding, record, and natural-record
-reconciliation checks. Verify the complete package boundary without a compatibility adapter.
+Structural inventory proved 80 prepared mutations, one domain validator, and no reader-bearing
+contribution path. All-target/all-feature package compilation passed; focused package verification
+passed 119 tests plus the corrected disposal closure case, and the full package gate passed 698 of
+698 tests. Independent semantic completion review closed without blocking findings or unnecessary
+defensive complexity.
 
 # Phase 208: Complete Prepared-Mutation Integration (pending)
 

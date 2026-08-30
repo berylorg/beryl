@@ -2094,9 +2094,10 @@ struct DeleteImmutable(DeletedImmutable);
 
 impl DomainMutation<SyndicDomain> for DeleteImmutable {
     type Error = super::FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(self, _: &DomainReader<'_, SyndicDomain>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -2122,11 +2123,10 @@ impl DomainMutation<SyndicDomain> for DeleteImmutable {
     }
 
     fn contribute(
-        &self,
-        _: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         builder: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        match &self.0 {
+        match &prepared.0 {
             DeletedImmutable::Root(key) => builder.delete::<DraftPieceRootsCodec>(key)?,
             DeletedImmutable::Sequence(key) => builder.delete::<DraftPieceNodesCodec>(key)?,
             DeletedImmutable::Build(key) => builder.delete::<DraftPieceBuildsCodec>(key)?,
@@ -2143,9 +2143,10 @@ impl DomainMutation<SyndicDomain> for DeleteImmutable {
 
 impl DomainMutation<SyndicDomain> for DescendantReplacement {
     type Error = super::FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(self, _: &DomainReader<'_, SyndicDomain>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -2179,11 +2180,10 @@ impl DomainMutation<SyndicDomain> for DescendantReplacement {
     }
 
     fn contribute(
-        &self,
-        _: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         builder: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        match &self.0 {
+        match &prepared.0 {
             Replacement::Sequence(key, record) => {
                 builder.put::<DraftPieceNodesCodec>(key, record)?
             }
@@ -2214,9 +2214,10 @@ impl DomainMutation<SyndicDomain> for DescendantReplacement {
 
 impl DomainMutation<SyndicDomain> for CoordinatedStageReplacement {
     type Error = crate::SyndicMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(self, _: &DomainReader<'_, SyndicDomain>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -2230,13 +2231,13 @@ impl DomainMutation<SyndicDomain> for CoordinatedStageReplacement {
     }
 
     fn contribute(
-        &self,
-        _: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         builder: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        builder.put::<DraftPieceBuildsCodec>(&self.key, &self.build)?;
-        builder.put::<DraftPieceBuildProgressCodec>(&self.receipt.key(), &self.receipt)?;
-        builder.put::<DraftEditorCandidateSessionsCodec>(&self.session_key, &self.session)?;
+        builder.put::<DraftPieceBuildsCodec>(&prepared.key, &prepared.build)?;
+        builder.put::<DraftPieceBuildProgressCodec>(&prepared.receipt.key(), &prepared.receipt)?;
+        builder
+            .put::<DraftEditorCandidateSessionsCodec>(&prepared.session_key, &prepared.session)?;
         Ok(())
     }
 }

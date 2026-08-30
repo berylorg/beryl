@@ -10,7 +10,7 @@ use crate::{
 use super::{AdvanceBuildMutation, materialize, parser, range};
 use crate::mutation::{point, required};
 
-struct AdvanceBuildRecords {
+pub struct AdvanceBuildRecords {
     build: ItemProjectionBuildRecord,
     next_build: Option<ItemProjectionBuildRecord>,
     set: Option<crate::ItemProjectionSetRecord>,
@@ -20,6 +20,9 @@ struct AdvanceBuildRecords {
     projection_indexes: Vec<crate::ItemProjectionIndexRecord>,
     resources: Vec<crate::ResourceMetadataRecord>,
     resource_indexes: Vec<crate::ProjectionResourceIndexRecord>,
+    projection_present: Vec<bool>,
+    resource_present: Vec<bool>,
+    resource_index_present: Vec<bool>,
 }
 
 impl AdvanceBuildMutation {
@@ -62,6 +65,9 @@ impl AdvanceBuildMutation {
             projection_indexes: Vec::with_capacity(step.outputs.len()),
             resources: Vec::new(),
             resource_indexes: Vec::new(),
+            projection_present: Vec::new(),
+            resource_present: Vec::new(),
+            resource_index_present: Vec::new(),
         };
         let mut projection_count = build.projection_count();
         let mut resource_count = build.resource_count();
@@ -132,16 +138,78 @@ impl AdvanceBuildMutation {
             resource_count,
             output_digest,
         )?;
-        records.validate_collisions(reader)?;
+        let mut projection_present = Vec::with_capacity(records.projections.len());
+        for projection in &records.projections {
+            let stored = point::<ProjectionsFamily>(reader, &projection.id())?;
+            if stored.as_ref().is_some_and(|stored| stored != projection) {
+                return Err(SyndicMutationError::ProjectionIdentityCollision);
+            }
+            projection_present.push(stored.is_some());
+        }
+        for index in &records.stable_projection_indexes {
+            if point::<StableItemProjectionsFamily>(
+                reader,
+                &StableItemProjectionKey {
+                    item: index.item_id(),
+                    ordinal: index.ordinal(),
+                },
+            )?
+            .is_some()
+            {
+                return Err(SyndicMutationError::ProjectionIdentityCollision);
+            }
+        }
+        for index in &records.projection_indexes {
+            if point::<ItemProjectionsFamily>(
+                reader,
+                &ItemProjectionKey {
+                    item: index.item_id(),
+                    generation: index.generation(),
+                    ordinal: index.ordinal(),
+                },
+            )?
+            .is_some()
+            {
+                return Err(SyndicMutationError::ProjectionIdentityCollision);
+            }
+        }
+        let mut resource_present = Vec::with_capacity(records.resources.len());
+        let mut resource_index_present = Vec::with_capacity(records.resource_indexes.len());
+        for (resource, index) in records.resources.iter().zip(&records.resource_indexes) {
+            let stored_resource = point::<ResourcesFamily>(reader, &resource.id())?;
+            if stored_resource
+                .as_ref()
+                .is_some_and(|stored| stored != resource)
+            {
+                return Err(SyndicMutationError::ProjectionIdentityCollision);
+            }
+            let key = ProjectionResourceKey {
+                owner: index.projection_id(),
+                ordinal: index.ordinal(),
+            };
+            let stored_index = point::<ProjectionResourcesFamily>(reader, &key)?;
+            if stored_index.as_ref().is_some_and(|stored| stored != index) {
+                return Err(SyndicMutationError::ProjectionIdentityCollision);
+            }
+            resource_present.push(stored_resource.is_some());
+            resource_index_present.push(stored_index.is_some());
+        }
+        records.projection_present = projection_present;
+        records.resource_present = resource_present;
+        records.resource_index_present = resource_index_present;
         Ok(records)
     }
 }
 
 impl DomainMutation<SyndicDomain> for AdvanceBuildMutation {
     type Error = SyndicMutationError;
+    type Prepared = AdvanceBuildRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -160,13 +228,12 @@ impl DomainMutation<SyndicDomain> for AdvanceBuildMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let records = self.records(reader)?;
-        for projection in &records.projections {
-            if point::<ProjectionsFamily>(reader, &projection.id())?.is_none() {
+        let records = prepared;
+        for (projection, present) in records.projections.iter().zip(&records.projection_present) {
+            if !present {
                 mutations.put::<ProjectionsCodec>(&projection.id(), projection)?;
             }
         }
@@ -189,15 +256,22 @@ impl DomainMutation<SyndicDomain> for AdvanceBuildMutation {
                 index,
             )?;
         }
-        for (resource, index) in records.resources.iter().zip(&records.resource_indexes) {
-            if point::<ResourcesFamily>(reader, &resource.id())?.is_none() {
+        for ((resource, index), (resource_present, resource_index_present)) in
+            records.resources.iter().zip(&records.resource_indexes).zip(
+                records
+                    .resource_present
+                    .iter()
+                    .zip(&records.resource_index_present),
+            )
+        {
+            if !resource_present {
                 mutations.put::<ResourcesCodec>(&resource.id(), resource)?;
             }
             let key = ProjectionResourceKey {
                 owner: index.projection_id(),
                 ordinal: index.ordinal(),
             };
-            if point::<ProjectionResourcesFamily>(reader, &key)?.is_none() {
+            if !resource_index_present {
                 mutations.put::<ProjectionResourcesCodec>(&key, index)?;
             }
         }

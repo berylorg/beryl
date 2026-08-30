@@ -11,7 +11,7 @@ use crate::{
 use super::{AcceptedInputDeliveryMutation, AcceptedInputDeliveryTransitionKind};
 use crate::mutation::required;
 
-struct AcceptedInputDeliveryRecords {
+pub struct AcceptedInputDeliveryRecords {
     leaf: AcceptedRouteLeafRecord,
     generation: AcceptedRouteGenerationRecord,
     head: AcceptedRouteGenerationHeadRecord,
@@ -22,9 +22,13 @@ struct AcceptedInputDeliveryRecords {
 
 impl DomainMutation<SyndicDomain> for AcceptedInputDeliveryMutation {
     type Error = SyndicMutationError;
+    type Prepared = AcceptedInputDeliveryRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -41,11 +45,10 @@ impl DomainMutation<SyndicDomain> for AcceptedInputDeliveryMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 

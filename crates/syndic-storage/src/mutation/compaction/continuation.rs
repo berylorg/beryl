@@ -1,6 +1,10 @@
 use super::*;
 
-enum LifecycleSettlementRecords {
+pub struct LifecycleSettlementRecords {
+    state: LifecycleSettlementState,
+}
+
+enum LifecycleSettlementState {
     UserWork(SettlementRecords),
     Continuation(Box<ContinuationRecords>),
 }
@@ -27,9 +31,13 @@ struct ContinuationRecords {
 
 impl DomainMutation<SyndicDomain> for SettleLifecycleMutation {
     type Error = SyndicMutationError;
+    type Prepared = LifecycleSettlementRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -60,12 +68,11 @@ impl DomainMutation<SyndicDomain> for SettleLifecycleMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        match self.records(reader)? {
-            LifecycleSettlementRecords::UserWork(records) => {
+        match prepared.state {
+            LifecycleSettlementState::UserWork(records) => {
                 mutations.put::<CompactionOperationsCodec>(
                     &records.operation.id(),
                     &records.operation,
@@ -76,7 +83,7 @@ impl DomainMutation<SyndicDomain> for SettleLifecycleMutation {
                 )?;
                 mutations.put::<InputGatesCodec>(&records.gate.thread_id(), &records.gate)?;
             }
-            LifecycleSettlementRecords::Continuation(records) => {
+            LifecycleSettlementState::Continuation(records) => {
                 records.contribute(mutations)?;
             }
         }
@@ -99,20 +106,24 @@ impl SettleLifecycleMutation {
             return Err(SyndicMutationError::InputGateStateConflict);
         }
         if gate.live_next_turn_count() > 0 {
-            return Ok(LifecycleSettlementRecords::UserWork(
-                SettleMutation(SettleCompactionOperation::new(
-                    request.operation_id,
-                    request.expected_operation_revision,
-                    CompactionSettlement::LifecycleUserWorkWon,
-                ))
-                .records(reader)?,
-            ));
+            return Ok(LifecycleSettlementRecords {
+                state: LifecycleSettlementState::UserWork(
+                    SettleMutation(SettleCompactionOperation::new(
+                        request.operation_id,
+                        request.expected_operation_revision,
+                        CompactionSettlement::LifecycleUserWorkWon,
+                    ))
+                    .records(reader)?,
+                ),
+            });
         }
         if gate.live_logical_utf8_bytes() != 0 {
             return Err(SyndicMutationError::InputGateStateConflict);
         }
         self.continuation_records(reader, gate, operation)
-            .map(|records| LifecycleSettlementRecords::Continuation(Box::new(records)))
+            .map(|records| LifecycleSettlementRecords {
+                state: LifecycleSettlementState::Continuation(Box::new(records)),
+            })
     }
 
     fn continuation_records(

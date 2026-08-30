@@ -75,8 +75,12 @@ pub(crate) fn provider_observation_stage_fault_scope() -> beryl_home_store::test
 
 impl DomainMutation<SyndicDomain> for StageProviderObservationMutation {
     type Error = ProviderObservationMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         self.batch.validate_shape()?;
         let identity = self.batch.next_build().identity();
         let current = point::<ProviderObservationBuildsFamily>(reader, &identity)?;
@@ -99,7 +103,7 @@ impl DomainMutation<SyndicDomain> for StageProviderObservationMutation {
                 return Err(ProviderObservationMutationError::ChunkIdentityCollision);
             }
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -114,19 +118,18 @@ impl DomainMutation<SyndicDomain> for StageProviderObservationMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if let Some(chunk) = self.batch.chunk() {
+        if let Some(chunk) = prepared.batch.chunk() {
             mutations.put::<ProviderObservationChunksCodec>(
                 &ProviderObservationChunkKey::new(chunk.identity(), chunk.ordinal()),
                 chunk,
             )?;
         }
         mutations.put::<ProviderObservationBuildsCodec>(
-            &self.batch.next_build().identity(),
-            self.batch.next_build(),
+            &prepared.batch.next_build().identity(),
+            prepared.batch.next_build(),
         )?;
         Ok(())
     }

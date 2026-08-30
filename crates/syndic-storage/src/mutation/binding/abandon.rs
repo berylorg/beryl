@@ -20,7 +20,7 @@ pub(crate) struct AbandonActiveBindingMutation {
     pub(super) request: AbandonActiveBinding,
 }
 
-struct AbandonActiveBindingRecords {
+pub struct AbandonActiveBindingRecords {
     binding: BindingRecord,
     head: BindingHeadRecord,
     reservation: CasThreadIndexRecord,
@@ -34,9 +34,13 @@ struct AbandonActiveBindingRecords {
 
 impl DomainMutation<SyndicDomain> for AbandonActiveBindingMutation {
     type Error = SyndicMutationError;
+    type Prepared = AbandonActiveBindingRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -57,11 +61,10 @@ impl DomainMutation<SyndicDomain> for AbandonActiveBindingMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 

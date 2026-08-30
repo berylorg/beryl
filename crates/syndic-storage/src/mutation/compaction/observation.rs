@@ -2,9 +2,13 @@ use super::*;
 
 impl DomainMutation<SyndicDomain> for ClaimMutation {
     type Error = SyndicMutationError;
+    type Prepared = CompactionOperationRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.successor(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.successor(reader)
     }
 
     fn reserve_reconciliation(
@@ -16,12 +20,10 @@ impl DomainMutation<SyndicDomain> for ClaimMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let successor = self.successor(reader)?;
-        mutations.put::<CompactionOperationsCodec>(&successor.id(), &successor)?;
+        mutations.put::<CompactionOperationsCodec>(&prepared.id(), &prepared)?;
         Ok(())
     }
 }
@@ -45,9 +47,13 @@ impl ClaimMutation {
 
 impl DomainMutation<SyndicDomain> for RequestMutation {
     type Error = SyndicMutationError;
+    type Prepared = CompactionOperationRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.successor(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.successor(reader)
     }
 
     fn reserve_reconciliation(
@@ -59,12 +65,10 @@ impl DomainMutation<SyndicDomain> for RequestMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let successor = self.successor(reader)?;
-        mutations.put::<CompactionOperationsCodec>(&successor.id(), &successor)?;
+        mutations.put::<CompactionOperationsCodec>(&prepared.id(), &prepared)?;
         Ok(())
     }
 }
@@ -89,7 +93,7 @@ impl RequestMutation {
     }
 }
 
-struct ProviderRecords {
+pub struct ProviderRecords {
     operation: CompactionOperationRecord,
     turn_state: Option<TurnStateRecord>,
     active_cas_turn: Option<ActiveCasTurnRecord>,
@@ -100,9 +104,13 @@ struct ProviderRecords {
 
 impl DomainMutation<SyndicDomain> for ProviderMutation {
     type Error = SyndicMutationError;
+    type Prepared = ProviderRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -119,11 +127,10 @@ impl DomainMutation<SyndicDomain> for ProviderMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let records = self.records(reader)?;
+        let records = prepared;
         mutations.put::<CompactionOperationsCodec>(&records.operation.id(), &records.operation)?;
         if let Some(state) = records.turn_state {
             mutations.put::<TurnStatesCodec>(&state.turn_id(), &state)?;

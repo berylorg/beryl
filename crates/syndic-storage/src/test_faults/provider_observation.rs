@@ -105,8 +105,12 @@ impl ProviderObservationFault {
 
 impl DomainMutation<SyndicDomain> for ProviderObservationFault {
     type Error = ProviderObservationCorruptionError;
+    type Prepared = ProviderObservationFaultReplacement;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let current = reader.point::<ProviderObservationBuildsCodec>(
             &self.expected.identity(),
             crate::codec::family_point_limit::<ProviderObservationBuildsFamily>(),
@@ -123,7 +127,7 @@ impl DomainMutation<SyndicDomain> for ProviderObservationFault {
                 return Err(ProviderObservationCorruptionError::ChunkMissing);
             }
         }
-        Ok(())
+        Ok(self.replacement)
     }
 
     fn reserve_reconciliation(
@@ -142,11 +146,10 @@ impl DomainMutation<SyndicDomain> for ProviderObservationFault {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         builder: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        match &self.replacement {
+        match &prepared {
             ProviderObservationFaultReplacement::MissingChunk(key) => {
                 builder.delete::<ProviderObservationChunksCodec>(key)?;
             }

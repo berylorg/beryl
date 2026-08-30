@@ -1992,8 +1992,16 @@ fn settlement_is_terminal_target(settlement: &DraftPieceSettlementV1, kind: Term
 
 impl DomainMutation<SyndicDomain> for BeginMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<(
+        DraftPieceBuildRecordV1,
+        DraftPieceBuildProgressReceiptV1,
+        DraftEditorCandidateSessionV1,
+    )>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if !self.prepared.predecessor_positions_authenticated {
             return Err(SyndicMutationError::IdentityCollision);
         }
@@ -2022,7 +2030,8 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
         }
         if let Some(build) = point_build(reader, &settlement_key(&self.prepared))? {
             return if build == target_build {
-                authenticate_target_transition(reader, &build, &target_receipt, &target_session)
+                authenticate_target_transition(reader, &build, &target_receipt, &target_session)?;
+                Ok(None)
             } else {
                 Err(SyndicMutationError::IdentityCollision)
             };
@@ -2032,7 +2041,7 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
         {
             return Err(SyndicMutationError::CurrentDraftConflict);
         }
-        Ok(())
+        Ok(Some((target_build, target_receipt, target_session)))
     }
 
     fn reserve_reconciliation(
@@ -2046,12 +2055,10 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if point_build(reader, &settlement_key(&self.prepared))?.is_none() {
-            let (build, receipt, claimed) = build_record(&self.prepared)?;
+        if let Some((build, receipt, claimed)) = prepared {
             put_build_transition(mutations, &build, &receipt)?;
             put_session_head(mutations, &claimed)?;
         }
@@ -2061,8 +2068,17 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
 
 impl DomainMutation<SyndicDomain> for StageFragmentMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<(
+        DraftPieceBuildFragmentV1,
+        DraftPieceBuildRecordV1,
+        DraftPieceBuildProgressReceiptV1,
+        DraftEditorCandidateSessionV1,
+    )>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let build = required_build(reader, &settlement_key(&self.prepared))?;
         let ordinal = self.fragment.key().ordinal();
         if !build_matches(&build, &self.prepared)
@@ -2117,12 +2133,8 @@ impl DomainMutation<SyndicDomain> for StageFragmentMutation {
             if build != expected_build || target_receipt != expected_receipt {
                 return Err(SyndicMutationError::IdentityCollision);
             }
-            return authenticate_target_transition(
-                reader,
-                &build,
-                &target_receipt,
-                &expected_session,
-            );
+            authenticate_target_transition(reader, &build, &target_receipt, &expected_session)?;
+            return Ok(None);
         }
         let DraftPieceBuildFrontierV1::Receiving {
             next_ordinal,
@@ -2138,10 +2150,11 @@ impl DomainMutation<SyndicDomain> for StageFragmentMutation {
         {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        let (_, target_receipt, _) = stage_transition(&self.prepared, &build, &self.fragment)?;
+        let (next, target_receipt, advanced) =
+            stage_transition(&self.prepared, &build, &self.fragment)?;
         let expected_session = expected_active_session(&self.prepared, &build)?;
         authenticate_source_transition(reader, &build, &expected_session, target_receipt.key())?;
-        Ok(())
+        Ok(Some((self.fragment, next, target_receipt, advanced)))
     }
 
     fn reserve_reconciliation(
@@ -2156,26 +2169,26 @@ impl DomainMutation<SyndicDomain> for StageFragmentMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if point::<DraftPieceBuildFragmentsFamily>(reader, &self.fragment.key())?.is_some() {
-            return Ok(());
+        if let Some((fragment, next, receipt, advanced)) = prepared {
+            mutations.put::<DraftPieceBuildFragmentsCodec>(&fragment.key(), &fragment)?;
+            put_build_transition(mutations, &next, &receipt)?;
+            put_session_head(mutations, &advanced)?;
         }
-        let build = required_build(reader, &settlement_key(&self.prepared))?;
-        mutations.put::<DraftPieceBuildFragmentsCodec>(&self.fragment.key(), &self.fragment)?;
-        let (next, receipt, advanced) = stage_transition(&self.prepared, &build, &self.fragment)?;
-        put_build_transition(mutations, &next, &receipt)?;
-        put_session_head(mutations, &advanced)?;
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for AdvanceMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedDraftPieceAdvanceV1>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let current = required_build(reader, &build_key(&self.prepared.expected))?;
         if current == self.prepared.next {
             let receipt = required::<DraftPieceBuildProgressFamily>(
@@ -2215,7 +2228,7 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
                     return Err(SyndicMutationError::IdentityCollision);
                 }
             }
-            return Ok(());
+            return Ok(None);
         }
         if current != self.prepared.expected {
             return Err(SyndicMutationError::IdentityCollision);
@@ -2246,7 +2259,7 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
                 return Err(SyndicMutationError::IdentityCollision);
             }
         }
-        Ok(())
+        Ok(Some(self.prepared))
     }
 
     fn reserve_reconciliation(
@@ -2276,76 +2289,38 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if required_build(reader, &build_key(&self.prepared.expected))? == self.prepared.next {
-            return Ok(());
-        }
-        for leaf in &self.prepared.leaves {
-            if point::<DraftPieceLeavesFamily>(reader, &leaf.key())?.is_none() {
+        if let Some(prepared) = prepared {
+            for leaf in &prepared.leaves {
                 mutations.put::<DraftPieceLeavesCodec>(&leaf.key(), leaf)?;
             }
-        }
-        for node in &self.prepared.nodes {
-            if point::<DraftPieceNodesFamily>(reader, &node.key())?.is_none() {
+            for node in &prepared.nodes {
                 mutations.put::<DraftPieceNodesCodec>(&node.key(), node)?;
             }
-        }
-        for record in &self.prepared.index_records {
-            if point::<DraftMarkerIdentityIndexFamily>(reader, &record.key())?.is_none() {
+            for record in &prepared.index_records {
                 mutations.put::<DraftMarkerIdentityIndexCodec>(&record.key(), record)?;
             }
-        }
-        for record in &self.prepared.marker_order_records {
-            if point::<DraftMarkerOrderCommitmentsFamily>(reader, &record.key())?.is_none() {
+            for record in &prepared.marker_order_records {
                 mutations.put::<DraftMarkerOrderCommitmentsCodec>(&record.key(), record)?;
             }
+            put_build_transition(mutations, &prepared.next, &prepared.next_receipt)?;
+            put_session_head(mutations, &prepared.next_session)?;
         }
-        put_build_transition(mutations, &self.prepared.next, &self.prepared.next_receipt)?;
-        put_session_head(mutations, &self.prepared.next_session)?;
         Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for SettleMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<settlement::PreparedSettlementContribution>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        if let Some(settlement) =
-            point::<DraftPieceSettlementsFamily>(reader, &settlement_key(&self.prepared))?
-        {
-            return if settlement_is_settle_target(&settlement)
-                && settlement_matches(reader, &settlement, &self.prepared)?
-            {
-                Ok(())
-            } else {
-                Err(SyndicMutationError::IdentityCollision)
-            };
-        }
-        let build = required_build(reader, &settlement_key(&self.prepared))?;
-        if !build_matches(&build, &self.prepared)
-            || build.lifecycle() != DraftPieceBuildLifecycleV1::Complete
-            || build.successor().is_none()
-            || build.build_digest().is_none()
-        {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let expected_session = expected_active_session(&self.prepared, &build)?;
-        authenticate_source_transition(
-            reader,
-            &build,
-            &expected_session,
-            next_progress_key(&build)?,
-        )?;
-        let successor = build
-            .successor()
-            .ok_or(SyndicMutationError::IdentityCollision)?;
-        if point::<DraftPieceRootsFamily>(reader, &successor.key())?.is_some() {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        Ok(())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        settlement::prepare(&self.prepared, reader)
     }
 
     fn reserve_reconciliation(
@@ -2363,25 +2338,31 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        settlement::contribute(&self.prepared, reader, mutations)
+        if let Some(prepared) = prepared {
+            settlement::contribute(prepared, mutations)?;
+        }
+        Ok(())
     }
 }
 
 impl DomainMutation<SyndicDomain> for TerminalMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<PreparedTerminalMutation>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if let Some(settlement) =
             point::<DraftPieceSettlementsFamily>(reader, &settlement_key(&self.prepared))?
         {
             return if settlement_is_terminal_target(&settlement, self.kind)
                 && settlement_matches(reader, &settlement, &self.prepared)?
             {
-                Ok(())
+                Ok(None)
             } else {
                 Err(SyndicMutationError::IdentityCollision)
             };
@@ -2418,51 +2399,6 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             {
                 return Err(SyndicMutationError::IdentityCollision);
             }
-            return Ok(());
-        }
-        if self.prepared.prebuild_rejection().is_some() {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let build = existing_build.ok_or(SyndicMutationError::IdentityCollision)?;
-        if !build_matches(&build, &self.prepared)
-            || !matches!(
-                build.lifecycle(),
-                DraftPieceBuildLifecycleV1::Open | DraftPieceBuildLifecycleV1::Complete
-            )
-        {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let expected_session = expected_active_session(&self.prepared, &build)?;
-        authenticate_source_transition(
-            reader,
-            &build,
-            &expected_session,
-            next_progress_key(&build)?,
-        )?;
-        Ok(())
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<DraftPieceBuildsCodec>(1)?;
-        reservation.reserve_records::<DraftPieceBuildProgressCodec>(1)?;
-        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
-        reservation.reserve_records::<DraftPieceSettlementsCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
-        mutations: &mut MutationBuilder<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        if point::<DraftPieceSettlementsFamily>(reader, &settlement_key(&self.prepared))?.is_some()
-        {
-            return Ok(());
-        }
-        if point_build(reader, &settlement_key(&self.prepared))?.is_none() {
             let header = self.prepared.header;
             let (outcome, lifecycle) = match self.kind {
                 TerminalKind::Cancelled => (
@@ -2512,16 +2448,36 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
                     ),
                 )),
             );
-            put_build_transition(mutations, &build, &receipt)?;
-            put_session_head(mutations, &cleared)?;
-            mutations.put::<DraftPieceSettlementsCodec>(&settlement.key(), &settlement)?;
-            return Ok(());
+            return Ok(Some(PreparedTerminalMutation {
+                build,
+                receipt,
+                session: cleared,
+                settlement,
+            }));
         }
-        let build = required_build(reader, &settlement_key(&self.prepared))?;
+        if self.prepared.prebuild_rejection().is_some() {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        let build = existing_build.ok_or(SyndicMutationError::IdentityCollision)?;
+        if !build_matches(&build, &self.prepared)
+            || !matches!(
+                build.lifecycle(),
+                DraftPieceBuildLifecycleV1::Open | DraftPieceBuildLifecycleV1::Complete
+            )
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         let current = session_head(reader, build.draft_id(), build.session_id())?;
         if current.active_operation() != Some(&custody_for(&build)) {
             return Err(SyndicMutationError::IdentityCollision);
         }
+        let expected_session = expected_active_session(&self.prepared, &build)?;
+        authenticate_source_transition(
+            reader,
+            &build,
+            &expected_session,
+            next_progress_key(&build)?,
+        )?;
         let source_receipt =
             required::<DraftPieceBuildProgressFamily>(reader, &build.progress_receipt().key())?;
         if let Some(successor) = build.successor()
@@ -2573,9 +2529,44 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
                 ),
             )),
         );
-        put_session_head(mutations, &cleared)?;
-        mutations.put::<DraftPieceSettlementsCodec>(&settlement.key(), &settlement)?;
-        put_build_transition(mutations, &terminal, &receipt)?;
+        Ok(Some(PreparedTerminalMutation {
+            build: terminal,
+            receipt,
+            session: cleared,
+            settlement,
+        }))
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<DraftPieceBuildsCodec>(1)?;
+        reservation.reserve_records::<DraftPieceBuildProgressCodec>(1)?;
+        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        reservation.reserve_records::<DraftPieceSettlementsCodec>(1)?;
         Ok(())
     }
+
+    fn contribute(
+        prepared: Self::Prepared,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        if let Some(prepared) = prepared {
+            put_session_head(mutations, &prepared.session)?;
+            mutations.put::<DraftPieceSettlementsCodec>(
+                &prepared.settlement.key(),
+                &prepared.settlement,
+            )?;
+            put_build_transition(mutations, &prepared.build, &prepared.receipt)?;
+        }
+        Ok(())
+    }
+}
+
+struct PreparedTerminalMutation {
+    build: DraftPieceBuildRecordV1,
+    receipt: DraftPieceBuildProgressReceiptV1,
+    session: DraftEditorCandidateSessionV1,
+    settlement: DraftPieceSettlementV1,
 }

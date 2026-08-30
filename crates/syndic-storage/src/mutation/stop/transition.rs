@@ -14,9 +14,13 @@ use super::{
 
 impl DomainMutation<SyndicDomain> for JoinStopCauseMutation {
     type Error = SyndicMutationError;
+    type Prepared = StopOperationRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.successor(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.successor(reader)
     }
 
     fn reserve_reconciliation(
@@ -28,12 +32,10 @@ impl DomainMutation<SyndicDomain> for JoinStopCauseMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let successor = self.successor(reader)?;
-        mutations.put::<StopOperationsCodec>(&successor.id(), &successor)?;
+        mutations.put::<StopOperationsCodec>(&prepared.id(), &prepared)?;
         Ok(())
     }
 }
@@ -75,9 +77,13 @@ impl JoinStopCauseMutation {
 
 impl DomainMutation<SyndicDomain> for ClaimStopDispatchMutation {
     type Error = SyndicMutationError;
+    type Prepared = StopOperationRecord;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.successor(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.successor(reader)
     }
 
     fn reserve_reconciliation(
@@ -89,12 +95,10 @@ impl DomainMutation<SyndicDomain> for ClaimStopDispatchMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let successor = self.successor(reader)?;
-        mutations.put::<StopOperationsCodec>(&successor.id(), &successor)?;
+        mutations.put::<StopOperationsCodec>(&prepared.id(), &prepared)?;
         Ok(())
     }
 }
@@ -134,7 +138,7 @@ impl ClaimStopDispatchMutation {
     }
 }
 
-struct SafeReopenRecords {
+pub struct SafeReopenRecords {
     route: Option<AcceptedRouteGenerationRecord>,
     route_head: Option<AcceptedRouteGenerationHeadRecord>,
     gate: InputGateRecord,
@@ -144,9 +148,13 @@ struct SafeReopenRecords {
 
 impl DomainMutation<SyndicDomain> for SafelyReopenStopOperationMutation {
     type Error = SyndicMutationError;
+    type Prepared = SafeReopenRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -162,11 +170,10 @@ impl DomainMutation<SyndicDomain> for SafelyReopenStopOperationMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 

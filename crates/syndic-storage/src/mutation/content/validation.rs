@@ -1,3 +1,5 @@
+use beryl_model::SyndicContentId;
+
 use super::*;
 
 pub(super) fn validate_prepared_manifest(

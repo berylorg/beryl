@@ -126,9 +126,13 @@ impl PublishBindingMutation {
 
 impl DomainMutation<SyndicDomain> for PublishBindingMutation {
     type Error = SyndicMutationError;
+    type Prepared = PublishBindingRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -143,15 +147,14 @@ impl DomainMutation<SyndicDomain> for PublishBindingMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 
-struct PublishBindingRecords {
+pub struct PublishBindingRecords {
     binding: BindingRecord,
     head: BindingHeadRecord,
     reservation: Option<CasThreadIndexRecord>,

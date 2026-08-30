@@ -137,9 +137,13 @@ struct PromoteAcceptedInputMutation {
 
 impl DomainMutation<SyndicDomain> for PromoteAcceptedInputMutation {
     type Error = SyndicMutationError;
+    type Prepared = PromotionRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        PromotionRecords::build(reader, &self.promotion).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        PromotionRecords::build(reader, &self.promotion)
     }
 
     fn reserve_reconciliation(
@@ -170,10 +174,9 @@ impl DomainMutation<SyndicDomain> for PromoteAcceptedInputMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        PromotionRecords::build(reader, &self.promotion)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }

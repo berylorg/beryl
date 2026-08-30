@@ -105,9 +105,13 @@ pub(super) struct AbandonStopOperationMutation {
 
 impl DomainMutation<SyndicDomain> for AbandonStopOperationMutation {
     type Error = SyndicMutationError;
+    type Prepared = StopAbandonmentRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        self.records(reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        self.records(reader)
     }
 
     fn reserve_reconciliation(
@@ -139,11 +143,10 @@ impl DomainMutation<SyndicDomain> for AbandonStopOperationMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        self.records(reader)?.contribute(mutations)
+        prepared.contribute(mutations)
     }
 }
 
@@ -167,7 +170,7 @@ impl AbandonStopOperationMutation {
         }
         if authority.record.admission().is_provider_operation() {
             return provider_abandonment_records(reader, request, authority)
-                .map(StopAbandonmentRecords::ProviderOperation);
+                .map(StopAbandonmentRecords::provider_operation);
         }
 
         let thread = required::<ThreadsFamily>(reader, &request.target.thread_id())?;
@@ -434,25 +437,23 @@ impl AbandonStopOperationMutation {
             StopOperationState::Abandoned(witness),
         )
         .map_err(|_| SyndicMutationError::InputGateStateConflict)?;
-        Ok(StopAbandonmentRecords::Ordinary(Box::new(
-            AbandonmentRecords {
-                binding,
-                binding_head,
-                reservation,
-                membership,
-                route,
-                route_head,
-                next_source,
-                gate,
-                stop,
-                event,
-                state,
-                summary,
-                transcript_head,
-                transcript_build,
-                activity,
-            },
-        )))
+        Ok(StopAbandonmentRecords::ordinary(AbandonmentRecords {
+            binding,
+            binding_head,
+            reservation,
+            membership,
+            route,
+            route_head,
+            next_source,
+            gate,
+            stop,
+            event,
+            state,
+            summary,
+            transcript_head,
+            transcript_build,
+            activity,
+        }))
     }
 }
 

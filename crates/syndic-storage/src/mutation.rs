@@ -432,8 +432,12 @@ struct CreateThreadMutation {
 
 impl DomainMutation<SyndicDomain> for CreateThreadMutation {
     type Error = SyndicMutationError;
+    type Prepared = InitialThreadRecords;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let records = self.creation.records();
         let transcript_build_collision = match &records.transcript_build {
             Some(build) => point::<TranscriptBuildsFamily>(
@@ -488,7 +492,7 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
         if let Some(source) = &self.creation.source {
             validate_source_tail(reader, source, self.creation.created_at)?;
         }
-        Ok(())
+        Ok(records)
     }
 
     fn reserve_reconciliation(
@@ -519,11 +523,9 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        records: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let records = self.creation.records();
         mutations.put::<ThreadsCodec>(&records.thread.id(), &records.thread)?;
         mutations.put::<ImageLabelAuthorityHeadsCodec>(
             &records.thread.id(),

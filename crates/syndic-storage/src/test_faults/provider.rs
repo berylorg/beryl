@@ -310,10 +310,27 @@ impl PersistedProviderNarrativeFault {
     }
 }
 
+enum PreparedPersistedProviderNarrativeFault {
+    Span {
+        key: ProviderNarrativeSpanKey,
+        span: ProviderNarrativeSpanRecord,
+    },
+    MovedKey {
+        source: ProviderNarrativeSpanKey,
+        destination: ProviderNarrativeSpanKey,
+        span: ProviderNarrativeSpanRecord,
+    },
+    Build(ProviderItemBuildRecord),
+}
+
 impl DomainMutation<SyndicDomain> for PersistedProviderNarrativeFault {
     type Error = PersistedProviderNarrativeCorruptionError;
+    type Prepared = PreparedPersistedProviderNarrativeFault;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let build = reader.point::<ProviderItemBuildsCodec>(
             &self.expected_build.item_id(),
             crate::codec::family_point_limit::<ProviderItemBuildsFamily>(),
@@ -338,7 +355,24 @@ impl DomainMutation<SyndicDomain> for PersistedProviderNarrativeFault {
         {
             return Err(PersistedProviderNarrativeCorruptionError::DestinationOccupied);
         }
-        Ok(())
+        match self.replacement {
+            PersistedProviderNarrativeReplacement::Span(span) => {
+                Ok(PreparedPersistedProviderNarrativeFault::Span {
+                    key: span_key,
+                    span: *span,
+                })
+            }
+            PersistedProviderNarrativeReplacement::MovedKey(destination) => {
+                Ok(PreparedPersistedProviderNarrativeFault::MovedKey {
+                    source: span_key,
+                    destination,
+                    span: self.expected_span,
+                })
+            }
+            PersistedProviderNarrativeReplacement::Build(build) => {
+                Ok(PreparedPersistedProviderNarrativeFault::Build(*build))
+            }
+        }
     }
 
     fn reserve_reconciliation(
@@ -360,21 +394,23 @@ impl DomainMutation<SyndicDomain> for PersistedProviderNarrativeFault {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         builder: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let span_key = self.span_key();
-        match &self.replacement {
-            PersistedProviderNarrativeReplacement::Span(span) => {
-                builder.put::<ProviderNarrativeSpansCodec>(&span_key, span)?;
+        match prepared {
+            PreparedPersistedProviderNarrativeFault::Span { key, span } => {
+                builder.put::<ProviderNarrativeSpansCodec>(&key, &span)?;
             }
-            PersistedProviderNarrativeReplacement::MovedKey(destination) => {
-                builder.delete::<ProviderNarrativeSpansCodec>(&span_key)?;
-                builder.put::<ProviderNarrativeSpansCodec>(destination, &self.expected_span)?;
+            PreparedPersistedProviderNarrativeFault::MovedKey {
+                source,
+                destination,
+                span,
+            } => {
+                builder.delete::<ProviderNarrativeSpansCodec>(&source)?;
+                builder.put::<ProviderNarrativeSpansCodec>(&destination, &span)?;
             }
-            PersistedProviderNarrativeReplacement::Build(build) => {
-                builder.put::<ProviderItemBuildsCodec>(&build.item_id(), build)?;
+            PreparedPersistedProviderNarrativeFault::Build(build) => {
+                builder.put::<ProviderItemBuildsCodec>(&build.item_id(), &build)?;
             }
         }
         Ok(())

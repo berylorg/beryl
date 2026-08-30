@@ -343,7 +343,7 @@ fn rejection_families() -> Vec<PhysicalFamily> {
 fn exercise_deletion_partition(modulus: usize, remainder: usize) {
     let cases = deletion_cases();
     let rejection_families = rejection_families();
-    assert_eq!(cases.len(), 52);
+    assert_eq!(cases.len(), 53);
     assert_eq!(cases.len(), rejection_families.len());
     for family in rejection_families {
         assert_eq!(
@@ -405,6 +405,11 @@ fn deletion_cases() -> Vec<DeletionCase> {
             family: PhysicalFamily::Threads,
             delete: FixtureDelete::Thread(id(40)),
             expected: "draft owner thread is missing",
+        },
+        DeletionCase {
+            family: PhysicalFamily::ImageLabelAuthorityHeads,
+            delete: FixtureDelete::ImageLabelAuthorityHead(id(40)),
+            expected: "thread image-label authority head is missing",
         },
         DeletionCase {
             family: PhysicalFamily::ThreadExecutions,

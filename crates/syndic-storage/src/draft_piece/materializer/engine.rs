@@ -1679,17 +1679,21 @@ fn validate_output_frontier_records(
 
 impl DomainMutation<SyndicDomain> for BeginMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<DraftComposerBuildRecordV1>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let key = self.initial.key();
         let mapping_key = DraftComposerMaterializationKeyV1::new(key.source(), key.format());
         if let Some(mapping) = point::<DraftComposerMaterializationsFamily>(reader, &mapping_key)? {
             validate_mapping_for_mutation(reader, mapping_key, mapping)?;
-            return Ok(());
+            return Ok(None);
         }
         if let Some(build) = point::<DraftComposerBuildsFamily>(reader, &key)? {
             return if build.key() == key {
-                Ok(())
+                Ok(None)
             } else {
                 Err(SyndicMutationError::IdentityCollision)
             };
@@ -1704,7 +1708,7 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
         if source.reference() != key.source() {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        Ok(())
+        Ok(Some(self.initial))
     }
 
     fn reserve_reconciliation(
@@ -1716,21 +1720,11 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if point::<DraftComposerBuildsFamily>(reader, &self.initial.key())?.is_none()
-            && point::<DraftComposerMaterializationsFamily>(
-                reader,
-                &DraftComposerMaterializationKeyV1::new(
-                    self.initial.key().source(),
-                    self.initial.key().format(),
-                ),
-            )?
-            .is_none()
-        {
-            mutations.put::<DraftComposerBuildsCodec>(&self.initial.key(), &self.initial)?;
+        if let Some(prepared) = prepared {
+            mutations.put::<DraftComposerBuildsCodec>(&prepared.key(), &prepared)?;
         }
         Ok(())
     }
@@ -1778,8 +1772,12 @@ fn validate_mapping_for_mutation(
 
 impl DomainMutation<SyndicDomain> for StepMutation {
     type Error = SyndicMutationError;
+    type Prepared = PreparedDraftComposerStepV1;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let prepared = &self.prepared;
         if point::<DraftComposerBuildsFamily>(reader, &prepared.expected.key())?
             != Some(prepared.expected.clone())
@@ -1810,7 +1808,7 @@ impl DomainMutation<SyndicDomain> for StepMutation {
                 return Err(SyndicMutationError::IdentityCollision);
             }
         }
-        Ok(())
+        Ok(self.prepared)
     }
 
     fn reserve_reconciliation(
@@ -1840,11 +1838,10 @@ impl DomainMutation<SyndicDomain> for StepMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let p = &self.prepared;
+        let p = &prepared;
         if let Some(manifest) = &p.next_manifest {
             mutations.put::<ContentManifestsCodec>(&manifest.id(), manifest)?;
         }
@@ -1949,8 +1946,12 @@ fn validate_exact_or_absent_records(
 
 impl DomainMutation<SyndicDomain> for TerminalMutation {
     type Error = SyndicMutationError;
+    type Prepared = Option<(DraftComposerBuildKeyV1, DraftComposerBuildRecordV1)>;
 
-    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if matches!(self.kind, TerminalKind::Supersede(successor) if successor == self.key.operation())
         {
             return Err(SyndicMutationError::IdentityCollision);
@@ -1961,17 +1962,39 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             },
         )?;
         match build.lifecycle() {
-            DraftComposerBuildLifecycleV1::Open(_) => Ok(()),
+            DraftComposerBuildLifecycleV1::Open(_) => {
+                let lifecycle = match self.kind {
+                    TerminalKind::Cancel => DraftComposerBuildLifecycleV1::Cancelled,
+                    TerminalKind::Fail => DraftComposerBuildLifecycleV1::Failed(
+                        DraftComposerFailureReasonV1::Operational,
+                    ),
+                    TerminalKind::Supersede(successor) => {
+                        DraftComposerBuildLifecycleV1::Superseded(successor)
+                    }
+                };
+                let next = copy_build(
+                    &build,
+                    build.encoder().clone(),
+                    build.records(),
+                    build.output(),
+                    build.output_revision(),
+                    build.output_chunk_count(),
+                    build.output_encoded_bytes(),
+                    build.output_chain_digest(),
+                    lifecycle,
+                );
+                Ok(Some((self.key, next)))
+            }
             DraftComposerBuildLifecycleV1::Cancelled
                 if matches!(self.kind, TerminalKind::Cancel) =>
             {
-                Ok(())
+                Ok(None)
             }
             DraftComposerBuildLifecycleV1::Failed(_) if matches!(self.kind, TerminalKind::Fail) => {
-                Ok(())
+                Ok(None)
             }
             DraftComposerBuildLifecycleV1::Superseded(existing) if matches!(self.kind, TerminalKind::Supersede(value) if value == *existing) => {
-                Ok(())
+                Ok(None)
             }
             _ => Err(SyndicMutationError::IdentityCollision),
         }
@@ -1986,37 +2009,11 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        let build = point::<DraftComposerBuildsFamily>(reader, &self.key)?.ok_or(
-            SyndicMutationError::RequiredRecordMissing {
-                family: "draft-composer-builds",
-            },
-        )?;
-        if matches!(build.lifecycle(), DraftComposerBuildLifecycleV1::Open(_)) {
-            let lifecycle = match self.kind {
-                TerminalKind::Cancel => DraftComposerBuildLifecycleV1::Cancelled,
-                TerminalKind::Fail => {
-                    DraftComposerBuildLifecycleV1::Failed(DraftComposerFailureReasonV1::Operational)
-                }
-                TerminalKind::Supersede(successor) => {
-                    DraftComposerBuildLifecycleV1::Superseded(successor)
-                }
-            };
-            let next = copy_build(
-                &build,
-                build.encoder().clone(),
-                build.records(),
-                build.output(),
-                build.output_revision(),
-                build.output_chunk_count(),
-                build.output_encoded_bytes(),
-                build.output_chain_digest(),
-                lifecycle,
-            );
-            mutations.put::<DraftComposerBuildsCodec>(&self.key, &next)?;
+        if let Some((key, build)) = prepared {
+            mutations.put::<DraftComposerBuildsCodec>(&key, &build)?;
         }
         Ok(())
     }
