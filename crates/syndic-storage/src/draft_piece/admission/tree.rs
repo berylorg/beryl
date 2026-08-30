@@ -637,7 +637,10 @@ fn envelope_tree(envelope: DraftMarkerAdmissionEnvelopeV1) -> DraftMarkerAdmissi
     }
 }
 
-fn source_key_less(a: DraftMarkerAdmissionSourceKeyV1, b: DraftMarkerAdmissionSourceKeyV1) -> bool {
+pub(crate) fn source_key_less(
+    a: DraftMarkerAdmissionSourceKeyV1,
+    b: DraftMarkerAdmissionSourceKeyV1,
+) -> bool {
     (a.source_label().get(), a.target_marker_id()) < (b.source_label().get(), b.target_marker_id())
 }
 

@@ -1,4 +1,5 @@
 mod codec;
+pub(crate) mod index;
 mod model;
 mod readiness_source;
 mod tree;
@@ -12,7 +13,14 @@ pub(crate) use codec::{
     DraftMarkerAdmissionHeadsCodec, DraftMarkerAdmissionHeadsFamily,
     DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionNodesFamily,
     DraftMarkerAdmissionReceiptsCodec, DraftMarkerAdmissionReceiptsFamily,
-    encoded_head_record_charge, encoded_node_record_charge, encoded_receipt_record_charge,
+    encoded_head_record_charge, encoded_node_key_charge, encoded_node_record_charge,
+    encoded_receipt_record_charge,
+};
+
+#[cfg(feature = "test-faults")]
+pub use index::{
+    DraftMarkerAdmissionIndexTestErrorV1, DraftMarkerAdmissionIndexTestStateV1,
+    DraftMarkerAdmissionIndexTestStepV1,
 };
 
 pub const DRAFT_MARKER_ADMISSION_MAX_HEADS: u64 = 64;

@@ -228,7 +228,7 @@ impl CanonicalEntry {
         selector_tag(self.selector)
     }
 
-    pub(super) fn evidence_bytes(&self) -> Vec<u8> {
+    pub(crate) fn evidence_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         match self.selector {
             DraftMarkerReadinessSourceSelectorV1::Candidate(source) => {

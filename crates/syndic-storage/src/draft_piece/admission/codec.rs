@@ -1056,6 +1056,14 @@ pub(crate) fn encoded_node_record_charge(
 ) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
     record_charge::<DraftMarkerAdmissionNodesFamily>(key, value)
 }
+
+pub(crate) fn encoded_node_key_charge(
+    key: &DraftMarkerAdmissionNodeKeyV1,
+) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
+    let key = DraftMarkerAdmissionNodesFamily::encode_key(key)
+        .map_err(|_| DraftMarkerAdmissionSchemaErrorV1::ValueTooLarge)?;
+    u64::try_from(key.len()).map_err(|_| DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)
+}
 pub(crate) fn encoded_receipt_record_charge(
     key: &DraftMarkerAdmissionReceiptKeyV1,
     value: &DraftMarkerAdmissionReplayReceiptV1,
