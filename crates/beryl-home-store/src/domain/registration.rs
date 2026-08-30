@@ -217,7 +217,7 @@ fn register_definition<D: StorageDomain>(
     }
 
     let persisted = read_persisted_metadata(generation, definition.name)?;
-    let (registered, existing) = match persisted {
+    let (families, existing) = match persisted {
         Some(persisted) => {
             validate_persisted(definition, &persisted)?;
             (open_existing_families::<D>(generation, definition)?, true)
@@ -230,27 +230,31 @@ fn register_definition<D: StorageDomain>(
             let snapshot = generation.database.snapshot().map_err(|source| {
                 registration_storage::<D>(DomainRegistrationStage::ReadRegistry, source)
             })?;
-            registered
-                .validate_schema(&snapshot, sidecars)
-                .map_err(|source| match source {
-                    callback::ErasedCallbackError::Access(source) => {
-                        DomainRegistrationError::ValidationAccess {
-                            domain: D::NAME,
-                            source,
-                        }
+            super::validation::validate_blueprint_schema(
+                &snapshot, definition, &families, sidecars,
+            )
+            .map_err(|source| match source {
+                callback::ErasedCallbackError::Access(source) => {
+                    DomainRegistrationError::ValidationAccess {
+                        domain: D::NAME,
+                        source,
                     }
-                    callback::ErasedCallbackError::Rejected(source) => {
-                        DomainRegistrationError::Validation {
-                            domain: D::NAME,
-                            source,
-                        }
+                }
+                callback::ErasedCallbackError::Rejected(source) => {
+                    DomainRegistrationError::Validation {
+                        domain: D::NAME,
+                        source,
                     }
-                })?;
+                }
+            })?;
         }
     } else {
         persist_new_registration::<D>(generation, definition)?;
     }
-    Ok(registered)
+    let snapshot = generation.database.snapshot().map_err(|source| {
+        registration_storage::<D>(DomainRegistrationStage::ReadRegistry, source)
+    })?;
+    registered_domain(definition, families, &snapshot)
 }
 
 pub(super) fn read_persisted_metadata(
@@ -290,7 +294,7 @@ pub(super) fn read_persisted_metadata(
 fn open_existing_families<D: StorageDomain>(
     generation: &StoreGeneration,
     definition: &DomainBlueprint,
-) -> Result<RegisteredDomain, DomainRegistrationError> {
+) -> Result<Vec<RegisteredFamily>, DomainRegistrationError> {
     let mut families = Vec::with_capacity(definition.families.len());
     for family in &definition.families {
         if !generation
@@ -313,13 +317,13 @@ fn open_existing_families<D: StorageDomain>(
             })?;
         families.push(registered_family(family, keyspace));
     }
-    registered_domain(definition, families)
+    Ok(families)
 }
 
 fn create_new_families<D: StorageDomain>(
     generation: &StoreGeneration,
     definition: &DomainBlueprint,
-) -> Result<RegisteredDomain, DomainRegistrationError> {
+) -> Result<Vec<RegisteredFamily>, DomainRegistrationError> {
     let mut keyspaces: Vec<Option<Keyspace>> = Vec::with_capacity(definition.families.len());
     for family in &definition.families {
         let exists = generation
@@ -381,7 +385,7 @@ fn create_new_families<D: StorageDomain>(
         );
     }
 
-    let families = definition
+    Ok(definition
         .families
         .iter()
         .zip(keyspaces)
@@ -391,8 +395,7 @@ fn create_new_families<D: StorageDomain>(
                 keyspace.expect("every declared family was opened or created"),
             )
         })
-        .collect();
-    registered_domain(definition, families)
+        .collect())
 }
 
 fn persist_new_registration<D: StorageDomain>(
@@ -455,16 +458,17 @@ pub(super) fn registered_family(
 pub(crate) fn registered_domain(
     definition: &DomainBlueprint,
     families: Vec<RegisteredFamily>,
+    snapshot: &fjall::Snapshot,
 ) -> Result<RegisteredDomain, DomainRegistrationError> {
     let family_slots = families
         .iter()
         .enumerate()
         .map(|(slot, family)| (family.logical_name, slot))
         .collect();
-    let attachment = (definition.attachment_factory)().map_err(|source| {
+    let attachment = (definition.attachment_factory)(snapshot, &families).map_err(|source| {
         DomainRegistrationError::AttachmentConstruction {
             domain: definition.name,
-            source,
+            source: Box::new(source),
         }
     })?;
     if attachment.attachment_type() != definition.attachment_type {
@@ -572,8 +576,10 @@ fn registration_failure_severity(error: &DomainRegistrationError) -> Option<Fail
         DomainRegistrationError::InvalidDefinition(_)
         | DomainRegistrationError::DuplicateDomain { .. }
         | DomainRegistrationError::OwnerTypeMismatch { .. }
-        | DomainRegistrationError::AttachmentConstruction { .. }
         | DomainRegistrationError::HealthGate(_) => None,
+        DomainRegistrationError::AttachmentConstruction { source, .. } => source
+            .downcast_ref::<attachment::AttachmentFactoryError>()
+            .and_then(attachment::AttachmentFactoryError::failure_severity),
         DomainRegistrationError::Storage { source, .. } => {
             source.downcast_ref::<ClassifiedFjallError>().map_or(
                 Some(FailureSeverity::Structural),

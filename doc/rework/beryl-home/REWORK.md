@@ -218,9 +218,10 @@
   assignment, byte-exact replay, and package-derived binding.
 - [x] Established independent monotonic Syndic draft-label protection with atomic thread creation,
   exact creation reconciliation, accepted-authority containment, and bounded corruption evidence.
+- [x] Established prepublication persisted-aware domain attachment construction with bounded typed
+  reads, exact failure classification, and no second initialization stage.
 - [ ] Establish operation-owned Syndic draft-marker admission with bounded authenticated indexes,
-  home-wide cross-restart retained-resource limits, and exact package-owned replay custody after
-  homogeneous proof-page and persisted-aware attachment-factory authority are reconciled.
+  home-wide cross-restart retained-resource limits, and exact package-owned replay custody.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.

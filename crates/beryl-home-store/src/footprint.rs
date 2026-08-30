@@ -284,7 +284,9 @@ mod tests {
         type RuntimeAttachment = ();
         type RuntimeAttachmentError = std::convert::Infallible;
 
-        fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+        fn create_runtime_attachment(
+            _reader: &crate::DomainRegistrationReader<'_, Self>,
+        ) -> Result<(), Self::RuntimeAttachmentError> {
             Ok(())
         }
 

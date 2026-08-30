@@ -7,19 +7,24 @@ use std::{
 };
 
 use beryl_home_store::{
-    DomainAttachmentAccessError, DomainHandleError, DomainReader, DomainRegistrationError,
-    DomainRuntimeAttachment, DomainSchemaVersion, HomeHealthState, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily,
-    RecordVersion, StorageDomain,
+    DomainAttachmentAccessError, DomainHandleError, DomainMutation, DomainReader,
+    DomainRegistrationError, DomainRegistrationReader, DomainRuntimeAttachment,
+    DomainSchemaVersion, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError,
+    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
     test_faults::{FaultController, FaultPoint, capability_with_test_attachment_type},
 };
 use tempfile::tempdir;
+
+mod support;
+use support::{FixtureMutationError, committed};
 
 static NEXT_IDENTITY: AtomicUsize = AtomicUsize::new(1);
 static DOMAIN_A_STATS: AttachmentStats = AttachmentStats::new();
 static DOMAIN_B_STATS: AttachmentStats = AttachmentStats::new();
 static IMPOSTOR_STATS: AttachmentStats = AttachmentStats::new();
 static FAIL_DOMAIN_B: AtomicBool = AtomicBool::new(false);
+static ATTACHMENT_READ_LIMIT: AtomicUsize = AtomicUsize::new(16);
 
 struct AttachmentStats {
     constructed: AtomicUsize,
@@ -53,16 +58,30 @@ impl AttachmentStats {
 
 struct TestAttachment {
     identity: usize,
+    persisted_value: Option<u64>,
     stats: &'static AttachmentStats,
 }
 
 impl TestAttachment {
-    fn new(stats: &'static AttachmentStats) -> Self {
+    fn new<D: StorageDomain>(
+        stats: &'static AttachmentStats,
+        reader: &DomainRegistrationReader<'_, D>,
+    ) -> Result<Self, FactoryError>
+    where
+        TestCodec<D>: RecordCodec<D, Key = u64, Value = u64>,
+    {
+        let persisted_value = reader
+            .point::<TestCodec<D>>(
+                &7,
+                PointReadLimit::new(ATTACHMENT_READ_LIMIT.load(Ordering::SeqCst)).unwrap(),
+            )
+            .map_err(FactoryError::Read)?;
         stats.constructed.fetch_add(1, Ordering::SeqCst);
-        Self {
+        Ok(Self {
             identity: NEXT_IDENTITY.fetch_add(1, Ordering::SeqCst),
+            persisted_value,
             stats,
-        }
+        })
     }
 }
 
@@ -79,20 +98,79 @@ impl Drop for TestAttachment {
 }
 
 #[derive(Debug)]
-struct FactoryError;
+enum FactoryError {
+    Configured,
+    Read(ReadError),
+}
 
 impl fmt::Display for FactoryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("configured attachment factory failure")
+        match self {
+            Self::Configured => formatter.write_str("configured attachment factory failure"),
+            Self::Read(source) => {
+                write!(formatter, "attachment registration read failed: {source}")
+            }
+        }
     }
 }
 
-impl Error for FactoryError {}
+impl Error for FactoryError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Configured => None,
+            Self::Read(source) => Some(source),
+        }
+    }
+}
 
 struct DomainA;
 struct DomainB;
 struct ImpostorDomain;
 struct TestCodec<D>(PhantomData<fn(D) -> D>);
+
+struct PutValue<D> {
+    key: u64,
+    value: u64,
+    _typed: PhantomData<fn(D) -> D>,
+}
+
+impl<D> PutValue<D> {
+    fn new(key: u64, value: u64) -> Self {
+        Self {
+            key,
+            value,
+            _typed: PhantomData,
+        }
+    }
+}
+
+impl<D: StorageDomain> DomainMutation<D> for PutValue<D>
+where
+    TestCodec<D>: RecordCodec<D, Key = u64, Value = u64>,
+{
+    type Error = FixtureMutationError;
+    type Prepared = Self;
+
+    fn prepare(self, _reader: &DomainReader<'_, D>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, D>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<TestCodec<D>>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        prepared: Self::Prepared,
+        mutations: &mut MutationBuilder<'_, D>,
+    ) -> Result<(), Self::Error> {
+        mutations.put::<TestCodec<D>>(&prepared.key, &prepared.value)?;
+        Ok(())
+    }
+}
 
 impl<D: StorageDomain> RecordCodec<D> for TestCodec<D> {
     type Key = u64;
@@ -138,9 +216,10 @@ macro_rules! attachment_domain {
             type RuntimeAttachment = TestAttachment;
             type RuntimeAttachmentError = $error;
 
-            fn create_runtime_attachment()
-            -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError> {
-                $factory
+            fn create_runtime_attachment(
+                reader: &DomainRegistrationReader<'_, Self>,
+            ) -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError> {
+                ($factory)(reader)
             }
 
             fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -154,26 +233,28 @@ attachment_domain!(
     DomainA,
     "runtime-a",
     DOMAIN_A_STATS,
-    Infallible,
-    Ok(TestAttachment::new(&DOMAIN_A_STATS))
+    FactoryError,
+    |reader| TestAttachment::new(&DOMAIN_A_STATS, reader)
 );
 attachment_domain!(
     DomainB,
     "runtime-b",
     DOMAIN_B_STATS,
     FactoryError,
-    if FAIL_DOMAIN_B.load(Ordering::SeqCst) {
-        Err(FactoryError)
-    } else {
-        Ok(TestAttachment::new(&DOMAIN_B_STATS))
+    |reader| {
+        if FAIL_DOMAIN_B.load(Ordering::SeqCst) {
+            Err(FactoryError::Configured)
+        } else {
+            TestAttachment::new(&DOMAIN_B_STATS, reader)
+        }
     }
 );
 attachment_domain!(
     ImpostorDomain,
     "runtime-a",
     IMPOSTOR_STATS,
-    Infallible,
-    Ok(TestAttachment::new(&IMPOSTOR_STATS))
+    FactoryError,
+    |reader| TestAttachment::new(&IMPOSTOR_STATS, reader)
 );
 
 fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
@@ -199,6 +280,154 @@ fn reset() {
     DOMAIN_B_STATS.reset();
     IMPOSTOR_STATS.reset();
     FAIL_DOMAIN_B.store(false, Ordering::SeqCst);
+    ATTACHMENT_READ_LIMIT.store(16, Ordering::SeqCst);
+}
+
+fn put<D: StorageDomain>(store: &HomeStore, domain: &beryl_home_store::DomainHandle<D>, value: u64)
+where
+    TestCodec<D>: RecordCodec<D, Key = u64, Value = u64>,
+{
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command
+        .add(domain.contribution(
+            store.domain_revision(domain).unwrap(),
+            PutValue::<D>::new(7, value),
+        ))
+        .unwrap();
+    committed(store.execute(command));
+}
+
+#[test]
+fn registration_attachments_read_only_their_persisted_domain_on_reopen() {
+    reset();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults.clone());
+    let domain_a = store.register_domain::<DomainA>().unwrap();
+    let domain_b = store.register_domain::<DomainB>().unwrap();
+    put(&store, &domain_a, 41);
+    put(&store, &domain_b, 99);
+    store.close().unwrap();
+
+    let mut store = open(directory.path(), faults);
+    let domain_a = store.register_domain::<DomainA>().unwrap();
+    let domain_b = store.register_domain::<DomainB>().unwrap();
+    let value_a = store
+        .with_domain_attachment(&domain_a.attachment_capability(), |attachment| {
+            attachment.persisted_value
+        })
+        .unwrap();
+    let value_b = store
+        .with_domain_attachment(&domain_b.attachment_capability(), |attachment| {
+            attachment.persisted_value
+        })
+        .unwrap();
+    assert_eq!(value_a, Some(41));
+    assert_eq!(value_b, Some(99));
+    store.close().unwrap();
+}
+
+#[test]
+fn failed_initial_attachment_construction_publishes_no_slot_and_allows_retry() {
+    reset();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults);
+
+    FAIL_DOMAIN_B.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        store.register_domain::<DomainB>(),
+        Err(DomainRegistrationError::AttachmentConstruction {
+            domain: "runtime-b",
+            ..
+        })
+    ));
+    assert!(matches!(
+        store.domain_handle::<DomainB>(),
+        Err(DomainHandleError::NotRegistered {
+            domain: "runtime-b"
+        })
+    ));
+    assert_eq!(DOMAIN_B_STATS.counts(), (0, 0, 0));
+
+    FAIL_DOMAIN_B.store(false, Ordering::SeqCst);
+    let handle = store.register_domain::<DomainB>().unwrap();
+    assert_eq!(DOMAIN_B_STATS.counts(), (1, 0, 0));
+    drop(handle);
+    store.close().unwrap();
+    assert_eq!(DOMAIN_B_STATS.counts(), (1, 1, 1));
+}
+
+#[test]
+fn structural_registration_read_failure_fails_health_before_publication() {
+    reset();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults.clone());
+    let domain = store.register_domain::<DomainA>().unwrap();
+    put(&store, &domain, 41);
+    store
+        .inject_persisted_corrupt_record::<DomainA, TestCodec<DomainA>>(
+            &domain,
+            &7_u64.to_be_bytes(),
+            &2_u32.to_be_bytes(),
+        )
+        .unwrap();
+    store.close().unwrap();
+
+    let mut store = open(directory.path(), faults);
+    assert!(matches!(
+        store.register_domain::<DomainA>(),
+        Err(DomainRegistrationError::AttachmentConstruction {
+            domain: "runtime-a",
+            ..
+        })
+    ));
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert!(matches!(
+        store.domain_handle::<DomainA>(),
+        Err(DomainHandleError::HealthGate(_))
+    ));
+    assert_eq!(DOMAIN_A_STATS.counts(), (1, 1, 1));
+    store.close().unwrap();
+}
+
+#[test]
+fn bounded_registration_read_failure_keeps_health_and_allows_retry() {
+    reset();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults.clone());
+    let domain = store.register_domain::<DomainA>().unwrap();
+    put(&store, &domain, 41);
+    store.close().unwrap();
+
+    ATTACHMENT_READ_LIMIT.store(1, Ordering::SeqCst);
+    let mut store = open(directory.path(), faults);
+    assert!(matches!(
+        store.register_domain::<DomainA>(),
+        Err(DomainRegistrationError::AttachmentConstruction {
+            domain: "runtime-a",
+            ..
+        })
+    ));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert!(matches!(
+        store.domain_handle::<DomainA>(),
+        Err(DomainHandleError::NotRegistered {
+            domain: "runtime-a"
+        })
+    ));
+
+    ATTACHMENT_READ_LIMIT.store(16, Ordering::SeqCst);
+    let domain = store.register_domain::<DomainA>().unwrap();
+    let persisted = store
+        .with_domain_attachment(&domain.attachment_capability(), |attachment| {
+            attachment.persisted_value
+        })
+        .unwrap();
+    assert_eq!(persisted, Some(41));
+    store.close().unwrap();
 }
 
 #[test]

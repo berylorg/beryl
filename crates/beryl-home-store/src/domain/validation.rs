@@ -1,4 +1,7 @@
-use super::{DomainValidationError, RegisteredDomain, callback::ErasedCallbackError};
+use super::{
+    DomainBlueprint, DomainValidationError, RegisteredDomain, RegisteredFamily,
+    callback::ErasedCallbackError,
+};
 use crate::{DomainCallbackSource, ReadError, SidecarVerifier};
 
 impl RegisteredDomain {
@@ -7,19 +10,42 @@ impl RegisteredDomain {
         snapshot: &fjall::Snapshot,
         sidecars: &SidecarVerifier<'_>,
     ) -> Result<(), ErasedCallbackError> {
-        self.validate_physical_families(snapshot)?;
-        (self.reopen_validator)(snapshot, self, sidecars)
+        validate_provisional_schema(
+            snapshot,
+            self.name,
+            &self.families,
+            self.reopen_validator,
+            sidecars,
+        )
     }
+}
 
-    fn validate_physical_families(
-        &self,
-        snapshot: &fjall::Snapshot,
-    ) -> Result<(), ErasedCallbackError> {
-        for family in &self.families {
-            crate::read::validate_physical_family(snapshot, self.name, family).map_err(access)?;
-        }
-        Ok(())
+pub(crate) fn validate_blueprint_schema(
+    snapshot: &fjall::Snapshot,
+    definition: &DomainBlueprint,
+    families: &[RegisteredFamily],
+    sidecars: &SidecarVerifier<'_>,
+) -> Result<(), ErasedCallbackError> {
+    validate_provisional_schema(
+        snapshot,
+        definition.name,
+        families,
+        definition.reopen_validator,
+        sidecars,
+    )
+}
+
+fn validate_provisional_schema(
+    snapshot: &fjall::Snapshot,
+    name: &'static str,
+    families: &[RegisteredFamily],
+    reopen_validator: super::ErasedReopenValidator,
+    sidecars: &SidecarVerifier<'_>,
+) -> Result<(), ErasedCallbackError> {
+    for family in families {
+        crate::read::validate_physical_family(snapshot, name, family).map_err(access)?;
     }
+    reopen_validator(snapshot, families, sidecars)
 }
 
 pub(super) fn public_validation_error(

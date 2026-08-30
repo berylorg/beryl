@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{cell::Cell, error::Error};
 
 use beryl_model::{DomainRevision, HomeRevision};
 use fjall::Snapshot;
@@ -240,15 +240,26 @@ pub enum ReadError {
 /// Short-lived typed view used by domain validators and mutation contributors.
 pub struct DomainReader<'a, D: StorageDomain> {
     snapshot: &'a Snapshot,
-    domain: &'a RegisteredDomain,
+    families: ReadFamilies<'a>,
     _typed: std::marker::PhantomData<fn(D) -> D>,
 }
 
 impl<'a, D: StorageDomain> DomainReader<'a, D> {
-    pub(crate) const fn new(snapshot: &'a Snapshot, domain: &'a RegisteredDomain) -> Self {
+    pub(crate) fn new(snapshot: &'a Snapshot, domain: &'a RegisteredDomain) -> Self {
         Self {
             snapshot,
-            domain,
+            families: ReadFamilies::Registered(domain),
+            _typed: std::marker::PhantomData,
+        }
+    }
+
+    pub(crate) const fn from_families(
+        snapshot: &'a Snapshot,
+        families: &'a [RegisteredFamily],
+    ) -> Self {
+        Self {
+            snapshot,
+            families: ReadFamilies::Provisional(families),
             _typed: std::marker::PhantomData,
         }
     }
@@ -259,7 +270,7 @@ impl<'a, D: StorageDomain> DomainReader<'a, D> {
         key: &R::Key,
         limit: PointReadLimit,
     ) -> Result<Option<R::Value>, ReadError> {
-        read_point::<D, R>(self.snapshot, self.domain, key, limit)
+        read_point::<D, R>(self.snapshot, self.families, key, limit)
     }
 
     /// Reads one finite typed key range under explicit item and byte bounds.
@@ -269,7 +280,86 @@ impl<'a, D: StorageDomain> DomainReader<'a, D> {
         direction: CursorDirection,
         limits: CursorReadLimits,
     ) -> Result<CursorPage<R::Key, R::Value>, ReadError> {
-        read_cursor::<D, R>(self.snapshot, self.domain, range, direction, limits)
+        read_cursor::<D, R>(self.snapshot, self.families, range, direction, limits)
+    }
+}
+
+pub struct DomainRegistrationReader<'a, D: StorageDomain> {
+    snapshot: &'a Snapshot,
+    families: &'a [RegisteredFamily],
+    failure_severity: Cell<Option<FailureSeverity>>,
+    _typed: std::marker::PhantomData<fn(D) -> D>,
+}
+
+impl<'a, D: StorageDomain> DomainRegistrationReader<'a, D> {
+    pub(crate) const fn new(snapshot: &'a Snapshot, families: &'a [RegisteredFamily]) -> Self {
+        Self {
+            snapshot,
+            families,
+            failure_severity: Cell::new(None),
+            _typed: std::marker::PhantomData,
+        }
+    }
+
+    pub(crate) fn failure_severity(&self) -> Option<FailureSeverity> {
+        self.failure_severity.get()
+    }
+
+    fn record_failure<T>(&self, result: &Result<T, ReadError>) {
+        if let Err(error) = result {
+            if let Some(severity) = read_failure_severity(error) {
+                self.failure_severity.set(Some(severity));
+            }
+        }
+    }
+
+    pub fn point<R: RecordCodec<D>>(
+        &self,
+        key: &R::Key,
+        limit: PointReadLimit,
+    ) -> Result<Option<R::Value>, ReadError> {
+        let result = read_point::<D, R>(
+            self.snapshot,
+            ReadFamilies::Provisional(self.families),
+            key,
+            limit,
+        );
+        self.record_failure(&result);
+        result
+    }
+
+    pub fn cursor<R: RecordCodec<D>>(
+        &self,
+        range: &CursorRange<R::Key>,
+        direction: CursorDirection,
+        limits: CursorReadLimits,
+    ) -> Result<CursorPage<R::Key, R::Value>, ReadError> {
+        let result = read_cursor::<D, R>(
+            self.snapshot,
+            ReadFamilies::Provisional(self.families),
+            range,
+            direction,
+            limits,
+        );
+        self.record_failure(&result);
+        result
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ReadFamilies<'a> {
+    Registered(&'a RegisteredDomain),
+    Provisional(&'a [RegisteredFamily]),
+}
+
+impl<'a> ReadFamilies<'a> {
+    fn family(self, logical_name: &str) -> Option<&'a RegisteredFamily> {
+        match self {
+            Self::Registered(domain) => domain.family(logical_name),
+            Self::Provisional(families) => families
+                .iter()
+                .find(|family| family.logical_name == logical_name),
+        }
     }
 }
 
@@ -318,7 +408,7 @@ impl HomeStore {
                 .database
                 .snapshot()
                 .map_err(|source| fjall_storage(ReadStage::PointSize, source))?;
-            read_point::<D, R>(&snapshot, domain, key, limit)
+            read_point::<D, R>(&snapshot, ReadFamilies::Registered(domain), key, limit)
         })
     }
 
@@ -338,7 +428,13 @@ impl HomeStore {
                 .database
                 .snapshot()
                 .map_err(|source| fjall_storage(ReadStage::CursorKey, source))?;
-            read_cursor::<D, R>(&snapshot, domain, range, direction, limits)
+            read_cursor::<D, R>(
+                &snapshot,
+                ReadFamilies::Registered(domain),
+                range,
+                direction,
+                limits,
+            )
         })
     }
 
@@ -447,7 +543,7 @@ fn invalid_revision(kind: &'static str, message: &'static str) -> ReadError {
     }
 }
 
-fn read_failure_severity(error: &ReadError) -> Option<FailureSeverity> {
+pub(crate) fn read_failure_severity(error: &ReadError) -> Option<FailureSeverity> {
     match error {
         ReadError::HealthGate(_)
         | ReadError::ForeignDomain { .. }

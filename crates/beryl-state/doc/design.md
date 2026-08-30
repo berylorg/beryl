@@ -369,21 +369,23 @@ absorbing Syndic thread ownership.
   inspection uses separate typed build authority and cannot select sealed state. A bare set id
   never authorizes a sealed-manifest read.
 - For draft-marker label readiness, this package exposes one private typed Asset witness
-  contribution for `beryl-home-store` process-local proof composition. On the proof command's
-  coherent snapshot and exact Asset-domain revision fence, it revalidates the complete
-  accepted `SealedAssetReferenceSetProof`, exact sealed manifest and completion evidence, the
-  requested source-label-first entry, and the complete source `AssetId`, then emits only the fixed-
-  size generic correlation expected by the protocol. Target marker identity and opaque target-
-  marker intent remain Syndic-private and are excluded from this witness input and the shared
-  correlation. The witness cannot read Syndic records, mutate Asset state, advance a revision, or
-  return its private facts or correlation to the app. Missing, stale, malformed, or disagreeing
-  accepted evidence rejects the composition determinately.
+  contribution for `beryl-home-store` process-local proof composition. Its input is the complete
+  accepted-only canonical page and never contains candidate or cut entries. On the proof command's
+  coherent snapshot and exact Asset-domain revision fence, it revalidates every complete accepted
+  `SealedAssetReferenceSetProof`, exact sealed manifest and completion evidence, requested source-
+  label-first entry, and complete source `AssetId`, then derives the same full fixed-size page
+  correlation solely from those Asset-owned validated facts plus the accepted-only page shape.
+  Target marker identity and opaque target-marker intent remain Syndic-private and are excluded from
+  this witness input and the shared correlation. The witness cannot read Syndic records, mutate
+  Asset state, advance a revision, or return its private facts or correlation to the app. Missing,
+  stale, malformed, or disagreeing accepted evidence rejects the composition determinately.
 - That witness uses HomeStore's generic fixed-32-byte-digest protocol marker instantiated with the
   system-owned protocol id `0x53444d5244595631` and operation id `0x5244595041474531`. Its private
   input derives the agreed SHA-256 correlation under
-  `syndic/draft-marker-label-readiness-page/v1` from page ordinal, EOF, ordered complete sealed-set
-  proofs, source labels, and exact source `AssetId` values without target marker identity, importing
-  a Syndic type, or publishing a shared domain value through `beryl-model`.
+  `syndic/draft-marker-label-readiness-page/v1` from the complete accepted-only page shape: page
+  ordinal, EOF, ordered complete sealed-set proofs, source labels, and exact source `AssetId` values,
+  without target marker identity, importing a Syndic type, or publishing a shared domain value
+  through `beryl-model`.
 - Its accepted-entry encoding is fixed at 194 raw bytes: tag `1`; 16-byte sealed-set id; 32-byte
   sequential digest; little-endian `u64` sequential count and maximum label, with zero meaning no
   maximum; 32-byte ordered-asset digest; little-endian `u64` ordered count and entry frontier;

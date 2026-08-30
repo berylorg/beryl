@@ -305,7 +305,7 @@ pub use proof::{
     ProofDomain, ProofProtocolIdentity, ProofReceiptConsumer, ProofReceiptError,
     ProofSourceContribution, ProofWitnessContribution,
 };
-pub use read::{CodecOperation, DomainReader, ReadError, ReadStage};
+pub use read::{CodecOperation, DomainReader, DomainRegistrationReader, ReadError, ReadStage};
 pub use reconciliation::{
     DomainReconciliation, ReconciliationFailure, ReconciliationHandle, ReconciliationReader,
     ReconciliationRecord, ReconciliationResolution,

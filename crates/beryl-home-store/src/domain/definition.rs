@@ -91,9 +91,9 @@ fn reconcile_typed<D: StorageDomain>(
 
 fn validate_reopen_typed<D: StorageDomain>(
     snapshot: &fjall::Snapshot,
-    domain: &RegisteredDomain,
+    families: &[RegisteredFamily],
     sidecars: &crate::SidecarVerifier<'_>,
 ) -> Result<(), callback::ErasedCallbackError> {
-    D::validate_reopen(&DomainReader::new(snapshot, domain), sidecars)
+    D::validate_reopen(&DomainReader::from_families(snapshot, families), sidecars)
         .map_err(callback::ErasedCallbackError::from_typed)
 }

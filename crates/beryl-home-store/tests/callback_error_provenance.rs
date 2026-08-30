@@ -11,7 +11,7 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{committed, not_committed, AlphaDomain, PutBytes};
+use support::{AlphaDomain, PutBytes, committed, not_committed};
 
 struct AccessDomain;
 struct AccessRecord;
@@ -26,7 +26,9 @@ impl StorageDomain for AccessDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = std::convert::Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 

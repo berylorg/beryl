@@ -4,12 +4,12 @@ use super::*;
 
 pub(super) fn read_point<D: StorageDomain, R: RecordCodec<D>>(
     snapshot: &Snapshot,
-    domain: &RegisteredDomain,
+    families: ReadFamilies<'_>,
     key: &R::Key,
     limit: PointReadLimit,
 ) -> Result<Option<R::Value>, ReadError> {
     validate_codec::<D, R>()?;
-    let family = resolve_family::<D, R>(domain)?;
+    let family = resolve_family::<D, R>(families)?;
     let encoded_key = encode_stored_key::<D, R>(key)?;
     let Some(point) = snapshot
         .point(&family.keyspace, &encoded_key)
@@ -31,13 +31,13 @@ pub(super) fn read_point<D: StorageDomain, R: RecordCodec<D>>(
 
 pub(super) fn read_cursor<D: StorageDomain, R: RecordCodec<D>>(
     snapshot: &Snapshot,
-    domain: &RegisteredDomain,
+    families: ReadFamilies<'_>,
     range: &CursorRange<R::Key>,
     direction: CursorDirection,
     limits: CursorReadLimits,
 ) -> Result<CursorPage<R::Key, R::Value>, ReadError> {
     validate_codec::<D, R>()?;
-    let family = resolve_family::<D, R>(domain)?;
+    let family = resolve_family::<D, R>(families)?;
     let (start, end) = range.bounds();
     let start = encode_bound::<D, R>(start)?;
     let end = encode_bound::<D, R>(end)?;
@@ -352,9 +352,9 @@ fn bound_bytes(bound: &Bound<Box<[u8]>>) -> &[u8] {
 }
 
 fn resolve_family<D: StorageDomain, R: RecordCodec<D>>(
-    domain: &RegisteredDomain,
+    families: ReadFamilies<'_>,
 ) -> Result<&RegisteredFamily, ReadError> {
-    let family = domain.family(R::FAMILY).ok_or(ReadError::UnknownFamily {
+    let family = families.family(R::FAMILY).ok_or(ReadError::UnknownFamily {
         domain: D::NAME,
         family: R::FAMILY,
     })?;

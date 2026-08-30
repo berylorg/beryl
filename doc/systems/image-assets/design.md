@@ -164,27 +164,29 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   sealed assigned target-id root, and any exact contiguous allocation range. Syndic derives the
   fixed-size durable readiness binding only while moving that proof into mutation custody; no
   public input can construct, inject, replace, or use the binding as independent authority.
-- Same-conversation reuse preserves the existing label only when exact destination authority proves
-  the same `AssetId`. A live candidate occurrence is proved through its root-bound marker lookup. A
-  retained private marker whose occurrence was removed by its captured cut is proved through the
-  exact source and successor candidate provenance. For a local or inherited accepted label, a
-  typed Syndic source contribution validates the immutable origin span while a typed Beryl-state
-  witness contribution validates the sealed-set proof, exact sealed manifest/completion evidence,
-  label-first entry, and complete `AssetId`. `beryl-home-store` runs those roles on one coherent
-  read snapshot independent of writer serialization and accepts only their equal fixed-size
-  correlation. Neither domain reads the other's records, and the app never receives or compares
-  the private facts. Missing provenance, stale
-  candidate binding, an absent origin or label-first entry, or correlation disagreement makes
-  readiness unavailable and cannot authorize insertion.
+- Every readiness page has exactly one homogeneous proof shape. A candidate/cut-only page contains
+  only candidate or cut associations and uses Syndic's source-only proof: same-conversation reuse
+  preserves the existing label only when exact destination authority proves the same `AssetId`; a
+  live candidate occurrence is proved through its root-bound marker lookup, and a retained private
+  marker whose occurrence was removed by its captured cut is proved through the exact source and
+  successor candidate provenance. An accepted-only page contains only local or inherited accepted
+  associations and uses one typed Syndic source contribution to validate the immutable origin span
+  plus one typed Beryl-state witness contribution to validate the sealed-set proof, exact sealed
+  manifest/completion evidence, label-first entry, and complete `AssetId`. `beryl-home-store` runs
+  the two accepted-only roles on one coherent read snapshot independent of writer serialization and
+  accepts only their equal fixed-size complete-page correlation. Candidate/cut-only pages have no
+  Asset witness. One operation may ingest both page shapes in arbitrary order but never mixes them
+  within one page. Neither domain reads the other's records, and the app never receives or compares
+  the private facts. Missing provenance, stale candidate binding, an absent origin or label-first
+  entry, or correlation disagreement makes readiness unavailable and cannot authorize insertion.
 - Readiness evidence may arrive in arbitrary caller or source order. Each move-only operation page
   attempt owns one bounded canonical page and the complete sealed HomeStore proof plan with its
   independently retained receipt consumer. The app may transport only the opaque attempt state,
   executable command, and receipt; only the executable enters `HomeStore::compose_proof`, and the
-  attempt retains the consumer. After private Syndic and Asset evidence agrees, Syndic inserts
-  every occurrence into
-  operation-owned authenticated source-order and target-id indexes and rejects duplicate target
-  marker ids. No caller cumulative digest, resident label map, or page prefix is readiness
-  authority.
+  attempt retains the consumer. After the applicable source-only or Syndic/Asset source-and-witness
+  evidence agrees, Syndic inserts every occurrence into operation-owned authenticated source-order
+  and target-id indexes and rejects duplicate target marker ids. No caller cumulative digest,
+  resident label map, or page prefix is readiness authority.
 - Exact evidence EOF freezes the authenticated source-order root and count as the occurrence
   commitment, then starts bounded durable post-EOF assignment. For cross-conversation allocation,
   Syndic reserves a contiguous range derived from the authenticated occurrence count and strictly

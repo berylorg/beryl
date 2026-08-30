@@ -4,20 +4,20 @@ use std::{
     error::Error,
     fmt,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Condvar, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     DomainReconciliation, DomainSchemaVersion, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit,
     ReadError, ReadStage, ReconciliationReader, ReconciliationReservation,
     ReconciliationResolution, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
@@ -193,7 +193,9 @@ macro_rules! domain {
             type RuntimeAttachment = ();
             type RuntimeAttachmentError = std::convert::Infallible;
 
-            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+            fn create_runtime_attachment(
+                _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+            ) -> Result<(), Self::RuntimeAttachmentError> {
                 Ok(())
             }
 
@@ -223,7 +225,9 @@ impl StorageDomain for CollisionDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = std::convert::Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 

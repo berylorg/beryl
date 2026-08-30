@@ -3,12 +3,12 @@
 use std::{error::Error, fmt, io, num::NonZeroU64};
 
 use beryl_home_store::{
-    test_faults::FaultController, DomainCallbackError, DomainCallbackSource, DomainMutation,
-    DomainReader, DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HomeCommand,
+    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
+    DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HomeCommand,
     HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
     MutationBuildError, MutationBuilder, PointReadLimit, RecordCodec, RecordFamily, RecordVersion,
     SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError, SidecarNamespace,
-    SidecarVerifier, StorageDomain, WholeHomeScrubTrigger,
+    SidecarVerifier, StorageDomain, WholeHomeScrubTrigger, test_faults::FaultController,
 };
 use tempfile::tempdir;
 
@@ -62,7 +62,9 @@ impl StorageDomain for ReferenceDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = std::convert::Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 

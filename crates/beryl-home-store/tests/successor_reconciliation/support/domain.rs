@@ -143,7 +143,9 @@ macro_rules! domain {
             type RuntimeAttachment = ();
             type RuntimeAttachmentError = std::convert::Infallible;
 
-            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+            fn create_runtime_attachment(
+                _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+            ) -> Result<(), Self::RuntimeAttachmentError> {
                 Ok(())
             }
 

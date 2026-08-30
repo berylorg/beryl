@@ -399,22 +399,26 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   above the protection head and every live destination reservation. A missing protection head,
   checked ordinal exhaustion, or retained-resource refusal is an ordinary unavailable result and
   creates no usable proof.
-- Same-conversation candidate and cut evidence is validated by a source-only HomeStore proof
-  composition. Accepted local or inherited evidence uses one typed Syndic source role to validate
-  immutable origin authority and one typed Beryl-state witness role to validate the proof-gated
-  sealed-set label-first entry and exact `AssetId`. Cross-conversation source associations use the
-  applicable typed roles but ignore the source ordinal when deriving the reserved destination
-  labels. Every role is fenced to the exact owner, registration, home generation, and domain
-  revision and returns the same fixed-size correlation from its private domain facts on one
-  coherent proof snapshot. No raw cross-domain result or comparison reaches the app.
-- Each typed immutable Asset-witness page shape is validated once before its contribution is sealed.
-  The Asset role may coalesce byte-identical proof/label/asset point reads within that page, but the
-  shared page correlation still hashes every canonical occurrence separately and therefore
-  preserves occurrence multiplicity and digest authority.
+- Every evidence page has exactly one homogeneous proof shape. A candidate/cut-only page contains
+  only same-conversation candidate or cut associations and uses a source-only HomeStore proof
+  composition. An accepted-only page contains only local or inherited accepted associations and
+  uses one typed Syndic source role to validate immutable origin authority plus one typed Beryl-
+  state witness role to validate the proof-gated sealed-set label-first entry and exact `AssetId`.
+  One operation may ingest both shapes across different pages in arbitrary order, but no page mixes
+  them. Cross-conversation accepted source associations ignore the source ordinal when deriving the
+  reserved destination labels. Every participating role is fenced to the exact owner,
+  registration, home generation, and domain revision and returns the same fixed-size correlation
+  from its private domain facts on one coherent proof snapshot. No raw cross-domain result or
+  comparison reaches the app.
+- Each complete immutable accepted-only Asset-witness page shape is validated once before its
+  contribution is sealed. The Asset role may coalesce byte-identical proof/label/asset point reads
+  within that page, but the shared page correlation still hashes every canonical occurrence
+  separately and therefore preserves occurrence multiplicity and digest authority. Candidate/cut-
+  only pages have no Asset witness input.
 - Draft-marker evidence pages instantiate HomeStore's generic fixed-digest protocol marker with
   exact protocol id `0x53444d5244595631` (ASCII `SDMRDYV1`) and operation id
   `0x5244595041474531` (ASCII `RDYPAGE1`). The agreed correlation is one 32-byte SHA-256 digest of
-  the package-canonical evidence page under
+  the complete package-canonical homogeneous evidence page under
   `syndic/draft-marker-label-readiness-page/v1` after domain-local validation. It commits page
   ordinal, EOF, count, ordered evidence kind and selector, source label, exact `AssetId`, and, for
   each witnessed accepted-origin association, the complete `SealedAssetReferenceSetProof`. A
@@ -423,26 +427,29 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   other's input.
 - Each unresolved Syndic readiness association additionally names its intended destination marker
   identity. That identity is Syndic-private: it is excluded from the shared evidence-page
-  correlation and from every Asset witness input. After the shared source/asset evidence agrees,
-  Syndic alone binds the target identity to the derived final label and exact `AssetId` in the
-  durable admission index. The app supplies no destination ordinal, index root, association
-  digest, structural successor commitment, or cross-domain comparison result.
+  correlation and from every Asset witness input. After the applicable source-only or Syndic/Asset
+  source-and-witness evidence agrees, Syndic alone binds the target identity to the derived final
+  label and exact `AssetId` in the durable admission index. The app supplies no destination ordinal,
+  index root, association digest, structural successor commitment, or cross-domain comparison
+  result.
 - The V1 page digest is direct, fixed-width encoding rather than generic serializer or hasher
   framing: domain bytes, little-endian `u64` page ordinal, one `0`/`1` EOF byte, little-endian
-  `u64` association count, then ordered entries. A candidate entry is tag `0`, complete candidate
-  root and marker identity, source label, and complete asset identity. An accepted entry is tag
-  `1`, then the sealed-set id, sequential marker digest/count/maximum, ordered-asset digest/count,
-  entry frontier, asset-chain digest, source label, and complete asset identity. An absent maximum
-  is encoded as zero and an admitted maximum as its nonzero little-endian `u64`; a complete asset
-  identity is its version byte, 32-byte digest, and nonzero little-endian `u64` length. The page's
-  65,536-byte evidence ceiling counts only these raw entry bytes, not the domain, page header, or
-  hashing-library framing.
-- Syndic, not the app, canonicalizes each bounded page after resolving its domain-local evidence.
-  Within one page it orders entries by source label and exact page-digest evidence bytes only to
-  derive the fixed shared correlation. Pages and associations may arrive in any caller/source order;
-  no operation ingestion frontier requires one page's labels to follow another's. Every validated
-  association is inserted into both operation trees, and duplicate target identities reject even
-  when they occur on different pages.
+  `u64` association count, then ordered entries of the page's one proof shape. Every entry in a
+  candidate/cut-only page is tag `0`, complete candidate/cut root and marker identity, source label,
+  and complete asset identity. Every entry in an accepted-only page is tag `1`, then the sealed-set
+  id, sequential marker digest/count/maximum, ordered-asset digest/count, entry frontier, asset-
+  chain digest, source label, and complete asset identity. An absent maximum is encoded as zero and
+  an admitted maximum as its nonzero little-endian `u64`; a complete asset identity is its version
+  byte, 32-byte digest, and nonzero little-endian `u64` length. The page's 65,536-byte evidence
+  ceiling counts only these raw entry bytes, not the domain, page header, or hashing-library
+  framing.
+- Syndic, not the app, canonicalizes each complete bounded homogeneous page after resolving its
+  domain-local evidence. Within one page it orders entries by source label and exact page-digest
+  evidence bytes only to derive the complete page's fixed shared correlation. Pages and
+  associations may arrive in any caller/source order; no operation ingestion frontier requires one
+  page's proof shape or labels to follow another's. Every validated association is inserted into
+  both operation trees, and duplicate target identities reject even when they occur on different
+  pages.
 - The package owns dedicated durable admission-head, authenticated-node, and replay-receipt
   families whose natural owner is the exact `(draft, editor session, operation)`. They are distinct
   from the long-lived candidate marker-identity index. One tagged source-order staging tree is keyed
@@ -554,10 +561,13 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   cancellation, and `Collision` retains the uncertain ordinal in a closed scope until exact durable
   reconciliation. HomeStore attachment retirement invalidates remaining process attempts and
   proofs and retires the attachment exactly once, but never deletes, releases, or reclassifies
-  durable admission custody. New attachment registration reads the singleton aggregate and at most
-  65 operation heads under an exact byte limit; the completely empty domain instead proves the
-  head, node, and receipt families empty with one bounded first-record read each and treats the
-  absent singleton as canonical zero. More than 64 heads or charge disagreement fails registration.
+  durable admission custody. Before initial or same-home recovery attachment publication, Syndic's
+  attachment constructor uses HomeStore's typed read-only registration reader for the provisional
+  exact Syndic domain to read the singleton aggregate and at most 65 operation heads under an exact
+  byte limit; the completely empty domain instead proves the head, node, and receipt families empty
+  with one bounded first-record read each and treats the absent singleton as canonical zero. The
+  constructor returns a fully initialized attachment only after that reconstruction. More than 64
+  heads, charge disagreement, or a read failure publishes no attachment or registered-domain handle.
   A prior-generation pre-begin head cannot reconstruct a live attempt, proof, or
   reservation and enters inert incremental cleanup because its unpublished editor session is not
   recovery authority. A head transferred to staging/build remains the sole charged owner of its

@@ -5,15 +5,15 @@ mod support;
 use std::{convert::Infallible, error::Error, fmt, sync::Arc};
 
 use beryl_home_store::{
-    test_faults::{FaultController, PersistedCorruptionError},
     CodecOperation, DomainCallbackSource, DomainHandle, DomainMutation, DomainReader,
     DomainSchemaVersion, DomainValidationError, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit,
     ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain, WholeHomeScrubTrigger,
+    test_faults::{FaultController, PersistedCorruptionError},
 };
 use tempfile::tempdir;
 
-use support::{committed, AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError};
+use support::{AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, committed};
 
 const MAX_STORED_VALUE_BYTES: usize = 1_028;
 const MAX_CORRUPTION_FIXTURE_BYTES: usize = 1_048_576;
@@ -76,7 +76,9 @@ impl StorageDomain for StrictPayloadDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 

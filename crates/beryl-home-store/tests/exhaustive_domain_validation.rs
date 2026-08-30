@@ -8,8 +8,8 @@ use std::{thread, time::Duration};
 
 #[cfg(feature = "test-faults")]
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     DomainCallbackError, DomainMutation, DomainValidationError, HomeCommand, MutationBuilder,
+    test_faults::{FaultController, FaultPoint},
 };
 use beryl_home_store::{
     DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
@@ -101,7 +101,9 @@ impl StorageDomain for StrictDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = std::convert::Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 
@@ -120,7 +122,9 @@ impl StorageDomain for EmptyKeyDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = std::convert::Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 

@@ -39,11 +39,21 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   operation-scoped natural-record reconciliation hooks, typed reads, typed bounded mutation
   preparation, typed validation-only command participants, and one exact process-local runtime-attachment type
   and factory through package-owned traits.
-- Each registered-domain slot constructs exactly one runtime attachment for its home generation
-  and is that attachment's sole strong owner. Typed domain handles are cloneable non-`Copy` views
-  that resolve the slot's existing attachment after the ordinary store, owner, registration, and
-  generation fences; handle cloning, routine reacquisition, and stable name/schema/type agreement
-  cannot construct another attachment or prolong its lifetime.
+- HomeStore owns a typed read-only `DomainRegistrationReader<'a, D>` available only while it is
+  registering or recovering that provisional exact domain `D`. After the durable definition and
+  every declared physical family have been opened and validated, the reader exposes bounded domain-
+  local reads on one coherent snapshot before any registered-domain slot or typed handle is
+  published. It exposes no other domain, write authority, raw keyspace, or caller-owned registration
+  read surface.
+- The package-owned `StorageDomain` runtime-attachment constructor borrows that reader and must
+  return a fully initialized attachment before HomeStore inserts or publishes the registered-domain
+  slot, records the live process registration, or returns a typed handle. Construction failure
+  publishes none of them and drops the provisional registration state. Each successfully published
+  slot contains exactly one runtime attachment for its home generation and is that attachment's
+  sole strong owner. Typed domain handles are cloneable non-`Copy` views that resolve the slot's
+  existing attachment after the ordinary store, owner, registration, and generation fences; handle
+  cloning, routine reacquisition, and stable name/schema/type agreement cannot construct another
+  attachment or prolong its lifetime.
 - Store reads, receipt revision inspection, mutation-preparation and validation-only construction,
   current-revision command construction, and proof-source or proof-witness construction borrow a
   typed handle. They copy only its fixed identity into the resulting plan. Cloning is reserved for
@@ -479,12 +489,14 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   cache from the failed generation. Block and blob residents are live-generation performance state,
   never reopen-validation evidence or authority for the replacement generation.
 - A recovered private candidate must validate the home header, registry, required schema
-  declarations, and physical families, reacquire every registered domain through fresh typed
-  handles, construct exactly one fresh runtime attachment for every registered-domain slot, and
-  complete the required Fjall physical verification. These structural checks do not create a
-  schema-validation boundary or exhaustively scan application records during routine recovery.
-  Any disagreement, attachment-construction failure, or I/O failure retires and drops the candidate
-  attachments, discards the candidate, and permits a later retry.
+  declarations, and physical families, then give each provisional exact domain's runtime-attachment
+  constructor its typed registration reader. Each constructor must return one fully initialized
+  fresh attachment before HomeStore publishes that candidate's registered-domain slot, records its
+  live registration, or returns its fresh typed handle. The candidate also completes the required
+  Fjall physical verification. These structural checks do not create a schema-validation boundary
+  or exhaustively scan application records during routine recovery. Any disagreement, attachment-
+  construction failure, or I/O failure publishes none of the candidate slots, registrations,
+  attachments, or handles, drops the provisional candidate state, and permits a later retry.
 - Successful forced reopen assigns the private candidate a new monotonic process-local home
   generation and store-instance identity, but exposes no app-usable healthy handle. The system
   recovery boundary consumes the candidate once and alone authorizes full-stack publication.

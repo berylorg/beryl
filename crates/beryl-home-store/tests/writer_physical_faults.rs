@@ -6,20 +6,20 @@ use std::{
     convert::Infallible,
     error::Error,
     io,
-    panic::{catch_unwind, AssertUnwindSafe},
+    panic::{AssertUnwindSafe, catch_unwind},
 };
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CommandError, DomainMutation, DomainReader, DomainSchemaVersion, DomainValidator, HomeCommand,
     HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
     KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily,
     RecordVersion, StorageCommitState, StorageDomain, StorageErrorClass,
+    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
 use support::{
-    committed, not_committed, AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes,
+    AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, not_committed,
 };
 
 struct RequireBeta;
@@ -96,7 +96,9 @@ impl StorageDomain for AggregateReservationDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 
@@ -445,11 +447,13 @@ fn orderly_close_retains_reserved_and_verifying_custody_with_the_open_home() {
     let store = close_error
         .into_open_store()
         .expect("pending-custody close error retains the open store");
-    assert!(HomeStore::open(HomeOpenOptions::new(
-        directory.path(),
-        HomeSchemaVersion::CURRENT,
-    ))
-    .is_err());
+    assert!(
+        HomeStore::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .is_err()
+    );
 
     let close_error = store.close().unwrap_err();
     assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));

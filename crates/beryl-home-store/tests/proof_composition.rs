@@ -3,8 +3,8 @@ mod support;
 use std::{
     convert::Infallible,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Condvar, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -16,18 +16,18 @@ use std::sync::mpsc;
 use beryl_home_store::{
     CommandCancellation, DomainHandle, DomainReader, DomainSchemaVersion,
     ExecutableHomeProofCommand, HomeCommand, HomeProofCommand, HomeProofProtocol, HomeStore,
-    KeyspaceSchemaVersion, PointReadLimit, ProofCommandBuildError, ProofCompositionError,
-    ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity, ProofReceiptError, StorageDomain,
-    MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES,
+    KeyspaceSchemaVersion, MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES, PointReadLimit,
+    ProofCommandBuildError, ProofCompositionError, ProofCorrelationBytes, ProofDomain,
+    ProofProtocolIdentity, ProofReceiptError, StorageDomain,
 };
 use tempfile::tempdir;
 
-use support::{committed, open_home, AlphaDomain, BetaDomain, FixtureMutationError, PutBytes};
+use support::{AlphaDomain, BetaDomain, FixtureMutationError, PutBytes, committed, open_home};
 
 #[cfg(feature = "test-faults")]
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     HomeHealthState, HomeOpenOptions, HomeSchemaVersion,
+    test_faults::{FaultController, FaultPoint},
 };
 
 macro_rules! empty_domain {
@@ -45,7 +45,9 @@ macro_rules! empty_domain {
             type RuntimeAttachment = ();
             type RuntimeAttachmentError = Infallible;
 
-            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+            fn create_runtime_attachment(
+                _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+            ) -> Result<(), Self::RuntimeAttachmentError> {
                 Ok(())
             }
 

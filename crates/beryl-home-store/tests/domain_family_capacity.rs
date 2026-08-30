@@ -161,7 +161,9 @@ impl StorageDomain for SeventyThreeFamilyDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 
@@ -210,7 +212,9 @@ macro_rules! invalid_family_domain {
             type RuntimeAttachment = ();
             type RuntimeAttachmentError = Infallible;
 
-            fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+            fn create_runtime_attachment(
+                _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+            ) -> Result<(), Self::RuntimeAttachmentError> {
                 Ok(())
             }
 

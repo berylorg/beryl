@@ -11,8 +11,8 @@ use fjall::Keyspace;
 use thiserror::Error;
 
 use crate::{
-    DomainReader, DomainReconciliation, DomainSchemaVersion, KeyspaceSchemaVersion,
-    ReconciliationReader, RecordFamily, SidecarVerifier,
+    DomainReader, DomainReconciliation, DomainRegistrationReader, DomainSchemaVersion,
+    KeyspaceSchemaVersion, ReconciliationReader, RecordFamily, SidecarVerifier,
     codec::ErasedEnvelopeValidator,
     metadata::{DomainMetadata, PersistedFamily},
 };
@@ -46,7 +46,9 @@ pub trait StorageDomain: Send + Sync + Sized + 'static {
     type RuntimeAttachment: DomainRuntimeAttachment;
     type RuntimeAttachmentError: Error + Send + Sync + 'static;
 
-    fn create_runtime_attachment() -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>;
+    fn create_runtime_attachment(
+        reader: &DomainRegistrationReader<'_, Self>,
+    ) -> Result<Self::RuntimeAttachment, Self::RuntimeAttachmentError>;
 
     /// Exhaustively validates authoritative invariants through bounded reads.
     ///
@@ -430,7 +432,7 @@ pub(crate) struct RegisteredFamily {
 
 pub(crate) type ErasedReopenValidator = fn(
     &fjall::Snapshot,
-    &RegisteredDomain,
+    &[RegisteredFamily],
     &SidecarVerifier<'_>,
 ) -> Result<(), callback::ErasedCallbackError>;
 pub(crate) type ErasedReconciler =

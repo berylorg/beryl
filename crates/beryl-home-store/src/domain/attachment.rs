@@ -8,7 +8,10 @@ use std::{
 use thiserror::Error;
 
 use super::{DomainHandle, DomainOwnerId, StorageDomain, StoreInstanceId};
-use crate::{HomeStore, store::StoreGeneration};
+use crate::health::FailureSeverity;
+use crate::{
+    DomainRegistrationReader, HomeStore, domain::RegisteredFamily, store::StoreGeneration,
+};
 
 pub trait DomainRuntimeAttachment: Send + Sync + 'static {
     fn retire(&mut self) {}
@@ -93,7 +96,34 @@ pub enum DomainAttachmentAccessError {
 }
 
 pub(crate) type ErasedAttachmentFactory =
-    fn() -> Result<RuntimeAttachmentSlot, Box<dyn Error + Send + Sync>>;
+    fn(
+        &fjall::Snapshot,
+        &[RegisteredFamily],
+    ) -> Result<RuntimeAttachmentSlot, AttachmentFactoryError>;
+
+#[derive(Debug)]
+pub(crate) struct AttachmentFactoryError {
+    source: Box<dyn Error + Send + Sync>,
+    failure_severity: Option<FailureSeverity>,
+}
+
+impl AttachmentFactoryError {
+    pub(crate) const fn failure_severity(&self) -> Option<FailureSeverity> {
+        self.failure_severity
+    }
+}
+
+impl fmt::Display for AttachmentFactoryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.source.fmt(formatter)
+    }
+}
+
+impl Error for AttachmentFactoryError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
 
 trait ErasedRuntimeAttachment: Send + Sync {
     fn as_any(&self) -> &dyn Any;
@@ -116,9 +146,17 @@ pub(crate) struct RuntimeAttachmentSlot {
 }
 
 impl RuntimeAttachmentSlot {
-    pub(crate) fn construct<D: StorageDomain>() -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let attachment = D::create_runtime_attachment()
-            .map_err(|source| Box::new(source) as Box<dyn Error + Send + Sync>)?;
+    pub(crate) fn construct<D: StorageDomain>(
+        snapshot: &fjall::Snapshot,
+        families: &[RegisteredFamily],
+    ) -> Result<Self, AttachmentFactoryError> {
+        let reader = DomainRegistrationReader::new(snapshot, families);
+        let result = D::create_runtime_attachment(&reader);
+        let failure_severity = reader.failure_severity();
+        let attachment = result.map_err(|source| AttachmentFactoryError {
+            source: Box::new(source),
+            failure_severity,
+        })?;
         Ok(Self {
             attachment_type: TypeId::of::<D::RuntimeAttachment>(),
             attachment: Some(Box::new(attachment)),

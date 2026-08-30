@@ -2068,13 +2068,16 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   `DraftMarkerLabelReadinessPageAttemptV1` or a determinate stale, unavailable, exhausted,
   capacity-unavailable, or occupied-identity-collision outcome. It does not issue the final proof.
   The attempt owns its canonical page, unforgeable dispatch identity, exact home generation,
-  durable operation/page identity, source-head closure, associations, and expected EOF state. The package
-  prepares one private typed Syndic source
-  contribution for `beryl-home-store` proof composition: current-candidate and cut evidence is
-  source-only; local or inherited accepted evidence pairs it with Beryl-state's private typed
-  witness contribution. Both roles independently derive the same fixed-size correlation while
-  reading only their own domain on the one HomeStore snapshot. No public source result exposes
-  origin records or permits app-side equality.
+  durable operation/page identity, source-head closure, associations, and expected EOF state. Every
+  page has exactly one homogeneous proof shape. A candidate/cut-only page contains only current-
+  candidate or cut associations and prepares one private typed Syndic source contribution for a
+  source-only `beryl-home-store` proof composition. An accepted-only page contains only local or
+  inherited accepted associations and pairs its private typed Syndic source contribution with
+  Beryl-state's private typed Asset witness contribution. One operation may ingest both page shapes
+  across different pages in arbitrary order, but no page mixes them. The accepted-only roles
+  independently derive the same full fixed-size correlation while reading only their own domain on
+  the one HomeStore snapshot. No public source result exposes origin records or permits app-side
+  equality.
 - Once those roles and every protocol, operation, owner, generation, revision, page, and correlation
   expectation are fixed, the attempt seals and owns the complete HomeStore plan, including its
   paired move-only `ProofReceiptConsumer`. It exposes only the opaque executable command for app
@@ -2083,32 +2086,37 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   executable command, and receipt but cannot inspect or reconstruct the canonical page or equality
   inputs.
 - The page command uses HomeStore's generic fixed-32-byte-digest protocol marker instantiated with
-  protocol id `0x53444d5244595631` and operation id `0x5244595041474531`. The private Syndic source
-  input, private Asset witness input, and source expectation independently derive the same SHA-256
-  page correlation under `syndic/draft-marker-label-readiness-page/v1`; accepted-origin entries
-  commit the complete sealed Asset-reference-set proof, source label, and exact `AssetId`, while
-  source-only entries commit their complete candidate selector. The shared marker carries no
-  association facts.
-- Each unresolved association additionally carries its caller-intended target marker identity for
-  Syndic alone. That identity is excluded from the shared page correlation and private Asset witness
-  input. The app supplies neither a final label nor an admission root; Syndic binds the intended id
-  to its derived final label and exact `AssetId` only after source and witness evidence agree.
+  protocol id `0x53444d5244595631` and operation id `0x5244595041474531`. The fixed SHA-256 page
+  correlation under `syndic/draft-marker-label-readiness-page/v1` derives from the complete
+  homogeneous canonical page. For an accepted-only page, the private Syndic source input, complete
+  private Asset witness input, and source expectation independently derive that same full
+  correlation from tag-`1` entries committing the complete sealed Asset-reference-set proof, source
+  label, and exact `AssetId`. For a candidate/cut-only page, the private Syndic source and source
+  expectation derive it from tag-`0` entries committing the complete candidate/cut selector, source
+  label, and exact `AssetId`; no Asset witness input exists. The shared marker carries no association
+  facts.
+- Each unresolved association additionally carries its intended target marker identity inside
+  Syndic alone. That identity is excluded from the shared page correlation and every private Asset
+  witness input. The app supplies neither a final label nor an admission root; Syndic binds the
+  intended id to its derived final label and exact `AssetId` only after the applicable source-only or
+  source/witness evidence agrees.
 - The exact digest preimage is the domain bytes followed directly by little-endian `u64` page
-  ordinal, one `0`/`1` EOF byte, little-endian `u64` entry count, and the ordered fixed-width
-  entries. Candidate tag `0` precedes complete candidate root/marker selector, label, and complete
-  asset identity. Accepted tag `1` precedes sealed-set id, sequential digest/count/maximum,
-  ordered-asset digest/count, entry frontier, asset-chain digest, label, and complete asset
-  identity. Optional maximum uses zero for absent and its nonzero `u64` otherwise; asset identity
-  uses its version byte, digest, and nonzero length. All integers are little-endian. The evidence
-  byte ceiling counts entry bytes only, excluding domain, page header, and library framing.
-- The package resolves private evidence and canonicalizes each bounded page internally before it
-  seals the proof plan; the app neither sorts nor compares cross-domain facts. Within one page the
-  package orders source evidence only for the fixed shared correlation. Page ordinals fence durable
-  ingestion and replay but impose no source-label ordering: pages and associations may arrive in
-  arbitrary caller/source order. Each validated association is inserted into an authenticated source-
-  order staging tree keyed by `(source label, target marker id)` and an authenticated target-id tree
-  keyed by target marker id with unassigned source label and exact `AssetId`. Duplicate target ids
-  reject within or across pages.
+  ordinal, one `0`/`1` EOF byte, little-endian `u64` entry count, and the ordered fixed-width entries
+  of the page's one proof shape. Every candidate/cut-only entry is tag `0` followed by its complete
+  candidate/cut root/marker selector, label, and complete asset identity. Every accepted-only entry
+  is tag `1` followed by sealed-set id, sequential digest/count/maximum, ordered-asset digest/count,
+  entry frontier, asset-chain digest, label, and complete asset identity. Optional maximum uses zero
+  for absent and its nonzero `u64` otherwise; asset identity uses its version byte, digest, and
+  nonzero length. All integers are little-endian. The evidence byte ceiling counts entry bytes only,
+  excluding domain, page header, and library framing.
+- The package resolves private evidence and canonicalizes each complete bounded homogeneous page
+  internally before it seals the proof plan; the app neither sorts nor compares cross-domain facts.
+  Within one page the package orders source evidence only for that complete page's fixed shared
+  correlation. Page ordinals fence durable ingestion and replay but impose no proof-shape or source-
+  label ordering: pages and associations may arrive in arbitrary caller/source order. Each validated
+  association is inserted into an authenticated source-order staging tree keyed by `(source label,
+  target marker id)` and an authenticated target-id tree keyed by target marker id with unassigned
+  source label and exact `AssetId`. Duplicate target ids reject within or across pages.
 - Exact evidence EOF closes ingestion, freezes the source tree's canonical root digest/count as the
   occurrence commitment, and starts a durable assignment continuation. For allocation, the package
   first reserves a contiguous range no larger than that authenticated occurrence count and strictly
@@ -2175,10 +2183,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   bounded operation-prefix cleanup deletes every source/target node, replay-only path, and
   superseded receipt. Attachment retirement invalidates process attempts/proofs and retires the
   attachment exactly once, but never deletes or reclassifies durable admission custody.
-  Registration point-reads the singleton aggregate and cursor-reads at most 65 head records under
-  an exact byte bound before publishing the new attachment. If the singleton is absent, it instead
-  proves the head, node, and receipt families empty with one bounded first-record read each. More
-  than 64 heads, charge disagreement, or malformed authority fails registration. A head fenced to a prior home generation cannot
+  During initial registration or same-home recovery, the attachment constructor uses HomeStore's
+  typed read-only registration reader for the provisional exact Syndic domain after its definition
+  and families have been opened and validated. Before attachment publication it point-reads the
+  singleton aggregate and cursor-reads at most 65 head records under an exact byte bound. If the
+  singleton is absent, it instead proves the head, node, and receipt families empty with one bounded
+  first-record read each. It returns only a fully initialized attachment reconstructed from those
+  persisted facts. More than 64 heads, charge disagreement, malformed authority, or a read failure
+  publishes no attachment, registered-domain slot, live registration, or typed handle. A head fenced to a prior home generation cannot
   recreate a live attempt, proof, or reservation; because prior-process unpublished editor sessions
   are not recovery authority, it is scheduled for inert incremental cleanup. A head already
   transferred to staging/build remains the sole charged owner of its target tree, is cross-checked
@@ -2193,9 +2205,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   transfers replay authority to the durable mutation settlement and then removes the operation head
   and terminal closure. Cleanup failure cannot reactivate records or release uncertain custody;
   attachment retirement never performs durable cleanup or reclassification.
-- The package-owned V1 production profile constructs that attachment through the ordinary
-  parameterless Syndic domain factory; it does not add a generic HomeStore configuration path or an
-  app-selected readiness setting. The whole home retains at most 64 readiness heads across process
+- The attachment constructor applies the package-owned V1 production profile while borrowing the
+  typed registration reader; it does not add a generic HomeStore configuration path or an app-
+  selected readiness setting. The whole home retains at most 64 readiness heads across process
   generations, at most 65,536 associations, and at most 67,108,864 encoded bytes charged to their
   current trees, replay closures, and cleanup residue. The runtime attachment therefore owns at most
   64 live reservations, destination-frontier entries, and active attempt identities. A canonical

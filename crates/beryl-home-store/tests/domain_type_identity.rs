@@ -59,7 +59,9 @@ impl StorageDomain for OwnerDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 
@@ -78,7 +80,9 @@ impl StorageDomain for ImpostorDomain {
     type RuntimeAttachment = ();
     type RuntimeAttachmentError = Infallible;
 
-    fn create_runtime_attachment() -> Result<(), Self::RuntimeAttachmentError> {
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
         Ok(())
     }
 
@@ -173,8 +177,10 @@ fn stable_names_cannot_alias_live_domain_or_family_rust_owners() {
         beryl_home_store::CommandOutcome::NotCommitted { evidence } => evidence,
         other => panic!("expected definitive non-commit, got {other:?}"),
     };
-    assert!(error
-        .to_string()
-        .contains("record codec does not own family `records`"));
+    assert!(
+        error
+            .to_string()
+            .contains("record codec does not own family `records`")
+    );
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 }

@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::{
     DomainHandle, DomainHandleError, DomainRegistrationError, HomeGeneration, HomeHealthState,
     HomeOpenError, HomeStore, StorageDomain,
-    domain::{DomainOwnerId, reopen::reacquire_registry},
+    domain::{DomainBlueprint, DomainOwnerId, reopen::reacquire_registry},
     fault::FaultPoint,
     health::{ClassifiedFjallError, HealthMaintenance, HealthMaintenanceError},
     layout::{DatabaseDisposition, HomeLayout, LayoutAdmissionError, inspect_database},
@@ -343,9 +343,9 @@ impl HomeStore {
             registry: Default::default(),
             instance_id: next_store_instance(),
         };
-        reacquire_registry(&mut generation, &registrations)?;
-        validate_generation_control(&generation, self)
+        validate_generation_control(&generation, self, &registrations)
             .map_err(|source| HomeRecoveryError::Validation { source })?;
+        reacquire_registry(&mut generation, &registrations)?;
         generation
             .database
             .persist(PersistMode::SyncAll)
@@ -389,6 +389,7 @@ impl HomeStore {
 fn validate_generation_control(
     generation: &StoreGeneration,
     store: &HomeStore,
+    registrations: &[DomainBlueprint],
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let snapshot = generation.database.snapshot().map_err(boxed_fjall)?;
     let header = {
@@ -425,8 +426,8 @@ fn validate_generation_control(
         decode_home_revision(revision.value())?;
     }
 
-    for domain in generation.registry.iter() {
-        for family in &domain.families {
+    for definition in registrations {
+        for family in &definition.families {
             if !generation
                 .database
                 .keyspace_exists(&family.physical_name)
@@ -442,22 +443,22 @@ fn validate_generation_control(
             let encoded = bounded_control_point(
                 &snapshot,
                 generation.domains_keyspace(),
-                domain.name.as_bytes(),
+                definition.name.as_bytes(),
                 MAX_DOMAIN_METADATA_BYTES,
                 "domain registry",
             )?
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("domain `{}` registration is missing", domain.name),
+                    format!("domain `{}` registration is missing", definition.name),
                 )
             })?;
             DomainMetadata::decode(encoded.value())?
         };
-        if metadata != domain.metadata(metadata.revision) {
+        if metadata != definition.metadata(metadata.revision) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("domain `{}` registration changed", domain.name),
+                format!("domain `{}` registration changed", definition.name),
             )));
         }
     }

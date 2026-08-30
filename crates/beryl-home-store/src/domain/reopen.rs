@@ -19,7 +19,17 @@ pub(crate) fn reacquire_registry(
             },
         )?;
         validate_blueprint(blueprint, &persisted)?;
-        let domain = reacquire_families(generation, blueprint)?;
+        let families = reacquire_families(generation, blueprint)?;
+        let snapshot =
+            generation
+                .database
+                .snapshot()
+                .map_err(|source| DomainRegistrationError::Storage {
+                    domain: blueprint.name,
+                    stage: DomainRegistrationStage::ReadRegistry,
+                    source: Box::new(ClassifiedFjallError::direct(source)),
+                })?;
+        let domain = super::registration::registered_domain(blueprint, families, &snapshot)?;
         registry.insert(domain);
     }
     generation.registry = registry;
@@ -48,7 +58,7 @@ pub(crate) fn validate_registry(
 fn reacquire_families(
     generation: &StoreGeneration,
     blueprint: &DomainBlueprint,
-) -> Result<RegisteredDomain, DomainRegistrationError> {
+) -> Result<Vec<RegisteredFamily>, DomainRegistrationError> {
     let mut families = Vec::with_capacity(blueprint.families.len());
     for family in &blueprint.families {
         if !generation
@@ -75,5 +85,5 @@ fn reacquire_families(
             })?;
         families.push(registered_family(family, keyspace));
     }
-    super::registration::registered_domain(blueprint, families)
+    Ok(families)
 }
