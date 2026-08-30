@@ -6,6 +6,12 @@ use sha2::{Digest, Sha256};
 
 use crate::{SyndicStorage, draft_piece::*};
 
+mod marker_identity_lookup;
+
+pub(crate) use marker_identity_lookup::{
+    SnapshotMarkerLookupErrorV1, marker_identity_lookup, marker_identity_lookup_on_snapshot,
+};
+
 const INDEX_LEAF: &[u8] = b"syndic/draft-marker-identity-index-leaf/v2";
 const INDEX_NODE: &[u8] = b"syndic/draft-marker-identity-index-node/v1";
 const INDEX_ROOT: &[u8] = b"syndic/draft-marker-identity-index-root/v1";
@@ -31,17 +37,17 @@ struct LocatedLeaf {
 }
 
 #[derive(Clone, Copy)]
-struct IndexRef {
-    link: DraftMarkerIdentityChildV1,
-    height: u8,
-    selected_root: bool,
+pub(super) struct IndexRef {
+    pub(super) link: DraftMarkerIdentityChildV1,
+    pub(super) height: u8,
+    pub(super) selected_root: bool,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct MarkerOrderRef {
-    link: DraftMarkerOrderChildV1,
-    height: u8,
-    selected_root: bool,
+    pub(super) link: DraftMarkerOrderChildV1,
+    pub(super) height: u8,
+    pub(super) selected_root: bool,
 }
 
 struct BuildContext<'a> {
@@ -589,7 +595,7 @@ fn validate_sequence_leaf(
     Ok(leaf)
 }
 
-fn validate_index_record(
+pub(super) fn validate_index_record(
     record: DraftMarkerIdentityRecordV1,
     expected: IndexRef,
     selected_root: bool,
@@ -642,7 +648,7 @@ pub(crate) fn validate_index_root_record(
     Ok(record)
 }
 
-fn validate_marker_order_record(
+pub(super) fn validate_marker_order_record(
     record: &DraftMarkerOrderRecordV1,
     expected: MarkerOrderRef,
     selected_root: bool,
@@ -784,7 +790,7 @@ fn validate_index_children(
     Ok(())
 }
 
-fn index_child_for_record(
+pub(super) fn index_child_for_record(
     record: &DraftMarkerIdentityRecordV1,
 ) -> Result<DraftMarkerIdentityChildV1, DraftPiecePrepareErrorV1> {
     match record {
@@ -4741,17 +4747,6 @@ pub(crate) fn validate_position_record_count(
     let (mut context, sequence) = read_context(storage, store, root)?;
     resolve_position(&mut context, sequence, position)?;
     Ok(context.records_read)
-}
-
-pub(crate) fn marker_identity_lookup(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    root: DraftPieceRootReferenceV1,
-    marker_id: SyndicDraftMarkerId,
-) -> Result<Option<DraftMarkerIdentityOccurrenceV1>, DraftPiecePrepareErrorV1> {
-    let (mut context, _) = read_context(storage, store, root)?;
-    let index = validate_index_root(&mut context, root)?;
-    index_lookup(&mut context, index, marker_id)
 }
 
 fn marker_location_by_witness(
