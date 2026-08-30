@@ -28,6 +28,13 @@ use super::{
     encoded_receipt_key_charge, encoded_receipt_record_charge,
 };
 
+mod progression;
+
+use progression::{
+    PageProgression, PageProgressionError, authenticate_head, authenticate_progression,
+    authenticate_receipt_closure, page_progression,
+};
+
 #[derive(Clone)]
 pub(crate) struct DraftMarkerAdmissionPublicationSeedV1 {
     owner: DraftMarkerAdmissionOwnerV1,
@@ -77,13 +84,35 @@ enum DraftMarkerAdmissionPublicationErrorV1 {
     RevisionOverflow,
     #[error("draft-marker admission publication retained charge disagrees")]
     Charge,
+    #[error("draft-marker admission final evidence EOF awaits assignment initialization")]
+    FinalEvidenceEof,
+    #[error("draft-marker admission page is obsolete")]
+    ObsoletePage,
+    #[error("draft-marker admission current page is incomplete")]
+    PageIncomplete,
+    #[error("draft-marker admission occupied page identity collides")]
+    Collision,
 }
 
 impl From<DraftMarkerAdmissionIndexPreparationErrorV1> for DraftMarkerAdmissionPublicationErrorV1 {
     fn from(value: DraftMarkerAdmissionIndexPreparationErrorV1) -> Self {
         match value {
             DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => Self::Read(error),
+            DraftMarkerAdmissionIndexPreparationErrorV1::DuplicateSource
+            | DraftMarkerAdmissionIndexPreparationErrorV1::DuplicateTarget => Self::Collision,
             other => Self::Index(other),
+        }
+    }
+}
+
+impl From<PageProgressionError> for DraftMarkerAdmissionPublicationErrorV1 {
+    fn from(value: PageProgressionError) -> Self {
+        match value {
+            PageProgressionError::Authority => Self::Authority,
+            PageProgressionError::FinalEvidenceEof => Self::FinalEvidenceEof,
+            PageProgressionError::Obsolete => Self::ObsoletePage,
+            PageProgressionError::PageIncomplete => Self::PageIncomplete,
+            PageProgressionError::Overflow => Self::RevisionOverflow,
         }
     }
 }
@@ -107,6 +136,7 @@ struct PreparedPublicationMutation {
     capacity: DraftMarkerAdmissionCapacityV1,
     head: DraftMarkerAdmissionHeadV1,
     receipt: DraftMarkerAdmissionReplayReceiptV1,
+    receipt_deletion: Option<DraftMarkerAdmissionReceiptKeyV1>,
     index: PreparedDraftMarkerAdmissionIndexSuccessorV1,
 }
 
@@ -114,6 +144,7 @@ struct PriorPublication {
     capacity: Option<DraftMarkerAdmissionCapacityV1>,
     head: Option<DraftMarkerAdmissionHeadV1>,
     receipt: Option<DraftMarkerAdmissionReplayReceiptV1>,
+    receipt_key: DraftMarkerAdmissionReceiptKeyV1,
     read_bytes: u64,
 }
 
@@ -149,7 +180,7 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
     ) -> Result<(), Self::Error> {
         reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
         reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
-        reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
+        reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(2)?;
         reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(
             usize::from(DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT) * 6 + 2,
         )?;
@@ -160,6 +191,9 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
         prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
+        if let Some(key) = prepared.receipt_deletion {
+            mutations.delete::<DraftMarkerAdmissionReceiptsCodec>(&key)?;
+        }
         for node in prepared.index.deletions() {
             mutations.delete::<DraftMarkerAdmissionNodesCodec>(&node.key())?;
         }
@@ -189,33 +223,22 @@ fn prepare_publication(
     command_limit: u64,
 ) -> Result<PreparedPublicationMutation, DraftMarkerAdmissionPublicationErrorV1> {
     let prior = read_prior(reader, &seed, &page)?;
-    let (source_before, target_before, association_index, head_revision, prior_charge) =
-        match prior.head.as_ref() {
-            Some(head) => (
-                head.source_root(),
-                head.target_root(),
-                usize::try_from(head.ingestion_association_cursor())
-                    .map_err(|_| DraftMarkerAdmissionPublicationErrorV1::Charge)?,
-                checked_increment(head.revision())?,
-                head.charge(),
-            ),
-            None => {
-                if page.sealed_page().ordinal != NonZeroU64::MIN {
-                    return Err(DraftMarkerAdmissionPublicationErrorV1::Authority);
-                }
-                (
-                    canonical_empty_draft_marker_admission_root_v1(
-                        DraftMarkerAdmissionTreeV1::SourceOrder,
-                    ),
-                    canonical_empty_draft_marker_admission_root_v1(
-                        DraftMarkerAdmissionTreeV1::TargetId,
-                    ),
-                    0,
-                    NonZeroU64::MIN,
-                    DraftMarkerAdmissionRetainedChargeV1::ZERO,
-                )
-            }
-        };
+    let progression = page_progression(prior.head.as_ref(), &page)?;
+    authenticate_progression(&seed, &page, &prior, progression)?;
+    let (source_before, target_before, head_revision, prior_charge) = match prior.head.as_ref() {
+        Some(head) => (
+            head.source_root(),
+            head.target_root(),
+            checked_increment(head.revision())?,
+            head.charge(),
+        ),
+        None => (
+            canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::SourceOrder),
+            canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::TargetId),
+            NonZeroU64::MIN,
+            DraftMarkerAdmissionRetainedChargeV1::ZERO,
+        ),
+    };
     let prior_replay_nodes = prior
         .receipt
         .as_ref()
@@ -227,7 +250,7 @@ fn prepare_publication(
         target_before,
         prior_replay_nodes,
         &page,
-        association_index,
+        progression.association_index,
     )?;
     let receipt = DraftMarkerAdmissionReplayReceiptV1::new(
         seed.owner,
@@ -247,7 +270,7 @@ fn prepare_publication(
         &seed,
         &page,
         head_revision,
-        association_index,
+        progression,
         &index,
         DraftMarkerAdmissionRetainedChargeV1::new(1, index.target_root().count(), 0),
     )?;
@@ -257,7 +280,7 @@ fn prepare_publication(
         .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?;
     let prior_metadata_bytes = match (&prior.head, &prior.receipt) {
         (Some(head), Some(receipt)) => encoded_head_record_charge(&seed.owner, head)?
-            .checked_add(encoded_receipt_record_charge(&receipt_key, receipt)?)
+            .checked_add(encoded_receipt_record_charge(&prior.receipt_key, receipt)?)
             .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?,
         (None, None) => 0,
         _ => return Err(DraftMarkerAdmissionPublicationErrorV1::Authority),
@@ -283,7 +306,7 @@ fn prepare_publication(
         &seed,
         &page,
         head_revision,
-        association_index,
+        progression,
         &index,
         successor_charge,
     )?;
@@ -297,11 +320,22 @@ fn prepare_publication(
         .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?;
     enforce_limits(successor_charge, aggregate_charge)?;
     let capacity = DraftMarkerAdmissionCapacityV1::new(capacity_revision, aggregate_charge)?;
-    preflight_command(&prior, &capacity, &head, &receipt, &index, command_limit)?;
+    let receipt_deletion =
+        (prior.receipt.is_some() && prior.receipt_key != receipt_key).then_some(prior.receipt_key);
+    preflight_command(
+        &prior,
+        &capacity,
+        &head,
+        &receipt,
+        receipt_deletion,
+        &index,
+        command_limit,
+    )?;
     Ok(PreparedPublicationMutation {
         capacity,
         head,
         receipt,
+        receipt_deletion,
         index,
     })
 }
@@ -331,7 +365,7 @@ fn read_prior(
         .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?;
     let receipt = match head.as_ref() {
         Some(head) => {
-            authenticate_head(seed, page, head)?;
+            authenticate_head(seed, head)?;
             let command = head
                 .selected_receipt()
                 .ok_or(DraftMarkerAdmissionPublicationErrorV1::Authority)?;
@@ -347,7 +381,7 @@ fn read_prior(
                 })
                 .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?;
             let receipt = receipt.ok_or(DraftMarkerAdmissionPublicationErrorV1::Authority)?;
-            authenticate_receipt(seed, page, head, command, &receipt)?;
+            authenticate_receipt_closure(seed, head, command, &receipt)?;
             Some(receipt)
         }
         None => {
@@ -371,61 +405,27 @@ fn read_prior(
     if capacity.is_none() && head.is_some() {
         return Err(DraftMarkerAdmissionPublicationErrorV1::Authority);
     }
+    let receipt_key = head
+        .as_ref()
+        .and_then(DraftMarkerAdmissionHeadV1::selected_receipt)
+        .map_or_else(
+            || DraftMarkerAdmissionReceiptKeyV1::new(seed.owner, page.page_identity()),
+            |command| DraftMarkerAdmissionReceiptKeyV1::new(seed.owner, command),
+        );
     Ok(PriorPublication {
         capacity,
         head,
         receipt,
+        receipt_key,
         read_bytes,
     })
-}
-
-fn authenticate_head(
-    seed: &DraftMarkerAdmissionPublicationSeedV1,
-    page: &DraftMarkerLabelReadinessProvenPageV1,
-    head: &DraftMarkerAdmissionHeadV1,
-) -> Result<(), DraftMarkerAdmissionPublicationErrorV1> {
-    if head.owner() != seed.owner
-        || head.home_generation() != seed.home_generation
-        || head.lifecycle() != DraftMarkerAdmissionLifecycleV1::Ingesting
-        || head.request_commitment() != seed.request_commitment
-        || head.custody_commitment() != seed.custody_commitment
-        || head.occurrence_commitment() != seed.occurrence_commitment
-        || head.next_page_ordinal() != page.sealed_page().ordinal
-        || head.charge().associations() != head.target_root().count()
-    {
-        return Err(DraftMarkerAdmissionPublicationErrorV1::Authority);
-    }
-    Ok(())
-}
-
-fn authenticate_receipt(
-    seed: &DraftMarkerAdmissionPublicationSeedV1,
-    page: &DraftMarkerLabelReadinessProvenPageV1,
-    head: &DraftMarkerAdmissionHeadV1,
-    selected_command: super::DraftMarkerAdmissionCommandIdV1,
-    receipt: &DraftMarkerAdmissionReplayReceiptV1,
-) -> Result<(), DraftMarkerAdmissionPublicationErrorV1> {
-    if receipt.owner() != seed.owner
-        || receipt.command_id() != selected_command
-        || selected_command != page.page_identity()
-        || receipt.page_ordinal() != page.sealed_page().ordinal
-        || receipt.request_commitment() != seed.request_commitment
-        || receipt.source_head_bytes() != seed.source_head_bytes.as_ref()
-        || receipt.target_head_bytes() != seed.target_head_bytes.as_ref()
-        || receipt.source_after() != head.source_root()
-        || receipt.target_after() != head.target_root()
-        || receipt.transition() != DraftMarkerAdmissionReceiptTransitionV1::Ingestion
-    {
-        return Err(DraftMarkerAdmissionPublicationErrorV1::Authority);
-    }
-    Ok(())
 }
 
 fn build_head(
     seed: &DraftMarkerAdmissionPublicationSeedV1,
     page: &DraftMarkerLabelReadinessProvenPageV1,
     revision: NonZeroU64,
-    association_index: usize,
+    progression: PageProgression,
     index: &PreparedDraftMarkerAdmissionIndexSuccessorV1,
     charge: DraftMarkerAdmissionRetainedChargeV1,
 ) -> Result<DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionSchemaErrorV1> {
@@ -436,11 +436,8 @@ fn build_head(
         DraftMarkerAdmissionLifecycleV1::Ingesting,
         seed.request_commitment,
         seed.custody_commitment,
-        page.sealed_page().ordinal,
-        u64::try_from(association_index)
-            .ok()
-            .and_then(|index| index.checked_add(1))
-            .ok_or(DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)?,
+        progression.next_page_ordinal,
+        progression.next_association_cursor,
         false,
         Some(page.page_identity()),
         index.source_root(),
@@ -459,6 +456,7 @@ fn preflight_command(
     capacity: &DraftMarkerAdmissionCapacityV1,
     head: &DraftMarkerAdmissionHeadV1,
     receipt: &DraftMarkerAdmissionReplayReceiptV1,
+    receipt_deletion: Option<DraftMarkerAdmissionReceiptKeyV1>,
     index: &PreparedDraftMarkerAdmissionIndexSuccessorV1,
     command_limit: u64,
 ) -> Result<(), DraftMarkerAdmissionPublicationErrorV1> {
@@ -476,13 +474,21 @@ fn preflight_command(
         .and_then(|bytes| bytes.checked_add(head_bytes))
         .and_then(|bytes| bytes.checked_add(receipt_bytes))
         .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?;
+    let receipt_delete_bytes = match (receipt_deletion, prior.receipt.as_ref()) {
+        (Some(key), Some(receipt)) => encoded_receipt_record_charge(&key, receipt)?,
+        (None, _) => 0,
+        (Some(_), None) => return Err(DraftMarkerAdmissionPublicationErrorV1::Authority),
+    };
     let command_bytes = checked_draft_marker_admission_command_charge_v1([
         prior
             .read_bytes
             .checked_add(footprint.read_bytes())
             .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?,
         write_bytes,
-        footprint.delete_bytes(),
+        footprint
+            .delete_bytes()
+            .checked_add(receipt_delete_bytes)
+            .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?,
     ])?;
     if command_bytes > command_limit {
         return Err(DraftMarkerAdmissionSchemaErrorV1::CommandTooLarge.into());

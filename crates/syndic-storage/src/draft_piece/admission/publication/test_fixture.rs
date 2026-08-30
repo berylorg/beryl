@@ -83,6 +83,19 @@ impl DraftMarkerAdmissionPublicationFixtureV1 {
 }
 
 impl SyndicStorage {
+    pub fn draft_marker_admission_receipt_for_test(
+        &self,
+        store: &beryl_home_store::HomeStore,
+        owner: DraftMarkerAdmissionOwnerV1,
+        command: super::super::DraftMarkerAdmissionCommandIdV1,
+    ) -> Result<Option<DraftMarkerAdmissionReplayReceiptV1>, ReadError> {
+        store.read_point::<SyndicDomain, DraftMarkerAdmissionReceiptsCodec>(
+            &self.handle,
+            &DraftMarkerAdmissionReceiptKeyV1::new(owner, command),
+            family_point_limit::<DraftMarkerAdmissionReceiptsFamily>(),
+        )
+    }
+
     pub fn draft_marker_admission_publication_snapshot_for_test(
         &self,
         store: &beryl_home_store::HomeStore,

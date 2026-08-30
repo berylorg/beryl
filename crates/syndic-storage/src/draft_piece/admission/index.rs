@@ -1,4 +1,7 @@
-use std::{cmp::Ordering, collections::BTreeSet};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
+};
 
 use beryl_home_store::{DomainReader, PointReadLimit, ReadError};
 use beryl_model::SyndicDraftMarkerId;
@@ -9,11 +12,12 @@ use crate::{codec::SMALL_MAX, domain::SyndicDomain};
 use super::{
     DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS, DRAFT_MARKER_ADMISSION_TREE_FANOUT,
     DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT, DraftMarkerAdmissionChildV1,
-    DraftMarkerAdmissionEvidenceV1, DraftMarkerAdmissionNodeIdV1, DraftMarkerAdmissionNodeKeyV1,
-    DraftMarkerAdmissionNodeKindV1, DraftMarkerAdmissionNodePayloadV1, DraftMarkerAdmissionNodeV1,
-    DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionOwnerV1,
-    DraftMarkerAdmissionPageIdentityV1, DraftMarkerAdmissionRetainedChargeV1,
-    DraftMarkerAdmissionRootV1, DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
+    DraftMarkerAdmissionEnvelopeV1, DraftMarkerAdmissionEvidenceV1, DraftMarkerAdmissionNodeIdV1,
+    DraftMarkerAdmissionNodeKeyV1, DraftMarkerAdmissionNodeKindV1,
+    DraftMarkerAdmissionNodePayloadV1, DraftMarkerAdmissionNodeV1, DraftMarkerAdmissionNodesCodec,
+    DraftMarkerAdmissionOwnerV1, DraftMarkerAdmissionPageIdentityV1,
+    DraftMarkerAdmissionRetainedChargeV1, DraftMarkerAdmissionRootV1,
+    DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
     DraftMarkerAdmissionTargetDispositionV1, DraftMarkerAdmissionTreeV1,
     DraftMarkerLabelReadinessProvenPageV1, checked_draft_marker_admission_command_charge_v1,
     encoded_node_key_charge, encoded_node_record_charge, source_key_less,
@@ -184,6 +188,8 @@ impl AdmissionNodeReader for DomainAdmissionNodeReader<'_, '_> {
 struct ReadLedger<'a, R> {
     reader: &'a R,
     read_bytes: u64,
+    maximum_bytes: u64,
+    cache: BTreeMap<DraftMarkerAdmissionNodeKeyV1, Option<DraftMarkerAdmissionNodeV1>>,
 }
 
 impl<R: AdmissionNodeReader> ReadLedger<'_, R> {
@@ -192,15 +198,23 @@ impl<R: AdmissionNodeReader> ReadLedger<'_, R> {
         key: &DraftMarkerAdmissionNodeKeyV1,
     ) -> Result<Option<DraftMarkerAdmissionNodeV1>, DraftMarkerAdmissionIndexPreparationErrorV1>
     {
+        if let Some(value) = self.cache.get(key) {
+            return Ok(value.clone());
+        }
         let value = self.reader.point(key)?;
         let charge = match value.as_ref() {
             Some(value) => encoded_node_record_charge(key, value)?,
             None => encoded_node_key_charge(key)?,
         };
-        self.read_bytes = self
+        let read_bytes = self
             .read_bytes
             .checked_add(charge)
             .ok_or(DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)?;
+        if read_bytes > self.maximum_bytes {
+            return Err(DraftMarkerAdmissionSchemaErrorV1::CommandTooLarge.into());
+        }
+        self.read_bytes = read_bytes;
+        self.cache.insert(*key, value.clone());
         Ok(value)
     }
 }
@@ -278,7 +292,17 @@ fn prepare_with_reader<R: AdmissionNodeReader>(
     let mut ledger = ReadLedger {
         reader,
         read_bytes: 0,
+        maximum_bytes: command_limit,
+        cache: BTreeMap::new(),
     };
+    authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
+    classify_page_occupancy(
+        &mut ledger,
+        owner,
+        target_root,
+        proven_page,
+        association_index,
+    )?;
 
     let target = edit_tree(
         &mut ledger,
@@ -378,6 +402,141 @@ fn prepare_with_reader<R: AdmissionNodeReader>(
             command_bytes,
         },
     })
+}
+
+fn authenticate_retained_predecessor_nodes<R: AdmissionNodeReader>(
+    ledger: &mut ReadLedger<'_, R>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    retained: &[DraftMarkerAdmissionChildV1],
+) -> Result<(), DraftMarkerAdmissionIndexPreparationErrorV1> {
+    for expected in retained {
+        let node = ledger
+            .point(&expected.key())?
+            .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
+        node.validate()?;
+        if node.key() != expected.key()
+            || node.key().owner() != owner
+            || node.digest() != expected.digest()
+            || node.count()? != expected.count()
+            || node.envelope()? != expected.envelope()
+        {
+            return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+        }
+    }
+    Ok(())
+}
+
+fn classify_page_occupancy<R: AdmissionNodeReader>(
+    ledger: &mut ReadLedger<'_, R>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    target_root: DraftMarkerAdmissionRootV1,
+    proven_page: &DraftMarkerLabelReadinessProvenPageV1,
+    consumed_prefix: u64,
+) -> Result<(), DraftMarkerAdmissionIndexPreparationErrorV1> {
+    let page = proven_page.sealed_page();
+    let page_identity =
+        DraftMarkerAdmissionPageIdentityV1::new(proven_page.page_identity(), page.ordinal);
+    for (index, entry) in page.entries.iter().enumerate() {
+        let occupied = point_target_leaf(ledger, owner, target_root, entry.target_marker_id)?;
+        let index = u64::try_from(index)
+            .map_err(|_| DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)?;
+        if index < consumed_prefix {
+            let expected_evidence = DraftMarkerAdmissionEvidenceV1::new(entry.evidence_bytes())?;
+            match occupied.as_ref().map(DraftMarkerAdmissionNodeV1::payload) {
+                Some(DraftMarkerAdmissionNodePayloadV1::TargetLeaf {
+                    target_marker_id,
+                    page,
+                    evidence,
+                    source_label,
+                    asset_id,
+                    disposition,
+                }) if *target_marker_id == entry.target_marker_id
+                    && *page == page_identity
+                    && *evidence == expected_evidence
+                    && *source_label == entry.label
+                    && *asset_id == entry.asset_id
+                    && *disposition == DraftMarkerAdmissionTargetDispositionV1::Unassigned => {}
+                _ => return Err(DraftMarkerAdmissionIndexPreparationErrorV1::DuplicateTarget),
+            }
+        } else if occupied.is_some() {
+            return Err(DraftMarkerAdmissionIndexPreparationErrorV1::DuplicateTarget);
+        }
+    }
+    Ok(())
+}
+
+fn point_target_leaf<R: AdmissionNodeReader>(
+    ledger: &mut ReadLedger<'_, R>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    target: SyndicDraftMarkerId,
+) -> Result<Option<DraftMarkerAdmissionNodeV1>, DraftMarkerAdmissionIndexPreparationErrorV1> {
+    if root.tree() != DraftMarkerAdmissionTreeV1::TargetId {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    }
+    root.validate_shape()?;
+    let Some(root_key) = root.node() else {
+        return Ok(None);
+    };
+    if root_key.owner() != owner {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    }
+    let mut node = ledger
+        .point(&root_key)?
+        .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
+    node.validate()?;
+    if node.key() != root_key
+        || node.tree() != DraftMarkerAdmissionTreeV1::TargetId
+        || node.height() != root.height()
+        || node.digest() != root.digest()
+        || node.count()? != root.count()
+    {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    }
+    loop {
+        match node.payload() {
+            DraftMarkerAdmissionNodePayloadV1::Internal { height, children } => {
+                let mut selected = None;
+                for (index, child) in children.iter().enumerate() {
+                    let DraftMarkerAdmissionEnvelopeV1::TargetId { last, .. } = child.envelope()
+                    else {
+                        return Err(
+                            DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication,
+                        );
+                    };
+                    if target <= last {
+                        selected = Some(index);
+                        break;
+                    }
+                }
+                let selected = selected
+                    .or_else(|| children.len().checked_sub(1))
+                    .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication)?;
+                let expected = children[selected];
+                let child = ledger
+                    .point(&expected.key())?
+                    .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
+                child.validate()?;
+                if child.key() != expected.key()
+                    || child.key().owner() != owner
+                    || child.tree() != DraftMarkerAdmissionTreeV1::TargetId
+                    || child.height().checked_add(1) != Some(*height)
+                    || child.digest() != expected.digest()
+                    || child.count()? != expected.count()
+                    || child.envelope()? != expected.envelope()
+                {
+                    return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+                }
+                node = child;
+            }
+            DraftMarkerAdmissionNodePayloadV1::TargetLeaf {
+                target_marker_id, ..
+            } => return Ok((*target_marker_id == target).then_some(node)),
+            DraftMarkerAdmissionNodePayloadV1::SourceLeaf { .. } => {
+                return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+            }
+        }
+    }
 }
 
 #[cfg(feature = "test-faults")]

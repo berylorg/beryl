@@ -47,7 +47,8 @@ fn first_publication_is_atomic_and_reopens_coherently() {
     assert_eq!(head.revision(), NonZeroU64::MIN);
     assert_eq!(head.source_root().count(), 1);
     assert_eq!(head.target_root().count(), 1);
-    assert_eq!(head.ingestion_association_cursor(), 1);
+    assert_eq!(head.ingestion_association_cursor(), 0);
+    assert_eq!(head.next_page_ordinal().get(), 2);
     assert_eq!(capacity.revision(), NonZeroU64::MIN);
     assert_eq!(capacity.charge(), head.charge());
     assert_eq!(snapshot.receipt().unwrap().command_id(), page_id(41));
