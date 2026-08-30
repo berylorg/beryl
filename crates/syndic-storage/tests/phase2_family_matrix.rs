@@ -154,7 +154,7 @@ fn exercise_accepted_deletion(family: PhysicalFamily, delete: FixtureDelete) {
 #[test]
 fn populated_fixture_covers_every_resting_family_and_reopens_cleanly() {
     let records = populated_records();
-    assert_eq!(PhysicalFamily::ALL.len(), 62);
+    assert_eq!(PhysicalFamily::ALL.len(), 63);
     // Provider staging, stop-operation, and compaction families are covered by their dedicated
     // phase fixtures rather than this legacy populated aggregate. Resource families are
     // intentionally unrepresented because the fixture's plain provider text produces no typed
@@ -343,7 +343,7 @@ fn rejection_families() -> Vec<PhysicalFamily> {
 fn exercise_deletion_partition(modulus: usize, remainder: usize) {
     let cases = deletion_cases();
     let rejection_families = rejection_families();
-    assert_eq!(cases.len(), 53);
+    assert_eq!(cases.len(), 54);
     assert_eq!(cases.len(), rejection_families.len());
     for family in rejection_families {
         assert_eq!(
@@ -410,6 +410,11 @@ fn deletion_cases() -> Vec<DeletionCase> {
             family: PhysicalFamily::ImageLabelAuthorityHeads,
             delete: FixtureDelete::ImageLabelAuthorityHead(id(40)),
             expected: "thread image-label authority head is missing",
+        },
+        DeletionCase {
+            family: PhysicalFamily::DraftImageLabelProtectionHeads,
+            delete: FixtureDelete::DraftImageLabelProtectionHead(id(40)),
+            expected: "thread draft image-label protection head is missing",
         },
         DeletionCase {
             family: PhysicalFamily::ThreadExecutions,

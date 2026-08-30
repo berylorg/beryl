@@ -67,6 +67,10 @@ pub(super) fn records() -> Vec<FixtureRecord> {
             )
             .unwrap(),
         ),
+        FixtureRecord::DraftImageLabelProtectionHead(
+            DraftImageLabelProtectionHeadV1::new(child_thread, 1, ImageLabelFrontier::EMPTY)
+                .unwrap(),
+        ),
         FixtureRecord::ThreadExecution(execution),
         FixtureRecord::ThreadAttributes(attributes),
         FixtureRecord::ThreadUsage(usage),

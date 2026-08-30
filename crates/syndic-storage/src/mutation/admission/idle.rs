@@ -54,6 +54,7 @@ pub(super) fn records(
             reader,
             &base.thread,
             base.image_label_authority,
+            base.draft_image_label_protection,
             crate::ImageLabelOriginOwner::CanonicalItem(acceptance.idle_user_item_id()),
             acceptance.asset_reference_set(),
         )?;

@@ -216,9 +216,10 @@
   authority family before further draft-marker implementation.
 - [x] Reconciled draft-marker admission authority around operation-owned durable indexes, post-EOF
   assignment, byte-exact replay, and package-derived binding.
-- [ ] Establish operation-owned Syndic draft-marker admission with monotonic label protection,
-  bounded authenticated indexes, home-wide cross-restart retained-resource limits, and exact
-  package-owned replay custody.
+- [x] Established independent monotonic Syndic draft-label protection with atomic thread creation,
+  exact creation reconciliation, accepted-authority containment, and bounded corruption evidence.
+- [ ] Establish operation-owned Syndic draft-marker admission with bounded authenticated indexes,
+  home-wide cross-restart retained-resource limits, and exact package-owned replay custody.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.

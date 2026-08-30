@@ -69,6 +69,8 @@ pub enum SyndicRecordError {
     InvalidCompactionOperation,
     #[error("thread image-label inherited frontier exceeds its current frontier")]
     InvalidImageLabelFrontier,
+    #[error("draft image-label protection head is invalid")]
+    InvalidDraftImageLabelProtection,
     #[error("activity-query running-row count exceeds its logical row count")]
     InvalidActivityQueryFrontier,
     #[error("activity-query ordering and provider lifecycle disagree")]

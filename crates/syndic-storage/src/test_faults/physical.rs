@@ -73,6 +73,9 @@ pub fn inject_physical_corruption(
         PhysicalFamily::ImageLabelAuthorityHeads => {
             inject::<ImageLabelAuthorityHeadsFamily>(store, storage, thread, corruption)
         }
+        PhysicalFamily::DraftImageLabelProtectionHeads => {
+            inject::<DraftImageLabelProtectionHeadsFamily>(store, storage, thread, corruption)
+        }
         PhysicalFamily::ThreadExecutions => {
             inject::<ThreadExecutionsFamily>(store, storage, thread, corruption)
         }

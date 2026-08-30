@@ -24,14 +24,14 @@ use beryl_model::{
 use syndic_storage::test_faults::{FixtureBatch, FixtureRecord, fixture_transcript_digest_seed};
 use syndic_storage::{
     BindingHeadRecord, BindingState, ComposerPayload, ContentByteSpanRecord, ContentManifestRecord,
-    ContentReference, DraftByThreadRecord, DraftRecord, DraftSubmissionIntent,
-    HistorySummaryRecord, ImageLabelAuthorityHeadV1, ImageLabelFrontier, InputGateRecord,
-    PreparedContent, ProjectionLifecycle, SelectedPathProof, SyndicStorage, SyndicTimestamp,
-    ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadLineageProof,
-    ThreadRecord, ThreadUsageRecord, TranscriptBuildPhase, TranscriptBuildRecord,
-    TranscriptGeneration, TranscriptPathTurnRecord, TranscriptViewHeadRecord, TurnDepth,
-    TurnEndStatus, TurnIncompleteReason, TurnLifecycle, TurnStateRecord, TurnStateRevision,
-    TurnTerminalOutcome,
+    ContentReference, DraftByThreadRecord, DraftImageLabelProtectionHeadV1, DraftRecord,
+    DraftSubmissionIntent, HistorySummaryRecord, ImageLabelAuthorityHeadV1, ImageLabelFrontier,
+    InputGateRecord, PreparedContent, ProjectionLifecycle, SelectedPathProof, SyndicStorage,
+    SyndicTimestamp, ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord,
+    ThreadLineageProof, ThreadRecord, ThreadUsageRecord, TranscriptBuildPhase,
+    TranscriptBuildRecord, TranscriptGeneration, TranscriptPathTurnRecord,
+    TranscriptViewHeadRecord, TurnDepth, TurnEndStatus, TurnIncompleteReason, TurnLifecycle,
+    TurnStateRecord, TurnStateRevision, TurnTerminalOutcome,
 };
 
 use lifecycle::lifecycle_end_status;
@@ -450,6 +450,9 @@ pub fn thread_records_with_activity(
                 ImageLabelFrontier::EMPTY,
             )
             .unwrap(),
+        ),
+        FixtureRecord::DraftImageLabelProtectionHead(
+            DraftImageLabelProtectionHeadV1::new(thread_id, 1, ImageLabelFrontier::EMPTY).unwrap(),
         ),
         FixtureRecord::ThreadExecution(execution),
         FixtureRecord::ThreadAttributes(attributes),

@@ -13,6 +13,9 @@ pub(super) fn put_record(
         FixtureRecord::ImageLabelAuthorityHead(v) => {
             builder.put::<ImageLabelAuthorityHeadsCodec>(&v.thread_id(), v)?
         }
+        FixtureRecord::DraftImageLabelProtectionHead(v) => {
+            builder.put::<DraftImageLabelProtectionHeadsCodec>(&v.thread_id(), v)?
+        }
         FixtureRecord::ThreadExecution(v) => {
             builder.put::<ThreadExecutionsCodec>(&v.thread_id(), v)?
         }

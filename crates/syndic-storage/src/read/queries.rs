@@ -2,8 +2,9 @@ use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, HomeStore
 use beryl_model::{SyndicPathDigest, SyndicThreadId, ThreadRevision};
 
 use crate::{
-    ImageLabelAuthorityHeadV1, ImageLabelOrdinal, ImageLabelOriginSpanRecord, SyndicReadError,
-    ThreadLineageDepth, codec::*, domain::SyndicStorage,
+    DraftImageLabelProtectionHeadV1, ImageLabelAuthorityHeadV1, ImageLabelOrdinal,
+    ImageLabelOriginSpanRecord, SyndicReadError, ThreadLineageDepth, codec::*,
+    domain::SyndicStorage,
 };
 
 use super::SyndicPointReadLimit;
@@ -147,6 +148,21 @@ impl SyndicStorage {
         if head.as_ref().is_some_and(|head| !head.is_exact()) {
             return Err(SyndicReadError::Invariant(
                 "image-label authority head is invalid",
+            ));
+        }
+        Ok(head)
+    }
+
+    pub fn draft_image_label_protection_head(
+        &self,
+        store: &HomeStore,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<DraftImageLabelProtectionHeadV1>, SyndicReadError> {
+        let head = self.point::<DraftImageLabelProtectionHeadsFamily>(store, thread_id, limit)?;
+        if head.as_ref().is_some_and(|head| !head.is_exact()) {
+            return Err(SyndicReadError::Invariant(
+                "draft image-label protection head is invalid",
             ));
         }
         Ok(head)

@@ -271,12 +271,28 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
                 )
                 .unwrap(),
             ),
+            FixtureRecord::DraftImageLabelProtectionHead(
+                DraftImageLabelProtectionHeadV1::new(
+                    parent_id,
+                    2,
+                    ImageLabelFrontier::from_raw(label.get()),
+                )
+                .unwrap(),
+            ),
             FixtureRecord::Thread(child),
             FixtureRecord::ImageLabelAuthorityHead(
                 ImageLabelAuthorityHeadV1::new(
                     child_id,
                     2,
                     ImageLabelFrontier::from_raw(label.get()),
+                    ImageLabelFrontier::from_raw(label.get()),
+                )
+                .unwrap(),
+            ),
+            FixtureRecord::DraftImageLabelProtectionHead(
+                DraftImageLabelProtectionHeadV1::new(
+                    child_id,
+                    2,
                     ImageLabelFrontier::from_raw(label.get()),
                 )
                 .unwrap(),

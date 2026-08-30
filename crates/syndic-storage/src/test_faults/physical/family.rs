@@ -3,6 +3,7 @@
 pub enum PhysicalFamily {
     Threads,
     ImageLabelAuthorityHeads,
+    DraftImageLabelProtectionHeads,
     ThreadExecutions,
     ThreadAttributes,
     ThreadUsage,
@@ -66,9 +67,10 @@ pub enum PhysicalFamily {
 }
 
 impl PhysicalFamily {
-    pub const ALL: [Self; 62] = [
+    pub const ALL: [Self; 63] = [
         Self::Threads,
         Self::ImageLabelAuthorityHeads,
+        Self::DraftImageLabelProtectionHeads,
         Self::ThreadExecutions,
         Self::ThreadAttributes,
         Self::ThreadUsage,
@@ -136,6 +138,7 @@ impl PhysicalFamily {
         match self {
             Self::Threads => "threads",
             Self::ImageLabelAuthorityHeads => "image-label-authority-heads",
+            Self::DraftImageLabelProtectionHeads => "draft-image-label-protection-heads",
             Self::ThreadExecutions => "thread-executions",
             Self::ThreadAttributes => "thread-attributes",
             Self::ThreadUsage => "thread-usage",

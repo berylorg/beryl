@@ -1,9 +1,8 @@
 # Scope
 
 Resume Checkpoint 4 of the Beryl-home architectural rework tracked by
-`doc/rework/beryl-home/REWORK.md`. First reconcile live authority and the execution window with the
-updated engineering-rigor contract so later implementation protects concrete supported-envelope
-consequences without duplicating dependency guarantees, runtime validation, or review machinery.
+`doc/rework/beryl-home/REWORK.md`. Protect concrete supported-envelope consequences without
+duplicating dependency guarantees, runtime validation, or review machinery.
 
 Preserve the architecture that has real product cost and purpose: bounded GUI/editor/transcript
 streaming, explicit Beryl-owned resource limits, atomic durable mutation, exact acknowledgement-loss
@@ -18,23 +17,16 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 210: Reconcile Draft-Marker Admission Authority (finished)
+# Phase 211: Establish Monotonic Draft-Label Protection (finished)
 
-Reconciled image-assets, Syndic-conversation-history, and Syndic package authority around
-operation-owned authenticated indexes, bounded post-EOF assignment, durable byte-exact replay,
-minimal runtime-attachment ownership, and package-derived mutation binding. Corrected the tracker
-ownership wording; no feature behavior, source, test, or persisted schema changed.
+Established the independently revisioned thread-keyed protection head, atomic creation and exact
+creation reconciliation, bounded reads, explicit scrub validation, and first-acceptance containment
+without conflating permanent authority or origin spans. The strict advance primitive remains
+package-internal for later committed-allocation integration.
 
-Independent authority review closed after resolving reservation and opaque app-transport custody;
-scoped stale-term searches and diff validation passed.
-
-# Phase 211: Establish Monotonic Draft-Label Protection (pending)
-
-Add the independently revisioned thread-keyed draft-label protection head before rebuilding
-readiness. Initialize it from accepted authority, advance it only with committed draft allocation,
-reserve above it and live transient reservations, and keep permanent accepted authority and origin
-spans distinct. Prove monotonicity, affected-record corruption, restart, acceptance, and
-reconciliation with focused tests and independent semantic review.
+Bounded Cargo check and focused nextest coverage passed for monotonicity, restart, corruption,
+creation reconciliation, acceptance, and exhaustive family fixtures; independent semantic review
+closed after the affected family matrices were updated.
 
 # Phase 212: Replace Draft-Marker Readiness With Lean Admission Indexes (pending)
 

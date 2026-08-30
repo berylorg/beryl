@@ -16,22 +16,22 @@ use syndic_storage::{
     BindingState, CanonicalItemPresentation, CanonicalItemRecord, CasItemSource, CasLineageProof,
     CasRepresentedPrefixProof, CasTurnSource, CompleteTerminalHistory, ComposerAtom,
     ComposerPayload, ContentEncoding, ContentLifecycle, ContentReference, ContextEnvelopeRecord,
-    DraftByThreadRecord, DraftRecord, DraftSubmissionIntent, FinalizeNextTurnItem,
-    FreezeNextTurnItem, GeneratedMediaResourceDisposition, HistorySummaryRecord,
-    ImageLabelAuthorityHeadV1, ImageLabelFrontier, ImageLabelOrdinal, ImageLabelOriginOwner,
-    ImageLabelOriginSpanRecord, InputGateRecord, InputGateState, ItemProjectionGeneration,
-    LiveSourceEvent, NativeCasLineage, PreparedContent, ProjectionLifecycle,
-    ProviderFrameOrdinalV1, ProviderFramePreparationPlan, ProviderFrameStageOutcome,
-    ProviderItemBuildLifecycle, ProviderItemFrameV1, ProviderItemLifecycle,
-    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
-    ProviderSubmittedContentV1, ProviderUserMessageV1, PublishActiveCasTurn, PublishValidBinding,
-    ResourceBacking, SealedProviderFrameReference, SelectedPathProof, SourceEventPayload,
-    SourceEventSequence, StartItemProjectionBuild, StartTranscriptBuild, SyndicPointReadLimit,
-    SyndicStorage, SyndicTimestamp, ThreadParentIndexRecord, ThreadRecord, TranscriptBuildPhase,
-    TranscriptViewHeadRecord, TurnChildIndexRecord, TurnDepth, TurnItemIndexRecord,
-    TurnItemOrdinal, TurnKind, TurnLifecycle, TurnStateRecord, TurnStateRevision,
-    child_turn_chain_digest, empty_selected_path_digest, prepare_provider_frame,
-    root_turn_chain_digest, stage_provider_frame,
+    DraftByThreadRecord, DraftImageLabelProtectionHeadV1, DraftRecord, DraftSubmissionIntent,
+    FinalizeNextTurnItem, FreezeNextTurnItem, GeneratedMediaResourceDisposition,
+    HistorySummaryRecord, ImageLabelAuthorityHeadV1, ImageLabelFrontier, ImageLabelOrdinal,
+    ImageLabelOriginOwner, ImageLabelOriginSpanRecord, InputGateRecord, InputGateState,
+    ItemProjectionGeneration, LiveSourceEvent, NativeCasLineage, PreparedContent,
+    ProjectionLifecycle, ProviderFrameOrdinalV1, ProviderFramePreparationPlan,
+    ProviderFrameStageOutcome, ProviderItemBuildLifecycle, ProviderItemFrameV1,
+    ProviderItemLifecycle, ProviderItemObservationV1, ProviderItemV1,
+    ProviderLifecycleTimestampMsV1, ProviderSubmittedContentV1, ProviderUserMessageV1,
+    PublishActiveCasTurn, PublishValidBinding, ResourceBacking, SealedProviderFrameReference,
+    SelectedPathProof, SourceEventPayload, SourceEventSequence, StartItemProjectionBuild,
+    StartTranscriptBuild, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    ThreadParentIndexRecord, ThreadRecord, TranscriptBuildPhase, TranscriptViewHeadRecord,
+    TurnChildIndexRecord, TurnDepth, TurnItemIndexRecord, TurnItemOrdinal, TurnKind, TurnLifecycle,
+    TurnStateRecord, TurnStateRevision, child_turn_chain_digest, empty_selected_path_digest,
+    prepare_provider_frame, root_turn_chain_digest, stage_provider_frame,
 };
 
 use super::{batch, commit, prepared_content_records, seed_detached_canonical_draft_backing};
@@ -227,6 +227,10 @@ pub fn submit_prepared_current_draft(
         .image_label_authority_head(store, thread_id, point_limit())
         .unwrap()
         .unwrap();
+    let image_label_protection = storage
+        .draft_image_label_protection_head(store, thread_id, point_limit())
+        .unwrap()
+        .unwrap();
     let (advanced_image_label_head, image_label_origin) = submission_image_label_authority(
         image_label_head,
         content,
@@ -415,6 +419,14 @@ pub fn submit_prepared_current_draft(
         records.push(FixtureRecord::ImageLabelOriginSpan(origin));
     }
     if let Some(head) = advanced_image_label_head {
+        records.push(FixtureRecord::DraftImageLabelProtectionHead(
+            DraftImageLabelProtectionHeadV1::new(
+                thread_id,
+                image_label_protection.revision() + 1,
+                head.permanent(),
+            )
+            .unwrap(),
+        ));
         records.push(FixtureRecord::ImageLabelAuthorityHead(head));
     }
     let mut fixture = batch(records);

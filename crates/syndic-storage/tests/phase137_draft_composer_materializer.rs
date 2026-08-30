@@ -37,13 +37,14 @@ use syndic_storage::{
     DraftEditorCandidatePublicationSourceCaptureRequestV1, DraftEditorCandidateSessionIdV1,
     DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionOpenRequestV1,
     DraftEditorCandidateSessionReadOutcomeV1, DraftEditorCandidateSessionV1,
-    DraftEditorCurrentSelectorV1, DraftMarkerSealOperationIdV1, DraftMarkerSealRequestV1,
-    DraftMarkerSealStatusV1, DraftPieceEditHeaderV1, DraftPieceMarkerEffectChargesV1,
-    DraftPieceMarkerEffectV1, DraftPieceMarkerInsertionV1, DraftPieceMarkerV1,
-    DraftPieceOperationIdV1, DraftPieceReplacementV1, DraftPieceV1, FirstAcceptance,
-    FirstAcceptanceKind, FirstAcceptanceStatus, ImageLabelAuthorityHeadV1, InputGateRecord,
-    InputGateState, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    canonical_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_fragment_chain_v1,
+    DraftEditorCurrentSelectorV1, DraftImageLabelProtectionHeadV1, DraftMarkerSealOperationIdV1,
+    DraftMarkerSealRequestV1, DraftMarkerSealStatusV1, DraftPieceEditHeaderV1,
+    DraftPieceMarkerEffectChargesV1, DraftPieceMarkerEffectV1, DraftPieceMarkerInsertionV1,
+    DraftPieceMarkerV1, DraftPieceOperationIdV1, DraftPieceReplacementV1, DraftPieceV1,
+    FirstAcceptance, FirstAcceptanceKind, FirstAcceptanceStatus, ImageLabelAuthorityHeadV1,
+    ImageLabelFrontier, InputGateRecord, InputGateState, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp, canonical_draft_piece_fragment_chain_v1,
+    canonical_empty_draft_piece_fragment_chain_v1,
 };
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
@@ -290,6 +291,29 @@ fn acceptance_with_timestamp(acceptance: &FirstAcceptance, admitted_at: u64) -> 
 }
 
 #[cfg(feature = "test-faults")]
+fn install_protection(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    thread: SyndicThreadId,
+    maximum: ImageLabelFrontier,
+) {
+    let current = storage
+        .draft_image_label_protection_head(store, thread, read_limit())
+        .unwrap()
+        .unwrap();
+    let mut batch = FixtureBatch::new();
+    batch
+        .put(FixtureRecord::DraftImageLabelProtectionHead(
+            DraftImageLabelProtectionHeadV1::new(thread, current.revision() + 1, maximum).unwrap(),
+        ))
+        .unwrap();
+    committed(execute(
+        store,
+        storage.fixture_contribution(storage.revision(store).unwrap(), batch),
+    ));
+}
+
+#[cfg(feature = "test-faults")]
 #[test]
 fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() {
     let (_home, store, storage, thread, faults) = fixture_with_faults("image-first-acceptance", 31);
@@ -337,6 +361,12 @@ fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() 
         &storage, &store, thread,
     ));
     let materialization = materialize(&storage, &store, materialization_key(root, 40));
+    install_protection(
+        &storage,
+        &store,
+        thread,
+        ImageLabelFrontier::from_raw(label.get()),
+    );
     let current = storage
         .current_draft(&store, thread, read_limit())
         .unwrap()
@@ -365,6 +395,10 @@ fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() 
         DraftPieceOperationIdV1::from_bytes([43; 16]),
         SyndicTimestamp::from_unix_millis(44),
     );
+    let protection = storage
+        .draft_image_label_protection_head(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
 
     let wrong_head = head.advanced(head.permanent()).unwrap();
     let noncommitting = FirstAcceptance::new(
@@ -420,6 +454,12 @@ fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() 
     assert_eq!(advanced.revision(), head.revision() + 1);
     assert_eq!(advanced.inherited(), head.inherited());
     assert_eq!(advanced.permanent().get(), label.get());
+    assert_eq!(
+        storage
+            .draft_image_label_protection_head(&store, thread, read_limit())
+            .unwrap(),
+        Some(protection)
+    );
     let resolved = storage
         .resolve_image_label_origin_span(&store, thread, label, read_limit())
         .unwrap()
@@ -510,6 +550,9 @@ fn direct_marker_free_first_acceptance_leaves_the_independent_head_unchanged() {
         60,
         61,
     );
+    let protection = storage
+        .draft_image_label_protection_head(&store, thread, read_limit())
+        .unwrap();
 
     committed(execute(
         &store,
@@ -520,6 +563,12 @@ fn direct_marker_free_first_acceptance_leaves_the_independent_head_unchanged() {
             .image_label_authority_head(&store, thread, read_limit())
             .unwrap(),
         Some(head)
+    );
+    assert_eq!(
+        storage
+            .draft_image_label_protection_head(&store, thread, read_limit())
+            .unwrap(),
+        protection
     );
     assert!(
         storage
@@ -613,6 +662,12 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
         &store,
         storage.fixture_contribution(storage.revision(&store).unwrap(), batch),
     ));
+    install_protection(
+        &storage,
+        &store,
+        thread,
+        ImageLabelFrontier::from_raw(label.get()),
+    );
     let (acceptance, head) = acceptance_from_current(
         &storage,
         &store,
@@ -625,6 +680,10 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
         74,
         75,
     );
+    let protection = storage
+        .draft_image_label_protection_head(&store, thread, read_limit())
+        .unwrap()
+        .unwrap();
 
     let wrong_head = head.advanced(head.permanent()).unwrap();
     let noncommitting = acceptance_with_head(&acceptance, wrong_head);
@@ -665,6 +724,12 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
     assert_eq!(advanced.revision(), head.revision() + 1);
     assert_eq!(advanced.inherited(), head.inherited());
     assert_eq!(advanced.permanent().get(), label.get());
+    assert_eq!(
+        storage
+            .draft_image_label_protection_head(&store, thread, read_limit())
+            .unwrap(),
+        Some(protection)
+    );
     let resolved = storage
         .resolve_image_label_origin_span(&store, thread, label, read_limit())
         .unwrap()
@@ -962,21 +1027,22 @@ fn multi_page_utf8_source_reopens_at_every_durable_frontier() {
 #[test]
 fn corrupt_build_mapping_manifest_and_output_are_rejected() {
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 81);
+    assert_eq!(names.len(), 82);
     assert_eq!(names[0], "threads");
     assert_eq!(names[1], "image-label-authority-heads");
-    assert_eq!(names[11], "draft-marker-order-commitments");
-    assert_eq!(names[12], "draft-marker-seals");
-    assert_eq!(names[15], "draft-piece-build-progress");
-    assert_eq!(names[17], "draft-editor-candidate-sessions");
-    assert_eq!(names[18], "draft-mutation-staging-heads");
-    assert_eq!(names[19], "draft-mutation-staging-pages");
-    assert_eq!(names[20], "draft-mutation-staging-progress");
-    assert_eq!(names[21], "draft-edit-history-frontiers");
-    assert_eq!(names[22], "draft-edit-history-transitions");
-    assert_eq!(names[23], "draft-historical-root-adoptions");
-    assert_eq!(names[24], "draft-composer-builds");
-    assert_eq!(names[25], "draft-composer-materializations");
+    assert_eq!(names[2], "draft-image-label-protection-heads");
+    assert_eq!(names[12], "draft-marker-order-commitments");
+    assert_eq!(names[13], "draft-marker-seals");
+    assert_eq!(names[16], "draft-piece-build-progress");
+    assert_eq!(names[18], "draft-editor-candidate-sessions");
+    assert_eq!(names[19], "draft-mutation-staging-heads");
+    assert_eq!(names[20], "draft-mutation-staging-pages");
+    assert_eq!(names[21], "draft-mutation-staging-progress");
+    assert_eq!(names[22], "draft-edit-history-frontiers");
+    assert_eq!(names[23], "draft-edit-history-transitions");
+    assert_eq!(names[24], "draft-historical-root-adoptions");
+    assert_eq!(names[25], "draft-composer-builds");
+    assert_eq!(names[26], "draft-composer-materializations");
 
     for (name, corruption) in [
         ("build-cursor", DraftComposerBuildCorruption::Cursor),

@@ -10,7 +10,38 @@ pub(super) fn validate(
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<(), SyndicValidationError> {
     activity::validate(reader)?;
-    validate_image_label_origins(reader)
+    validate_image_label_origins(reader)?;
+    validate_draft_image_label_protection_heads(reader)
+}
+
+fn validate_draft_image_label_protection_heads(
+    reader: &DomainReader<'_, SyndicDomain>,
+) -> Result<(), SyndicValidationError> {
+    scan::<DraftImageLabelProtectionHeadsFamily>(reader, |key, head| {
+        if *key != head.thread_id() || !head.is_exact() {
+            return invariant("draft image-label protection key or record is corrupt");
+        }
+        let authority = require::<ImageLabelAuthorityHeadsFamily>(
+            reader,
+            key,
+            "draft image-label protection authority head is missing",
+        )?;
+        if !authority.is_exact()
+            || authority.thread_id() != *key
+            || head.protected_maximum() < authority.permanent()
+        {
+            return invariant("draft image-label protection authority disagrees");
+        }
+        let thread = require::<ThreadsFamily>(
+            reader,
+            key,
+            "draft image-label protection thread is missing",
+        )?;
+        if thread.id() != *key {
+            return invariant("draft image-label protection thread disagrees");
+        }
+        Ok(())
+    })
 }
 
 fn validate_image_label_origins(

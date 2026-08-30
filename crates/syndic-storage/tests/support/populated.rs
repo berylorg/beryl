@@ -18,7 +18,7 @@ use beryl_model::{
 };
 use provider::{
     AgentItemFixtureState, ProviderItemFixture, ProviderSeedTurn, accept_clean, agent_item_fixture,
-    command_item_fixture, correlated_user_item_fixture,
+    command_item_fixture,
 };
 use seed::provider_command_owned;
 pub use seed::seed_populated;
@@ -140,6 +140,10 @@ pub fn populated_records() -> Vec<FixtureRecord> {
                 ImageLabelFrontier::EMPTY,
             )
             .unwrap(),
+        ),
+        FixtureRecord::DraftImageLabelProtectionHead(
+            DraftImageLabelProtectionHeadV1::new(source_thread, 1, ImageLabelFrontier::EMPTY)
+                .unwrap(),
         ),
         FixtureRecord::ThreadExecution(source_execution),
         FixtureRecord::ThreadAttributes(source_attributes),

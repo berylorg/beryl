@@ -27,6 +27,9 @@ impl FixtureOperation {
                 FixtureDelete::ImageLabelAuthorityHead(_) => {
                     super::PhysicalFamily::ImageLabelAuthorityHeads
                 }
+                FixtureDelete::DraftImageLabelProtectionHead(_) => {
+                    super::PhysicalFamily::DraftImageLabelProtectionHeads
+                }
                 FixtureDelete::ThreadExecution(_) => super::PhysicalFamily::ThreadExecutions,
                 FixtureDelete::ThreadAttributes(_) => super::PhysicalFamily::ThreadAttributes,
                 FixtureDelete::ThreadUsage(_) => super::PhysicalFamily::ThreadUsage,
@@ -255,6 +258,9 @@ fn reserve_fixture_family(
         super::PhysicalFamily::Threads => reserve!(ThreadsCodec),
         super::PhysicalFamily::ImageLabelAuthorityHeads => {
             reserve!(ImageLabelAuthorityHeadsCodec)
+        }
+        super::PhysicalFamily::DraftImageLabelProtectionHeads => {
+            reserve!(DraftImageLabelProtectionHeadsCodec)
         }
         super::PhysicalFamily::ThreadExecutions => reserve!(ThreadExecutionsCodec),
         super::PhysicalFamily::ThreadAttributes => reserve!(ThreadAttributesCodec),

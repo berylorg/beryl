@@ -59,14 +59,15 @@ fn policy_and_family_bounds_remain_exact() {
     assert!(DraftEditHistoryPolicyV1::new(1, 0).is_none());
     assert!(DraftEditHistoryPolicyV1::new(1, 1).is_some());
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 81);
+    assert_eq!(names.len(), 82);
     assert_eq!(names[0], "threads");
     assert_eq!(names[1], "image-label-authority-heads");
-    assert_eq!(names[21], "draft-edit-history-frontiers");
-    assert_eq!(names[22], "draft-edit-history-transitions");
-    assert_eq!(names[23], "draft-historical-root-adoptions");
-    assert_eq!(names[24], "draft-composer-builds");
-    assert_eq!(names[25], "draft-composer-materializations");
+    assert_eq!(names[2], "draft-image-label-protection-heads");
+    assert_eq!(names[22], "draft-edit-history-frontiers");
+    assert_eq!(names[23], "draft-edit-history-transitions");
+    assert_eq!(names[24], "draft-historical-root-adoptions");
+    assert_eq!(names[25], "draft-composer-builds");
+    assert_eq!(names[26], "draft-composer-materializations");
 }
 
 #[test]

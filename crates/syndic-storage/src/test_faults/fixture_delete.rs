@@ -13,6 +13,9 @@ pub(super) fn delete_record(
         FixtureDelete::ImageLabelAuthorityHead(v) => {
             builder.delete::<ImageLabelAuthorityHeadsCodec>(v)?
         }
+        FixtureDelete::DraftImageLabelProtectionHead(v) => {
+            builder.delete::<DraftImageLabelProtectionHeadsCodec>(v)?
+        }
         FixtureDelete::ThreadExecution(v) => builder.delete::<ThreadExecutionsCodec>(v)?,
         FixtureDelete::ThreadAttributes(v) => builder.delete::<ThreadAttributesCodec>(v)?,
         FixtureDelete::ThreadUsage(v) => builder.delete::<ThreadUsageCodec>(v)?,

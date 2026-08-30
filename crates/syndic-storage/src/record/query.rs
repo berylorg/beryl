@@ -19,6 +19,82 @@ pub struct ImageLabelAuthorityHeadV1 {
     digest: [u8; 32],
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DraftImageLabelProtectionHeadV1 {
+    thread_id: SyndicThreadId,
+    revision: u64,
+    protected_maximum: crate::ImageLabelFrontier,
+    digest: [u8; 32],
+}
+
+impl DraftImageLabelProtectionHeadV1 {
+    pub fn new(
+        thread_id: SyndicThreadId,
+        revision: u64,
+        protected_maximum: crate::ImageLabelFrontier,
+    ) -> Result<Self, SyndicRecordError> {
+        if revision == 0 {
+            return Err(SyndicRecordError::InvalidDraftImageLabelProtection);
+        }
+        let digest = Self::digest_for(thread_id, revision, protected_maximum);
+        Ok(Self {
+            thread_id,
+            revision,
+            protected_maximum,
+            digest,
+        })
+    }
+
+    pub const fn thread_id(self) -> SyndicThreadId {
+        self.thread_id
+    }
+
+    pub const fn revision(self) -> u64 {
+        self.revision
+    }
+
+    pub const fn protected_maximum(self) -> crate::ImageLabelFrontier {
+        self.protected_maximum
+    }
+
+    pub const fn digest(self) -> [u8; 32] {
+        self.digest
+    }
+
+    pub fn is_exact(self) -> bool {
+        self.revision != 0
+            && self.digest
+                == Self::digest_for(self.thread_id, self.revision, self.protected_maximum)
+    }
+
+    pub(crate) fn advanced(
+        self,
+        protected_maximum: crate::ImageLabelFrontier,
+    ) -> Result<Self, SyndicRecordError> {
+        if protected_maximum <= self.protected_maximum {
+            return Err(SyndicRecordError::InvalidDraftImageLabelProtection);
+        }
+        let revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(SyndicRecordError::InvalidDraftImageLabelProtection)?;
+        Self::new(self.thread_id, revision, protected_maximum)
+    }
+
+    fn digest_for(
+        thread_id: SyndicThreadId,
+        revision: u64,
+        protected_maximum: crate::ImageLabelFrontier,
+    ) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"syndic/draft-image-label-protection-head/v1");
+        hasher.update(thread_id.as_bytes());
+        hasher.update(revision.to_be_bytes());
+        hasher.update(protected_maximum.get().to_be_bytes());
+        hasher.finalize().into()
+    }
+}
+
 impl ImageLabelAuthorityHeadV1 {
     pub fn new(
         thread_id: SyndicThreadId,
@@ -91,6 +167,40 @@ impl ImageLabelAuthorityHeadV1 {
         hasher.update(inherited.get().to_be_bytes());
         hasher.update(permanent.get().to_be_bytes());
         hasher.finalize().into()
+    }
+}
+
+#[cfg(test)]
+mod draft_image_label_protection_tests {
+    use super::*;
+
+    #[test]
+    fn transition_requires_a_strictly_higher_maximum_and_a_checked_revision() {
+        let thread = SyndicThreadId::from_bytes([1; 16]);
+        let head =
+            DraftImageLabelProtectionHeadV1::new(thread, 1, crate::ImageLabelFrontier::EMPTY)
+                .unwrap();
+        assert!(head.advanced(crate::ImageLabelFrontier::EMPTY).is_err());
+        assert!(
+            head.advanced(crate::ImageLabelFrontier::from_raw(0))
+                .is_err()
+        );
+        let advanced = head
+            .advanced(crate::ImageLabelFrontier::from_raw(1))
+            .unwrap();
+        assert_eq!(advanced.revision(), 2);
+        assert_eq!(advanced.protected_maximum().get(), 1);
+        let exhausted = DraftImageLabelProtectionHeadV1::new(
+            thread,
+            u64::MAX,
+            crate::ImageLabelFrontier::from_raw(1),
+        )
+        .unwrap();
+        assert!(
+            exhausted
+                .advanced(crate::ImageLabelFrontier::from_raw(2))
+                .is_err()
+        );
     }
 }
 

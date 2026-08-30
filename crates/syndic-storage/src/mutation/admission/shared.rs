@@ -11,19 +11,20 @@ use crate::{
     DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily, DraftEditHistoryPolicyV1,
     DraftEditorCandidateSessionLifecycleV1, DraftEditorCandidateSessionRecordKeyV1,
     DraftEditorCandidateSessionRecordV1, DraftEditorCandidateSessionV1,
-    DraftEditorCandidateSessionsCodec, DraftEditorCandidateSessionsFamily, DraftPieceRootRecordV1,
-    DraftPieceRootsCodec, DraftPieceRootsFamily, DraftRecord, DraftRootHistoryPairV1,
-    DraftSubmissionIntent, HistorySummaryRecord, ImageLabelAuthorityHeadV1,
-    ImageLabelOriginSpanRecord, InputGateRecord, ThreadParentIndexRecord, ThreadRecord,
-    TranscriptBuildRecord, TranscriptViewHeadRecord, TurnChildIndexRecord, TurnItemIndexRecord,
-    TurnRecord, TurnStateRecord, authenticate_draft_edit_history_frontier_v1,
-    canonical_empty_draft_edit_history_v1, canonical_empty_draft_piece_root_v1,
-    canonical_empty_draft_root_operation_id_v1,
+    DraftEditorCandidateSessionsCodec, DraftEditorCandidateSessionsFamily,
+    DraftImageLabelProtectionHeadV1, DraftPieceRootRecordV1, DraftPieceRootsCodec,
+    DraftPieceRootsFamily, DraftRecord, DraftRootHistoryPairV1, DraftSubmissionIntent,
+    HistorySummaryRecord, ImageLabelAuthorityHeadV1, ImageLabelOriginSpanRecord, InputGateRecord,
+    ThreadParentIndexRecord, ThreadRecord, TranscriptBuildRecord, TranscriptViewHeadRecord,
+    TurnChildIndexRecord, TurnItemIndexRecord, TurnRecord, TurnStateRecord,
+    authenticate_draft_edit_history_frontier_v1, canonical_empty_draft_edit_history_v1,
+    canonical_empty_draft_piece_root_v1, canonical_empty_draft_root_operation_id_v1,
 };
 
 pub(super) struct AcceptanceBase {
     pub(super) thread: ThreadRecord,
     pub(super) image_label_authority: ImageLabelAuthorityHeadV1,
+    pub(super) draft_image_label_protection: DraftImageLabelProtectionHeadV1,
     pub(super) draft: DraftRecord,
     pub(super) gate: InputGateRecord,
     pub(super) summary: HistorySummaryRecord,
@@ -101,6 +102,14 @@ pub(super) fn load_base(
     if !image_label_authority.is_exact()
         || image_label_authority.thread_id() != thread.id()
         || image_label_authority != acceptance.expected_image_label_authority()
+    {
+        return Err(SyndicMutationError::ImageLabelAuthorityConflict);
+    }
+    let draft_image_label_protection =
+        required::<DraftImageLabelProtectionHeadsFamily>(reader, &acceptance.thread_id())?;
+    if !draft_image_label_protection.is_exact()
+        || draft_image_label_protection.thread_id() != thread.id()
+        || draft_image_label_protection.protected_maximum() < image_label_authority.permanent()
     {
         return Err(SyndicMutationError::ImageLabelAuthorityConflict);
     }
@@ -217,6 +226,7 @@ pub(super) fn load_base(
     Ok(AcceptanceBase {
         thread,
         image_label_authority,
+        draft_image_label_protection,
         draft,
         gate,
         summary,
@@ -387,6 +397,7 @@ pub(super) fn advance_image_label_authority(
     reader: &DomainReader<'_, SyndicDomain>,
     thread: &ThreadRecord,
     head: ImageLabelAuthorityHeadV1,
+    protection: DraftImageLabelProtectionHeadV1,
     owner: crate::ImageLabelOriginOwner,
     proof: Option<SealedAssetReferenceSetProof>,
 ) -> Result<
@@ -396,7 +407,12 @@ pub(super) fn advance_image_label_authority(
     ),
     SyndicMutationError,
 > {
-    if !head.is_exact() || head.thread_id() != thread.id() {
+    if !head.is_exact()
+        || head.thread_id() != thread.id()
+        || !protection.is_exact()
+        || protection.thread_id() != thread.id()
+        || protection.protected_maximum() < head.permanent()
+    {
         return Err(SyndicMutationError::ImageLabelAuthorityConflict);
     }
     let Some(proof) = proof else {
@@ -408,6 +424,9 @@ pub(super) fn advance_image_label_authority(
         .ok_or(SyndicMutationError::AssetReferenceSetConflict)?;
     if head.permanent().contains(end) {
         return Ok((None, None));
+    }
+    if protection.protected_maximum() < crate::ImageLabelFrontier::from_raw(end.get()) {
+        return Err(SyndicMutationError::ImageLabelAuthorityConflict);
     }
     let start = crate::ImageLabelOrdinal::new(
         head.permanent()

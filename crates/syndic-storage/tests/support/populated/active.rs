@@ -221,6 +221,10 @@ pub(super) fn records() -> Vec<FixtureRecord> {
             )
             .unwrap(),
         ),
+        FixtureRecord::DraftImageLabelProtectionHead(
+            DraftImageLabelProtectionHeadV1::new(thread, 1, ImageLabelFrontier::from_raw(1))
+                .unwrap(),
+        ),
         FixtureRecord::ThreadExecution(thread_execution),
         FixtureRecord::ThreadAttributes(thread_attributes),
         FixtureRecord::ThreadUsage(thread_usage),

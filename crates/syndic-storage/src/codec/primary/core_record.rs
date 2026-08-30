@@ -35,6 +35,41 @@ pub(super) fn decode_image_label_authority_head(
     Ok(value)
 }
 
+pub(super) fn encode_draft_image_label_protection_head(
+    value: &DraftImageLabelProtectionHeadV1,
+) -> Result<Vec<u8>, CodecError> {
+    if !value.is_exact() {
+        return Err(CodecError::InvalidLength(
+            "draft image-label protection head",
+        ));
+    }
+    let mut e = Encoder::new();
+    enc_thread(&mut e, value.thread_id());
+    e.u64(value.revision());
+    enc_image_label_frontier(&mut e, value.protected_maximum());
+    e.fixed32(&value.digest());
+    Ok(e.finish())
+}
+
+pub(super) fn decode_draft_image_label_protection_head(
+    bytes: &[u8],
+) -> Result<DraftImageLabelProtectionHeadV1, CodecError> {
+    let mut d = Decoder::new(bytes);
+    let thread_id = dec_thread(&mut d)?;
+    let revision = d.u64()?;
+    let protected_maximum = dec_image_label_frontier(&mut d)?;
+    let digest = d.fixed32()?;
+    d.finish()?;
+    let value = DraftImageLabelProtectionHeadV1::new(thread_id, revision, protected_maximum)
+        .map_err(|source| invalid("draft image-label protection head", source))?;
+    if value.digest() != digest {
+        return Err(CodecError::InvalidLength(
+            "draft image-label protection head digest",
+        ));
+    }
+    Ok(value)
+}
+
 pub(super) fn encode_thread_record(value: &ThreadRecord) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
     enc_thread(&mut e, value.id());

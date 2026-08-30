@@ -247,6 +247,7 @@ pub(super) fn records(
             reader,
             &base.thread,
             base.image_label_authority,
+            base.draft_image_label_protection,
             crate::ImageLabelOriginOwner::AcceptedInput(input_id),
             acceptance.asset_reference_set(),
         )?;

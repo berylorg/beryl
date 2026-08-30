@@ -113,6 +113,21 @@ id_family!(
     SMALL_MAX
 );
 id_family!(
+    DraftImageLabelProtectionHeadsFamily,
+    DraftImageLabelProtectionHeadsCodec,
+    "draft-image-label-protection-heads",
+    SyndicThreadId,
+    DraftImageLabelProtectionHeadV1,
+    |b| key16(
+        b,
+        "draft image-label protection head key",
+        SyndicThreadId::from_bytes
+    ),
+    encode_draft_image_label_protection_head,
+    decode_draft_image_label_protection_head,
+    SMALL_MAX
+);
+id_family!(
     ThreadExecutionsFamily,
     ThreadExecutionsCodec,
     "thread-executions",

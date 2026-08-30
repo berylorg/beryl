@@ -39,6 +39,17 @@ fn validate_threads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndi
         if !label_head.is_exact() || label_head.thread_id() != thread.id() {
             return invariant("thread image-label authority head is corrupt");
         }
+        let protection_head = require::<DraftImageLabelProtectionHeadsFamily>(
+            reader,
+            &thread.id(),
+            "thread draft image-label protection head is missing",
+        )?;
+        if !protection_head.is_exact()
+            || protection_head.thread_id() != thread.id()
+            || protection_head.protected_maximum() < label_head.permanent()
+        {
+            return invariant("thread draft image-label protection head is corrupt");
+        }
         let draft = require::<DraftsFamily>(
             reader,
             &thread.current_draft_id(),
