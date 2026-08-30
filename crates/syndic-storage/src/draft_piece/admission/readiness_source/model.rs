@@ -11,9 +11,11 @@ use beryl_model::{
 use sha2::{Digest, Sha256};
 
 use crate::draft_piece::{
-    DraftEditorCandidateSessionIdV1, DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionOwnerV1,
+    DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionV1,
+    DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionDigestV1, DraftMarkerAdmissionOwnerV1,
     DraftPieceRootBuildIdentityV1, DraftPieceRootReferenceV1, DraftPieceSettlementKeyV1,
 };
+use crate::{DraftImageLabelProtectionHeadV1, ImageLabelAuthorityHeadV1};
 
 pub(super) const PAGE_MAX_ASSOCIATIONS: usize = 256;
 pub(super) const PAGE_MAX_EVIDENCE_BYTES: usize = 65_536;
@@ -23,8 +25,11 @@ const ACCEPTED_ENTRY_TAG: u8 = 1;
 const CANDIDATE_SELECTOR_TAG: u8 = 0;
 const CUT_SELECTOR_TAG: u8 = 1;
 const ROOT_REFERENCE_BYTES: usize = 327;
+const REQUEST_DOMAIN: &[u8] = b"syndic/draft-marker-label-readiness-request/v1";
+const CUSTODY_DOMAIN: &[u8] = b"syndic/draft-marker-label-readiness-custody/v1";
+const EMPTY_OCCURRENCE_DOMAIN: &[u8] = b"syndic/draft-marker-label-readiness-occurrence/empty/v1";
 
-pub(super) type PageProtocol = FixedDigestHomeProofProtocol<0x53444d5244595631, 0x5244595041474531>;
+pub(crate) type PageProtocol = FixedDigestHomeProofProtocol<0x53444d5244595631, 0x5244595041474531>;
 
 pub struct DraftMarkerReadinessWitnessFactoryV1 {
     factory: Box<
@@ -38,6 +43,44 @@ pub struct DraftMarkerReadinessWitnessFactoryV1 {
                 DraftMarkerReadinessSourceErrorV1,
             > + Send,
     >,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DraftMarkerLabelReadinessDispositionV1 {
+    Reuse,
+    Allocate,
+}
+
+pub struct DraftMarkerLabelReadinessPageRequestV1 {
+    pub(super) owner: DraftMarkerAdmissionOwnerV1,
+    pub(super) page: DraftMarkerAdmissionCommandIdV1,
+    pub(super) ordinal: NonZeroU64,
+    pub(super) eof: bool,
+    pub(super) disposition: DraftMarkerLabelReadinessDispositionV1,
+    pub(super) associations: Box<[DraftMarkerReadinessSourceAssociationV1]>,
+    pub(super) witness_factory: Option<DraftMarkerReadinessWitnessFactoryV1>,
+}
+
+impl DraftMarkerLabelReadinessPageRequestV1 {
+    pub fn new(
+        owner: DraftMarkerAdmissionOwnerV1,
+        page: DraftMarkerAdmissionCommandIdV1,
+        ordinal: NonZeroU64,
+        eof: bool,
+        disposition: DraftMarkerLabelReadinessDispositionV1,
+        associations: Box<[DraftMarkerReadinessSourceAssociationV1]>,
+        witness_factory: Option<DraftMarkerReadinessWitnessFactoryV1>,
+    ) -> Self {
+        Self {
+            owner,
+            page,
+            ordinal,
+            eof,
+            disposition,
+            associations,
+            witness_factory,
+        }
+    }
 }
 
 impl DraftMarkerReadinessWitnessFactoryV1 {
@@ -346,6 +389,84 @@ pub(crate) struct SealedDraftMarkerReadinessSourcePageV1 {
     pub(crate) eof: bool,
     pub(crate) expected: [u8; 32],
     pub(crate) entries: Box<[CanonicalEntry]>,
+    pub(crate) authority: DraftMarkerLabelReadinessRequestAuthorityV1,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub(crate) struct DraftMarkerLabelReadinessRequestAuthorityV1 {
+    pub(crate) home_generation: NonZeroU64,
+    pub(crate) label_authority: ImageLabelAuthorityHeadV1,
+    pub(crate) protection: DraftImageLabelProtectionHeadV1,
+    pub(crate) session: DraftEditorCandidateSessionV1,
+    pub(crate) disposition: DraftMarkerLabelReadinessDispositionV1,
+}
+
+impl DraftMarkerLabelReadinessRequestAuthorityV1 {
+    pub(crate) fn request_commitment(&self) -> DraftMarkerAdmissionDigestV1 {
+        DraftMarkerAdmissionDigestV1::from_bytes(hash_with_domain(
+            REQUEST_DOMAIN,
+            &self.canonical_bytes(),
+        ))
+    }
+
+    pub(crate) fn custody_commitment(&self) -> DraftMarkerAdmissionDigestV1 {
+        DraftMarkerAdmissionDigestV1::from_bytes(hash_with_domain(
+            CUSTODY_DOMAIN,
+            &self.canonical_bytes(),
+        ))
+    }
+
+    pub(crate) fn occurrence_commitment(&self) -> DraftMarkerAdmissionDigestV1 {
+        DraftMarkerAdmissionDigestV1::from_bytes(hash_with_domain(EMPTY_OCCURRENCE_DOMAIN, &[]))
+    }
+
+    pub(crate) fn canonical_bytes(&self) -> Box<[u8]> {
+        let mut bytes = Vec::with_capacity(512);
+        bytes.extend_from_slice(&self.home_generation.get().to_le_bytes());
+        bytes.extend_from_slice(self.session.thread_id().as_bytes());
+        bytes.extend_from_slice(&self.label_authority.revision().to_le_bytes());
+        bytes.extend_from_slice(&self.label_authority.inherited().get().to_le_bytes());
+        bytes.extend_from_slice(&self.label_authority.permanent().get().to_le_bytes());
+        bytes.extend_from_slice(&self.label_authority.digest());
+        bytes.extend_from_slice(&self.protection.revision().to_le_bytes());
+        bytes.extend_from_slice(&self.protection.protected_maximum().get().to_le_bytes());
+        bytes.extend_from_slice(&self.protection.digest());
+        bytes.extend_from_slice(self.session.draft_id().as_bytes());
+        bytes.extend_from_slice(self.session.session_id().as_bytes());
+        bytes.extend_from_slice(&self.session.session_generation().to_le_bytes());
+        bytes.extend_from_slice(&self.session.newest_candidate_generation().to_le_bytes());
+        bytes.extend_from_slice(&fixed_root_reference_bytes(self.session.newest_root()));
+        bytes.push(match self.disposition {
+            DraftMarkerLabelReadinessDispositionV1::Reuse => 0,
+            DraftMarkerLabelReadinessDispositionV1::Allocate => 1,
+        });
+        bytes.into_boxed_slice()
+    }
+}
+
+pub(crate) fn page_closure_bytes(
+    page: &SealedDraftMarkerReadinessSourcePageV1,
+) -> (Box<[u8]>, Box<[u8]>) {
+    let authority = page.authority.canonical_bytes();
+    let mut source = Vec::with_capacity(authority.len() + PAGE_MAX_EVIDENCE_BYTES);
+    let mut target = Vec::with_capacity(authority.len() + PAGE_MAX_EVIDENCE_BYTES);
+    for bytes in [&mut source, &mut target] {
+        bytes.extend_from_slice(&authority);
+        bytes.extend_from_slice(page.owner.draft_id().as_bytes());
+        bytes.extend_from_slice(page.owner.session_id().as_bytes());
+        bytes.extend_from_slice(page.owner.operation_id().as_bytes());
+        bytes.extend_from_slice(page.page.as_bytes());
+        bytes.extend_from_slice(&page.ordinal.get().to_le_bytes());
+        bytes.push(u8::from(page.eof));
+        bytes.extend_from_slice(&(page.entries.len() as u64).to_le_bytes());
+    }
+    for entry in page.entries.iter() {
+        let evidence = entry.evidence_bytes();
+        source.extend_from_slice(&evidence);
+        target.extend_from_slice(entry.target_marker_id.as_bytes());
+        target.extend_from_slice(&evidence);
+    }
+    (source.into_boxed_slice(), target.into_boxed_slice())
 }
 
 pub struct SourceInput {
@@ -373,5 +494,12 @@ pub(super) fn page_correlation(
     for entry in entries {
         hasher.update(entry.evidence_bytes());
     }
+    hasher.finalize().into()
+}
+
+fn hash_with_domain(domain: &[u8], bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(domain);
+    hasher.update(bytes);
     hasher.finalize().into()
 }

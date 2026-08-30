@@ -87,7 +87,7 @@ fn successor_flight_is_joined_and_worker_failure_retains_retryable_custody() {
     FAIL_SOURCE.store(false, Ordering::SeqCst);
     let retry = store.pending_reconciliations().pop().unwrap();
     assert!(matches!(
-        store.reconcile(&retry).unwrap(),
+        store.retry_reconciliation(&retry).unwrap(),
         ReconciliationResolution::ExactSuccessor { .. }
     ));
     store.close().unwrap();

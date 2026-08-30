@@ -479,7 +479,7 @@ fn proven_page(
     associations: Vec<DraftMarkerReadinessSourceAssociationV1>,
 ) -> DraftMarkerLabelReadinessProvenPageV1 {
     let mut attempt = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             store,
             owner,
             page_id(command),

@@ -19,14 +19,15 @@ use sha2::{Digest, Sha256};
 use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 use syndic_storage::{
     AcceptedInputAdmissionProof, AcceptedInputOrdinal, AcceptedInputRecord,
-    AcceptedRouteGeneration, ComposerAtom, ComposerPayload, DraftMarkerAdmissionCommandIdV1,
-    DraftMarkerAdmissionOperationIdV1, DraftMarkerAdmissionOwnerV1,
-    DraftMarkerReadinessAcceptedSourceV1, DraftMarkerReadinessCandidateSourceV1,
-    DraftMarkerReadinessSourceAssociationV1, DraftMarkerReadinessSourceErrorV1,
-    DraftMarkerReadinessSourceSelectorV1, DraftMarkerReadinessWitnessFactoryV1,
-    ImageLabelAuthorityHeadV1, ImageLabelFrontier, ImageLabelOriginOwner,
-    ImageLabelOriginSpanRecord, PreparedContent, SelectedPathProof, ThreadLineageDepth,
-    ThreadLineageProof, ThreadRecord, child_thread_lineage_digest, empty_selected_path_digest,
+    AcceptedRouteGeneration, ComposerAtom, ComposerPayload, DraftImageLabelProtectionHeadV1,
+    DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionOperationIdV1,
+    DraftMarkerAdmissionOwnerV1, DraftMarkerReadinessAcceptedSourceV1,
+    DraftMarkerReadinessCandidateSourceV1, DraftMarkerReadinessSourceAssociationV1,
+    DraftMarkerReadinessSourceErrorV1, DraftMarkerReadinessSourceSelectorV1,
+    DraftMarkerReadinessWitnessFactoryV1, ImageLabelAuthorityHeadV1, ImageLabelFrontier,
+    ImageLabelOriginOwner, ImageLabelOriginSpanRecord, PreparedContent, SelectedPathProof,
+    ThreadLineageDepth, ThreadLineageProof, ThreadRecord, child_thread_lineage_digest,
+    empty_selected_path_digest,
 };
 
 #[path = "phase217_draft_marker_readiness_accepted_proof/support.rs"]
@@ -60,7 +61,7 @@ fn accepted_local_and_inherited_pages_share_the_fixed_vector_without_mutation() 
         let ordinal = NonZeroU64::new(index as u64 + 1).unwrap();
         let mut attempt = fixture
             .storage
-            .prepare_draft_marker_label_readiness_page(
+            .prepare_draft_marker_label_readiness_page_for_test(
                 &fixture.store,
                 readiness_owner(&fixture.session, 50),
                 DraftMarkerAdmissionCommandIdV1::from_bytes([60 + index as u8; 16]),
@@ -117,7 +118,7 @@ fn accepted_occurrence_multiplicity_and_count_boundary_are_exact() {
     let ordinal = NonZeroU64::MIN;
     let mut attempt = fixture
         .storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &fixture.store,
             readiness_owner(&fixture.session, 80),
             DraftMarkerAdmissionCommandIdV1::from_bytes([81; 16]),
@@ -139,15 +140,17 @@ fn accepted_occurrence_multiplicity_and_count_boundary_are_exact() {
 
     associations.push(fixture.association(99, fixture.thread));
     assert!(matches!(
-        fixture.storage.prepare_draft_marker_label_readiness_page(
-            &fixture.store,
-            readiness_owner(&fixture.session, 82),
-            DraftMarkerAdmissionCommandIdV1::from_bytes([83; 16]),
-            ordinal,
-            true,
-            associations.into_boxed_slice(),
-            Some(fixture.factory()),
-        ),
+        fixture
+            .storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &fixture.store,
+                readiness_owner(&fixture.session, 82),
+                DraftMarkerAdmissionCommandIdV1::from_bytes([83; 16]),
+                ordinal,
+                true,
+                associations.into_boxed_slice(),
+                Some(fixture.factory()),
+            ),
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
 }
@@ -159,28 +162,32 @@ fn empty_mixed_duplicate_and_missing_witness_pages_are_rejected() {
     let owner = readiness_owner(&fixture.session, 90);
     let ordinal = NonZeroU64::MIN;
     assert!(matches!(
-        fixture.storage.prepare_draft_marker_label_readiness_page(
-            &fixture.store,
-            owner,
-            DraftMarkerAdmissionCommandIdV1::from_bytes([91; 16]),
-            ordinal,
-            true,
-            Box::new([]),
-            None,
-        ),
+        fixture
+            .storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &fixture.store,
+                owner,
+                DraftMarkerAdmissionCommandIdV1::from_bytes([91; 16]),
+                ordinal,
+                true,
+                Box::new([]),
+                None,
+            ),
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
     let accepted = fixture.association(92, fixture.thread);
     assert!(matches!(
-        fixture.storage.prepare_draft_marker_label_readiness_page(
-            &fixture.store,
-            owner,
-            DraftMarkerAdmissionCommandIdV1::from_bytes([93; 16]),
-            ordinal,
-            true,
-            Box::new([accepted]),
-            None,
-        ),
+        fixture
+            .storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &fixture.store,
+                owner,
+                DraftMarkerAdmissionCommandIdV1::from_bytes([93; 16]),
+                ordinal,
+                true,
+                Box::new([accepted]),
+                None,
+            ),
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
     let candidate = DraftMarkerReadinessSourceAssociationV1::new(
@@ -196,39 +203,45 @@ fn empty_mixed_duplicate_and_missing_witness_pages_are_rejected() {
         ),
     );
     assert!(matches!(
-        fixture.storage.prepare_draft_marker_label_readiness_page(
-            &fixture.store,
-            owner,
-            DraftMarkerAdmissionCommandIdV1::from_bytes([96; 16]),
-            ordinal,
-            true,
-            Box::new([accepted, candidate]),
-            Some(fixture.factory()),
-        ),
+        fixture
+            .storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &fixture.store,
+                owner,
+                DraftMarkerAdmissionCommandIdV1::from_bytes([96; 16]),
+                ordinal,
+                true,
+                Box::new([accepted, candidate]),
+                Some(fixture.factory()),
+            ),
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
     assert!(matches!(
-        fixture.storage.prepare_draft_marker_label_readiness_page(
-            &fixture.store,
-            owner,
-            DraftMarkerAdmissionCommandIdV1::from_bytes([97; 16]),
-            ordinal,
-            true,
-            Box::new([accepted, accepted]),
-            Some(fixture.factory()),
-        ),
+        fixture
+            .storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &fixture.store,
+                owner,
+                DraftMarkerAdmissionCommandIdV1::from_bytes([97; 16]),
+                ordinal,
+                true,
+                Box::new([accepted, accepted]),
+                Some(fixture.factory()),
+            ),
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
     assert!(matches!(
-        fixture.storage.prepare_draft_marker_label_readiness_page(
-            &fixture.store,
-            owner,
-            DraftMarkerAdmissionCommandIdV1::from_bytes([98; 16]),
-            ordinal,
-            true,
-            Box::new([accepted]),
-            Some(foreign.factory()),
-        ),
+        fixture
+            .storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &fixture.store,
+                owner,
+                DraftMarkerAdmissionCommandIdV1::from_bytes([98; 16]),
+                ordinal,
+                true,
+                Box::new([accepted]),
+                Some(foreign.factory()),
+            ),
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
 }
@@ -247,15 +260,17 @@ fn missing_disagreeing_and_stale_cross_domain_evidence_rejects() {
         )),
     );
     assert!(matches!(
-        fixture.storage.prepare_draft_marker_label_readiness_page(
-            &fixture.store,
-            readiness_owner(&fixture.session, 102),
-            DraftMarkerAdmissionCommandIdV1::from_bytes([103; 16]),
-            ordinal,
-            true,
-            Box::new([missing]),
-            Some(fixture.factory()),
-        ),
+        fixture
+            .storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &fixture.store,
+                readiness_owner(&fixture.session, 102),
+                DraftMarkerAdmissionCommandIdV1::from_bytes([103; 16]),
+                ordinal,
+                true,
+                Box::new([missing]),
+                Some(fixture.factory()),
+            ),
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
 
@@ -277,15 +292,17 @@ fn missing_disagreeing_and_stale_cross_domain_evidence_rejects() {
         )),
     );
     assert!(matches!(
-        fixture.storage.prepare_draft_marker_label_readiness_page(
-            &fixture.store,
-            readiness_owner(&fixture.session, 104),
-            DraftMarkerAdmissionCommandIdV1::from_bytes([105; 16]),
-            ordinal,
-            true,
-            Box::new([wrong_source]),
-            Some(fixture.factory()),
-        ),
+        fixture
+            .storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &fixture.store,
+                readiness_owner(&fixture.session, 104),
+                DraftMarkerAdmissionCommandIdV1::from_bytes([105; 16]),
+                ordinal,
+                true,
+                Box::new([wrong_source]),
+                Some(fixture.factory()),
+            ),
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
 
@@ -304,7 +321,7 @@ fn missing_disagreeing_and_stale_cross_domain_evidence_rejects() {
     );
     let mut disagreeing_attempt = fixture
         .storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &fixture.store,
             readiness_owner(&fixture.session, 106),
             DraftMarkerAdmissionCommandIdV1::from_bytes([107; 16]),
@@ -323,7 +340,7 @@ fn missing_disagreeing_and_stale_cross_domain_evidence_rejects() {
 
     let mut stale = fixture
         .storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &fixture.store,
             readiness_owner(&fixture.session, 108),
             DraftMarkerAdmissionCommandIdV1::from_bytes([109; 16]),
@@ -343,7 +360,7 @@ fn missing_disagreeing_and_stale_cross_domain_evidence_rejects() {
 
     let mut stale_source = fixture
         .storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &fixture.store,
             readiness_owner(&fixture.session, 112),
             DraftMarkerAdmissionCommandIdV1::from_bytes([113; 16]),
@@ -368,7 +385,7 @@ fn accepted_attempt_receipt_and_consumer_substitution_is_rejected() {
     let ordinal = NonZeroU64::MIN;
     let mut first = fixture
         .storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &fixture.store,
             readiness_owner(&fixture.session, 112),
             DraftMarkerAdmissionCommandIdV1::from_bytes([113; 16]),
@@ -380,9 +397,9 @@ fn accepted_attempt_receipt_and_consumer_substitution_is_rejected() {
         .unwrap();
     let mut second = fixture
         .storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &fixture.store,
-            readiness_owner(&fixture.session, 112),
+            readiness_owner(&fixture.session, 117),
             DraftMarkerAdmissionCommandIdV1::from_bytes([115; 16]),
             ordinal,
             true,
@@ -395,6 +412,7 @@ fn accepted_attempt_receipt_and_consumer_substitution_is_rejected() {
         .store
         .compose_proof(second.take_command().unwrap())
         .unwrap();
+    drop(second);
     assert!(matches!(
         first.consume(&fixture.store, second_receipt),
         Err(DraftMarkerReadinessSourceErrorV1::Receipt(_))

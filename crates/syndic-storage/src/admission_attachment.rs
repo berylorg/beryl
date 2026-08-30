@@ -1,4 +1,8 @@
-use std::{error::Error, fmt, sync::Mutex};
+use std::{
+    error::Error,
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainRegistrationReader,
@@ -11,9 +15,10 @@ use crate::{
     draft_piece::{
         DRAFT_MARKER_ADMISSION_MAX_HEADS, DraftMarkerAdmissionCapacityCodec,
         DraftMarkerAdmissionCapacityFamily, DraftMarkerAdmissionCapacityKeyV1,
-        DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionHeadsCodec,
-        DraftMarkerAdmissionHeadsFamily, DraftMarkerAdmissionLifecycleV1,
-        DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionNodesFamily,
+        DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionHeadV1,
+        DraftMarkerAdmissionHeadsCodec, DraftMarkerAdmissionHeadsFamily,
+        DraftMarkerAdmissionLifecycleV1, DraftMarkerAdmissionNodesCodec,
+        DraftMarkerAdmissionNodesFamily, DraftMarkerAdmissionOwnerV1,
         DraftMarkerAdmissionReceiptsCodec, DraftMarkerAdmissionReceiptsFamily,
         DraftMarkerAdmissionRetainedChargeV1,
     },
@@ -74,11 +79,71 @@ struct ReconstructedHead {
 struct AttachmentState {
     capacity: DraftMarkerAdmissionRetainedChargeV1,
     heads: Box<[ReconstructedHead]>,
+    operations: Vec<OperationReservation>,
     retired: bool,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum OperationDisposition {
+    Open,
+    UncertainClosed,
+}
+
+struct OperationReservation {
+    owner: DraftMarkerAdmissionOwnerV1,
+    frontier: u64,
+    active_attempt: Option<DraftMarkerAdmissionCommandIdV1>,
+    disposition: OperationDisposition,
+}
+
+pub(crate) struct DraftMarkerAdmissionAttemptReservation {
+    pub(crate) was_present: bool,
+}
+
+pub(crate) struct DraftMarkerAdmissionPreparedAttempt {
+    state: Option<Arc<Mutex<AttachmentState>>>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    attempt: DraftMarkerAdmissionCommandIdV1,
+    was_present: bool,
+}
+
+impl DraftMarkerAdmissionPreparedAttempt {
+    pub(crate) fn disarm(mut self) -> DraftMarkerAdmissionAttemptReservation {
+        self.state = None;
+        DraftMarkerAdmissionAttemptReservation {
+            was_present: self.was_present,
+        }
+    }
+}
+
+impl Drop for DraftMarkerAdmissionPreparedAttempt {
+    fn drop(&mut self) {
+        let Some(state) = self.state.take() else {
+            return;
+        };
+        let Ok(mut state) = state.lock() else {
+            return;
+        };
+        let Some(index) = state
+            .operations
+            .iter()
+            .position(|entry| entry.owner == self.owner)
+        else {
+            return;
+        };
+        if state.operations[index].active_attempt != Some(self.attempt) {
+            return;
+        }
+        if self.was_present {
+            state.operations[index].active_attempt = None;
+        } else {
+            state.operations.remove(index);
+        }
+    }
+}
+
 pub(crate) struct DraftMarkerAdmissionAttachment {
-    state: Mutex<AttachmentState>,
+    state: Arc<Mutex<AttachmentState>>,
 }
 
 impl DraftMarkerAdmissionAttachment {
@@ -97,8 +162,121 @@ impl DraftMarkerAdmissionAttachment {
             None => reconstruct_empty(reader)?,
         };
         Ok(Self {
-            state: Mutex::new(state),
+            state: Arc::new(Mutex::new(state)),
         })
+    }
+
+    pub(crate) fn prepare_attempt(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+        attempt: DraftMarkerAdmissionCommandIdV1,
+        frontier: u64,
+    ) -> Result<DraftMarkerAdmissionPreparedAttempt, ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        if let Some(operation) = state
+            .operations
+            .iter_mut()
+            .find(|entry| entry.owner == owner)
+        {
+            if operation.disposition != OperationDisposition::Open
+                || operation.active_attempt.is_some()
+            {
+                return Err(());
+            }
+            operation.active_attempt = Some(attempt);
+            return Ok(DraftMarkerAdmissionPreparedAttempt {
+                state: Some(Arc::clone(&self.state)),
+                owner,
+                attempt,
+                was_present: true,
+            });
+        }
+        if state.operations.len() >= DRAFT_MARKER_ADMISSION_MAX_HEADS as usize {
+            return Err(());
+        }
+        state.operations.push(OperationReservation {
+            owner,
+            frontier,
+            active_attempt: Some(attempt),
+            disposition: OperationDisposition::Open,
+        });
+        Ok(DraftMarkerAdmissionPreparedAttempt {
+            state: Some(Arc::clone(&self.state)),
+            owner,
+            attempt,
+            was_present: false,
+        })
+    }
+
+    pub(crate) fn finish_submission(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+        attempt: DraftMarkerAdmissionCommandIdV1,
+        retain_operation: bool,
+        uncertain_closed: bool,
+        frontier: u64,
+    ) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        let index = state
+            .operations
+            .iter()
+            .position(|entry| entry.owner == owner)
+            .ok_or(())?;
+        if state.operations[index].active_attempt != Some(attempt) {
+            return Err(());
+        }
+        if retain_operation {
+            let operation = &mut state.operations[index];
+            operation.active_attempt = None;
+            operation.frontier = operation.frontier.max(frontier);
+            if uncertain_closed {
+                operation.disposition = OperationDisposition::UncertainClosed;
+            }
+        } else {
+            state.operations.remove(index);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn resolve_submission(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+        retain_operation: bool,
+        uncertain_closed: bool,
+        frontier: u64,
+    ) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        let Some(index) = state
+            .operations
+            .iter()
+            .position(|entry| entry.owner == owner)
+        else {
+            return Ok(());
+        };
+        if state.operations[index].active_attempt.is_some() {
+            return Err(());
+        }
+        if retain_operation {
+            let operation = &mut state.operations[index];
+            operation.frontier = operation.frontier.max(frontier);
+            operation.disposition = if uncertain_closed {
+                OperationDisposition::UncertainClosed
+            } else {
+                OperationDisposition::Open
+            };
+        } else {
+            state.operations.remove(index);
+        }
+        Ok(())
     }
 }
 
@@ -111,6 +289,7 @@ impl DomainRuntimeAttachment for DraftMarkerAdmissionAttachment {
                     .iter()
                     .any(|head| matches!(head.class, ReconstructedHeadClass::JointCleanup));
                 state.heads = Box::new([]);
+                state.operations.clear();
                 state.capacity = DraftMarkerAdmissionRetainedChargeV1::ZERO;
                 state.retired = true;
             }
@@ -149,6 +328,7 @@ fn reconstruct_empty(
     Ok(AttachmentState {
         capacity: DraftMarkerAdmissionRetainedChargeV1::ZERO,
         heads: Box::new([]),
+        operations: Vec::new(),
         retired: false,
     })
 }
@@ -200,6 +380,7 @@ fn reconstruct_populated(
     Ok(AttachmentState {
         capacity,
         heads: reconstructed.into_boxed_slice(),
+        operations: Vec::new(),
         retired: false,
     })
 }

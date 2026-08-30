@@ -4,12 +4,19 @@ use beryl_home_store::{HomeProofCommand, HomeProofReceipt, HomeStore, ProofRecei
 
 use crate::{
     SyndicStorage,
-    draft_piece::{DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionOwnerV1},
+    admission_attachment::DraftMarkerAdmissionPreparedAttempt,
+    codec::{DraftImageLabelProtectionHeadsFamily, ImageLabelAuthorityHeadsFamily},
+    draft_piece::{
+        DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionHeadsFamily,
+        DraftMarkerAdmissionOwnerV1, DraftMarkerAdmissionPublicationSeedV1,
+    },
 };
 
 use super::{
     model::{
-        CanonicalEntry, DraftMarkerReadinessSourceAssociationV1, DraftMarkerReadinessSourceErrorV1,
+        CanonicalEntry, DraftMarkerLabelReadinessDispositionV1,
+        DraftMarkerLabelReadinessPageRequestV1, DraftMarkerLabelReadinessRequestAuthorityV1,
+        DraftMarkerReadinessSourceAssociationV1, DraftMarkerReadinessSourceErrorV1,
         DraftMarkerReadinessSourceSelectorV1, DraftMarkerReadinessWitnessFactoryV1,
         PAGE_MAX_ASSOCIATIONS, PAGE_MAX_EVIDENCE_BYTES, PageProtocol,
         SealedDraftMarkerReadinessSourcePageV1, SourceInput, page_correlation, selector_tag,
@@ -21,6 +28,8 @@ pub struct DraftMarkerLabelReadinessPageAttemptV1 {
     command: Option<beryl_home_store::ExecutableHomeProofCommand<PageProtocol>>,
     consumer: Option<ProofReceiptConsumer<PageProtocol>>,
     page: Option<Arc<SealedDraftMarkerReadinessSourcePageV1>>,
+    publication: Option<DraftMarkerAdmissionPublicationSeedV1>,
+    reservation: Option<DraftMarkerAdmissionPreparedAttempt>,
 }
 
 pub struct DraftMarkerLabelReadinessProvenPageV1 {
@@ -71,11 +80,62 @@ impl DraftMarkerLabelReadinessPageAttemptV1 {
         store
             .consume_proof_receipt(consumer, receipt)
             .map_err(DraftMarkerReadinessSourceErrorV1::Receipt)?;
+        let (page, _) = self.take_proven_page()?;
+        Ok(DraftMarkerLabelReadinessProvenPageV1 { page })
+    }
+
+    pub(crate) fn consume_for_submission(
+        mut self,
+        store: &HomeStore,
+        receipt: HomeProofReceipt<PageProtocol>,
+    ) -> Result<
+        (
+            DraftMarkerLabelReadinessProvenPageV1,
+            DraftMarkerAdmissionPublicationSeedV1,
+            DraftMarkerAdmissionPreparedAttempt,
+        ),
+        DraftMarkerReadinessSourceErrorV1,
+    > {
+        if self.command.is_some() {
+            return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+        }
+        let consumer = self
+            .consumer
+            .take()
+            .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+        store
+            .consume_proof_receipt(consumer, receipt)
+            .map_err(DraftMarkerReadinessSourceErrorV1::Receipt)?;
+        let (page, publication) = self.take_proven_page()?;
+        let reservation = self
+            .reservation
+            .take()
+            .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+        Ok((
+            DraftMarkerLabelReadinessProvenPageV1 { page },
+            publication,
+            reservation,
+        ))
+    }
+
+    fn take_proven_page(
+        &mut self,
+    ) -> Result<
+        (
+            Arc<SealedDraftMarkerReadinessSourcePageV1>,
+            DraftMarkerAdmissionPublicationSeedV1,
+        ),
+        DraftMarkerReadinessSourceErrorV1,
+    > {
         let page = self
             .page
             .take()
             .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
-        Ok(DraftMarkerLabelReadinessProvenPageV1 { page })
+        let publication = self
+            .publication
+            .take()
+            .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+        Ok((page, publication))
     }
 }
 
@@ -83,13 +143,17 @@ impl SyndicStorage {
     pub fn prepare_draft_marker_label_readiness_page(
         &self,
         store: &HomeStore,
-        owner: DraftMarkerAdmissionOwnerV1,
-        page: DraftMarkerAdmissionCommandIdV1,
-        ordinal: NonZeroU64,
-        eof: bool,
-        associations: Box<[DraftMarkerReadinessSourceAssociationV1]>,
-        witness_factory: Option<DraftMarkerReadinessWitnessFactoryV1>,
+        request: DraftMarkerLabelReadinessPageRequestV1,
     ) -> Result<DraftMarkerLabelReadinessPageAttemptV1, DraftMarkerReadinessSourceErrorV1> {
+        let DraftMarkerLabelReadinessPageRequestV1 {
+            owner,
+            page,
+            ordinal,
+            eof,
+            disposition,
+            associations,
+            witness_factory,
+        } = request;
         if associations.len() > PAGE_MAX_ASSOCIATIONS
             || associations.is_empty()
             || associations.windows(2).any(|associations| {
@@ -99,6 +163,55 @@ impl SyndicStorage {
             return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
         }
         let destination = session_preflight(self, store, owner.draft_id(), owner.session_id())?;
+        let label_authority = self
+            .point::<ImageLabelAuthorityHeadsFamily>(
+                store,
+                destination.thread_id(),
+                crate::draft_piece::point_limit(),
+            )
+            .map_err(DraftMarkerReadinessSourceErrorV1::PreflightRead)?
+            .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+        let protection = self
+            .point::<DraftImageLabelProtectionHeadsFamily>(
+                store,
+                destination.thread_id(),
+                crate::draft_piece::point_limit(),
+            )
+            .map_err(DraftMarkerReadinessSourceErrorV1::PreflightRead)?
+            .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+        if label_authority.thread_id() != destination.thread_id()
+            || protection.thread_id() != destination.thread_id()
+            || protection.protected_maximum()
+                < label_authority.inherited().max(label_authority.permanent())
+        {
+            return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+        }
+        let home_generation = NonZeroU64::new(
+            store
+                .health()
+                .generation()
+                .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?
+                .get(),
+        )
+        .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+        if self
+            .point::<DraftMarkerAdmissionHeadsFamily>(
+                store,
+                owner,
+                crate::draft_piece::point_limit(),
+            )
+            .map_err(DraftMarkerReadinessSourceErrorV1::PreflightRead)?
+            .is_some_and(|head| head.home_generation() != home_generation)
+        {
+            return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+        }
+        let authority = DraftMarkerLabelReadinessRequestAuthorityV1 {
+            home_generation,
+            label_authority,
+            protection,
+            session: destination.clone(),
+            disposition,
+        };
         let mut entries = Vec::with_capacity(associations.len());
         let mut targets = BTreeSet::new();
         for association in associations.iter().copied() {
@@ -172,6 +285,12 @@ impl SyndicStorage {
         let revision = store
             .domain_revision(&self.handle)
             .map_err(DraftMarkerReadinessSourceErrorV1::Read)?;
+        let reservation = store
+            .with_domain_attachment(&self.handle.attachment_capability(), |attachment| {
+                attachment.prepare_attempt(owner, page, ordinal.get())
+            })
+            .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)?
+            .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)?;
         let page = Arc::new(SealedDraftMarkerReadinessSourcePageV1 {
             owner,
             page,
@@ -179,7 +298,9 @@ impl SyndicStorage {
             eof,
             expected,
             entries: entries.into_boxed_slice(),
+            authority,
         });
+        let publication = DraftMarkerAdmissionPublicationSeedV1::from_page(&page);
         let input = SourceInput {
             page: Arc::clone(&page),
         };
@@ -207,6 +328,34 @@ impl SyndicStorage {
             command: Some(command),
             consumer: Some(consumer),
             page: Some(page),
+            publication: Some(publication),
+            reservation: Some(reservation),
         })
+    }
+
+    #[cfg(feature = "test-faults")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_draft_marker_label_readiness_page_for_test(
+        &self,
+        store: &HomeStore,
+        owner: DraftMarkerAdmissionOwnerV1,
+        page: DraftMarkerAdmissionCommandIdV1,
+        ordinal: NonZeroU64,
+        eof: bool,
+        associations: Box<[DraftMarkerReadinessSourceAssociationV1]>,
+        witness_factory: Option<DraftMarkerReadinessWitnessFactoryV1>,
+    ) -> Result<DraftMarkerLabelReadinessPageAttemptV1, DraftMarkerReadinessSourceErrorV1> {
+        self.prepare_draft_marker_label_readiness_page(
+            store,
+            DraftMarkerLabelReadinessPageRequestV1::new(
+                owner,
+                page,
+                ordinal,
+                eof,
+                DraftMarkerLabelReadinessDispositionV1::Reuse,
+                associations,
+                witness_factory,
+            ),
+        )
     }
 }

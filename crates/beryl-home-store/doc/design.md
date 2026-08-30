@@ -375,10 +375,17 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   acquisition, envelope, decode, and I/O failures retain their typed access or structural
   classification. Expected typed/encoded values are bounded and dropped before current acquisition,
   so each declared stored-plus-decoded read envelope covers the actual sequential peak.
-- `HomeStore::reconcile` is the sole public trigger. The descriptor owns all resolver authority;
-  no caller can submit a correlation or proof, acknowledge a collision, reset a closed scope,
-  request release, or resolve custody through an application reread. Successor classification runs
-  before collision sealing in the existing single-flight worker.
+- `HomeStore::reconcile` is the ordinary public trigger and sole resolver implementation. The
+  package additionally exposes `HomeStore::retry_reconciliation` for one existing opaque
+  `ReconciliationHandle`; it may refresh only that matching retained scope's stable flight from a
+  completed `ReconciliationFailure` to fresh pending state and then executes or joins ordinary
+  reconciliation. Every handle for the exact scope observes or joins the refreshed current flight
+  and its terminal result, while `pending_reconciliations` only enumerates handles and performs no
+  refresh. The retrigger supplies no descriptor, proof, correlation, release, reset, or
+  classification authority, cannot reopen a resolved or collision-closed scope, and adds no
+  descriptor, byte charge, queue item, or concurrent exact-scope worker. The descriptor owns all
+  resolver authority, and successor classification runs before collision sealing in the existing
+  single-flight worker.
 - Reconciliation never guesses, merges, clears or crosses the old writer, scans unrelated natural
   records, or invokes whole-home validation. A `Collision` is not filesystem path collision and is
   not by itself structural store-failure evidence.
@@ -485,11 +492,13 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - One home runs at most four reconciliation workers and at most one per exact scope. When all four
   permits are held, another registered gate remains closed and awaits a worker without duplicating
   its descriptor.
-- Duplicate ordinary or successor-aware triggers join one retained flight and add no second read,
-  resolver, correlation, descriptor, worker, or queue item. Caller cancellation after writer
-  admission or custody installation cannot discard the flight. Recovery invokes retained protocol
-  hooks only through freshly reacquired typed domain handles; stale, foreign-store, and prior-
-  generation handles remain rejected.
+- Duplicate ordinary or successor-aware triggers join one stable retained flight and add no second
+  read, resolver, correlation, descriptor, worker, or queue item. A completed typed worker failure
+  remains memoized until the matching exact retrigger resets that flight to pending; every handle
+  for the scope then joins or observes its current state and terminal result. Caller cancellation
+  after writer admission or custody installation cannot discard the flight. Recovery invokes
+  retained protocol hooks only through freshly reacquired typed domain handles; stale, foreign-
+  store, and prior-generation handles remain rejected.
 - `ExactOld`, `ExactNew`, and `ExactSuccessor` remove the gate and release its registry slot,
   complete retained byte charge, descriptor, successor resolver and correlation state, worker
   permit, typed reader, snapshot, pages, and hook state. `Collision`

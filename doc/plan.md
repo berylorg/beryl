@@ -17,22 +17,14 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 221: Finalize Exact Committed Local State After Health Closure (finished)
+# Phase 222: Own Draft-Marker Receipt Submission And Exact Outcome Reconciliation (finished)
 
-Added the HomeStore-owned move-only capability for finalizing only already-durable, single-domain
-attachment-local custody after a later structural failure closes health. Exact receipt, store
-generation, domain, revision, handle, and attachment identity remain bound without Fjall, health,
-reconciliation, retry, acknowledgement, or publication authority. A supported counter-divergence
-regression protects generation identity. Focused finalization tests passed 7/7; HomeStore, Syndic,
-and Beryl-state all-target checks and the affected Beryl-app library check passed. Independent
-semantic review found no remaining issue and required no adversarial review.
-
-# Phase 222: Own Draft-Marker Receipt Submission And Exact Outcome Reconciliation (pending)
-
-Complete the preserved opaque Syndic page-submission implementation against the accepted
-HomeStore local-finalization boundary. Consume exact proof and command outcomes linearly, install
-indeterminate custody before local release, classify only through durable exact reconciliation,
-and preserve bounded attachment ownership, lost-acknowledgement replay, and final-EOF deferral.
+Implemented bounded operation-owned proof and dispatch attempts, exact receipt-bearing outcomes,
+HomeStore's stable exact-scope reconciliation retrigger, owner-bearing Syndic pending custody, and
+pre-dispatch generation retirement fencing without attachment `Arc`/`Weak` retention. HomeStore
+targeted and successor reconciliation tests passed 24/24; the Syndic Phase 216–222 regression slice
+passed 34/34 and the final Phase 222 edge slice passed 8/8; both packages passed all-target checks.
+Independent semantic review found no remaining issue or needless defensive complexity.
 
 # Phase 223: Assign Draft-Marker Labels And Issue Readiness (pending)
 

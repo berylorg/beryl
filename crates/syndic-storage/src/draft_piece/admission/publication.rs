@@ -1,8 +1,8 @@
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    CurrentDomainCommand, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    MutationBuildError, MutationBuilder, ReadError, ReconciliationReservation,
+    CommandError, CurrentDomainCommand, DomainCallbackError, DomainCallbackSource, DomainMutation,
+    DomainReader, MutationBuildError, MutationBuilder, ReadError, ReconciliationReservation,
 };
 
 use crate::{SyndicStorage, codec::family_point_limit, domain::SyndicDomain};
@@ -10,6 +10,9 @@ use crate::{SyndicStorage, codec::family_point_limit, domain::SyndicDomain};
 use super::index::{
     DraftMarkerAdmissionIndexPreparationErrorV1, PreparedDraftMarkerAdmissionIndexSuccessorV1,
     prepare_draft_marker_admission_index_successor_v1,
+};
+use super::readiness_source::{
+    DraftMarkerLabelReadinessRequestAuthorityV1, page_closure_bytes, request_authority_is_exact,
 };
 use super::{
     DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT,
@@ -44,9 +47,34 @@ pub(crate) struct DraftMarkerAdmissionPublicationSeedV1 {
     occurrence_commitment: DraftMarkerAdmissionDigestV1,
     source_head_bytes: Box<[u8]>,
     target_head_bytes: Box<[u8]>,
+    authority: PublicationAuthority,
+}
+
+#[derive(Clone)]
+enum PublicationAuthority {
+    Runtime(DraftMarkerLabelReadinessRequestAuthorityV1),
+    #[cfg(feature = "test-faults")]
+    Fixture,
 }
 
 impl DraftMarkerAdmissionPublicationSeedV1 {
+    pub(crate) fn from_page(
+        page: &super::readiness_source::SealedDraftMarkerReadinessSourcePageV1,
+    ) -> Self {
+        let (source_head_bytes, target_head_bytes) = page_closure_bytes(page);
+        Self {
+            owner: page.owner,
+            home_generation: page.authority.home_generation,
+            request_commitment: page.authority.request_commitment(),
+            custody_commitment: page.authority.custody_commitment(),
+            occurrence_commitment: page.authority.occurrence_commitment(),
+            source_head_bytes,
+            target_head_bytes,
+            authority: PublicationAuthority::Runtime(page.authority.clone()),
+        }
+    }
+
+    #[cfg(feature = "test-faults")]
     pub(crate) fn new(
         owner: DraftMarkerAdmissionOwnerV1,
         home_generation: NonZeroU64,
@@ -64,7 +92,53 @@ impl DraftMarkerAdmissionPublicationSeedV1 {
             occurrence_commitment,
             source_head_bytes: source_head_bytes.into(),
             target_head_bytes: target_head_bytes.into(),
+            authority: PublicationAuthority::Fixture,
         }
+    }
+
+    pub(crate) fn owner(&self) -> DraftMarkerAdmissionOwnerV1 {
+        self.owner
+    }
+
+    pub(crate) fn home_generation(&self) -> NonZeroU64 {
+        self.home_generation
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(super) enum PublicationFailureClass {
+    Obsolete,
+    FinalEvidenceEof,
+    Collision,
+    Refused,
+    Retryable,
+}
+
+pub(super) fn classify_not_committed(error: &CommandError) -> PublicationFailureClass {
+    let source = match error {
+        CommandError::ContributorValidation { source, .. }
+        | CommandError::ContributorReservation { source, .. }
+        | CommandError::ContributorAssembly { source, .. } => Some(source.as_ref()),
+        _ => None,
+    };
+    match source.and_then(|source| source.downcast_ref::<DraftMarkerAdmissionPublicationErrorV1>())
+    {
+        Some(DraftMarkerAdmissionPublicationErrorV1::ObsoletePage) => {
+            PublicationFailureClass::Obsolete
+        }
+        Some(DraftMarkerAdmissionPublicationErrorV1::FinalEvidenceEof) => {
+            PublicationFailureClass::FinalEvidenceEof
+        }
+        Some(DraftMarkerAdmissionPublicationErrorV1::Collision) => {
+            PublicationFailureClass::Collision
+        }
+        Some(
+            DraftMarkerAdmissionPublicationErrorV1::Authority
+            | DraftMarkerAdmissionPublicationErrorV1::RequestAuthority
+            | DraftMarkerAdmissionPublicationErrorV1::PageIncomplete,
+        ) => PublicationFailureClass::Refused,
+        Some(_) => PublicationFailureClass::Retryable,
+        None => PublicationFailureClass::Retryable,
     }
 }
 
@@ -80,6 +154,8 @@ enum DraftMarkerAdmissionPublicationErrorV1 {
     Index(DraftMarkerAdmissionIndexPreparationErrorV1),
     #[error("draft-marker admission publication authority disagrees")]
     Authority,
+    #[error("draft-marker admission request authority is no longer current")]
+    RequestAuthority,
     #[error("draft-marker admission publication revision overflowed")]
     RevisionOverflow,
     #[error("draft-marker admission publication retained charge disagrees")]
@@ -222,6 +298,15 @@ fn prepare_publication(
     page: DraftMarkerLabelReadinessProvenPageV1,
     command_limit: u64,
 ) -> Result<PreparedPublicationMutation, DraftMarkerAdmissionPublicationErrorV1> {
+    match &seed.authority {
+        PublicationAuthority::Runtime(authority) => {
+            if !request_authority_is_exact(reader, authority)? {
+                return Err(DraftMarkerAdmissionPublicationErrorV1::RequestAuthority);
+            }
+        }
+        #[cfg(feature = "test-faults")]
+        PublicationAuthority::Fixture => {}
+    }
     let prior = read_prior(reader, &seed, &page)?;
     let progression = page_progression(prior.head.as_ref(), &page)?;
     authenticate_progression(&seed, &page, &prior, progression)?;

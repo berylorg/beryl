@@ -307,6 +307,16 @@ fn publish_local_origin(
             .unwrap(),
         ))
         .unwrap();
+    records
+        .put(FixtureRecord::DraftImageLabelProtectionHead(
+            DraftImageLabelProtectionHeadV1::new(
+                thread,
+                2,
+                ImageLabelFrontier::from_raw(label.get()),
+            )
+            .unwrap(),
+        ))
+        .unwrap();
     crate::support::commit(store, storage, records);
     let _ = asset_id;
 }

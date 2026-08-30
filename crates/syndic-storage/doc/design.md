@@ -2168,6 +2168,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   Syndic does not retain it, and a reconciliation-reconstructed or historical receipt cannot mint
   it or substitute for its bound receipt. It publishes no readiness success and cannot bypass the
   ordinary health gate; every other committed shape uses the ordinary healthy-generation path.
+- After an `Indeterminate` submission installs HomeStore custody, Syndic retains one bounded owner-
+  bearing pending submission flight with the exact reconciliation handle. A completed typed
+  reconciliation failure leaves that same flight pending; while its original generation remains
+  live, it may request the exact retrigger and settle only from the resulting ordinary
+  reconciliation outcome. The flight retains no `Arc`, `Weak`, or other ownership of the runtime
+  attachment. Attachment retirement abandons its process-local owner, and fresh recovery may
+  classify durable natural records but cannot recreate the attempt, proof consumer, continuation,
+  or another process-local capability.
 - Exact EOF plus completed source-order assignment revalidates the live label and protection heads,
   editor session, predecessor candidate root, operation, disposition, occurrence commitment,
   reservation, canonical-empty source root, zero unassigned count, and exact durable

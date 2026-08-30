@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, DomainReader, PointReadLimit, ProofCorrelationBytes,
-    ProofDomain, ProofProtocolIdentity,
+    ProofDomain, ProofProtocolIdentity, ReadError,
 };
 use beryl_model::SyndicDraftId;
 
@@ -10,8 +10,8 @@ use crate::{
     ImageLabelOriginOwner, ImageLabelOriginSpanRecord, SyndicStorage,
     codec::{
         AcceptedInputsCodec, AcceptedInputsFamily, CanonicalItemsCodec, CanonicalItemsFamily,
-        ImageLabelAuthorityHeadsCodec, ImageLabelOriginSpanKey, ImageLabelOriginSpansCodec,
-        ThreadsCodec, TurnsCodec, TurnsFamily,
+        DraftImageLabelProtectionHeadsCodec, ImageLabelAuthorityHeadsCodec,
+        ImageLabelOriginSpanKey, ImageLabelOriginSpansCodec, ThreadsCodec, TurnsCodec, TurnsFamily,
     },
     domain::SyndicDomain,
     draft_piece::{
@@ -25,9 +25,9 @@ use crate::{
 };
 
 use super::model::{
-    DraftMarkerReadinessAcceptedSourceV1, DraftMarkerReadinessSourceErrorV1,
-    DraftMarkerReadinessSourceSelectorV1, PAGE_MAX_ASSOCIATIONS, PAGE_MAX_EVIDENCE_BYTES,
-    PageProtocol, SourceInput, page_correlation,
+    DraftMarkerLabelReadinessRequestAuthorityV1, DraftMarkerReadinessAcceptedSourceV1,
+    DraftMarkerReadinessSourceErrorV1, DraftMarkerReadinessSourceSelectorV1, PAGE_MAX_ASSOCIATIONS,
+    PAGE_MAX_EVIDENCE_BYTES, PageProtocol, SourceInput, page_correlation,
 };
 
 pub enum NoWitness {}
@@ -55,6 +55,11 @@ impl ProofDomain for SyndicDomain {
     ) -> Result<ProofCorrelationBytes, Self::Error> {
         let page = &input.page;
         validate_input_shape(page)?;
+        if !request_authority_is_exact(reader, &page.authority)
+            .map_err(DraftMarkerReadinessSourceErrorV1::Read)?
+        {
+            return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+        }
         let _page = page.page;
         let destination = session_snapshot(reader, page.owner.draft_id(), page.owner.session_id())?;
         for entry in page.entries.iter() {
@@ -95,6 +100,37 @@ impl ProofDomain for SyndicDomain {
     ) -> Result<ProofCorrelationBytes, Self::Error> {
         match *input {}
     }
+}
+
+pub(crate) fn request_authority_is_exact(
+    reader: &DomainReader<'_, SyndicDomain>,
+    authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
+) -> Result<bool, ReadError> {
+    let session = reader.point::<DraftEditorCandidateSessionsCodec>(
+        &DraftEditorCandidateSessionRecordKeyV1::head(
+            authority.session.draft_id(),
+            authority.session.session_id(),
+        ),
+        source_limit(),
+    )?;
+    let label_authority = reader
+        .point::<ImageLabelAuthorityHeadsCodec>(&authority.session.thread_id(), source_limit())?;
+    let protection = reader.point::<DraftImageLabelProtectionHeadsCodec>(
+        &authority.session.thread_id(),
+        source_limit(),
+    )?;
+    Ok(matches!(
+        session,
+        Some(DraftEditorCandidateSessionRecordV1::Head(session))
+            if session == authority.session
+                && session.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active
+    ) && label_authority.as_ref() == Some(&authority.label_authority)
+        && protection.as_ref() == Some(&authority.protection)
+        && authority.protection.protected_maximum()
+            >= authority
+                .label_authority
+                .inherited()
+                .max(authority.label_authority.permanent()))
 }
 
 impl DomainCallbackError for DraftMarkerReadinessSourceErrorV1 {

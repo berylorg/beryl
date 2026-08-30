@@ -710,12 +710,143 @@ fn nonstructural_hook_access_failure_is_scope_local_joined_and_retryable() {
     assert_eq!(close.pending_reconciliation_scopes(), Some(1));
     let store = close.into_open_store().unwrap();
 
-    // Enumeration after a completed typed failure creates a fresh trigger flight while retaining
-    // the same sole descriptor, slot, and conservative byte charge.
+    ACCESS_FAIL_HOOKS.store(false, Ordering::SeqCst);
     let retry = store.pending_reconciliations().pop().unwrap();
+    assert!(matches!(
+        store.retry_reconciliation(&retry).unwrap(),
+        ReconciliationResolution::ExactNew { .. }
+    ));
+    assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 2);
+    assert!(store.pending_reconciliations().is_empty());
+    store.close().unwrap();
+}
+
+#[test]
+fn exact_retrigger_refreshes_only_the_failed_scope() {
+    let _serial = SERIAL.lock().unwrap();
+    reset_counters();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = HomeStore::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let alpha = store.register_domain::<Alpha>().unwrap();
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let handle = match store
+        .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(14, b"new")))
+    {
+        CommandOutcome::Indeterminate { reconciliation, .. } => reconciliation.install_and_handle(),
+        other => panic!("expected indeterminate outcome, got {other:?}"),
+    };
+
+    ACCESS_FAIL_HOOKS.store(true, Ordering::SeqCst);
+    let first = store.reconcile(&handle).unwrap_err().to_string();
+    let second = store.reconcile(&handle).unwrap_err().to_string();
+    assert_eq!(first, second);
+    assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 1);
+
     ACCESS_FAIL_HOOKS.store(false, Ordering::SeqCst);
     assert!(matches!(
-        store.reconcile(&retry).unwrap(),
+        store.retry_reconciliation(&handle).unwrap(),
+        ReconciliationResolution::ExactNew { .. }
+    ));
+    assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 2);
+    assert!(store.pending_reconciliations().is_empty());
+    store.close().unwrap();
+}
+
+#[test]
+fn exact_retrigger_keeps_old_handles_joined_to_the_refreshed_flight() {
+    let _serial = SERIAL.lock().unwrap();
+    reset_counters();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = HomeStore::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let alpha = store.register_domain::<Alpha>().unwrap();
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let handle = match store
+        .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(15, b"new")))
+    {
+        CommandOutcome::Indeterminate { reconciliation, .. } => reconciliation.install_and_handle(),
+        other => panic!("expected indeterminate outcome, got {other:?}"),
+    };
+
+    ACCESS_FAIL_HOOKS.store(true, Ordering::SeqCst);
+    assert!(store.reconcile(&handle).is_err());
+    assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 1);
+
+    ACCESS_FAIL_HOOKS.store(false, Ordering::SeqCst);
+    BLOCK_HOOKS.store(true, Ordering::SeqCst);
+    let retry_handle = store.pending_reconciliations().pop().unwrap();
+    let store = Arc::new(store);
+    let retry_store = Arc::clone(&store);
+    let retry = thread::spawn(move || retry_store.retry_reconciliation(&retry_handle));
+    wait_for_active(1);
+    let joined_store = Arc::clone(&store);
+    let joined_handle = handle.clone();
+    let joined = thread::spawn(move || joined_store.reconcile(&joined_handle));
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 2);
+    assert_eq!(MAX_HOOKS.load(Ordering::SeqCst), 1);
+
+    BLOCK_HOOKS.store(false, Ordering::SeqCst);
+    RELEASE.1.notify_all();
+    assert!(matches!(
+        retry.join().unwrap().unwrap(),
+        ReconciliationResolution::ExactNew { .. }
+    ));
+    assert!(matches!(
+        joined.join().unwrap().unwrap(),
+        ReconciliationResolution::ExactNew { .. }
+    ));
+    assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 2);
+    assert!(store.pending_reconciliations().is_empty());
+    Arc::try_unwrap(store).ok().unwrap().close().unwrap();
+}
+
+#[test]
+fn exact_retrigger_returns_a_terminal_result_after_slot_reuse() {
+    let _serial = SERIAL.lock().unwrap();
+    reset_counters();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = HomeStore::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let alpha = store.register_domain::<Alpha>().unwrap();
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let first = match store
+        .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(16, b"first")))
+    {
+        CommandOutcome::Indeterminate { reconciliation, .. } => reconciliation.install_and_handle(),
+        other => panic!("expected indeterminate outcome, got {other:?}"),
+    };
+    let first_result = store.reconcile(&first).unwrap();
+    assert!(matches!(
+        &first_result,
+        ReconciliationResolution::ExactNew { .. }
+    ));
+
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let second = match store
+        .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(17, b"second")))
+    {
+        CommandOutcome::Indeterminate { reconciliation, .. } => reconciliation.install_and_handle(),
+        other => panic!("expected indeterminate outcome, got {other:?}"),
+    };
+
+    assert_eq!(store.retry_reconciliation(&first).unwrap(), first_result);
+    assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        store.reconcile(&second).unwrap(),
         ReconciliationResolution::ExactNew { .. }
     ));
     assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 2);
@@ -751,7 +882,7 @@ fn structural_hook_access_evidence_fails_health_and_retains_scope() {
     STRUCTURAL_FAIL_HOOKS.store(false, Ordering::SeqCst);
     let retry = store.pending_reconciliations().pop().unwrap();
     assert!(matches!(
-        store.reconcile(&retry).unwrap(),
+        store.retry_reconciliation(&retry).unwrap(),
         ReconciliationResolution::ExactNew { .. }
     ));
     store.close().unwrap();

@@ -380,11 +380,18 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Installing custody closes the exact publication scope but authorizes no reread, retry, rollback,
   publication, or reconciliation execution. A separately admitted targeted-reconciliation trigger
   may later consume that retained scope under the worker and natural-record-hook rules below.
-- `HomeStore::reconcile` remains the sole reconciliation trigger. The original descriptor is the
-  sole source of successor protocol authority; callers cannot supply a proof or correlation,
-  acknowledge a collision, reset a closed scope, request slot release, or resolve custody through
-  application rereads. Successor classification occurs before collision sealing in the same
-  single-flight worker and snapshot as ordinary exact-side classification.
+- `HomeStore::reconcile` remains the ordinary sole reconciliation execution path and memoized
+  duplicate trigger. One explicit exact retrigger keyed only by the existing opaque
+  `ReconciliationHandle` may refresh only that still-retained scope's stable flight from a
+  completed typed failure to fresh pending state over the same descriptor, slot, and byte charge,
+  then execute or join ordinary `HomeStore::reconcile`. Every handle for that exact scope observes
+  or joins the refreshed current flight and its terminal result; generic pending-scope enumeration
+  neither refreshes nor executes it. The retrigger cannot reopen a resolved or collision-closed
+  scope, add a descriptor, charge, queue entry, or concurrent exact-scope worker, or supply a proof,
+  correlation, release, reset, or classification decision. The original descriptor remains the
+  sole source of successor protocol authority, and successor classification occurs before
+  collision sealing in the same single-flight worker and snapshot as ordinary exact-side
+  classification.
 - Registry installation is also the lifetime cut for process-local command continuations. The
   caller may release its old operation or stager after handoff; a domain hook reconstructs any
   `ExactNew` successor, permitted same-live-owner `ExactOld` continuation, or terminal `Collision`
@@ -525,7 +532,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   scope. When all four worker permits are held, a registered scope remains gated and awaits a
   permit without duplicating its descriptor.
 - Duplicate ordinary or successor-aware triggers join the same retained flight and add no read,
-  resolver, correlation, descriptor, worker, or queue item. Caller cancellation after admission or
+  resolver, correlation, descriptor, worker, or queue item. A completed typed failure remains
+  memoized until the exact handle-keyed retrigger refreshes that stable flight in place; ordinary
+  duplicates then join or observe its current state. Caller cancellation after admission or
   custody installation cannot retract the flight. Same-home recovery reacquires fresh exact typed
   domain handles before invoking retained hooks; stale, foreign-store, and prior-generation handles
   remain unusable. Process termination publishes no acknowledgement, and a later process relies on

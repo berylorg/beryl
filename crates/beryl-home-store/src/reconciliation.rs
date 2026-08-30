@@ -21,7 +21,9 @@ pub(crate) mod reader;
 mod registry;
 pub use reader::{DomainReconciliation, ReconciliationReader, ReconciliationRecord};
 pub(crate) use registry::{ReconciliationRegistry, ReconciliationSlot};
-use registry::{RegistryInner, RegistryState, ScopeState, release_retained_core_if_idle};
+use registry::{
+    RegistryInner, RegistryState, RetryHandle, ScopeState, release_retained_core_if_idle,
+};
 
 pub(crate) const RECONCILIATION_SCOPE_CAPACITY: usize = 1_024;
 const RECONCILIATION_WORKER_CAPACITY: usize = 4;
@@ -222,6 +224,23 @@ impl HomeStore {
         *flight = FlightState::Complete(result.clone());
         handle.flight.completed.notify_all();
         result
+    }
+
+    pub fn retry_reconciliation(
+        &self,
+        handle: &ReconciliationHandle,
+    ) -> Result<ReconciliationResolution, ReconciliationFailure> {
+        let Some(inner) = handle.registry.upgrade() else {
+            return Err(failure(ReconciliationFailureInner::StaleScope));
+        };
+        if !Arc::ptr_eq(&inner, &self.reconciliation.inner) {
+            return Err(failure(ReconciliationFailureInner::ForeignScope));
+        }
+        match self.reconciliation.retry_handle(handle) {
+            Some(RetryHandle::Current(retry)) => self.reconcile(&retry),
+            Some(RetryHandle::Terminal) => self.reconcile(handle),
+            None => Err(failure(ReconciliationFailureInner::StaleScope)),
+        }
     }
 
     fn run_reconciliation(

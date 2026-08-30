@@ -47,6 +47,11 @@ pub(super) struct RegistryInner {
     reserved_byte_limit: usize,
 }
 
+pub(crate) enum RetryHandle {
+    Current(ReconciliationHandle),
+    Terminal,
+}
+
 impl RegistryInner {
     pub(super) fn lock_state(&self) -> MutexGuard<'_, RegistryState> {
         match self.state.lock() {
@@ -172,30 +177,18 @@ impl ReconciliationRegistry {
     }
 
     pub(crate) fn handles(&self) -> Vec<ReconciliationHandle> {
-        let mut state = self.inner.lock_state();
+        let state = self.inner.lock_state();
         state
             .scopes
-            .iter_mut()
+            .iter()
             .enumerate()
             .filter_map(|(index, scope)| match scope {
-                ScopeState::Verifying { token, flight, .. } => {
-                    let completed_failure = matches!(
-                        &*flight
-                            .state
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner()),
-                        FlightState::Complete(Err(_))
-                    );
-                    if completed_failure {
-                        *flight = Arc::new(ReconciliationFlight::new());
-                    }
-                    Some(ReconciliationHandle {
-                        registry: Arc::downgrade(&self.inner),
-                        index,
-                        token: *token,
-                        flight: Arc::clone(flight),
-                    })
-                }
+                ScopeState::Verifying { token, flight, .. } => Some(ReconciliationHandle {
+                    registry: Arc::downgrade(&self.inner),
+                    index,
+                    token: *token,
+                    flight: Arc::clone(flight),
+                }),
                 ScopeState::Closed { token, flight, .. } => Some(ReconciliationHandle {
                     registry: Arc::downgrade(&self.inner),
                     index,
@@ -205,6 +198,57 @@ impl ReconciliationRegistry {
                 ScopeState::Vacant | ScopeState::Reserved { .. } => None,
             })
             .collect()
+    }
+
+    pub(crate) fn retry_handle(&self, handle: &ReconciliationHandle) -> Option<RetryHandle> {
+        let state = self.inner.lock_state();
+        match state.scopes.get(handle.index)? {
+            ScopeState::Verifying { token, flight, .. } if *token == handle.token => {
+                if Arc::ptr_eq(flight, &handle.flight) {
+                    reset_failed_flight(flight);
+                    Some(RetryHandle::Current(ReconciliationHandle {
+                        registry: Arc::downgrade(&self.inner),
+                        index: handle.index,
+                        token: *token,
+                        flight: Arc::clone(flight),
+                    }))
+                } else {
+                    terminal_authority(&handle.flight)
+                }
+            }
+            ScopeState::Closed { token, flight, .. } if *token == handle.token => {
+                if Arc::ptr_eq(flight, &handle.flight) {
+                    Some(RetryHandle::Terminal)
+                } else {
+                    terminal_authority(&handle.flight)
+                }
+            }
+            ScopeState::Vacant
+            | ScopeState::Reserved { .. }
+            | ScopeState::Verifying { .. }
+            | ScopeState::Closed { .. } => terminal_authority(&handle.flight),
+        }
+    }
+}
+
+fn reset_failed_flight(flight: &Arc<ReconciliationFlight>) {
+    let mut state = flight
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if matches!(&*state, FlightState::Complete(Err(_))) {
+        *state = FlightState::Idle;
+    }
+}
+
+fn terminal_authority(flight: &Arc<ReconciliationFlight>) -> Option<RetryHandle> {
+    match &*flight
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    {
+        FlightState::Running | FlightState::Complete(Ok(_)) => Some(RetryHandle::Terminal),
+        FlightState::Idle | FlightState::Complete(Err(_)) => None,
     }
 }
 

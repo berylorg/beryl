@@ -22,7 +22,7 @@ fn source_page_rejects_empty_nonterminal_and_excessive_input_without_mutation() 
     let current = current(&storage, &store, thread);
     let session = open_session(&storage, &store, &current, 2, 3);
     let revision = storage.revision(&store).unwrap();
-    let empty = storage.prepare_draft_marker_label_readiness_page(
+    let empty = storage.prepare_draft_marker_label_readiness_page_for_test(
         &store,
         owner(&session, 4),
         DraftMarkerAdmissionCommandIdV1::from_bytes([5; 16]),
@@ -36,7 +36,7 @@ fn source_page_rejects_empty_nonterminal_and_excessive_input_without_mutation() 
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
     let entry = association(6, &session, SyndicDraftMarkerId::from_bytes([7; 16]));
-    let oversized = storage.prepare_draft_marker_label_readiness_page(
+    let oversized = storage.prepare_draft_marker_label_readiness_page_for_test(
         &store,
         owner(&session, 4),
         DraftMarkerAdmissionCommandIdV1::from_bytes([8; 16]),
@@ -52,7 +52,7 @@ fn source_page_rejects_empty_nonterminal_and_excessive_input_without_mutation() 
     assert_eq!(storage.revision(&store).unwrap(), revision);
     let (marked, marker) = marked_session(&storage, &store, thread, 9);
     let marked_revision = storage.revision(&store).unwrap();
-    let duplicate = storage.prepare_draft_marker_label_readiness_page(
+    let duplicate = storage.prepare_draft_marker_label_readiness_page_for_test(
         &store,
         owner(&marked, 10),
         DraftMarkerAdmissionCommandIdV1::from_bytes([11; 16]),
@@ -81,7 +81,7 @@ fn source_page_enforces_raw_candidate_and_cut_boundaries() {
         .map(|target| association(target, &marked, marker.marker_id()))
         .collect::<Vec<_>>();
     let mut accepted_candidate = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&marked, 20),
             DraftMarkerAdmissionCommandIdV1::from_bytes([21; 16]),
@@ -101,7 +101,7 @@ fn source_page_enforces_raw_candidate_and_cut_boundaries() {
         .map(|target| association(target, &marked, marker.marker_id()))
         .collect::<Vec<_>>();
     assert!(matches!(
-        storage.prepare_draft_marker_label_readiness_page(
+        storage.prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&marked, 22),
             DraftMarkerAdmissionCommandIdV1::from_bytes([23; 16]),
@@ -163,7 +163,7 @@ fn source_page_enforces_raw_candidate_and_cut_boundaries() {
         })
         .collect::<Vec<_>>();
     let mut accepted_cut = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&successor, 25),
             DraftMarkerAdmissionCommandIdV1::from_bytes([26; 16]),
@@ -186,7 +186,7 @@ fn source_page_enforces_raw_candidate_and_cut_boundaries() {
         })
         .collect::<Vec<_>>();
     assert!(matches!(
-        storage.prepare_draft_marker_label_readiness_page(
+        storage.prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&successor, 27),
             DraftMarkerAdmissionCommandIdV1::from_bytes([28; 16]),
@@ -198,7 +198,7 @@ fn source_page_enforces_raw_candidate_and_cut_boundaries() {
         Err(DraftMarkerReadinessSourceErrorV1::Rejected)
     ));
     assert!(matches!(
-        storage.prepare_draft_marker_label_readiness_page(
+        storage.prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&successor, 29),
             DraftMarkerAdmissionCommandIdV1::from_bytes([30; 16]),
@@ -247,7 +247,7 @@ fn authenticated_candidate_page_composes_once_without_durable_mutation() {
     );
     let revision = storage.revision(&store).unwrap();
     let mut attempt = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&session, 26),
             DraftMarkerAdmissionCommandIdV1::from_bytes([27; 16]),
@@ -275,7 +275,7 @@ fn missing_marker_is_refused_during_preflight_without_mutation() {
     let current = current(&storage, &store, thread);
     let session = open_session(&storage, &store, &current, 41, 42);
     let revision = storage.revision(&store).unwrap();
-    let result = storage.prepare_draft_marker_label_readiness_page(
+    let result = storage.prepare_draft_marker_label_readiness_page_for_test(
         &store,
         owner(&session, 43),
         DraftMarkerAdmissionCommandIdV1::from_bytes([44; 16]),
@@ -320,7 +320,7 @@ fn authenticated_cut_page_requires_a_committed_marker_removal() {
             marker.marker_id(),
         ));
     assert!(matches!(
-        storage.prepare_draft_marker_label_readiness_page(
+        storage.prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&nonremoving, 67),
             DraftMarkerAdmissionCommandIdV1::from_bytes([68; 16]),
@@ -362,7 +362,7 @@ fn authenticated_cut_page_requires_a_committed_marker_removal() {
         marker.marker_id(),
     ));
     let mut attempt = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&successor, 71),
             DraftMarkerAdmissionCommandIdV1::from_bytes([72; 16]),
@@ -400,9 +400,9 @@ fn caller_association_order_does_not_prevent_canonical_source_proofs() {
     let (_home, store, storage, thread) = fixture("phase216-order", 70);
     let (session, first, second) = two_marked_session(&storage, &store, thread, 71);
     let mut forward = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
-            owner(&session, 77),
+            owner(&session, 84),
             DraftMarkerAdmissionCommandIdV1::from_bytes([78; 16]),
             NonZeroU64::MIN,
             true,
@@ -414,7 +414,7 @@ fn caller_association_order_does_not_prevent_canonical_source_proofs() {
         )
         .unwrap();
     let mut reverse = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&session, 77),
             DraftMarkerAdmissionCommandIdV1::from_bytes([81; 16]),
@@ -447,9 +447,9 @@ fn private_target_attempts_cannot_exchange_receipts_or_survive_reopen() {
     let (session, marker) = marked_session(&storage, &store, thread, 81);
     let source = association(82, &session, marker.marker_id());
     let mut first = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
-            owner(&session, 83),
+            owner(&session, 89),
             DraftMarkerAdmissionCommandIdV1::from_bytes([84; 16]),
             NonZeroU64::MIN,
             true,
@@ -458,7 +458,7 @@ fn private_target_attempts_cannot_exchange_receipts_or_survive_reopen() {
         )
         .unwrap();
     let mut second = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&session, 83),
             DraftMarkerAdmissionCommandIdV1::from_bytes([85; 16]),
@@ -470,6 +470,7 @@ fn private_target_attempts_cannot_exchange_receipts_or_survive_reopen() {
         .unwrap();
     let _first_command = first.take_command().unwrap();
     let second_receipt = store.compose_proof(second.take_command().unwrap()).unwrap();
+    drop(second);
     let pairing_error = match first.consume(&store, second_receipt) {
         Ok(_) => panic!("private-target attempt accepted a foreign receipt"),
         Err(error) => error,
@@ -486,7 +487,7 @@ fn private_target_attempts_cannot_exchange_receipts_or_survive_reopen() {
     );
 
     let mut stale = storage
-        .prepare_draft_marker_label_readiness_page(
+        .prepare_draft_marker_label_readiness_page_for_test(
             &store,
             owner(&session, 83),
             DraftMarkerAdmissionCommandIdV1::from_bytes([87; 16]),

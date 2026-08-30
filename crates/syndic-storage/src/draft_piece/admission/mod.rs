@@ -3,10 +3,12 @@ pub(crate) mod index;
 mod model;
 mod publication;
 mod readiness_source;
+mod submission;
 mod tree;
 
 pub use model::*;
 pub use readiness_source::*;
+pub use submission::*;
 pub use tree::*;
 
 pub(crate) use codec::{
