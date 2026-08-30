@@ -31,8 +31,8 @@ fn target(runtime: u8, root: u8) -> RememberedTarget {
     )
 }
 
-fn bootstrap(store: &HomeStore, session: SessionState) -> beryl_state::MinimalSessionBootstrap {
-    session.minimal_bootstrap(store).unwrap().unwrap()
+fn bootstrap(store: &HomeStore, session: &SessionState) -> beryl_state::MinimalSessionBootstrap {
+    session.clone().minimal_bootstrap(store).unwrap().unwrap()
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn minimal_bootstrap_is_session_only_and_accepts_fixed_all_zero_identity_shapes(
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
 
-    let snapshot = bootstrap(&store, state.session());
+    let snapshot = bootstrap(&store, &state.session());
     assert_eq!(snapshot.header().revision().get(), 1);
     assert_eq!(snapshot.header().exit_intent(), SessionExitIntent::Running);
     assert_eq!(snapshot.header().fallback(), None);
@@ -92,7 +92,7 @@ fn minimal_bootstrap_is_session_only_and_accepts_fixed_all_zero_identity_shapes(
     .unwrap();
     let reopened_state = BerylStateBootstrap::register(&mut reopened).unwrap();
     assert_eq!(
-        bootstrap(&reopened, reopened_state.session()).windows()[0].placement(),
+        bootstrap(&reopened, &reopened_state.session()).windows()[0].placement(),
         &placement
     );
 }
@@ -117,7 +117,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
 
-    let initial = bootstrap(&store, session);
+    let initial = bootstrap(&store, &session);
     match execute(
         &store,
         session.replace_claim(
@@ -138,7 +138,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let established = bootstrap(&store, session);
+    let established = bootstrap(&store, &session);
     let first_selection = established.windows()[0].selected_thread().unwrap();
     assert_eq!(established.header().revision().get(), 2);
     assert_eq!(established.windows()[0].revision().get(), 2);
@@ -166,7 +166,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let created = bootstrap(&store, session);
+    let created = bootstrap(&store, &session);
     assert_eq!(created.header().revision().get(), 3);
     assert_eq!(created.header().fallback(), Some(target(3, 4)));
     assert_eq!(
@@ -193,7 +193,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let moved = bootstrap(&store, session);
+    let moved = bootstrap(&store, &session);
     assert_eq!(moved.header().revision().get(), 4);
     assert_eq!(moved.windows()[0].revision().get(), 3);
     assert_eq!(moved.windows()[0].selected_thread(), Some(first_selection));
@@ -218,7 +218,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let replaced = bootstrap(&store, session);
+    let replaced = bootstrap(&store, &session);
     let replacement = replaced.windows()[0].selected_thread().unwrap();
     assert_eq!(replaced.header().revision().get(), 5);
     assert_eq!(replaced.windows()[0].revision().get(), 4);
@@ -243,7 +243,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let one = bootstrap(&store, session);
+    let one = bootstrap(&store, &session);
     match execute(
         &store,
         session.remove_window(
@@ -262,7 +262,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let empty = bootstrap(&store, session);
+    let empty = bootstrap(&store, &session);
     assert!(empty.windows().is_empty());
     assert_eq!(empty.header().revision().get(), 7);
     assert_eq!(empty.header().fallback(), Some(target(5, 6)));
@@ -287,7 +287,7 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let initial = bootstrap(&store, session);
+    let initial = bootstrap(&store, &session);
     match execute(
         &store,
         session.replace_claim(
@@ -308,7 +308,7 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let active = bootstrap(&store, session);
+    let active = bootstrap(&store, &session);
     match execute(
         &store,
         session.mark_orderly_exit(
@@ -322,7 +322,7 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let exited = bootstrap(&store, session);
+    let exited = bootstrap(&store, &session);
     let active_hook = exited.windows()[0].selected_thread().unwrap();
     assert_eq!(
         exited.header().exit_intent(),
@@ -343,7 +343,7 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let restoring = bootstrap(&store, session);
+    let restoring = bootstrap(&store, &session);
     let restoring_hook = restoring.windows()[0].selected_thread().unwrap();
     assert_eq!(restoring.header().revision().get(), 4);
     assert_eq!(restoring.header().exit_intent(), SessionExitIntent::Running);
@@ -364,7 +364,7 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let repeated = bootstrap(&store, session);
+    let repeated = bootstrap(&store, &session);
     assert_eq!(repeated.header().revision().get(), 5);
     assert_eq!(
         repeated.windows()[0].revision(),
@@ -393,7 +393,7 @@ fn begin_restore_is_generation_atomic_and_activation_advances_only_changed_recor
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let activated = bootstrap(&store, session);
+    let activated = bootstrap(&store, &session);
     let hook = activated.windows()[0].selected_thread().unwrap();
     assert_eq!(activated.header().revision().get(), 6);
     assert_eq!(activated.windows()[0].revision().get(), 4);
@@ -422,7 +422,7 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let initial = bootstrap(&store, session);
+    let initial = bootstrap(&store, &session);
     match execute(
         &store,
         session.replace_claim(
@@ -443,7 +443,7 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let current = bootstrap(&store, session);
+    let current = bootstrap(&store, &session);
 
     let duplicate = match execute(
         &store,
@@ -521,7 +521,7 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
         } => {}
         outcome => panic!("expected committed session command, got {outcome:?}"),
     }
-    let exited = bootstrap(&store, session);
+    let exited = bootstrap(&store, &session);
     let blocked = match execute(
         &store,
         session.update_placement(

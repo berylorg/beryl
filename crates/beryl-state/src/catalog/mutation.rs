@@ -69,8 +69,9 @@ impl DomainMutation<CatalogDomain> for PublishCatalogRow {
                 if let Some(kind) = sources.regression_from(current.sources()) {
                     return Err(CatalogMutationError::SourceRevisionRegressed { kind });
                 }
+                Ok(())
             }
-        };
+        }?;
         let revision = match current.as_ref() {
             Some(current) => current.revision().checked_next()?,
             None => CatalogRevision::INITIAL,

@@ -10,7 +10,7 @@ use beryl_model::{
 use super::{
     ASSET_HEAD_LIMIT, ASSET_MANIFEST_LIMIT, AssetDomain, AssetMutationError, AssetOwner,
     AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetReferenceSetLifecycle,
-    AssetReferenceSetManifestCorruption,
+    AssetReferenceSetManifest, AssetReferenceSetManifestCorruption,
     codec::{
         AssetOwnerHeadCodec, AssetReferenceCompletionEvidenceCodec, AssetReferenceManifestCodec,
     },

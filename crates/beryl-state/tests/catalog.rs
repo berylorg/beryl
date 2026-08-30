@@ -68,7 +68,7 @@ macro_rules! assert_committed {
 
 fn execute(
     store: &HomeStore,
-    state: CatalogState,
+    state: &CatalogState,
     mutation: impl FnOnce(beryl_model::DomainRevision) -> beryl_home_store::MutationContribution,
 ) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -125,7 +125,7 @@ fn facts(
 #[allow(clippy::too_many_arguments)]
 fn publish(
     store: &HomeStore,
-    state: CatalogState,
+    state: &CatalogState,
     thread_byte: u8,
     expectation: CatalogRowExpectation,
     source_revision: u64,
@@ -151,7 +151,7 @@ fn contributor_source<T: std::error::Error + 'static>(error: &CommandError) -> O
     }
 }
 
-fn seed_rows(store: &HomeStore, state: CatalogState, count: u8) -> Vec<CatalogRow> {
+fn seed_rows(store: &HomeStore, state: &CatalogState, count: u8) -> Vec<CatalogRow> {
     for thread in 1..=count {
         assert_committed!(publish(
             store,
@@ -189,9 +189,9 @@ fn catalog_reconciliation_exact_new_reconstructs_a_receipt_without_domain_valida
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let (store, state) = open_with_faults(directory.path(), faults.clone());
-    let rows = seed_rows(&store, state, 3);
+    let rows = seed_rows(&store, &state, 3);
 
-    assert_committed!(execute(&store, state, |revision| {
+    assert_committed!(execute(&store, &state, |revision| {
         state.corrupt_recency_copy_for_test(revision, rows[0].recency_cursor(), rows[1].clone())
     }));
 
@@ -222,7 +222,7 @@ fn catalog_reconciliation_exact_old_releases_the_scope_without_a_receipt() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let (store, state) = open_with_faults(directory.path(), faults.clone());
-    let rows = seed_rows(&store, state, 2);
+    let rows = seed_rows(&store, &state, 2);
     let home_before = store.home_revision().unwrap();
     let domain_before = state.revision(&store).unwrap();
 
@@ -257,7 +257,7 @@ fn catalog_reconciliation_mixed_natural_records_seal_a_collision() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let (store, state) = open_with_faults(directory.path(), faults.clone());
-    let old = seed_rows(&store, state, 1).pop().unwrap();
+    let old = seed_rows(&store, &state, 1).pop().unwrap();
     let home_before = store.home_revision().unwrap();
     let domain_before = state.revision(&store).unwrap();
     let update = PublishCatalogRow::new(
@@ -300,7 +300,7 @@ fn catalog_reconciliation_neither_natural_record_seals_a_collision() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let (store, state) = open_with_faults(directory.path(), faults.clone());
-    let rows = seed_rows(&store, state, 3);
+    let rows = seed_rows(&store, &state, 3);
     let home_before = store.home_revision().unwrap();
     let domain_before = state.revision(&store).unwrap();
 
@@ -335,7 +335,7 @@ fn catalog_reconciliation_dual_side_record_seals_a_collision() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let (store, state) = open_with_faults(directory.path(), faults.clone());
-    let row = seed_rows(&store, state, 1).pop().unwrap();
+    let row = seed_rows(&store, &state, 1).pop().unwrap();
     let home_before = store.home_revision().unwrap();
     let domain_before = state.revision(&store).unwrap();
 
@@ -434,7 +434,7 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
     for thread in [3, 1, 2] {
         assert_committed!(publish(
             &store,
-            state,
+            &state,
             thread,
             CatalogRowExpectation::Missing,
             1,
@@ -477,7 +477,7 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
         .unwrap();
     assert_committed!(publish(
         &store,
-        state,
+        &state,
         2,
         CatalogRowExpectation::Revision(thread_two.revision()),
         2,
@@ -507,7 +507,7 @@ fn point_limits_and_page_costs_cover_stored_and_decoded_bytes() {
     let (store, state) = open(directory.path());
     assert_committed!(publish(
         &store,
-        state,
+        &state,
         1,
         CatalogRowExpectation::Missing,
         1,
@@ -556,7 +556,7 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
     let visible_title = "Stra\u{00df}e";
     assert_committed!(publish(
         &store,
-        state,
+        &state,
         1,
         CatalogRowExpectation::Missing,
         1,
@@ -575,7 +575,7 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
     assert_eq!(current.facts().search().title(), "strasse");
     let sources = current.sources();
     let command = MarkCatalogRowStale::new(current.thread_id(), current.revision());
-    assert_committed!(execute(&store, state, |revision| {
+    assert_committed!(execute(&store, &state, |revision| {
         state.mark_stale(revision, command)
     }));
 
@@ -615,7 +615,7 @@ fn publish_rejects_regressing_authoritative_source_revisions() {
     let (store, state) = open(directory.path());
     assert_committed!(publish(
         &store,
-        state,
+        &state,
         1,
         CatalogRowExpectation::Missing,
         2,
@@ -632,7 +632,7 @@ fn publish_rejects_regressing_authoritative_source_revisions() {
         .unwrap();
     let error = match publish(
         &store,
-        state,
+        &state,
         1,
         CatalogRowExpectation::Revision(current.revision()),
         1,
@@ -668,7 +668,7 @@ fn routine_reopen_defers_a_dormant_recency_copy_disagreement_to_explicit_scrub()
     for thread in [1, 2] {
         assert_committed!(publish(
             &store,
-            state,
+            &state,
             thread,
             CatalogRowExpectation::Missing,
             1,
@@ -688,7 +688,7 @@ fn routine_reopen_defers_a_dormant_recency_copy_disagreement_to_explicit_scrub()
     };
     let first = read(1);
     let second = read(2);
-    assert_committed!(execute(&store, state, |revision| {
+    assert_committed!(execute(&store, &state, |revision| {
         state.corrupt_recency_copy_for_test(revision, first.recency_cursor(), second)
     }));
     drop(store);

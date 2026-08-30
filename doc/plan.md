@@ -18,20 +18,15 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 204: Convert Asset Mutation Preparation (finished)
+# Phase 205: Accept The Beryl-State Prepared-Mutation Boundary (finished)
 
-All nine Asset production, fault-support, and probe mutations now prepare package-owned state once
-and contribute reader-free while preserving exact metadata, reference-set, owner-head, revision,
-reservation, reconciliation, successor-witness, and typed failure behavior. `ValidateAssetOwnerHeads`
-remains validation-only, and the excluded draft-marker WIP is untouched. Edition-2024 format,
-scoped diff and structural checks passed, and independent semantic review closed without findings;
-Phase 205 retains compile and cargo-nextest acceptance.
-
-# Phase 205: Accept The Beryl-State Prepared-Mutation Boundary (pending)
-
-Remove every remaining Beryl-state use of the old callback shape, restore all-target and all-feature
-compilation, run focused and package-wide cargo-nextest coverage, confirm direct failure provenance
-and one-pass operation-bounded reads, and obtain independent semantic completion review.
+Accepted all 38 `beryl-state` mutations with consuming one-pass preparation and reader-free
+contribution while retaining three separate validation-only participants, bounded reads, direct
+typed failure provenance, reservations, reconciliation, proofs, revisions, and successor witnesses.
+Corrected narrow compile/fixture fallout and aligned Phase-9 recovery with current read-publication
+authority. Edition-2024 format and structural checks, locked all-target/all-feature compilation,
+focused 68/68 and full 112/112 cargo-nextest coverage passed; independent semantic review closed
+without blocking findings. Excluded draft-marker WIP remains untouched.
 
 # Phase 206: Convert Syndic Mutation Preparation (pending)
 

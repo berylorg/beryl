@@ -251,8 +251,17 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     assert_eq!(caller_snapshot.windows(), saved_windows.as_slice());
 
     store.inject_retained_maintenance_terminal();
-    assert!(store.home_revision().is_err());
+    assert!(matches!(
+        prior_state
+            .settings()
+            .committed_revision(&store, &prior_generation_receipt),
+        Err(CommitReceiptError::StorageHealth { .. })
+    ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert!(matches!(
+        store.home_revision(),
+        Err(ReadError::HealthGate(_))
+    ));
 
     let candidate = store.recover_same_home().unwrap();
     let recovery = candidate.receipt();
