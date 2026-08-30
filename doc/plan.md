@@ -17,23 +17,23 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 212: Integrate Persisted-Aware Domain Attachment Construction (finished)
+# Phase 213: Establish The Durable Draft-Marker Admission Substrate (finished)
 
-Integrated one typed bounded domain-local registration reader and fully initialized attachment
-construction before initial or recovery publication, preserving exact retirement, stale fences,
-package-owned read-failure severity, and retryable caller-bound failures without a second lifecycle
-stage. Focused single-job checks and lifecycle tests passed across HomeStore, Beryl state, and Syndic;
-independent semantic review closed after actual structural and bounded-read failure evidence passed.
+Established canonical admission capacity, head, authenticated-node, and replay-receipt families with
+exact package-owned charge accounting and bounded explicit semantic validation. Focused single-job
+checks and 15 persisted schema/tree tests passed; routine registration performed no validation scan,
+and independent semantic review closed after cross-record membership, replay, assignment, and
+target-disposition faults were exercised.
 
-# Phase 213: Establish The Durable Draft-Marker Admission Substrate (pending)
+# Phase 214: Reconstruct The Draft-Marker Admission Runtime Attachment (pending)
 
-Implement the admission capacity singleton, operation head, authenticated source-order and target-id
-trees, replay-receipt schema, exact retained-resource accounting, and bounded home-generation runtime
-attachment and registration reconstruction. Verify canonical encoding, tree and charge invariants,
-whole-home cross-restart limits, empty and populated registration, and corruption refusal with
-focused tests and independent semantic review.
+Replace the empty Syndic domain attachment with the configured-capacity home-generation attachment
+and reconstruct it from the persisted singleton plus at most 64 heads through the typed bounded
+registration reader. Verify empty and populated registration, restart reconstruction, exact charge
+and profile agreement, 65-head refusal, malformed/read-failure nonpublication, retirement, and
+retry behavior with focused tests and independent semantic review.
 
-# Phase 214: Admit Arbitrary-Order Draft-Marker Evidence (pending)
+# Phase 215: Admit Arbitrary-Order Draft-Marker Evidence (pending)
 
 Compose the fixed HomeStore proof and private Asset witness, ingest one association per bounded
 durable quantum into both operation trees, reject duplicate targets across pages, and provide exact
@@ -41,19 +41,19 @@ byte replay/reconciliation while reclaiming superseded predecessor paths. Do not
 object continuity, a source-order digest, repeated identical witness reads, or caller binding
 injection.
 
-# Phase 215: Assign Draft-Marker Labels And Issue Readiness (pending)
+# Phase 216: Assign Draft-Marker Labels And Issue Readiness (pending)
 
 Reserve the package-derived allocation range after exact EOF, consume the source-order tree through
 bounded durable continuation, assign the target-id tree, and issue the final move-only proof only
 from canonical-empty source authority and exact zero-unassigned closure.
 
-# Phase 216: Close And Reclaim Draft-Marker Admission (pending)
+# Phase 217: Close And Reclaim Draft-Marker Admission (pending)
 
 Implement cancellation before and after durable admission, inert terminal closure, incremental
 cross-restart cleanup, exact replay/collision retention, and final aggregate resource release without
 reactivating or resuming prior-generation operations.
 
-# Phase 217: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
+# Phase 218: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
 
 Consume only package-issued readiness custody at mutation begin, point-consume exact target
 associations during builder progress, and publish candidate, history, settlement, and protection
@@ -61,7 +61,7 @@ authority only from canonical empty admission closure. Verify substitution, canc
 acknowledgement uncertainty, collision, restart, and resource release with focused state-machine
 tests and independent semantic review.
 
-# Phase 218: Integrate Exact Historical Draft-Marker Adoption (pending)
+# Phase 219: Integrate Exact Historical Draft-Marker Adoption (pending)
 
 Resolve the historical target entirely inside Syndic, authenticate its retained lineage, root,
 marker commitment, selection, and protection containment, then adopt it without ordinary readiness,

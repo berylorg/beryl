@@ -9,6 +9,7 @@ use crate::{
 mod content_text;
 mod draft_composer;
 mod draft_edit_history;
+mod draft_marker_admission;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 mod draft_piece_current_drift;
@@ -54,6 +55,11 @@ pub use draft_edit_history::{
     occupy_canonical_empty_draft_edit_history, publish_draft_edit_history_pair,
     replace_draft_edit_history_frontier, replace_draft_edit_history_frontier_and_session,
     replace_draft_edit_history_transition,
+};
+pub use draft_marker_admission::{
+    DraftMarkerAdmissionFixtureSnapshotV1,
+    draft_marker_admission_capacity_without_heads_contribution,
+    draft_marker_admission_fixture_contribution, inject_malformed_draft_marker_admission_capacity,
 };
 pub use draft_piece_candidate_drift::arm_draft_piece_candidate_read_fault;
 pub(crate) use draft_piece_candidate_drift::run_draft_piece_candidate_read_fault;

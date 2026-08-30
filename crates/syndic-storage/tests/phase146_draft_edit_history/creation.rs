@@ -3,7 +3,7 @@ use super::support::*;
 #[test]
 fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 82);
+    assert_eq!(names.len(), 86);
     assert_eq!(names[0], "threads");
     assert_eq!(names[1], "image-label-authority-heads");
     assert_eq!(names[2], "draft-image-label-protection-heads");

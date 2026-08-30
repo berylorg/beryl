@@ -1,3 +1,4 @@
+mod admission;
 mod builder_model;
 mod codec;
 mod history;
@@ -14,6 +15,7 @@ mod staging;
 mod staging_model;
 mod tree;
 
+pub use admission::*;
 pub use beryl_model::DraftMarkerCommitmentV1;
 pub use builder_model::*;
 pub use history::*;
@@ -51,6 +53,12 @@ pub use codec::test_candidate_disposal_receipt_codec_accepts;
 #[cfg(feature = "test-faults")]
 pub use publication::test_abandon_fresh_reconciliation_resolution;
 
+pub(crate) use admission::{
+    DraftMarkerAdmissionCapacityCodec, DraftMarkerAdmissionCapacityFamily,
+    DraftMarkerAdmissionHeadsCodec, DraftMarkerAdmissionHeadsFamily,
+    DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionNodesFamily,
+    DraftMarkerAdmissionReceiptsCodec, DraftMarkerAdmissionReceiptsFamily,
+};
 pub(crate) use codec::*;
 pub(crate) use history::{
     DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,

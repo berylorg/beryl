@@ -93,8 +93,12 @@ const V7_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<CasThreadBindingIndexCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<CasTurnIndexCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<ProviderObservationChunksCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftMarkerAdmissionCapacityCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftMarkerAdmissionHeadsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftMarkerAdmissionNodesCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DraftMarkerAdmissionReceiptsCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 82] = [(); V7_FAMILIES.len()];
+const _: [(); 86] = [(); V7_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
 pub(crate) fn v7_family_names() -> impl Iterator<Item = &'static str> {
@@ -214,6 +218,10 @@ impl StorageDomain for SyndicDomain {
         classify!(CasThreadBindingIndexCodec);
         classify!(CasTurnIndexCodec);
         classify!(ProviderObservationChunksCodec);
+        classify!(DraftMarkerAdmissionCapacityCodec);
+        classify!(DraftMarkerAdmissionHeadsCodec);
+        classify!(DraftMarkerAdmissionNodesCodec);
+        classify!(DraftMarkerAdmissionReceiptsCodec);
         Ok(sides.finish())
     }
 }

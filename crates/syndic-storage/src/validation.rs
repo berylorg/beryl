@@ -5,6 +5,7 @@ use crate::{domain::SyndicDomain, error::SyndicValidationError};
 mod bindings;
 mod compaction;
 mod content;
+mod draft_marker_admission;
 pub(crate) use content::{read_encoded_range, read_projection_text_range};
 mod graph;
 mod ordering;
@@ -28,6 +29,7 @@ pub(crate) fn validate(
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<(), SyndicValidationError> {
     content::validate(reader)?;
+    draft_marker_admission::validate(reader)?;
     compaction::validate(reader)?;
     graph::validate(reader)?;
     ordering::validate(reader)?;
