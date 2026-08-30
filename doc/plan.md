@@ -28,17 +28,42 @@ Bounded Cargo check and focused nextest coverage passed for monotonicity, restar
 creation reconciliation, acceptance, and exhaustive family fixtures; independent semantic review
 closed after the affected family matrices were updated.
 
-# Phase 212: Replace Draft-Marker Readiness With Lean Admission Indexes (pending)
+# Phase 212: Establish The Durable Draft-Marker Admission Substrate (wip)
 
-Implement operation-owned source-order staging and target-id admission indexes with arbitrary page
-arrival, bounded post-EOF assignment, exact target consumption, incremental reclamation of
-superseded paths, enforced
-per-operation and home-wide cross-restart retained-resource limits, and only the minimum durable
-head/receipt needed for replay and reconciliation. Preserve the fixed HomeStore proof protocol and
-cross-domain Asset witness without reintroducing the removed source-order digest, same-object replay,
-repeated identical witness reads, or caller binding injection.
+Implement the admission capacity singleton, operation head, authenticated source-order and target-id
+trees, replay-receipt schema, exact retained-resource accounting, and bounded home-generation runtime
+attachment and registration reconstruction. Verify canonical encoding, tree and charge invariants,
+whole-home cross-restart limits, empty and populated registration, and corruption refusal with
+focused tests and independent semantic review.
 
-# Phase 213: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
+Implementation is blocked until target authority makes each evidence page either source-only or
+accepted-only so every fixed proof role can derive the complete correlation, and gives HomeStore a
+typed persisted-aware attachment factory that publishes no domain slot before bounded reconstruction
+succeeds. The current mixed-page and parameterless-factory contracts cannot technically satisfy
+their privacy and cross-restart guarantees; neither gap may be filled by caller facts or a second
+post-registration initialization stage.
+
+# Phase 213: Admit Arbitrary-Order Draft-Marker Evidence (pending)
+
+Compose the fixed HomeStore proof and private Asset witness, ingest one association per bounded
+durable quantum into both operation trees, reject duplicate targets across pages, and provide exact
+byte replay/reconciliation while reclaiming superseded predecessor paths. Do not depend on process-
+object continuity, a source-order digest, repeated identical witness reads, or caller binding
+injection.
+
+# Phase 214: Assign Draft-Marker Labels And Issue Readiness (pending)
+
+Reserve the package-derived allocation range after exact EOF, consume the source-order tree through
+bounded durable continuation, assign the target-id tree, and issue the final move-only proof only
+from canonical-empty source authority and exact zero-unassigned closure.
+
+# Phase 215: Close And Reclaim Draft-Marker Admission (pending)
+
+Implement cancellation before and after durable admission, inert terminal closure, incremental
+cross-restart cleanup, exact replay/collision retention, and final aggregate resource release without
+reactivating or resuming prior-generation operations.
+
+# Phase 216: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
 
 Consume only package-issued readiness custody at mutation begin, point-consume exact target
 associations during builder progress, and publish candidate, history, settlement, and protection
@@ -46,7 +71,7 @@ authority only from canonical empty admission closure. Verify substitution, canc
 acknowledgement uncertainty, collision, restart, and resource release with focused state-machine
 tests and independent semantic review.
 
-# Phase 214: Integrate Exact Historical Draft-Marker Adoption (pending)
+# Phase 217: Integrate Exact Historical Draft-Marker Adoption (pending)
 
 Resolve the historical target entirely inside Syndic, authenticate its retained lineage, root,
 marker commitment, selection, and protection containment, then adopt it without ordinary readiness,

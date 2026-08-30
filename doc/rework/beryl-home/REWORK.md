@@ -219,7 +219,8 @@
 - [x] Established independent monotonic Syndic draft-label protection with atomic thread creation,
   exact creation reconciliation, accepted-authority containment, and bounded corruption evidence.
 - [ ] Establish operation-owned Syndic draft-marker admission with bounded authenticated indexes,
-  home-wide cross-restart retained-resource limits, and exact package-owned replay custody.
+  home-wide cross-restart retained-resource limits, and exact package-owned replay custody after
+  homogeneous proof-page and persisted-aware attachment-factory authority are reconciled.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.
