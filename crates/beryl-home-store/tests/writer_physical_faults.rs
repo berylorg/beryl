@@ -6,20 +6,20 @@ use std::{
     convert::Infallible,
     error::Error,
     io,
-    panic::{AssertUnwindSafe, catch_unwind},
+    panic::{catch_unwind, AssertUnwindSafe},
 };
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     CommandError, DomainMutation, DomainReader, DomainSchemaVersion, DomainValidator, HomeCommand,
     HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
     KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily,
     RecordVersion, StorageCommitState, StorageDomain, StorageErrorClass,
-    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
 use support::{
-    AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, not_committed,
+    committed, not_committed, AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes,
 };
 
 struct RequireBeta;
@@ -54,9 +54,13 @@ struct PutMany {
 
 impl DomainMutation<AlphaDomain> for PutMany {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, AlphaDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, AlphaDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -68,12 +72,11 @@ impl DomainMutation<AlphaDomain> for PutMany {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AlphaDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AlphaDomain>,
     ) -> Result<(), Self::Error> {
         let value = vec![0];
-        for key in 0..self.count {
+        for key in 0..prepared.count {
             mutations.put::<BytesRecord<AlphaDomain>>(&key, &value)?;
         }
         Ok(())
@@ -133,12 +136,13 @@ struct AggregateReservationPut(u64);
 
 impl DomainMutation<AggregateReservationDomain> for AggregateReservationPut {
     type Error = Infallible;
+    type Prepared = Self;
 
-    fn validate(
-        &self,
+    fn prepare(
+        self,
         _reader: &DomainReader<'_, AggregateReservationDomain>,
-    ) -> Result<(), Self::Error> {
-        Ok(())
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -155,12 +159,11 @@ impl DomainMutation<AggregateReservationDomain> for AggregateReservationPut {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AggregateReservationDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AggregateReservationDomain>,
     ) -> Result<(), Self::Error> {
         mutations
-            .put::<AggregateReservationRecord>(&self.0, &1)
+            .put::<AggregateReservationRecord>(&prepared.0, &1)
             .expect("fixture mutation must be structurally valid");
         Ok(())
     }
@@ -176,14 +179,14 @@ fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
 
 fn put_command(
     store: &HomeStore,
-    domain: beryl_home_store::DomainHandle<AlphaDomain>,
+    domain: &beryl_home_store::DomainHandle<AlphaDomain>,
     key: u64,
     value: &[u8],
 ) -> HomeCommand {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(&domain).unwrap(),
+            store.domain_revision(domain).unwrap(),
             PutBytes::<AlphaDomain>::new(key, value.to_vec()),
         ))
         .unwrap();
@@ -192,7 +195,7 @@ fn put_command(
 
 fn read_value(
     store: &HomeStore,
-    domain: beryl_home_store::DomainHandle<AlphaDomain>,
+    domain: &beryl_home_store::DomainHandle<AlphaDomain>,
     key: u64,
 ) -> Option<Vec<u8>> {
     store
@@ -225,7 +228,7 @@ fn assert_recovered_state(
 ) {
     let home_revision = store.home_revision().unwrap().get();
     let domain_revision = store.domain_revision(&domain).unwrap().get();
-    let value = read_value(store, domain, 41);
+    let value = read_value(store, &domain, 41);
     let old = home_revision == 1 && domain_revision == 1 && value.is_none();
     let new = home_revision == 2
         && domain_revision == 2
@@ -442,13 +445,11 @@ fn orderly_close_retains_reserved_and_verifying_custody_with_the_open_home() {
     let store = close_error
         .into_open_store()
         .expect("pending-custody close error retains the open store");
-    assert!(
-        HomeStore::open(HomeOpenOptions::new(
-            directory.path(),
-            HomeSchemaVersion::CURRENT,
-        ))
-        .is_err()
-    );
+    assert!(HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .is_err());
 
     let close_error = store.close().unwrap_err();
     assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
@@ -490,12 +491,12 @@ fn dropping_a_store_without_reconciliation_scopes_releases_home_ownership() {
 fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults);
+    let mut store = open(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let generation = store.health().generation().unwrap();
 
     let fault = fjall::test_faults::fail_next_journal_write();
-    let outcome = store.execute(put_command(&store, alpha, 42, b"must not publish"));
+    let outcome = store.execute(put_command(&store, &alpha, 42, b"must not publish"));
     drop(fault);
     let reconciliation = match outcome {
         beryl_home_store::CommandOutcome::Indeterminate {
@@ -518,6 +519,8 @@ fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
     drop(reconciliation);
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     assert_eq!(store.health().generation(), Some(generation));
+    assert_eq!(store.home_revision().unwrap().get(), 1);
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(matches!(
         store.home_revision(),
         Err(ReadError::Storage { .. })
@@ -529,7 +532,7 @@ fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
     let store = recovery.publish();
     assert_eq!(store.home_revision().unwrap().get(), 1);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 1);
-    assert_eq!(read_value(&store, alpha, 42), None);
+    assert_eq!(read_value(&store, &alpha, 42), None);
 }
 
 #[test]
@@ -543,7 +546,7 @@ fn owned_fjall_buffer_committed_failure_stays_indeterminate_until_sync_all() {
     let fault = fjall::test_faults::fail_batch_publication_after(0);
     let outcome = store.execute(put_command(
         &store,
-        alpha,
+        &alpha,
         43,
         b"durable despite previsible failure",
     ));
@@ -584,7 +587,7 @@ fn owned_fjall_buffer_committed_failure_stays_indeterminate_until_sync_all() {
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
-        read_value(&store, alpha, 43).as_deref(),
+        read_value(&store, &alpha, 43).as_deref(),
         Some(b"durable despite previsible failure".as_slice())
     );
 }
@@ -624,7 +627,7 @@ fn validator_panic_fails_health_and_recovers_without_any_command_effect() {
     assert_eq!(store.home_revision().unwrap(), home_before);
     assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
     assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);
-    assert_eq!(read_value(&store, alpha, 40), None);
+    assert_eq!(read_value(&store, &alpha, 40), None);
 }
 
 #[test]
@@ -645,7 +648,7 @@ fn controlled_commit_boundary_panics_fail_closed_and_recover_old_or_new() {
 
         faults.panic_next(point);
         let panicked = catch_unwind(AssertUnwindSafe(|| {
-            let _ = store.execute(put_command(&store, alpha, 41, b"panic boundary"));
+            let _ = store.execute(put_command(&store, &alpha, 41, b"panic boundary"));
         }));
         assert!(panicked.is_err());
         assert_eq!(store.health().state(), HomeHealthState::Failed);
@@ -677,7 +680,8 @@ fn exact_io_error_kinds_surface_at_the_commit_boundary() {
         let generation = store.health().generation().unwrap();
 
         faults.fail_next_with_kind(FaultPoint::BeforeCommit, kind);
-        let error = not_committed(store.execute(put_command(&store, alpha, 9, b"must not commit")));
+        let error =
+            not_committed(store.execute(put_command(&store, &alpha, 9, b"must not commit")));
         match error {
             CommandError::Commit { source } => assert_io_kind(source.as_ref(), kind),
             other => panic!("unexpected command error: {other:?}"),
@@ -688,7 +692,7 @@ fn exact_io_error_kinds_surface_at_the_commit_boundary() {
         let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
         let store = recovery.publish();
         assert_eq!(store.home_revision().unwrap().get(), 1);
-        assert_eq!(read_value(&store, alpha, 9), None);
+        assert_eq!(read_value(&store, &alpha, 9), None);
     }
 }
 
@@ -701,7 +705,7 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
     let generation = store.health().generation().unwrap();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
-    let outcome = store.execute(put_command(&store, alpha, 22, b"already durable"));
+    let outcome = store.execute(put_command(&store, &alpha, 22, b"already durable"));
     let (receipt, error) = match outcome {
         beryl_home_store::CommandOutcome::Committed {
             receipt,
@@ -724,7 +728,7 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
-        read_value(&store, alpha, 22).as_deref(),
+        read_value(&store, &alpha, 22).as_deref(),
         Some(b"already durable".as_slice())
     );
 }
@@ -777,7 +781,7 @@ fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
     );
     assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);
     assert_eq!(
-        read_value(&store, alpha, 24).as_deref(),
+        read_value(&store, &alpha, 24).as_deref(),
         Some(b"mixed durable".as_slice())
     );
 }
@@ -819,7 +823,7 @@ fn current_domain_command_shares_post_sync_durability_and_health_semantics() {
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
-        read_value(&store, alpha, 23).as_deref(),
+        read_value(&store, &alpha, 23).as_deref(),
         Some(b"current already durable".as_slice())
     );
 }
@@ -831,11 +835,11 @@ fn writer_panic_survives_persistent_recovery_faults_until_replacement_succeeds()
     let mut store = open(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let original_generation = store.health().generation().unwrap();
-    let mut poison_probe = Some(put_command(&store, alpha, 99, b"poison probe"));
+    let mut poison_probe = Some(put_command(&store, &alpha, 99, b"poison probe"));
 
     faults.panic_next(FaultPoint::BeforeCommit);
     let panicked = catch_unwind(AssertUnwindSafe(|| {
-        let _ = store.execute(put_command(&store, alpha, 1, b"panic"));
+        let _ = store.execute(put_command(&store, &alpha, 1, b"panic"));
     }));
     assert!(panicked.is_err());
     assert_eq!(store.health().state(), HomeHealthState::Failed);
@@ -867,9 +871,9 @@ fn writer_panic_survives_persistent_recovery_faults_until_replacement_succeeds()
     let store = receipt.publish();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
-    committed(store.execute(put_command(&store, alpha, 2, b"writer usable")));
+    committed(store.execute(put_command(&store, &alpha, 2, b"writer usable")));
     assert_eq!(
-        read_value(&store, alpha, 2).as_deref(),
+        read_value(&store, &alpha, 2).as_deref(),
         Some(b"writer usable".as_slice())
     );
 }

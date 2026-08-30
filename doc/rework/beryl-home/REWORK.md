@@ -210,6 +210,10 @@
   stale capability rejection, and failed-candidate cleanup.
 - [x] Reconciled proportional engineering-rigor authority and compacted the remaining execution
   window without weakening bounded streaming, durable reconciliation, or Syndic/CAS fencing.
+- [x] Completed package-owned prepared-mutation cutover across Syndic, Beryl state, and HomeStore
+  integration fixtures without a compatibility path.
+- [ ] Reconcile durable-start footprint authority and fixtures with the accepted Syndic image-label-
+  authority family before further draft-marker implementation.
 - [ ] Establish attachment-owned Syndic draft-marker admission with monotonic label protection,
   bounded authenticated indexes, home-wide cross-restart retained-resource limits, and exact
   package-owned replay custody.

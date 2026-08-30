@@ -101,9 +101,13 @@ struct Put(u64);
 
 impl DomainMutation<CountedDomain> for Put {
     type Error = PutError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, CountedDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, CountedDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -117,12 +121,11 @@ impl DomainMutation<CountedDomain> for Put {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, CountedDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, CountedDomain>,
     ) -> Result<(), Self::Error> {
         mutations
-            .put::<CountedRecord>(&self.0, &1)
+            .put::<CountedRecord>(&prepared.0, &1)
             .map_err(PutError)
     }
 }
@@ -138,12 +141,12 @@ fn one_command_never_scans_the_existing_domain() {
     let domain = store.register_domain::<CountedDomain>().unwrap();
 
     for key in 0..64 {
-        execute(&store, domain, key);
+        execute(&store, &domain, key);
     }
     DECODE_CALLS.store(0, Ordering::Relaxed);
     VALIDATOR_CALLS.store(0, Ordering::Relaxed);
 
-    execute(&store, domain, 64);
+    execute(&store, &domain, 64);
     assert_eq!(DECODE_CALLS.load(Ordering::Relaxed), 0);
     assert_eq!(VALIDATOR_CALLS.load(Ordering::Relaxed), 0);
 
@@ -154,10 +157,10 @@ fn one_command_never_scans_the_existing_domain() {
     assert_eq!(VALIDATOR_CALLS.load(Ordering::Relaxed), 1);
 }
 
-fn execute(store: &HomeStore, domain: beryl_home_store::DomainHandle<CountedDomain>, key: u64) {
+fn execute(store: &HomeStore, domain: &beryl_home_store::DomainHandle<CountedDomain>, key: u64) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(domain.contribution(store.domain_revision(&domain).unwrap(), Put(key)))
+        .add(domain.contribution(store.domain_revision(domain).unwrap(), Put(key)))
         .unwrap();
     assert!(matches!(
         store.execute(command),

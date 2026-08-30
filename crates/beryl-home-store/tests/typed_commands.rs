@@ -10,8 +10,8 @@ use beryl_model::DomainRevision;
 use tempfile::tempdir;
 
 use support::{
-    AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, not_committed,
-    open_home,
+    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord,
+    FixtureMutationError, PutBytes,
 };
 
 #[test]
@@ -60,8 +60,8 @@ fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
     assert_eq!(reopened.home_revision().unwrap().get(), 2);
     assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(reopened.domain_revision(&beta).unwrap().get(), 2);
-    assert_eq!(read(&reopened, alpha, 1), Some(b"alpha".to_vec()));
-    assert_eq!(read(&reopened, beta, 2), Some(b"beta".to_vec()));
+    assert_eq!(read(&reopened, &alpha, 1), Some(b"alpha".to_vec()));
+    assert_eq!(read(&reopened, &beta, 2), Some(b"beta".to_vec()));
 }
 
 #[test]
@@ -160,8 +160,8 @@ fn later_validation_or_assembly_failure_commits_nothing() {
         assert_eq!(store.home_revision().unwrap().get(), 1);
         assert_eq!(store.domain_revision(&alpha).unwrap().get(), 1);
         assert_eq!(store.domain_revision(&beta).unwrap().get(), 1);
-        assert_eq!(read(&store, alpha, 1), None);
-        assert_eq!(read(&store, beta, 2), None);
+        assert_eq!(read(&store, &alpha, 1), None);
+        assert_eq!(read(&store, &beta, 2), None);
     }
 }
 
@@ -171,7 +171,7 @@ fn stale_conflicts_are_home_first_then_domain_name_order() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
-    commit_one(&store, alpha, 1, b"first".to_vec());
+    commit_one(&store, &alpha, 1, b"first".to_vec());
 
     let mut stale = HomeCommand::new(beryl_model::HomeRevision::new(1).unwrap());
     stale
@@ -230,7 +230,7 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
             evidence: CommandError::CancelledBeforeAdmission
         }
     ));
-    assert_eq!(read(&store, alpha, 1), None);
+    assert_eq!(read(&store, &alpha, 1), None);
 
     let after_admission = CommandCancellation::new();
     let mut admitted =
@@ -246,7 +246,7 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
         .unwrap();
     committed(store.execute(admitted));
     assert!(after_admission.is_cancelled());
-    assert_eq!(read(&store, alpha, 2), Some(b"admitted".to_vec()));
+    assert_eq!(read(&store, &alpha, 2), Some(b"admitted".to_vec()));
 
     let cancelled_current = CommandCancellation::new();
     cancelled_current.cancel();
@@ -259,7 +259,7 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
             evidence: CommandError::CancelledBeforeAdmission
         }
     ));
-    assert_eq!(read(&store, alpha, 3), None);
+    assert_eq!(read(&store, &alpha, 3), None);
 
     let current_after_admission = CommandCancellation::new();
     let current = alpha
@@ -270,7 +270,7 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
         .with_cancellation(current_after_admission.clone());
     committed(store.execute_current(current));
     assert!(current_after_admission.is_cancelled());
-    assert_eq!(read(&store, alpha, 4), Some(b"admitted".to_vec()));
+    assert_eq!(read(&store, &alpha, 4), Some(b"admitted".to_vec()));
 }
 
 #[test]
@@ -285,7 +285,7 @@ fn same_thread_writer_reentrancy_is_rejected_without_deadlock() {
             store.domain_revision(&alpha).unwrap(),
             ReentrantProbe {
                 store: Arc::clone(&store),
-                domain: alpha,
+                domain: alpha.clone(),
                 home_revision: store.home_revision().unwrap(),
                 domain_revision: store.domain_revision(&alpha).unwrap(),
             },
@@ -293,9 +293,9 @@ fn same_thread_writer_reentrancy_is_rejected_without_deadlock() {
         .unwrap();
 
     committed(store.execute(outer));
-    assert_eq!(read(&store, alpha, 7), Some(b"outer".to_vec()));
-    assert_eq!(read(&store, alpha, 8), None);
-    assert_eq!(read(&store, alpha, 9), None);
+    assert_eq!(read(&store, &alpha, 7), Some(b"outer".to_vec()));
+    assert_eq!(read(&store, &alpha, 8), None);
+    assert_eq!(read(&store, &alpha, 9), None);
 }
 
 #[test]
@@ -321,14 +321,12 @@ fn empty_duplicate_and_foreign_commands_are_rejected_before_mutation() {
             PutBytes::<AlphaDomain>::new(1, b"one".to_vec()),
         ))
         .unwrap();
-    assert!(
-        duplicate
-            .add(alpha.contribution(
-                first.domain_revision(&alpha).unwrap(),
-                PutBytes::<AlphaDomain>::new(2, b"two".to_vec()),
-            ))
-            .is_err()
-    );
+    assert!(duplicate
+        .add(alpha.contribution(
+            first.domain_revision(&alpha).unwrap(),
+            PutBytes::<AlphaDomain>::new(2, b"two".to_vec()),
+        ))
+        .is_err());
 
     let mut foreign = HomeCommand::new(second.home_revision().unwrap());
     foreign
@@ -362,7 +360,7 @@ fn durable_success_survives_immediate_process_abort() {
     let mut reopened = open_home(directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
     assert_eq!(reopened.home_revision().unwrap().get(), 2);
-    assert_eq!(read(&reopened, alpha, 44), Some(b"durable".to_vec()));
+    assert_eq!(read(&reopened, &alpha, 44), Some(b"durable".to_vec()));
 }
 
 #[test]
@@ -372,7 +370,7 @@ fn phase4_abort_after_durable_success_helper() {
     };
     let mut store = open_home(&path);
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
-    commit_one(&store, alpha, 44, b"durable".to_vec());
+    commit_one(&store, &alpha, 44, b"durable".to_vec());
     std::process::abort();
 }
 
@@ -383,10 +381,14 @@ struct CancelDuringValidation {
 
 impl DomainMutation<AlphaDomain> for CancelDuringValidation {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, AlphaDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, AlphaDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         self.cancellation.cancel();
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -398,11 +400,10 @@ impl DomainMutation<AlphaDomain> for CancelDuringValidation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AlphaDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AlphaDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<BytesRecord<AlphaDomain>>(&self.key, &b"admitted".to_vec())?;
+        mutations.put::<BytesRecord<AlphaDomain>>(&prepared.key, &b"admitted".to_vec())?;
         Ok(())
     }
 }
@@ -416,8 +417,12 @@ struct ReentrantProbe {
 
 impl DomainMutation<AlphaDomain> for ReentrantProbe {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, AlphaDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, AlphaDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let mut nested = HomeCommand::new(self.home_revision);
         nested
             .add(self.domain.contribution(
@@ -448,7 +453,7 @@ impl DomainMutation<AlphaDomain> for ReentrantProbe {
                 "nested current writer did not reject reentrancy",
             ));
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -460,8 +465,7 @@ impl DomainMutation<AlphaDomain> for ReentrantProbe {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AlphaDomain>,
+        _prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AlphaDomain>,
     ) -> Result<(), Self::Error> {
         mutations.put::<BytesRecord<AlphaDomain>>(&7, &b"outer".to_vec())?;
@@ -471,7 +475,7 @@ impl DomainMutation<AlphaDomain> for ReentrantProbe {
 
 fn commit_one<D: beryl_home_store::StorageDomain>(
     store: &HomeStore,
-    domain: DomainHandle<D>,
+    domain: &DomainHandle<D>,
     key: u64,
     value: Vec<u8>,
 ) where
@@ -480,7 +484,7 @@ fn commit_one<D: beryl_home_store::StorageDomain>(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(&domain).unwrap(),
+            store.domain_revision(domain).unwrap(),
             PutBytes::<D>::new(key, value),
         ))
         .unwrap();
@@ -489,10 +493,10 @@ fn commit_one<D: beryl_home_store::StorageDomain>(
 
 fn read<D: beryl_home_store::StorageDomain>(
     store: &HomeStore,
-    domain: DomainHandle<D>,
+    domain: &DomainHandle<D>,
     key: u64,
 ) -> Option<Vec<u8>> {
     store
-        .read_point::<D, BytesRecord<D>>(&domain, &key, PointReadLimit::new(1_028).unwrap())
+        .read_point::<D, BytesRecord<D>>(domain, &key, PointReadLimit::new(1_028).unwrap())
         .unwrap()
 }

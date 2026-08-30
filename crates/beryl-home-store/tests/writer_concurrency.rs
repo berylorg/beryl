@@ -3,9 +3,8 @@ mod support;
 use std::{
     marker::PhantomData,
     sync::{
-        Arc, Condvar, Mutex,
         atomic::{AtomicUsize, Ordering},
-        mpsc,
+        mpsc, Arc, Condvar, Mutex,
     },
     time::Duration,
 };
@@ -17,7 +16,7 @@ use beryl_home_store::{
 use tempfile::tempdir;
 
 use support::{
-    AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, open_home,
+    committed, open_home, AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes,
 };
 
 #[derive(Default)]
@@ -75,9 +74,10 @@ impl<D> BlockingAssembly<D> {
 
 impl<D: beryl_home_store::StorageDomain> DomainMutation<D> for BlockingAssembly<D> {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, D>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(self, _reader: &DomainReader<'_, D>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -89,16 +89,15 @@ impl<D: beryl_home_store::StorageDomain> DomainMutation<D> for BlockingAssembly<
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, D>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, D>,
     ) -> Result<(), Self::Error> {
-        self.entered.send(self.label).unwrap();
-        self.gate.enter();
-        if self.reject {
+        prepared.entered.send(prepared.label).unwrap();
+        prepared.gate.enter();
+        if prepared.reject {
             return Err(FixtureMutationError::Rejected("blocked fixture rejects"));
         }
-        mutations.put::<BytesRecord<D>>(&self.key, &self.label.as_bytes().to_vec())?;
+        mutations.put::<BytesRecord<D>>(&prepared.key, &prepared.label.as_bytes().to_vec())?;
         Ok(())
     }
 }

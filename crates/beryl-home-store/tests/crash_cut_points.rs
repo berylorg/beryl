@@ -5,8 +5,8 @@ mod support;
 use std::{env, path::PathBuf, process::Command};
 
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
     test_faults::{FaultController, FaultPoint},
+    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
 };
 use tempfile::tempdir;
 
@@ -83,7 +83,7 @@ fn assert_crash_cut(point: &str, expected: ExpectedState) {
     let domain_revision = reopened.domain_revision(&alpha).unwrap().get();
     let value = reopened
         .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &77,
             PointReadLimit::new(1_028).unwrap(),
         )

@@ -4,20 +4,20 @@ use std::{
     error::Error,
     fmt,
     sync::{
-        Arc, Condvar, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Condvar, Mutex,
     },
     thread,
     time::{Duration, Instant},
 };
 
 use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint},
     CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     DomainReconciliation, DomainSchemaVersion, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit,
     ReadError, ReadStage, ReconciliationReader, ReconciliationReservation,
     ReconciliationResolution, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
-    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
@@ -262,8 +262,9 @@ where
     R: RecordCodec<D, Key = u64, Value = Vec<u8>>,
 {
     type Error = TestError;
-    fn validate(&self, _reader: &DomainReader<'_, D>) -> Result<(), Self::Error> {
-        Ok(())
+    type Prepared = Self;
+    fn prepare(self, _reader: &DomainReader<'_, D>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
     fn reserve_reconciliation(
         &self,
@@ -274,12 +275,11 @@ where
             .map_err(|error| TestError::Mutation(Box::new(error)))
     }
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, D>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, D>,
     ) -> Result<(), Self::Error> {
         mutations
-            .put::<R>(&self.key, &self.value)
+            .put::<R>(&prepared.key, &prepared.value)
             .map_err(|error| TestError::Mutation(Box::new(error)))
     }
 }
@@ -343,9 +343,10 @@ fn exact_old_after_reopen_releases_the_gate_without_fabricating_a_receipt() {
     let _serial = SERIAL.lock().unwrap();
     reset_counters();
     let directory = tempdir().unwrap();
+    let faults = FaultController::new();
     let mut store = HomeStore::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
-        FaultController::new(),
+        faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
@@ -358,6 +359,8 @@ fn exact_old_after_reopen_releases_the_gate_without_fabricating_a_receipt() {
         other => panic!("expected indeterminate outcome, got {other:?}"),
     };
     drop(fault);
+    assert_eq!(store.home_revision().unwrap().get(), 1);
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
     assert_eq!(store.health().state(), HomeHealthState::Failed);
     let store = store.recover_same_home().unwrap().publish();

@@ -3,19 +3,19 @@ mod support;
 #[cfg(feature = "test-faults")]
 use std::{sync::Arc, thread};
 
+#[cfg(feature = "test-faults")]
+use beryl_home_store::{
+    test_faults::{FaultController, FaultPoint, FaultScope},
+    HomeOpenOptions, HomeSchemaVersion,
+};
 use beryl_home_store::{
     CommandError, DomainHandle, DomainMutation, DomainReader, HomeCommand, HomeStore,
     MutationBuilder, PointReadLimit,
 };
-#[cfg(feature = "test-faults")]
-use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion,
-    test_faults::{FaultController, FaultPoint, FaultScope},
-};
 use tempfile::tempdir;
 
 use support::{
-    AlphaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, not_committed, open_home,
+    committed, not_committed, open_home, AlphaDomain, BytesRecord, FixtureMutationError, PutBytes,
 };
 
 struct PutIfMissing {
@@ -25,8 +25,12 @@ struct PutIfMissing {
 
 impl DomainMutation<AlphaDomain> for PutIfMissing {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, reader: &DomainReader<'_, AlphaDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AlphaDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         let current = reader
             .point::<BytesRecord<AlphaDomain>>(&self.key, PointReadLimit::new(1_028).unwrap())
             .map_err(|_| FixtureMutationError::Rejected("logical validation read failed"))?;
@@ -35,7 +39,7 @@ impl DomainMutation<AlphaDomain> for PutIfMissing {
                 "logical record is no longer absent",
             ));
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -47,11 +51,10 @@ impl DomainMutation<AlphaDomain> for PutIfMissing {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AlphaDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AlphaDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<BytesRecord<AlphaDomain>>(&self.key, &self.value)?;
+        mutations.put::<BytesRecord<AlphaDomain>>(&prepared.key, &prepared.value)?;
         Ok(())
     }
 }
@@ -72,15 +75,17 @@ fn current_domain_command_captures_physical_revisions_after_writer_admission() {
 
     thread::scope(|scope| {
         let first_store = Arc::clone(&store);
+        let first_alpha = alpha.clone();
         let first = scope.spawn(move || {
-            commit_one(&first_store, alpha, 1, b"first".to_vec());
+            commit_one(&first_store, &first_alpha, 1, b"first".to_vec());
         });
         assert!(first_cut.wait_until_reached(std::time::Duration::from_secs(10)));
 
         let second_store = Arc::clone(&store);
+        let second_alpha = alpha.clone();
         let second = scope.spawn(move || {
             second_store.execute_current(
-                alpha.current_command(PutBytes::<AlphaDomain>::new(2, b"second".to_vec())),
+                second_alpha.current_command(PutBytes::<AlphaDomain>::new(2, b"second".to_vec())),
             )
         });
         thread::sleep(std::time::Duration::from_millis(50));
@@ -92,8 +97,8 @@ fn current_domain_command_captures_physical_revisions_after_writer_admission() {
 
     assert_eq!(store.home_revision().unwrap().get(), 3);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 3);
-    assert_eq!(read(&store, alpha, 1), Some(b"first".to_vec()));
-    assert_eq!(read(&store, alpha, 2), Some(b"second".to_vec()));
+    assert_eq!(read(&store, &alpha, 1), Some(b"first".to_vec()));
+    assert_eq!(read(&store, &alpha, 2), Some(b"second".to_vec()));
 }
 
 #[cfg(feature = "test-faults")]
@@ -135,10 +140,13 @@ fn scoped_writer_fault_ignores_other_typed_current_commands() {
             b"post-failure mutation".to_vec(),
         ))),
     );
-    assert_eq!(read(&store, alpha, 1), Some(b"different mutation".to_vec()));
-    assert_eq!(read(&store, alpha, 2), None);
     assert_eq!(
-        read(&store, alpha, 3),
+        read(&store, &alpha, 1),
+        Some(b"different mutation".to_vec())
+    );
+    assert_eq!(read(&store, &alpha, 2), None);
+    assert_eq!(
+        read(&store, &alpha, 3),
         Some(b"post-failure mutation".to_vec())
     );
 }
@@ -152,7 +160,7 @@ fn current_domain_command_preserves_exact_logical_validation() {
         key: 4,
         value: b"stale".to_vec(),
     });
-    commit_one(&store, alpha, 4, b"current".to_vec());
+    commit_one(&store, &alpha, 4, b"current".to_vec());
 
     let error = not_committed(store.execute_current(command));
     assert!(matches!(
@@ -164,21 +172,21 @@ fn current_domain_command_preserves_exact_logical_validation() {
     ));
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
-    assert_eq!(read(&store, alpha, 4), Some(b"current".to_vec()));
+    assert_eq!(read(&store, &alpha, 4), Some(b"current".to_vec()));
 }
 
-fn commit_one(store: &HomeStore, domain: DomainHandle<AlphaDomain>, key: u64, value: Vec<u8>) {
+fn commit_one(store: &HomeStore, domain: &DomainHandle<AlphaDomain>, key: u64, value: Vec<u8>) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(&domain).unwrap(),
+            store.domain_revision(domain).unwrap(),
             PutBytes::<AlphaDomain>::new(key, value),
         ))
         .unwrap();
     committed(store.execute(command));
 }
 
-fn read(store: &HomeStore, domain: DomainHandle<AlphaDomain>, key: u64) -> Option<Vec<u8>> {
+fn read(store: &HomeStore, domain: &DomainHandle<AlphaDomain>, key: u64) -> Option<Vec<u8>> {
     store
         .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
             domain,

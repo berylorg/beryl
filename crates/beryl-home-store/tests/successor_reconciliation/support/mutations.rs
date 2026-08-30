@@ -20,8 +20,9 @@ where
     R: RecordCodec<D, Key = u64, Value = Vec<u8>>,
 {
     type Error = TestError;
-    fn validate(&self, _reader: &DomainReader<'_, D>) -> Result<(), Self::Error> {
-        Ok(())
+    type Prepared = Self;
+    fn prepare(self, _reader: &DomainReader<'_, D>) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
     fn reserve_reconciliation(
         &self,
@@ -32,12 +33,11 @@ where
             .map_err(|error| TestError::Build(Box::new(error)))
     }
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, D>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, D>,
     ) -> Result<(), Self::Error> {
         mutations
-            .put::<R>(&self.key, &self.value)
+            .put::<R>(&prepared.key, &prepared.value)
             .map_err(|error| TestError::Build(Box::new(error)))
     }
 }
@@ -51,8 +51,12 @@ struct NearLimitPut;
 
 impl DomainMutation<SourceDomain> for NearLimitPut {
     type Error = TestError;
-    fn validate(&self, _reader: &DomainReader<'_, SourceDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    type Prepared = Self;
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, SourceDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
     fn reserve_reconciliation(
         &self,
@@ -67,8 +71,7 @@ impl DomainMutation<SourceDomain> for NearLimitPut {
             .map_err(|error| TestError::Build(Box::new(error)))
     }
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SourceDomain>,
+        _prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SourceDomain>,
     ) -> Result<(), Self::Error> {
         mutations
@@ -81,8 +84,12 @@ struct AliasedSourcePut;
 
 impl DomainMutation<SourceDomain> for AliasedSourcePut {
     type Error = TestError;
-    fn validate(&self, _reader: &DomainReader<'_, SourceDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    type Prepared = Self;
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, SourceDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
     fn reserve_reconciliation(
         &self,
@@ -97,8 +104,7 @@ impl DomainMutation<SourceDomain> for AliasedSourcePut {
             .map_err(|error| TestError::Build(Box::new(error)))
     }
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SourceDomain>,
+        _prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SourceDomain>,
     ) -> Result<(), Self::Error> {
         mutations
@@ -111,8 +117,12 @@ struct AliasedWitnessPut;
 
 impl DomainMutation<WitnessDomain> for AliasedWitnessPut {
     type Error = TestError;
-    fn validate(&self, _reader: &DomainReader<'_, WitnessDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    type Prepared = Self;
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, WitnessDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
     fn reserve_reconciliation(
         &self,
@@ -127,8 +137,7 @@ impl DomainMutation<WitnessDomain> for AliasedWitnessPut {
             .map_err(|error| TestError::Build(Box::new(error)))
     }
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, WitnessDomain>,
+        _prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, WitnessDomain>,
     ) -> Result<(), Self::Error> {
         mutations
@@ -142,8 +151,12 @@ where
     S: SuccessorSource<SourceDomain, Protocol>,
 {
     type Error = TestError;
-    fn validate(&self, _reader: &DomainReader<'_, SourceDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    type Prepared = Self;
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, SourceDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
     fn reserve_reconciliation(
         &self,
@@ -155,12 +168,11 @@ where
             .map_err(|error| TestError::Build(Box::new(error)))
     }
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SourceDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SourceDomain>,
     ) -> Result<(), Self::Error> {
         mutations
-            .put::<SourceRecord>(&self.key, &self.value.to_be_bytes().to_vec())
+            .put::<SourceRecord>(&prepared.key, &prepared.value.to_be_bytes().to_vec())
             .map_err(|error| TestError::Build(Box::new(error)))
     }
 }
@@ -176,8 +188,12 @@ where
     W: SuccessorWitness<WitnessDomain, Protocol>,
 {
     type Error = TestError;
-    fn validate(&self, _reader: &DomainReader<'_, WitnessDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    type Prepared = Self;
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, WitnessDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
     fn reserve_reconciliation(
         &self,
@@ -189,12 +205,11 @@ where
             .map_err(|error| TestError::Build(Box::new(error)))
     }
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, WitnessDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, WitnessDomain>,
     ) -> Result<(), Self::Error> {
         mutations
-            .put::<WitnessRecord>(&self.key, &self.value.to_be_bytes().to_vec())
+            .put::<WitnessRecord>(&prepared.key, &prepared.value.to_be_bytes().to_vec())
             .map_err(|error| TestError::Build(Box::new(error)))
     }
 }

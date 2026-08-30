@@ -3,12 +3,12 @@
 use std::{error::Error, fmt, io, num::NonZeroU64};
 
 use beryl_home_store::{
-    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HomeCommand,
+    test_faults::FaultController, DomainCallbackError, DomainCallbackSource, DomainMutation,
+    DomainReader, DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HomeCommand,
     HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
     MutationBuildError, MutationBuilder, PointReadLimit, RecordCodec, RecordFamily, RecordVersion,
     SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError, SidecarNamespace,
-    SidecarVerifier, StorageDomain, WholeHomeScrubTrigger, test_faults::FaultController,
+    SidecarVerifier, StorageDomain, WholeHomeScrubTrigger,
 };
 use tempfile::tempdir;
 
@@ -152,9 +152,13 @@ struct PutReference(SidecarAddress);
 
 impl DomainMutation<ReferenceDomain> for PutReference {
     type Error = ReferenceError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, ReferenceDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, ReferenceDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -168,12 +172,11 @@ impl DomainMutation<ReferenceDomain> for PutReference {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, ReferenceDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, ReferenceDomain>,
     ) -> Result<(), Self::Error> {
         mutations
-            .put::<ReferenceRecord>(&1, &self.0)
+            .put::<ReferenceRecord>(&1, &prepared.0)
             .map_err(ReferenceError::Build)
     }
 }

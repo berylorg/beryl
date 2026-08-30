@@ -8,8 +8,8 @@ use std::{thread, time::Duration};
 
 #[cfg(feature = "test-faults")]
 use beryl_home_store::{
-    DomainCallbackError, DomainMutation, DomainValidationError, HomeCommand, MutationBuilder,
     test_faults::{FaultController, FaultPoint},
+    DomainCallbackError, DomainMutation, DomainValidationError, HomeCommand, MutationBuilder,
 };
 use beryl_home_store::{
     DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
@@ -257,8 +257,12 @@ struct FailStructurally;
 #[cfg(feature = "test-faults")]
 impl DomainMutation<StrictDomain> for FailStructurally {
     type Error = ForcedFailure;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, StrictDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, StrictDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         Err(ForcedFailure(ReadError::MalformedRecord {
             domain: StrictDomain::NAME,
             family: StrictRecord::FAMILY,
@@ -276,8 +280,7 @@ impl DomainMutation<StrictDomain> for FailStructurally {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, StrictDomain>,
+        _prepared: Self::Prepared,
         _mutations: &mut MutationBuilder<'_, StrictDomain>,
     ) -> Result<(), Self::Error> {
         unreachable!("validation fails before contribution")

@@ -108,9 +108,13 @@ struct AliasPut;
 
 impl DomainMutation<OwnerDomain> for AliasPut {
     type Error = MutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, OwnerDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, OwnerDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -124,8 +128,7 @@ impl DomainMutation<OwnerDomain> for AliasPut {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, OwnerDomain>,
+        _prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, OwnerDomain>,
     ) -> Result<(), Self::Error> {
         mutations.put::<AliasCodec>(&1, &1).map_err(MutationError)
@@ -170,10 +173,8 @@ fn stable_names_cannot_alias_live_domain_or_family_rust_owners() {
         beryl_home_store::CommandOutcome::NotCommitted { evidence } => evidence,
         other => panic!("expected definitive non-commit, got {other:?}"),
     };
-    assert!(
-        error
-            .to_string()
-            .contains("record codec does not own family `records`")
-    );
+    assert!(error
+        .to_string()
+        .contains("record codec does not own family `records`"));
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 }

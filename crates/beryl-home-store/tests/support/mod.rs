@@ -338,12 +338,13 @@ where
     R: RecordCodec<D, Key = u64, Value = Vec<u8>>,
 {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, D>) -> Result<(), Self::Error> {
+    fn prepare(self, _reader: &DomainReader<'_, D>) -> Result<Self::Prepared, Self::Error> {
         if self.reject_validation {
             return Err(FixtureMutationError::Rejected("fixture validation failure"));
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -355,14 +356,13 @@ where
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, D>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, D>,
     ) -> Result<(), Self::Error> {
-        if self.reject_assembly {
+        if prepared.reject_assembly {
             return Err(FixtureMutationError::Rejected("fixture assembly failure"));
         }
-        mutations.put::<R>(&self.key, &self.value)?;
+        mutations.put::<R>(&prepared.key, &prepared.value)?;
         Ok(())
     }
 }

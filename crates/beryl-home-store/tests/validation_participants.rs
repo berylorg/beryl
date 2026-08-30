@@ -1,8 +1,8 @@
 mod support;
 
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 use beryl_home_store::{
@@ -14,8 +14,8 @@ use beryl_model::DomainRevision;
 use tempfile::tempdir;
 
 use support::{
-    AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, not_committed,
-    open_home,
+    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord,
+    FixtureMutationError, PutBytes,
 };
 
 struct RequireBytes<D> {
@@ -74,9 +74,13 @@ struct EmptyMutation;
 
 impl DomainMutation<AlphaDomain> for EmptyMutation {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, AlphaDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, AlphaDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -88,8 +92,7 @@ impl DomainMutation<AlphaDomain> for EmptyMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AlphaDomain>,
+        _prepared: Self::Prepared,
         _mutations: &mut MutationBuilder<'_, AlphaDomain>,
     ) -> Result<(), Self::Error> {
         Ok(())
@@ -141,7 +144,7 @@ impl DomainValidator<BetaDomain> for ReentrantValidator {
 
 fn commit<D: beryl_home_store::StorageDomain>(
     store: &HomeStore,
-    domain: DomainHandle<D>,
+    domain: &DomainHandle<D>,
     key: u64,
     value: impl Into<Vec<u8>>,
 ) where
@@ -150,7 +153,7 @@ fn commit<D: beryl_home_store::StorageDomain>(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(
-            store.domain_revision(&domain).unwrap(),
+            store.domain_revision(domain).unwrap(),
             PutBytes::<D>::new(key, value),
         ))
         .unwrap();
@@ -159,11 +162,11 @@ fn commit<D: beryl_home_store::StorageDomain>(
 
 fn read<D: beryl_home_store::StorageDomain>(
     store: &HomeStore,
-    domain: DomainHandle<D>,
+    domain: &DomainHandle<D>,
     key: u64,
 ) -> Option<Vec<u8>> {
     store
-        .read_point::<D, BytesRecord<D>>(&domain, &key, PointReadLimit::new(1_028).unwrap())
+        .read_point::<D, BytesRecord<D>>(domain, &key, PointReadLimit::new(1_028).unwrap())
         .unwrap()
 }
 
@@ -173,7 +176,7 @@ fn mixed_validation_and_mutation_commit_only_mutating_revisions_and_reopen() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
-    commit(&store, beta, 7, b"guarded");
+    commit(&store, &beta, 7, b"guarded");
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
     let beta_before = store.domain_revision(&beta).unwrap();
@@ -205,7 +208,7 @@ fn mixed_validation_and_mutation_commit_only_mutating_revisions_and_reopen() {
         store.receipt_domain_revision(&receipt, &beta).unwrap(),
         None
     );
-    assert_eq!(read(&store, alpha, 1), Some(b"committed".to_vec()));
+    assert_eq!(read(&store, &alpha, 1), Some(b"committed".to_vec()));
     store.close().unwrap();
 
     let mut reopened = open_home(directory.path());
@@ -217,7 +220,7 @@ fn mixed_validation_and_mutation_commit_only_mutating_revisions_and_reopen() {
         DomainRevision::new(alpha_before.get() + 1).unwrap()
     );
     assert_eq!(reopened.domain_revision(&beta).unwrap(), beta_before);
-    assert_eq!(read(&reopened, alpha, 1), Some(b"committed".to_vec()));
+    assert_eq!(read(&reopened, &alpha, 1), Some(b"committed".to_vec()));
 }
 
 #[test]
@@ -225,7 +228,7 @@ fn validation_only_command_is_rejected_without_running_its_callback() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let beta = store.register_domain::<BetaDomain>().unwrap();
-    commit(&store, beta, 7, b"guarded");
+    commit(&store, &beta, 7, b"guarded");
     let home_before = store.home_revision().unwrap();
     let beta_before = store.domain_revision(&beta).unwrap();
     let called = Arc::new(AtomicBool::new(false));
@@ -291,7 +294,7 @@ fn stale_validator_revision_conflicts_before_any_mutation_callback() {
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
     let stale_beta = store.domain_revision(&beta).unwrap();
-    commit(&store, beta, 7, b"current");
+    commit(&store, &beta, 7, b"current");
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
 
@@ -316,7 +319,7 @@ fn stale_validator_revision_conflicts_before_any_mutation_callback() {
     );
     assert_eq!(store.home_revision().unwrap(), home_before);
     assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
-    assert_eq!(read(&store, alpha, 1), None);
+    assert_eq!(read(&store, &alpha, 1), None);
 }
 
 #[test]
@@ -325,7 +328,7 @@ fn validator_rejection_and_empty_mutation_each_abort_the_complete_command() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
-    commit(&store, beta, 7, b"guarded");
+    commit(&store, &beta, 7, b"guarded");
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
     let beta_before = store.domain_revision(&beta).unwrap();
@@ -364,7 +367,7 @@ fn validator_rejection_and_empty_mutation_each_abort_the_complete_command() {
     assert_eq!(store.home_revision().unwrap(), home_before);
     assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
     assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);
-    assert_eq!(read(&store, alpha, 1), None);
+    assert_eq!(read(&store, &alpha, 1), None);
 }
 
 #[test]
@@ -373,7 +376,7 @@ fn validator_obeys_command_cancellation_and_reentry_boundaries() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
-    commit(&store, beta, 7, b"guarded");
+    commit(&store, &beta, 7, b"guarded");
 
     let called = Arc::new(AtomicBool::new(false));
     let cancelled = CommandCancellation::new();
@@ -418,7 +421,7 @@ fn validator_obeys_command_cancellation_and_reentry_boundaries() {
         .unwrap();
     committed(store.execute(admitted));
     assert!(admitted_cancellation.is_cancelled());
-    assert_eq!(read(&store, alpha, 2), Some(b"admitted".to_vec()));
+    assert_eq!(read(&store, &alpha, 2), Some(b"admitted".to_vec()));
 
     let store = Arc::new(store);
     let mut reentrant = HomeCommand::new(store.home_revision().unwrap());
@@ -432,12 +435,12 @@ fn validator_obeys_command_cancellation_and_reentry_boundaries() {
             store.domain_revision(&beta).unwrap(),
             ReentrantValidator {
                 store: Arc::clone(&store),
-                domain: beta,
+                domain: beta.clone(),
             },
         ))
         .unwrap();
     committed(store.execute(reentrant));
-    assert_eq!(read(&store, alpha, 3), Some(b"outer".to_vec()));
-    assert_eq!(read(&store, beta, 99), None);
-    assert_eq!(read(&store, beta, 100), None);
+    assert_eq!(read(&store, &alpha, 3), Some(b"outer".to_vec()));
+    assert_eq!(read(&store, &beta, 99), None);
+    assert_eq!(read(&store, &beta, 100), None);
 }

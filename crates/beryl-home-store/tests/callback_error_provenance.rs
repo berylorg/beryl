@@ -11,7 +11,7 @@ use beryl_home_store::{
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, PutBytes, committed, not_committed};
+use support::{committed, not_committed, AlphaDomain, PutBytes};
 
 struct AccessDomain;
 struct AccessRecord;
@@ -132,9 +132,14 @@ struct Put {
 
 impl DomainMutation<AccessDomain> for Put {
     type Error = CallbackError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, AccessDomain>) -> Result<(), Self::Error> {
-        fail(self.validation, "validation")
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, AccessDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        fail(self.validation, "validation")?;
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -146,12 +151,11 @@ impl DomainMutation<AccessDomain> for Put {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AccessDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AccessDomain>,
     ) -> Result<(), Self::Error> {
-        fail(self.contribution, "contribution")?;
-        mutations.put::<AccessRecord>(&self.key, &self.value)?;
+        fail(prepared.contribution, "contribution")?;
+        mutations.put::<AccessRecord>(&prepared.key, &prepared.value)?;
         Ok(())
     }
 }
@@ -193,31 +197,31 @@ fn open(path: &std::path::Path) -> HomeStore {
 
 fn execute(
     store: &HomeStore,
-    domain: beryl_home_store::DomainHandle<AccessDomain>,
+    domain: &beryl_home_store::DomainHandle<AccessDomain>,
     mutation: Put,
 ) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(domain.contribution(store.domain_revision(&domain).unwrap(), mutation))
+        .add(domain.contribution(store.domain_revision(domain).unwrap(), mutation))
         .unwrap();
     store.execute(command)
 }
 
 fn execute_with_validator(
     store: &HomeStore,
-    mutation_domain: beryl_home_store::DomainHandle<AlphaDomain>,
-    validator_domain: beryl_home_store::DomainHandle<AccessDomain>,
+    mutation_domain: &beryl_home_store::DomainHandle<AlphaDomain>,
+    validator_domain: &beryl_home_store::DomainHandle<AccessDomain>,
     failure: Failure,
 ) -> beryl_home_store::CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(mutation_domain.contribution(
-            store.domain_revision(&mutation_domain).unwrap(),
+            store.domain_revision(mutation_domain).unwrap(),
             PutBytes::<AlphaDomain>::new(17, b"must stay atomic".to_vec()),
         ))
         .unwrap()
         .add_validation(validator_domain.validation(
-            store.domain_revision(&validator_domain).unwrap(),
+            store.domain_revision(validator_domain).unwrap(),
             AccessValidator { failure },
         ))
         .unwrap();
@@ -255,7 +259,7 @@ fn storage_access_from_either_callback_stage_fails_closed_with_provenance() {
 
         let error = execute(
             &store,
-            domain,
+            &domain,
             Put {
                 key: 1,
                 value: b"ignored".to_vec(),
@@ -278,7 +282,7 @@ fn storage_access_from_either_callback_stage_fails_closed_with_provenance() {
         let store = candidate.publish();
         assert_eq!(store.home_revision().unwrap(), home_before);
         assert_eq!(store.domain_revision(&domain).unwrap(), domain_before);
-        committed(execute(&store, domain, put(b"committed")));
+        committed(execute(&store, &domain, put(b"committed")));
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         store.close().unwrap();
     }
@@ -298,7 +302,7 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
         assert!(matches!(
             execute(
                 &store,
-                domain,
+                &domain,
                 Put {
                     key: 1,
                     value: b"ignored".to_vec(),
@@ -311,7 +315,7 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         assert_eq!(store.home_revision().unwrap(), home_before);
     }
-    committed(execute(&store, domain, put(b"committed")));
+    committed(execute(&store, &domain, put(b"committed")));
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     store.close().unwrap();
 
@@ -320,7 +324,7 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
     let domain = store.register_domain::<AccessDomain>().unwrap();
     let error = execute(
         &store,
-        domain,
+        &domain,
         Put {
             key: 1,
             value: b"ignored".to_vec(),
@@ -352,8 +356,8 @@ fn validation_only_participant_preserves_semantic_and_access_provenance() {
 
         let error = not_committed(execute_with_validator(
             &store,
-            mutation_domain,
-            validator_domain,
+            &mutation_domain,
+            &validator_domain,
             failure,
         ));
         match failure {
@@ -416,7 +420,7 @@ fn registration_preserves_access_provenance_and_semantic_rejection() {
         let domain = store.register_domain::<AccessDomain>().unwrap();
         committed(execute(
             &store,
-            domain,
+            &domain,
             Put {
                 key: 0,
                 value: marker.to_vec(),

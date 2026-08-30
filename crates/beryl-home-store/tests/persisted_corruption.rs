@@ -5,15 +5,15 @@ mod support;
 use std::{convert::Infallible, error::Error, fmt, sync::Arc};
 
 use beryl_home_store::{
+    test_faults::{FaultController, PersistedCorruptionError},
     CodecOperation, DomainCallbackSource, DomainHandle, DomainMutation, DomainReader,
     DomainSchemaVersion, DomainValidationError, HomeCommand, HomeHealthState, HomeOpenOptions,
     HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit,
     ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain, WholeHomeScrubTrigger,
-    test_faults::{FaultController, PersistedCorruptionError},
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, committed};
+use support::{committed, AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError};
 
 const MAX_STORED_VALUE_BYTES: usize = 1_028;
 const MAX_CORRUPTION_FIXTURE_BYTES: usize = 1_048_576;
@@ -92,8 +92,12 @@ struct CorruptionReentrantProbe {
 
 impl DomainMutation<AlphaDomain> for CorruptionReentrantProbe {
     type Error = FixtureMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, AlphaDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, AlphaDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if !matches!(
             self.store
                 .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -107,7 +111,7 @@ impl DomainMutation<AlphaDomain> for CorruptionReentrantProbe {
                 "persisted corruption seam did not reject writer reentry",
             ));
         }
-        Ok(())
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -119,8 +123,7 @@ impl DomainMutation<AlphaDomain> for CorruptionReentrantProbe {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AlphaDomain>,
+        _prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, AlphaDomain>,
     ) -> Result<(), Self::Error> {
         mutations.put::<BytesRecord<AlphaDomain>>(&9, &b"outer".to_vec())?;
@@ -162,7 +165,7 @@ fn codec_valid_envelope_is_rejected_without_mutating_the_family() {
     assert_eq!(
         store
             .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-                alpha,
+                &alpha,
                 &1,
                 PointReadLimit::new(MAX_STORED_VALUE_BYTES).unwrap(),
             )
@@ -184,7 +187,7 @@ fn same_thread_writer_reentry_is_rejected_without_deadlock_or_corruption() {
             store.domain_revision(&alpha).unwrap(),
             CorruptionReentrantProbe {
                 store: Arc::clone(&store),
-                domain: alpha,
+                domain: alpha.clone(),
             },
         ))
         .unwrap();
@@ -193,7 +196,7 @@ fn same_thread_writer_reentry_is_rejected_without_deadlock_or_corruption() {
     assert_eq!(
         store
             .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-                alpha,
+                &alpha,
                 &9,
                 PointReadLimit::new(MAX_STORED_VALUE_BYTES).unwrap(),
             )
@@ -415,7 +418,7 @@ fn empty_engine_oversized_and_fixture_oversized_requests_are_hard_rejected() {
     assert_eq!(
         store
             .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-                alpha,
+                &alpha,
                 &1,
                 PointReadLimit::new(MAX_STORED_VALUE_BYTES).unwrap(),
             )
@@ -459,7 +462,7 @@ fn scrub_rejects_but_routine_recovery_ignores_a_dormant_malformed_envelope() {
     let recovered = candidate.publish();
     assert!(matches!(
         recovered.read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
+            &alpha,
             &1,
             PointReadLimit::new(MAX_STORED_VALUE_BYTES).unwrap(),
         ),
