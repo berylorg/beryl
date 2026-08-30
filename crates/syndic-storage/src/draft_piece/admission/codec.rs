@@ -1044,11 +1044,35 @@ fn record_charge<F: Family>(
         .ok_or(DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)
 }
 
+fn record_key_charge<F: Family>(key: &F::Key) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
+    let key = F::encode_key(key).map_err(|_| DraftMarkerAdmissionSchemaErrorV1::ValueTooLarge)?;
+    u64::try_from(key.len()).map_err(|_| DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)
+}
+
+pub(crate) fn encoded_capacity_record_charge(
+    key: &DraftMarkerAdmissionCapacityKeyV1,
+    value: &DraftMarkerAdmissionCapacityV1,
+) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
+    record_charge::<DraftMarkerAdmissionCapacityFamily>(key, value)
+}
+
+pub(crate) fn encoded_capacity_key_charge(
+    key: &DraftMarkerAdmissionCapacityKeyV1,
+) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
+    record_key_charge::<DraftMarkerAdmissionCapacityFamily>(key)
+}
+
 pub(crate) fn encoded_head_record_charge(
     key: &DraftMarkerAdmissionOwnerV1,
     value: &DraftMarkerAdmissionHeadV1,
 ) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
     record_charge::<DraftMarkerAdmissionHeadsFamily>(key, value)
+}
+
+pub(crate) fn encoded_head_key_charge(
+    key: &DraftMarkerAdmissionOwnerV1,
+) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
+    record_key_charge::<DraftMarkerAdmissionHeadsFamily>(key)
 }
 pub(crate) fn encoded_node_record_charge(
     key: &DraftMarkerAdmissionNodeKeyV1,
@@ -1069,6 +1093,12 @@ pub(crate) fn encoded_receipt_record_charge(
     value: &DraftMarkerAdmissionReplayReceiptV1,
 ) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
     record_charge::<DraftMarkerAdmissionReceiptsFamily>(key, value)
+}
+
+pub(crate) fn encoded_receipt_key_charge(
+    key: &DraftMarkerAdmissionReceiptKeyV1,
+) -> Result<u64, DraftMarkerAdmissionSchemaErrorV1> {
+    record_key_charge::<DraftMarkerAdmissionReceiptsFamily>(key)
 }
 
 #[cfg(feature = "test-faults")]

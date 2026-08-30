@@ -205,7 +205,7 @@ fn target_leaf_and_evidence_bounds_are_canonical() {
         Err(DraftMarkerAdmissionSchemaErrorV1::EvidenceLength)
     );
     assert_eq!(
-        DraftMarkerAdmissionEvidenceV1::new(vec![0; 65_001]),
+        DraftMarkerAdmissionEvidenceV1::new(vec![0; 65_537]),
         Err(DraftMarkerAdmissionSchemaErrorV1::EvidenceLength)
     );
 }

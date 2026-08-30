@@ -17,20 +17,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 218: Prepare Authenticated Single-Association Draft-Marker Index Successors (finished)
+# Phase 219: Publish One Durable Draft-Marker Admission Quantum (finished)
 
-Established the crate-private bounded dual-index editor over opaque proven-page custody, including
-authenticated path-copy splits, duplicate-target refusal, exact immediate-predecessor reclamation,
-retained-charge delta, and command footprint without durable publication or parallel authority.
-The locked all-target check, five focused index cases, and independent semantic review passed.
-
-# Phase 219: Publish One Durable Draft-Marker Admission Quantum (pending)
-
-Consume one prepared dual-index successor in a single Syndic mutation that atomically replaces the
-operation head and selected replay receipt, exchanges the singleton capacity charge, writes new
-nodes, and deletes superseded replay-only paths. Enforce the exact 4,194,304-byte command limit,
-per-operation 65,536-association and 67,108,864-byte limits, and home-wide matching totals plus 64
-heads, without public page progression or acknowledgement-loss reconciliation.
+Established one crate-private current-domain publication mutation for canonical first admission and
+authenticated same-page successors, atomically exchanging exact operation/home charges while
+reclaiming superseded replay-only paths and retaining only the immediate predecessor closure. The
+six focused publication cases, 25 schema/tree/index regressions, locked all-target check, and
+independent semantic review passed.
 
 # Phase 220: Advance Proven Draft-Marker Pages With Exact Reconciliation (pending)
 

@@ -84,10 +84,34 @@ pub(crate) struct DraftMarkerAdmissionIndexFootprintV1 {
     command_bytes: u64,
 }
 
+impl DraftMarkerAdmissionIndexFootprintV1 {
+    pub(crate) const fn read_bytes(self) -> u64 {
+        self.read_bytes
+    }
+
+    pub(crate) const fn write_bytes(self) -> u64 {
+        self.write_bytes
+    }
+
+    pub(crate) const fn delete_bytes(self) -> u64 {
+        self.delete_bytes
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct DraftMarkerAdmissionRetainedChargeDeltaV1 {
     added: DraftMarkerAdmissionRetainedChargeV1,
     removed: DraftMarkerAdmissionRetainedChargeV1,
+}
+
+impl DraftMarkerAdmissionRetainedChargeDeltaV1 {
+    pub(crate) const fn added(self) -> DraftMarkerAdmissionRetainedChargeV1 {
+        self.added
+    }
+
+    pub(crate) const fn removed(self) -> DraftMarkerAdmissionRetainedChargeV1 {
+        self.removed
+    }
 }
 
 pub(crate) struct PreparedDraftMarkerAdmissionIndexSuccessorV1 {

@@ -1,6 +1,7 @@
 mod codec;
 pub(crate) mod index;
 mod model;
+mod publication;
 mod readiness_source;
 mod tree;
 
@@ -13,8 +14,17 @@ pub(crate) use codec::{
     DraftMarkerAdmissionHeadsCodec, DraftMarkerAdmissionHeadsFamily,
     DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionNodesFamily,
     DraftMarkerAdmissionReceiptsCodec, DraftMarkerAdmissionReceiptsFamily,
+    encoded_capacity_key_charge, encoded_capacity_record_charge, encoded_head_key_charge,
     encoded_head_record_charge, encoded_node_key_charge, encoded_node_record_charge,
-    encoded_receipt_record_charge,
+    encoded_receipt_key_charge, encoded_receipt_record_charge,
+};
+
+#[allow(unused_imports)]
+pub(crate) use publication::DraftMarkerAdmissionPublicationSeedV1;
+
+#[cfg(feature = "test-faults")]
+pub use publication::{
+    DraftMarkerAdmissionPublicationFixtureV1, DraftMarkerAdmissionPublicationSnapshotV1,
 };
 
 #[cfg(feature = "test-faults")]
