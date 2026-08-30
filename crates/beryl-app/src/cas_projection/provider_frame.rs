@@ -278,10 +278,12 @@ fn begin_build(
         CommandOutcome::Committed {
             receipt: _,
             later_failure: None,
+            local_finalization: _,
         } => {}
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(later_failure),
+            local_finalization: _,
         } => {
             return Err(ProviderFramePublicationError::BeginCommitted {
                 receipt,
@@ -387,10 +389,12 @@ fn dispatch_batch(
         CommandOutcome::Committed {
             receipt: _,
             later_failure: None,
+            local_finalization: _,
         } => {}
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(later_failure),
+            local_finalization: _,
         } => {
             return Err(ProviderBatchDispatchError::Committed {
                 receipt,
@@ -456,10 +460,12 @@ fn complete_comparison(
             CommandOutcome::Committed {
                 receipt: _,
                 later_failure: None,
+                local_finalization: _,
             } => {}
             CommandOutcome::Committed {
                 receipt,
                 later_failure: Some(later_failure),
+                local_finalization: _,
             } => {
                 return Err(ProviderFramePublicationError::CompletionCommitted {
                     receipt,

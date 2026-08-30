@@ -126,10 +126,12 @@ impl<'a> FrameCommitter<'a> {
             CommandOutcome::Committed {
                 receipt: _,
                 later_failure: None,
+                local_finalization: _,
             } => Ok(()),
             CommandOutcome::Committed {
                 receipt,
                 later_failure: Some(later_failure),
+                local_finalization: _,
             } => Err(PersistenceCutError::Committed {
                 receipt,
                 later_failure: Box::new(later_failure),

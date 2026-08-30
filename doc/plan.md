@@ -17,36 +17,36 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 220: Advance Bounded Draft-Marker Pages Durably (finished)
+# Phase 221: Finalize Exact Committed Local State After Health Closure (finished)
 
-Established one-association durable page quanta with cursor-only reopen/resume, atomic non-final
-page advancement, byte-exact replay/obsolete/collision classification, and exact receipt/path
-reclamation without retained prefixes or transition history. Phase 218–220 regressions passed
-15/15, the locked all-target check passed, and independent semantic review found no issue.
+Added the HomeStore-owned move-only capability for finalizing only already-durable, single-domain
+attachment-local custody after a later structural failure closes health. Exact receipt, store
+generation, domain, revision, handle, and attachment identity remain bound without Fjall, health,
+reconciliation, retry, acknowledgement, or publication authority. A supported counter-divergence
+regression protects generation identity. Focused finalization tests passed 7/7; HomeStore, Syndic,
+and Beryl-state all-target checks and the affected Beryl-app library check passed. Independent
+semantic review found no remaining issue and required no adversarial review.
 
-# Phase 221: Own Draft-Marker Receipt Submission And Exact Outcome Reconciliation (pending)
+# Phase 222: Own Draft-Marker Receipt Submission And Exact Outcome Reconciliation (pending)
 
-Consume only an opaque attempt's paired proof expectation with its exact current-generation receipt,
-expose at most one current-domain publication command at a time, and own `NotCommitted`,
-`Committed`, and `Indeterminate` custody without exposing page facts, durable roots, receipts, or
-reconciliation descriptors. Install indeterminate custody before acknowledgement, cancellation,
-retirement, or local-state release; reconcile only through HomeStore so exact-old retains retry or
-cancellation custody, exact-new advances once, and collision closes the scope without
-process-object continuity.
+Complete the preserved opaque Syndic page-submission implementation against the accepted
+HomeStore local-finalization boundary. Consume exact proof and command outcomes linearly, install
+indeterminate custody before local release, classify only through durable exact reconciliation,
+and preserve bounded attachment ownership, lost-acknowledgement replay, and final-EOF deferral.
 
-# Phase 222: Assign Draft-Marker Labels And Issue Readiness (pending)
+# Phase 223: Assign Draft-Marker Labels And Issue Readiness (pending)
 
 Reserve the package-derived allocation range after exact EOF, consume the source-order tree through
 bounded durable continuation, assign the target-id tree, and issue the final move-only proof only
 from canonical-empty source authority and exact zero-unassigned closure.
 
-# Phase 223: Close And Reclaim Draft-Marker Admission (pending)
+# Phase 224: Close And Reclaim Draft-Marker Admission (pending)
 
 Implement cancellation before and after durable admission, inert terminal closure, incremental
 cross-restart cleanup, exact replay/collision retention, and final aggregate resource release without
 reactivating or resuming prior-generation operations.
 
-# Phase 224: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
+# Phase 225: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
 
 Consume only package-issued readiness custody at mutation begin, point-consume exact target
 associations during builder progress, and publish candidate, history, settlement, and protection
@@ -54,7 +54,7 @@ authority only from canonical empty admission closure. Verify substitution, canc
 acknowledgement uncertainty, collision, restart, and resource release with focused state-machine
 tests and independent semantic review.
 
-# Phase 225: Integrate Exact Historical Draft-Marker Adoption (pending)
+# Phase 226: Integrate Exact Historical Draft-Marker Adoption (pending)
 
 Resolve the historical target entirely inside Syndic, authenticate its retained lineage, root,
 marker commitment, selection, and protection containment, then adopt it without ordinary readiness,

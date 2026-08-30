@@ -467,6 +467,53 @@ fn one_slot_owns_one_attachment_across_clone_and_reacquisition() {
 }
 
 #[test]
+fn committed_local_finalization_resolves_the_exact_live_attachment() {
+    reset();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults.clone());
+    let domain = store.register_domain::<DomainA>().unwrap();
+    let attachment_capability = domain.attachment_capability();
+    let identity = store
+        .with_domain_attachment(&attachment_capability, |attachment| attachment.identity)
+        .unwrap();
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command
+        .add(domain.contribution(
+            store.domain_revision(&domain).unwrap(),
+            PutValue::<DomainA>::new(7, 41),
+        ))
+        .unwrap();
+
+    faults.fail_next(FaultPoint::AfterPersist);
+    let (receipt, local_finalization) = match store.execute(command) {
+        beryl_home_store::CommandOutcome::Committed {
+            receipt,
+            later_failure: Some(_),
+            local_finalization: Some(local_finalization),
+        } => (receipt, local_finalization),
+        other => panic!("expected committed local-finalization outcome, got {other:?}"),
+    };
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert!(matches!(
+        store.with_domain_attachment(&attachment_capability, |_| ()),
+        Err(DomainAttachmentAccessError::HealthGate(_))
+    ));
+    assert_eq!(
+        store
+            .with_committed_local_finalization(
+                local_finalization,
+                &receipt,
+                &domain,
+                |attachment| attachment.identity,
+            )
+            .unwrap(),
+        identity
+    );
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+}
+
+#[test]
 fn recovery_retires_old_attachment_and_rejects_stale_views() {
     reset();
     let directory = tempdir().unwrap();

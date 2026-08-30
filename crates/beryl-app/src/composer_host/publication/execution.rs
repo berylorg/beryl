@@ -70,6 +70,7 @@ impl SyndicComposerHost {
             ReconciliationResolution::ExactNew { receipt } => CommandOutcome::Committed {
                 receipt,
                 later_failure: None,
+                local_finalization: None,
             },
             ReconciliationResolution::ExactSuccessor { .. }
             | ReconciliationResolution::Collision => {

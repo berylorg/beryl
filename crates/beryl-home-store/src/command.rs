@@ -26,9 +26,9 @@ pub(crate) use participant::{DomainMutationPlan, DomainParticipant, PreparedDoma
 use participant::{mutation_plan, validation_plan};
 pub(crate) use result::RetainedReconciliationDescriptor;
 pub use result::{
-    CommandError, CommandOutcome, CommitReceipt, CommitReceiptError, ContributorCallbackStage,
-    ReconciliationCustody, RevisionConflict, StorageCommitState, StorageErrorClass,
-    StorageResource,
+    CommandError, CommandOutcome, CommitReceipt, CommitReceiptError, CommittedLocalFinalization,
+    CommittedLocalFinalizationError, ContributorCallbackStage, ReconciliationCustody,
+    RevisionConflict, StorageCommitState, StorageErrorClass, StorageResource,
 };
 
 const RECONCILIATION_DESCRIPTOR_FIXED_BYTES: usize = 128;

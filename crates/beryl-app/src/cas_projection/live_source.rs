@@ -314,10 +314,12 @@ pub(super) fn publish_provider_reconciled(
         beryl_home_store::CommandOutcome::Committed {
             receipt: _,
             later_failure: None,
+            local_finalization: _,
         } => Ok(()),
         beryl_home_store::CommandOutcome::Committed {
             receipt,
             later_failure: Some(later_failure),
+            local_finalization: _,
         } => Err(LiveSourcePublicationError::Publication(
             ProjectionPublicationFailure::CommandCommitted {
                 receipt,

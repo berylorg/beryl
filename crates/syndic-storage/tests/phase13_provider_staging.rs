@@ -213,12 +213,14 @@ fn clean_command(outcome: CommandOutcome, operation: &str) {
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => {
             let _receipt = receipt;
         }
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(failure),
+            local_finalization: _,
         } => panic!(
             "expected clean {operation}, got committed receipt {receipt:?} with later failure {failure:?}"
         ),

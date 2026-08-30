@@ -88,6 +88,7 @@ fn assert_committed(
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => {
             assert!(
                 storage
@@ -100,6 +101,7 @@ fn assert_committed(
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(failure),
+            local_finalization: _,
         } => panic!(
             "expected clean thread-and-draft command outcome, got committed receipt {receipt:?} with later failure {failure:?}"
         ),
@@ -124,6 +126,7 @@ fn assert_not_committed(outcome: CommandOutcome, operation: &str) -> CommandErro
         CommandOutcome::Committed {
             receipt,
             later_failure,
+            local_finalization: _,
         } => panic!(
             "expected {operation} to be rejected, got committed receipt {receipt:?} with later failure {later_failure:?}"
         ),
@@ -242,6 +245,7 @@ fn cancellation_before_admission_and_identity_collision_change_nothing() {
         CommandOutcome::Committed {
             receipt,
             later_failure,
+            local_finalization: _,
         } => panic!(
             "expected cancelled-before-admission rejection, got committed receipt {receipt:?} with later failure {later_failure:?}"
         ),

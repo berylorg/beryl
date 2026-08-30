@@ -41,10 +41,12 @@ fn assert_committed(outcome: beryl_home_store::CommandOutcome) {
         beryl_home_store::CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => drop(receipt),
         beryl_home_store::CommandOutcome::Committed {
             receipt,
             later_failure: Some(failure),
+            local_finalization: _,
         } => {
             drop(receipt);
             panic!("expected clean child-thread command, got later failure: {failure:?}")
@@ -68,6 +70,7 @@ fn assert_not_committed(outcome: beryl_home_store::CommandOutcome) -> CommandErr
         beryl_home_store::CommandOutcome::Committed {
             receipt,
             later_failure,
+            local_finalization: _,
         } => {
             drop(receipt);
             panic!(

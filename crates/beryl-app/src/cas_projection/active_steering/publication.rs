@@ -84,10 +84,12 @@ fn publish_reconciled(
         CommandOutcome::Committed {
             receipt: _,
             later_failure: None,
+            local_finalization: _,
         } => Ok(()),
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(later_failure),
+            local_finalization: _,
         } => Err(ProjectionPublicationFailure::CommandCommitted {
             receipt,
             later_failure,

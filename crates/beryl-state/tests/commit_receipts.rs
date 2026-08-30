@@ -35,6 +35,7 @@ fn beryl_domains_project_only_their_affected_receipt_revision() {
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => receipt,
         outcome => panic!("expected committed runtime receipt, got {outcome:?}"),
     };
@@ -196,6 +197,7 @@ fn one_receipt_projects_every_affected_beryl_domain_revision() {
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => receipt,
         outcome => panic!("expected committed receipt command, got {outcome:?}"),
     };

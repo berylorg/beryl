@@ -49,6 +49,7 @@ fn state_commands_preserve_exact_outcomes_and_project_only_committed_receipts() 
         CommandOutcome::Committed {
             receipt,
             later_failure,
+            local_finalization: _,
         } => {
             assert!(later_failure.is_none());
             assert_eq!(

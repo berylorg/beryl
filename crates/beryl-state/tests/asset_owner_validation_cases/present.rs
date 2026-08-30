@@ -50,6 +50,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
                 CommandOutcome::Committed {
                     receipt,
                     later_failure: None,
+                    local_finalization: _,
                 } => receipt,
                 outcome => panic!("expected committed owner-validation command, got {outcome:?}"),
             }
@@ -148,6 +149,7 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
                 CommandOutcome::Committed {
                     receipt,
                     later_failure: None,
+                    local_finalization: _,
                 } => receipt,
                 outcome => panic!("expected committed owner replacement command, got {outcome:?}"),
             }

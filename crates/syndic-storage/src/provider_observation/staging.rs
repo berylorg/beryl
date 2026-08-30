@@ -276,6 +276,7 @@ impl ProviderObservationStager {
             CommandOutcome::Committed {
                 receipt,
                 later_failure,
+                local_finalization: _,
             } => Ok(ProviderObservationStageOutcome::Committed {
                 value: Self {
                     current,
@@ -394,6 +395,7 @@ impl ProviderObservationStager {
             CommandOutcome::Committed {
                 receipt,
                 later_failure,
+                local_finalization: _,
             } => {
                 self.current = next;
                 self.validator = validator;
@@ -436,6 +438,7 @@ impl ProviderObservationStager {
             CommandOutcome::Committed {
                 receipt,
                 later_failure,
+                local_finalization: _,
             } => Ok(ProviderObservationSealOutcome::Committed {
                 value: SealedProviderObservationHandle::from_build(&next),
                 receipt,

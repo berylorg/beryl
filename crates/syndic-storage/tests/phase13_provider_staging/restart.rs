@@ -134,6 +134,7 @@ fn content_ahead_partial_build_reopens_and_resumes() {
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(failure),
+            local_finalization: _,
         } => panic!(
             "expected clean provider-frame build begin, got committed receipt {receipt:?} with later failure {failure:?}"
         ),
@@ -255,6 +256,7 @@ fn narrative_ahead_content_incomplete_partial_build_reopens_and_resumes() {
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(failure),
+            local_finalization: _,
         } => panic!(
             "expected clean provider-frame build begin, got committed receipt {receipt:?} with later failure {failure:?}"
         ),

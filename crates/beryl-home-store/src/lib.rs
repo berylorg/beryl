@@ -274,10 +274,11 @@ pub use codec::{
 };
 pub use command::{
     CommandBuildError, CommandCancellation, CommandError, CommandOutcome, CommitReceipt,
-    CommitReceiptError, ContributorCallbackStage, CurrentDomainCommand, DomainMutation,
-    DomainValidator, HomeCommand, MutationBuildError, MutationBuilder, MutationContribution,
-    ReconciliationCustody, ReconciliationReservation, RevisionConflict, StorageCommitState,
-    StorageErrorClass, StorageResource, ValidationContribution,
+    CommitReceiptError, CommittedLocalFinalization, CommittedLocalFinalizationError,
+    ContributorCallbackStage, CurrentDomainCommand, DomainMutation, DomainValidator, HomeCommand,
+    MutationBuildError, MutationBuilder, MutationContribution, ReconciliationCustody,
+    ReconciliationReservation, RevisionConflict, StorageCommitState, StorageErrorClass,
+    StorageResource, ValidationContribution,
 };
 pub use domain::{
     DomainAttachmentAccessError, DomainAttachmentCapability, DomainCallbackError,

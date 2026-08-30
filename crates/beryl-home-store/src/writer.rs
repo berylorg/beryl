@@ -3,9 +3,9 @@ use std::{cell::RefCell, sync::MutexGuard};
 use fjall::PersistMode;
 
 use crate::{
-    CommandError, CommandOutcome, CommitReceipt, ContributorCallbackStage, CurrentDomainCommand,
-    HomeCommand, MutationContribution, ReadError, ReadStage, ReconciliationCustody,
-    RevisionConflict,
+    CommandError, CommandOutcome, CommitReceipt, CommittedLocalFinalization,
+    ContributorCallbackStage, CurrentDomainCommand, HomeCommand, MutationContribution, ReadError,
+    ReadStage, ReconciliationCustody, RevisionConflict,
     command::{
         DomainParticipant, MaterializedDomainDescriptor, MaterializedRecordDescriptor,
         PendingAction, PendingMutation, PreparedDomainMutation, ReconciliationReservationOutput,
@@ -852,9 +852,18 @@ fn finalize_outcome(outcome: ExecutionOutcome, reservation: CommandReservation) 
             later_failure,
         } => {
             drop(reservation);
+            let local_finalization = later_failure
+                .as_ref()
+                .and_then(command_failure_severity)
+                .and_then(|severity| {
+                    (severity == FailureSeverity::Structural)
+                        .then(|| CommittedLocalFinalization::for_receipt(&receipt))
+                        .flatten()
+                });
             CommandOutcome::Committed {
                 receipt,
                 later_failure,
+                local_finalization,
             }
         }
         ExecutionOutcome::Indeterminate(failure) => {

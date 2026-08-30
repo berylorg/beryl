@@ -64,6 +64,13 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   exact-once construction, same-generation identity, access fencing, retirement, and drop. It
   provides no process-global registry, per-handle attachment, compatibility bridge, or way to
   transplant an attachment into another generation.
+- The package exposes opaque fixed-size `CommittedLocalFinalization` and one consuming HomeStore
+  method. The non-`Clone` capability is privately minted only in the just-returned committed
+  result for a durably committed single-domain mutation whose later structural failure closed
+  ordinary health admission. It binds the exact private store instance, home generation,
+  committed home revision, sole affected domain slot and revision, and exact receipt. Consumption
+  requires that receipt, the matching typed domain handle, and one closure and can invoke the
+  closure at most once against only that exact current-generation runtime attachment.
 - The package also exposes `HomeProofCommand<P>` and `HomeStore::compose_proof` as the generic
   process-local boundary for read-only proof composition. A command has exactly one statically
   typed source role and zero or more statically typed witness roles, with at most one role for each
@@ -200,10 +207,13 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   register or reacquire successfully before the initial `beryl` composition root or running
   `beryl-app` recovery supervisor can consume the one-shot complete-stack publication capability.
 - Busy, unsupported-schema, lock-unsupported, open, validation, conflict, persistence, sidecar, and health-gate failures remain distinct typed errors.
-- A command returns exactly `NotCommitted { evidence }`, `Committed { receipt, later_failure }`, or
+- A command returns exactly `NotCommitted { evidence }`,
+  `Committed { receipt, later_failure, local_finalization }`, or
   `Indeterminate { failure, reconciliation }`. `NotCommitted` evidence proves no part of the batch
-  committed and carries no receipt or descriptor. `Committed` always carries the exact receipt and
-  optionally carries a typed failure observed after commit. `Indeterminate` carries the surfaced
+  committed and carries no receipt or descriptor. `Committed` always carries the exact receipt,
+  optionally carries a typed failure observed after commit, and carries
+  `local_finalization: Option<CommittedLocalFinalization>` under the exact issuance rules in this
+  design. `Indeterminate` carries the surfaced
   typed failure, no receipt, and one move-only custody value containing the sole opaque
   operation-scoped reconciliation descriptor together with its already-reserved registry slot and
   byte charge; it cannot authorize publication.
@@ -302,7 +312,14 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   from the preceding buffered journal step remains exactly retained in the typed failure but maps
   to package `Indeterminate` with a reconciliation descriptor when the later `SyncAll` barrier did
   not succeed. It carries no receipt. Only a failure after successful `SyncAll` may return
-  `Committed { receipt, later_failure }`.
+  `Committed { receipt, later_failure, local_finalization }`.
+- `local_finalization` is `Some` only after a single-domain mutation is durably committed and a
+  later structural failure closes ordinary health admission before the committed outcome returns.
+  Minting fixes the capability to the just-created receipt and its exact store instance,
+  generation, committed home revision, sole affected domain slot and revision. It is `None` for a
+  normal commit, a nonstructural later failure, every multi-domain result, `Indeterminate`, and any
+  result or receipt reconstructed by reconciliation or obtained historically. No public input or
+  later API can mint, clone, retain by duplication, reconstruct, or retarget the capability.
 - Before writer admission, every mutation that could become indeterminate proves a conservative
   encoded descriptor-byte budget from command-owned identities and
   declared schema limits. After admission, the single bounded preparation pass materializes the
@@ -424,6 +441,16 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   separately closes mutation publication or fails the lifecycle; `Indeterminate` closes only its
   operation gate for reconciliation. The package retains the stable Fjall class, commit state,
   original I/O kind, and actual failure before erasing dependency types.
+- Committed local finalization is not health admission or confirmation. Its consuming boundary
+  takes the capability, exact receipt, matching typed handle, and closure; acquires the generation-
+  lifetime synchronization; and invokes the closure at most once only if the exact old generation
+  and attachment are still live and type-correct. It performs no `Database::health` or other Fjall
+  access, typed storage read, writer admission, reconciliation, acknowledgement, retry, or
+  publication; changes or reopens no health state; and returns only the closure result. It never
+  returns a revision, attachment reference or ownership, new capability, or publication decision.
+  Every rejection consumes the capability without invoking the closure or changing health or
+  storage and distinguishes mismatched receipt, stale or foreign store generation, wrong or
+  unaffected domain, poisoned generation lock, and closed or type-mismatched attachment.
 - An unwind from an admitted writer operation moves the store directly to `failed` before writer
   admission drains. Recovery drops the poisoned writer with the failed service and creates a fresh
   writer; it does not cross or clear the old mutex poison.
@@ -631,6 +658,14 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   after reservation, explicit and drop-fallback installation retain the exact descriptor and charge,
   route cancellation and service retirement cannot drop the descriptor, and orderly close or
   ordinary store/error destruction cannot dispose the registry or unlock a home with retained scope.
+- Committed-local-finalization tests prove exact issuance and nonissuance across the allowed and
+  excluded command outcomes; exact receipt, store, generation, domain, revision, and attachment
+  binding; substituted receipt and handle rejection; stale and foreign generations; and wrong or
+  unaffected domains. They prove callback noninvocation on every reachable rejection, unchanged
+  health and storage, and successful local finalization while ordinary health and publication gates
+  remain closed. Move-only ownership proves single-use consumption; semantic review covers the
+  poisoned-lock, closed/type-mismatched attachment, and racing-teardown states that the safe public
+  lifecycle cannot construct, without adding artificial corruption seams.
 - Package tests also cover four-worker saturation and release, filesystem-tier behavior, and
   sidecar publication ordering at the boundaries Beryl controls.
 - The owned Fjall fork exposes a deterministic non-production journal-write failure seam. Package

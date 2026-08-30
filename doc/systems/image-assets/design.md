@@ -227,8 +227,12 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   process attempts and proofs but neither deletes nor reclassifies durable admission custody;
   bounded durable cleanup removes terminal operation records and retained replay closure. A
   committed result releases proof and reservation custody even with a later surfaced failure,
-  because the settlement is already durable; publication still requires the exact receipt and
-  current-generation health.
+  because the settlement is already durable. When that later failure is structural and has closed
+  ordinary health admission, only the exact `CommittedLocalFinalization` from that just-returned
+  single-domain result may release the matching current-generation attachment custody with the
+  exact receipt and Syndic handle. This is local finalization of already-durable bounded custody,
+  not success publication; publication still requires the exact receipt and ordinary current-
+  generation health gate.
 - Label caches contain only the thread identity, exact label-head revision/frontiers, exact
   candidate-root binding, and bounded resident pages or query results. Cache eviction makes label-
   affecting operations repeat bounded point or range reads; no synchronization path loads the whole

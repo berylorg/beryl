@@ -714,6 +714,7 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
         beryl_home_store::CommandOutcome::Committed {
             receipt,
             later_failure: Some(error),
+            local_finalization: Some(_),
         } => (receipt, error),
         other => panic!("expected committed outcome with later failure, got {other:?}"),
     };
@@ -771,6 +772,7 @@ fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
         beryl_home_store::CommandOutcome::Committed {
             receipt: _,
             later_failure: Some(CommandError::Persistence { .. }),
+            local_finalization: Some(_),
         }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
@@ -807,6 +809,7 @@ fn current_domain_command_shares_post_sync_durability_and_health_semantics() {
         beryl_home_store::CommandOutcome::Committed {
             receipt,
             later_failure: Some(error),
+            local_finalization: Some(_),
         } => {
             assert_eq!(receipt.home_revision().get(), 2);
             error

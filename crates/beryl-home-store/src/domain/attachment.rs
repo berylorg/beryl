@@ -10,6 +10,7 @@ use thiserror::Error;
 use super::{DomainHandle, DomainOwnerId, StorageDomain, StoreInstanceId};
 use crate::health::FailureSeverity;
 use crate::{
+    CommitReceipt, CommittedLocalFinalization, CommittedLocalFinalizationError,
     DomainRegistrationReader, HomeStore, domain::RegisteredFamily, store::StoreGeneration,
 };
 
@@ -231,6 +232,54 @@ impl StoreGeneration {
 }
 
 impl HomeStore {
+    pub fn with_committed_local_finalization<D: StorageDomain, R>(
+        &self,
+        capability: CommittedLocalFinalization,
+        receipt: &CommitReceipt,
+        handle: &DomainHandle<D>,
+        callback: impl FnOnce(&D::RuntimeAttachment) -> R,
+    ) -> Result<R, CommittedLocalFinalizationError> {
+        if !capability.matches_receipt(receipt) {
+            return Err(CommittedLocalFinalizationError::ReceiptMismatch);
+        }
+        let generation = self
+            .generation
+            .read()
+            .map_err(|_| CommittedLocalFinalizationError::GenerationPoisoned)?;
+        let generation = generation
+            .as_ref()
+            .filter(|generation| generation.instance_id == capability.store)
+            .ok_or(CommittedLocalFinalizationError::StaleOrForeign)?;
+        if handle.store != capability.store || handle.slot != capability.domain_slot {
+            return Err(CommittedLocalFinalizationError::WrongDomain { domain: D::NAME });
+        }
+        let domain = generation
+            .registry
+            .get(capability.domain_slot)
+            .filter(|domain| {
+                domain.name == D::NAME
+                    && domain.schema == D::SCHEMA_VERSION
+                    && domain.owner == handle.owner
+                    && handle.owner == DomainOwnerId::of::<D>()
+            })
+            .ok_or(CommittedLocalFinalizationError::WrongDomain { domain: D::NAME })?;
+        if domain.attachment.attachment_type() != TypeId::of::<D::RuntimeAttachment>() {
+            return Err(CommittedLocalFinalizationError::AttachmentTypeMismatch {
+                domain: D::NAME,
+            });
+        }
+        let attachment = domain.attachment.get::<D>().map_err(|error| match error {
+            DomainAttachmentAccessError::AttachmentTypeMismatch { .. } => {
+                CommittedLocalFinalizationError::AttachmentTypeMismatch { domain: D::NAME }
+            }
+            DomainAttachmentAccessError::AccessClosed { .. } => {
+                CommittedLocalFinalizationError::AccessClosed { domain: D::NAME }
+            }
+            _ => CommittedLocalFinalizationError::WrongDomain { domain: D::NAME },
+        })?;
+        Ok(callback(attachment))
+    }
+
     pub fn with_domain_attachment<D: StorageDomain, R>(
         &self,
         capability: &DomainAttachmentCapability<D>,

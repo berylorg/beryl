@@ -14,11 +14,17 @@ pub fn committed(outcome: CommandOutcome) -> CommitReceipt {
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: None,
         } => receipt,
         CommandOutcome::Committed {
             later_failure: Some(error),
             ..
         } => panic!("command committed with unexpected later failure: {error}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            local_finalization: Some(_),
+            ..
+        } => panic!("normal commit unexpectedly carried local-finalization authority"),
         CommandOutcome::NotCommitted { evidence } => {
             panic!("command unexpectedly did not commit: {evidence}")
         }
@@ -35,6 +41,7 @@ pub fn not_committed(outcome: CommandOutcome) -> CommandError {
         CommandOutcome::Committed {
             receipt: _,
             later_failure,
+            local_finalization: _,
         } => panic!("command unexpectedly committed: {later_failure:?}"),
         CommandOutcome::Indeterminate {
             failure,

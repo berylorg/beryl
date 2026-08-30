@@ -269,16 +269,36 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   `Committed` error from the preceding buffered journal step remains exactly retained in the typed
   failure but maps to Beryl `Indeterminate` with a reconciliation descriptor when `SyncAll` did not
   subsequently succeed; it never fabricates a durable receipt. Only a failure observed after
-  successful `SyncAll` may produce `Committed { receipt, later_failure }`.
+  successful `SyncAll` may produce
+  `Committed { receipt, later_failure, local_finalization }`.
 - Cancellation is authoritative only before writer admission. Once an operation enters the serialized writer, callers drain its outcome and never interpret a later cancellation request as proof that the batch did not commit.
 - The home-store command result has exactly three variants: `NotCommitted { evidence }`, whose
   typed evidence proves that no part of the batch committed and which carries no receipt or
-  reconciliation descriptor; `Committed { receipt, later_failure }`, which always carries the
-  exact durable command receipt and an optional typed failure observed after commit; and
+  reconciliation descriptor;
+  `Committed { receipt, later_failure, local_finalization }`, which always carries the exact durable
+  command receipt, an optional typed failure observed after commit, and the optional local-
+  finalization authority defined below; and
   `Indeterminate { failure, reconciliation }`, which carries the surfaced typed failure and one
   move-only custody value containing the sole opaque operation-scoped reconciliation descriptor
   together with its already-reserved registry slot and byte charge. It carries no receipt and
   authorizes no publication.
+- `CommittedLocalFinalization` is an opaque fixed-size, non-`Clone`, single-use capability privately
+  minted only into the just-returned committed result for a durably committed single-domain
+  mutation when a later structural failure has already closed ordinary health admission. It is
+  bound to the exact private store instance, home generation, committed home revision, sole
+  affected domain slot and revision, and exact receipt.
+- The consuming home-store boundary takes that capability, the exact receipt, a matching typed
+  domain handle, and one closure. While holding generation-lifetime synchronization, it invokes
+  that closure at most once against only the bound current-generation runtime attachment. It
+  performs no health admission or confirmation, Fjall or `Database::health` access, typed storage
+  read, writer admission, reconciliation, acknowledgement, retry, or publication. It changes and
+  reopens no health state and returns only the closure result, never a revision, attachment
+  reference or ownership, replacement capability, or publication decision.
+- Every local-finalization rejection consumes the capability, invokes no closure, changes no
+  health or storage, and distinguishes a mismatched receipt, stale or foreign store generation,
+  wrong or unaffected domain, poisoned generation lock, and closed or type-mismatched attachment.
+  No capability exists for a normal commit, a nonstructural later failure, `Indeterminate`, a
+  reconciliation-reconstructed or historical receipt, or any multi-domain result.
 - Each mutation domain contributes a typed natural-record reconciliation hook when it builds an
   operation that could become indeterminate. The opaque descriptor retains only the exact old
   natural-record identities, revisions, and values needed by those hooks plus the intended exact
@@ -483,6 +503,11 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   a typed bounded operation failure; corruption, integrity, keyspace-identity, poison, and
   durability failures retain their actual provenance and applicable structural or operation-scope
   consequence rather than being erased by a generic health result.
+- Consuming `CommittedLocalFinalization` is not state-dependent admission and does not weaken or
+  reopen the failed lifecycle or any closed publication gate. It may finish only the already-
+  durable bounded local custody on the exact matching old generation while generation-lifetime
+  synchronization still proves its attachment live; recovery and teardown remain authoritative
+  once that generation no longer matches.
 - A panic unwinding through an admitted writer fails the store closed immediately. Recovery does not
   reuse that poisoned writer; it creates a fresh store service and fresh writer after the physical
   database and required schema are reopened successfully.
@@ -761,6 +786,15 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   descriptor-bearing gate. Seal-specific proofs additionally show the guard retains the inert old
   stager until installation, installs home custody before dropping that stager, and exposes no
   process-local continuation.
+- Committed-local-finalization fault tests prove capability issuance only for a just-returned,
+  single-domain durable commit whose later structural failure closed health, and nonissuance for
+  normal commits, nonstructural later failures, `Indeterminate`, reconciliation or historical
+  receipts, and multi-domain results. They cover exact receipt and handle matching, substituted
+  receipts, foreign or stale generations, wrong or unaffected domains, callback noninvocation on
+  every reachable rejection, and unchanged ordinary health and publication gates. Move-only
+  ownership proves one-shot consumption; semantic review covers poisoned lifetime locking,
+  closed/type-mismatched attachments, and racing teardown because the safe public lifecycle cannot
+  construct those states without an artificial corruption seam.
 
 # Engineering Rigor
 

@@ -54,10 +54,12 @@ fn require_committed_command(outcome: CommandOutcome) -> Result<(), ContextCompa
         CommandOutcome::Committed {
             receipt: _,
             later_failure: None,
+            local_finalization: _,
         } => Ok(()),
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(later_failure),
+            local_finalization: _,
         } => Err(ContextCompactionError::CommandCommitted {
             receipt,
             later_failure,

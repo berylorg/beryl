@@ -191,6 +191,7 @@ fn committed_command(outcome: CommandOutcome) {
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => drop(receipt),
         CommandOutcome::Committed {
             later_failure: Some(failure),
@@ -215,6 +216,7 @@ fn not_committed_command(outcome: CommandOutcome) -> CommandError {
         CommandOutcome::Committed {
             receipt,
             later_failure,
+            local_finalization: _,
         } => {
             drop(receipt);
             panic!(

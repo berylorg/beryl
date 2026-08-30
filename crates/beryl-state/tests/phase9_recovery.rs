@@ -28,6 +28,7 @@ macro_rules! expect_committed {
             CommandOutcome::Committed {
                 receipt,
                 later_failure: None,
+                local_finalization: _,
             } => receipt,
             outcome => panic!("expected committed command, got {outcome:?}"),
         }

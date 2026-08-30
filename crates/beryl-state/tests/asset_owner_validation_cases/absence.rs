@@ -35,6 +35,7 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => receipt,
         outcome => panic!("expected committed absent-owner command, got {outcome:?}"),
     };

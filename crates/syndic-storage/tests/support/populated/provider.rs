@@ -440,6 +440,7 @@ pub(super) fn accept_clean(
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => receipts.push(receipt),
         outcome => panic!("expected clean {operation}, got {outcome:?}"),
     }

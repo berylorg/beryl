@@ -42,6 +42,7 @@ fn execute(
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: None,
         } => {
             assert!(
                 storage

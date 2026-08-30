@@ -32,6 +32,7 @@ fn execute(
         CommandOutcome::Committed {
             receipt,
             later_failure: None,
+            local_finalization: _,
         } => receipt,
         outcome => panic!("expected committed asset command, got {outcome:?}"),
     }

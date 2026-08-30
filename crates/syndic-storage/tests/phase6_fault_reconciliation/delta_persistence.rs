@@ -66,6 +66,7 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
                 CommandOutcome::Committed {
                     receipt: _,
                     later_failure: Some(CommandError::Persistence { .. }),
+                    local_finalization: _,
                 },
             ) => {}
             (

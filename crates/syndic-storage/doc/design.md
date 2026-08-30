@@ -2161,6 +2161,13 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   the runtime attachment retains transient reservation state; neither retains an association prefix.
   A substituted attempt, executable, receipt, or receipt/consumer pair cannot advance the
   operation.
+- When that advancement's single-domain command returns `Committed` with a later structural
+  failure and its exact `CommittedLocalFinalization`, Syndic immediately consumes the capability
+  with that just-returned receipt and matching typed Syndic handle to finalize only the active
+  runtime-attachment flight. The capability cannot be cloned, reconstructed, or substituted;
+  Syndic does not retain it, and a reconciliation-reconstructed or historical receipt cannot mint
+  it or substitute for its bound receipt. It publishes no readiness success and cannot bypass the
+  ordinary health gate; every other committed shape uses the ordinary healthy-generation path.
 - Exact EOF plus completed source-order assignment revalidates the live label and protection heads,
   editor session, predecessor candidate root, operation, disposition, occurrence commitment,
   reservation, canonical-empty source root, zero unassigned count, and exact durable
@@ -2489,9 +2496,14 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   into the exact operation reconciliation wrapper. `ExactNew` or a proven terminal noncommit
   consumes and releases them, `ExactOld` retains them for retry or cancellation, and `Collision`
   retains the uncertain reserved ordinal in a closed scope until exact durable reconciliation. A
-  `Committed` result consumes and releases proof/reservation custody even when it carries a
-  `later_failure`, because the settlement is already durable; publication still requires the exact
-  receipt and the ordinary current-generation health gate.
+  direct `Committed` result consumes and releases proof/reservation custody even when it carries a
+  `later_failure`, because the settlement is already durable. If that later failure structurally
+  closed ordinary health admission, only the result's exact `CommittedLocalFinalization`, receipt,
+  and matching Syndic handle may finalize the active attachment flight. A later `ExactNew` or other
+  reconciled committed settlement uses only the ordinary reconciliation-owned release path and
+  receives no local-finalization capability; neither a reconstructed nor historical receipt can
+  substitute. Neither path publishes success without the exact receipt and ordinary current-
+  generation health gate.
 - Historical-root adoption requires no piece build, candidate-root creation, ordinary readiness
   proof, reservation, or admission index. Syndic resolves the selected history action to one opaque
   exact target containing the complete same-draft combined-root reference and authenticated

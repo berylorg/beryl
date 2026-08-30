@@ -396,6 +396,7 @@ impl<'a, C: ProviderFrameStageCallback> StagingSink<'a, C> {
             CommandOutcome::Committed {
                 receipt,
                 later_failure,
+                local_finalization: _,
             } => {
                 self.current = next;
                 self.last_receipt = Some(receipt.clone());

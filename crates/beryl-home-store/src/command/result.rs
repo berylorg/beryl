@@ -166,6 +166,7 @@ pub enum CommandOutcome {
         receipt: CommitReceipt,
         /// Failure after commit, if one occurred.
         later_failure: Option<CommandError>,
+        local_finalization: Option<CommittedLocalFinalization>,
     },
     /// The store could not classify whether the complete batch became durable.
     Indeterminate {
@@ -174,6 +175,63 @@ pub enum CommandOutcome {
         /// Opaque retained operation facts.
         reconciliation: ReconciliationCustody,
     },
+}
+
+#[must_use]
+pub struct CommittedLocalFinalization {
+    pub(crate) store: StoreInstanceId,
+    pub(crate) generation: HomeGeneration,
+    pub(crate) home_revision: HomeRevision,
+    pub(crate) domain_slot: usize,
+    pub(crate) domain_revision: DomainRevision,
+}
+
+impl fmt::Debug for CommittedLocalFinalization {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CommittedLocalFinalization")
+            .finish_non_exhaustive()
+    }
+}
+
+impl CommittedLocalFinalization {
+    pub(crate) fn for_receipt(receipt: &CommitReceipt) -> Option<Self> {
+        let [(domain_slot, domain_revision)] = receipt.domains.as_slice() else {
+            return None;
+        };
+        Some(Self {
+            store: receipt.store,
+            generation: receipt.generation,
+            home_revision: receipt.home_revision,
+            domain_slot: *domain_slot,
+            domain_revision: *domain_revision,
+        })
+    }
+
+    pub(crate) fn matches_receipt(&self, receipt: &CommitReceipt) -> bool {
+        receipt.store == self.store
+            && receipt.generation == self.generation
+            && receipt.home_revision == self.home_revision
+            && receipt.domains.as_slice() == [(self.domain_slot, self.domain_revision)]
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum CommittedLocalFinalizationError {
+    #[error("the committed local-finalization receipt does not match the capability")]
+    ReceiptMismatch,
+    #[error(
+        "the committed local-finalization capability is stale or belongs to another store generation"
+    )]
+    StaleOrForeign,
+    #[error("the Beryl-home generation lock is poisoned")]
+    GenerationPoisoned,
+    #[error("domain `{domain}` is not the capability's affected domain")]
+    WrongDomain { domain: &'static str },
+    #[error("domain `{domain}` is registered with another runtime attachment type")]
+    AttachmentTypeMismatch { domain: &'static str },
+    #[error("domain `{domain}` runtime attachment access is closed")]
+    AccessClosed { domain: &'static str },
 }
 
 /// Domain-callback stage that surfaced a storage-owned access failure.

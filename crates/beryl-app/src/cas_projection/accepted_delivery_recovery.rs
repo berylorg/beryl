@@ -270,10 +270,12 @@ fn converge_compaction_restart(
         beryl_home_store::CommandOutcome::Committed {
             receipt: _,
             later_failure: None,
+            local_finalization: _,
         } => {}
         beryl_home_store::CommandOutcome::Committed {
             receipt,
             later_failure: Some(later_failure),
+            local_finalization: _,
         } => {
             return Err(ProjectionCoordinatorError::CommandCommitted {
                 receipt,

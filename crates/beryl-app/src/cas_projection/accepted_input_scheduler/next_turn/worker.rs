@@ -180,10 +180,12 @@ fn execute_candidate(
         CommandOutcome::Committed {
             receipt: _,
             later_failure: None,
+            local_finalization: _,
         } => None,
         CommandOutcome::Committed {
             receipt,
             later_failure: Some(later_failure),
+            local_finalization: _,
         } => Some(WorkerDisposition::CommandCommitted {
             receipt,
             later_failure,
