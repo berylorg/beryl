@@ -299,11 +299,11 @@ pub use health::{
     HealthGateError, HomeGeneration, HomeHealthSnapshot, HomeHealthState, RecoveryRetrySchedule,
 };
 pub use proof::{
-    ExecutableHomeProofCommand, HomeProofCommand, HomeProofProtocol, HomeProofReceipt,
-    InlineProofCorrelation, MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES, ProofCommandBuildError,
-    ProofCommandSealError, ProofCompositionError, ProofCorrelation, ProofCorrelationBytes,
-    ProofDomain, ProofProtocolIdentity, ProofReceiptConsumer, ProofReceiptError,
-    ProofSourceContribution, ProofWitnessContribution,
+    ExecutableHomeProofCommand, FixedDigestHomeProofProtocol, HomeProofCommand, HomeProofProtocol,
+    HomeProofReceipt, InlineProofCorrelation, MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES,
+    ProofCommandBuildError, ProofCommandSealError, ProofCompositionError, ProofCorrelation,
+    ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity, ProofReceiptConsumer,
+    ProofReceiptError, ProofSourceContribution, ProofWitnessContribution,
 };
 pub use read::{CodecOperation, DomainReader, DomainRegistrationReader, ReadError, ReadStage};
 pub use reconciliation::{

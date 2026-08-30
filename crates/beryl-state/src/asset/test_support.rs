@@ -2,7 +2,7 @@ use beryl_home_store::{
     DomainMutation, DomainReader, MutationBuilder, PointReadLimit, ReconciliationReservation,
 };
 use beryl_model::{
-    AssetReferenceSetDigest, AssetReferenceSetId, OrderedMarkerAssetSummaryV1,
+    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, OrderedMarkerAssetSummaryV1,
     SealedAssetReferenceSetProof, SequentialMarkerSummaryV1, ordered_marker_asset_digest_seed,
     sequential_marker_digest_seed,
 };
@@ -12,7 +12,8 @@ use super::{
     AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetReferenceSetLifecycle,
     AssetReferenceSetManifest, AssetReferenceSetManifestCorruption,
     codec::{
-        AssetOwnerHeadCodec, AssetReferenceCompletionEvidenceCodec, AssetReferenceManifestCodec,
+        AssetMetadataCodec, AssetOwnerHeadCodec, AssetReferenceCompletionEvidenceCodec,
+        AssetReferenceManifestCodec,
     },
 };
 
@@ -150,6 +151,41 @@ impl DomainMutation<AssetDomain> for RemoveReferenceSetCompletionEvidence {
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
         mutations.delete::<AssetReferenceCompletionEvidenceCodec>(&prepared)?;
+        Ok(())
+    }
+}
+
+pub(super) struct RemoveAssetMetadata {
+    pub(super) asset_id: AssetId,
+}
+
+impl DomainMutation<AssetDomain> for RemoveAssetMetadata {
+    type Error = AssetMutationError;
+    type Prepared = AssetId;
+
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        reader
+            .point::<AssetMetadataCodec>(&self.asset_id, super::metadata_point_limit())?
+            .ok_or(AssetMutationError::MetadataMissing(self.asset_id))?;
+        Ok(self.asset_id)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<AssetMetadataCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        prepared: Self::Prepared,
+        mutations: &mut MutationBuilder<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        mutations.delete::<AssetMetadataCodec>(&prepared)?;
         Ok(())
     }
 }

@@ -17,35 +17,36 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 214: Reconstruct The Draft-Marker Admission Runtime Attachment (finished)
+# Phase 215: Establish Fixed Draft-Marker Evidence Proof Composition (finished)
 
-Replaced the empty Syndic attachment with bounded prepublication reconstruction from the capacity
-singleton and at most 64 durable heads, including exact empty-family probes, aggregate agreement,
-nonpublication on malformed or excessive state, and transient-only retirement. Focused Syndic and
-generic HomeStore attachment suites passed 16 and 11 cases respectively, and independent semantic
-review closed without requiring later cleanup or settlement authority.
+Published HomeStore's zero-state fixed-digest protocol marker and completed the private accepted-
+only Asset witness with one-time page validation, coherent exact-authority revalidation, and unique-
+tuple read coalescing without occurrence loss. Locked package checks, 210 HomeStore tests, 113
+Beryl-state tests, focused boundary cases, and independent semantic review all passed.
 
-# Phase 215: Admit Arbitrary-Order Draft-Marker Evidence (pending)
+# Phase 216: Admit Arbitrary-Order Draft-Marker Evidence (pending)
 
-Compose the fixed HomeStore proof and private Asset witness, ingest one association per bounded
-durable quantum into both operation trees, reject duplicate targets across pages, and provide exact
-byte replay/reconciliation while reclaiming superseded predecessor paths. Do not depend on process-
-object continuity, a source-order digest, repeated identical witness reads, or caller binding
-injection.
+Prepare Syndic source-only and accepted source-plus-witness page attempts, consume only the exact
+paired HomeStore proof receipt, and ingest at most one association per durable quantum into both
+authenticated operation trees. Reject duplicate targets within or across pages, enforce page, per-
+command, per-operation, and home-wide retained-resource bounds, and provide byte-exact replay and
+acknowledgement-loss reconciliation while atomically reclaiming superseded replay-only paths and
+retaining only the immediate predecessor closure. Do not depend on process-object continuity, a
+source-order digest, repeated identical witness reads, or caller binding injection.
 
-# Phase 216: Assign Draft-Marker Labels And Issue Readiness (pending)
+# Phase 217: Assign Draft-Marker Labels And Issue Readiness (pending)
 
 Reserve the package-derived allocation range after exact EOF, consume the source-order tree through
 bounded durable continuation, assign the target-id tree, and issue the final move-only proof only
 from canonical-empty source authority and exact zero-unassigned closure.
 
-# Phase 217: Close And Reclaim Draft-Marker Admission (pending)
+# Phase 218: Close And Reclaim Draft-Marker Admission (pending)
 
 Implement cancellation before and after durable admission, inert terminal closure, incremental
 cross-restart cleanup, exact replay/collision retention, and final aggregate resource release without
 reactivating or resuming prior-generation operations.
 
-# Phase 218: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
+# Phase 219: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
 
 Consume only package-issued readiness custody at mutation begin, point-consume exact target
 associations during builder progress, and publish candidate, history, settlement, and protection
@@ -53,7 +54,7 @@ authority only from canonical empty admission closure. Verify substitution, canc
 acknowledgement uncertainty, collision, restart, and resource release with focused state-machine
 tests and independent semantic review.
 
-# Phase 219: Integrate Exact Historical Draft-Marker Adoption (pending)
+# Phase 220: Integrate Exact Historical Draft-Marker Adoption (pending)
 
 Resolve the historical target entirely inside Syndic, authenticate its retained lineage, root,
 marker commitment, selection, and protection containment, then adopt it without ordinary readiness,

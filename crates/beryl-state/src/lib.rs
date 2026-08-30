@@ -196,9 +196,9 @@ pub use asset::AssetReferenceSetManifestCorruption;
 pub use asset::{
     ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES,
     ASSET_REFERENCE_PAGE_MAX_STORED_BYTES, AppendAssetReferencePage, AssetAdmissionError,
-    AssetDimensions, AssetLabelDisposition, AssetMediaType, AssetMetadataContribution,
-    AssetMetadataRecord, AssetMutationError, AssetOwner, AssetOwnerHeadAssertion,
-    AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdate,
+    AssetDimensions, AssetDraftMarkerLabelReadinessError, AssetLabelDisposition, AssetMediaType,
+    AssetMetadataContribution, AssetMetadataRecord, AssetMutationError, AssetOwner,
+    AssetOwnerHeadAssertion, AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdate,
     AssetOwnerHeadUpdateError, AssetOwnerHeadValidationError, AssetReadError,
     AssetReferenceEntryRecord, AssetReferenceOrdinal, AssetReferencePageEntry,
     AssetReferencePageError, AssetReferenceSetBuildProof, AssetReferenceSetCompletion,

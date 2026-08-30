@@ -16,6 +16,7 @@ use crate::StatePage;
 mod codec;
 mod completion;
 mod digest;
+mod draft_marker_label_readiness;
 mod error;
 mod footprint;
 mod model;
@@ -30,6 +31,7 @@ use codec::{
     AssetReferenceEntryCodec, AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec,
     AssetReferenceMarkerCodec,
 };
+pub use draft_marker_label_readiness::AssetDraftMarkerLabelReadinessError;
 pub use error::{
     AssetAdmissionError, AssetMutationError, AssetOwnerHeadUpdateError,
     AssetOwnerHeadValidationError, AssetReadError, AssetReferencePageError, AssetValidationError,
@@ -468,6 +470,30 @@ impl AssetState {
             expected_revision,
             test_support::RemoveReferenceSetCompletionEvidence { set_id },
         )
+    }
+
+    #[cfg(feature = "test-faults")]
+    #[must_use]
+    pub fn remove_metadata_for_test(
+        &self,
+        expected_revision: DomainRevision,
+        asset_id: AssetId,
+    ) -> MutationContribution {
+        self.handle.contribution(
+            expected_revision,
+            test_support::RemoveAssetMetadata { asset_id },
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn reset_draft_marker_label_readiness_validation_read_sets_for_test(&self) {
+        draft_marker_label_readiness::reset_validation_read_sets_for_test();
+    }
+
+    #[cfg(feature = "test-faults")]
+    #[must_use]
+    pub fn draft_marker_label_readiness_validation_read_sets_for_test(&self) -> usize {
+        draft_marker_label_readiness::validation_read_sets_for_test()
     }
 }
 

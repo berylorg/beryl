@@ -224,6 +224,8 @@
   charge primitives, and explicit semantic validation without routine-open scans.
 - [x] Reconstructed the bounded generation-owned draft-marker admission attachment before domain
   publication without reviving process capabilities or performing durable cleanup.
+- [x] Established fixed HomeStore draft-marker proof composition and the bounded private Asset
+  witness without cross-package record exposure or durable admission mutation.
 - [ ] Establish operation-owned Syndic draft-marker admission with bounded authenticated indexes,
   home-wide cross-restart retained-resource limits, and exact package-owned replay custody.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
