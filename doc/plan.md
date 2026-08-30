@@ -17,20 +17,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 222: Own Draft-Marker Receipt Submission And Exact Outcome Reconciliation (finished)
+# Phase 223: Assign Draft-Marker Labels And Issue Readiness (finished)
 
-Implemented bounded operation-owned proof and dispatch attempts, exact receipt-bearing outcomes,
-HomeStore's stable exact-scope reconciliation retrigger, owner-bearing Syndic pending custody, and
-pre-dispatch generation retirement fencing without attachment `Arc`/`Weak` retention. HomeStore
-targeted and successor reconciliation tests passed 24/24; the Syndic Phase 216–222 regression slice
-passed 34/34 and the final Phase 222 edge slice passed 8/8; both packages passed all-target checks.
-Independent semantic review found no remaining issue or needless defensive complexity.
-
-# Phase 223: Assign Draft-Marker Labels And Issue Readiness (pending)
-
-Reserve the package-derived allocation range after exact EOF, consume the source-order tree through
-bounded durable continuation, assign the target-id tree, and issue the final move-only proof only
-from canonical-empty source authority and exact zero-unassigned closure.
+Implemented disposition-specific post-EOF assignment, package-derived disjoint allocation ranges,
+one-occurrence durable tree updates, exact retained and command-byte accounting, receipt-bearing
+Ready closure, and generation-fenced move-only proof issuance. The final Phase 213/218/220/222/223
+regression slice passed 42/42, all-target checks passed, and independent semantic review found no
+remaining issue or needless complexity.
 
 # Phase 224: Close And Reclaim Draft-Marker Admission (pending)
 

@@ -10,6 +10,7 @@ pub enum DraftMarkerAdmissionIndexTestErrorV1 {
     NodeIdOccupied,
     PathAuthentication,
     ProvenPageOwner,
+    SourceTargetDisagreement,
     Schema(DraftMarkerAdmissionSchemaErrorV1),
 }
 
@@ -30,6 +31,9 @@ impl From<DraftMarkerAdmissionIndexPreparationErrorV1> for DraftMarkerAdmissionI
                 Self::PathAuthentication
             }
             DraftMarkerAdmissionIndexPreparationErrorV1::ProvenPageOwner => Self::ProvenPageOwner,
+            DraftMarkerAdmissionIndexPreparationErrorV1::SourceTargetDisagreement => {
+                Self::SourceTargetDisagreement
+            }
         }
     }
 }

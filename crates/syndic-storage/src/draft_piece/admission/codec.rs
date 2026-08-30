@@ -169,6 +169,37 @@ fn dec_asset(d: &mut Decoder<'_>) -> Result<AssetId, CodecError> {
     }
 }
 
+fn enc_assignment_prior_source(
+    e: &mut Encoder,
+    prior_source: Option<(ImageLabelOrdinal, AssetId)>,
+) {
+    match prior_source {
+        None => e.u8(0),
+        Some((label, asset)) => {
+            e.u8(1);
+            e.u64(label.get());
+            enc_asset(e, asset);
+        }
+    }
+}
+
+fn dec_assignment_prior_source(
+    d: &mut Decoder<'_>,
+) -> Result<Option<(ImageLabelOrdinal, AssetId)>, CodecError> {
+    match d.u8()? {
+        0 => Ok(None),
+        1 => Ok(Some((
+            ImageLabelOrdinal::new(d.u64()?)
+                .map_err(|error| invalid("draft-marker prior source label", error))?,
+            dec_asset(d)?,
+        ))),
+        tag => Err(CodecError::InvalidTag {
+            kind: "draft-marker prior source option",
+            tag,
+        }),
+    }
+}
+
 fn enc_envelope(e: &mut Encoder, envelope: DraftMarkerAdmissionEnvelopeV1) {
     match envelope {
         DraftMarkerAdmissionEnvelopeV1::SourceOrder { first, last } => {
@@ -329,19 +360,20 @@ fn enc_head_without_digest(e: &mut Encoder, parts: &DraftMarkerAdmissionHeadPart
     e.u64(parts.unassigned_count);
     match parts.assignment_continuation {
         None => e.u8(0),
-        Some(value) => {
+        Some(DraftMarkerAdmissionAssignmentContinuationV1::Reuse { prior_source }) => {
             e.u8(1);
-            e.u64(value.reserved_first().get());
-            e.u64(value.reserved_last().get());
-            e.u64(value.next_allocation().get());
-            match value.prior_source() {
-                None => e.u8(0),
-                Some((label, asset)) => {
-                    e.u8(1);
-                    e.u64(label.get());
-                    enc_asset(e, asset);
-                }
-            }
+            enc_assignment_prior_source(e, prior_source);
+        }
+        Some(DraftMarkerAdmissionAssignmentContinuationV1::Allocate {
+            range,
+            next_allocation,
+            prior_source,
+        }) => {
+            e.u8(2);
+            e.u64(range.first().get());
+            e.u64(range.last().get());
+            e.u64(next_allocation.get());
+            enc_assignment_prior_source(e, prior_source);
         }
     }
     e.u64(parts.remaining_builder_count);
@@ -447,31 +479,22 @@ fn decode_head(bytes: &[u8]) -> Result<DraftMarkerAdmissionHeadV1, CodecError> {
     let unassigned_count = d.u64()?;
     let assignment_continuation = match d.u8()? {
         0 => None,
-        1 => {
+        1 => Some(DraftMarkerAdmissionAssignmentContinuationV1::reuse(
+            dec_assignment_prior_source(&mut d)?,
+        )),
+        2 => {
             let reserved_first = ImageLabelOrdinal::new(d.u64()?)
                 .map_err(|error| invalid("draft-marker reservation first", error))?;
             let reserved_last = ImageLabelOrdinal::new(d.u64()?)
                 .map_err(|error| invalid("draft-marker reservation last", error))?;
             let next_allocation = ImageLabelOrdinal::new(d.u64()?)
                 .map_err(|error| invalid("draft-marker next allocation", error))?;
-            let prior_source = match d.u8()? {
-                0 => None,
-                1 => Some((
-                    ImageLabelOrdinal::new(d.u64()?)
-                        .map_err(|error| invalid("draft-marker prior source label", error))?,
-                    dec_asset(&mut d)?,
-                )),
-                tag => {
-                    return Err(CodecError::InvalidTag {
-                        kind: "draft-marker prior source option",
-                        tag,
-                    });
-                }
-            };
+            let prior_source = dec_assignment_prior_source(&mut d)?;
+            let range = DraftMarkerLabelAllocationRangeV1::new(reserved_first, reserved_last)
+                .map_err(|error| invalid("draft-marker reservation range", error))?;
             Some(
-                DraftMarkerAdmissionAssignmentContinuationV1::new(
-                    reserved_first,
-                    reserved_last,
+                DraftMarkerAdmissionAssignmentContinuationV1::allocate(
+                    range,
                     next_allocation,
                     prior_source,
                 )

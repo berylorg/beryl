@@ -521,48 +521,95 @@ impl DraftMarkerAdmissionCleanupCursorV1 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DraftMarkerAdmissionAssignmentContinuationV1 {
-    reserved_first: ImageLabelOrdinal,
-    reserved_last: ImageLabelOrdinal,
-    next_allocation: ImageLabelOrdinal,
-    prior_source: Option<(ImageLabelOrdinal, AssetId)>,
+pub struct DraftMarkerLabelAllocationRangeV1 {
+    first: ImageLabelOrdinal,
+    last: ImageLabelOrdinal,
+}
+
+impl DraftMarkerLabelAllocationRangeV1 {
+    pub(crate) fn new(
+        first: ImageLabelOrdinal,
+        last: ImageLabelOrdinal,
+    ) -> Result<Self, DraftMarkerAdmissionSchemaErrorV1> {
+        if first > last {
+            return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+        }
+        Ok(Self { first, last })
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn new_for_test(
+        first: ImageLabelOrdinal,
+        last: ImageLabelOrdinal,
+    ) -> Result<Self, DraftMarkerAdmissionSchemaErrorV1> {
+        Self::new(first, last)
+    }
+
+    pub const fn first(self) -> ImageLabelOrdinal {
+        self.first
+    }
+
+    pub const fn last(self) -> ImageLabelOrdinal {
+        self.last
+    }
+
+    pub fn count(self) -> u64 {
+        self.last.get() - self.first.get() + 1
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DraftMarkerAdmissionAssignmentContinuationV1 {
+    Reuse {
+        prior_source: Option<(ImageLabelOrdinal, AssetId)>,
+    },
+    Allocate {
+        range: DraftMarkerLabelAllocationRangeV1,
+        next_allocation: ImageLabelOrdinal,
+        prior_source: Option<(ImageLabelOrdinal, AssetId)>,
+    },
 }
 
 impl DraftMarkerAdmissionAssignmentContinuationV1 {
-    pub fn new(
-        reserved_first: ImageLabelOrdinal,
-        reserved_last: ImageLabelOrdinal,
+    pub const fn reuse(prior_source: Option<(ImageLabelOrdinal, AssetId)>) -> Self {
+        Self::Reuse { prior_source }
+    }
+
+    pub fn allocate(
+        range: DraftMarkerLabelAllocationRangeV1,
         next_allocation: ImageLabelOrdinal,
         prior_source: Option<(ImageLabelOrdinal, AssetId)>,
     ) -> Result<Self, DraftMarkerAdmissionSchemaErrorV1> {
-        if reserved_first > reserved_last
-            || next_allocation < reserved_first
-            || next_allocation > reserved_last
-        {
+        if next_allocation < range.first() || next_allocation > range.last() {
             return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
         }
-        Ok(Self {
-            reserved_first,
-            reserved_last,
+        Ok(Self::Allocate {
+            range,
             next_allocation,
             prior_source,
         })
     }
 
-    pub const fn reserved_first(self) -> ImageLabelOrdinal {
-        self.reserved_first
+    pub const fn allocation_range(self) -> Option<DraftMarkerLabelAllocationRangeV1> {
+        match self {
+            Self::Reuse { .. } => None,
+            Self::Allocate { range, .. } => Some(range),
+        }
     }
 
-    pub const fn reserved_last(self) -> ImageLabelOrdinal {
-        self.reserved_last
-    }
-
-    pub const fn next_allocation(self) -> ImageLabelOrdinal {
-        self.next_allocation
+    pub const fn next_allocation(self) -> Option<ImageLabelOrdinal> {
+        match self {
+            Self::Reuse { .. } => None,
+            Self::Allocate {
+                next_allocation, ..
+            } => Some(next_allocation),
+        }
     }
 
     pub const fn prior_source(self) -> Option<(ImageLabelOrdinal, AssetId)> {
-        self.prior_source
+        match self {
+            Self::Reuse { prior_source } | Self::Allocate { prior_source, .. } => prior_source,
+        }
     }
 }
 

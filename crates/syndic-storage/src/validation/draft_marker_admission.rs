@@ -530,7 +530,7 @@ fn receipt_transition_matches_head(
             DraftMarkerAdmissionLifecycleV1::Ingesting | DraftMarkerAdmissionLifecycleV1::Assigning
         ) | (
             DraftMarkerAdmissionReceiptTransitionV1::Assignment,
-            DraftMarkerAdmissionLifecycleV1::Assigning
+            DraftMarkerAdmissionLifecycleV1::Assigning | DraftMarkerAdmissionLifecycleV1::Ready
         )
     )
 }

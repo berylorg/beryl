@@ -10,8 +10,9 @@ use crate::{
     ImageLabelOriginOwner, ImageLabelOriginSpanRecord, SyndicStorage,
     codec::{
         AcceptedInputsCodec, AcceptedInputsFamily, CanonicalItemsCodec, CanonicalItemsFamily,
-        DraftImageLabelProtectionHeadsCodec, ImageLabelAuthorityHeadsCodec,
-        ImageLabelOriginSpanKey, ImageLabelOriginSpansCodec, ThreadsCodec, TurnsCodec, TurnsFamily,
+        DraftImageLabelProtectionHeadsCodec, DraftImageLabelProtectionHeadsFamily, Family,
+        ImageLabelAuthorityHeadsCodec, ImageLabelAuthorityHeadsFamily, ImageLabelOriginSpanKey,
+        ImageLabelOriginSpansCodec, ThreadsCodec, TurnsCodec, TurnsFamily,
     },
     domain::SyndicDomain,
     draft_piece::{
@@ -106,23 +107,35 @@ pub(crate) fn request_authority_is_exact(
     reader: &DomainReader<'_, SyndicDomain>,
     authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
 ) -> Result<bool, ReadError> {
-    let session = reader.point::<DraftEditorCandidateSessionsCodec>(
-        &DraftEditorCandidateSessionRecordKeyV1::head(
-            authority.session.draft_id(),
-            authority.session.session_id(),
-        ),
-        source_limit(),
-    )?;
-    let label_authority = reader
-        .point::<ImageLabelAuthorityHeadsCodec>(&authority.session.thread_id(), source_limit())?;
-    let protection = reader.point::<DraftImageLabelProtectionHeadsCodec>(
-        &authority.session.thread_id(),
-        source_limit(),
-    )?;
-    Ok(matches!(
-        session,
+    Ok(request_authority_observation(reader, authority)?.is_some())
+}
+
+pub(crate) fn request_authority_exact_read_bytes(
+    reader: &DomainReader<'_, SyndicDomain>,
+    authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
+) -> Result<Option<u64>, ReadError> {
+    request_authority_observation(reader, authority)
+}
+
+fn request_authority_observation(
+    reader: &DomainReader<'_, SyndicDomain>,
+    authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
+) -> Result<Option<u64>, ReadError> {
+    let session_key = DraftEditorCandidateSessionRecordKeyV1::head(
+        authority.session.draft_id(),
+        authority.session.session_id(),
+    );
+    let session =
+        reader.point::<DraftEditorCandidateSessionsCodec>(&session_key, source_limit())?;
+    let thread_id = authority.session.thread_id();
+    let label_authority =
+        reader.point::<ImageLabelAuthorityHeadsCodec>(&thread_id, source_limit())?;
+    let protection =
+        reader.point::<DraftImageLabelProtectionHeadsCodec>(&thread_id, source_limit())?;
+    let exact = matches!(
+        session.as_ref(),
         Some(DraftEditorCandidateSessionRecordV1::Head(session))
-            if session == authority.session
+            if session == &authority.session
                 && session.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active
     ) && label_authority.as_ref() == Some(&authority.label_authority)
         && protection.as_ref() == Some(&authority.protection)
@@ -130,7 +143,38 @@ pub(crate) fn request_authority_is_exact(
             >= authority
                 .label_authority
                 .inherited()
-                .max(authority.label_authority.permanent()))
+                .max(authority.label_authority.permanent());
+    if !exact {
+        return Ok(None);
+    }
+    let Some(session) = session.as_ref() else {
+        return Ok(None);
+    };
+    let Some(label_authority) = label_authority.as_ref() else {
+        return Ok(None);
+    };
+    let Some(protection) = protection.as_ref() else {
+        return Ok(None);
+    };
+    Ok(
+        encoded_record_bytes::<DraftEditorCandidateSessionsFamily>(&session_key, session)
+            .and_then(|bytes| {
+                encoded_record_bytes::<ImageLabelAuthorityHeadsFamily>(&thread_id, label_authority)
+                    .and_then(|charge| bytes.checked_add(charge))
+            })
+            .and_then(|bytes| {
+                encoded_record_bytes::<DraftImageLabelProtectionHeadsFamily>(&thread_id, protection)
+                    .and_then(|charge| bytes.checked_add(charge))
+            }),
+    )
+}
+
+fn encoded_record_bytes<F: Family>(key: &F::Key, value: &F::Value) -> Option<u64> {
+    let key = F::encode_key(key).ok()?;
+    let value = F::encode_value(value).ok()?;
+    u64::try_from(key.len())
+        .ok()?
+        .checked_add(u64::try_from(value.len()).ok()?)
 }
 
 impl DomainCallbackError for DraftMarkerReadinessSourceErrorV1 {

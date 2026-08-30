@@ -17,6 +17,7 @@ use super::{
     DraftMarkerAdmissionRetainedChargeV1, DraftMarkerAdmissionRootV1,
     DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
     DraftMarkerAdmissionTargetDispositionV1, DraftMarkerAdmissionTreeV1,
+    DraftMarkerLabelAllocationRangeV1,
 };
 
 impl DraftMarkerAdmissionCapacityV1 {
@@ -338,7 +339,9 @@ impl DraftMarkerAdmissionHeadV1 {
         }
         let active_receipt = matches!(
             self.lifecycle(),
-            DraftMarkerAdmissionLifecycleV1::Ingesting | DraftMarkerAdmissionLifecycleV1::Assigning
+            DraftMarkerAdmissionLifecycleV1::Ingesting
+                | DraftMarkerAdmissionLifecycleV1::Assigning
+                | DraftMarkerAdmissionLifecycleV1::Ready
         );
         if active_receipt != self.selected_receipt().is_some() {
             return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
@@ -363,23 +366,28 @@ impl DraftMarkerAdmissionHeadV1 {
                     .checked_sub(unassigned_count)
                     .ok_or(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?;
                 let reservation_count = continuation
-                    .reserved_last()
-                    .get()
-                    .checked_sub(continuation.reserved_first().get())
-                    .and_then(|difference| difference.checked_add(1))
-                    .ok_or(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?;
-                let allocated_count = continuation
-                    .next_allocation()
-                    .get()
-                    .checked_sub(continuation.reserved_first().get())
-                    .ok_or(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?;
+                    .allocation_range()
+                    .map(DraftMarkerLabelAllocationRangeV1::count);
+                let allocated_count = match (
+                    continuation.allocation_range(),
+                    continuation.next_allocation(),
+                    continuation.prior_source(),
+                ) {
+                    (Some(range), Some(next), prior) => next
+                        .get()
+                        .checked_sub(range.first().get())
+                        .and_then(|count| count.checked_add(u64::from(prior.is_some()))),
+                    (None, None, _) => Some(0),
+                    _ => None,
+                }
+                .ok_or(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?;
                 if !self.evidence_eof()
                     || self.ingestion_association_cursor() != 0
                     || occurrence_count == 0
                     || unassigned_count == 0
                     || self.unassigned_count() != unassigned_count
                     || self.remaining_builder_count() != 0
-                    || reservation_count != occurrence_count
+                    || reservation_count.is_some_and(|count| count != occurrence_count)
                     || allocated_count > processed_count
                     || (processed_count == 0
                         && (continuation.prior_source().is_some() || allocated_count != 0))

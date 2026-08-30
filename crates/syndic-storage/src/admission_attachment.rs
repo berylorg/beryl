@@ -8,6 +8,7 @@ use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainRegistrationReader,
     DomainRuntimeAttachment, ReadError,
 };
+use beryl_model::{ImageLabelOrdinal, SyndicThreadId};
 
 use crate::{
     codec::{ScanKey, family_cursor_max_bytes, family_point_limit},
@@ -20,7 +21,8 @@ use crate::{
         DraftMarkerAdmissionLifecycleV1, DraftMarkerAdmissionNodesCodec,
         DraftMarkerAdmissionNodesFamily, DraftMarkerAdmissionOwnerV1,
         DraftMarkerAdmissionReceiptsCodec, DraftMarkerAdmissionReceiptsFamily,
-        DraftMarkerAdmissionRetainedChargeV1,
+        DraftMarkerAdmissionRetainedChargeV1, DraftMarkerLabelAllocationRangeV1,
+        DraftMarkerLabelReadinessDispositionV1, DraftMarkerLabelReadinessRequestAuthorityV1,
     },
 };
 
@@ -81,6 +83,8 @@ struct AttachmentState {
     heads: Box<[ReconstructedHead]>,
     operations: Vec<OperationReservation>,
     retired: bool,
+    #[cfg(feature = "test-faults")]
+    allocation_frontiers: Vec<(SyndicThreadId, u64)>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -94,6 +98,15 @@ struct OperationReservation {
     frontier: u64,
     active_attempt: Option<DraftMarkerAdmissionCommandIdV1>,
     disposition: OperationDisposition,
+    destination: SyndicThreadId,
+    authority: DraftMarkerLabelReadinessRequestAuthorityV1,
+    allocation_range: Option<DraftMarkerLabelAllocationRangeV1>,
+}
+
+#[derive(Clone)]
+pub(crate) struct DraftMarkerAdmissionLiveAuthorityV1 {
+    pub(crate) authority: DraftMarkerLabelReadinessRequestAuthorityV1,
+    pub(crate) allocation_range: Option<DraftMarkerLabelAllocationRangeV1>,
 }
 
 pub(crate) struct DraftMarkerAdmissionAttemptReservation {
@@ -105,9 +118,14 @@ pub(crate) struct DraftMarkerAdmissionPreparedAttempt {
     owner: DraftMarkerAdmissionOwnerV1,
     attempt: DraftMarkerAdmissionCommandIdV1,
     was_present: bool,
+    allocation_range: Option<DraftMarkerLabelAllocationRangeV1>,
 }
 
 impl DraftMarkerAdmissionPreparedAttempt {
+    pub(crate) const fn allocation_range(&self) -> Option<DraftMarkerLabelAllocationRangeV1> {
+        self.allocation_range
+    }
+
     pub(crate) fn disarm(mut self) -> DraftMarkerAdmissionAttemptReservation {
         self.state = None;
         DraftMarkerAdmissionAttemptReservation {
@@ -171,43 +189,59 @@ impl DraftMarkerAdmissionAttachment {
         owner: DraftMarkerAdmissionOwnerV1,
         attempt: DraftMarkerAdmissionCommandIdV1,
         frontier: u64,
+        authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
+        allocation_count: Option<u64>,
     ) -> Result<DraftMarkerAdmissionPreparedAttempt, ()> {
         let mut state = self.state.lock().map_err(|_| ())?;
         if state.retired {
             return Err(());
         }
-        if let Some(operation) = state
+        if let Some(index) = state
             .operations
-            .iter_mut()
-            .find(|entry| entry.owner == owner)
+            .iter()
+            .position(|entry| entry.owner == owner)
         {
+            let operation = &state.operations[index];
             if operation.disposition != OperationDisposition::Open
                 || operation.active_attempt.is_some()
+                || operation.destination != authority.session.thread_id()
+                || operation.authority != *authority
             {
                 return Err(());
             }
-            operation.active_attempt = Some(attempt);
+            if reserve_allocation_if_needed(&mut state, owner, authority, allocation_count).is_err()
+            {
+                state.operations[index].disposition = OperationDisposition::UncertainClosed;
+                return Err(());
+            }
+            state.operations[index].active_attempt = Some(attempt);
             return Ok(DraftMarkerAdmissionPreparedAttempt {
                 state: Some(Arc::clone(&self.state)),
                 owner,
                 attempt,
                 was_present: true,
+                allocation_range: state.operations[index].allocation_range,
             });
         }
         if state.operations.len() >= DRAFT_MARKER_ADMISSION_MAX_HEADS as usize {
             return Err(());
         }
+        let allocation_range = allocation_range(&state, authority, allocation_count)?;
         state.operations.push(OperationReservation {
             owner,
             frontier,
             active_attempt: Some(attempt),
             disposition: OperationDisposition::Open,
+            destination: authority.session.thread_id(),
+            authority: authority.clone(),
+            allocation_range,
         });
         Ok(DraftMarkerAdmissionPreparedAttempt {
             state: Some(Arc::clone(&self.state)),
             owner,
             attempt,
             was_present: false,
+            allocation_range,
         })
     }
 
@@ -278,6 +312,162 @@ impl DraftMarkerAdmissionAttachment {
         }
         Ok(())
     }
+
+    pub(crate) fn prepare_assignment_attempt(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+        attempt: DraftMarkerAdmissionCommandIdV1,
+    ) -> Result<
+        (
+            DraftMarkerAdmissionPreparedAttempt,
+            DraftMarkerAdmissionLiveAuthorityV1,
+        ),
+        (),
+    > {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        let operation = state
+            .operations
+            .iter_mut()
+            .find(|entry| entry.owner == owner)
+            .ok_or(())?;
+        if operation.disposition != OperationDisposition::Open || operation.active_attempt.is_some()
+        {
+            return Err(());
+        }
+        operation.active_attempt = Some(attempt);
+        Ok((
+            DraftMarkerAdmissionPreparedAttempt {
+                state: Some(Arc::clone(&self.state)),
+                owner,
+                attempt,
+                was_present: true,
+                allocation_range: operation.allocation_range,
+            },
+            DraftMarkerAdmissionLiveAuthorityV1 {
+                authority: operation.authority.clone(),
+                allocation_range: operation.allocation_range,
+            },
+        ))
+    }
+
+    pub(crate) fn live_authority(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+    ) -> Result<DraftMarkerAdmissionLiveAuthorityV1, ()> {
+        let state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        let operation = state
+            .operations
+            .iter()
+            .find(|entry| entry.owner == owner && entry.disposition == OperationDisposition::Open)
+            .ok_or(())?;
+        Ok(DraftMarkerAdmissionLiveAuthorityV1 {
+            authority: operation.authority.clone(),
+            allocation_range: operation.allocation_range,
+        })
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn seed_allocation_frontier_for_test(
+        &self,
+        destination: SyndicThreadId,
+        frontier: ImageLabelOrdinal,
+    ) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        if let Some((_, current)) = state
+            .allocation_frontiers
+            .iter_mut()
+            .find(|(thread_id, _)| *thread_id == destination)
+        {
+            *current = (*current).max(frontier.get());
+        } else {
+            if state.allocation_frontiers.len() >= DRAFT_MARKER_ADMISSION_MAX_HEADS as usize {
+                return Err(());
+            }
+            state
+                .allocation_frontiers
+                .push((destination, frontier.get()));
+        }
+        Ok(())
+    }
+}
+
+fn reserve_allocation_if_needed(
+    state: &mut AttachmentState,
+    owner: DraftMarkerAdmissionOwnerV1,
+    authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
+    allocation_count: Option<u64>,
+) -> Result<(), ()> {
+    let existing = state
+        .operations
+        .iter()
+        .find(|entry| entry.owner == owner)
+        .and_then(|entry| entry.allocation_range);
+    if let Some(existing) = existing {
+        return if allocation_count == Some(existing.count()) {
+            Ok(())
+        } else {
+            Err(())
+        };
+    }
+    let requested = allocation_range(state, authority, allocation_count)?;
+    if requested.is_some() {
+        let entry = state
+            .operations
+            .iter_mut()
+            .find(|entry| entry.owner == owner)
+            .ok_or(())?;
+        entry.allocation_range = requested;
+    }
+    Ok(())
+}
+
+fn allocation_range(
+    state: &AttachmentState,
+    authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
+    allocation_count: Option<u64>,
+) -> Result<Option<DraftMarkerLabelAllocationRangeV1>, ()> {
+    match (authority.disposition, allocation_count) {
+        (DraftMarkerLabelReadinessDispositionV1::Reuse, None) => Ok(None),
+        (DraftMarkerLabelReadinessDispositionV1::Reuse, Some(_)) => Err(()),
+        (DraftMarkerLabelReadinessDispositionV1::Allocate, None) => Ok(None),
+        (DraftMarkerLabelReadinessDispositionV1::Allocate, Some(0)) => Err(()),
+        (DraftMarkerLabelReadinessDispositionV1::Allocate, Some(count)) => {
+            let maximum = state
+                .operations
+                .iter()
+                .filter(|entry| entry.destination == authority.session.thread_id())
+                .filter_map(|entry| entry.allocation_range.map(|range| range.last().get()))
+                .fold(authority.protection.protected_maximum().get(), u64::max);
+            #[cfg(feature = "test-faults")]
+            let maximum = state
+                .allocation_frontiers
+                .iter()
+                .filter(|(thread_id, _)| *thread_id == authority.session.thread_id())
+                .map(|(_, frontier)| *frontier)
+                .fold(maximum, u64::max);
+            let first =
+                ImageLabelOrdinal::new(maximum.checked_add(1).ok_or(())?).map_err(|_| ())?;
+            let last = ImageLabelOrdinal::new(
+                first
+                    .get()
+                    .checked_add(count.checked_sub(1).ok_or(())?)
+                    .ok_or(())?,
+            )
+            .map_err(|_| ())?;
+            DraftMarkerLabelAllocationRangeV1::new(first, last)
+                .map(Some)
+                .map_err(|_| ())
+        }
+    }
 }
 
 impl DomainRuntimeAttachment for DraftMarkerAdmissionAttachment {
@@ -290,6 +480,8 @@ impl DomainRuntimeAttachment for DraftMarkerAdmissionAttachment {
                     .any(|head| matches!(head.class, ReconstructedHeadClass::JointCleanup));
                 state.heads = Box::new([]);
                 state.operations.clear();
+                #[cfg(feature = "test-faults")]
+                state.allocation_frontiers.clear();
                 state.capacity = DraftMarkerAdmissionRetainedChargeV1::ZERO;
                 state.retired = true;
             }
@@ -330,6 +522,8 @@ fn reconstruct_empty(
         heads: Box::new([]),
         operations: Vec::new(),
         retired: false,
+        #[cfg(feature = "test-faults")]
+        allocation_frontiers: Vec::new(),
     })
 }
 
@@ -382,6 +576,8 @@ fn reconstruct_populated(
         heads: reconstructed.into_boxed_slice(),
         operations: Vec::new(),
         retired: false,
+        #[cfg(feature = "test-faults")]
+        allocation_frontiers: Vec::new(),
     })
 }
 

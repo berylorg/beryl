@@ -22,7 +22,6 @@ use super::readiness_source::PageProtocol;
 
 pub enum DraftMarkerLabelReadinessPageSubmissionRefusalV1 {
     Obsolete,
-    FinalEvidenceEof,
     Unavailable,
     Rejected,
 }
@@ -229,11 +228,6 @@ impl SyndicStorage {
             PublicationFailureClass::Obsolete => {
                 DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
                     DraftMarkerLabelReadinessPageSubmissionRefusalV1::Obsolete,
-                )
-            }
-            PublicationFailureClass::FinalEvidenceEof => {
-                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-                    DraftMarkerLabelReadinessPageSubmissionRefusalV1::FinalEvidenceEof,
                 )
             }
             PublicationFailureClass::Collision => {

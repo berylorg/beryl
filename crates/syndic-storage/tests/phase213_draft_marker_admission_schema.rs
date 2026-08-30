@@ -22,7 +22,8 @@ use syndic_storage::{
     DraftMarkerAdmissionPageIdentityV1, DraftMarkerAdmissionReceiptTransitionV1,
     DraftMarkerAdmissionReplayReceiptV1, DraftMarkerAdmissionRetainedChargeV1,
     DraftMarkerAdmissionRootV1, DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
-    DraftMarkerAdmissionTargetDispositionV1, DraftMarkerAdmissionTreeV1, SyndicStorage,
+    DraftMarkerAdmissionTargetDispositionV1, DraftMarkerAdmissionTreeV1,
+    DraftMarkerLabelAllocationRangeV1, SyndicStorage,
     canonical_empty_draft_marker_admission_root_v1, draft_marker_admission_codec_accepts,
     draft_marker_admission_corrupted_value_rejected, draft_marker_admission_head_encoded_charge_v1,
     draft_marker_admission_node_encoded_charge_v1,
@@ -198,6 +199,19 @@ fn child(node: &DraftMarkerAdmissionNodeV1) -> DraftMarkerAdmissionChildV1 {
         node.digest(),
         node.count().unwrap(),
         node.envelope().unwrap(),
+    )
+}
+
+fn allocation_continuation(
+    first: ImageLabelOrdinal,
+    last: ImageLabelOrdinal,
+    next: ImageLabelOrdinal,
+    prior: Option<(ImageLabelOrdinal, AssetId)>,
+) -> Result<DraftMarkerAdmissionAssignmentContinuationV1, DraftMarkerAdmissionSchemaErrorV1> {
+    DraftMarkerAdmissionAssignmentContinuationV1::allocate(
+        DraftMarkerLabelAllocationRangeV1::new_for_test(first, last)?,
+        next,
+        prior,
     )
 }
 
@@ -432,7 +446,7 @@ fn assigning_fixture(
         DraftMarkerAdmissionReceiptTransitionV1::Assignment,
     )
     .unwrap();
-    let continuation = DraftMarkerAdmissionAssignmentContinuationV1::new(
+    let continuation = allocation_continuation(
         ImageLabelOrdinal::new(100).unwrap(),
         ImageLabelOrdinal::new(101).unwrap(),
         ImageLabelOrdinal::new(100).unwrap(),
@@ -506,20 +520,26 @@ fn page_cursor_and_assignment_continuation_enforce_their_bounds() {
     let first = ImageLabelOrdinal::new(10).unwrap();
     let last = ImageLabelOrdinal::new(20).unwrap();
     let next = ImageLabelOrdinal::new(15).unwrap();
-    let continuation = DraftMarkerAdmissionAssignmentContinuationV1::new(
+    let continuation = allocation_continuation(
         first,
         last,
         next,
         Some((first, AssetId::sha256_v1([30; 32], NonZeroU64::MIN))),
     )
     .unwrap();
-    assert_eq!(continuation.reserved_first(), first);
-    assert_eq!(continuation.reserved_last(), last);
-    assert_eq!(continuation.next_allocation(), next);
+    assert_eq!(continuation.allocation_range().unwrap().first(), first);
+    assert_eq!(continuation.allocation_range().unwrap().last(), last);
+    assert_eq!(continuation.next_allocation(), Some(next));
     assert_eq!(
-        DraftMarkerAdmissionAssignmentContinuationV1::new(last, first, next, None),
+        allocation_continuation(last, first, next, None),
         Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)
     );
+    let reuse = DraftMarkerAdmissionAssignmentContinuationV1::reuse(Some((
+        first,
+        AssetId::sha256_v1([31; 32], NonZeroU64::MIN),
+    )));
+    assert_eq!(reuse.allocation_range(), None);
+    assert_eq!(reuse.next_allocation(), None);
 
     let empty_source =
         canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::SourceOrder);
@@ -593,7 +613,7 @@ fn assigning_heads_enforce_reservation_cardinality_and_progress() {
         ImageLabelOrdinal::new(10).unwrap(),
         AssetId::sha256_v1([82; 32], NonZeroU64::MIN),
     ));
-    let exact = DraftMarkerAdmissionAssignmentContinuationV1::new(
+    let exact = allocation_continuation(
         ImageLabelOrdinal::new(100).unwrap(),
         ImageLabelOrdinal::new(101).unwrap(),
         ImageLabelOrdinal::new(100).unwrap(),
@@ -602,7 +622,7 @@ fn assigning_heads_enforce_reservation_cardinality_and_progress() {
     .unwrap();
     assert!(build(exact).is_ok());
 
-    let oversized = DraftMarkerAdmissionAssignmentContinuationV1::new(
+    let oversized = allocation_continuation(
         ImageLabelOrdinal::new(100).unwrap(),
         ImageLabelOrdinal::new(102).unwrap(),
         ImageLabelOrdinal::new(100).unwrap(),
@@ -613,7 +633,7 @@ fn assigning_heads_enforce_reservation_cardinality_and_progress() {
         build(oversized),
         Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)
     );
-    let missing_prior = DraftMarkerAdmissionAssignmentContinuationV1::new(
+    let missing_prior = allocation_continuation(
         ImageLabelOrdinal::new(100).unwrap(),
         ImageLabelOrdinal::new(101).unwrap(),
         ImageLabelOrdinal::new(100).unwrap(),

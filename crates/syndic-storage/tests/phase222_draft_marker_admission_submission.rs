@@ -72,7 +72,7 @@ fn prepared_and_ready_flight_drops_release_the_bounded_runtime_slot() {
 }
 
 #[test]
-fn exact_pairing_one_shot_and_final_eof_deferral() {
+fn exact_pairing_one_shot_and_final_eof_initialization() {
     let faults = FaultController::new();
     let (_home, store, storage, thread) = fixture_with_faults("phase222-linear", 1, faults.clone());
     let (session, marker) = marked_session(&storage, &store, thread, 2);
@@ -160,13 +160,19 @@ fn exact_pairing_one_shot_and_final_eof_deferral() {
         &session,
         marker.marker_id(),
     );
-    assert!(matches!(
+    assert_advanced(
+        "final EOF initializes durable assignment",
+        &storage,
+        &store,
         storage.submit_draft_marker_label_readiness_page(&store, eof),
-        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-            DraftMarkerLabelReadinessPageSubmissionRefusalV1::FinalEvidenceEof
-        )
-    ));
-    assert!(snapshot(&storage, &store, eof_owner).head().is_none());
+        false,
+    );
+    let eof_snapshot = snapshot(&storage, &store, eof_owner);
+    let head = eof_snapshot.head().unwrap();
+    assert!(head.evidence_eof());
+    assert_eq!(head.source_root().count(), 1);
+    assert_eq!(head.unassigned_count(), 1);
+    assert!(head.assignment_continuation().is_some());
 }
 
 #[test]
@@ -313,8 +319,11 @@ fn reconciliation_error_preserves_exact_pending_owner_for_retry() {
     let faults = FaultController::new();
     let (_home, store, storage, thread) =
         fixture_with_faults("phase222-reconciliation-retry", 120, faults.clone());
-    let (_foreign_home, foreign_store, _foreign_storage, _foreign_thread) =
-        fixture_with_faults("phase222-reconciliation-retry-foreign", 121, FaultController::new());
+    let (_foreign_home, foreign_store, _foreign_storage, _foreign_thread) = fixture_with_faults(
+        "phase222-reconciliation-retry-foreign",
+        121,
+        FaultController::new(),
+    );
     let (session, marker) = marked_session(&storage, &store, thread, 122);
     let owner = admission_owner(&session, 123);
     let associations = Box::new([
@@ -328,9 +337,7 @@ fn reconciliation_error_preserves_exact_pending_owner_for_retry() {
         _ => panic!("indeterminate submission did not retain reconciliation custody"),
     };
 
-    let pending = match storage
-        .submit_draft_marker_label_readiness_page(&foreign_store, pending)
-    {
+    let pending = match storage.submit_draft_marker_label_readiness_page(&foreign_store, pending) {
         DraftMarkerLabelReadinessPageSubmissionOutcomeV1::ReconciliationPending(flight) => flight,
         _ => panic!("reconciliation error did not preserve the exact pending flight"),
     };
@@ -466,31 +473,6 @@ fn collision_is_operation_scoped_and_refusal_releases_runtime_capacity() {
         storage.submit_draft_marker_label_readiness_page(&store, unrelated),
         false,
     );
-
-    for seed in 0_u8..65 {
-        let transient_owner = admission_owner(&session, seed.wrapping_add(100));
-        let transient = make_flight(
-            &storage,
-            &store,
-            transient_owner,
-            seed.wrapping_add(120),
-            1,
-            true,
-            seed.wrapping_add(140),
-            &session,
-            marker.marker_id(),
-        );
-        let outcome = storage.submit_draft_marker_label_readiness_page(&store, transient);
-        assert!(
-            matches!(
-                outcome,
-                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-                    DraftMarkerLabelReadinessPageSubmissionRefusalV1::FinalEvidenceEof
-                )
-            ),
-            "transient seed {seed} did not reach the determinate EOF refusal"
-        );
-    }
 }
 
 fn attempt(
@@ -713,9 +695,6 @@ fn assert_advanced(
         DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(refusal) => match refusal {
             DraftMarkerLabelReadinessPageSubmissionRefusalV1::Obsolete => {
                 panic!("{stage}: obsolete")
-            }
-            DraftMarkerLabelReadinessPageSubmissionRefusalV1::FinalEvidenceEof => {
-                panic!("{stage}: final evidence EOF")
             }
             DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable => {
                 panic!("{stage}: unavailable")

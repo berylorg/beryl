@@ -15,12 +15,12 @@ pub(super) struct PageProgression {
     pub(super) next_page_ordinal: NonZeroU64,
     pub(super) next_association_cursor: u64,
     pub(super) continues_selected_page: bool,
+    pub(super) final_eof: bool,
 }
 
 #[derive(Clone, Copy)]
 pub(super) enum PageProgressionError {
     Authority,
-    FinalEvidenceEof,
     Obsolete,
     PageIncomplete,
     Overflow,
@@ -30,9 +30,6 @@ pub(super) fn page_progression(
     head: Option<&DraftMarkerAdmissionHeadV1>,
     page: &DraftMarkerLabelReadinessProvenPageV1,
 ) -> Result<PageProgression, PageProgressionError> {
-    if page.sealed_page().eof {
-        return Err(PageProgressionError::FinalEvidenceEof);
-    }
     let page_ordinal = page.sealed_page().ordinal;
     let (association_index, continues_selected_page) = match head {
         Some(head) => match page_ordinal.cmp(&head.next_page_ordinal()) {
@@ -69,6 +66,7 @@ pub(super) fn page_progression(
             .ok_or(PageProgressionError::Overflow)?,
             next_association_cursor: 0,
             continues_selected_page,
+            final_eof: page.sealed_page().eof,
         })
     } else {
         Ok(PageProgression {
@@ -77,6 +75,7 @@ pub(super) fn page_progression(
             next_association_cursor: u64::try_from(consumed)
                 .map_err(|_| PageProgressionError::Overflow)?,
             continues_selected_page,
+            final_eof: false,
         })
     }
 }

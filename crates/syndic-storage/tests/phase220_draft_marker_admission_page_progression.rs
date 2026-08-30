@@ -356,7 +356,7 @@ fn duplicate_resource_and_revision_refusals_preserve_durable_state() {
 }
 
 #[test]
-fn final_eof_is_refused_before_any_admission_state_exists() {
+fn final_eof_is_durable_before_source_order_assignment() {
     let (_home, store, storage, thread) = fixture("phase220-eof", 110);
     let (session, marker) = marked_session(&storage, &store, thread, 111);
     let operation_owner = owner(&session, 112);
@@ -369,18 +369,20 @@ fn final_eof_is_refused_before_any_admission_state_exists() {
         true,
         vec![association(114, &session, marker.marker_id())],
     );
-    let revision = storage.revision(&store).unwrap();
-    let error = not_committed(
+    committed(
         store.execute_current(publication(operation_owner, 113).current_command(&storage, page)),
     );
-    assert!(error.contains("FinalEvidenceEof"), "{error}");
-    assert_eq!(storage.revision(&store).unwrap(), revision);
     let snapshot = storage
         .draft_marker_admission_publication_snapshot_for_test(&store, operation_owner, &[])
         .unwrap();
-    assert!(snapshot.capacity().is_none());
-    assert!(snapshot.head().is_none());
-    assert!(snapshot.receipt().is_none());
+    let head = snapshot.head().unwrap();
+    assert!(head.evidence_eof());
+    assert_eq!(head.source_root().count(), 1);
+    assert_eq!(head.target_root().count(), 1);
+    assert_eq!(head.unassigned_count(), 1);
+    assert!(head.assignment_continuation().is_some());
+    assert!(snapshot.capacity().is_some());
+    assert!(snapshot.receipt().is_some());
 }
 
 #[allow(clippy::too_many_arguments)]

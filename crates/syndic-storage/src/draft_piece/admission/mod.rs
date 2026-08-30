@@ -1,3 +1,4 @@
+mod assignment;
 mod codec;
 pub(crate) mod index;
 mod model;
@@ -6,6 +7,7 @@ mod readiness_source;
 mod submission;
 mod tree;
 
+pub use assignment::*;
 pub use model::*;
 pub use readiness_source::*;
 pub use submission::*;

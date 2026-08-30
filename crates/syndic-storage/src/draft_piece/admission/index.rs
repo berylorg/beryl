@@ -1,10 +1,11 @@
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
+    num::NonZeroU64,
 };
 
 use beryl_home_store::{DomainReader, PointReadLimit, ReadError};
-use beryl_model::SyndicDraftMarkerId;
+use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftMarkerId};
 use sha2::{Digest, Sha256};
 
 use crate::{codec::SMALL_MAX, domain::SyndicDomain};
@@ -36,6 +37,7 @@ pub(crate) enum DraftMarkerAdmissionIndexPreparationErrorV1 {
     NodeIdOccupied,
     PathAuthentication,
     ProvenPageOwner,
+    SourceTargetDisagreement,
 }
 
 impl From<ReadError> for DraftMarkerAdmissionIndexPreparationErrorV1 {
@@ -75,6 +77,9 @@ impl std::fmt::Display for DraftMarkerAdmissionIndexPreparationErrorV1 {
             }
             Self::ProvenPageOwner => {
                 formatter.write_str("draft-marker proven-page owner disagrees")
+            }
+            Self::SourceTargetDisagreement => {
+                formatter.write_str("draft-marker source and target occurrence disagree")
             }
         }
     }
@@ -223,8 +228,196 @@ mod tree_edit;
 
 use tree_edit::{
     NodeIdFactory, SearchKey, authenticate_fresh_put_keys, authenticate_replay_deletions,
-    edit_tree, sum_node_charges,
+    edit_tree, least_leaf, rewrite_tree, sum_node_charges,
 };
+
+pub(crate) struct PreparedDraftMarkerAdmissionAssignmentV1 {
+    pub(crate) index: PreparedDraftMarkerAdmissionIndexSuccessorV1,
+    pub(crate) source_label: ImageLabelOrdinal,
+    pub(crate) asset_id: AssetId,
+    pub(crate) assigned_label: ImageLabelOrdinal,
+    pub(crate) continuation: super::DraftMarkerAdmissionAssignmentContinuationV1,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_draft_marker_admission_assignment_v1(
+    reader: &DomainReader<'_, SyndicDomain>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    source_root: DraftMarkerAdmissionRootV1,
+    target_root: DraftMarkerAdmissionRootV1,
+    prior_replay_nodes: &[DraftMarkerAdmissionChildV1],
+    command: super::DraftMarkerAdmissionCommandIdV1,
+    assignment_ordinal: u64,
+    continuation: super::DraftMarkerAdmissionAssignmentContinuationV1,
+) -> Result<PreparedDraftMarkerAdmissionAssignmentV1, DraftMarkerAdmissionIndexPreparationErrorV1> {
+    let node_reader = DomainAdmissionNodeReader { reader };
+    let mut ledger = ReadLedger {
+        reader: &node_reader,
+        read_bytes: 0,
+        maximum_bytes: super::DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
+        cache: BTreeMap::new(),
+    };
+    authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
+    let source_leaf = least_leaf(&mut ledger, owner, source_root)?;
+    let DraftMarkerAdmissionNodePayloadV1::SourceLeaf {
+        source_key,
+        evidence,
+        asset_id,
+    } = source_leaf.payload()
+    else {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    };
+    let (assigned_label, continuation) = match continuation {
+        super::DraftMarkerAdmissionAssignmentContinuationV1::Reuse { .. } => (
+            source_key.source_label(),
+            super::DraftMarkerAdmissionAssignmentContinuationV1::reuse(Some((
+                source_key.source_label(),
+                *asset_id,
+            ))),
+        ),
+        super::DraftMarkerAdmissionAssignmentContinuationV1::Allocate {
+            range,
+            next_allocation,
+            prior_source,
+        } => {
+            let assigned = match prior_source {
+                None => next_allocation,
+                Some((prior_label, prior_asset)) if prior_label == source_key.source_label() => {
+                    if prior_asset != *asset_id {
+                        return Err(
+                            DraftMarkerAdmissionIndexPreparationErrorV1::SourceTargetDisagreement,
+                        );
+                    }
+                    next_allocation
+                }
+                Some((prior_label, _)) if prior_label < source_key.source_label() => {
+                    next_allocation
+                        .checked_next()
+                        .map_err(|_| DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?
+                }
+                Some(_) => {
+                    return Err(
+                        DraftMarkerAdmissionIndexPreparationErrorV1::SourceTargetDisagreement,
+                    );
+                }
+            };
+            if assigned > range.last() {
+                return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead.into());
+            }
+            (
+                assigned,
+                super::DraftMarkerAdmissionAssignmentContinuationV1::allocate(
+                    range,
+                    assigned,
+                    Some((source_key.source_label(), *asset_id)),
+                )?,
+            )
+        }
+    };
+    let page = DraftMarkerAdmissionPageIdentityV1::new(command, NonZeroU64::MIN);
+    let source = rewrite_tree(
+        &mut ledger,
+        owner,
+        source_root,
+        SearchKey::Source(*source_key),
+        NodeIdFactory {
+            owner,
+            page,
+            association_index: assignment_ordinal,
+            tree: DraftMarkerAdmissionTreeV1::SourceOrder,
+            next: 0,
+        },
+        |_| Ok(None),
+    )?;
+    let target = rewrite_tree(
+        &mut ledger,
+        owner,
+        target_root,
+        SearchKey::Target(source_key.target_marker_id()),
+        NodeIdFactory {
+            owner,
+            page,
+            association_index: assignment_ordinal,
+            tree: DraftMarkerAdmissionTreeV1::TargetId,
+            next: 0,
+        },
+        |target| {
+            let DraftMarkerAdmissionNodePayloadV1::TargetLeaf {
+                target_marker_id,
+                page,
+                evidence: target_evidence,
+                source_label,
+                asset_id: target_asset,
+                disposition,
+            } = target.payload()
+            else {
+                return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree);
+            };
+            if *target_marker_id != source_key.target_marker_id()
+                || *source_label != source_key.source_label()
+                || *target_asset != *asset_id
+                || target_evidence != evidence
+                || *disposition != DraftMarkerAdmissionTargetDispositionV1::Unassigned
+            {
+                return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+            }
+            DraftMarkerAdmissionNodeV1::target_leaf(
+                target.key(),
+                *target_marker_id,
+                *page,
+                target_evidence.clone(),
+                *source_label,
+                *target_asset,
+                DraftMarkerAdmissionTargetDispositionV1::Assigned(assigned_label),
+            )
+            .map(Some)
+        },
+    )?;
+
+    let mut protected = source.path_keys;
+    protected.extend(target.path_keys);
+    let deletions =
+        authenticate_replay_deletions(&mut ledger, owner, prior_replay_nodes, &protected)?;
+    let mut puts = source.puts;
+    puts.extend(target.puts);
+    authenticate_fresh_put_keys(&mut ledger, &puts)?;
+    let write_bytes = sum_node_charges(&puts)?;
+    let delete_bytes = sum_node_charges(&deletions)?;
+    checked_draft_marker_admission_command_charge_v1([
+        ledger.read_bytes,
+        write_bytes,
+        delete_bytes,
+    ])?;
+    let mut retained_predecessor_nodes = source.predecessor;
+    retained_predecessor_nodes.extend(target.predecessor);
+    Ok(PreparedDraftMarkerAdmissionAssignmentV1 {
+        index: PreparedDraftMarkerAdmissionIndexSuccessorV1 {
+            source_root: source.root,
+            target_root: target.root,
+            puts: puts.into_boxed_slice(),
+            deletions: deletions.into_boxed_slice(),
+            retained_predecessor_nodes: retained_predecessor_nodes.into_boxed_slice(),
+            retained_charge_delta: DraftMarkerAdmissionRetainedChargeDeltaV1 {
+                added: DraftMarkerAdmissionRetainedChargeV1::new(0, 0, write_bytes),
+                removed: DraftMarkerAdmissionRetainedChargeV1::new(0, 0, delete_bytes),
+            },
+            footprint: DraftMarkerAdmissionIndexFootprintV1 {
+                read_bytes: ledger.read_bytes,
+                write_bytes,
+                delete_bytes,
+                command_bytes: ledger
+                    .read_bytes
+                    .checked_add(write_bytes)
+                    .and_then(|bytes| bytes.checked_add(delete_bytes))
+                    .ok_or(DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)?,
+            },
+        },
+        source_label: source_key.source_label(),
+        asset_id: *asset_id,
+        assigned_label,
+        continuation,
+    })
+}
 
 #[allow(dead_code)]
 pub(crate) fn prepare_draft_marker_admission_index_successor_v1(

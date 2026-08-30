@@ -16,16 +16,17 @@ use super::readiness_source::{
 };
 use super::{
     DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT,
-    DraftMarkerAdmissionCapacityCodec, DraftMarkerAdmissionCapacityFamily,
-    DraftMarkerAdmissionCapacityKeyV1, DraftMarkerAdmissionCapacityV1,
-    DraftMarkerAdmissionDigestV1, DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionHeadsCodec,
-    DraftMarkerAdmissionHeadsFamily, DraftMarkerAdmissionLifecycleV1,
-    DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionOwnerV1, DraftMarkerAdmissionReceiptKeyV1,
-    DraftMarkerAdmissionReceiptTransitionV1, DraftMarkerAdmissionReceiptsCodec,
-    DraftMarkerAdmissionReceiptsFamily, DraftMarkerAdmissionReplayReceiptV1,
-    DraftMarkerAdmissionRetainedChargeV1, DraftMarkerAdmissionSchemaErrorV1,
-    DraftMarkerAdmissionTreeV1, DraftMarkerLabelReadinessProvenPageV1,
-    canonical_empty_draft_marker_admission_root_v1,
+    DraftMarkerAdmissionAssignmentContinuationV1, DraftMarkerAdmissionCapacityCodec,
+    DraftMarkerAdmissionCapacityFamily, DraftMarkerAdmissionCapacityKeyV1,
+    DraftMarkerAdmissionCapacityV1, DraftMarkerAdmissionDigestV1, DraftMarkerAdmissionHeadV1,
+    DraftMarkerAdmissionHeadsCodec, DraftMarkerAdmissionHeadsFamily,
+    DraftMarkerAdmissionLifecycleV1, DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionOwnerV1,
+    DraftMarkerAdmissionReceiptKeyV1, DraftMarkerAdmissionReceiptTransitionV1,
+    DraftMarkerAdmissionReceiptsCodec, DraftMarkerAdmissionReceiptsFamily,
+    DraftMarkerAdmissionReplayReceiptV1, DraftMarkerAdmissionRetainedChargeV1,
+    DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionTreeV1,
+    DraftMarkerLabelAllocationRangeV1, DraftMarkerLabelReadinessDispositionV1,
+    DraftMarkerLabelReadinessProvenPageV1, canonical_empty_draft_marker_admission_root_v1,
     checked_draft_marker_admission_command_charge_v1, encoded_capacity_key_charge,
     encoded_capacity_record_charge, encoded_head_key_charge, encoded_head_record_charge,
     encoded_receipt_key_charge, encoded_receipt_record_charge,
@@ -47,6 +48,8 @@ pub(crate) struct DraftMarkerAdmissionPublicationSeedV1 {
     occurrence_commitment: DraftMarkerAdmissionDigestV1,
     source_head_bytes: Box<[u8]>,
     target_head_bytes: Box<[u8]>,
+    disposition: DraftMarkerLabelReadinessDispositionV1,
+    allocation_range: Option<DraftMarkerLabelAllocationRangeV1>,
     authority: PublicationAuthority,
 }
 
@@ -60,6 +63,7 @@ enum PublicationAuthority {
 impl DraftMarkerAdmissionPublicationSeedV1 {
     pub(crate) fn from_page(
         page: &super::readiness_source::SealedDraftMarkerReadinessSourcePageV1,
+        allocation_range: Option<DraftMarkerLabelAllocationRangeV1>,
     ) -> Self {
         let (source_head_bytes, target_head_bytes) = page_closure_bytes(page);
         Self {
@@ -70,6 +74,8 @@ impl DraftMarkerAdmissionPublicationSeedV1 {
             occurrence_commitment: page.authority.occurrence_commitment(),
             source_head_bytes,
             target_head_bytes,
+            disposition: page.authority.disposition,
+            allocation_range,
             authority: PublicationAuthority::Runtime(page.authority.clone()),
         }
     }
@@ -92,6 +98,8 @@ impl DraftMarkerAdmissionPublicationSeedV1 {
             occurrence_commitment,
             source_head_bytes: source_head_bytes.into(),
             target_head_bytes: target_head_bytes.into(),
+            disposition: DraftMarkerLabelReadinessDispositionV1::Reuse,
+            allocation_range: None,
             authority: PublicationAuthority::Fixture,
         }
     }
@@ -108,7 +116,6 @@ impl DraftMarkerAdmissionPublicationSeedV1 {
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum PublicationFailureClass {
     Obsolete,
-    FinalEvidenceEof,
     Collision,
     Refused,
     Retryable,
@@ -125,9 +132,6 @@ pub(super) fn classify_not_committed(error: &CommandError) -> PublicationFailure
     {
         Some(DraftMarkerAdmissionPublicationErrorV1::ObsoletePage) => {
             PublicationFailureClass::Obsolete
-        }
-        Some(DraftMarkerAdmissionPublicationErrorV1::FinalEvidenceEof) => {
-            PublicationFailureClass::FinalEvidenceEof
         }
         Some(DraftMarkerAdmissionPublicationErrorV1::Collision) => {
             PublicationFailureClass::Collision
@@ -160,8 +164,6 @@ enum DraftMarkerAdmissionPublicationErrorV1 {
     RevisionOverflow,
     #[error("draft-marker admission publication retained charge disagrees")]
     Charge,
-    #[error("draft-marker admission final evidence EOF awaits assignment initialization")]
-    FinalEvidenceEof,
     #[error("draft-marker admission page is obsolete")]
     ObsoletePage,
     #[error("draft-marker admission current page is incomplete")]
@@ -185,7 +187,6 @@ impl From<PageProgressionError> for DraftMarkerAdmissionPublicationErrorV1 {
     fn from(value: PageProgressionError) -> Self {
         match value {
             PageProgressionError::Authority => Self::Authority,
-            PageProgressionError::FinalEvidenceEof => Self::FinalEvidenceEof,
             PageProgressionError::Obsolete => Self::ObsoletePage,
             PageProgressionError::PageIncomplete => Self::PageIncomplete,
             PageProgressionError::Overflow => Self::RevisionOverflow,
@@ -514,22 +515,52 @@ fn build_head(
     index: &PreparedDraftMarkerAdmissionIndexSuccessorV1,
     charge: DraftMarkerAdmissionRetainedChargeV1,
 ) -> Result<DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionSchemaErrorV1> {
+    let (lifecycle, occurrence_commitment, continuation) = if progression.final_eof {
+        let continuation = match seed.disposition {
+            DraftMarkerLabelReadinessDispositionV1::Reuse => {
+                if seed.allocation_range.is_some() {
+                    return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+                }
+                DraftMarkerAdmissionAssignmentContinuationV1::reuse(None)
+            }
+            DraftMarkerLabelReadinessDispositionV1::Allocate => {
+                let range = seed
+                    .allocation_range
+                    .ok_or(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?;
+                if range.count() != index.target_root().count() {
+                    return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+                }
+                DraftMarkerAdmissionAssignmentContinuationV1::allocate(range, range.first(), None)?
+            }
+        };
+        (
+            DraftMarkerAdmissionLifecycleV1::Assigning,
+            index.source_root().digest(),
+            Some(continuation),
+        )
+    } else {
+        (
+            DraftMarkerAdmissionLifecycleV1::Ingesting,
+            seed.occurrence_commitment,
+            None,
+        )
+    };
     DraftMarkerAdmissionHeadV1::new(
         seed.owner,
         revision,
         seed.home_generation,
-        DraftMarkerAdmissionLifecycleV1::Ingesting,
+        lifecycle,
         seed.request_commitment,
         seed.custody_commitment,
         progression.next_page_ordinal,
         progression.next_association_cursor,
-        false,
+        progression.final_eof,
         Some(page.page_identity()),
         index.source_root(),
         index.target_root(),
-        seed.occurrence_commitment,
+        occurrence_commitment,
         index.target_root().count(),
-        None,
+        continuation,
         0,
         charge,
         None,

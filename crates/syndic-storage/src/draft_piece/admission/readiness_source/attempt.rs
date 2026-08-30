@@ -2,22 +2,25 @@ use std::{collections::BTreeSet, num::NonZeroU64, sync::Arc};
 
 use beryl_home_store::{HomeProofCommand, HomeProofReceipt, HomeStore, ProofReceiptConsumer};
 
+#[cfg(feature = "test-faults")]
+use crate::draft_piece::DraftMarkerAdmissionOwnerV1;
 use crate::{
     SyndicStorage,
     admission_attachment::DraftMarkerAdmissionPreparedAttempt,
     codec::{DraftImageLabelProtectionHeadsFamily, ImageLabelAuthorityHeadsFamily},
     draft_piece::{
         DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionHeadsFamily,
-        DraftMarkerAdmissionOwnerV1, DraftMarkerAdmissionPublicationSeedV1,
+        DraftMarkerAdmissionPublicationSeedV1,
     },
 };
 
+#[cfg(feature = "test-faults")]
+use super::model::{DraftMarkerReadinessSourceAssociationV1, DraftMarkerReadinessWitnessFactoryV1};
 use super::{
     model::{
         CanonicalEntry, DraftMarkerLabelReadinessDispositionV1,
         DraftMarkerLabelReadinessPageRequestV1, DraftMarkerLabelReadinessRequestAuthorityV1,
-        DraftMarkerReadinessSourceAssociationV1, DraftMarkerReadinessSourceErrorV1,
-        DraftMarkerReadinessSourceSelectorV1, DraftMarkerReadinessWitnessFactoryV1,
+        DraftMarkerReadinessSourceErrorV1, DraftMarkerReadinessSourceSelectorV1,
         PAGE_MAX_ASSOCIATIONS, PAGE_MAX_EVIDENCE_BYTES, PageProtocol,
         SealedDraftMarkerReadinessSourcePageV1, SourceInput, page_correlation, selector_tag,
     },
@@ -194,13 +197,15 @@ impl SyndicStorage {
                 .get(),
         )
         .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
-        if self
+        let admission_head = self
             .point::<DraftMarkerAdmissionHeadsFamily>(
                 store,
                 owner,
                 crate::draft_piece::point_limit(),
             )
-            .map_err(DraftMarkerReadinessSourceErrorV1::PreflightRead)?
+            .map_err(DraftMarkerReadinessSourceErrorV1::PreflightRead)?;
+        if admission_head
+            .as_ref()
             .is_some_and(|head| head.home_generation() != home_generation)
         {
             return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
@@ -285,9 +290,29 @@ impl SyndicStorage {
         let revision = store
             .domain_revision(&self.handle)
             .map_err(DraftMarkerReadinessSourceErrorV1::Read)?;
+        let allocation_count = match (disposition, eof) {
+            (DraftMarkerLabelReadinessDispositionV1::Allocate, true) => {
+                let (retained, cursor) = admission_head.as_ref().map_or((0, 0), |head| {
+                    (
+                        head.target_root().count(),
+                        head.ingestion_association_cursor(),
+                    )
+                });
+                let remaining = u64::try_from(entries.len())
+                    .ok()
+                    .and_then(|count| count.checked_sub(cursor))
+                    .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+                Some(
+                    retained
+                        .checked_add(remaining)
+                        .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?,
+                )
+            }
+            _ => None,
+        };
         let reservation = store
             .with_domain_attachment(&self.handle.attachment_capability(), |attachment| {
-                attachment.prepare_attempt(owner, page, ordinal.get())
+                attachment.prepare_attempt(owner, page, ordinal.get(), &authority, allocation_count)
             })
             .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)?
             .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)?;
@@ -300,7 +325,8 @@ impl SyndicStorage {
             entries: entries.into_boxed_slice(),
             authority,
         });
-        let publication = DraftMarkerAdmissionPublicationSeedV1::from_page(&page);
+        let publication =
+            DraftMarkerAdmissionPublicationSeedV1::from_page(&page, reservation.allocation_range());
         let input = SourceInput {
             page: Arc::clone(&page),
         };

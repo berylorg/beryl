@@ -1,4 +1,5 @@
 use super::*;
+use crate::canonical_empty_draft_marker_admission_root_v1;
 
 #[derive(Clone, Copy)]
 pub(super) enum SearchKey {
@@ -178,6 +179,126 @@ where
     })
 }
 
+pub(super) fn rewrite_tree<R: AdmissionNodeReader, F>(
+    ledger: &mut ReadLedger<'_, R>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    key: SearchKey,
+    mut ids: NodeIdFactory,
+    replacement: F,
+) -> Result<TreeEdit, DraftMarkerAdmissionIndexPreparationErrorV1>
+where
+    F: FnOnce(
+        &DraftMarkerAdmissionNodeV1,
+    ) -> Result<Option<DraftMarkerAdmissionNodeV1>, DraftMarkerAdmissionSchemaErrorV1>,
+{
+    let RootPath::Occupied(path) = authenticate_path(ledger, owner, root, key)? else {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode);
+    };
+    if !path.exact {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode);
+    }
+
+    let mut puts = Vec::new();
+    let mut path_keys = BTreeSet::new();
+    path_keys.insert(path.leaf.key());
+    let mut predecessor = path
+        .steps
+        .iter()
+        .map(|step| child(&step.node))
+        .collect::<Result<Vec<_>, _>>()?;
+    predecessor.push(child(&path.leaf)?);
+
+    let mut replacements = match replacement(&path.leaf)? {
+        Some(template) => {
+            let leaf = rebuild_leaf(template, ids.key(DraftMarkerAdmissionNodeKindV1::Leaf)?)?;
+            let child = child(&leaf)?;
+            puts.push(leaf);
+            vec![child]
+        }
+        None => Vec::new(),
+    };
+    if path.steps.is_empty() {
+        let root = match replacements.as_slice() {
+            [] => canonical_empty_draft_marker_admission_root_v1(root.tree()),
+            [only] => root_from_child(root.tree(), 1, *only)?,
+            _ => return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication),
+        };
+        return Ok(TreeEdit {
+            root,
+            puts,
+            predecessor,
+            path_keys,
+        });
+    }
+
+    for step in path.steps.iter().rev() {
+        path_keys.insert(step.node.key());
+        let DraftMarkerAdmissionNodePayloadV1::Internal { height, children } = step.node.payload()
+        else {
+            return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+        };
+        let mut next = children.to_vec();
+        next.splice(step.child_index..=step.child_index, replacements);
+        replacements = if next.is_empty() {
+            Vec::new()
+        } else {
+            make_internal_level(&mut ids, root.tree(), *height, next, &mut puts)?
+        };
+    }
+    let root = match replacements.as_slice() {
+        [] => canonical_empty_draft_marker_admission_root_v1(root.tree()),
+        [only] => root_from_child(root.tree(), root.height(), *only)?,
+        _ => return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication),
+    };
+    Ok(TreeEdit {
+        root,
+        puts,
+        predecessor,
+        path_keys,
+    })
+}
+
+pub(super) fn least_leaf<R: AdmissionNodeReader>(
+    ledger: &mut ReadLedger<'_, R>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+) -> Result<DraftMarkerAdmissionNodeV1, DraftMarkerAdmissionIndexPreparationErrorV1> {
+    root.validate_shape()?;
+    let root_key = root
+        .node()
+        .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
+    if root_key.owner() != owner {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    }
+    let mut node = required_node(ledger, &root_key)?;
+    if node.tree() != root.tree()
+        || node.height() != root.height()
+        || node.digest() != root.digest()
+        || node.count()? != root.count()
+    {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    }
+    loop {
+        let DraftMarkerAdmissionNodePayloadV1::Internal { height, children } = node.payload()
+        else {
+            return Ok(node);
+        };
+        let expected = *children
+            .first()
+            .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication)?;
+        let child_node = required_node(ledger, &expected.key())?;
+        if child_node.key().owner() != owner
+            || child_node.tree() != root.tree()
+            || child_node.height().checked_add(1) != Some(*height)
+            || child(&child_node)? != expected
+        {
+            return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+        }
+        node = child_node;
+    }
+}
+
 fn authenticate_path<R: AdmissionNodeReader>(
     ledger: &mut ReadLedger<'_, R>,
     owner: DraftMarkerAdmissionOwnerV1,
@@ -257,14 +378,13 @@ pub(super) fn authenticate_replay_deletions<R: AdmissionNodeReader>(
     prior: &[DraftMarkerAdmissionChildV1],
     protected: &BTreeSet<DraftMarkerAdmissionNodeKeyV1>,
 ) -> Result<Vec<DraftMarkerAdmissionNodeV1>, DraftMarkerAdmissionIndexPreparationErrorV1> {
-    if prior.len() > usize::from(DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT) * 2 {
+    if prior.len() > usize::from(DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT) * 2 + 2 {
         return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidCount.into());
     }
     let mut seen = BTreeSet::new();
     let mut deletions = Vec::with_capacity(prior.len());
     for expected in prior {
         if expected.key().owner() != owner
-            || expected.key().kind() != DraftMarkerAdmissionNodeKindV1::Internal
             || protected.contains(&expected.key())
             || !seen.insert(expected.key())
         {
