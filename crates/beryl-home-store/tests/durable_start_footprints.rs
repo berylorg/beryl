@@ -15,11 +15,12 @@ fn owner_derived_maxima_compose_to_the_direct_and_queued_envelopes() {
         ),
     )
     .expect("direct composition");
-    assert_eq!(26, direct.logical().records());
+    assert_eq!(27, direct.logical().records());
     assert_eq!(
-        1_263_194,
+        1_328_750,
         direct.logical().encoded_key_value_bytes().expect("total")
     );
+    assert_eq!(1_329_343, direct.journal_append_bytes());
 
     let queued = DurableStartFootprint::compose(
         accepted_input_promotion_max_footprint().expect("promotion footprint"),
@@ -60,7 +61,12 @@ fn no_image_start_omits_the_asset_participant() {
         None,
     )
     .expect("marker-free direct composition");
-    assert_eq!(23, direct.logical().records());
+    assert_eq!(24, direct.logical().records());
+    assert_eq!(
+        1_319_996,
+        direct.logical().encoded_key_value_bytes().expect("total")
+    );
+    assert_eq!(1_320_526, direct.journal_append_bytes());
 
     let queued = DurableStartFootprint::compose(
         accepted_input_promotion_max_footprint().expect("promotion footprint"),
@@ -68,6 +74,11 @@ fn no_image_start_omits_the_asset_participant() {
     )
     .expect("marker-free queued composition");
     assert_eq!(22, queued.logical().records());
+    assert_eq!(
+        1_319_458,
+        queued.logical().encoded_key_value_bytes().expect("total")
+    );
+    assert_eq!(1_319_946, queued.journal_append_bytes());
 }
 
 #[test]
@@ -79,7 +90,15 @@ fn checked_batch_footprint_never_wraps() {
 }
 
 #[test]
-fn queued_framing_stays_derived_from_fjall() {
+fn framing_stays_derived_from_fjall_for_both_operations() {
+    let direct = DurableStartFootprint::compose(
+        idle_submission_max_footprint().expect("first-acceptance footprint"),
+        Some(
+            draft_to_submitted_item_owner_transfer_max_footprint()
+                .expect("draft transfer footprint"),
+        ),
+    )
+    .expect("direct composition");
     let queued = DurableStartFootprint::compose(
         accepted_input_promotion_max_footprint().expect("promotion footprint"),
         Some(
@@ -88,12 +107,14 @@ fn queued_framing_stays_derived_from_fjall() {
         ),
     )
     .expect("queued composition");
-    let logical = queued.logical();
-    let fjall = fjall::JournalAppendFootprint::try_from_batch_totals(
-        logical.records(),
-        logical.encoded_key_bytes(),
-        logical.encoded_value_bytes(),
-    )
-    .expect("Fjall framing");
-    assert_eq!(fjall.max_encoded_bytes(), queued.journal_append_bytes());
+    for footprint in [direct, queued] {
+        let logical = footprint.logical();
+        let fjall = fjall::JournalAppendFootprint::try_from_batch_totals(
+            logical.records(),
+            logical.encoded_key_bytes(),
+            logical.encoded_value_bytes(),
+        )
+        .expect("Fjall framing");
+        assert_eq!(fjall.max_encoded_bytes(), footprint.journal_append_bytes());
+    }
 }

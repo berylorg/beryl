@@ -140,8 +140,10 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   submission or accepted-input-promotion footprint from `syndic-storage` and its matching typed
   asset-owner-transfer footprint from `beryl-state`. It adds the package-owned participating-domain
   metadata, home revision mutation, and Fjall journal framing, then returns the direct or queued
-  logical-and-journal append envelope. It accepts no caller-provided aggregate byte total and owns
-  neither the Beryl product admission budget nor capture-reserve configuration.
+  logical-and-journal append envelope. That footprint accepts no caller-provided aggregate byte
+  total and excludes admission policy and capture-reserve configuration. The package's separate
+  admission-requirement boundary owns the immutable Beryl product policy and accepts the app-
+  configured capture reserve.
 
 ## Physical Open Contract
 
@@ -607,9 +609,9 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   distinct fresh attachment identity for an unpublished recovery candidate. They also prove that
   no handle, application object, or process-global registry remains a strong attachment owner.
 - Durable-start footprint tests independently compose both allowed typed participant pairs, prove
-  the direct logical total is 26 records and 1,263,194 encoded key-plus-value bytes, prove the queued
+  the direct logical total is 27 records and 1,328,750 encoded key-plus-value bytes, prove the queued
   logical envelope is 25 records and 1,328,212 bytes, and prove owned journal framing raises the
-  queued shared maximum to 1,328,763 bytes. They reject mismatched participant kinds and checked-
+  direct shared maximum to 1,329,343 bytes. They reject mismatched participant kinds and checked-
   arithmetic overflow; no test substitutes an arbitrary aggregate input.
 - Reserve-query tests prove only the validated requirement type is accepted, every invocation makes
   one filesystem observation, and `Sufficient` performs no reservation or later-`ENOSPC` guarantee.

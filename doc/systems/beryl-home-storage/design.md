@@ -413,9 +413,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   configuration: it obtains the direct and queued owner-derived footprints, supplies the separately
   configured typed nonzero minimum turn-capture reserve, and retains the resulting requirement. No
   caller supplies an arbitrary pre-aggregated durable-start total.
-- Under the current owner bounds, direct admission contributes at most 26 records and 1,263,194
+- Under the current owner bounds, direct admission contributes at most 27 records and 1,328,750
   encoded key-plus-value bytes, while queued promotion contributes at most 25 records and 1,328,212
-  encoded key-plus-value bytes. Owned Fjall journal framing raises the queued envelope to 1,328,763
+  encoded key-plus-value bytes. Owned Fjall journal framing raises the direct envelope to 1,329,343
   bytes, the current shared maximum. The 256-MiB policy deliberately leaves product headroom above
   that maximum so bounded schema growth does not require tuning a filesystem-allocation estimate.
 - `beryl-home-store` requirement construction checks each owner-derived direct and queued envelope
@@ -724,9 +724,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   mutation, and can yield only later stale/conflict rejection rather than false authority. Ordinary
   coherent reads remain publishable across an unrelated maintenance transition while actual
   snapshot-access and generation failures still propagate.
-- Admission tests prove the owner-derived direct footprint of 26 records and 1,263,194 encoded key-
+- Admission tests prove the owner-derived direct footprint of 27 records and 1,328,750 encoded key-
   plus-value bytes, queued footprint of 25 records and 1,328,212 bytes, and current journal-framed
-  shared maximum of 1,328,763 bytes remain beneath the immutable 256-MiB product budget. They prove
+  shared maximum of 1,329,343 bytes remain beneath the immutable 256-MiB product budget. They prove
   zero capture reserve and checked-add overflow reject service configuration before service
   publication or any query, and that direct and queued starts pass the same composed requirement.
   They cover all four free-space outcomes and prove exactly one immediate query for each direct or

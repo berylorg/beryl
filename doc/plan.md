@@ -18,25 +18,15 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 208: Complete Prepared-Mutation Integration (finished)
+# Phase 209: Reconcile Durable-Start Footprint Authority (finished)
 
-Converted all 21 `beryl-home-store` integration and support mutations to consuming one-time
-preparation and reader-free contribution, preserved the intentional validation-only boundary, and
-corrected stale non-`Copy` handle and one-shot fault/reopen fixtures without production or schema
-changes. Structural review found no executable old mutation surface or needless defensive layer.
+Reconciled system and HomeStore authority plus exact fixtures with the accepted Syndic image-label-
+authority footprint: direct admission is 27 records and 1,328,750 logical bytes, and its 1,329,343-
+byte Fjall envelope is the shared maximum. No source behavior or persisted schema changed.
 
-All-test/all-feature compilation passed; the exact Phase 208 package gate passed 204 of 204 tests,
-`beryl-state` representatives passed 16 of 16, and unchanged `syndic-storage` retained its accepted
-698-of-698 result. Two unrelated durable-start footprint assertions were excluded exactly and are
-owned by Phase 209. Independent semantic completion review closed without blocking findings.
-
-# Phase 209: Reconcile Durable-Start Footprint Authority (pending)
-
-Recompute the package-owned direct and queued durable-start record, encoded-byte, and Fjall journal
-envelopes from the accepted Syndic and Asset participant footprints; reconcile the Beryl-home
-storage system, `beryl-home-store` package authority, and exact footprint fixtures without changing
-source behavior or persisted schema. Verify both participant pairs, the shared admission maximum,
-and checked overflow, then obtain independent authority review.
+All-test/all-feature compilation passed, the complete HomeStore gate passed 206 of 206 tests, and
+the three package-owner footprint tests passed. Independent authority review closed after resolving
+one stale package-policy ownership sentence; scoped diff validation passed.
 
 # Phase 210: Reconcile Draft-Marker Admission Authority (pending)
 
