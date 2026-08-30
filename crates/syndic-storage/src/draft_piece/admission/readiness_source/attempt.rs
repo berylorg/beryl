@@ -10,10 +10,11 @@ use crate::{
 use super::{
     model::{
         CanonicalEntry, DraftMarkerReadinessSourceAssociationV1, DraftMarkerReadinessSourceErrorV1,
+        DraftMarkerReadinessSourceSelectorV1, DraftMarkerReadinessWitnessFactoryV1,
         PAGE_MAX_ASSOCIATIONS, PAGE_MAX_EVIDENCE_BYTES, PageProtocol,
         SealedDraftMarkerReadinessSourcePageV1, SourceInput, page_correlation, selector_tag,
     },
-    proof::{resolve_preflight, session_preflight},
+    proof::{resolve_accepted_preflight, resolve_preflight, session_preflight},
 };
 
 pub struct DraftMarkerLabelReadinessPageAttemptV1 {
@@ -79,7 +80,7 @@ impl DraftMarkerLabelReadinessPageAttemptV1 {
 }
 
 impl SyndicStorage {
-    pub fn prepare_draft_marker_label_readiness_source_page(
+    pub fn prepare_draft_marker_label_readiness_page(
         &self,
         store: &HomeStore,
         owner: DraftMarkerAdmissionOwnerV1,
@@ -87,9 +88,10 @@ impl SyndicStorage {
         ordinal: NonZeroU64,
         eof: bool,
         associations: Box<[DraftMarkerReadinessSourceAssociationV1]>,
+        witness_factory: Option<DraftMarkerReadinessWitnessFactoryV1>,
     ) -> Result<DraftMarkerLabelReadinessPageAttemptV1, DraftMarkerReadinessSourceErrorV1> {
         if associations.len() > PAGE_MAX_ASSOCIATIONS
-            || (associations.is_empty() && !eof)
+            || associations.is_empty()
             || associations.windows(2).any(|associations| {
                 selector_tag(associations[0].selector) != selector_tag(associations[1].selector)
             })
@@ -103,16 +105,32 @@ impl SyndicStorage {
             if !targets.insert(association.target_marker_id) {
                 return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
             }
-            let (source_thread, occurrence) = resolve_preflight(self, store, association.selector)?;
-            if source_thread != destination.thread_id() {
-                return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+            match association.selector {
+                DraftMarkerReadinessSourceSelectorV1::Accepted(source) => {
+                    let origin = resolve_accepted_preflight(self, store, source)?;
+                    entries.push(CanonicalEntry {
+                        target_marker_id: association.target_marker_id,
+                        selector: association.selector,
+                        label: source.label,
+                        asset_id: source.asset_id,
+                        accepted_origin: Some(origin),
+                    });
+                }
+                _ => {
+                    let (source_thread, occurrence) =
+                        resolve_preflight(self, store, association.selector)?;
+                    if source_thread != destination.thread_id() {
+                        return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+                    }
+                    entries.push(CanonicalEntry {
+                        target_marker_id: association.target_marker_id,
+                        selector: association.selector,
+                        label: occurrence.label(),
+                        asset_id: occurrence.asset_id(),
+                        accepted_origin: None,
+                    });
+                }
             }
-            entries.push(CanonicalEntry {
-                target_marker_id: association.target_marker_id,
-                selector: association.selector,
-                label: occurrence.label(),
-                asset_id: occurrence.asset_id(),
-            });
         }
         entries.sort_by(|left, right| {
             left.label
@@ -128,6 +146,28 @@ impl SyndicStorage {
         if evidence_bytes > PAGE_MAX_EVIDENCE_BYTES {
             return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
         }
+        let accepted = entries.first().is_some_and(|entry| {
+            matches!(
+                entry.selector,
+                DraftMarkerReadinessSourceSelectorV1::Accepted(_)
+            )
+        });
+        let witness = match (accepted, witness_factory) {
+            (true, Some(factory)) => {
+                let witness_input = entries
+                    .iter()
+                    .map(|entry| match entry.selector {
+                        DraftMarkerReadinessSourceSelectorV1::Accepted(source) => {
+                            Ok((source.asset_reference_set, entry.label, entry.asset_id))
+                        }
+                        _ => Err(DraftMarkerReadinessSourceErrorV1::Rejected),
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Some(factory.build(store, ordinal.get(), eof, witness_input)?)
+            }
+            (false, None) => None,
+            _ => return Err(DraftMarkerReadinessSourceErrorV1::Rejected),
+        };
         let expected = page_correlation(ordinal, eof, &entries);
         let revision = store
             .domain_revision(&self.handle)
@@ -144,7 +184,7 @@ impl SyndicStorage {
             page: Arc::clone(&page),
         };
         let source = self.handle.proof_source::<PageProtocol>(revision, input);
-        let command = HomeProofCommand::new(
+        let mut command = HomeProofCommand::new(
             store
                 .health()
                 .generation()
@@ -155,6 +195,11 @@ impl SyndicStorage {
             source,
         )
         .map_err(|_| DraftMarkerReadinessSourceErrorV1::Build)?;
+        if let Some(witness) = witness {
+            command
+                .add_witness(witness)
+                .map_err(|_| DraftMarkerReadinessSourceErrorV1::Build)?;
+        }
         let (command, consumer) = command
             .seal()
             .map_err(|_| DraftMarkerReadinessSourceErrorV1::Seal)?;

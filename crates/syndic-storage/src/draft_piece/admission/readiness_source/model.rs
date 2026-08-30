@@ -1,9 +1,13 @@
 use std::{error::Error, fmt, num::NonZeroU64, sync::Arc};
 
 use beryl_home_store::{
-    FixedDigestHomeProofProtocol, ProofCompositionError, ProofReceiptError, ReadError,
+    FixedDigestHomeProofProtocol, HomeStore, ProofCompositionError, ProofReceiptError,
+    ProofWitnessContribution, ReadError,
 };
-use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId};
+use beryl_model::{
+    AssetId, ImageLabelOrdinal, SealedAssetReferenceSetProof, SyndicDraftId, SyndicDraftMarkerId,
+    SyndicThreadId,
+};
 use sha2::{Digest, Sha256};
 
 use crate::draft_piece::{
@@ -15,11 +19,57 @@ pub(super) const PAGE_MAX_ASSOCIATIONS: usize = 256;
 pub(super) const PAGE_MAX_EVIDENCE_BYTES: usize = 65_536;
 const PAGE_DOMAIN: &[u8] = b"syndic/draft-marker-label-readiness-page/v1";
 const SOURCE_ENTRY_TAG: u8 = 0;
+const ACCEPTED_ENTRY_TAG: u8 = 1;
 const CANDIDATE_SELECTOR_TAG: u8 = 0;
 const CUT_SELECTOR_TAG: u8 = 1;
 const ROOT_REFERENCE_BYTES: usize = 327;
 
 pub(super) type PageProtocol = FixedDigestHomeProofProtocol<0x53444d5244595631, 0x5244595041474531>;
+
+pub struct DraftMarkerReadinessWitnessFactoryV1 {
+    factory: Box<
+        dyn FnOnce(
+                &HomeStore,
+                u64,
+                bool,
+                Vec<(SealedAssetReferenceSetProof, ImageLabelOrdinal, AssetId)>,
+            ) -> Result<
+                ProofWitnessContribution<PageProtocol>,
+                DraftMarkerReadinessSourceErrorV1,
+            > + Send,
+    >,
+}
+
+impl DraftMarkerReadinessWitnessFactoryV1 {
+    pub fn new<F, E>(factory: F) -> Self
+    where
+        F: FnOnce(
+                &HomeStore,
+                u64,
+                bool,
+                Vec<(SealedAssetReferenceSetProof, ImageLabelOrdinal, AssetId)>,
+            ) -> Result<ProofWitnessContribution<PageProtocol>, E>
+            + Send
+            + 'static,
+    {
+        Self {
+            factory: Box::new(move |store, ordinal, eof, associations| {
+                factory(store, ordinal, eof, associations)
+                    .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)
+            }),
+        }
+    }
+
+    pub(super) fn build(
+        self,
+        store: &HomeStore,
+        ordinal: u64,
+        eof: bool,
+        associations: Vec<(SealedAssetReferenceSetProof, ImageLabelOrdinal, AssetId)>,
+    ) -> Result<ProofWitnessContribution<PageProtocol>, DraftMarkerReadinessSourceErrorV1> {
+        (self.factory)(store, ordinal, eof, associations)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DraftMarkerReadinessCandidateSourceV1 {
@@ -56,6 +106,30 @@ pub struct DraftMarkerReadinessCutSourceV1 {
     pub(super) marker_id: SyndicDraftMarkerId,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DraftMarkerReadinessAcceptedSourceV1 {
+    pub(super) thread_id: SyndicThreadId,
+    pub(super) asset_reference_set: SealedAssetReferenceSetProof,
+    pub(super) label: ImageLabelOrdinal,
+    pub(super) asset_id: AssetId,
+}
+
+impl DraftMarkerReadinessAcceptedSourceV1 {
+    pub const fn new(
+        thread_id: SyndicThreadId,
+        asset_reference_set: SealedAssetReferenceSetProof,
+        label: ImageLabelOrdinal,
+        asset_id: AssetId,
+    ) -> Self {
+        Self {
+            thread_id,
+            asset_reference_set,
+            label,
+            asset_id,
+        }
+    }
+}
+
 impl DraftMarkerReadinessCutSourceV1 {
     pub const fn new(
         settlement: DraftPieceSettlementKeyV1,
@@ -76,6 +150,7 @@ impl DraftMarkerReadinessCutSourceV1 {
 pub enum DraftMarkerReadinessSourceSelectorV1 {
     Candidate(DraftMarkerReadinessCandidateSourceV1),
     Cut(DraftMarkerReadinessCutSourceV1),
+    Accepted(DraftMarkerReadinessAcceptedSourceV1),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -145,6 +220,7 @@ pub(crate) struct CanonicalEntry {
     pub(crate) selector: DraftMarkerReadinessSourceSelectorV1,
     pub(crate) label: ImageLabelOrdinal,
     pub(crate) asset_id: AssetId,
+    pub(crate) accepted_origin: Option<crate::ImageLabelOriginSpanRecord>,
 }
 
 impl CanonicalEntry {
@@ -154,9 +230,9 @@ impl CanonicalEntry {
 
     pub(super) fn evidence_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.push(SOURCE_ENTRY_TAG);
         match self.selector {
             DraftMarkerReadinessSourceSelectorV1::Candidate(source) => {
+                bytes.push(SOURCE_ENTRY_TAG);
                 bytes.push(CANDIDATE_SELECTOR_TAG);
                 bytes.extend_from_slice(source.draft_id.as_bytes());
                 bytes.extend_from_slice(source.session_id.as_bytes());
@@ -165,6 +241,7 @@ impl CanonicalEntry {
                 bytes.extend_from_slice(source.marker_id.as_bytes());
             }
             DraftMarkerReadinessSourceSelectorV1::Cut(source) => {
+                bytes.push(SOURCE_ENTRY_TAG);
                 bytes.push(CUT_SELECTOR_TAG);
                 bytes.extend_from_slice(source.settlement.draft_id().as_bytes());
                 bytes.extend_from_slice(source.settlement.session_id().as_bytes());
@@ -172,6 +249,25 @@ impl CanonicalEntry {
                 bytes.extend_from_slice(&source.successor_generation.to_le_bytes());
                 bytes.extend_from_slice(&fixed_root_reference_bytes(source.successor_root));
                 bytes.extend_from_slice(source.marker_id.as_bytes());
+            }
+            DraftMarkerReadinessSourceSelectorV1::Accepted(source) => {
+                bytes.push(ACCEPTED_ENTRY_TAG);
+                let sequential = source.asset_reference_set.sequential();
+                let ordered_assets = source.asset_reference_set.ordered_assets();
+                bytes.extend_from_slice(source.asset_reference_set.set_id().as_bytes());
+                bytes.extend_from_slice(&sequential.marker_digest());
+                bytes.extend_from_slice(&sequential.marker_count().to_le_bytes());
+                bytes.extend_from_slice(
+                    &sequential
+                        .maximum_image_label()
+                        .map_or(0, ImageLabelOrdinal::get)
+                        .to_le_bytes(),
+                );
+                bytes.extend_from_slice(&ordered_assets.marker_asset_digest());
+                bytes.extend_from_slice(&ordered_assets.marker_count().to_le_bytes());
+                bytes.extend_from_slice(&source.asset_reference_set.entry_frontier().to_le_bytes());
+                bytes
+                    .extend_from_slice(&source.asset_reference_set.asset_chain_digest().as_bytes());
             }
         }
         bytes.extend_from_slice(&self.label.get().to_le_bytes());
@@ -260,6 +356,7 @@ pub(super) fn selector_tag(selector: DraftMarkerReadinessSourceSelectorV1) -> u8
     match selector {
         DraftMarkerReadinessSourceSelectorV1::Candidate(_) => CANDIDATE_SELECTOR_TAG,
         DraftMarkerReadinessSourceSelectorV1::Cut(_) => CUT_SELECTOR_TAG,
+        DraftMarkerReadinessSourceSelectorV1::Accepted(_) => 2,
     }
 }
 

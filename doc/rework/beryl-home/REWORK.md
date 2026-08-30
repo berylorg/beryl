@@ -228,6 +228,8 @@
   witness without cross-package record exposure or durable admission mutation.
 - [x] Established bounded source-only Syndic draft-marker proof attempts with exact candidate/cut
   authority, opaque receipt custody, and no durable admission mutation.
+- [x] Extended the opaque Syndic draft-marker proof attempt to accepted local and inherited sources
+  through one coherent dependency-neutral Asset witness without durable admission mutation.
 - [ ] Establish operation-owned Syndic draft-marker admission with bounded authenticated indexes,
   home-wide cross-restart retained-resource limits, and exact package-owned replay custody.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-

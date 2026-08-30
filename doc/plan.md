@@ -17,21 +17,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 216: Establish Source-Only Draft-Marker Evidence Attempts (finished)
+# Phase 217: Add Accepted Draft-Marker Witness Attempts (finished)
 
-Established bounded opaque candidate/cut proof attempts with exact little-endian correlations,
-coherent snapshot reauthentication, real cut-removal authority, linear receipt custody, and no
-durable mutation. The locked all-target check, seven focused cases, and independent semantic review
-passed; the package-wide attempt remained non-green only on the unrelated pre-existing Phase 13
-activity fixture.
-
-# Phase 217: Add Accepted Draft-Marker Witness Attempts (pending)
-
-Extend the opaque attempt and proven-page custody boundary to accepted-only local or inherited
-associations through the existing dependency-neutral Beryl-state Asset-witness factory. Require one
-coherent Syndic/Asset snapshot, preserve canonical occurrence multiplicity and witness read
-coalescing, reject mixed, stale, missing, disagreeing, or substituted evidence, and perform no
-durable mutation.
+Extended the single opaque readiness attempt and proven-page custody path to local and inherited
+accepted associations through the dependency-neutral one-shot Asset witness factory, with exact
+194-byte correlations, one coherent cross-domain snapshot, occurrence-preserving canonicalization,
+and no durable mutation or normal cross-package dependency. The locked all-target check, five new
+accepted cases, seven source-only regression cases, and independent semantic review passed.
 
 # Phase 218: Ingest Proven Draft-Marker Evidence Into Durable Indexes (pending)
 
