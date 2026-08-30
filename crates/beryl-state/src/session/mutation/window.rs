@@ -22,6 +22,11 @@ pub struct UpdateWindowPlacement {
     placement: WindowPlacement,
 }
 
+pub(crate) struct UpdateWindowPlacementPrepared {
+    header: SessionHeader,
+    window: SessionWindowRecord,
+}
+
 impl UpdateWindowPlacement {
     #[must_use]
     pub const fn new(
@@ -41,9 +46,18 @@ impl UpdateWindowPlacement {
 
 impl DomainMutation<SessionDomain> for UpdateWindowPlacement {
     type Error = SessionMutationError;
+    type Prepared = UpdateWindowPlacementPrepared;
 
-    fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
-        prepare_placement(self, reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let (mut header, mut window) = prepare_placement(&self, reader)?;
+        window.placement = self.placement;
+        window.revision = window.revision.checked_next()?;
+        header.revision = header.revision.checked_next()?;
+        replace_reference(&mut header, self.window_id, window.revision)?;
+        Ok(UpdateWindowPlacementPrepared { header, window })
     }
 
     fn reserve_reconciliation(
@@ -56,17 +70,11 @@ impl DomainMutation<SessionDomain> for UpdateWindowPlacement {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SessionDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SessionDomain>,
     ) -> Result<(), Self::Error> {
-        let (mut header, mut window) = prepare_placement(self, reader)?;
-        window.placement = self.placement.clone();
-        window.revision = window.revision.checked_next()?;
-        header.revision = header.revision.checked_next()?;
-        replace_reference(&mut header, self.window_id, window.revision)?;
-        put_window(mutations, &window)?;
-        put_header(mutations, &header)
+        put_window(mutations, &prepared.window)?;
+        put_header(mutations, &prepared.header)
     }
 }
 
@@ -97,6 +105,12 @@ pub struct RemoveSessionWindow {
     expected_claim: Option<WindowClaimSelection>,
 }
 
+pub(crate) struct RemoveSessionWindowPrepared {
+    header: SessionHeader,
+    window_id: WindowId,
+    claim: Option<ThreadClaimRecord>,
+}
+
 impl RemoveSessionWindow {
     #[must_use]
     pub const fn new(
@@ -116,9 +130,26 @@ impl RemoveSessionWindow {
 
 impl DomainMutation<SessionDomain> for RemoveSessionWindow {
     type Error = SessionMutationError;
+    type Prepared = RemoveSessionWindowPrepared;
 
-    fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
-        prepare_remove(self, reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let (mut header, _window, claim) = prepare_remove(&self, reader)?;
+        let index = header
+            .windows
+            .binary_search_by_key(&self.window_id, |reference| reference.window_id)
+            .map_err(|_| SessionMutationError::WindowMissing {
+                window_id: self.window_id,
+            })?;
+        header.windows.remove(index);
+        header.revision = header.revision.checked_next()?;
+        Ok(RemoveSessionWindowPrepared {
+            header,
+            window_id: self.window_id,
+            claim,
+        })
     }
 
     fn reserve_reconciliation(
@@ -133,24 +164,14 @@ impl DomainMutation<SessionDomain> for RemoveSessionWindow {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SessionDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SessionDomain>,
     ) -> Result<(), Self::Error> {
-        let (mut header, _window, claim) = prepare_remove(self, reader)?;
-        let index = header
-            .windows
-            .binary_search_by_key(&self.window_id, |reference| reference.window_id)
-            .map_err(|_| SessionMutationError::WindowMissing {
-                window_id: self.window_id,
-            })?;
-        header.windows.remove(index);
-        header.revision = header.revision.checked_next()?;
-        mutations.delete::<SessionWindowCodec>(&self.window_id)?;
-        if let Some(claim) = claim {
+        mutations.delete::<SessionWindowCodec>(&prepared.window_id)?;
+        if let Some(claim) = prepared.claim {
             delete_claim(mutations, claim, true)?;
         }
-        put_header(mutations, &header)
+        put_header(mutations, &prepared.header)
     }
 }
 
@@ -189,6 +210,10 @@ pub struct MarkOrderlyExit {
     expected_session_revision: SessionRevision,
 }
 
+pub(crate) struct MarkOrderlyExitPrepared {
+    header: SessionHeader,
+}
+
 impl MarkOrderlyExit {
     #[must_use]
     pub const fn new(expected_session_revision: SessionRevision) -> Self {
@@ -200,13 +225,19 @@ impl MarkOrderlyExit {
 
 impl DomainMutation<SessionDomain> for MarkOrderlyExit {
     type Error = SessionMutationError;
+    type Prepared = MarkOrderlyExitPrepared;
 
-    fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
-        let header = required_header(reader, self.expected_session_revision, false)?;
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let mut header = required_header(reader, self.expected_session_revision, false)?;
         if header.exit_intent == SessionExitIntent::OrderlyExit {
             return Err(SessionMutationError::AlreadyOrderlyExit);
         }
-        Ok(())
+        header.exit_intent = SessionExitIntent::OrderlyExit;
+        header.revision = header.revision.checked_next()?;
+        Ok(MarkOrderlyExitPrepared { header })
     }
 
     fn reserve_reconciliation(
@@ -218,16 +249,9 @@ impl DomainMutation<SessionDomain> for MarkOrderlyExit {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SessionDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SessionDomain>,
     ) -> Result<(), Self::Error> {
-        let mut header = required_header(reader, self.expected_session_revision, false)?;
-        if header.exit_intent == SessionExitIntent::OrderlyExit {
-            return Err(SessionMutationError::AlreadyOrderlyExit);
-        }
-        header.exit_intent = SessionExitIntent::OrderlyExit;
-        header.revision = header.revision.checked_next()?;
-        put_header(mutations, &header)
+        put_header(mutations, &prepared.header)
     }
 }

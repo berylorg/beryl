@@ -159,9 +159,13 @@ impl DomainCallbackError for RawMutationError {
 
 impl DomainMutation<RawSessionDomain> for RawMutation {
     type Error = RawMutationError;
+    type Prepared = Self;
 
-    fn validate(&self, _reader: &DomainReader<'_, RawSessionDomain>) -> Result<(), Self::Error> {
-        Ok(())
+    fn prepare(
+        self,
+        _reader: &DomainReader<'_, RawSessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Ok(self)
     }
 
     fn reserve_reconciliation(
@@ -184,21 +188,20 @@ impl DomainMutation<RawSessionDomain> for RawMutation {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, RawSessionDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, RawSessionDomain>,
     ) -> Result<(), Self::Error> {
-        if let Some(header) = &self.header {
-            mutations.put::<RawHeaderCodec>(&0, header)?;
+        if let Some(header) = prepared.header {
+            mutations.put::<RawHeaderCodec>(&0, &header)?;
         }
-        for (key, value) in &self.windows {
-            mutations.put::<RawWindowCodec>(key, value)?;
+        for (key, value) in prepared.windows {
+            mutations.put::<RawWindowCodec>(&key, &value)?;
         }
-        for (key, value) in &self.by_window {
-            mutations.put::<RawClaimByWindowCodec>(key, value)?;
+        for (key, value) in prepared.by_window {
+            mutations.put::<RawClaimByWindowCodec>(&key, &value)?;
         }
-        for (key, value) in &self.by_thread {
-            mutations.put::<RawClaimByThreadCodec>(key, value)?;
+        for (key, value) in prepared.by_thread {
+            mutations.put::<RawClaimByThreadCodec>(&key, &value)?;
         }
         Ok(())
     }

@@ -22,6 +22,11 @@ pub struct InitializeThreadlessWindow {
     placement: WindowPlacement,
 }
 
+pub(crate) struct InitializeThreadlessWindowPrepared {
+    header: SessionHeader,
+    window: SessionWindowRecord,
+}
+
 impl InitializeThreadlessWindow {
     #[must_use]
     pub const fn new(window_id: WindowId, placement: WindowPlacement) -> Self {
@@ -34,12 +39,32 @@ impl InitializeThreadlessWindow {
 
 impl DomainMutation<SessionDomain> for InitializeThreadlessWindow {
     type Error = SessionMutationError;
+    type Prepared = InitializeThreadlessWindowPrepared;
 
-    fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
         if header(reader)?.is_some() {
             return Err(SessionMutationError::AlreadyInitialized);
         }
-        Ok(())
+        let window = SessionWindowRecord {
+            window_id: self.window_id,
+            remembered_target: None,
+            selected_thread: None,
+            placement: self.placement,
+            revision: RecordRevision::INITIAL,
+        };
+        let header = SessionHeader {
+            revision: initial_session_revision(),
+            exit_intent: SessionExitIntent::Running,
+            fallback: None,
+            windows: vec![crate::session::SessionWindowReference::new(
+                window.window_id,
+                window.revision,
+            )],
+        };
+        Ok(InitializeThreadlessWindowPrepared { header, window })
     }
 
     fn reserve_reconciliation(
@@ -52,28 +77,11 @@ impl DomainMutation<SessionDomain> for InitializeThreadlessWindow {
     }
 
     fn contribute(
-        &self,
-        _reader: &DomainReader<'_, SessionDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SessionDomain>,
     ) -> Result<(), Self::Error> {
-        let window = SessionWindowRecord {
-            window_id: self.window_id,
-            remembered_target: None,
-            selected_thread: None,
-            placement: self.placement.clone(),
-            revision: RecordRevision::INITIAL,
-        };
-        let header = SessionHeader {
-            revision: initial_session_revision(),
-            exit_intent: SessionExitIntent::Running,
-            fallback: None,
-            windows: vec![crate::session::SessionWindowReference::new(
-                self.window_id,
-                window.revision,
-            )],
-        };
-        put_window(mutations, &window)?;
-        put_header(mutations, &header)
+        put_window(mutations, &prepared.window)?;
+        put_header(mutations, &prepared.header)
     }
 }
 
@@ -84,6 +92,12 @@ pub struct CreateClaimedWindow {
     target: RememberedTarget,
     thread_id: SyndicThreadId,
     placement: WindowPlacement,
+}
+
+pub(crate) struct CreateClaimedWindowPrepared {
+    header: SessionHeader,
+    window: SessionWindowRecord,
+    claim: ThreadClaimRecord,
 }
 
 impl CreateClaimedWindow {
@@ -107,9 +121,36 @@ impl CreateClaimedWindow {
 
 impl DomainMutation<SessionDomain> for CreateClaimedWindow {
     type Error = SessionMutationError;
+    type Prepared = CreateClaimedWindowPrepared;
 
-    fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
-        validate_create(self, reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let mut header = validate_create(&self, reader)?;
+        let next_session = header.revision.checked_next()?;
+        let claim = ThreadClaimRecord::new(
+            self.window_id,
+            self.thread_id,
+            next_session,
+            ThreadClaimState::Active,
+            initial_claim_revision(),
+        );
+        let window = SessionWindowRecord {
+            window_id: self.window_id,
+            remembered_target: Some(self.target),
+            selected_thread: Some(claim.selection()),
+            placement: self.placement,
+            revision: RecordRevision::INITIAL,
+        };
+        insert_reference(&mut header, self.window_id, window.revision)?;
+        header.revision = next_session;
+        header.fallback = Some(self.target);
+        Ok(CreateClaimedWindowPrepared {
+            header,
+            window,
+            claim,
+        })
     }
 
     fn reserve_reconciliation(
@@ -124,32 +165,12 @@ impl DomainMutation<SessionDomain> for CreateClaimedWindow {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SessionDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SessionDomain>,
     ) -> Result<(), Self::Error> {
-        let mut header = validate_create(self, reader)?;
-        let next_session = header.revision.checked_next()?;
-        let claim = ThreadClaimRecord::new(
-            self.window_id,
-            self.thread_id,
-            next_session,
-            ThreadClaimState::Active,
-            initial_claim_revision(),
-        );
-        let window = SessionWindowRecord {
-            window_id: self.window_id,
-            remembered_target: Some(self.target),
-            selected_thread: Some(claim.selection()),
-            placement: self.placement.clone(),
-            revision: RecordRevision::INITIAL,
-        };
-        insert_reference(&mut header, self.window_id, window.revision)?;
-        header.revision = next_session;
-        header.fallback = Some(self.target);
-        put_window(mutations, &window)?;
-        put_claim(mutations, claim)?;
-        put_header(mutations, &header)
+        put_window(mutations, &prepared.window)?;
+        put_claim(mutations, prepared.claim)?;
+        put_header(mutations, &prepared.header)
     }
 }
 
@@ -218,9 +239,13 @@ impl ReplaceWindowClaim {
 
 impl DomainMutation<SessionDomain> for ReplaceWindowClaim {
     type Error = SessionMutationError;
+    type Prepared = ReplacePlan;
 
-    fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
-        prepare_replace(self, reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        prepare_replace(&self, reader)
     }
 
     fn reserve_reconciliation(
@@ -235,30 +260,15 @@ impl DomainMutation<SessionDomain> for ReplaceWindowClaim {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SessionDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SessionDomain>,
     ) -> Result<(), Self::Error> {
         let ReplacePlan {
-            mut header,
-            mut window,
+            header,
+            window,
             old_claim,
-            next_session,
-            next_claim_revision,
-        } = prepare_replace(self, reader)?;
-        let claim = ThreadClaimRecord::new(
-            self.window_id,
-            self.thread_id,
-            next_session,
-            ThreadClaimState::Active,
-            next_claim_revision,
-        );
-        window.remembered_target = Some(self.target);
-        window.selected_thread = Some(claim.selection());
-        window.revision = window.revision.checked_next()?;
-        header.revision = next_session;
-        header.fallback = Some(self.target);
-        replace_reference(&mut header, self.window_id, window.revision)?;
+            claim,
+        } = prepared;
 
         if let Some(old_claim) = old_claim {
             delete_claim(mutations, old_claim, false)?;
@@ -269,12 +279,11 @@ impl DomainMutation<SessionDomain> for ReplaceWindowClaim {
     }
 }
 
-struct ReplacePlan {
+pub(crate) struct ReplacePlan {
     header: SessionHeader,
     window: SessionWindowRecord,
     old_claim: Option<ThreadClaimRecord>,
-    next_session: SessionRevision,
-    next_claim_revision: beryl_model::ClaimRevision,
+    claim: ThreadClaimRecord,
 }
 
 fn prepare_replace(
@@ -330,11 +339,26 @@ fn prepare_replace(
         Some(claim) => claim.revision.checked_next()?,
         None => initial_claim_revision(),
     };
+    let next_session = header.revision.checked_next()?;
+    let claim = ThreadClaimRecord::new(
+        command.window_id,
+        command.thread_id,
+        next_session,
+        ThreadClaimState::Active,
+        next_claim_revision,
+    );
+    let mut window = window;
+    window.remembered_target = Some(command.target);
+    window.selected_thread = Some(claim.selection());
+    window.revision = window.revision.checked_next()?;
+    let mut header = header;
+    header.revision = next_session;
+    header.fallback = Some(command.target);
+    replace_reference(&mut header, command.window_id, window.revision)?;
     Ok(ReplacePlan {
-        next_session: header.revision.checked_next()?,
         header,
         window,
         old_claim,
-        next_claim_revision,
+        claim,
     })
 }

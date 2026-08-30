@@ -18,18 +18,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 202: Convert Settings Mutation Preparation (finished)
+# Phase 203: Convert Session Mutation Preparation (finished)
 
-Settings application and the raw-schema fixture now prepare owned state once and contribute
-reader-free while preserving nonempty and duplicate rejection, exact absent-or-record expectations,
-checked revisions, reservations, natural records, and direct typed failure provenance. Edition-2024
-format, scoped diff, and structural checks passed, and independent semantic review closed without
-findings. The intentional package compile gap remains through Phase 204.
-
-# Phase 203: Convert Session Mutation Preparation (pending)
-
-Convert session creation, restoration, window, and schema-test mutations to package-owned prepared
-state while keeping `ThreadClaimCatalogSource` as a distinct validation-only participant.
+All nine session production and raw-schema mutations now prepare package-owned state once and
+contribute reader-free while preserving exact header, window, claim, restore, revision, reservation,
+reconciliation, and typed failure behavior. `ThreadClaimCatalogSource` remains validation-only.
+Edition-2024 format, scoped diff, visibility, and structural checks passed, and independent semantic
+review closed without findings. The intentional package compile gap remains through Phase 204.
 
 # Phase 204: Convert Asset Mutation Preparation (pending)
 

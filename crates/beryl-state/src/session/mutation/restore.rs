@@ -36,9 +36,13 @@ impl BeginSessionRestore {
 
 impl DomainMutation<SessionDomain> for BeginSessionRestore {
     type Error = SessionMutationError;
+    type Prepared = RestorePlan;
 
-    fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
-        prepare_restore(self, reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        prepare_restore(&self, reader)
     }
 
     fn reserve_reconciliation(
@@ -53,11 +57,9 @@ impl DomainMutation<SessionDomain> for BeginSessionRestore {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SessionDomain>,
+        plan: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SessionDomain>,
     ) -> Result<(), Self::Error> {
-        let plan = prepare_restore(self, reader)?;
         for stale in plan.stale_claims {
             delete_claim(mutations, stale, true)?;
         }
@@ -71,7 +73,7 @@ impl DomainMutation<SessionDomain> for BeginSessionRestore {
     }
 }
 
-struct RestorePlan {
+pub(crate) struct RestorePlan {
     header: SessionHeader,
     changed_windows: Vec<SessionWindowRecord>,
     changed_claims: Vec<ThreadClaimRecord>,
@@ -163,6 +165,12 @@ pub struct ActivateRestoringClaim {
     expected_claim: WindowClaimSelection,
 }
 
+pub(crate) struct ActivateRestoringClaimPrepared {
+    header: SessionHeader,
+    window: SessionWindowRecord,
+    claim: ThreadClaimRecord,
+}
+
 impl ActivateRestoringClaim {
     #[must_use]
     pub const fn new(
@@ -182,9 +190,31 @@ impl ActivateRestoringClaim {
 
 impl DomainMutation<SessionDomain> for ActivateRestoringClaim {
     type Error = SessionMutationError;
+    type Prepared = ActivateRestoringClaimPrepared;
 
-    fn validate(&self, reader: &DomainReader<'_, SessionDomain>) -> Result<(), Self::Error> {
-        prepare_activation(self, reader).map(|_| ())
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let (mut header, mut window, old_claim) = prepare_activation(&self, reader)?;
+        let next_session = header.revision.checked_next()?;
+        let claim = ThreadClaimRecord::new(
+            old_claim.window_id,
+            old_claim.thread_id,
+            next_session,
+            ThreadClaimState::Active,
+            old_claim.revision.checked_next()?,
+        );
+        window.selected_thread = Some(claim.selection());
+        window.revision = window.revision.checked_next()?;
+        header.revision = next_session;
+        header.fallback = window.remembered_target;
+        replace_reference(&mut header, self.window_id, window.revision)?;
+        Ok(ActivateRestoringClaimPrepared {
+            header,
+            window,
+            claim,
+        })
     }
 
     fn reserve_reconciliation(
@@ -199,27 +229,12 @@ impl DomainMutation<SessionDomain> for ActivateRestoringClaim {
     }
 
     fn contribute(
-        &self,
-        reader: &DomainReader<'_, SessionDomain>,
+        prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SessionDomain>,
     ) -> Result<(), Self::Error> {
-        let (mut header, mut window, old_claim) = prepare_activation(self, reader)?;
-        let next_session = header.revision.checked_next()?;
-        let claim = ThreadClaimRecord::new(
-            old_claim.window_id,
-            old_claim.thread_id,
-            next_session,
-            ThreadClaimState::Active,
-            old_claim.revision.checked_next()?,
-        );
-        window.selected_thread = Some(claim.selection());
-        window.revision = window.revision.checked_next()?;
-        header.revision = next_session;
-        header.fallback = window.remembered_target;
-        replace_reference(&mut header, self.window_id, window.revision)?;
-        put_claim(mutations, claim)?;
-        put_window(mutations, &window)?;
-        put_header(mutations, &header)
+        put_claim(mutations, prepared.claim)?;
+        put_window(mutations, &prepared.window)?;
+        put_header(mutations, &prepared.header)
     }
 }
 
