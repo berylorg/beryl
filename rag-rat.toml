@@ -1,0 +1,54 @@
+# AIPM rag-rat-project-docs is qualified against rag-rat 0.23.0.
+[index]
+root = "."
+database = ".rag-rat/index.sqlite"
+
+[llm.embedding]
+model = "BAAI/bge-small-en-v1.5"
+
+[llm.embedding.runtime]
+max_embedding_chars = 2000
+
+[[target]]
+name = "project-markdown"
+language = "markdown"
+directories = ["."]
+kind = "docs"
+include = [
+  "doc/design.md",
+  "doc/failures/**/*.md",
+  "doc/features/**/*.md",
+  "doc/gui/**/*.md",
+  "doc/memory/**/*.md",
+  "doc/systems/**/*.md",
+  "crates/beryl/doc/design.md",
+  "crates/beryl-app/doc/design.md",
+  "crates/beryl-app/doc/design-shell-lifecycle.md",
+  "crates/beryl-app/doc/design-catalog-and-composer.md",
+  "crates/beryl-app/doc/design-live-control.md",
+  "crates/beryl-app/doc/design-live-projection-and-scheduling.md",
+  "crates/beryl-app/doc/design-live-capture.md",
+  "crates/beryl-app/doc/design-feature-adapters.md",
+  "crates/beryl-backend/doc/design.md",
+  "crates/beryl-backend/doc/design-transport-and-admission.md",
+  "crates/beryl-backend/doc/design-thread-operations.md",
+  "crates/beryl-backend/doc/design-live-control.md",
+  "crates/beryl-backend/doc/design-provider-stream.md",
+  "crates/beryl-home-store/doc/design.md",
+  "crates/beryl-home-store/doc/design-domain-api.md",
+  "crates/beryl-home-store/doc/design-open-and-recovery.md",
+  "crates/beryl-home-store/doc/design-atomic-commands.md",
+  "crates/beryl-home-store/doc/design-physical-repositories.md",
+  "crates/beryl-model/doc/design.md",
+  "crates/beryl-state/doc/design.md",
+  "crates/beryl-state/doc/design-runtime-session.md",
+  "crates/beryl-state/doc/design-theme-settings.md",
+  "crates/beryl-state/doc/design-jobs-catalog.md",
+  "crates/beryl-state/doc/design-assets.md",
+  "crates/beryl-stream/doc/design.md",
+  "crates/syndic-storage/doc/design.md",
+  "crates/syndic-storage/doc/design-draft-storage.md",
+  "crates/syndic-storage/doc/design-history-storage.md",
+  "crates/syndic-storage/doc/design-schema-v7.md",
+  "crates/syndic-storage/doc/design-mutation-protocols.md",
+]

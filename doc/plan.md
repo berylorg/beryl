@@ -18,17 +18,31 @@ in the active rework tracker until their own bounded slices are ready. Functiona
 normally; sustained stress or performance work requires a concrete unresolved question and prior
 Operator AC-power coordination.
 
-# Phase 228: Mount Exact Composer Submission Admission (finished)
+# Phase 229: Initialize Repo-Local Project-Docs Retrieval (finished)
 
-Mounted one selection-qualified bounded submission controller over the existing exact-root host
-machinery. Genuine dirty submission, denial, noncommit, cancellation, reconciliation, collision,
-unmount drain, late-result fencing, and same-receipt authoritative successor continuation pass 28
-focused host-plus-mounted tests, both constrained library checks, formatting, diff checks, and
-independent semantic review without a whole-value or compatibility path.
+Pinned rag-rat 0.23.0 to the ignored repository-local `.rag-rat/index.sqlite`, installed the
+configured local embedding model, registered the project-scoped MCP server, and indexed exactly 393
+approved Markdown files. Repeated foreground reconciliation returned `Current` with zero failed or
+blocked chunks; doctor, hybrid retrieval, exact-scope enumeration, diff checks, and independent
+semantic review passed. The 0.23.0 bootstrap and `SkipTooSmall` reporting caveat is preserved in
+`doc/failures/rag-rat-0.23.0-project-docs-bootstrap.md`.
 
-# Phase 229: Mount Native-Lineage Compact Restoration (pending)
+# Phase 230: Reconcile And Split Syndic Storage Authority (pending)
 
-New-thread handoff: Phase 228 is sealed and pushed at commit `890b139`; no Phase 229 source or
+Prune implementation narration and misplaced cross-package behavior from the oversized
+`syndic-storage` package design, reconcile unique durable contracts with their owning system or
+feature authorities, and publish bounded normative package supplements without losing persisted
+compatibility, public-boundary, integrity, recovery, privacy, or engineering-rigor guarantees.
+
+# Phase 231: Split Remaining Oversized Package Authorities (pending)
+
+Split the approved `beryl-app`, `beryl-backend`, `beryl-home-store`, and `beryl-state` package
+designs into bounded normative supplements, tighten authority placement, update necessary direct
+references, and verify the complete project-doc index remains current.
+
+# Phase 232: Mount Native-Lineage Compact Restoration (pending)
+
+Phase 228 is sealed and pushed at commit `890b139`; no native-lineage compact-restoration source or
 test work has begun. Resume by rereading this plan and the active rework tracker, then mark this
 phase `wip` only when implementation starts.
 
