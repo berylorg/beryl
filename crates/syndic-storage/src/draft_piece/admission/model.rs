@@ -492,6 +492,7 @@ pub enum DraftMarkerAdmissionLifecycleV1 {
     Ingesting,
     Assigning,
     Ready,
+    Staging,
     Building,
     TerminalCleanup,
     Settled,

@@ -2930,6 +2930,15 @@ fn begin_marker_effect(
     let Some(effect) = fragment.replacement().marker_effect() else {
         return Ok((roots, None));
     };
+    if build.writer_admission().is_none()
+        && !unadmitted_marker_builder_is_authorized_for_test(DraftPieceSettlementKeyV1::new(
+            build.draft_id(),
+            build.session_id(),
+            build.operation_id(),
+        ))
+    {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
     let removal = match effect {
         DraftPieceMarkerEffectV1::Remove { removal, .. }
         | DraftPieceMarkerEffectV1::Move { removal, .. }

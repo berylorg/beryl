@@ -115,7 +115,7 @@ fn exact_terminal_closure(
     })
 }
 
-pub(super) fn terminal_receipt_is_exact(
+pub(crate) fn terminal_receipt_is_exact(
     head: &DraftMarkerAdmissionHeadV1,
     key: DraftMarkerAdmissionReceiptKeyV1,
     receipt: &DraftMarkerAdmissionReplayReceiptV1,
@@ -135,7 +135,7 @@ pub(super) fn terminal_receipt_is_exact(
         && receipt.validate().is_ok()
 }
 
-pub(super) fn terminal_source_closure(
+pub(crate) fn terminal_source_closure(
     owner: DraftMarkerAdmissionOwnerV1,
     command: DraftMarkerAdmissionCommandIdV1,
 ) -> Box<[u8]> {
@@ -148,7 +148,7 @@ pub(super) fn terminal_source_closure(
     bytes.into_boxed_slice()
 }
 
-pub(super) fn terminal_target_closure(head: &DraftMarkerAdmissionHeadV1) -> Box<[u8]> {
+pub(crate) fn terminal_target_closure(head: &DraftMarkerAdmissionHeadV1) -> Box<[u8]> {
     let mut bytes = Vec::with_capacity(TERMINAL_TARGET_DOMAIN.len() + 64);
     bytes.extend_from_slice(TERMINAL_TARGET_DOMAIN);
     bytes.extend_from_slice(head.request_commitment().as_bytes());

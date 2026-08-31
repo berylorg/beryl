@@ -73,15 +73,16 @@ fn more_than_256_marker_effects_use_one_fixed_continuation() {
         &store,
         storage.begin_draft_piece_edit(storage.revision(&store).unwrap(), prepared.clone()),
     ));
+    let builder = storage.unadmitted_marker_builder_for_test();
     let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
     for (index, replacement) in replacements.into_iter().enumerate() {
-        let fragment = storage
-            .prepare_draft_piece_fragment(&prepared, index as u64 + 1, preceding, replacement)
+        let fragment = builder
+            .prepare_fragment(&prepared, index as u64 + 1, preceding, replacement)
             .unwrap();
         preceding = fragment.chain_digest();
         committed(execute(
             &store,
-            storage.stage_draft_piece_fragment(
+            builder.stage_fragment(
                 storage.revision(&store).unwrap(),
                 prepared.clone(),
                 fragment,

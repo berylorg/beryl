@@ -1,6 +1,18 @@
 use super::*;
 
 impl SyndicStorage {
+    pub fn prepare_draft_mutation_staging_marker_begin(
+        &self,
+        begin: DraftMutationBeginV1,
+        session: &DraftEditorCandidateSessionV1,
+        readiness: DraftMarkerLabelReadinessProofV1,
+    ) -> Result<PreparedDraftMutationStagingCommandV1, DraftMutationStagingErrorV1> {
+        let admission = readiness
+            .into_writer_admission(begin)
+            .ok_or(DraftMutationStagingErrorV1::Invalid)?;
+        self.prepare_draft_mutation_staging_begin(begin.with_writer_admission(admission), session)
+    }
+
     pub fn prepare_draft_mutation_staging_begin(
         &self,
         begin: DraftMutationBeginV1,
@@ -9,6 +21,7 @@ impl SyndicStorage {
         let identity = begin.identity();
         if identity.draft_id() != session.draft_id()
             || identity.session_id() != session.session_id()
+            || identity.operation_id().as_piece_operation() == session.open_operation_id()
             || begin.session_generation() != session.session_generation()
             || begin.predecessor_candidate_generation() != session.newest_candidate_generation()
             || begin.predecessor_root() != session.newest_root()
@@ -109,6 +122,7 @@ impl SyndicStorage {
         item_ceiling: u16,
         byte_ceiling: u32,
         items: Box<[DraftMutationStagingPageItemV1]>,
+        permit_unadmitted_markers: bool,
     ) -> Result<
         (
             DraftMutationStagingHeadV1,
@@ -147,6 +161,12 @@ impl SyndicStorage {
         }
         for item in items.iter() {
             if let DraftMutationStagingPageItemV1::Proposal(replacement) = item {
+                if replacement.marker_effect().is_some()
+                    && head.begin().writer_admission().is_none()
+                    && !permit_unadmitted_markers
+                {
+                    return Err(DraftMutationStagingErrorV1::Invalid);
+                }
                 validate_fragment(replacement).map_err(|_| DraftMutationStagingErrorV1::Invalid)?;
             }
         }

@@ -1,6 +1,8 @@
 use std::{error::Error, fmt};
 
-use beryl_home_store::{CommandOutcome, HomeStore, ReadError, ReconciliationFailure};
+use beryl_home_store::{
+    CommandOutcome, CommittedLocalFinalizationError, HomeStore, ReadError, ReconciliationFailure,
+};
 use beryl_model::{SyndicDraftId, SyndicThreadId};
 
 use crate::codec::{DraftByThreadFamily, DraftsFamily, ThreadsFamily};
@@ -13,6 +15,8 @@ pub enum DraftPieceCommandReconciliationErrorV1 {
     Read(SyndicReadError),
     Reconciliation(ReconciliationFailure),
     InvalidFragmentPage,
+    LocalFinalization(CommittedLocalFinalizationError),
+    LocalCustody,
 }
 
 impl fmt::Display for DraftPieceCommandReconciliationErrorV1 {
@@ -21,11 +25,24 @@ impl fmt::Display for DraftPieceCommandReconciliationErrorV1 {
             Self::Read(error) => error.fmt(formatter),
             Self::Reconciliation(error) => error.fmt(formatter),
             Self::InvalidFragmentPage => formatter.write_str("invalid draft-piece fragment page"),
+            Self::LocalFinalization(error) => error.fmt(formatter),
+            Self::LocalCustody => {
+                formatter.write_str("draft-piece local custody finalization failed")
+            }
         }
     }
 }
 
-impl Error for DraftPieceCommandReconciliationErrorV1 {}
+impl Error for DraftPieceCommandReconciliationErrorV1 {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read(error) => Some(error),
+            Self::Reconciliation(error) => Some(error),
+            Self::LocalFinalization(error) => Some(error),
+            Self::InvalidFragmentPage | Self::LocalCustody => None,
+        }
+    }
+}
 
 impl From<SyndicReadError> for DraftPieceCommandReconciliationErrorV1 {
     fn from(error: SyndicReadError) -> Self {
@@ -348,11 +365,50 @@ impl SyndicStorage {
         outcome: CommandOutcome,
         mut fragment_page: impl FnMut(u64) -> Vec<DraftPieceBuildFragmentV1>,
     ) -> Result<DraftPieceReconciledCommandV1, DraftPieceCommandReconciliationErrorV1> {
-        if let CommandOutcome::Indeterminate { reconciliation, .. } = outcome {
-            let handle = reconciliation.install_and_handle();
-            store
-                .reconcile(&handle)
-                .map_err(DraftPieceCommandReconciliationErrorV1::Reconciliation)?;
+        match outcome {
+            CommandOutcome::Committed {
+                receipt,
+                local_finalization: Some(local_finalization),
+                ..
+            } => {
+                let admission = prepared.writer_admission();
+                if receipt.generation() != self.home_generation {
+                    return Err(DraftPieceCommandReconciliationErrorV1::LocalFinalization(
+                        CommittedLocalFinalizationError::StaleOrForeign,
+                    ));
+                }
+                store
+                    .with_committed_local_finalization(
+                        local_finalization,
+                        &receipt,
+                        &self.handle,
+                        |attachment| {
+                            let Some(admission) = admission else {
+                                return Ok(());
+                            };
+                            if admission.binding().home_generation().get()
+                                != self.home_generation.get()
+                            {
+                                return Err(());
+                            }
+                            attachment
+                                .finalize_writer_committed_unknown(admission.binding().owner())
+                        },
+                    )
+                    .map_err(DraftPieceCommandReconciliationErrorV1::LocalFinalization)?
+                    .map_err(|()| DraftPieceCommandReconciliationErrorV1::LocalCustody)?;
+            }
+            CommandOutcome::Committed {
+                local_finalization: None,
+                ..
+            }
+            | CommandOutcome::NotCommitted { .. } => {}
+            CommandOutcome::Indeterminate { reconciliation, .. } => {
+                let handle = reconciliation.install_and_handle();
+                store
+                    .reconcile(&handle)
+                    .map_err(DraftPieceCommandReconciliationErrorV1::Reconciliation)?;
+            }
         }
         let mut ordinal = 1;
         loop {
@@ -368,6 +424,22 @@ impl SyndicStorage {
                     ordinal = next_ordinal;
                 }
                 DraftPieceOperationVerificationV1::Status(status) => {
+                    if let DraftPieceOperationStatusV1::Settled(settlement) = &status {
+                        self.release_draft_marker_writer_for_settlement(store, settlement)?;
+                    } else if let DraftPieceOperationStatusV1::Open(build)
+                    | DraftPieceOperationStatusV1::Complete(build) = &status
+                        && let Some(admission) = build.writer_admission()
+                    {
+                        store
+                            .with_domain_attachment(
+                                &self.handle.attachment_capability(),
+                                |attachment| {
+                                    attachment.resolve_writer_progress(admission.binding().owner())
+                                },
+                            )
+                            .map_err(|_| DraftPieceCommandReconciliationErrorV1::LocalCustody)?
+                            .map_err(|()| DraftPieceCommandReconciliationErrorV1::LocalCustody)?;
+                    }
                     return Ok(reconciled_status(status));
                 }
             }

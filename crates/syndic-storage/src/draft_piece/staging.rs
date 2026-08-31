@@ -1,7 +1,9 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
+    CommandError, CommandOutcome, CommittedLocalFinalizationError, DomainMutation, DomainReader,
+    MutationBuilder, MutationContribution, ReconciliationFailure, ReconciliationReservation,
+    ReconciliationResolution, StorageDomain,
 };
 use beryl_model::DomainRevision;
 use sha2::{Digest, Sha256};
@@ -15,23 +17,40 @@ use super::*;
 #[derive(Debug)]
 pub enum DraftMutationStagingErrorV1 {
     Read(SyndicReadError),
+    Reconciliation(ReconciliationFailure),
     Invalid,
     Overflow,
     Invariant,
+    LocalFinalization(CommittedLocalFinalizationError),
+    LocalCustody,
 }
 
 impl fmt::Display for DraftMutationStagingErrorV1 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Read(error) => write!(formatter, "{error}"),
+            Self::Reconciliation(error) => write!(formatter, "{error}"),
             Self::Invalid => formatter.write_str("invalid draft mutation staging request"),
             Self::Overflow => formatter.write_str("draft mutation staging total overflow"),
             Self::Invariant => formatter.write_str("draft mutation staging invariant failure"),
+            Self::LocalFinalization(error) => error.fmt(formatter),
+            Self::LocalCustody => {
+                formatter.write_str("draft mutation staging local custody finalization failed")
+            }
         }
     }
 }
 
-impl Error for DraftMutationStagingErrorV1 {}
+impl Error for DraftMutationStagingErrorV1 {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read(error) => Some(error),
+            Self::LocalFinalization(error) => Some(error),
+            Self::Reconciliation(error) => Some(error),
+            Self::Invalid | Self::Overflow | Self::Invariant | Self::LocalCustody => None,
+        }
+    }
+}
 
 impl From<SyndicReadError> for DraftMutationStagingErrorV1 {
     fn from(value: SyndicReadError) -> Self {
@@ -63,6 +82,8 @@ pub struct PreparedDraftMutationStagingBatchV1 {
     targets: Box<[PreparedDraftMutationStagingBatchTargetV1]>,
     item_count: usize,
     encoded_page_bytes: usize,
+    #[cfg(feature = "test-faults")]
+    unadmitted_marker_builder: bool,
 }
 
 #[derive(Clone)]
@@ -160,6 +181,10 @@ impl PreparedDraftPieceStagingWindowV1 {
     pub fn fragment_count(&self) -> usize {
         self.fragments.len()
     }
+    #[cfg(feature = "test-faults")]
+    pub fn fragments_for_test(&self) -> &[DraftPieceBuildFragmentV1] {
+        &self.fragments
+    }
     pub const fn inserted_utf8_bytes(&self) -> usize {
         self.inserted_utf8_bytes
     }
@@ -214,6 +239,16 @@ impl PreparedDraftMutationStagingBatchV1 {
     pub const fn encoded_page_bytes(&self) -> usize {
         self.encoded_page_bytes
     }
+    fn permits_unadmitted_marker_builder(&self) -> bool {
+        #[cfg(feature = "test-faults")]
+        {
+            self.unadmitted_marker_builder
+        }
+        #[cfg(not(feature = "test-faults"))]
+        {
+            false
+        }
+    }
     #[cfg(feature = "test-faults")]
     pub(crate) fn targets(
         &self,
@@ -232,21 +267,25 @@ impl PreparedDraftMutationStagingBatchV1 {
 #[derive(Clone)]
 struct StagingMutation {
     prepared: PreparedDraftMutationStagingCommandV1,
+    writer_progress_allowed: bool,
 }
 
 #[derive(Clone)]
 struct StagingBatchMutation {
     prepared: PreparedDraftMutationStagingBatchV1,
+    writer_progress_allowed: bool,
 }
 
 #[derive(Clone)]
 struct TransferMutation {
     prepared: PreparedDraftMutationTransferV1,
+    writer_progress_allowed: bool,
 }
 
 #[derive(Clone)]
 struct StageDurableWindowMutation {
     prepared: PreparedDraftPieceStagingWindowV1,
+    writer_progress_allowed: bool,
 }
 
 mod acquisition;
@@ -283,6 +322,18 @@ pub(crate) fn draft_mutation_staging_receipt_is_locally_exact(
     receipt: &DraftMutationStagingProgressReceiptV1,
 ) -> bool {
     digest::draft_mutation_staging_receipt_is_locally_exact(receipt)
+}
+
+fn admitted_writer_is_current_generation(
+    storage: &SyndicStorage,
+    head: &DraftMutationStagingHeadV1,
+) -> bool {
+    head.begin().writer_admission().is_none_or(|admission| {
+        admission.binding().home_generation().get() == storage.home_generation.get()
+            && !storage
+                .reconstructed_cleanup_admissions
+                .contains(&admission.binding().owner())
+    })
 }
 
 #[cfg(feature = "test-faults")]

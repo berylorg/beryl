@@ -231,7 +231,8 @@
 - [x] Extended the opaque Syndic draft-marker proof attempt to accepted local and inherited sources
   through one coherent dependency-neutral Asset witness without durable admission mutation.
 - [x] Established operation-owned Syndic draft-marker admission with bounded authenticated indexes,
-  cross-restart retained-resource limits, exact replay custody, and inert terminal reclamation.
+  exact ordinary writer consumption, cross-restart replay custody, and complete retained-resource
+  reclamation.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.

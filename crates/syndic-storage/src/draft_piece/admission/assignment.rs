@@ -26,6 +26,7 @@ use crate::{
 use super::index::{
     DraftMarkerAdmissionIndexPreparationErrorV1, PreparedDraftMarkerAdmissionAssignmentV1,
     PreparedDraftMarkerAdmissionIndexSuccessorV1, prepare_draft_marker_admission_assignment_v1,
+    prepare_empty_draft_marker_admission_index_successor_v1,
 };
 use super::readiness_source::request_authority_exact_read_bytes;
 
@@ -50,6 +51,9 @@ use super::{
     canonical_empty_draft_marker_admission_root_v1,
     checked_draft_marker_admission_command_charge_v1, encoded_capacity_record_charge,
     encoded_head_record_charge, encoded_receipt_record_charge,
+};
+use crate::{
+    DraftMarkerLabelReadinessBindingV1, DraftMarkerWriterAdmissionV1, DraftMutationBeginV1,
 };
 #[cfg(feature = "test-faults")]
 pub use test_fixture::DraftMarkerAssignedAssociationV1;
@@ -182,6 +186,42 @@ impl DraftMarkerLabelReadinessProofV1 {
 
     pub const fn allocation_range(&self) -> Option<DraftMarkerLabelAllocationRangeV1> {
         self.allocation_range
+    }
+
+    pub(crate) fn into_writer_admission(
+        self,
+        begin: DraftMutationBeginV1,
+    ) -> Option<DraftMarkerWriterAdmissionV1> {
+        let identity = begin.identity();
+        if self.owner.draft_id() != identity.draft_id()
+            || self.owner.session_id() != identity.session_id()
+            || self.owner.operation_id().as_bytes() != identity.operation_id().as_bytes()
+            || self.session.thread_id() != self.label_authority.thread_id()
+            || self.session.draft_id() != identity.draft_id()
+            || self.session.session_id() != identity.session_id()
+            || self.session.session_generation() != begin.session_generation()
+            || self.session.newest_candidate_generation()
+                != begin.predecessor_candidate_generation()
+            || self.session.newest_root() != begin.predecessor_root()
+            || self.session.newest_history() != begin.predecessor_history()
+        {
+            return None;
+        }
+        let binding = DraftMarkerLabelReadinessBindingV1::new(
+            self.home_generation,
+            self.owner,
+            self.label_authority,
+            self.protection,
+            NonZeroU64::new(self.session.session_generation())?,
+            self.session.newest_candidate_generation(),
+            self.session.newest_root(),
+            self.session.newest_history(),
+            self.disposition,
+            self.occurrence_commitment,
+            self.assigned_target_root,
+            self.allocation_range,
+        )?;
+        DraftMarkerWriterAdmissionV1::new(binding)
     }
 }
 

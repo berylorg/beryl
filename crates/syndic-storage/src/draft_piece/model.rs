@@ -14,6 +14,7 @@ use super::history::{
     DraftEditHistoryFrontierReferenceV1, DraftEditHistoryFrontierV1, DraftEditHistoryTransitionV1,
     DraftRootHistoryPairV1,
 };
+use crate::DraftMarkerWriterAdmissionV1;
 use crate::SyndicTimestamp;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -2644,6 +2645,7 @@ pub struct DraftPieceBuildRecordV1 {
     progress_receipt: DraftPieceBuildProgressReceiptReferenceV1,
     durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
     marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
+    writer_admission: Option<DraftMarkerWriterAdmissionV1>,
     successor: Option<DraftPieceRootReferenceV1>,
     build_digest: Option<DraftPieceDigestV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
@@ -2702,6 +2704,7 @@ impl DraftPieceBuildRecordV1 {
             progress_receipt,
             durable_continuation: None,
             marker_effect_continuation: DraftPieceMarkerEffectContinuationV1::canonical_empty(),
+            writer_admission: None,
             successor,
             build_digest,
             lifecycle,
@@ -2801,6 +2804,16 @@ impl DraftPieceBuildRecordV1 {
         self.marker_effect_continuation = marker_effect_continuation;
         self
     }
+    pub const fn writer_admission(&self) -> Option<DraftMarkerWriterAdmissionV1> {
+        self.writer_admission
+    }
+    pub(crate) fn with_writer_admission(
+        mut self,
+        writer_admission: Option<DraftMarkerWriterAdmissionV1>,
+    ) -> Self {
+        self.writer_admission = writer_admission;
+        self
+    }
     pub const fn successor(&self) -> Option<DraftPieceRootReferenceV1> {
         self.successor
     }
@@ -2853,6 +2866,7 @@ pub struct DraftPieceBuildProgressReceiptV1 {
     frontier: DraftPieceBuildFrontierV1,
     durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
     marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
+    writer_admission: Option<DraftMarkerWriterAdmissionV1>,
     successor: Option<DraftPieceRootReferenceV1>,
     build_digest: Option<DraftPieceDigestV1>,
     lifecycle: DraftPieceBuildLifecycleV1,
@@ -2884,6 +2898,7 @@ impl DraftPieceBuildProgressReceiptV1 {
             frontier,
             durable_continuation: None,
             marker_effect_continuation: DraftPieceMarkerEffectContinuationV1::canonical_empty(),
+            writer_admission: None,
             successor,
             build_digest,
             lifecycle,
@@ -2935,6 +2950,16 @@ impl DraftPieceBuildProgressReceiptV1 {
         marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
     ) -> Self {
         self.marker_effect_continuation = marker_effect_continuation;
+        self
+    }
+    pub const fn writer_admission(&self) -> Option<DraftMarkerWriterAdmissionV1> {
+        self.writer_admission
+    }
+    pub(crate) fn with_writer_admission(
+        mut self,
+        writer_admission: Option<DraftMarkerWriterAdmissionV1>,
+    ) -> Self {
+        self.writer_admission = writer_admission;
         self
     }
     pub const fn successor(&self) -> Option<DraftPieceRootReferenceV1> {

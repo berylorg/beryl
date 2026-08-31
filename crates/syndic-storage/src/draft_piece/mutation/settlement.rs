@@ -8,6 +8,12 @@ pub(super) struct PreparedSettlementContribution {
     settlement: DraftPieceSettlementV1,
     terminal: DraftPieceBuildRecordV1,
     receipt: DraftPieceBuildProgressReceiptV1,
+    writer: Option<PreparedWriterClosure>,
+}
+
+enum PreparedWriterClosure {
+    Settled(PreparedDraftMarkerWriterSettlementV1),
+    Terminal(PreparedDraftMarkerWriterTerminalV1),
 }
 
 pub(super) fn prepare(
@@ -65,7 +71,18 @@ pub(super) fn contribute(
     put_session_head(mutations, &prepared.target_session)?;
     mutations
         .put::<DraftPieceSettlementsCodec>(&prepared.settlement.key(), &prepared.settlement)?;
-    put_build_transition(mutations, &prepared.terminal, &prepared.receipt)
+    put_build_transition(mutations, &prepared.terminal, &prepared.receipt)?;
+    if let Some(writer) = prepared.writer {
+        match writer {
+            PreparedWriterClosure::Settled(writer) => {
+                contribute_draft_marker_writer_settlement_v1(writer, mutations)?
+            }
+            PreparedWriterClosure::Terminal(writer) => {
+                contribute_draft_marker_writer_terminal_v1(writer, mutations)?
+            }
+        }
+    }
+    Ok(())
 }
 
 fn read_and_authenticate(
@@ -84,7 +101,8 @@ fn read_and_authenticate(
         .successor()
         .ok_or(SyndicMutationError::IdentityCollision)?;
 
-    if current.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active
+    let writer_admission = build.writer_admission();
+    let mut contribution = if current.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active
         && current.newest_candidate_generation() == build.predecessor_candidate_generation()
         && current.newest_root() == build.predecessor_root()
         && current.newest_history() == build.predecessor_history()
@@ -96,10 +114,29 @@ fn read_and_authenticate(
             current,
             successor,
             fragment_endpoint,
-        )
+        )?
     } else {
-        contribute_conflict(prepared, reader, build, current, fragment_endpoint)
-    }
+        contribute_conflict(prepared, reader, build, current, fragment_endpoint)?
+    };
+    contribution.writer = writer_admission
+        .map(|admission| {
+            if matches!(
+                contribution.settlement.outcome(),
+                DraftPieceSettlementOutcomeV1::Committed { .. }
+            ) {
+                prepare_draft_marker_writer_settlement_v1(reader, admission, true)
+                    .map(PreparedWriterClosure::Settled)
+            } else {
+                prepare_draft_marker_writer_terminal_v1(
+                    reader,
+                    admission,
+                    contribution.settlement.terminal_receipt().digest(),
+                )
+                .map(PreparedWriterClosure::Terminal)
+            }
+        })
+        .transpose()?;
+    Ok(contribution)
 }
 
 fn contribute_committed(
@@ -304,5 +341,6 @@ fn write_settlement(
         settlement,
         terminal,
         receipt,
+        writer: None,
     })
 }

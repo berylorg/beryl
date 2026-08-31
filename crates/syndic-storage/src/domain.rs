@@ -269,28 +269,74 @@ where
 #[derive(Clone)]
 pub struct SyndicStorage {
     pub(crate) handle: DomainHandle<SyndicDomain>,
+    pub(crate) home_generation: beryl_home_store::HomeGeneration,
+    pub(crate) reconstructed_cleanup_admissions: Box<[DraftMarkerAdmissionOwnerV1]>,
 }
 
 impl SyndicStorage {
     pub fn register(store: &mut HomeStore) -> Result<Self, DomainRegistrationError> {
-        store
-            .register_domain::<SyndicDomain>()
-            .map(|handle| Self { handle })
+        let home_generation = store
+            .health()
+            .generation()
+            .expect("registered home has a healthy generation");
+        store.register_domain::<SyndicDomain>().map(|handle| {
+            let reconstructed_cleanup_admissions = store
+                .with_domain_attachment(&handle.attachment_capability(), |attachment| {
+                    attachment.reconstructed_cleanup_owners()
+                })
+                .expect("registered Syndic attachment is available")
+                .expect("registered Syndic attachment is active");
+            Self {
+                handle,
+                home_generation,
+                reconstructed_cleanup_admissions,
+            }
+        })
     }
 
     pub fn register_with_schema_validation(
         store: &mut HomeStore,
     ) -> Result<Self, DomainRegistrationError> {
+        let home_generation = store
+            .health()
+            .generation()
+            .expect("registered home has a healthy generation");
         store
             .register_domain_with_schema_validation::<SyndicDomain>()
-            .map(|handle| Self { handle })
+            .map(|handle| {
+                let reconstructed_cleanup_admissions = store
+                    .with_domain_attachment(&handle.attachment_capability(), |attachment| {
+                        attachment.reconstructed_cleanup_owners()
+                    })
+                    .expect("registered Syndic attachment is available")
+                    .expect("registered Syndic attachment is active");
+                Self {
+                    handle,
+                    home_generation,
+                    reconstructed_cleanup_admissions,
+                }
+            })
     }
 
     /// Reacquires this exact typed domain after successful same-home recovery without a record scan.
     pub fn reacquire(store: &HomeStore) -> Result<Self, DomainHandleError> {
-        store
-            .domain_handle::<SyndicDomain>()
-            .map(|handle| Self { handle })
+        let home_generation = store
+            .health()
+            .generation()
+            .expect("reacquired home has a healthy generation");
+        store.domain_handle::<SyndicDomain>().map(|handle| {
+            let reconstructed_cleanup_admissions = store
+                .with_domain_attachment(&handle.attachment_capability(), |attachment| {
+                    attachment.reconstructed_cleanup_owners()
+                })
+                .expect("reacquired Syndic attachment is available")
+                .expect("reacquired Syndic attachment is active");
+            Self {
+                handle,
+                home_generation,
+                reconstructed_cleanup_admissions,
+            }
+        })
     }
 
     /// Reacquires this exact typed domain from an unpublished same-home recovery candidate.
@@ -300,9 +346,20 @@ impl SyndicStorage {
     pub fn reacquire_candidate(
         candidate: &HomeRecoveryCandidate,
     ) -> Result<Self, DomainHandleError> {
-        candidate
-            .domain_handle::<SyndicDomain>()
-            .map(|handle| Self { handle })
+        let home_generation = candidate.generation();
+        candidate.domain_handle::<SyndicDomain>().map(|handle| {
+            let reconstructed_cleanup_admissions = candidate
+                .with_domain_attachment(&handle.attachment_capability(), |attachment| {
+                    attachment.reconstructed_cleanup_owners()
+                })
+                .expect("reacquired Syndic attachment is available")
+                .expect("reacquired Syndic attachment is active");
+            Self {
+                handle,
+                home_generation,
+                reconstructed_cleanup_admissions,
+            }
+        })
     }
 
     /// Returns the exact current Syndic domain revision.

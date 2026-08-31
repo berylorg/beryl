@@ -20,6 +20,10 @@ pub(crate) struct DraftMarkerAdmissionPreparedAttempt {
 }
 
 impl DraftMarkerAdmissionPreparedAttempt {
+    pub(crate) const fn was_present(&self) -> bool {
+        self.was_present
+    }
+
     pub(crate) const fn allocation_range(&self) -> Option<DraftMarkerLabelAllocationRangeV1> {
         self.allocation_range
     }

@@ -67,6 +67,21 @@ impl DraftMarkerAdmissionAttachment {
         }))
     }
 
+    pub(crate) fn reconstructed_cleanup_owners(
+        &self,
+    ) -> Result<Box<[DraftMarkerAdmissionOwnerV1]>, ()> {
+        let state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        Ok(state
+            .heads
+            .iter()
+            .map(|head| head.owner)
+            .collect::<Vec<_>>()
+            .into_boxed_slice())
+    }
+
     pub(crate) fn is_reconstructed_inert_cleanup(
         &self,
         owner: DraftMarkerAdmissionOwnerV1,
@@ -143,6 +158,102 @@ impl DraftMarkerAdmissionAttachment {
                 OperationDisposition::Open
             };
         }
+        Ok(())
+    }
+
+    pub(crate) fn release_terminal_once(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+    ) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        let index = state
+            .operations
+            .iter()
+            .position(|operation| operation.owner == owner)
+            .ok_or(())?;
+        if state.operations[index].attempt != OperationAttempt::Idle {
+            return Err(());
+        }
+        state.operations.remove(index);
+        Ok(())
+    }
+
+    pub(crate) fn resolve_writer_terminal(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+    ) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        if let Some(index) = state
+            .operations
+            .iter()
+            .position(|operation| operation.owner == owner)
+        {
+            if state.operations[index].attempt != OperationAttempt::Idle {
+                return Err(());
+            }
+            state.operations.remove(index);
+        }
+        if let Some(head) = state.heads.iter_mut().find(|head| head.owner == owner) {
+            head.class = ReconstructedHeadClass::InertCleanup;
+        } else {
+            if state.heads.len() >= DRAFT_MARKER_ADMISSION_MAX_HEADS as usize {
+                return Err(());
+            }
+            let mut heads = Vec::from(std::mem::take(&mut state.heads));
+            heads.push(ReconstructedHead {
+                owner,
+                class: ReconstructedHeadClass::InertCleanup,
+            });
+            state.heads = heads.into_boxed_slice();
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finalize_writer_committed_unknown(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+    ) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        let operation = state
+            .operations
+            .iter_mut()
+            .find(|operation| operation.owner == owner)
+            .ok_or(())?;
+        if operation.attempt != OperationAttempt::Idle {
+            return Err(());
+        }
+        operation.durable_or_indeterminate = true;
+        operation.disposition = OperationDisposition::UncertainClosed;
+        Ok(())
+    }
+
+    pub(crate) fn resolve_writer_progress(
+        &self,
+        owner: DraftMarkerAdmissionOwnerV1,
+    ) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        let operation = state
+            .operations
+            .iter_mut()
+            .find(|operation| operation.owner == owner)
+            .ok_or(())?;
+        if operation.attempt != OperationAttempt::Idle {
+            return Err(());
+        }
+        operation.durable_or_indeterminate = true;
+        operation.disposition = OperationDisposition::Open;
         Ok(())
     }
 

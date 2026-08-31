@@ -248,7 +248,7 @@ fn dec_child(d: &mut Decoder<'_>) -> Result<DraftMarkerAdmissionChildV1, CodecEr
     ))
 }
 
-fn enc_root(e: &mut Encoder, root: DraftMarkerAdmissionRootV1) {
+pub(crate) fn enc_root(e: &mut Encoder, root: DraftMarkerAdmissionRootV1) {
     enc_tree(e, root.tree());
     match root.node() {
         None => e.u8(0),
@@ -262,7 +262,7 @@ fn enc_root(e: &mut Encoder, root: DraftMarkerAdmissionRootV1) {
     e.u64(root.count());
 }
 
-fn dec_root(d: &mut Decoder<'_>) -> Result<DraftMarkerAdmissionRootV1, CodecError> {
+pub(crate) fn dec_root(d: &mut Decoder<'_>) -> Result<DraftMarkerAdmissionRootV1, CodecError> {
     let tree = dec_tree(d)?;
     let node = match d.u8()? {
         0 => None,
@@ -344,9 +344,10 @@ fn enc_head_without_digest(e: &mut Encoder, parts: &DraftMarkerAdmissionHeadPart
         DraftMarkerAdmissionLifecycleV1::Ingesting => 0,
         DraftMarkerAdmissionLifecycleV1::Assigning => 1,
         DraftMarkerAdmissionLifecycleV1::Ready => 2,
-        DraftMarkerAdmissionLifecycleV1::Building => 3,
-        DraftMarkerAdmissionLifecycleV1::TerminalCleanup => 4,
-        DraftMarkerAdmissionLifecycleV1::Settled => 5,
+        DraftMarkerAdmissionLifecycleV1::Staging => 3,
+        DraftMarkerAdmissionLifecycleV1::Building => 4,
+        DraftMarkerAdmissionLifecycleV1::TerminalCleanup => 5,
+        DraftMarkerAdmissionLifecycleV1::Settled => 6,
     });
     e.fixed32(parts.request_commitment.as_bytes());
     e.fixed32(parts.custody_commitment.as_bytes());
@@ -455,9 +456,10 @@ fn decode_head(bytes: &[u8]) -> Result<DraftMarkerAdmissionHeadV1, CodecError> {
         0 => DraftMarkerAdmissionLifecycleV1::Ingesting,
         1 => DraftMarkerAdmissionLifecycleV1::Assigning,
         2 => DraftMarkerAdmissionLifecycleV1::Ready,
-        3 => DraftMarkerAdmissionLifecycleV1::Building,
-        4 => DraftMarkerAdmissionLifecycleV1::TerminalCleanup,
-        5 => DraftMarkerAdmissionLifecycleV1::Settled,
+        3 => DraftMarkerAdmissionLifecycleV1::Staging,
+        4 => DraftMarkerAdmissionLifecycleV1::Building,
+        5 => DraftMarkerAdmissionLifecycleV1::TerminalCleanup,
+        6 => DraftMarkerAdmissionLifecycleV1::Settled,
         tag => {
             return Err(CodecError::InvalidTag {
                 kind: "draft-marker admission lifecycle",

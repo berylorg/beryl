@@ -15,7 +15,7 @@ use super::{
     DraftMarkerAdmissionLifecycleV1, DraftMarkerAdmissionOwnerV1,
 };
 
-mod closure;
+pub(crate) mod closure;
 mod mutation;
 mod settlement;
 

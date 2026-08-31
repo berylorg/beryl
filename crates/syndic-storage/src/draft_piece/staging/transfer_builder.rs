@@ -6,8 +6,16 @@ impl SyndicStorage {
         expected_domain_revision: DomainRevision,
         prepared: PreparedDraftMutationTransferV1,
     ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, TransferMutation { prepared })
+        self.handle.contribution(
+            expected_domain_revision,
+            TransferMutation {
+                writer_progress_allowed: admitted_writer_is_current_generation(
+                    self,
+                    &prepared.source_head,
+                ),
+                prepared,
+            },
+        )
     }
 
     pub fn prepare_next_durable_draft_piece_window(
@@ -24,6 +32,9 @@ impl SyndicStorage {
             .ok_or(DraftMutationStagingErrorV1::Invariant)?;
         if head.identity() != identity || !draft_mutation_staging_head_is_locally_exact(&head) {
             return Err(DraftMutationStagingErrorV1::Invariant);
+        }
+        if !admitted_writer_is_current_generation(self, &head) {
+            return Err(DraftMutationStagingErrorV1::Invalid);
         }
         let DraftMutationStagingLifecycleV1::Building(staging_build_endpoint) = head.lifecycle()
         else {
@@ -229,7 +240,13 @@ impl SyndicStorage {
     ) -> MutationContribution {
         self.handle.contribution(
             expected_domain_revision,
-            StageDurableWindowMutation { prepared },
+            StageDurableWindowMutation {
+                writer_progress_allowed: admitted_writer_is_current_generation(
+                    self,
+                    &prepared.staging_head,
+                ),
+                prepared,
+            },
         )
     }
 
@@ -238,8 +255,21 @@ impl SyndicStorage {
         expected_domain_revision: DomainRevision,
         prepared: PreparedDraftMutationStagingCommandV1,
     ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, StagingMutation { prepared })
+        let writer_progress_allowed =
+            matches!(
+                prepared.target_head.lifecycle(),
+                DraftMutationStagingLifecycleV1::Cancelled
+                    | DraftMutationStagingLifecycleV1::Rejected
+                    | DraftMutationStagingLifecycleV1::Conflict
+                    | DraftMutationStagingLifecycleV1::Error
+            ) || admitted_writer_is_current_generation(self, &prepared.target_head);
+        self.handle.contribution(
+            expected_domain_revision,
+            StagingMutation {
+                prepared,
+                writer_progress_allowed,
+            },
+        )
     }
 
     pub fn draft_mutation_staging_head(

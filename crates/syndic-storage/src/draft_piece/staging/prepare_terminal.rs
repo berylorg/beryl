@@ -153,6 +153,7 @@ impl SyndicStorage {
             return Err(DraftMutationStagingErrorV1::Invalid);
         };
         if !draft_mutation_staging_head_is_locally_exact(head)
+            || !admitted_writer_is_current_generation(self, head)
             || !staging_session_matches_head(session, head)
             || finish.proposal().item_total() == 0
             || finish.intended_selection_head() != finish.intended_caret()
@@ -214,8 +215,14 @@ impl SyndicStorage {
             phase,
         );
         let (prepared_edit, build, build_receipt, target_session) =
-            super::mutation::initial_build_for_staging(header, session, expected, continuation)
-                .map_err(|_| DraftMutationStagingErrorV1::Invalid)?;
+            super::mutation::initial_build_for_staging(
+                header,
+                session,
+                expected,
+                continuation,
+                head.begin().writer_admission(),
+            )
+            .map_err(|_| DraftMutationStagingErrorV1::Invalid)?;
         let build_endpoint = build.progress_receipt();
         let transition = head
             .receipt()

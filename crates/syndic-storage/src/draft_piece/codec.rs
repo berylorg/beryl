@@ -9,6 +9,7 @@ use std::num::NonZeroU64;
 
 use crate::codec::parts::{Decoder, Encoder, dec_timestamp, enc_timestamp};
 use crate::codec::{CodecError, ExactCodec, Family, SMALL_MAX, invalid};
+use crate::{DraftImageLabelProtectionHeadV1, ImageLabelAuthorityHeadV1, ImageLabelFrontier};
 
 use super::*;
 
@@ -27,6 +28,141 @@ pub(crate) use staging_head::{
 use staging_head::{dec_staging_identity, enc_staging_identity};
 pub(crate) use staging_page::{canonical_staging_items_bytes, canonical_staging_page_bytes};
 pub(crate) use staging_progress::canonical_staging_progress_bytes;
+
+pub(super) fn enc_writer_admission(e: &mut Encoder, value: Option<DraftMarkerWriterAdmissionV1>) {
+    let Some(value) = value else {
+        e.u8(0);
+        return;
+    };
+    e.u8(1);
+    let binding = value.binding();
+    e.u64(binding.home_generation().get());
+    let owner = binding.owner();
+    e.fixed16(owner.draft_id().as_bytes());
+    e.fixed16(owner.session_id().as_bytes());
+    e.fixed16(owner.operation_id().as_bytes());
+    let authority = binding.label_authority();
+    e.fixed16(authority.thread_id().as_bytes());
+    e.u64(authority.revision());
+    e.u64(authority.inherited().get());
+    e.u64(authority.permanent().get());
+    let protection = binding.protection();
+    e.u64(protection.revision());
+    e.u64(protection.protected_maximum().get());
+    e.u64(binding.session_generation().get());
+    e.u64(binding.predecessor_candidate_generation());
+    enc_root_reference(e, binding.predecessor_root());
+    enc_history_reference(e, binding.predecessor_history());
+    e.u8(match binding.disposition() {
+        DraftMarkerLabelReadinessDispositionV1::Reuse => 0,
+        DraftMarkerLabelReadinessDispositionV1::Allocate => 1,
+    });
+    e.fixed32(binding.occurrence_commitment().as_bytes());
+    super::admission::codec::enc_root(e, binding.sealed_target_root());
+    match binding.allocation_range() {
+        Some(range) => {
+            e.u8(1);
+            e.u64(range.first().get());
+            e.u64(range.last().get());
+        }
+        None => e.u8(0),
+    }
+    super::admission::codec::enc_root(e, value.target_root());
+    e.u64(value.remaining_count());
+}
+
+pub(super) fn dec_writer_admission(
+    d: &mut Decoder<'_>,
+) -> Result<Option<DraftMarkerWriterAdmissionV1>, CodecError> {
+    let tag = d.u8()?;
+    if tag == 0 {
+        return Ok(None);
+    }
+    if tag != 1 {
+        return Err(CodecError::InvalidTag {
+            kind: "draft-marker writer admission option",
+            tag,
+        });
+    }
+    let home_generation = NonZeroU64::new(d.u64()?).ok_or(CodecError::InvalidLength(
+        "writer admission home generation",
+    ))?;
+    let owner = DraftMarkerAdmissionOwnerV1::new(
+        SyndicDraftId::from_bytes(d.fixed16()?),
+        DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?),
+        DraftMarkerAdmissionOperationIdV1::from_bytes(d.fixed16()?),
+    );
+    let thread = SyndicThreadId::from_bytes(d.fixed16()?);
+    let authority = ImageLabelAuthorityHeadV1::new(
+        thread,
+        d.u64()?,
+        ImageLabelFrontier::from_raw(d.u64()?),
+        ImageLabelFrontier::from_raw(d.u64()?),
+    )
+    .map_err(|_| CodecError::InvalidLength("writer admission label authority"))?;
+    let protection = DraftImageLabelProtectionHeadV1::new(
+        thread,
+        d.u64()?,
+        ImageLabelFrontier::from_raw(d.u64()?),
+    )
+    .map_err(|_| CodecError::InvalidLength("writer admission protection"))?;
+    let session_generation = NonZeroU64::new(d.u64()?).ok_or(CodecError::InvalidLength(
+        "writer admission session generation",
+    ))?;
+    let predecessor_candidate_generation = d.u64()?;
+    let predecessor_root = dec_root_reference(d)?;
+    let predecessor_history = dec_history_reference(d)?;
+    let disposition = match d.u8()? {
+        0 => DraftMarkerLabelReadinessDispositionV1::Reuse,
+        1 => DraftMarkerLabelReadinessDispositionV1::Allocate,
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "writer admission disposition",
+                tag,
+            });
+        }
+    };
+    let occurrence_commitment = DraftMarkerAdmissionDigestV1::from_bytes(d.fixed32()?);
+    let sealed_target_root = super::admission::codec::dec_root(d)?;
+    let allocation_range = match d.u8()? {
+        0 => None,
+        1 => Some(
+            DraftMarkerLabelAllocationRangeV1::new(
+                ImageLabelOrdinal::new(d.u64()?)
+                    .map_err(|_| CodecError::InvalidLength("writer allocation first"))?,
+                ImageLabelOrdinal::new(d.u64()?)
+                    .map_err(|_| CodecError::InvalidLength("writer allocation last"))?,
+            )
+            .map_err(|_| CodecError::InvalidLength("writer allocation range"))?,
+        ),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "writer allocation range option",
+                tag,
+            });
+        }
+    };
+    let target_root = super::admission::codec::dec_root(d)?;
+    let remaining_count = d.u64()?;
+    let binding = DraftMarkerLabelReadinessBindingV1::new(
+        home_generation,
+        owner,
+        authority,
+        protection,
+        session_generation,
+        predecessor_candidate_generation,
+        predecessor_root,
+        predecessor_history,
+        disposition,
+        occurrence_commitment,
+        sealed_target_root,
+        allocation_range,
+    )
+    .ok_or(CodecError::InvalidLength("writer admission binding"))?;
+    DraftMarkerWriterAdmissionV1::from_parts(binding, target_root, remaining_count)
+        .map(Some)
+        .ok_or(CodecError::InvalidLength("writer admission state"))
+}
 
 pub(crate) struct DraftPieceRootsFamily;
 pub(crate) struct DraftPieceNodesFamily;
@@ -1581,6 +1717,7 @@ fn encode_build(value: &DraftPieceBuildRecordV1) -> Result<Vec<u8>, CodecError> 
     enc_build_frontier(&mut e, value.frontier());
     enc_durable_continuation(&mut e, value.durable_continuation());
     enc_marker_effect_continuation(&mut e, value.marker_effect_continuation());
+    enc_writer_admission(&mut e, value.writer_admission());
     enc_progress_reference(&mut e, value.progress_receipt());
     match value.successor() {
         Some(root) => {
@@ -1625,6 +1762,7 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
     let frontier = dec_build_frontier(&mut d)?;
     let durable_continuation = dec_durable_continuation(&mut d)?;
     let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
+    let writer_admission = dec_writer_admission(&mut d)?;
     let progress_receipt = dec_progress_reference(&mut d)?;
     let successor = match d.u8()? {
         0 => None,
@@ -1689,7 +1827,8 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
         lifecycle,
     )
     .with_durable_continuation(durable_continuation)
-    .with_marker_effect_continuation(marker_effect_continuation);
+    .with_marker_effect_continuation(marker_effect_continuation)
+    .with_writer_admission(writer_admission);
     d.finish()?;
     if !build_record_is_exact(&value) {
         return Err(CodecError::InvalidLength("draft-piece build record"));
@@ -1750,6 +1889,7 @@ fn encode_progress_receipt(
     enc_build_frontier(&mut e, receipt.frontier());
     enc_durable_continuation(&mut e, receipt.durable_continuation());
     enc_marker_effect_continuation(&mut e, receipt.marker_effect_continuation());
+    enc_writer_admission(&mut e, receipt.writer_admission());
     match receipt.successor() {
         Some(successor) => {
             e.u8(1);
@@ -1802,6 +1942,7 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
     let frontier = dec_build_frontier(&mut d)?;
     let durable_continuation = dec_durable_continuation(&mut d)?;
     let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
+    let writer_admission = dec_writer_admission(&mut d)?;
     let successor = match d.u8()? {
         0 => None,
         1 => Some(dec_root_reference(&mut d)?),
@@ -1852,7 +1993,8 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
         lifecycle,
     )
     .with_durable_continuation(durable_continuation)
-    .with_marker_effect_continuation(marker_effect_continuation);
+    .with_marker_effect_continuation(marker_effect_continuation)
+    .with_writer_admission(writer_admission);
     if !progress_receipt_is_exact(&receipt) {
         return Err(CodecError::InvalidLength("draft-piece progress receipt"));
     }

@@ -7,10 +7,31 @@ impl SyndicStorage {
         session: &DraftEditorCandidateSessionV1,
         inputs: Box<[DraftMutationStagingPageInputV1]>,
     ) -> Result<PreparedDraftMutationStagingBatchV1, DraftMutationStagingErrorV1> {
+        self.prepare_draft_mutation_staging_page_batch_inner(head, session, inputs, false)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::draft_piece) fn prepare_unadmitted_marker_staging_page_batch_for_test(
+        &self,
+        head: &DraftMutationStagingHeadV1,
+        session: &DraftEditorCandidateSessionV1,
+        inputs: Box<[DraftMutationStagingPageInputV1]>,
+    ) -> Result<PreparedDraftMutationStagingBatchV1, DraftMutationStagingErrorV1> {
+        self.prepare_draft_mutation_staging_page_batch_inner(head, session, inputs, true)
+    }
+
+    fn prepare_draft_mutation_staging_page_batch_inner(
+        &self,
+        head: &DraftMutationStagingHeadV1,
+        session: &DraftEditorCandidateSessionV1,
+        inputs: Box<[DraftMutationStagingPageInputV1]>,
+        permit_unadmitted_markers: bool,
+    ) -> Result<PreparedDraftMutationStagingBatchV1, DraftMutationStagingErrorV1> {
         if inputs.is_empty() || inputs.len() > DRAFT_MUTATION_STAGING_BATCH_MAX_PAGES {
             return Err(DraftMutationStagingErrorV1::Invalid);
         }
         if !draft_mutation_staging_head_is_locally_exact(head)
+            || !admitted_writer_is_current_generation(self, head)
             || !staging_session_matches_head(session, head)
             || session.active_operation()
                 != Some(&staging_custody(
@@ -55,6 +76,7 @@ impl SyndicStorage {
                     item_ceiling,
                     byte_ceiling,
                     input.into_items(),
+                    permit_unadmitted_markers,
                 )?;
             encoded_page_bytes = encoded_page_bytes
                 .checked_add(page_bytes)
@@ -75,6 +97,8 @@ impl SyndicStorage {
             targets: targets.into_boxed_slice(),
             item_count,
             encoded_page_bytes,
+            #[cfg(feature = "test-faults")]
+            unadmitted_marker_builder: permit_unadmitted_markers,
         })
     }
 
@@ -83,7 +107,15 @@ impl SyndicStorage {
         expected_domain_revision: DomainRevision,
         prepared: PreparedDraftMutationStagingBatchV1,
     ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, StagingBatchMutation { prepared })
+        self.handle.contribution(
+            expected_domain_revision,
+            StagingBatchMutation {
+                writer_progress_allowed: admitted_writer_is_current_generation(
+                    self,
+                    &prepared.source_head,
+                ),
+                prepared,
+            },
+        )
     }
 }

@@ -2,11 +2,18 @@ use super::*;
 
 impl DomainMutation<SyndicDomain> for StagingMutation {
     type Error = SyndicMutationError;
-    type Prepared = Option<PreparedDraftMutationStagingCommandV1>;
+    type Prepared = Option<(
+        PreparedDraftMutationStagingCommandV1,
+        Option<PreparedDraftMarkerWriterBeginV1>,
+        Option<PreparedDraftMarkerWriterTerminalV1>,
+    )>;
     fn prepare(
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        if !self.writer_progress_allowed {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         let p = &self.prepared;
         let stored_head =
             point::<DraftMutationStagingHeadsFamily>(reader, &p.target_head.identity())?;
@@ -71,7 +78,38 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             if stored_session.as_ref() != Some(&p.source_session) {
                 return Err(SyndicMutationError::CurrentDraftConflict);
             }
-            return Ok(Some(self.prepared));
+            let writer = if p.source_head.is_none() {
+                p.target_head
+                    .begin()
+                    .writer_admission()
+                    .map(|admission| prepare_draft_marker_writer_begin_v1(reader, admission))
+                    .transpose()?
+            } else {
+                None
+            };
+            let writer_terminal = if p.source_head.is_some()
+                && matches!(
+                    p.target_head.lifecycle(),
+                    DraftMutationStagingLifecycleV1::Cancelled
+                        | DraftMutationStagingLifecycleV1::Rejected
+                        | DraftMutationStagingLifecycleV1::Conflict
+                        | DraftMutationStagingLifecycleV1::Error
+                ) {
+                p.target_head
+                    .begin()
+                    .writer_admission()
+                    .map(|admission| {
+                        prepare_draft_marker_writer_terminal_v1(
+                            reader,
+                            admission,
+                            p.receipt.digest(),
+                        )
+                    })
+                    .transpose()?
+            } else {
+                None
+            };
+            return Ok(Some((self.prepared, writer, writer_terminal)));
         }
         if stored_head.as_ref() == Some(&p.target_head)
             && stored_receipt.as_ref() == Some(&p.receipt)
@@ -98,6 +136,26 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             }) {
                 return Err(SyndicMutationError::IdentityCollision);
             }
+            if let Some(admission) = p.target_head.begin().writer_admission() {
+                let exact = if matches!(
+                    p.target_head.lifecycle(),
+                    DraftMutationStagingLifecycleV1::Cancelled
+                        | DraftMutationStagingLifecycleV1::Rejected
+                        | DraftMutationStagingLifecycleV1::Conflict
+                        | DraftMutationStagingLifecycleV1::Error
+                ) {
+                    draft_marker_writer_terminal_is_exact_v1(reader, admission, p.receipt.digest())?
+                } else {
+                    draft_marker_writer_head_is_exact_v1(
+                        reader,
+                        admission,
+                        DraftMarkerAdmissionLifecycleV1::Staging,
+                    )?
+                };
+                if !exact {
+                    return Err(SyndicMutationError::IdentityCollision);
+                }
+            }
             return Ok(None);
         }
         Err(SyndicMutationError::IdentityCollision)
@@ -111,13 +169,44 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
         if self.prepared.target_session.is_some() {
             reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
         }
+        if self.prepared.source_head.is_none()
+            && self
+                .prepared
+                .target_head
+                .begin()
+                .writer_admission()
+                .is_some()
+        {
+            reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
+            reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
+            reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
+        }
+        if self.prepared.source_head.is_some()
+            && self
+                .prepared
+                .target_head
+                .begin()
+                .writer_admission()
+                .is_some()
+            && matches!(
+                self.prepared.target_head.lifecycle(),
+                DraftMutationStagingLifecycleV1::Cancelled
+                    | DraftMutationStagingLifecycleV1::Rejected
+                    | DraftMutationStagingLifecycleV1::Conflict
+                    | DraftMutationStagingLifecycleV1::Error
+            )
+        {
+            reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
+            reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
+            reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
+        }
         Ok(())
     }
     fn contribute(
         prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if let Some(prepared) = prepared {
+        if let Some((prepared, writer, writer_terminal)) = prepared {
             mutations.put::<DraftMutationStagingProgressCodec>(
                 &prepared.receipt.key(),
                 &prepared.receipt,
@@ -135,6 +224,12 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
                     &DraftEditorCandidateSessionRecordV1::Head(session.clone()),
                 )?;
             }
+            if let Some(writer) = writer {
+                contribute_draft_marker_writer_begin_v1(writer, mutations)?;
+            }
+            if let Some(writer_terminal) = writer_terminal {
+                contribute_draft_marker_writer_terminal_v1(writer_terminal, mutations)?;
+            }
         }
         Ok(())
     }
@@ -148,7 +243,35 @@ impl DomainMutation<SyndicDomain> for StagingBatchMutation {
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        if !self.writer_progress_allowed {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         let prepared = &self.prepared;
+        if prepared.source_head.begin().writer_admission().is_none()
+            && !(prepared.permits_unadmitted_marker_builder()
+                && unadmitted_marker_builder_is_authorized_for_test(
+                    DraftPieceSettlementKeyV1::new(
+                        prepared.source_head.identity().draft_id(),
+                        prepared.source_head.identity().session_id(),
+                        prepared
+                            .source_head
+                            .identity()
+                            .operation_id()
+                            .as_piece_operation(),
+                    ),
+                ))
+            && prepared.targets.iter().any(|target| {
+                target.page.items().iter().any(|item| {
+                    matches!(
+                        item,
+                        DraftMutationStagingPageItemV1::Proposal(replacement)
+                            if replacement.marker_effect().is_some()
+                    )
+                })
+            })
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         let identity = prepared.source_head.identity();
         let stored_head = point::<DraftMutationStagingHeadsFamily>(reader, &identity)?;
         let session_key = DraftEditorCandidateSessionRecordKeyV1::head(
@@ -241,12 +364,18 @@ impl DomainMutation<SyndicDomain> for StagingBatchMutation {
 
 impl DomainMutation<SyndicDomain> for TransferMutation {
     type Error = SyndicMutationError;
-    type Prepared = Option<PreparedDraftMutationTransferV1>;
+    type Prepared = Option<(
+        PreparedDraftMutationTransferV1,
+        Option<DraftMarkerAdmissionHeadV1>,
+    )>;
 
     fn prepare(
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        if !self.writer_progress_allowed {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         let p = &self.prepared;
         let identity = p.target_head.identity();
         let build_key = DraftPieceSettlementKeyV1::new(
@@ -294,7 +423,12 @@ impl DomainMutation<SyndicDomain> for TransferMutation {
             {
                 return Err(SyndicMutationError::IdentityCollision);
             }
-            return Ok(Some(self.prepared));
+            let writer_head = p
+                .build
+                .writer_admission()
+                .map(|admission| prepare_draft_marker_writer_building_v1(reader, admission))
+                .transpose()?;
+            return Ok(Some((self.prepared, writer_head)));
         }
         if stored_head.as_ref() == Some(&p.target_head)
             && stored_transfer.as_ref() == Some(&p.receipt)
@@ -316,6 +450,15 @@ impl DomainMutation<SyndicDomain> for TransferMutation {
             if receipt != p.receipt {
                 return Err(SyndicMutationError::IdentityCollision);
             }
+            if let Some(admission) = p.build.writer_admission()
+                && !draft_marker_writer_head_is_exact_v1(
+                    reader,
+                    admission,
+                    DraftMarkerAdmissionLifecycleV1::Building,
+                )?
+            {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
             return Ok(None);
         }
         Err(SyndicMutationError::IdentityCollision)
@@ -330,6 +473,9 @@ impl DomainMutation<SyndicDomain> for TransferMutation {
         reservation.reserve_records::<DraftMutationStagingHeadsCodec>(1)?;
         reservation.reserve_records::<DraftPieceBuildsCodec>(1)?;
         reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        if self.prepared.build.writer_admission().is_some() {
+            reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
+        }
         Ok(())
     }
 
@@ -337,7 +483,7 @@ impl DomainMutation<SyndicDomain> for TransferMutation {
         prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if let Some(prepared) = prepared {
+        if let Some((prepared, writer_head)) = prepared {
             let p = &prepared;
             mutations.put::<DraftMutationStagingProgressCodec>(&p.receipt.key(), &p.receipt)?;
             mutations
@@ -358,6 +504,9 @@ impl DomainMutation<SyndicDomain> for TransferMutation {
                 &session_key,
                 &DraftEditorCandidateSessionRecordV1::Head(p.target_session.clone()),
             )?;
+            if let Some(head) = writer_head {
+                mutations.put::<DraftMarkerAdmissionHeadsCodec>(&head.owner(), &head)?;
+            }
         }
         Ok(())
     }
@@ -371,6 +520,9 @@ impl DomainMutation<SyndicDomain> for StageDurableWindowMutation {
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        if !self.writer_progress_allowed {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         let p = &self.prepared;
         if point::<DraftMutationStagingHeadsFamily>(reader, &p.staging_head.identity())?.as_ref()
             != Some(&p.staging_head)

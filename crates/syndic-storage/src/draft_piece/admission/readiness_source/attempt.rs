@@ -157,8 +157,13 @@ impl SyndicStorage {
             associations,
             witness_factory,
         } = request;
+        let empty_eof = associations.is_empty()
+            && ordinal == NonZeroU64::MIN
+            && eof
+            && disposition == DraftMarkerLabelReadinessDispositionV1::Reuse
+            && witness_factory.is_none();
         if associations.len() > PAGE_MAX_ASSOCIATIONS
-            || associations.is_empty()
+            || (associations.is_empty() && !empty_eof)
             || associations.windows(2).any(|associations| {
                 selector_tag(associations[0].selector) != selector_tag(associations[1].selector)
             })

@@ -113,7 +113,8 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
                 }
                 prepare_cleanup(reader, capacity, head)
             }
-            DraftMarkerAdmissionLifecycleV1::Building
+            DraftMarkerAdmissionLifecycleV1::Staging
+            | DraftMarkerAdmissionLifecycleV1::Building
             | DraftMarkerAdmissionLifecycleV1::Settled => Err(TerminalMutationError::Authority),
         }
     }

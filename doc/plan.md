@@ -17,21 +17,14 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 224: Close And Reclaim Draft-Marker Admission (finished)
+# Phase 225: Integrate Exact Ordinary Draft-Marker Writer Admission (finished)
 
-Implemented package-owned transient cancellation, dispatched-custody election, inert durable terminal
-closure, bounded cross-restart cleanup, exact replay/collision and retained-charge validation, and
-settlement-authority final release without reviving prior-generation work. The final Phase
-213/218/220/222/223/224 regression passed 51/51, all-target checks passed, and independent semantic
-review found no remaining issue or needless complexity.
-
-# Phase 225: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
-
-Consume only package-issued readiness custody at mutation begin, point-consume exact target
-associations during builder progress, and publish candidate, history, settlement, and protection
-authority only from canonical empty admission closure. Verify substitution, cancellation,
-acknowledgement uncertainty, collision, restart, and resource release with focused state-machine
-tests and independent semantic review.
+Integrated proof-bound ordinary marker-changing begin, exact target point consumption, empty/zero
+atomic adoption, durable terminal reclamation, outcome-owned acknowledgement reconciliation, and
+fresh-generation cleanup-only fencing without admitting marker work through text/direct-builder
+paths. The final durable-builder and Phase 213/218/220/222/223/224/225 regression passed 87/87,
+all-target checks passed, and fresh independent semantic review found no remaining issue or needless
+production complexity.
 
 # Phase 226: Integrate Exact Historical Draft-Marker Adoption (pending)
 

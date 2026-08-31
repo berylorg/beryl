@@ -84,6 +84,7 @@ fn enc_staging_begin(e: &mut Encoder, value: DraftMutationBeginV1) {
     enc_position(e, value.replacement_end());
     e.u64(value.source_initial_cursor());
     e.u64(value.proposal_initial_cursor());
+    enc_writer_admission(e, value.writer_admission());
 }
 
 pub(crate) fn canonical_staging_begin_bytes(value: DraftMutationBeginV1) -> Vec<u8> {
@@ -104,7 +105,7 @@ fn dec_staging_begin(d: &mut Decoder<'_>) -> Result<DraftMutationBeginV1, CodecE
     let predecessor_root = dec_root_reference(d)?;
     let predecessor_history = dec_history_reference(d)?;
     let predecessor_extent = DraftLogicalExtentV1::new(d.u64()?, d.u64()?);
-    Ok(DraftMutationBeginV1::new(
+    let begin = DraftMutationBeginV1::new(
         identity,
         session_generation,
         predecessor_candidate_generation,
@@ -118,7 +119,11 @@ fn dec_staging_begin(d: &mut Decoder<'_>) -> Result<DraftMutationBeginV1, CodecE
         dec_position(d)?,
         d.u64()?,
         d.u64()?,
-    ))
+    );
+    Ok(match dec_writer_admission(d)? {
+        Some(admission) => begin.with_writer_admission(admission),
+        None => begin,
+    })
 }
 
 fn enc_staging_finish(e: &mut Encoder, value: DraftMutationFinishInputV1) {

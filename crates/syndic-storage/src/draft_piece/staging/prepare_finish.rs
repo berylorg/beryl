@@ -8,6 +8,7 @@ impl SyndicStorage {
         finish: DraftMutationFinishInputV1,
     ) -> Result<PreparedDraftMutationStagingCommandV1, DraftMutationStagingErrorV1> {
         if head.lifecycle() != DraftMutationStagingLifecycleV1::Receiving
+            || !admitted_writer_is_current_generation(self, head)
             || finish.source() != head.source()
             || finish.proposal() != head.proposal()
         {

@@ -157,6 +157,37 @@ fn prepare_assignment(
         .count()
         .checked_sub(head.source_root().count())
         .ok_or(AssignmentMutationError::Authority)?;
+    let continuation = head
+        .assignment_continuation()
+        .ok_or(AssignmentMutationError::Authority)?;
+    if head.source_root().count() == 0 {
+        if head.target_root().count() != 0
+            || continuation != DraftMarkerAdmissionAssignmentContinuationV1::reuse(None)
+        {
+            return Err(AssignmentMutationError::Authority);
+        }
+        let index = prepare_empty_draft_marker_admission_index_successor_v1(
+            head.source_root(),
+            head.target_root(),
+            prior_receipt.retained_predecessor_nodes(),
+        )?;
+        let source_closure = empty_assignment_source_closure(&head);
+        let target_closure = empty_assignment_target_closure(&head);
+        return finish_assignment_transition(
+            capacity,
+            head,
+            prior_receipt,
+            prior_receipt_key,
+            mutation.command,
+            index,
+            continuation,
+            source_closure,
+            target_closure,
+            authority_read_bytes,
+            mutation.retained_limits,
+            mutation.command_limit,
+        );
+    }
     let assignment = prepare_draft_marker_admission_assignment_v1(
         reader,
         mutation.owner,
@@ -165,8 +196,7 @@ fn prepare_assignment(
         prior_receipt.retained_predecessor_nodes(),
         mutation.command,
         processed,
-        head.assignment_continuation()
-            .ok_or(AssignmentMutationError::Authority)?,
+        continuation,
     )?;
     finish_prepared_assignment(
         reader,
@@ -194,7 +224,40 @@ fn finish_prepared_assignment(
     retained_limits: DraftMarkerAdmissionLimitsV1,
     command_limit: AssignmentCommandLimit,
 ) -> Result<PreparedAssignmentMutation, AssignmentMutationError> {
-    let index = assignment.index;
+    let source_closure =
+        assignment_source_closure(&prior_head, assignment.source_label, assignment.asset_id);
+    let target_closure = assignment_target_closure(&prior_head, assignment.assigned_label);
+    finish_assignment_transition(
+        capacity,
+        prior_head,
+        prior_receipt,
+        prior_receipt_key,
+        command,
+        assignment.index,
+        assignment.continuation,
+        source_closure,
+        target_closure,
+        authority_read_bytes,
+        retained_limits,
+        command_limit,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_assignment_transition(
+    capacity: DraftMarkerAdmissionCapacityV1,
+    prior_head: DraftMarkerAdmissionHeadV1,
+    prior_receipt: DraftMarkerAdmissionReplayReceiptV1,
+    prior_receipt_key: DraftMarkerAdmissionReceiptKeyV1,
+    command: DraftMarkerAdmissionCommandIdV1,
+    index: PreparedDraftMarkerAdmissionIndexSuccessorV1,
+    continuation: DraftMarkerAdmissionAssignmentContinuationV1,
+    source_closure: Box<[u8]>,
+    target_closure: Box<[u8]>,
+    authority_read_bytes: u64,
+    retained_limits: DraftMarkerAdmissionLimitsV1,
+    command_limit: AssignmentCommandLimit,
+) -> Result<PreparedAssignmentMutation, AssignmentMutationError> {
     let ready = index.source_root().count() == 0;
     let next_revision = NonZeroU64::new(
         prior_head
@@ -209,8 +272,8 @@ fn finish_prepared_assignment(
         command,
         prior_head.next_page_ordinal(),
         prior_head.request_commitment(),
-        assignment_source_closure(&prior_head, assignment.source_label, assignment.asset_id),
-        assignment_target_closure(&prior_head, assignment.assigned_label),
+        source_closure,
+        target_closure,
         prior_head.source_root(),
         index.source_root(),
         prior_head.target_root(),
@@ -223,7 +286,7 @@ fn finish_prepared_assignment(
         next_revision,
         &index,
         ready,
-        assignment.continuation,
+        continuation,
         DraftMarkerAdmissionRetainedChargeV1::new(1, index.target_root().count(), 0),
         command,
     )?;
@@ -263,7 +326,7 @@ fn finish_prepared_assignment(
         next_revision,
         &index,
         ready,
-        assignment.continuation,
+        continuation,
         successor_charge,
         command,
     )?;
@@ -394,6 +457,13 @@ fn assignment_source_closure(
     bytes.into_boxed_slice()
 }
 
+fn empty_assignment_source_closure(head: &DraftMarkerAdmissionHeadV1) -> Box<[u8]> {
+    let mut bytes = Vec::with_capacity(72);
+    bytes.extend_from_slice(b"syndic/draft-marker-empty-assignment-source/v1");
+    bytes.extend_from_slice(head.digest().as_bytes());
+    bytes.into_boxed_slice()
+}
+
 fn assignment_target_closure(
     head: &DraftMarkerAdmissionHeadV1,
     label: ImageLabelOrdinal,
@@ -402,6 +472,13 @@ fn assignment_target_closure(
     bytes.extend_from_slice(head.target_root().digest().as_bytes());
     bytes.extend_from_slice(&head.target_root().count().to_le_bytes());
     bytes.extend_from_slice(&label.get().to_le_bytes());
+    bytes.into_boxed_slice()
+}
+
+fn empty_assignment_target_closure(head: &DraftMarkerAdmissionHeadV1) -> Box<[u8]> {
+    let mut bytes = Vec::with_capacity(72);
+    bytes.extend_from_slice(b"syndic/draft-marker-empty-assignment-target/v1");
+    bytes.extend_from_slice(head.digest().as_bytes());
     bytes.into_boxed_slice()
 }
 

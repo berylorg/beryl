@@ -120,15 +120,19 @@ fn stage_interleaved_replacements(
             storage.stage_next_durable_draft_piece_window(storage.revision(store).unwrap(), window),
         ));
     }
+    let builder = storage.unadmitted_marker_builder_for_test();
     let mut preceding = canonical_empty_draft_piece_fragment_chain_v1();
     let fragments = replacements
         .into_iter()
         .enumerate()
         .map(|(index, replacement)| {
             let ordinal = index as u64 + 1;
-            let fragment = storage
-                .prepare_draft_piece_fragment(&prepared, ordinal, preceding, replacement)
-                .unwrap();
+            let fragment = if replacement.marker_effect().is_some() {
+                builder.prepare_fragment(&prepared, ordinal, preceding, replacement)
+            } else {
+                storage.prepare_draft_piece_fragment(&prepared, ordinal, preceding, replacement)
+            }
+            .unwrap();
             preceding = fragment.chain_digest();
             fragment
         })

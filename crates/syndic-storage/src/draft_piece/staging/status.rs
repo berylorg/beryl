@@ -231,6 +231,49 @@ impl SyndicStorage {
         store: &beryl_home_store::HomeStore,
         prepared: &PreparedDraftMutationStagingCommandV1,
     ) -> Result<DraftMutationStagingReconcileV1, DraftMutationStagingErrorV1> {
+        if prepared.target_head.begin().writer_admission().is_some() {
+            return Err(DraftMutationStagingErrorV1::Invalid);
+        }
+        self.reconcile_draft_mutation_staging_command_exact(store, prepared)
+    }
+
+    pub fn reconcile_draft_mutation_staging_command_outcome(
+        &self,
+        store: &beryl_home_store::HomeStore,
+        prepared: &PreparedDraftMutationStagingCommandV1,
+        outcome: CommandOutcome,
+    ) -> Result<DraftMutationStagingReconcileV1, DraftMutationStagingErrorV1> {
+        let expectation = staging_command_outcome_expectation(store, outcome, |local, receipt| {
+            if receipt.generation() != self.home_generation {
+                return Err(DraftMutationStagingErrorV1::LocalFinalization(
+                    CommittedLocalFinalizationError::StaleOrForeign,
+                ));
+            }
+            store
+                .with_committed_local_finalization(local, receipt, &self.handle, |attachment| {
+                    let Some(admission) = prepared.target_head.begin().writer_admission() else {
+                        return Ok(());
+                    };
+                    if admission.binding().home_generation().get() != self.home_generation.get() {
+                        return Err(());
+                    }
+                    attachment.finalize_writer_committed_unknown(admission.binding().owner())
+                })
+                .map_err(DraftMutationStagingErrorV1::LocalFinalization)?
+                .map_err(|()| DraftMutationStagingErrorV1::LocalCustody)
+        })?;
+        let reconciled = self.reconcile_draft_mutation_staging_command_exact(store, prepared)?;
+        if !staging_outcome_matches(expectation, &reconciled) {
+            return Err(DraftMutationStagingErrorV1::Invariant);
+        }
+        Ok(reconciled)
+    }
+
+    fn reconcile_draft_mutation_staging_command_exact(
+        &self,
+        store: &beryl_home_store::HomeStore,
+        prepared: &PreparedDraftMutationStagingCommandV1,
+    ) -> Result<DraftMutationStagingReconcileV1, DraftMutationStagingErrorV1> {
         let identity = prepared.target_head.identity();
         let stored = self.draft_mutation_staging_head(store, identity)?;
         let limit =
@@ -256,13 +299,71 @@ impl SyndicStorage {
                 | DraftMutationStagingStatusV1::Conflict { .. }
                 | DraftMutationStagingStatusV1::Error { .. }
         ) {
+            if let Some(admission) = prepared.target_head.begin().writer_admission() {
+                self.release_draft_marker_writer_terminal(
+                    store,
+                    admission,
+                    prepared.receipt.digest(),
+                )?;
+            }
             Ok(DraftMutationStagingReconcileV1::Terminal(status))
         } else {
+            if let Some(admission) = prepared.target_head.begin().writer_admission() {
+                store
+                    .with_domain_attachment(&self.handle.attachment_capability(), |attachment| {
+                        attachment.resolve_writer_progress(admission.binding().owner())
+                    })
+                    .map_err(|_| DraftMutationStagingErrorV1::LocalCustody)?
+                    .map_err(|()| DraftMutationStagingErrorV1::LocalCustody)?;
+            }
             Ok(DraftMutationStagingReconcileV1::TargetSelected)
         }
     }
 
     pub fn reconcile_draft_mutation_staging_page_batch(
+        &self,
+        store: &beryl_home_store::HomeStore,
+        prepared: &PreparedDraftMutationStagingBatchV1,
+    ) -> Result<DraftMutationStagingReconcileV1, DraftMutationStagingErrorV1> {
+        if prepared.source_head.begin().writer_admission().is_some() {
+            return Err(DraftMutationStagingErrorV1::Invalid);
+        }
+        self.reconcile_draft_mutation_staging_page_batch_exact(store, prepared)
+    }
+
+    pub fn reconcile_draft_mutation_staging_page_batch_outcome(
+        &self,
+        store: &beryl_home_store::HomeStore,
+        prepared: &PreparedDraftMutationStagingBatchV1,
+        outcome: CommandOutcome,
+    ) -> Result<DraftMutationStagingReconcileV1, DraftMutationStagingErrorV1> {
+        let expectation = staging_command_outcome_expectation(store, outcome, |local, receipt| {
+            if receipt.generation() != self.home_generation {
+                return Err(DraftMutationStagingErrorV1::LocalFinalization(
+                    CommittedLocalFinalizationError::StaleOrForeign,
+                ));
+            }
+            store
+                .with_committed_local_finalization(local, receipt, &self.handle, |attachment| {
+                    let Some(admission) = prepared.target_head.begin().writer_admission() else {
+                        return Ok(());
+                    };
+                    if admission.binding().home_generation().get() != self.home_generation.get() {
+                        return Err(());
+                    }
+                    attachment.finalize_writer_committed_unknown(admission.binding().owner())
+                })
+                .map_err(DraftMutationStagingErrorV1::LocalFinalization)?
+                .map_err(|()| DraftMutationStagingErrorV1::LocalCustody)
+        })?;
+        let reconciled = self.reconcile_draft_mutation_staging_page_batch_exact(store, prepared)?;
+        if !staging_outcome_matches(expectation, &reconciled) {
+            return Err(DraftMutationStagingErrorV1::Invariant);
+        }
+        Ok(reconciled)
+    }
+
+    fn reconcile_draft_mutation_staging_page_batch_exact(
         &self,
         store: &beryl_home_store::HomeStore,
         prepared: &PreparedDraftMutationStagingBatchV1,
@@ -337,6 +438,78 @@ impl SyndicStorage {
         ) {
             return Err(DraftMutationStagingErrorV1::Invariant);
         }
+        if let Some(admission) = prepared.target_head.begin().writer_admission() {
+            store
+                .with_domain_attachment(&self.handle.attachment_capability(), |attachment| {
+                    attachment.resolve_writer_progress(admission.binding().owner())
+                })
+                .map_err(|_| DraftMutationStagingErrorV1::LocalCustody)?
+                .map_err(|()| DraftMutationStagingErrorV1::LocalCustody)?;
+        }
         Ok(DraftMutationStagingReconcileV1::TargetSelected)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum StagingOutcomeExpectation {
+    Source,
+    Target,
+    ExactTargetReplay,
+}
+
+fn staging_command_outcome_expectation(
+    store: &beryl_home_store::HomeStore,
+    outcome: CommandOutcome,
+    finalize: impl FnOnce(
+        beryl_home_store::CommittedLocalFinalization,
+        &beryl_home_store::CommitReceipt,
+    ) -> Result<(), DraftMutationStagingErrorV1>,
+) -> Result<StagingOutcomeExpectation, DraftMutationStagingErrorV1> {
+    match outcome {
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::EmptyContribution { domain },
+        } if domain == SyndicDomain::NAME => Ok(StagingOutcomeExpectation::ExactTargetReplay),
+        CommandOutcome::NotCommitted { .. } => Ok(StagingOutcomeExpectation::Source),
+        CommandOutcome::Committed {
+            receipt,
+            local_finalization,
+            ..
+        } => {
+            if let Some(local_finalization) = local_finalization {
+                finalize(local_finalization, &receipt)?;
+            }
+            Ok(StagingOutcomeExpectation::Target)
+        }
+        CommandOutcome::Indeterminate { reconciliation, .. } => {
+            match store
+                .reconcile(&reconciliation.install_and_handle())
+                .map_err(DraftMutationStagingErrorV1::Reconciliation)?
+            {
+                ReconciliationResolution::ExactOld => Ok(StagingOutcomeExpectation::Source),
+                ReconciliationResolution::ExactNew { .. } => Ok(StagingOutcomeExpectation::Target),
+                ReconciliationResolution::ExactSuccessor { .. }
+                | ReconciliationResolution::Collision => {
+                    Err(DraftMutationStagingErrorV1::Invariant)
+                }
+            }
+        }
+    }
+}
+
+fn staging_outcome_matches(
+    expectation: StagingOutcomeExpectation,
+    reconciled: &DraftMutationStagingReconcileV1,
+) -> bool {
+    match expectation {
+        StagingOutcomeExpectation::Source => {
+            matches!(reconciled, DraftMutationStagingReconcileV1::SourceSelected)
+        }
+        StagingOutcomeExpectation::Target | StagingOutcomeExpectation::ExactTargetReplay => {
+            matches!(
+                reconciled,
+                DraftMutationStagingReconcileV1::TargetSelected
+                    | DraftMutationStagingReconcileV1::Terminal(_)
+            )
+        }
     }
 }

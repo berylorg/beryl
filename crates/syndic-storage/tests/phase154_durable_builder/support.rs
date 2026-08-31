@@ -163,14 +163,24 @@ fn stage_replacement(
         store,
         storage.stage_next_durable_draft_piece_window(storage.revision(store).unwrap(), window),
     ));
-    let fragment = storage
-        .prepare_draft_piece_fragment(
+    let fragment = if fragment_replacement.marker_effect().is_some() {
+        storage
+            .unadmitted_marker_builder_for_test()
+            .prepare_fragment(
+                &prepared,
+                1,
+                canonical_empty_draft_piece_fragment_chain_v1(),
+                fragment_replacement,
+            )
+    } else {
+        storage.prepare_draft_piece_fragment(
             &prepared,
             1,
             canonical_empty_draft_piece_fragment_chain_v1(),
             fragment_replacement,
         )
-        .unwrap();
+    }
+    .unwrap();
     (prepared, identity, fragment)
 }
 
@@ -264,20 +274,27 @@ fn prepare_one_page(
         DraftMutationStagingLaneV1::Source => head.source(),
         DraftMutationStagingLaneV1::Proposal => head.proposal(),
     };
-    storage
-        .prepare_draft_mutation_staging_page_batch(
-            head,
-            session,
-            Box::new([DraftMutationStagingPageInputV1::new(
-                lane,
-                frontier.next_cursor(),
-                frontier.next_cursor() + 1,
-                1,
-                65_536,
-                Box::new([item]),
-            )]),
-        )
-        .unwrap()
+    let has_marker_effect = matches!(
+        &item,
+        DraftMutationStagingPageItemV1::Proposal(replacement)
+            if replacement.marker_effect().is_some()
+    );
+    let inputs = Box::new([DraftMutationStagingPageInputV1::new(
+        lane,
+        frontier.next_cursor(),
+        frontier.next_cursor() + 1,
+        1,
+        65_536,
+        Box::new([item]),
+    )]);
+    if has_marker_effect {
+        storage
+            .unadmitted_marker_builder_for_test()
+            .prepare_staging_page_batch(head, session, inputs)
+    } else {
+        storage.prepare_draft_mutation_staging_page_batch(head, session, inputs)
+    }
+    .unwrap()
 }
 
 fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {

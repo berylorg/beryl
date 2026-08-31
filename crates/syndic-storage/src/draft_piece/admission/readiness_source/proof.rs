@@ -26,9 +26,10 @@ use crate::{
 };
 
 use super::model::{
-    DraftMarkerLabelReadinessRequestAuthorityV1, DraftMarkerReadinessAcceptedSourceV1,
-    DraftMarkerReadinessSourceErrorV1, DraftMarkerReadinessSourceSelectorV1, PAGE_MAX_ASSOCIATIONS,
-    PAGE_MAX_EVIDENCE_BYTES, PageProtocol, SourceInput, page_correlation,
+    DraftMarkerLabelReadinessDispositionV1, DraftMarkerLabelReadinessRequestAuthorityV1,
+    DraftMarkerReadinessAcceptedSourceV1, DraftMarkerReadinessSourceErrorV1,
+    DraftMarkerReadinessSourceSelectorV1, PAGE_MAX_ASSOCIATIONS, PAGE_MAX_EVIDENCE_BYTES,
+    PageProtocol, SourceInput, page_correlation,
 };
 
 pub enum NoWitness {}
@@ -189,7 +190,11 @@ impl DomainCallbackError for DraftMarkerReadinessSourceErrorV1 {
 fn validate_input_shape(
     page: &super::model::SealedDraftMarkerReadinessSourcePageV1,
 ) -> Result<(), DraftMarkerReadinessSourceErrorV1> {
-    if page.entries.len() > PAGE_MAX_ASSOCIATIONS || page.entries.is_empty() {
+    let empty_eof = page.entries.is_empty()
+        && page.ordinal == std::num::NonZeroU64::MIN
+        && page.eof
+        && page.authority.disposition == DraftMarkerLabelReadinessDispositionV1::Reuse;
+    if page.entries.len() > PAGE_MAX_ASSOCIATIONS || (page.entries.is_empty() && !empty_eof) {
         return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
     }
     let bytes = page

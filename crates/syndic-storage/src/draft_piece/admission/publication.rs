@@ -10,6 +10,7 @@ use crate::{SyndicStorage, codec::family_point_limit, domain::SyndicDomain};
 use super::index::{
     DraftMarkerAdmissionIndexPreparationErrorV1, PreparedDraftMarkerAdmissionIndexSuccessorV1,
     prepare_draft_marker_admission_index_successor_v1,
+    prepare_empty_draft_marker_admission_index_successor_v1,
 };
 use super::readiness_source::{
     DraftMarkerLabelReadinessRequestAuthorityV1, page_closure_bytes, request_authority_is_exact,
@@ -329,15 +330,23 @@ fn prepare_publication(
         .receipt
         .as_ref()
         .map_or(&[][..], |receipt| receipt.retained_predecessor_nodes());
-    let index = prepare_draft_marker_admission_index_successor_v1(
-        reader,
-        seed.owner,
-        source_before,
-        target_before,
-        prior_replay_nodes,
-        &page,
-        progression.association_index,
-    )?;
+    let index = if page.association_count() == 0 {
+        prepare_empty_draft_marker_admission_index_successor_v1(
+            source_before,
+            target_before,
+            prior_replay_nodes,
+        )?
+    } else {
+        prepare_draft_marker_admission_index_successor_v1(
+            reader,
+            seed.owner,
+            source_before,
+            target_before,
+            prior_replay_nodes,
+            &page,
+            progression.association_index,
+        )?
+    };
     let receipt = DraftMarkerAdmissionReplayReceiptV1::new(
         seed.owner,
         page.page_identity(),

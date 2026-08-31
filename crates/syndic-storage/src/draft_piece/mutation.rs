@@ -8,6 +8,10 @@ use crate::domain::SyndicDomain;
 use crate::mutation::{point, required};
 use crate::{SyndicMutationError, SyndicStorage};
 
+use super::admission::index::{
+    DraftMarkerAdmissionIndexPreparationErrorV1, PreparedDraftMarkerAdmissionConsumptionV1,
+    prepare_draft_marker_admission_consumption_from_store_v1,
+};
 use super::*;
 
 mod settlement;
@@ -20,6 +24,7 @@ pub struct PreparedDraftPieceEditV1 {
     proposal_digest: DraftPieceDigestV1,
     prebuild_rejection: Option<DraftPieceRejectedReasonV1>,
     predecessor_positions_authenticated: bool,
+    writer_admission: Option<DraftMarkerWriterAdmissionV1>,
 }
 
 impl PreparedDraftPieceEditV1 {
@@ -42,6 +47,10 @@ impl PreparedDraftPieceEditV1 {
     pub const fn prebuild_rejection(&self) -> Option<DraftPieceRejectedReasonV1> {
         self.prebuild_rejection
     }
+
+    pub(crate) const fn writer_admission(&self) -> Option<DraftMarkerWriterAdmissionV1> {
+        self.writer_admission
+    }
 }
 
 #[derive(Clone)]
@@ -56,6 +65,8 @@ pub struct PreparedDraftPieceAdvanceV1 {
     index_records: Vec<DraftMarkerIdentityRecordV1>,
     marker_order_records: Vec<DraftMarkerOrderRecordV1>,
     records_read: u64,
+    admission_marker: Option<DraftPieceMarkerV1>,
+    admission_consumption: Option<PreparedDraftMarkerAdmissionConsumptionV1>,
 }
 
 impl PreparedDraftPieceAdvanceV1 {
@@ -85,16 +96,34 @@ struct BeginMutation {
 struct StageFragmentMutation {
     prepared: PreparedDraftPieceEditV1,
     fragment: DraftPieceBuildFragmentV1,
+    #[cfg(feature = "test-faults")]
+    unadmitted_marker_builder: bool,
+}
+
+impl StageFragmentMutation {
+    fn permits_unadmitted_marker_builder(&self) -> bool {
+        #[cfg(feature = "test-faults")]
+        {
+            self.unadmitted_marker_builder
+        }
+        #[cfg(not(feature = "test-faults"))]
+        {
+            false
+        }
+    }
 }
 
 #[derive(Clone)]
 struct AdvanceMutation {
     prepared: PreparedDraftPieceAdvanceV1,
+    writer_progress_allowed: bool,
 }
 
 #[derive(Clone)]
 struct SettleMutation {
     prepared: PreparedDraftPieceEditV1,
+    home_generation: beryl_home_store::HomeGeneration,
+    reconstructed_cleanup_admissions: Box<[DraftMarkerAdmissionOwnerV1]>,
 }
 
 #[derive(Clone, Copy)]
@@ -108,6 +137,18 @@ enum TerminalKind {
 struct TerminalMutation {
     prepared: PreparedDraftPieceEditV1,
     kind: TerminalKind,
+}
+
+fn writer_progress_is_current(
+    storage: &SyndicStorage,
+    admission: Option<DraftMarkerWriterAdmissionV1>,
+) -> bool {
+    admission.is_none_or(|admission| {
+        admission.binding().home_generation().get() == storage.home_generation.get()
+            && !storage
+                .reconstructed_cleanup_admissions
+                .contains(&admission.binding().owner())
+    })
 }
 
 impl SyndicStorage {
@@ -157,6 +198,7 @@ impl SyndicStorage {
             proposal_digest,
             prebuild_rejection,
             predecessor_positions_authenticated: true,
+            writer_admission: None,
         })
     }
 
@@ -167,7 +209,44 @@ impl SyndicStorage {
         preceding_chain: DraftPieceDigestV1,
         replacement: DraftPieceReplacementV1,
     ) -> Result<DraftPieceBuildFragmentV1, DraftPiecePrepareErrorV1> {
+        self.prepare_draft_piece_fragment_inner(
+            prepared,
+            ordinal,
+            preceding_chain,
+            replacement,
+            false,
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn prepare_unadmitted_marker_fragment_for_test(
+        &self,
+        prepared: &PreparedDraftPieceEditV1,
+        ordinal: u64,
+        preceding_chain: DraftPieceDigestV1,
+        replacement: DraftPieceReplacementV1,
+    ) -> Result<DraftPieceBuildFragmentV1, DraftPiecePrepareErrorV1> {
+        self.prepare_draft_piece_fragment_inner(
+            prepared,
+            ordinal,
+            preceding_chain,
+            replacement,
+            true,
+        )
+    }
+
+    fn prepare_draft_piece_fragment_inner(
+        &self,
+        prepared: &PreparedDraftPieceEditV1,
+        ordinal: u64,
+        preceding_chain: DraftPieceDigestV1,
+        replacement: DraftPieceReplacementV1,
+        permit_unadmitted_markers: bool,
+    ) -> Result<DraftPieceBuildFragmentV1, DraftPiecePrepareErrorV1> {
         if ordinal == 0 || ordinal > prepared.header.fragment_count() {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+        if replacement.marker_effect().is_some() && !permit_unadmitted_markers {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
         validate_fragment(&replacement).map_err(DraftPiecePrepareErrorV1::Rejected)?;
@@ -208,7 +287,29 @@ impl SyndicStorage {
     ) -> MutationContribution {
         self.handle.contribution(
             expected_domain_revision,
-            StageFragmentMutation { prepared, fragment },
+            StageFragmentMutation {
+                prepared,
+                fragment,
+                #[cfg(feature = "test-faults")]
+                unadmitted_marker_builder: false,
+            },
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn stage_unadmitted_marker_fragment_for_test(
+        &self,
+        expected_domain_revision: DomainRevision,
+        prepared: PreparedDraftPieceEditV1,
+        fragment: DraftPieceBuildFragmentV1,
+    ) -> MutationContribution {
+        self.handle.contribution(
+            expected_domain_revision,
+            StageFragmentMutation {
+                prepared,
+                fragment,
+                unadmitted_marker_builder: true,
+            },
         )
     }
 
@@ -222,6 +323,14 @@ impl SyndicStorage {
         let key = DraftPieceSettlementKeyV1::new(draft_id, session_id, operation_id);
         let (build, expected_session) = authenticated_build_from_store(self, store, key)?
             .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        if build.writer_admission().is_some_and(|admission| {
+            admission.binding().home_generation().get() != self.home_generation.get()
+                || self
+                    .reconstructed_cleanup_admissions
+                    .contains(&admission.binding().owner())
+        }) {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
         if build.lifecycle() != DraftPieceBuildLifecycleV1::Open {
             return Ok(None);
         }
@@ -274,6 +383,67 @@ impl SyndicStorage {
             quantum.roots,
             quantum.frontier,
         )?;
+        let marker_effect_completed = marker_effect_continuation.scan().completed_effect_count()
+            > build
+                .marker_effect_continuation()
+                .scan()
+                .completed_effect_count();
+        let admission_marker = (marker_effect_completed && build.writer_admission().is_some())
+            .then(|| {
+                fragment
+                    .as_ref()
+                    .and_then(|fragment| fragment.replacement().marker_effect())
+            })
+            .flatten()
+            .and_then(|effect| match effect {
+                DraftPieceMarkerEffectV1::Insert(insertion)
+                | DraftPieceMarkerEffectV1::Move { insertion, .. }
+                | DraftPieceMarkerEffectV1::SameIdReplacement { insertion, .. } => {
+                    Some(insertion.marker())
+                }
+                DraftPieceMarkerEffectV1::Remove { .. } => None,
+            });
+        let admission_consumption = match (build.writer_admission(), admission_marker) {
+            (Some(admission), Some(marker)) => {
+                let transition_ordinal = build
+                    .progress_receipt()
+                    .key()
+                    .transition_ordinal()
+                    .checked_add(1)
+                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                let identity = draft_marker_writer_consumption_identity_v1(
+                    admission.binding().owner(),
+                    transition_ordinal,
+                )
+                .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
+                Some(
+                    prepare_draft_marker_admission_consumption_from_store_v1(
+                        self,
+                        store,
+                        admission.binding().owner(),
+                        admission.target_root(),
+                        marker,
+                        identity,
+                    )
+                    .map_err(|error| match error {
+                        DraftMarkerAdmissionIndexPreparationErrorV1::StoreRead(error) => {
+                            DraftPiecePrepareErrorV1::Read(error)
+                        }
+                        _ => DraftPiecePrepareErrorV1::InvalidRoot,
+                    })?,
+                )
+            }
+            _ => None,
+        };
+        let writer_admission = match (build.writer_admission(), &admission_consumption) {
+            (Some(admission), Some(consumption)) => Some(
+                admission
+                    .with_target_root(consumption.target_root())
+                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
+            ),
+            (admission, None) => admission,
+            (None, Some(_)) => return Err(DraftPiecePrepareErrorV1::InvalidRoot),
+        };
         let (next, next_receipt) = next_build_record(
             &build,
             published_roots,
@@ -290,6 +460,7 @@ impl SyndicStorage {
             },
             fragment_endpoint,
             marker_effect_continuation,
+            writer_admission,
         )
         .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
         let next_session = expected_session
@@ -306,6 +477,8 @@ impl SyndicStorage {
             index_records: quantum.index_records,
             marker_order_records: quantum.marker_order_records,
             records_read: quantum.records_read,
+            admission_marker,
+            admission_consumption,
         }))
     }
 
@@ -314,8 +487,15 @@ impl SyndicStorage {
         expected_domain_revision: DomainRevision,
         prepared: PreparedDraftPieceAdvanceV1,
     ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, AdvanceMutation { prepared })
+        let writer_progress_allowed =
+            writer_progress_is_current(self, prepared.expected.writer_admission());
+        self.handle.contribution(
+            expected_domain_revision,
+            AdvanceMutation {
+                prepared,
+                writer_progress_allowed,
+            },
+        )
     }
 
     pub fn settle_draft_piece_edit(
@@ -323,8 +503,14 @@ impl SyndicStorage {
         expected_domain_revision: DomainRevision,
         prepared: PreparedDraftPieceEditV1,
     ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, SettleMutation { prepared })
+        self.handle.contribution(
+            expected_domain_revision,
+            SettleMutation {
+                prepared,
+                home_generation: self.home_generation,
+                reconstructed_cleanup_admissions: self.reconstructed_cleanup_admissions.clone(),
+            },
+        )
     }
 
     pub fn cancel_draft_piece_edit(
@@ -743,6 +929,7 @@ pub(super) fn initial_build_for_staging(
     source_session: &DraftEditorCandidateSessionV1,
     expected_staging: DraftEditorActiveOperationV1,
     continuation: DraftPieceDurableBuildContinuationV1,
+    writer_admission: Option<DraftMarkerWriterAdmissionV1>,
 ) -> Result<
     (
         PreparedDraftPieceEditV1,
@@ -773,6 +960,7 @@ pub(super) fn initial_build_for_staging(
         proposal_digest,
         prebuild_rejection: None,
         predecessor_positions_authenticated: true,
+        writer_admission,
     };
     let origin = DraftPieceBuildBoundaryV1::new(0, 0);
     let initial_frontier = if continuation.phase() == DraftPieceBuildStagingPhaseV1::Structure {
@@ -824,7 +1012,8 @@ pub(super) fn initial_build_for_staging(
             None,
             DraftPieceBuildLifecycleV1::Open,
         )
-        .with_durable_continuation(Some(continuation)),
+        .with_durable_continuation(Some(continuation))
+        .with_writer_admission(writer_admission),
         None,
         None,
     )
@@ -922,7 +1111,8 @@ fn build_from_progress_receipt(
         receipt.lifecycle(),
     )
     .with_durable_continuation(receipt.durable_continuation())
-    .with_marker_effect_continuation(receipt.marker_effect_continuation());
+    .with_marker_effect_continuation(receipt.marker_effect_continuation())
+    .with_writer_admission(receipt.writer_admission());
     if progress_receipt_matches_build(receipt, &build) && build_record_is_exact(&build) {
         Ok(build)
     } else {
@@ -994,7 +1184,9 @@ fn stage_transition(
             None,
             DraftPieceBuildLifecycleV1::Open,
         )
-        .with_durable_continuation(build.durable_continuation()),
+        .with_durable_continuation(build.durable_continuation())
+        .with_marker_effect_continuation(build.marker_effect_continuation())
+        .with_writer_admission(build.writer_admission()),
         Some(build.progress_receipt()),
         Some(canonical_fragment_endpoint(fragment)),
     )
@@ -1116,7 +1308,9 @@ pub(super) fn staged_page_transition(
             None,
             DraftPieceBuildLifecycleV1::Open,
         )
-        .with_durable_continuation(Some(target_continuation)),
+        .with_durable_continuation(Some(target_continuation))
+        .with_marker_effect_continuation(build.marker_effect_continuation())
+        .with_writer_admission(build.writer_admission()),
         Some(build.progress_receipt()),
         endpoint,
     )
@@ -1165,6 +1359,7 @@ pub(super) fn prepared_edit_from_staging_build(
         proposal_digest: build.proposal_digest(),
         prebuild_rejection: None,
         predecessor_positions_authenticated: true,
+        writer_admission: build.writer_admission(),
     })
 }
 
@@ -1358,6 +1553,7 @@ fn next_build_record(
     lifecycle: DraftPieceBuildLifecycleV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
     marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
+    writer_admission: Option<DraftMarkerWriterAdmissionV1>,
 ) -> Result<(DraftPieceBuildRecordV1, DraftPieceBuildProgressReceiptV1), SyndicMutationError> {
     authenticated_build_transition(
         DraftPieceBuildRecordV1::new(
@@ -1388,7 +1584,8 @@ fn next_build_record(
             lifecycle,
         )
         .with_durable_continuation(build.durable_continuation())
-        .with_marker_effect_continuation(marker_effect_continuation),
+        .with_marker_effect_continuation(marker_effect_continuation)
+        .with_writer_admission(writer_admission),
         Some(build.progress_receipt()),
         fragment_endpoint,
     )
@@ -1412,6 +1609,7 @@ fn terminal_build(
         lifecycle,
         fragment_endpoint,
         build.marker_effect_continuation(),
+        build.writer_admission(),
     )
 }
 
@@ -1927,6 +2125,26 @@ fn settlement_matches(
         &required::<DraftPieceBuildProgressFamily>(reader, &stored.progress_receipt().key())?,
         target_session,
     )?;
+    if let Some(admission) = settlement
+        .terminal_source()
+        .and_then(DraftPieceBuildRecordV1::writer_admission)
+    {
+        let exact = if matches!(
+            settlement.outcome(),
+            DraftPieceSettlementOutcomeV1::Committed { .. }
+        ) {
+            draft_marker_writer_settlement_is_exact_v1(reader, admission, true)?
+        } else {
+            draft_marker_writer_terminal_is_exact_v1(
+                reader,
+                admission,
+                settlement.terminal_receipt().digest(),
+            )?
+        };
+        if !exact {
+            return Ok(false);
+        }
+    }
     match settlement.closure() {
         DraftPieceSettlementClosureV1::Committed(adoption) => {
             authenticate_draft_edit_history_frontier_v1(reader, adoption.adopted_history())?;
@@ -1974,6 +2192,9 @@ fn settlement_is_settle_target(settlement: &DraftPieceSettlementV1) -> bool {
         settlement.outcome(),
         DraftPieceSettlementOutcomeV1::Committed { .. }
             | DraftPieceSettlementOutcomeV1::Conflict { .. }
+            | DraftPieceSettlementOutcomeV1::Error(
+                DraftPieceErrorReasonV1::HistoryCapacityUnavailable
+            )
     )
 }
 
@@ -2083,6 +2304,16 @@ impl DomainMutation<SyndicDomain> for StageFragmentMutation {
         let ordinal = self.fragment.key().ordinal();
         if !build_matches(&build, &self.prepared)
             || build.lifecycle() != DraftPieceBuildLifecycleV1::Open
+            || (self.fragment.replacement().marker_effect().is_some()
+                && build.writer_admission().is_none()
+                && !(self.permits_unadmitted_marker_builder()
+                    && unadmitted_marker_builder_is_authorized_for_test(
+                        DraftPieceSettlementKeyV1::new(
+                            build.draft_id(),
+                            build.session_id(),
+                            build.operation_id(),
+                        ),
+                    )))
             || self.fragment.key().draft_id() != build.draft_id()
             || self.fragment.key().session_id() != build.session_id()
             || self.fragment.key().operation_id() != build.operation_id()
@@ -2183,12 +2414,18 @@ impl DomainMutation<SyndicDomain> for StageFragmentMutation {
 
 impl DomainMutation<SyndicDomain> for AdvanceMutation {
     type Error = SyndicMutationError;
-    type Prepared = Option<PreparedDraftPieceAdvanceV1>;
+    type Prepared = Option<(
+        PreparedDraftPieceAdvanceV1,
+        Option<PreparedDraftMarkerWriterConsumptionV1>,
+    )>;
 
     fn prepare(
-        self,
+        mut self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        if !self.writer_progress_allowed {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         let current = required_build(reader, &build_key(&self.prepared.expected))?;
         if current == self.prepared.next {
             let receipt = required::<DraftPieceBuildProgressFamily>(
@@ -2228,6 +2465,29 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
                     return Err(SyndicMutationError::IdentityCollision);
                 }
             }
+            if let Some(admission) = current.writer_admission()
+                && !draft_marker_writer_head_is_exact_v1(
+                    reader,
+                    admission,
+                    DraftMarkerAdmissionLifecycleV1::Building,
+                )?
+            {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
+            if let Some(consumption) = &self.prepared.admission_consumption {
+                for node in consumption.puts() {
+                    if point::<DraftMarkerAdmissionNodesFamily>(reader, &node.key())?.as_ref()
+                        != Some(node)
+                    {
+                        return Err(SyndicMutationError::IdentityCollision);
+                    }
+                }
+                for node in consumption.deletions() {
+                    if point::<DraftMarkerAdmissionNodesFamily>(reader, &node.key())?.is_some() {
+                        return Err(SyndicMutationError::IdentityCollision);
+                    }
+                }
+            }
             return Ok(None);
         }
         if current != self.prepared.expected {
@@ -2239,6 +2499,49 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
             &self.prepared.expected_session,
             self.prepared.next_receipt.key(),
         )?;
+        let writer_consumption = self
+            .prepared
+            .admission_marker
+            .map(|marker| {
+                let admission = self
+                    .prepared
+                    .expected
+                    .writer_admission()
+                    .ok_or(SyndicMutationError::IdentityCollision)?;
+                prepare_draft_marker_writer_consumption_v1(
+                    reader,
+                    admission,
+                    marker,
+                    self.prepared.next_receipt.key().transition_ordinal(),
+                )
+            })
+            .transpose()?;
+        if writer_consumption.as_ref().map(|prepared| prepared.index())
+            != self.prepared.admission_consumption.as_ref()
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        if let Some(consumption) = &writer_consumption {
+            let candidate = self
+                .prepared
+                .next
+                .clone()
+                .with_writer_admission(Some(consumption.admission()));
+            let (next, next_receipt) = authenticated_build_transition(
+                candidate,
+                Some(self.prepared.expected.progress_receipt()),
+                self.prepared.next_receipt.fragment_endpoint(),
+            )
+            .map_err(|()| SyndicMutationError::IdentityCollision)?;
+            let next_session = self
+                .prepared
+                .expected_session
+                .advance_active_operation(&custody_for(&self.prepared.expected), custody_for(&next))
+                .ok_or(SyndicMutationError::CurrentDraftConflict)?;
+            self.prepared.next = next;
+            self.prepared.next_receipt = next_receipt;
+            self.prepared.next_session = next_session;
+        }
         for leaf in &self.prepared.leaves {
             if point::<DraftPieceLeavesFamily>(reader, &leaf.key())?.is_some() {
                 return Err(SyndicMutationError::IdentityCollision);
@@ -2259,7 +2562,7 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
                 return Err(SyndicMutationError::IdentityCollision);
             }
         }
-        Ok(Some(self.prepared))
+        Ok(Some((self.prepared, writer_consumption)))
     }
 
     fn reserve_reconciliation(
@@ -2285,6 +2588,13 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
         reservation.reserve_records::<DraftPieceBuildsCodec>(1)?;
         reservation.reserve_records::<DraftPieceBuildProgressCodec>(1)?;
         reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+        if let Some(consumption) = &self.prepared.admission_consumption {
+            reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(
+                consumption.puts().len() + consumption.deletions().len(),
+            )?;
+            reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
+            reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
+        }
         Ok(())
     }
 
@@ -2292,7 +2602,7 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
         prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        if let Some(prepared) = prepared {
+        if let Some((prepared, writer_consumption)) = prepared {
             for leaf in &prepared.leaves {
                 mutations.put::<DraftPieceLeavesCodec>(&leaf.key(), leaf)?;
             }
@@ -2307,6 +2617,9 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
             }
             put_build_transition(mutations, &prepared.next, &prepared.next_receipt)?;
             put_session_head(mutations, &prepared.next_session)?;
+            if let Some(consumption) = writer_consumption {
+                contribute_draft_marker_writer_consumption_v1(consumption, mutations)?;
+            }
         }
         Ok(())
     }
@@ -2320,6 +2633,15 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let build = required_build(reader, &settlement_key(&self.prepared))?;
+        if build.writer_admission().is_some_and(|admission| {
+            admission.binding().home_generation().get() != self.home_generation.get()
+                || self
+                    .reconstructed_cleanup_admissions
+                    .contains(&admission.binding().owner())
+        }) {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
         settlement::prepare(&self.prepared, reader)
     }
 
@@ -2334,6 +2656,10 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
         reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
         reservation.reserve_records::<DraftEditHistoryTransitionsCodec>(1)?;
         reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;
+        reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
+        reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
+        reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
+        reservation.reserve_records::<crate::codec::DraftImageLabelProtectionHeadsCodec>(1)?;
         Ok(())
     }
 
@@ -2453,6 +2779,7 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
                 receipt,
                 session: cleared,
                 settlement,
+                writer: None,
             }));
         }
         if self.prepared.prebuild_rejection().is_some() {
@@ -2504,6 +2831,16 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             .ok_or(SyndicMutationError::IdentityCollision)?;
         let (terminal, receipt) =
             terminal_build(&build, lifecycle, source_receipt.fragment_endpoint())?;
+        let writer = build
+            .writer_admission()
+            .map(|admission| {
+                prepare_draft_marker_writer_terminal_v1(
+                    reader,
+                    admission,
+                    receipt.reference().digest(),
+                )
+            })
+            .transpose()?;
         let settlement = DraftPieceSettlementV1::new_boxed(
             settlement_key(&self.prepared),
             build.proposal_digest(),
@@ -2534,6 +2871,7 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             receipt,
             session: cleared,
             settlement,
+            writer,
         }))
     }
 
@@ -2545,6 +2883,9 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
         reservation.reserve_records::<DraftPieceBuildProgressCodec>(1)?;
         reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
         reservation.reserve_records::<DraftPieceSettlementsCodec>(1)?;
+        reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
+        reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
+        reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
         Ok(())
     }
 
@@ -2559,6 +2900,9 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
                 &prepared.settlement,
             )?;
             put_build_transition(mutations, &prepared.build, &prepared.receipt)?;
+            if let Some(writer) = prepared.writer {
+                contribute_draft_marker_writer_terminal_v1(writer, mutations)?;
+            }
         }
         Ok(())
     }
@@ -2569,4 +2913,5 @@ struct PreparedTerminalMutation {
     receipt: DraftPieceBuildProgressReceiptV1,
     session: DraftEditorCandidateSessionV1,
     settlement: DraftPieceSettlementV1,
+    writer: Option<PreparedDraftMarkerWriterTerminalV1>,
 }

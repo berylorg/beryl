@@ -15,6 +15,7 @@ pub struct DraftMutationBeginV1 {
     replacement_end: DraftCompositePositionV1,
     source_initial_cursor: u64,
     proposal_initial_cursor: u64,
+    writer_admission: Option<DraftMarkerWriterAdmissionV1>,
 }
 
 impl DraftMutationBeginV1 {
@@ -48,7 +49,16 @@ impl DraftMutationBeginV1 {
             replacement_end,
             source_initial_cursor,
             proposal_initial_cursor,
+            writer_admission: None,
         }
+    }
+
+    pub(crate) const fn with_writer_admission(
+        mut self,
+        writer_admission: DraftMarkerWriterAdmissionV1,
+    ) -> Self {
+        self.writer_admission = Some(writer_admission);
+        self
     }
 
     pub const fn identity(self) -> DraftMutationStagingIdentityV1 {
@@ -89,6 +99,9 @@ impl DraftMutationBeginV1 {
     }
     pub const fn proposal_initial_cursor(self) -> u64 {
         self.proposal_initial_cursor
+    }
+    pub const fn writer_admission(self) -> Option<DraftMarkerWriterAdmissionV1> {
+        self.writer_admission
     }
 }
 

@@ -383,8 +383,7 @@ impl DraftMarkerAdmissionHeadV1 {
                 .ok_or(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?;
                 if !self.evidence_eof()
                     || self.ingestion_association_cursor() != 0
-                    || occurrence_count == 0
-                    || unassigned_count == 0
+                    || (occurrence_count != 0 && unassigned_count == 0)
                     || self.unassigned_count() != unassigned_count
                     || self.remaining_builder_count() != 0
                     || reservation_count.is_some_and(|count| count != occurrence_count)
@@ -396,7 +395,9 @@ impl DraftMarkerAdmissionHeadV1 {
                     return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
                 }
             }
-            DraftMarkerAdmissionLifecycleV1::Ready | DraftMarkerAdmissionLifecycleV1::Building
+            DraftMarkerAdmissionLifecycleV1::Ready
+            | DraftMarkerAdmissionLifecycleV1::Staging
+            | DraftMarkerAdmissionLifecycleV1::Building
                 if !self.evidence_eof()
                     || self.ingestion_association_cursor() != 0
                     || self.assignment_continuation().is_some()

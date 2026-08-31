@@ -31,6 +31,18 @@ pub(super) fn page_progression(
     page: &DraftMarkerLabelReadinessProvenPageV1,
 ) -> Result<PageProgression, PageProgressionError> {
     let page_ordinal = page.sealed_page().ordinal;
+    if page.association_count() == 0 {
+        if head.is_some() || page_ordinal != NonZeroU64::MIN || !page.sealed_page().eof {
+            return Err(PageProgressionError::Authority);
+        }
+        return Ok(PageProgression {
+            association_index: 0,
+            next_page_ordinal: NonZeroU64::new(2).expect("empty EOF successor is nonzero"),
+            next_association_cursor: 0,
+            continues_selected_page: false,
+            final_eof: true,
+        });
+    }
     let (association_index, continues_selected_page) = match head {
         Some(head) => match page_ordinal.cmp(&head.next_page_ordinal()) {
             Ordering::Less => return Err(PageProgressionError::Obsolete),

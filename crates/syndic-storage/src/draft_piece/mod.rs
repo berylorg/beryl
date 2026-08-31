@@ -13,6 +13,8 @@ mod read;
 mod session;
 mod staging;
 mod staging_model;
+#[cfg(feature = "test-faults")]
+mod test_unadmitted_marker;
 mod tree;
 
 pub use admission::*;
@@ -41,6 +43,16 @@ pub use staging::{
     PreparedDraftMutationTransferV1, PreparedDraftPieceStagingWindowV1,
 };
 pub use staging_model::*;
+#[cfg(feature = "test-faults")]
+pub use test_unadmitted_marker::DraftPieceUnadmittedMarkerBuilderForTest;
+#[cfg(feature = "test-faults")]
+pub(crate) use test_unadmitted_marker::unadmitted_marker_builder_is_authorized_for_test;
+#[cfg(not(feature = "test-faults"))]
+pub(crate) const fn unadmitted_marker_builder_is_authorized_for_test(
+    _key: DraftPieceSettlementKeyV1,
+) -> bool {
+    false
+}
 pub use tree::{
     DraftPiecePrepareErrorV1, canonical_draft_piece_fragment_chain_v1,
     canonical_empty_draft_piece_fragment_chain_v1, canonical_empty_draft_piece_root_v1,

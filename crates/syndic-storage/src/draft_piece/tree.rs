@@ -999,7 +999,8 @@ pub(crate) fn settlement_terminal_build_is_exact(
             lifecycle,
         )
         .with_durable_continuation(source.durable_continuation())
-        .with_marker_effect_continuation(source.marker_effect_continuation()),
+        .with_marker_effect_continuation(source.marker_effect_continuation())
+        .with_writer_admission(source.writer_admission()),
     );
     stored == &expected
         && stored.progress_receipt() == settlement.terminal_receipt()
@@ -1129,6 +1130,17 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
                 || identity.session_id() != build.session_id()
                 || identity.operation_id().as_piece_operation() != build.operation_id()
         })
+        || build.writer_admission().is_some_and(|admission| {
+            let owner = admission.binding().owner();
+            !admission.is_exact()
+                || owner.draft_id() != build.draft_id()
+                || owner.session_id() != build.session_id()
+                || owner.operation_id().as_bytes() != build.operation_id().as_bytes()
+                || admission.binding().predecessor_candidate_generation()
+                    != build.predecessor_candidate_generation()
+                || admission.binding().predecessor_root() != build.predecessor_root()
+                || admission.binding().predecessor_history() != build.predecessor_history()
+        })
     {
         return false;
     }
@@ -1140,7 +1152,14 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
     let complete_shape = build.frontier() == DraftPieceBuildFrontierV1::Complete;
     let marker = build.marker_effect_continuation();
     let scan = marker.scan();
-    if scan.completed_effect_count() > build.fragment_count()
+    if (build.writer_admission().is_none()
+        && !unadmitted_marker_builder_is_authorized_for_test(DraftPieceSettlementKeyV1::new(
+            build.draft_id(),
+            build.session_id(),
+            build.operation_id(),
+        ))
+        && (scan.completed_effect_count() != 0 || marker.active().is_some()))
+        || scan.completed_effect_count() > build.fragment_count()
         || marker.active().is_some_and(|active| {
             active.source_roots() != build.working_roots()
                 || active.fragment_key().ordinal() != scan.next_fragment_ordinal()
@@ -1164,6 +1183,13 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         }
         (None, None, false) => {}
         _ => return false,
+    }
+    if complete_shape
+        && build
+            .writer_admission()
+            .is_some_and(|admission| !admission.is_empty())
+    {
+        return false;
     }
     match build.frontier() {
         DraftPieceBuildFrontierV1::Receiving {
@@ -1275,7 +1301,8 @@ pub(crate) fn authenticated_build_transition(
         build.lifecycle(),
     )
     .with_durable_continuation(build.durable_continuation())
-    .with_marker_effect_continuation(build.marker_effect_continuation());
+    .with_marker_effect_continuation(build.marker_effect_continuation())
+    .with_writer_admission(build.writer_admission());
     Ok((build, receipt))
 }
 
@@ -1323,6 +1350,7 @@ pub(crate) fn draft_piece_build_progress_receipt_digest_v1(
     hash_build_frontier(&mut digest, build.frontier());
     hash_durable_continuation(&mut digest, build.durable_continuation());
     hash_marker_effect_continuation(&mut digest, build.marker_effect_continuation());
+    hash_writer_admission(&mut digest, build.writer_admission());
     match build.successor() {
         Some(root) => {
             digest.update([1]);
@@ -1445,6 +1473,7 @@ fn progress_receipt_digest_from_value(
     hash_build_frontier(&mut digest, receipt.frontier());
     hash_durable_continuation(&mut digest, receipt.durable_continuation());
     hash_marker_effect_continuation(&mut digest, receipt.marker_effect_continuation());
+    hash_writer_admission(&mut digest, receipt.writer_admission());
     match receipt.successor() {
         Some(root) => {
             digest.update([1]);
@@ -1486,6 +1515,7 @@ pub(crate) fn recompute_progress_receipt_digest(
     )
     .with_durable_continuation(receipt.durable_continuation())
     .with_marker_effect_continuation(receipt.marker_effect_continuation())
+    .with_writer_admission(receipt.writer_admission())
 }
 
 pub(crate) fn progress_receipt_matches_build(
@@ -1503,6 +1533,7 @@ pub(crate) fn progress_receipt_matches_build(
         && receipt.frontier() == build.frontier()
         && receipt.durable_continuation() == build.durable_continuation()
         && receipt.marker_effect_continuation() == build.marker_effect_continuation()
+        && receipt.writer_admission() == build.writer_admission()
         && receipt.successor() == build.successor()
         && receipt.build_digest() == build.build_digest()
         && receipt.lifecycle() == build.lifecycle()
@@ -1923,6 +1954,17 @@ fn hash_marker_effect_continuation(
         }
         None => digest.update([0]),
     }
+}
+
+fn hash_writer_admission(digest: &mut Sha256, admission: Option<DraftMarkerWriterAdmissionV1>) {
+    let Some(admission) = admission else {
+        digest.update([0]);
+        return;
+    };
+    digest.update([1]);
+    digest.update(admission.binding().digest().as_bytes());
+    digest.update(admission.target_root().digest().as_bytes());
+    digest.update(admission.remaining_count().to_be_bytes());
 }
 
 pub(crate) fn draft_piece_build_digest_v1(

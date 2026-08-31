@@ -1,5 +1,5 @@
 mod assignment;
-mod codec;
+pub(crate) mod codec;
 pub(crate) mod index;
 mod model;
 mod publication;
@@ -7,6 +7,7 @@ mod readiness_source;
 mod submission;
 mod terminal;
 mod tree;
+mod writer;
 
 pub use assignment::*;
 pub use model::*;
@@ -14,6 +15,7 @@ pub use readiness_source::*;
 pub use submission::*;
 pub use terminal::*;
 pub use tree::*;
+pub use writer::*;
 
 pub(crate) use codec::{
     DraftMarkerAdmissionCapacityCodec, DraftMarkerAdmissionCapacityFamily,

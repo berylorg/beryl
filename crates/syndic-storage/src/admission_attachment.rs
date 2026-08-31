@@ -361,9 +361,9 @@ fn classify(head: &DraftMarkerAdmissionHeadV1) -> ReconstructedHeadClass {
         | DraftMarkerAdmissionLifecycleV1::Assigning
         | DraftMarkerAdmissionLifecycleV1::Ready
         | DraftMarkerAdmissionLifecycleV1::TerminalCleanup => ReconstructedHeadClass::InertCleanup,
-        DraftMarkerAdmissionLifecycleV1::Building | DraftMarkerAdmissionLifecycleV1::Settled => {
-            ReconstructedHeadClass::JointCleanup
-        }
+        DraftMarkerAdmissionLifecycleV1::Staging
+        | DraftMarkerAdmissionLifecycleV1::Building
+        | DraftMarkerAdmissionLifecycleV1::Settled => ReconstructedHeadClass::JointCleanup,
     }
 }
 

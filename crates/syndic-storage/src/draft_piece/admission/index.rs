@@ -4,17 +4,19 @@ use std::{
     num::NonZeroU64,
 };
 
-use beryl_home_store::{DomainReader, PointReadLimit, ReadError};
+use beryl_home_store::{DomainReader, HomeStore, PointReadLimit, ReadError};
 use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftMarkerId};
 use sha2::{Digest, Sha256};
 
-use crate::{codec::SMALL_MAX, domain::SyndicDomain};
+use crate::{
+    DraftPieceMarkerV1, SyndicReadError, SyndicStorage, codec::SMALL_MAX, domain::SyndicDomain,
+};
 
 use super::{
-    DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS, DRAFT_MARKER_ADMISSION_TREE_FANOUT,
-    DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT, DraftMarkerAdmissionChildV1,
-    DraftMarkerAdmissionEnvelopeV1, DraftMarkerAdmissionEvidenceV1, DraftMarkerAdmissionNodeIdV1,
-    DraftMarkerAdmissionNodeKeyV1, DraftMarkerAdmissionNodeKindV1,
+    DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS,
+    DRAFT_MARKER_ADMISSION_TREE_FANOUT, DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT,
+    DraftMarkerAdmissionChildV1, DraftMarkerAdmissionEnvelopeV1, DraftMarkerAdmissionEvidenceV1,
+    DraftMarkerAdmissionNodeIdV1, DraftMarkerAdmissionNodeKeyV1, DraftMarkerAdmissionNodeKindV1,
     DraftMarkerAdmissionNodePayloadV1, DraftMarkerAdmissionNodeV1, DraftMarkerAdmissionNodesCodec,
     DraftMarkerAdmissionOwnerV1, DraftMarkerAdmissionPageIdentityV1,
     DraftMarkerAdmissionRetainedChargeV1, DraftMarkerAdmissionRootV1,
@@ -29,6 +31,7 @@ const NODE_ID_DOMAIN: &[u8] = b"syndic/draft-marker-label-admission-index-node/v
 #[derive(Debug)]
 pub(crate) enum DraftMarkerAdmissionIndexPreparationErrorV1 {
     Read(ReadError),
+    StoreRead(SyndicReadError),
     Schema(DraftMarkerAdmissionSchemaErrorV1),
     AssociationOutOfRange,
     DuplicateSource,
@@ -58,6 +61,10 @@ impl std::fmt::Display for DraftMarkerAdmissionIndexPreparationErrorV1 {
             Self::Read(error) => write!(
                 formatter,
                 "draft-marker admission index read failed: {error}"
+            ),
+            Self::StoreRead(error) => write!(
+                formatter,
+                "draft-marker admission index store read failed: {error}"
             ),
             Self::Schema(error) => write!(
                 formatter,
@@ -133,6 +140,29 @@ pub(crate) struct PreparedDraftMarkerAdmissionIndexSuccessorV1 {
     footprint: DraftMarkerAdmissionIndexFootprintV1,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PreparedDraftMarkerAdmissionConsumptionV1 {
+    target_root: DraftMarkerAdmissionRootV1,
+    puts: Box<[DraftMarkerAdmissionNodeV1]>,
+    deletions: Box<[DraftMarkerAdmissionNodeV1]>,
+    retained_charge_delta: DraftMarkerAdmissionRetainedChargeDeltaV1,
+}
+
+impl PreparedDraftMarkerAdmissionConsumptionV1 {
+    pub(crate) const fn target_root(&self) -> DraftMarkerAdmissionRootV1 {
+        self.target_root
+    }
+    pub(crate) fn puts(&self) -> &[DraftMarkerAdmissionNodeV1] {
+        &self.puts
+    }
+    pub(crate) fn deletions(&self) -> &[DraftMarkerAdmissionNodeV1] {
+        &self.deletions
+    }
+    pub(crate) const fn retained_charge_delta(&self) -> DraftMarkerAdmissionRetainedChargeDeltaV1 {
+        self.retained_charge_delta
+    }
+}
+
 #[allow(dead_code)]
 impl PreparedDraftMarkerAdmissionIndexSuccessorV1 {
     pub(crate) const fn source_root(&self) -> DraftMarkerAdmissionRootV1 {
@@ -173,6 +203,27 @@ trait AdmissionNodeReader {
 
 struct DomainAdmissionNodeReader<'a, 'b> {
     reader: &'a DomainReader<'b, SyndicDomain>,
+}
+
+struct StoreAdmissionNodeReader<'a> {
+    storage: &'a SyndicStorage,
+    store: &'a HomeStore,
+}
+
+impl AdmissionNodeReader for StoreAdmissionNodeReader<'_> {
+    fn point(
+        &self,
+        key: &DraftMarkerAdmissionNodeKeyV1,
+    ) -> Result<Option<DraftMarkerAdmissionNodeV1>, DraftMarkerAdmissionIndexPreparationErrorV1>
+    {
+        self.storage
+            .point::<super::DraftMarkerAdmissionNodesFamily>(
+                self.store,
+                *key,
+                crate::draft_piece::point_limit(),
+            )
+            .map_err(DraftMarkerAdmissionIndexPreparationErrorV1::StoreRead)
+    }
 }
 
 impl AdmissionNodeReader for DomainAdmissionNodeReader<'_, '_> {
@@ -441,6 +492,152 @@ pub(crate) fn prepare_draft_marker_admission_index_successor_v1(
         DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT,
         super::DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
     )
+}
+
+pub(crate) fn prepare_empty_draft_marker_admission_index_successor_v1(
+    source_root: DraftMarkerAdmissionRootV1,
+    target_root: DraftMarkerAdmissionRootV1,
+    prior_replay_nodes: &[DraftMarkerAdmissionChildV1],
+) -> Result<PreparedDraftMarkerAdmissionIndexSuccessorV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
+    if source_root
+        != super::canonical_empty_draft_marker_admission_root_v1(
+            DraftMarkerAdmissionTreeV1::SourceOrder,
+        )
+        || target_root
+            != super::canonical_empty_draft_marker_admission_root_v1(
+                DraftMarkerAdmissionTreeV1::TargetId,
+            )
+        || !prior_replay_nodes.is_empty()
+    {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    }
+    Ok(PreparedDraftMarkerAdmissionIndexSuccessorV1 {
+        source_root,
+        target_root,
+        puts: Box::new([]),
+        deletions: Box::new([]),
+        retained_predecessor_nodes: Box::new([]),
+        retained_charge_delta: DraftMarkerAdmissionRetainedChargeDeltaV1 {
+            added: DraftMarkerAdmissionRetainedChargeV1::ZERO,
+            removed: DraftMarkerAdmissionRetainedChargeV1::ZERO,
+        },
+        footprint: DraftMarkerAdmissionIndexFootprintV1 {
+            read_bytes: 0,
+            write_bytes: 0,
+            delete_bytes: 0,
+            command_bytes: 0,
+        },
+    })
+}
+
+pub(crate) fn prepare_draft_marker_admission_consumption_v1(
+    reader: &DomainReader<'_, SyndicDomain>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    marker: DraftPieceMarkerV1,
+    identity: DraftMarkerAdmissionPageIdentityV1,
+) -> Result<PreparedDraftMarkerAdmissionConsumptionV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
+    prepare_draft_marker_admission_consumption_with_reader(
+        &DomainAdmissionNodeReader { reader },
+        owner,
+        root,
+        marker,
+        identity,
+    )
+}
+
+pub(crate) fn prepare_draft_marker_admission_consumption_from_store_v1(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    marker: DraftPieceMarkerV1,
+    identity: DraftMarkerAdmissionPageIdentityV1,
+) -> Result<PreparedDraftMarkerAdmissionConsumptionV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
+    prepare_draft_marker_admission_consumption_with_reader(
+        &StoreAdmissionNodeReader { storage, store },
+        owner,
+        root,
+        marker,
+        identity,
+    )
+}
+
+fn prepare_draft_marker_admission_consumption_with_reader<R: AdmissionNodeReader>(
+    reader: &R,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    marker: DraftPieceMarkerV1,
+    identity: DraftMarkerAdmissionPageIdentityV1,
+) -> Result<PreparedDraftMarkerAdmissionConsumptionV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
+    let mut ledger = ReadLedger {
+        reader,
+        read_bytes: 0,
+        maximum_bytes: DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
+        cache: BTreeMap::new(),
+    };
+    let leaf = point_target_leaf(&mut ledger, owner, root, marker.marker_id())?
+        .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
+    let DraftMarkerAdmissionNodePayloadV1::TargetLeaf {
+        target_marker_id,
+        asset_id,
+        disposition: DraftMarkerAdmissionTargetDispositionV1::Assigned(label),
+        ..
+    } = leaf.payload()
+    else {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    };
+    if *target_marker_id != marker.marker_id()
+        || *label != marker.label()
+        || *asset_id != marker.asset_id()
+    {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+    }
+    let edit = rewrite_tree(
+        &mut ledger,
+        owner,
+        root,
+        SearchKey::Target(marker.marker_id()),
+        NodeIdFactory {
+            owner,
+            page: identity,
+            association_index: 0,
+            tree: DraftMarkerAdmissionTreeV1::TargetId,
+            next: 0,
+        },
+        |_| Ok(None),
+    )?;
+    authenticate_fresh_put_keys(&mut ledger, &edit.puts)?;
+    let mut deletions = Vec::with_capacity(edit.predecessor.len());
+    for child in &edit.predecessor {
+        let node = ledger
+            .point(&child.key())?
+            .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
+        if node.digest() != child.digest() || node.count()? != child.count() {
+            return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+        }
+        deletions.push(node);
+    }
+    let write_bytes = sum_node_charges(&edit.puts)?;
+    let delete_bytes = sum_node_charges(&deletions)?;
+    checked_draft_marker_admission_command_charge_v1([
+        ledger.read_bytes,
+        write_bytes,
+        delete_bytes,
+    ])?;
+    Ok(PreparedDraftMarkerAdmissionConsumptionV1 {
+        target_root: edit.root,
+        puts: edit.puts.into_boxed_slice(),
+        deletions: deletions.into_boxed_slice(),
+        retained_charge_delta: DraftMarkerAdmissionRetainedChargeDeltaV1 {
+            added: DraftMarkerAdmissionRetainedChargeV1::new(0, 0, write_bytes),
+            removed: DraftMarkerAdmissionRetainedChargeV1::new(0, 1, delete_bytes),
+        },
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
