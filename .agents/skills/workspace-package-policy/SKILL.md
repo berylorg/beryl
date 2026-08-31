@@ -1,6 +1,6 @@
 ---
 name: workspace-package-policy
-description: Apply generic multi-package workspace rules. Use when working in repositories with workspace projects, subprojects, aggregating directories, modules, manifests, package-level design docs, filesystem policies, .gitignore boundaries, ENV.md environment facts, or large source files that may need splitting.
+description: Apply generic multi-package workspace rules. Use when working in repositories with workspace projects, subprojects, aggregating directories, modules, manifests, package-level design docs and engineering-rigor declarations, filesystem policies, .gitignore boundaries, ENV.md environment facts, or large source files that may need splitting.
 ---
 
 # Workspace Package Policy
@@ -44,7 +44,20 @@ When package design docs are required, keep them focused on the package boundary
 - Dependencies the package consumes and assumptions about their public contracts.
 - Invariants the package guarantees to callers.
 
+Use the required top-level structure `# Goals`, optional `## Non-goals`, `# Decisions`, then
+`# Engineering Rigor`. In `# Engineering Rigor`, select the workspace project's versioned profile
+and modifiers through the `engineering-rigor` skill. Keep package-local valid-input, operating-
+envelope, failure-consequence, and public-boundary rigor requirements here; do not duplicate shared
+feature or system requirements.
+
 Do not define internal policy for dependencies or behavior policy for consumers unless the package boundary owns that contract.
+
+When normative package authority is split across `doc/design.md` and supplemental files, apply the
+`project-doc-authority` skill's authority-decomposition workflow before redistributing contracts.
+Keep `doc/design.md` as the routing and shared-rule entry point, link each normative supplement with
+its bounded role, and validate that package work can selectively read a complete applicable
+contract. Adding a purely illustrative file without redistributing authority does not require that
+workflow.
 
 ## API And Tests
 

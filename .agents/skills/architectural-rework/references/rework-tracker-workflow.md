@@ -9,6 +9,7 @@ This reference is normative for creating, revising, executing, resuming, reviewi
 - Checkpoints
 - Creating a rework
 - Working in an active rework
+- Closing a rework
 - Verification
 
 ## Required REWORK.md Sections
@@ -97,7 +98,7 @@ When the durable plan has no active work, or has just completed all active work 
 rework reference points to an ongoing rework, reread `REWORK.md` before finalizing. If more
 incomplete checkpoints remain, feed only the next bounded checklist slice into the durable plan,
 not the whole checkpoint. If no incomplete checkpoints remain, verify the cutover boundary and
-close out the rework tracker according to the project's archival convention.
+close the rework as specified below.
 
 ## Creating A Rework
 
@@ -142,6 +143,54 @@ After each coherent step:
 - Keep one concise outcome-level verification item for the relevant boundary. Put commands, counts,
   and logs in the project's normal evidence location when one exists; otherwise retain the minimal
   command and result needed to make the outcome reproducible.
+
+## Closing A Rework
+
+Close a rework by replacing `doc/rework/<name>/` with `doc/rework/<name>.zip` in one closure commit. The ZIP is
+an inert sealed artifact intended to keep completed rework contents out of casual file and content
+search. The changed live repository is the rework's result.
+
+Before archiving:
+
+1. Confirm every checklist item is complete, the cutover boundary and normal verification gates pass,
+   and no target-state decision remains only inside the rework.
+2. Find every active-plan or live-content reference to the rework and identify any fact or evidence
+   that still needs a durable owner. Prepare the required edits, but do not detach live authority
+   before the temporary archive passes verification.
+3. Resolve the exact source and destination under `doc/rework/`; refuse closure if the source or any
+   contained entry is a reparse point, the destination already exists, ownership overlaps another
+   task, or either path is outside that directory.
+
+Create a complete source manifest containing every file and directory's normalized relative path and
+entry type, plus each file's byte length and SHA-256 hash; include hidden entries. Create the ZIP at a
+temporary sibling path, never over the source. Use available built-in or system ZIP tooling that
+preserves hidden entries and empty directories; do not install software for closure. If no available
+tool can satisfy the preservation and validation requirements, stop and ask the Operator.
+
+Before extraction, inspect the ZIP central directory. Normalize each entry path; require every entry
+to remain under the single `<name>/` root; and reject rooted, drive-qualified, traversing, corrupt, or
+normalized-duplicate entries. Test-extract only a passing archive into a fresh, non-reparse,
+task-owned temporary directory. Build the same complete manifest from the extraction and require
+exact path, type, length, and SHA-256 parity with the source.
+
+Only after archive verification succeeds, remove the rework from the active durable plan, move any
+still-needed durable fact or evidence into its proper owner, and remove every live rework reference;
+no consumer may cite the directory, ZIP, or closure commit. Recompute the complete source manifest
+immediately before deletion, after re-resolving the source under `doc/rework/` and rechecking all
+reparse-point exclusions; abort if it differs from the verified manifest.
+
+Move the temporary ZIP to `doc/rework/<name>.zip`, verify that its SHA-256 matches the verified
+temporary archive and that its central directory remains readable, remove the exact source directory,
+and verify that the ZIP exists, the source no longer exists, and live searches do not reference the
+removed directory. Commit the plan detachment, durable-owner edits, reference
+removals, source removal, and ZIP addition together using exact owned paths under the applicable
+multi-agent VCS policy. If any step fails, preserve the last verified source or archive, report the
+exact partial state, and do not improvise cleanup.
+
+Closed ZIPs are not authority, evidence, provenance, or reusable history. Do not link, index, search,
+extract, inspect, or edit them during ordinary work. Only explicit Operator direction may authorize
+forensic access; new replacement work starts from live authority under a new rework rather than
+reopening the closed one.
 
 ## Verification
 

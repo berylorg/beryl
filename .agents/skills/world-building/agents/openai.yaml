@@ -1,0 +1,4 @@
+interface:
+  display_name: "World Building"
+  short_description: "Maintain coherent fictional-world authority"
+  default_prompt: "Use $world-building to review this world document against its upstream rules and downstream dependencies."

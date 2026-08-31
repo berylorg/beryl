@@ -1,0 +1,4 @@
+interface:
+  display_name: "Engineering Rigor"
+  short_description: "Calibrate defensive coding and review rigor"
+  default_prompt: "Use $engineering-rigor to define proportionate robustness, verification, and review requirements."

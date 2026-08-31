@@ -1,6 +1,6 @@
 ---
 name: system-design-docs
-description: Create and maintain authoritative system-level design docs under doc/systems/<system>/design.md. Use when internal architecture spans multiple features or packages but is not itself a user-visible feature contract or a single package boundary, such as execution pipelines, storage/projection systems, backend/provider integration, event ingestion, consistency models, caching, identity, provenance, or cross-package state ownership.
+description: Create and maintain authoritative system-level design docs under doc/systems/<system>/design.md. Use when internal architecture or engineering rigor spans multiple features or packages but is not itself a user-visible feature contract or a single package boundary, such as execution pipelines, storage/projection systems, backend/provider integration, event ingestion, consistency models, caching, identity, provenance, or cross-package state ownership.
 ---
 
 # System Design Docs
@@ -26,8 +26,14 @@ Use this structure for every `doc/systems/<system>/design.md`:
 1. First mandatory section: `# Goals`.
 2. Optional section under goals: `## Non-goals`.
 3. Second mandatory section: `# Decisions`.
+4. Third mandatory section: `# Engineering Rigor`.
 
 State goals as the internal system problem and architectural outcome. Put only target-state design decisions under `# Decisions`. Exclude implementation phases, migration steps, status notes, current-state excuses, and implementation diary content.
+
+In `# Engineering Rigor`, select the system scope's versioned rigor profile and modifiers using the
+`engineering-rigor` skill. Put shared technical trust boundaries, operating envelopes, blast
+radii, and consequence requirements here when catalog identifiers are insufficient. Do not
+duplicate generic profile definitions or package-local requirements.
 
 ## Placement
 
@@ -36,6 +42,12 @@ Create system docs at `doc/systems/<system>/design.md`.
 Use lowercase hyphenated system names. Choose names around a stable internal system or architectural boundary, such as `conversation-history`, `execution-projections`, `transcript-pipeline`, `backend-runtime`, or `storage-projections`.
 
 Create supplemental files under `doc/systems/<system>/` only when they reduce entry-point size or improve review quality. Link each supplemental file from the system `design.md` and state whether it is normative, illustrative, or historical.
+
+When a supplement redistributes normative contracts or an existing system authority needs
+decomposition, apply the `project-doc-authority` skill's authority-decomposition workflow before
+editing. It governs review signals, co-reading groups, entry-point routing, contract preservation,
+and selective-read validation. Adding a purely illustrative file without redistributing authority
+does not require that workflow.
 
 Do not put system-specific architecture details in feature docs just because a feature currently drives the work. Feature docs may link to system docs and state user-visible consequences, but they should not duplicate the system's action matrix, schema rules, dataflow, or internal lifecycle policy.
 
@@ -76,6 +88,8 @@ When writing the system doc:
 - Name participating packages without defining their private internals.
 - State invariants in implementation-testable language.
 - Define which lower-level docs must obey the system contract.
+- Define shared rigor constraints at the system boundary without restating each participating
+  package's declaration.
 - Keep feature docs focused on visible behavior and package docs focused on local ownership.
 
 After writing the system doc:

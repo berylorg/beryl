@@ -27,6 +27,10 @@ Provide every subagent an explicit task packet containing:
 - The workspace, repository, corpus, or artifact location.
 - Relevant instructions and constraints.
 - Controlling authorities or source material.
+- Applicable engineering-rigor sources, relevant derived requirements, supported operating
+  envelope, and evidence threshold when implementation, verification, or review is involved.
+- For review, whether independence is required and which contract, consequence, verifier weakness,
+  other authority, or acceptance-plan condition requires it.
 - One coherent bounded deliverable.
 - Whether the subagent may edit files.
 - Owned files, artifacts, packages, modules, or subjects when edits are allowed.
@@ -52,6 +56,9 @@ Require a concise handoff containing:
 - Findings relevant to the task.
 - Changed files or artifacts, if any.
 - Verification performed and results.
+- For review work, each finding's evidence and whether it is blocking under the effective
+  engineering-rigor contract, including any undeclared exposure or consequence that requires
+  design-authority correction.
 - Recommended next steps.
 - Unresolved questions, risks, and blockers.
 

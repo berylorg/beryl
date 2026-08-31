@@ -18,25 +18,24 @@ in the active rework tracker until their own bounded slices are ready. Functiona
 normally; sustained stress or performance work requires a concrete unresolved question and prior
 Operator AC-power coordination.
 
-# Phase 231: Split Remaining Oversized Package Authorities (finished)
+# Phase 232: Update And Synchronize AIPM Skills (finished)
 
-Split the four oversized package designs into concise entry points and 18 bounded normative
-supplements. Their combined authority fell from 3,478 lines and 313 KB to 1,641 lines and 139 KB
-while preserving exact package-owned public contracts, formats, identities, bounds, failures,
-custody, dependency assumptions, and rigor. Derived calculations, test and implementation
-narration, history, and duplicated feature or system policy were removed. Repeated rag-rat barriers
-ended `Current` with zero failed or blocked chunks; exact monolith comparisons, links, formatting,
-scoped diff checks, and fresh independent semantic reviews passed.
+Added context-efficient authority decomposition to canonical AIPM at commit `3e1f88d` and mirrored
+all 15 Remote packages exactly into Beryl. Imported `world-building`, preserved and documented the
+only intended GUI and Rust-first local adaptations, and kept `gpui-scroll-surfaces` local. Manual
+frontmatter, manifest, link, heading, whitespace, inventory, hash-parity, and selective-read checks
+passed, as did a fresh independent completion review; no synthetic semantic queries were used.
 
-# Phase 232: Mount Native-Lineage Compact Restoration (pending)
+# Phase 233: Mount Native-Lineage Compact Restoration (pending)
 
 Phase 228 is sealed and pushed at commit `890b139`; no native-lineage compact-restoration source or
 test work has begun. Resume by rereading this plan and the active rework tracker, then mark this
 phase `wip` only when implementation starts.
 
-Operator restart gate: do not begin this phase in the current Codex process. After Codex restarts,
-verify the project-scoped rag-rat MCP with `index_status` and a focused `semantic_search` before
-resuming implementation.
+Operator restart gate: do not begin this phase until the AIPM synchronization phase is sealed and
+the project-scoped rag-rat MCP is available. After Codex restarts, verify index freshness with
+`index_status`. Use a focused `semantic_search` only if concrete uncertainty remains about retrieval
+quality; it is not a correctness or freshness gate.
 
 Mount native-lineage loading, unavailable, failure, and ready states, and carry unmount or true
 rebind through the existing payload-free compact restoration seed. Preserve exact draft identity,

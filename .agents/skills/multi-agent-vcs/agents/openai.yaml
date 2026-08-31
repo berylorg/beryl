@@ -1,0 +1,4 @@
+interface:
+  display_name: "Multi-Agent VCS"
+  short_description: "Safely share one Git working tree across agents."
+  default_prompt: "Use $multi-agent-vcs when multiple agents concurrently edit disjoint paths in one Git working tree."

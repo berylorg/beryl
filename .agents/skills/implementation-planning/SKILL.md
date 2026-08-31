@@ -1,6 +1,6 @@
 ---
 name: implementation-planning
-description: Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to create or update the authoritative plan; enforce # Scope and # Phase N status structure; keep one acceptance boundary per phase; pause and replan on material scope growth; maintain a compact sliding execution window; derive edge cases from design docs; record blockers; respect other active planning authorities; and review every phase before completion.
+description: "Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to create or update the authoritative plan; enforce # Scope and # Phase N status structure; keep one acceptance boundary per phase; pause and replan on material scope growth; maintain a compact sliding execution window; derive phase work, edge cases, verification, and proportionate completion review from applicable design authority and its effective engineering-rigor contract; record blockers; and respect other active planning authorities."
 ---
 
 # Implementation Planning
@@ -45,6 +45,15 @@ Reflect planning scope, input, sequencing, or continuation constraints from anot
 4. Mark the active phase `wip` and future phases `pending`.
 5. Include phase tasks, edge cases, verification, and resumable milestone details.
 6. Record any blocker in its phase before stopping.
+
+Resolve the effective engineering-rigor contract across every applicable design scope before
+splitting phases. Read the engineering-rigor authority and profile catalog as required there. Treat
+a missing, unknown, or incompatible required declaration as incomplete design and stop planning
+until its owning design authority is corrected.
+
+Translate the contract's supported operating envelope, defensive behavior, failure handling,
+verification evidence, and review requirements into concrete phase work. Do not copy profile,
+modifier, or catalog declarations into `doc/plan.md`.
 
 Before creating a plan, authoring or revising scope or phase content, or reviewing authoring completeness, read [Plan Authoring Template and Edge-Case Prompts](references/plan-authoring.md) in full as normative. Status-only updates, blocker recording, phase compaction, and clearing use this file alone.
 
@@ -99,15 +108,26 @@ When executing the plan:
 
 ## Completion Review
 
-When one phase's implementation and verification are complete, get a reviewer subagent review
-before marking that phase `finished` or beginning the next phase. This review is required for every
-phase, including documentation-only, verification-only, integration, and no-change outcomes.
+Perform a completion review for every phase, including documentation-only, verification-only,
+integration, and no-change outcomes, before marking it `finished` or beginning the next phase.
+Review the completed work and evidence against the phase acceptance boundary and effective
+engineering-rigor contract.
 
-If the reviewer finds issues within the phase's acceptance boundary, keep the phase `wip`, record
-the corrective work in that phase, and address it before repeating review. If a finding reveals a
-new hard task or acceptance boundary, apply the scope-growth rule and create a separate phase.
+Use an independent reviewer only when the effective rigor contract, a concrete consequence, weak
+objective verification, another applicable authority, or the phase acceptance plan requires it.
+Otherwise, objective verification plus worker self-review and targeted main-thread validation may
+satisfy the completion review.
 
-After review succeeds, mark the phase `finished` and immediately compact it to its heading plus a
+Treat a finding as blocking only when it identifies an unmet applicable guarantee, a concrete
+consequence inside the supported operating envelope, or an undeclared trust, exposure, blast
+radius, or irreversibility condition. Keep speculative hardening outside the effective contract
+non-blocking. Escalate an undeclared condition to the owning design authority; apply the scope-growth
+rule only if the corrected authority creates another hard task or acceptance boundary.
+
+When completion review finds a blocking issue within the phase's acceptance boundary, keep the
+phase `wip`, record the corrective work in that phase, and address it before repeating review.
+
+After completion review succeeds, mark the phase `finished` and immediately compact it to its heading plus a
 few-line outcome that includes the verification result or a durable evidence link. Remove detailed
 tasks, edge cases, verification logs, investigation history, and resumable diary content. Perform
 this compaction before starting or expanding another phase.
