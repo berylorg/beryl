@@ -27,12 +27,16 @@ blocked chunks; doctor, hybrid retrieval, exact-scope enumeration, diff checks, 
 semantic review passed. The 0.23.0 bootstrap and `SkipTooSmall` reporting caveat is preserved in
 `doc/failures/rag-rat-0.23.0-project-docs-bootstrap.md`.
 
-# Phase 230: Reconcile And Split Syndic Storage Authority (pending)
+# Phase 230: Reconcile And Split Syndic Storage Authority (finished)
 
-Prune implementation narration and misplaced cross-package behavior from the oversized
-`syndic-storage` package design, reconcile unique durable contracts with their owning system or
-feature authorities, and publish bounded normative package supplements without losing persisted
-compatibility, public-boundary, integrity, recovery, privacy, or engineering-rigor guarantees.
+Reduced the 3,632-line, 329 KB `syndic-storage` monolith to a 143-line entry point and four bounded
+normative supplements for draft storage, history storage, V7 byte compatibility, and mutation
+protocols. The resulting authority is 1,529 lines and 120 KB, retains the exact 67-primary plus
+23-index schema inventory and all compatibility, integrity, recovery, privacy, and rigor contracts,
+and removes duplicated lifecycle policy, implementation calculations, test narration, and dangling
+monolith references. Adjacent authorities required no changes. Repeated rag-rat barriers ended
+`Current` with zero failed or blocked chunks; exact-constant comparison, links, formatting, scoped
+diff checks, and fresh semantic completion review passed.
 
 # Phase 231: Split Remaining Oversized Package Authorities (pending)
 
