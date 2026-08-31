@@ -8,8 +8,8 @@ fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_deliver
     let (_home, mut store, storage, thread, faults) =
         base::fault_fixture("phase175-indeterminate-new", 111);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 112, 113);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 112, 113);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "once", 4, 1);
     let item = SyndicItemId::from_bytes([114; 16]);
     let ticket = host
@@ -27,7 +27,7 @@ fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_deliver
             .advance_submission(
                 &store,
                 ticket,
-                assets,
+                assets.clone(),
                 &seals,
                 operation_id(118),
                 None,
@@ -52,7 +52,7 @@ fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_deliver
         host.advance_submission(
             &store,
             ticket,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(118),
             None,
@@ -69,7 +69,7 @@ fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_deliver
         host.advance_submission(
             &store,
             ticket,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(118),
             None,
@@ -85,7 +85,7 @@ fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_deliver
         host.advance_submission(
             &store,
             ticket,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(118),
             None,
@@ -119,8 +119,8 @@ fn definite_noncommit_preserves_the_draft_without_entering_reconciliation() {
     let (_home, mut store, storage, thread, _faults) =
         base::fault_fixture("phase175-exact-old", 121);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 122, 123);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 122, 123);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "preserved", 4, 1);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
@@ -135,7 +135,7 @@ fn definite_noncommit_preserves_the_draft_without_entering_reconciliation() {
     advance_to_accepting(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         ticket,
         operation_id(128),
@@ -164,7 +164,7 @@ fn definite_noncommit_preserves_the_draft_without_entering_reconciliation() {
         host.advance_submission(
             &store,
             ticket,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(128),
             None,
@@ -194,8 +194,8 @@ fn definite_noncommit_releases_submission_custody_after_concurrent_draft_deletio
     let (_home, mut store, storage, thread, _faults) =
         base::fault_fixture("phase175-collision", 131);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 132, 133);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 132, 133);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "collision", 4, 1);
     let source_draft = edited.candidate().draft_id();
     let ticket = host
@@ -211,7 +211,7 @@ fn definite_noncommit_releases_submission_custody_after_concurrent_draft_deletio
     advance_to_accepting(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         ticket,
         operation_id(138),
@@ -236,7 +236,7 @@ fn definite_noncommit_releases_submission_custody_after_concurrent_draft_deletio
         host.advance_submission(
             &store,
             ticket,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(138),
             None,

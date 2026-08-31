@@ -47,14 +47,14 @@ fn materializer_indeterminate_custody_is_joined_and_released_by_service_disposal
     let (_home, mut store, storage, thread, faults) =
         base::fault_fixture("phase175-dispose-materializer", 71);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 72, 73);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 72, 73);
     commit_text(&mut host, &store, empty, 1, 0, 0, "materializer", 12, 1);
     let ticket = host.begin_submission(request(74)).unwrap();
     advance_until_stage(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         ticket,
         ComposerHostSubmissionStage::Materializing,
@@ -63,7 +63,7 @@ fn materializer_indeterminate_custody_is_joined_and_released_by_service_disposal
     );
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     assert_eq!(
-        advance(&mut host, &store, assets, &seals, ticket, 75).unwrap(),
+        advance(&mut host, &store, assets.clone(), &seals, ticket, 75).unwrap(),
         ComposerHostSubmissionAdvance::ReconciliationPending
     );
     assert_eq!(store.pending_reconciliations().len(), 1);
@@ -80,14 +80,14 @@ fn acceptance_indeterminate_custody_is_joined_and_released_by_service_disposal()
     let (_home, mut store, storage, thread, faults) =
         base::fault_fixture("phase175-dispose-acceptance", 81);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 82, 83);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 82, 83);
     commit_text(&mut host, &store, empty, 1, 0, 0, "acceptance", 10, 1);
     let ticket = host.begin_submission(request(84)).unwrap();
     advance_until_stage(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         ticket,
         ComposerHostSubmissionStage::Accepting,
@@ -99,7 +99,7 @@ fn acceptance_indeterminate_custody_is_joined_and_released_by_service_disposal()
         injected.fail_next(FaultPoint::AfterCommitBeforePersist);
     });
     assert_eq!(
-        advance(&mut host, &store, assets, &seals, ticket, 85).unwrap(),
+        advance(&mut host, &store, assets.clone(), &seals, ticket, 85).unwrap(),
         ComposerHostSubmissionAdvance::ReconciliationPending
     );
     assert_eq!(store.pending_reconciliations().len(), 1);
@@ -114,8 +114,8 @@ fn acceptance_indeterminate_custody_is_joined_and_released_by_service_disposal()
 fn prove_cancellation_cut(cut: CancellationCut, name: &str, seed: u8) {
     let (_home, mut store, storage, thread, faults) = base::fault_fixture(name, seed);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, seed + 1, seed + 2);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
     commit_text(&mut host, &store, empty, 1, 0, 0, "preserved", 9, 1);
     let request = request(seed + 3);
     let item = request.idle_user_item_id();
@@ -132,7 +132,7 @@ fn prove_cancellation_cut(cut: CancellationCut, name: &str, seed: u8) {
     advance_until_stage_with_cancellation(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         ticket,
         target,
@@ -160,7 +160,7 @@ fn prove_cancellation_cut(cut: CancellationCut, name: &str, seed: u8) {
         advance_with_cancellation(
             &mut host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             ticket,
             seed + 4,
@@ -172,12 +172,12 @@ fn prove_cancellation_cut(cut: CancellationCut, name: &str, seed: u8) {
     assert_eq!(host.binding(), Some(preserved));
     assert!(!host.is_unavailable());
     assert_released(&host, &store);
-    assert_exact_unsent_state(&store, storage, thread, preserved, item, next_draft);
+    assert_exact_unsent_state(&store, storage.clone(), thread, preserved, item, next_draft);
     assert_eq!(
         advance_with_cancellation(
             &mut host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             ticket,
             seed + 4,
@@ -213,9 +213,16 @@ fn advance_until_stage_with_cancellation(
         if host.submission_diagnostics().stage() == Some(stage) {
             return;
         }
-        let outcome =
-            advance_with_cancellation(host, store, assets, seals, ticket, seed, cancellation)
-                .unwrap();
+        let outcome = advance_with_cancellation(
+            host,
+            store,
+            assets.clone(),
+            seals,
+            ticket,
+            seed,
+            cancellation,
+        )
+        .unwrap();
         assert!(matches!(
             outcome,
             ComposerHostSubmissionAdvance::Progress(_)
@@ -236,7 +243,7 @@ fn advance_with_cancellation(
     host.advance_submission(
         store,
         ticket,
-        assets,
+        assets.clone(),
         seals,
         operation_id(u64::from(seed)),
         None,
@@ -301,7 +308,7 @@ fn assert_disposed_submission(
     assert!(host.binding().is_none());
     assert_released(host, store);
     assert_eq!(
-        advance(host, store, assets, seals, ticket, seed).unwrap(),
+        advance(host, store, assets.clone(), seals, ticket, seed).unwrap(),
         ComposerHostSubmissionAdvance::Stale
     );
     assert!(matches!(

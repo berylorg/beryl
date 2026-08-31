@@ -137,6 +137,17 @@ pub struct MainWindowConversationComposerService {
 }
 
 impl MainWindowConversationComposerService {
+    #[cfg(feature = "test-faults")]
+    pub fn test_submission_diagnostics(
+        &self,
+    ) -> Result<crate::main_window::MainWindowComposerSlotSubmissionTestDiagnostics, String> {
+        Ok(self
+            .slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .test_submission_diagnostics())
+    }
+
     pub fn new(store: Arc<HomeStore>, slot: MainWindowComposerSlot) -> Self {
         Self {
             store,
@@ -297,6 +308,65 @@ impl MainWindowConversationComposerService {
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .assets())
+    }
+
+    pub(in crate::main_window) fn begin_submission(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        request: crate::composer_host::ComposerHostSubmissionRequest,
+    ) -> Result<crate::composer_host::ComposerHostSubmissionTicket, String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .begin_selected_submission(selection, request)
+            .map_err(|error| error.to_string())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::main_window) fn advance_submission(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        ticket: crate::composer_host::ComposerHostSubmissionTicket,
+        assets: beryl_state::AssetState,
+        marker_seals: &crate::composer_marker_seal::DraftMarkerSealService,
+        publication_operation_id: syndic_storage::DraftPieceOperationIdV1,
+        marker_authority: Option<crate::composer_host::ComposerHostMarkerSealAuthority>,
+        published_at: syndic_storage::SyndicTimestamp,
+        successor_request: &crate::composer_host::ComposerHostActivationRequest,
+        successor_retirement_operation_id: syndic_storage::DraftPieceOperationIdV1,
+        expected_next_draft: beryl_model::SyndicDraftId,
+        cancellation: &beryl_home_store::CommandCancellation,
+    ) -> Result<crate::main_window::MainWindowComposerSubmissionAdvance, String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .advance_selected_submission(
+                &self.store,
+                selection,
+                ticket,
+                assets,
+                marker_seals,
+                publication_operation_id,
+                marker_authority,
+                published_at,
+                successor_request,
+                successor_retirement_operation_id,
+                expected_next_draft,
+                cancellation,
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    pub(in crate::main_window) fn complete_submission_successor_after_widget_release(
+        &self,
+        receipt: super::MainWindowComposerActivationReceipt,
+        release: &MainWindowComposerWidgetRelease,
+    ) -> Result<MainWindowComposerSelectionIdentity, String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .complete_submission_successor_after_widget_release(receipt, release)
+            .map_err(|error| error.to_string())
     }
 
     pub(in crate::main_window) fn selected_autosave_timer(

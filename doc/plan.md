@@ -10,45 +10,26 @@ effect fencing, cross-domain asset proof, and bounded recovery. Do not infer who
 validation, continuous semantic proof, blanket adversarial review, arbitrary-scale support, or
 duplicated consumer checks from persistence or an unqualified verification requirement.
 
-The live composer already has cursor-paged ordinary edits, durable root-transition history,
-credit-gated editor realization, autosave/flush, and multi-MiB bounded-residency evidence. Continue
-from the first genuine remaining composer seam: mounted submission. Keep native-lineage compact
-restoration, later GUI, repair, recovery, branch, asset, integration, and closure boundaries in the
-active rework tracker until their own bounded slices are ready. Functional checks run normally;
-sustained stress or performance work requires a concrete unresolved question and prior Operator
-AC-power coordination.
+The live composer now has cursor-paged ordinary edits, durable root-transition history,
+credit-gated editor realization, autosave/flush, exact mounted submission, and multi-MiB bounded-
+residency evidence. Continue from the next genuine composer seam: native-lineage compact
+restoration. Keep later GUI, repair, recovery, branch, asset, integration, and closure boundaries
+in the active rework tracker until their own bounded slices are ready. Functional checks run
+normally; sustained stress or performance work requires a concrete unresolved question and prior
+Operator AC-power coordination.
 
-# Phase 227: Reconcile The First Cursor-Paged Composer Slice (finished)
+# Phase 228: Mount Exact Composer Submission Admission (finished)
 
-Reconciled current feature, system, package, GUI, dependency, source, and test authority and found
-the assumed whole-payload ordinary-edit seam was stale. The mounted path already uses bounded
-cursor pages end to end through exact candidate adoption, history, realization, autosave, release,
-and representative large-draft evidence. No compatibility layer or duplicate implementation is
-needed; the first genuine remaining seam is mounted submission.
+Mounted one selection-qualified bounded submission controller over the existing exact-root host
+machinery. Genuine dirty submission, denial, noncommit, cancellation, reconciliation, collision,
+unmount drain, late-result fencing, and same-receipt authoritative successor continuation pass 28
+focused host-plus-mounted tests, both constrained library checks, formatting, diff checks, and
+independent semantic review without a whole-value or compatibility path.
 
-# Phase 228: Mount Exact Composer Submission Admission (pending)
+# Phase 229: Mount Native-Lineage Compact Restoration (pending)
 
-Connect the existing mounted composer `SubmitPropagated` event to one selection-qualified
-submission controller that drives the existing `SyndicComposerHost` flush, immutable-root capture,
-bounded `ComposerV1` materialization, and atomic first-acceptance machinery. Supply fresh next-draft,
-idle-item, materialization, session-disposal, timestamp, and turn-start-admission facts through one
-explicit app-owned request source; retain only one bounded ticket, cancellation handle, and compact
-status for the selected composer. Reuse the existing marker-seal and admission paths and introduce
-no whole-draft buffer, second mutation identity, storage protocol, or compatibility adapter.
-
-Exact success retires the accepted editor only after durable acceptance, then boundedly opens the
-caller-named newly authoritative draft and coherently replaces the old mounted editor with its
-editable range-backed composer. The selected thread never settles without a composer, and a late
-predecessor result cannot mutate the successor. Direct admission denial, proven noncommit,
-cancellation, and ordinary failure preserve the coherent draft; collision makes the dependent
-composer terminally unavailable; indeterminate custody remains visibly reconciling and suppresses
-duplicate Enter until exact classification. Selection drift, unmount, service disposal, and late
-completion must not retarget the result. `Shift+Enter` remains newline input.
-
-Add focused mounted tests for single admission, dirty flush-before-acceptance, exact success with a
-selected editable successor composer, denial/noncommit/cancellation/collision/reconciliation,
-empty or preparation-error preservation and release, duplicate suppression, predecessor-late-result
-and selection fencing, and bounded custody release while retaining the existing host submission
-regression. Run focused `cargo-nextest`, the constrained `beryl-app` library check, formatting and
-diff checks, and a fresh independent semantic review. Do not absorb CAS dispatch, native-lineage
-restoration, composer-history recall, or sustained scale/performance work into this phase.
+Mount native-lineage loading, unavailable, failure, and ready states, and carry unmount or true
+rebind through the existing payload-free compact restoration seed. Preserve exact draft identity,
+caret, directed selection, scroll continuation, history availability, bounded realization custody,
+and the prior coherent surface until the replacement is admitted; introduce no retained whole
+draft, compatibility restoration model, or submission work.

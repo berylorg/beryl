@@ -10,7 +10,7 @@ use beryl_app::{
 use beryl_home_store::{
     CommandCancellation, CommandOutcome, HomeCommand, HomeStore, SidecarByteLimit, SidecarNamespace,
 };
-use beryl_model::{AssetId, AssetReferenceSetId, ImageLabelOrdinal};
+use beryl_model::{AssetId, AssetReferenceSetId, ImageLabelOrdinal, SyndicDraftMarkerId};
 use beryl_state::{
     AssetMediaType, AssetReferenceSetStagingAuthority, AssetState, PublishAssetMetadata,
 };
@@ -22,7 +22,10 @@ use gpui_text_input::{
     MutationStreamFinish, MutationTotals, ObjectChange, SourcePosition, SourceRange,
     SuccessorObject,
 };
-use syndic_storage::{DraftMarkerSealOperationIdV1, SyndicStorage};
+use syndic_storage::{
+    DraftEditorCandidateSessionReadOutcomeV1, DraftMarkerAdmissionOperationIdV1,
+    DraftMarkerAdmissionOwnerV1, DraftMarkerSealOperationIdV1, DraftPieceMarkerV1, SyndicStorage,
+};
 
 pub fn service(
     store: &HomeStore,
@@ -68,10 +71,13 @@ pub fn insert_two_markers(
         ByteOffset::new(0),
         InlineObjectGap::after(InlineObjectNeighbor::new(first, InlineObjectOrder::new(1))),
     );
-    let binding = insert_marker_at(host, store, binding, operation, point, first, 1, assets[0]);
+    let binding = insert_marker_at(
+        host, store, None, binding, operation, point, first, 1, assets[0],
+    );
     insert_marker_at(
         host,
         store,
+        None,
         binding,
         operation + 1,
         first_after,
@@ -96,6 +102,36 @@ pub fn insert_published_marker(
         insert_marker_at(
             host,
             store,
+            None,
+            binding,
+            operation,
+            SourcePosition::new(ByteOffset::new(0), InlineObjectGap::NoObjects),
+            object,
+            1,
+            asset,
+        ),
+        before,
+        after,
+    )
+}
+
+pub fn insert_published_marker_with_readiness(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    binding: ComposerHostBinding,
+    operation: u64,
+    asset: AssetId,
+) -> (ComposerHostBinding, SourcePosition, SourcePosition) {
+    let object = InlineObjectId::new(0x1001);
+    let neighbor = InlineObjectNeighbor::new(object, InlineObjectOrder::new(1));
+    let before = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::before(neighbor));
+    let after = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::after(neighbor));
+    (
+        insert_marker_at(
+            host,
+            store,
+            Some(storage),
             binding,
             operation,
             SourcePosition::new(ByteOffset::new(0), InlineObjectGap::NoObjects),
@@ -208,6 +244,7 @@ pub fn insert_later_marker(
     insert_marker_at(
         host,
         store,
+        None,
         binding,
         operation,
         after_second,
@@ -220,6 +257,7 @@ pub fn insert_later_marker(
 fn insert_marker_at(
     host: &mut SyndicComposerHost,
     store: &HomeStore,
+    readiness_storage: Option<&SyndicStorage>,
     binding: ComposerHostBinding,
     operation: u64,
     point: SourcePosition,
@@ -232,22 +270,52 @@ fn insert_marker_at(
         gpui_text_input::SourceRevision::new(binding.candidate().candidate_generation()),
         gpui_text_input::OperationId::new(operation),
     );
-    host.begin_mutation(
-        store,
-        binding,
-        MutationBeginRequest::new(
-            MutationProposal::new(
-                key,
-                MutationKind::Edit,
-                MutationPositions::collapsed(point),
-                SourceRange::new(point, point).unwrap(),
-                0,
-            ),
-            MutationCursor::new(0),
-            MutationCursor::new(0),
+    let begin = MutationBeginRequest::new(
+        MutationProposal::new(
+            key,
+            MutationKind::Edit,
+            MutationPositions::collapsed(point),
+            SourceRange::new(point, point).unwrap(),
+            0,
         ),
-    )
-    .unwrap();
+        MutationCursor::new(0),
+        MutationCursor::new(0),
+    );
+    let readiness_owner = if let Some(storage) = readiness_storage {
+        let session = match storage
+            .draft_editor_candidate_session(
+                store,
+                binding.candidate().draft_id(),
+                binding.candidate().session_id(),
+            )
+            .unwrap()
+        {
+            DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
+            other => panic!("fixture candidate session was not active: {other:?}"),
+        };
+        let mut operation_bytes = [0; 16];
+        operation_bytes[8..].copy_from_slice(&operation.to_be_bytes());
+        let owner = DraftMarkerAdmissionOwnerV1::new(
+            session.draft_id(),
+            session.session_id(),
+            DraftMarkerAdmissionOperationIdV1::from_bytes(operation_bytes),
+        );
+        let marker = DraftPieceMarkerV1::new(
+            SyndicDraftMarkerId::from_bytes(object.get().to_be_bytes()),
+            u64::try_from(order).unwrap(),
+            ImageLabelOrdinal::new(u64::try_from(order).unwrap()).unwrap(),
+            asset,
+        );
+        let readiness = storage
+            .seed_draft_marker_writer_ready_target_for_test(store, &session, owner, marker)
+            .unwrap();
+        host.test_begin_marker_mutation(store, binding, begin, readiness)
+            .unwrap();
+        Some(owner)
+    } else {
+        host.begin_mutation(store, binding, begin).unwrap();
+        None
+    };
 
     let page = MutationPage::new(
         MutationPageKey::new(
@@ -310,7 +378,14 @@ fn insert_marker_at(
             MutationCommitRequest::new(key, MutationIdentity::ROOT),
             &CommandCancellation::new(),
         ) {
-            Ok(ComposerHostMutationOutcome::Committed { binding, .. }) => return binding,
+            Ok(ComposerHostMutationOutcome::Committed { binding, .. }) => {
+                if let (Some(storage), Some(owner)) = (readiness_storage, readiness_owner) {
+                    storage
+                        .release_settled_draft_marker_writer(store, owner)
+                        .unwrap();
+                }
+                return binding;
+            }
             Err(ComposerHostError::MutationWorkPending) => {}
             other => panic!("marker mutation did not commit: {other:?}"),
         }

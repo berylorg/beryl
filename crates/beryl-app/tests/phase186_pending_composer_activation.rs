@@ -18,8 +18,8 @@ use beryl_app::{
     main_window::{
         MainWindowComposerActivationAdvance, MainWindowComposerMarkerMetadataAuthority,
         MainWindowComposerPublishAdvance, MainWindowComposerSlot,
-        MainWindowConversationComposerConfig, MainWindowConversationComposerMount,
-        MainWindowConversationComposerMountFlushStart,
+        MainWindowComposerSubmissionRequestSource, MainWindowConversationComposerConfig,
+        MainWindowConversationComposerMount, MainWindowConversationComposerMountFlushStart,
         MainWindowConversationComposerMountPublishAdvance, MainWindowConversationComposerService,
     },
 };
@@ -126,6 +126,7 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -316,6 +317,7 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals.clone(),
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -680,6 +682,7 @@ fn prior_flush_failure_detaches_pending_presentation_while_retirement_is_pending
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals.clone(),
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -932,6 +935,7 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
                         .map_err(|error| error.to_string())
                 }),
                 marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -1147,6 +1151,7 @@ fn current_predecessor_release_does_not_wait_for_its_remaining_sparse_index(
                         .map_err(|error| error.to_string())
                 }),
                 marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -1364,6 +1369,7 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
                         .map_err(|error| error.to_string())
                 }),
                 marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -1568,6 +1574,7 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -1954,6 +1961,7 @@ fn primed_seed_retarget_uses_live_queue_then_final_target_publishes(cx: &mut gpu
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -2147,4 +2155,16 @@ fn primed_seed_retarget_uses_live_queue_then_final_target_publishes(cx: &mut gpu
             .is_none()
     );
     assert!(!predecessor.read_with(cx, |composer, _| composer.test_has_pending_realizer()));
+}
+
+fn submission_source() -> MainWindowComposerSubmissionRequestSource {
+    MainWindowComposerSubmissionRequestSource::new(
+        beryl_app::cas_projection::ProjectionServiceConfig::try_new(
+            1,
+            4,
+            beryl_home_store::MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap()
+        .turn_start_admission_requirement(),
+    )
 }

@@ -20,15 +20,15 @@ fn flush_error_restores_the_exact_stage_and_retry_converges() {
     let (_home, mut store, storage, thread, _faults) =
         base::fault_fixture("phase175-flush-fault", 141);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 142, 143);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 142, 143);
     commit_text(&mut host, &store, empty, 1, 0, 0, "flush", 5, 1);
     let ticket = host.begin_submission(request(144)).unwrap();
     let before = host.submission_diagnostics();
     assert_eq!(before.stage(), Some(ComposerHostSubmissionStage::Flushing));
     host.test_arm_submission_transition_fault(ComposerHostSubmissionFaultPoint::Flush);
     assert!(matches!(
-        advance(&mut host, &store, assets, &seals, ticket, 145).unwrap_err(),
+        advance(&mut host, &store, assets.clone(), &seals, ticket, 145).unwrap_err(),
         ComposerHostSubmissionError::InjectedFault(ComposerHostSubmissionFaultPoint::Flush)
     ));
     assert_eq!(host.submission_diagnostics(), before);
@@ -43,14 +43,14 @@ fn materializer_error_restores_root_custody_and_retry_converges() {
     let (_home, mut store, storage, thread, _faults) =
         base::fault_fixture("phase175-materializer-fault", 151);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 152, 153);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 152, 153);
     commit_text(&mut host, &store, empty, 1, 0, 0, "materialize", 11, 1);
     let ticket = host.begin_submission(request(154)).unwrap();
     advance_until_stage(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         ticket,
         ComposerHostSubmissionStage::Materializing,
@@ -61,7 +61,7 @@ fn materializer_error_restores_root_custody_and_retry_converges() {
     assert_eq!(before.retained_roots(), 1);
     host.test_arm_submission_transition_fault(ComposerHostSubmissionFaultPoint::Materializer);
     assert!(matches!(
-        advance(&mut host, &store, assets, &seals, ticket, 155).unwrap_err(),
+        advance(&mut host, &store, assets.clone(), &seals, ticket, 155).unwrap_err(),
         ComposerHostSubmissionError::InjectedFault(ComposerHostSubmissionFaultPoint::Materializer)
     ));
     assert_eq!(host.submission_diagnostics(), before);
@@ -76,14 +76,14 @@ fn pre_attempt_error_restores_materialization_custody_without_admission() {
     let (_home, mut store, storage, thread, _faults) =
         base::fault_fixture("phase175-pre-acceptance-fault", 161);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 162, 163);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 162, 163);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "accept", 6, 1);
     let ticket = host.begin_submission(request(164)).unwrap();
     advance_until_stage(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         ticket,
         ComposerHostSubmissionStage::Accepting,
@@ -95,7 +95,7 @@ fn pre_attempt_error_restores_materialization_custody_without_admission() {
         ComposerHostSubmissionFaultPoint::AcceptanceBeforeAttempt,
     );
     assert!(matches!(
-        advance(&mut host, &store, assets, &seals, ticket, 165).unwrap_err(),
+        advance(&mut host, &store, assets.clone(), &seals, ticket, 165).unwrap_err(),
         ComposerHostSubmissionError::InjectedFault(
             ComposerHostSubmissionFaultPoint::AcceptanceBeforeAttempt
         )
@@ -144,14 +144,14 @@ fn direct_idle_admission_requires_one_immediate_sufficient_observation() {
     for (name, seed, denied_observation) in cases {
         let (_home, mut store, storage, thread, faults) = base::fault_fixture(name, seed);
         let assets = BerylState::register(&mut store).unwrap().assets();
-        let seals = service(&store, storage, assets, 1, 1);
-        let (mut host, empty) = activated(storage, &store, thread, seed + 1, seed + 2);
+        let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+        let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
         let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "reserve", 7, 1);
         let ticket = host.begin_submission(request(seed + 3)).unwrap();
         advance_until_stage(
             &mut host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             ticket,
             ComposerHostSubmissionStage::Accepting,
@@ -159,7 +159,7 @@ fn direct_idle_admission_requires_one_immediate_sufficient_observation() {
             None,
         );
         faults.push_free_space_observation(denied_observation);
-        let denied = advance(&mut host, &store, assets, &seals, ticket, seed + 4).unwrap();
+        let denied = advance(&mut host, &store, assets.clone(), &seals, ticket, seed + 4).unwrap();
         let expected = match denied_observation {
             FreeSpaceTestObservation::Observed {
                 available_bytes: 0, ..
@@ -195,7 +195,7 @@ fn direct_idle_admission_requires_one_immediate_sufficient_observation() {
             total_bytes: sufficient,
         });
         assert!(matches!(
-            advance(&mut host, &store, assets, &seals, ticket, seed + 4).unwrap(),
+            advance(&mut host, &store, assets.clone(), &seals, ticket, seed + 4).unwrap(),
             ComposerHostSubmissionAdvance::ExactSuccess(FirstAcceptanceKind::Idle { .. })
         ));
         assert_eq!(faults.free_space_observation_count(), 2);
@@ -207,22 +207,22 @@ fn accepted_next_does_not_consume_a_direct_idle_space_observation() {
     let (_home, mut store, storage, thread, faults) =
         base::fault_fixture("phase175-accepted-no-space-check", 201);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut first_host, empty) = activated(storage, &store, thread, 202, 203);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut first_host, empty) = activated(storage.clone(), &store, thread, 202, 203);
     commit_text(&mut first_host, &store, empty, 1, 0, 0, "first", 5, 1);
     let first_ticket = first_host.begin_submission(request(204)).unwrap();
     assert!(matches!(
         drive_submission(
             &mut first_host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             first_ticket,
             operation_id(205),
         ),
         ComposerHostSubmissionAdvance::ExactSuccess(FirstAcceptanceKind::Idle { .. })
     ));
-    let (mut queued_host, empty) = activated(storage, &store, thread, 211, 212);
+    let (mut queued_host, empty) = activated(storage.clone(), &store, thread, 211, 212);
     commit_text(&mut queued_host, &store, empty, 1, 0, 0, "queued", 6, 1);
     let queued_ticket = queued_host.begin_submission(request(213)).unwrap();
     faults.push_free_space_observation(FreeSpaceTestObservation::Unavailable);
@@ -230,7 +230,7 @@ fn accepted_next_does_not_consume_a_direct_idle_space_observation() {
         drive_submission_at(
             &mut queued_host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             queued_ticket,
             operation_id(214),
@@ -264,7 +264,7 @@ fn advance(
     ticket: ComposerHostSubmissionTicket,
     seed: u8,
 ) -> Result<ComposerHostSubmissionAdvance, ComposerHostSubmissionError> {
-    advance_with_authority(host, store, assets, seals, ticket, seed, None)
+    advance_with_authority(host, store, assets.clone(), seals, ticket, seed, None)
 }
 
 fn advance_with_authority(
@@ -279,7 +279,7 @@ fn advance_with_authority(
     host.advance_submission(
         store,
         ticket,
-        assets,
+        assets.clone(),
         seals,
         operation_id(u64::from(seed) + 2_000),
         authority,
@@ -304,7 +304,8 @@ fn advance_until_stage(
             return;
         }
         let outcome =
-            advance_with_authority(host, store, assets, seals, ticket, seed, authority).unwrap();
+            advance_with_authority(host, store, assets.clone(), seals, ticket, seed, authority)
+                .unwrap();
         assert!(
             matches!(
                 outcome,

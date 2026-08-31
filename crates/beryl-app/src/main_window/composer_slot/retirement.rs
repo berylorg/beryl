@@ -36,6 +36,7 @@ impl MainWindowComposerSlot {
             }
             Ok(ComposerHostServiceDisposalCompletion::Disposed) => {
                 self.pending = None;
+                self.submission_successor = None;
                 Ok(MainWindowComposerRetirementAdvance::Retired)
             }
         }
@@ -270,6 +271,7 @@ impl MainWindowComposerSlot {
             | Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::AlreadyDisposed(_)) => {
                 let mut retired = self.pending.take().unwrap();
                 let _ = retired.host.dispose_composer_service(store);
+                self.submission_successor = None;
                 Ok(MainWindowComposerRetirementAdvance::Retired)
             }
             Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::NotFresh(_))

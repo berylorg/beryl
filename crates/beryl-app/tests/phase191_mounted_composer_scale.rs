@@ -19,9 +19,9 @@ use beryl_app::{
     main_window::{
         ComposerMarkerCommand, MainWindowComposerActivationAdvance,
         MainWindowComposerMarkerMetadataAuthority, MainWindowComposerPublishAdvance,
-        MainWindowComposerSlot, MainWindowConversationComposerAutosavePhase,
-        MainWindowConversationComposerConfig, MainWindowConversationComposerMount,
-        MainWindowConversationComposerMountDisposalAdvance,
+        MainWindowComposerSlot, MainWindowComposerSubmissionRequestSource,
+        MainWindowConversationComposerAutosavePhase, MainWindowConversationComposerConfig,
+        MainWindowConversationComposerMount, MainWindowConversationComposerMountDisposalAdvance,
         MainWindowConversationComposerMountFlushStart,
         MainWindowConversationComposerMountPublishAdvance, MainWindowConversationComposerService,
     },
@@ -145,6 +145,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
                     .map_err(|error| error.to_string())
                 }),
                 mounted_marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -1151,6 +1152,18 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
     drive(cx, 2);
     assert!(weak_input.upgrade().is_none());
     assert!(weak_target.upgrade().is_none());
+}
+
+fn submission_source() -> MainWindowComposerSubmissionRequestSource {
+    MainWindowComposerSubmissionRequestSource::new(
+        beryl_app::cas_projection::ProjectionServiceConfig::try_new(
+            1,
+            4,
+            beryl_home_store::MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap()
+        .turn_start_admission_requirement(),
+    )
 }
 
 fn drive(cx: &mut gpui::VisualTestContext, rounds: usize) {

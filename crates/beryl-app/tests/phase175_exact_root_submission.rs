@@ -39,8 +39,8 @@ use publication::service;
 fn exact_published_root_streams_to_idle_acceptance_and_releases_all_custody() {
     let (_home, mut store, storage, thread) = fixture("phase175-idle", 1);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 2, 3);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 2, 3);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "submitted text", 14, 1);
     let next_draft = SyndicDraftId::from_bytes([20; 16]);
     let item = SyndicItemId::from_bytes([21; 16]);
@@ -103,8 +103,8 @@ fn exact_published_root_streams_to_idle_acceptance_and_releases_all_custody() {
 fn captured_submission_blocks_later_edits_and_retains_only_bounded_authority() {
     let (_home, mut store, storage, thread) = fixture("phase175-capture-barrier", 31);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 32, 33);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 32, 33);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "root", 4, 1);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
@@ -122,7 +122,7 @@ fn captured_submission_blocks_later_edits_and_retains_only_bounded_authority() {
             .advance_submission(
                 &store,
                 ticket,
-                assets,
+                assets.clone(),
                 &seals,
                 operation_id(39),
                 None,
@@ -164,8 +164,8 @@ fn captured_submission_blocks_later_edits_and_retains_only_bounded_authority() {
 fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
     let (_home, mut store, storage, thread) = fixture("phase175-accepted-next", 61);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 62, 63);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 62, 63);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "first", 5, 1);
     let first_ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
@@ -181,7 +181,7 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
         drive_submission(
             &mut host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             first_ticket,
             operation_id(68),
@@ -189,7 +189,7 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
         ComposerHostSubmissionAdvance::ExactSuccess(FirstAcceptanceKind::Idle { .. })
     ));
 
-    let (mut host, empty) = activated(storage, &store, thread, 71, 72);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 71, 72);
     let second = commit_text(&mut host, &store, empty, 1, 0, 0, "queued", 6, 1);
     let accepted_id = second.candidate().draft_id().accepted_input_id();
     let second_ticket = host
@@ -206,7 +206,7 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
         drive_submission_at(
             &mut host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             second_ticket,
             operation_id(77),
@@ -245,8 +245,8 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
 fn empty_rejection_preserves_the_exact_draft_and_starts_no_model_work() {
     let (_home, mut store, storage, thread) = fixture("phase175-empty", 101);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 102, 103);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 102, 103);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
             SyndicDraftId::from_bytes([104; 16]),
@@ -261,7 +261,7 @@ fn empty_rejection_preserves_the_exact_draft_and_starts_no_model_work() {
         match host.advance_submission(
             &store,
             ticket,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(108),
             None,
@@ -309,7 +309,7 @@ fn advance_to_accepting(
             .advance_submission(
                 store,
                 ticket,
-                assets,
+                assets.clone(),
                 seals,
                 publication_operation,
                 None,
@@ -337,7 +337,7 @@ fn drive_submission(
     drive_submission_at(
         host,
         store,
-        assets,
+        assets.clone(),
         seals,
         ticket,
         publication_operation,
@@ -359,7 +359,7 @@ fn drive_submission_at(
             .advance_submission(
                 store,
                 ticket,
-                assets,
+                assets.clone(),
                 seals,
                 publication_operation,
                 None,

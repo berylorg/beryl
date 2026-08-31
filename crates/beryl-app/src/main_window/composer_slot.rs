@@ -17,6 +17,7 @@ mod lifecycle;
 mod model;
 mod retirement;
 mod state;
+mod submission;
 
 pub use dispatch::*;
 pub(in crate::main_window) use dispatch::{
@@ -26,6 +27,7 @@ pub(in crate::main_window) use dispatch::{
 pub use lifecycle::MainWindowComposerAutosaveCaptureRequirement;
 pub use model::*;
 use state::{DisposalStage, PendingComposer, PendingStage, SelectedComposer};
+pub use submission::*;
 
 pub struct MainWindowComposerSlot {
     window_id: WindowId,
@@ -36,6 +38,7 @@ pub struct MainWindowComposerSlot {
     last_activation_generation: u64,
     disposed: bool,
     disposal_stage: Option<DisposalStage>,
+    submission_successor: Option<MainWindowComposerActivationReceipt>,
     #[cfg(feature = "test-faults")]
     activation_after_open_fault:
         Option<Box<dyn FnOnce(&HomeStore, SyndicStorage) + Send + 'static>>,
@@ -82,6 +85,7 @@ impl MainWindowComposerSlot {
             last_activation_generation: 0,
             disposed: false,
             disposal_stage: None,
+            submission_successor: None,
             #[cfg(feature = "test-faults")]
             activation_after_open_fault: None,
             #[cfg(feature = "test-faults")]
@@ -96,7 +100,8 @@ impl MainWindowComposerSlot {
         ) || matches!(
             self.disposal_stage,
             Some(DisposalStage::AwaitingWidgetRelease)
-        ) {
+        ) || self.submission_successor.is_some()
+        {
             return self.selected.as_ref().map(|selected| selected.identity);
         }
         self.selected.as_ref().and_then(|selected| {
@@ -121,7 +126,7 @@ impl MainWindowComposerSlot {
         ) || matches!(
             self.disposal_stage,
             Some(DisposalStage::AwaitingWidgetRelease)
-        );
+        ) || self.submission_successor.is_some();
         if !awaiting_release || self.selected_identity() != Some(selection) {
             return Err(MainWindowComposerSlotError::StaleActivationReceipt);
         }
@@ -237,7 +242,12 @@ impl MainWindowComposerSlot {
         cancellation: &CommandCancellation,
     ) -> Result<MainWindowComposerActivationAdvance, MainWindowComposerSlotError> {
         self.ensure_live()?;
-        if self.pending.is_some() {
+        if self.pending.is_some()
+            || self
+                .selected
+                .as_ref()
+                .is_some_and(|selected| selected.host.submission_diagnostics().pending())
+        {
             return Err(MainWindowComposerSlotError::ActivationPending);
         }
         if request.thread_id() != claim.thread_id() {

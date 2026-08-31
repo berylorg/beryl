@@ -91,14 +91,14 @@ impl Fixture {
         );
 
         let (mut host, empty) =
-            composer_support::activated(syndic, &store, thread, seed.wrapping_add(4), 1);
+            composer_support::activated(syndic.clone(), &store, thread, seed.wrapping_add(4), 1);
         let parent_binding =
             composer_support::commit_text(&mut host, &store, empty, 1, 0, 0, "parent", 6, 1);
         let parent = parent_binding.candidate().draft_id().submitted_turn_id();
         let first = submit(
             &mut host,
             &store,
-            syndic,
+            syndic.clone(),
             state.assets(),
             parent_binding,
             accepted_draft,
@@ -111,7 +111,7 @@ impl Fixture {
         };
 
         let (mut host, empty) =
-            composer_support::activated(syndic, &store, thread, seed.wrapping_add(6), 2);
+            composer_support::activated(syndic.clone(), &store, thread, seed.wrapping_add(6), 2);
         let accepted_binding = match assets {
             FixtureAssets::MarkerFree => composer_support::commit_text(
                 &mut host,
@@ -144,7 +144,7 @@ impl Fixture {
         let second = submit(
             &mut host,
             &store,
-            syndic,
+            syndic.clone(),
             state.assets(),
             accepted_binding,
             current_draft,
@@ -153,7 +153,14 @@ impl Fixture {
             time(10),
         );
         assert_eq!(second, FirstAcceptanceKind::Accepted);
-        terminalize_parent_fixture(&store, syndic, thread, parent, user_item_id, time(15));
+        terminalize_parent_fixture(
+            &store,
+            syndic.clone(),
+            thread,
+            parent,
+            user_item_id,
+            time(15),
+        );
         let accepted_proof = state
             .assets()
             .owner_head(&store, AssetOwner::AcceptedInput(accepted_input))
@@ -161,7 +168,7 @@ impl Fixture {
             .map(|head| head.set());
 
         let (mut host, empty) =
-            composer_support::activated(syndic, &store, thread, seed.wrapping_add(9), 4);
+            composer_support::activated(syndic.clone(), &store, thread, seed.wrapping_add(9), 4);
         let retained_binding = match assets {
             FixtureAssets::MarkerFree => composer_support::commit_text(
                 &mut host,
@@ -191,7 +198,7 @@ impl Fixture {
         publish_current_draft(
             &mut host,
             &store,
-            syndic,
+            syndic.clone(),
             state.assets(),
             seed.wrapping_add(10),
             matches!(assets, FixtureAssets::ImageBearing)
@@ -298,7 +305,7 @@ impl Fixture {
             ),
         );
         let (mut host, empty) = composer_support::activated(
-            self.syndic,
+            self.syndic.clone(),
             &self.store,
             thread,
             seed.wrapping_add(3),
@@ -319,7 +326,7 @@ impl Fixture {
             submit(
                 &mut host,
                 &self.store,
-                self.syndic,
+                self.syndic.clone(),
                 self.state.assets(),
                 binding,
                 queued_draft,
@@ -330,7 +337,7 @@ impl Fixture {
             FirstAcceptanceKind::Idle { .. }
         ));
         let (mut host, empty) = composer_support::activated(
-            self.syndic,
+            self.syndic.clone(),
             &self.store,
             thread,
             seed.wrapping_add(6),
@@ -351,7 +358,7 @@ impl Fixture {
             submit(
                 &mut host,
                 &self.store,
-                self.syndic,
+                self.syndic.clone(),
                 self.state.assets(),
                 binding,
                 next_draft,
@@ -429,7 +436,7 @@ fn submit(
     marker_authority: Option<beryl_app::composer_host::ComposerHostMarkerSealAuthority>,
     admitted_at: SyndicTimestamp,
 ) -> FirstAcceptanceKind {
-    let seals = publication_support::service(store, syndic, assets, 1, 1);
+    let seals = publication_support::service(store, syndic, assets.clone(), 1, 1);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
             next_draft,
@@ -446,7 +453,7 @@ fn submit(
             .advance_submission(
                 store,
                 ticket,
-                assets,
+                assets.clone(),
                 &seals,
                 composer_support::operation_id(u64::from(seed) + 1_000),
                 marker_authority,
@@ -483,7 +490,7 @@ pub fn publish_current_draft(
     marker_authority: Option<beryl_app::composer_host::ComposerHostMarkerSealAuthority>,
     published_at: SyndicTimestamp,
 ) {
-    let seals = publication_support::service(store, syndic, assets, 1, 1);
+    let seals = publication_support::service(store, syndic, assets.clone(), 1, 1);
     let flush = match host
         .begin_flush(ComposerHostFlushPurpose::Submission)
         .unwrap()
@@ -495,7 +502,7 @@ pub fn publish_current_draft(
         .capture_flush_publication(
             store,
             flush,
-            assets,
+            assets.clone(),
             &seals,
             composer_support::operation_id(u64::from(seed) + 2_000),
             marker_authority,

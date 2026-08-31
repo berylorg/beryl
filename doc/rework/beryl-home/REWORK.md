@@ -235,8 +235,8 @@
   retained-resource reclamation.
 - [x] Established cursor-paged composer edits, durable root-transition history, credit-gated editor
   realization, autosave, owned-resource release, and representative large-draft verification.
-- [ ] Mount selection-qualified composer submission through the existing bounded exact-root
-  materialization and atomic admission boundary without a whole-value path.
+- [x] Mounted selection-qualified composer submission through the bounded exact-root materialization
+  and atomic admission boundary without a whole-value path.
 - [ ] Mount native-lineage recovery loading, unavailable, failure, and ready states; unmount and
   rebind the composer through the bounded compact restoration seed without retaining whole values.
 - [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive

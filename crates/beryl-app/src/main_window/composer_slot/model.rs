@@ -156,4 +156,6 @@ pub enum MainWindowComposerSlotError {
     WidgetReleaseIncomplete,
     #[error("composer host failed: {0}")]
     Host(#[from] ComposerHostError),
+    #[error("composer submission failed: {0}")]
+    Submission(#[from] crate::composer_host::ComposerHostSubmissionError),
 }

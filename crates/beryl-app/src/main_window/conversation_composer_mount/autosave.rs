@@ -24,6 +24,16 @@ pub use model::{
 };
 
 impl MainWindowConversationComposerMount {
+    pub(super) fn submission_assets(&self) -> beryl_state::AssetState {
+        self.autosave.assets.clone()
+    }
+
+    pub(super) fn submission_marker_seals(
+        &self,
+    ) -> crate::composer_marker_seal::DraftMarkerSealService {
+        self.autosave.marker_seals.clone()
+    }
+
     pub fn autosave_diagnostics(&self) -> MainWindowConversationComposerAutosaveDiagnostics {
         self.autosave.diagnostics()
     }

@@ -18,9 +18,9 @@ use beryl_app::{
     },
     main_window::{
         MainWindowComposerActivationAdvance, MainWindowComposerMarkerMetadataAuthority,
-        MainWindowComposerSlot, MainWindowConversationComposerAutosavePhase,
-        MainWindowConversationComposerConfig, MainWindowConversationComposerMount,
-        MainWindowConversationComposerMountDisposalAdvance,
+        MainWindowComposerSlot, MainWindowComposerSubmissionRequestSource,
+        MainWindowConversationComposerAutosavePhase, MainWindowConversationComposerConfig,
+        MainWindowConversationComposerMount, MainWindowConversationComposerMountDisposalAdvance,
         MainWindowConversationComposerMountEvent, MainWindowConversationComposerMountFlushStart,
         MainWindowConversationComposerMountPublishAdvance, MainWindowConversationComposerService,
     },
@@ -76,7 +76,7 @@ fn mounted_commands_are_selection_qualified_and_shift_enter_stays_a_newline(
     let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
     let marker_seals = fixture.marker_seals();
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -108,6 +108,7 @@ fn mounted_commands_are_selection_qualified_and_shift_enter_stays_a_newline(
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -139,16 +140,9 @@ fn mounted_commands_are_selection_qualified_and_shift_enter_stays_a_newline(
     let input = contribution.read_with(cx, |composer, _| composer.gpui_input());
     cx.update(|window, app| input.update(app, |input, _| input.focus(window)));
 
-    cx.simulate_keystrokes("enter");
-    drive(cx, 4);
-    assert_eq!(
-        events.lock().unwrap().as_slice(),
-        &[MainWindowConversationComposerMountEvent::SubmitPropagated { selection }]
-    );
-
     cx.simulate_keystrokes("shift-enter");
     drive(cx, 4);
-    assert_eq!(events.lock().unwrap().len(), 1);
+    assert_eq!(events.lock().unwrap().len(), 0);
     let pasted_selection = service.selected_identity().unwrap();
     assert_ne!(pasted_selection, selection);
 
@@ -157,10 +151,20 @@ fn mounted_commands_are_selection_qualified_and_shift_enter_stays_a_newline(
     assert_eq!(
         events.lock().unwrap().as_slice(),
         &[
-            MainWindowConversationComposerMountEvent::SubmitPropagated { selection },
             MainWindowConversationComposerMountEvent::RichPastePropagated {
                 selection: pasted_selection,
-            },
+            }
+        ]
+    );
+
+    cx.simulate_keystrokes("enter");
+    drive(cx, 4);
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        &[
+            MainWindowConversationComposerMountEvent::RichPastePropagated {
+                selection: pasted_selection,
+            }
         ]
     );
 }
@@ -180,7 +184,7 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
     let marker_seals = fixture.marker_seals();
     let image_asset = publish_image_asset(&fixture, b"phase181-mounted-marker");
     let (_directory, store, storage) = fixture.into_store();
-    let mut selected_host = SyndicComposerHost::new(storage);
+    let mut selected_host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(
@@ -220,6 +224,7 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals.clone(),
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -443,7 +448,7 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
             .update(cx, |mount, _| mount.capture_flush_publication(
                 initial_selection,
                 flush,
-                assets,
+                assets.clone(),
                 &marker_seals,
                 operation_id(50),
                 None,
@@ -648,7 +653,7 @@ fn mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits(
     let marker_seals = fixture.marker_seals();
     let image_asset = publish_image_asset(&fixture, b"phase191-terminal-anchor-marker");
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -680,6 +685,7 @@ fn mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits(
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -754,9 +760,9 @@ fn recoverable_mounted_autosave_releases_rearms_and_does_not_spin(cx: &mut gpui:
     let assets = fixture.assets();
     let marker_seals = fixture.marker_seals();
     let image_asset = publish_image_asset(&fixture, b"phase181-recoverable-marker");
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets);
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -789,6 +795,7 @@ fn recoverable_mounted_autosave_releases_rearms_and_does_not_spin(cx: &mut gpui:
                     .map_err(|error| error.to_string())
                 }),
                 mounted_seals,
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -894,9 +901,9 @@ fn disposal_flush_joins_mounted_autosave_and_publishes_live_dirty_successor(
     let thread = fixture.selected_thread;
     let assets = fixture.assets();
     let marker_seals = fixture.marker_seals();
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets);
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -928,6 +935,7 @@ fn disposal_flush_joins_mounted_autosave_and_publishes_live_dirty_successor(
                     .map_err(|error| error.to_string())
                 }),
                 marker_seals.clone(),
+                submission_source(),
                 window,
                 mount_cx,
             )
@@ -1122,6 +1130,18 @@ fn disposal_flush_joins_mounted_autosave_and_publishes_live_dirty_successor(
         MainWindowConversationComposerMountDisposalAdvance::Disposed
     );
     assert_eq!(service.selected_identity(), None);
+}
+
+fn submission_source() -> MainWindowComposerSubmissionRequestSource {
+    MainWindowComposerSubmissionRequestSource::new(
+        beryl_app::cas_projection::ProjectionServiceConfig::try_new(
+            1,
+            4,
+            beryl_home_store::MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap()
+        .turn_start_admission_requirement(),
+    )
 }
 
 fn drive(cx: &mut gpui::VisualTestContext, rounds: usize) {

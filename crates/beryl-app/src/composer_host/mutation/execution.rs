@@ -9,6 +9,12 @@ use super::translation::{
 };
 use super::*;
 
+enum MutationBeginReadiness {
+    Ordinary,
+    #[cfg(feature = "test-faults")]
+    Marker(syndic_storage::DraftMarkerLabelReadinessProofV1),
+}
+
 impl SyndicComposerHost {
     pub const fn mutation_status(&self) -> Option<ComposerHostMutationStatus> {
         match self.pending_mutation {
@@ -41,6 +47,37 @@ impl SyndicComposerHost {
         store: &HomeStore,
         binding: ComposerHostBinding,
         request: MutationBeginRequest,
+    ) -> Result<(), ComposerHostError> {
+        self.begin_mutation_with_readiness(
+            store,
+            binding,
+            request,
+            MutationBeginReadiness::Ordinary,
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_begin_marker_mutation(
+        &mut self,
+        store: &HomeStore,
+        binding: ComposerHostBinding,
+        request: MutationBeginRequest,
+        readiness: syndic_storage::DraftMarkerLabelReadinessProofV1,
+    ) -> Result<(), ComposerHostError> {
+        self.begin_mutation_with_readiness(
+            store,
+            binding,
+            request,
+            MutationBeginReadiness::Marker(readiness),
+        )
+    }
+
+    fn begin_mutation_with_readiness(
+        &mut self,
+        store: &HomeStore,
+        binding: ComposerHostBinding,
+        request: MutationBeginRequest,
+        readiness: MutationBeginReadiness,
     ) -> Result<(), ComposerHostError> {
         if self.lifecycle.freezes_admission() {
             return Err(ComposerHostError::LifecycleBlocked);
@@ -147,9 +184,15 @@ impl SyndicComposerHost {
                 Ordering::Equal | Ordering::Greater => {}
             }
         }
-        let prepared = self
-            .storage
-            .prepare_draft_mutation_staging_begin(storage_begin, &session)?;
+        let prepared = match readiness {
+            MutationBeginReadiness::Ordinary => self
+                .storage
+                .prepare_draft_mutation_staging_begin(storage_begin, &session)?,
+            #[cfg(feature = "test-faults")]
+            MutationBeginReadiness::Marker(readiness) => self
+                .storage
+                .prepare_draft_mutation_staging_marker_begin(storage_begin, &session, readiness)?,
+        };
         let command_result = self.run_staging_command(store, &prepared, None)?;
         if !matches!(command_result, StagingCommandResult::Target) {
             return Err(ComposerHostError::MutationMalformed);

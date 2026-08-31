@@ -23,11 +23,21 @@ use super::{
 
 mod autosave;
 mod pending_presentation;
+mod submission;
 
 use pending_presentation::MainWindowConversationComposerPendingPresentation;
 mod realization;
 
 pub use autosave::*;
+#[cfg(feature = "test-faults")]
+pub use submission::{
+    MainWindowComposerSubmissionAdvanceTestRelease, MainWindowComposerSubmissionAdvanceTestToken,
+    MainWindowComposerSubmissionTestAdvance,
+    MainWindowConversationComposerSubmissionTestDiagnostics,
+};
+pub use submission::{
+    MainWindowComposerSubmissionRequestSource, MainWindowConversationComposerSubmissionStatus,
+};
 
 pub type MainWindowConversationComposerConfigurator = Box<
     dyn FnMut(
@@ -59,9 +69,6 @@ pub enum MainWindowConversationComposerMountEvent {
     RichPastePropagated {
         selection: MainWindowComposerSelectionIdentity,
     },
-    SubmitPropagated {
-        selection: MainWindowComposerSelectionIdentity,
-    },
 }
 
 #[derive(Debug)]
@@ -77,6 +84,7 @@ pub struct MainWindowConversationComposerMount {
     contribution: Option<Entity<MainWindowConversationComposer>>,
     pending_presentation: Option<MainWindowConversationComposerPendingPresentation>,
     autosave: autosave::MainWindowConversationComposerAutosave,
+    submission: submission::MainWindowConversationComposerSubmission,
     contribution_subscription: Option<Subscription>,
 }
 
@@ -90,6 +98,7 @@ impl MainWindowConversationComposerMount {
         service: Arc<MainWindowConversationComposerService>,
         mut configurator: MainWindowConversationComposerConfigurator,
         marker_seals: DraftMarkerSealService,
+        submission_request_source: MainWindowComposerSubmissionRequestSource,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Self, String> {
@@ -114,6 +123,10 @@ impl MainWindowConversationComposerMount {
             contribution: Some(contribution),
             pending_presentation: None,
             autosave: autosave::MainWindowConversationComposerAutosave::new(assets, marker_seals),
+            submission: submission::MainWindowConversationComposerSubmission::new(
+                submission_request_source,
+                cx.background_executor().clone(),
+            ),
             contribution_subscription: None,
         };
         this.subscribe_to_contribution(window, cx)?;
@@ -123,6 +136,10 @@ impl MainWindowConversationComposerMount {
 
     pub fn contribution(&self) -> Option<Entity<MainWindowConversationComposer>> {
         self.contribution.clone()
+    }
+
+    pub fn submission_status(&self) -> MainWindowConversationComposerSubmissionStatus {
+        self.submission.status()
     }
 
     #[cfg(feature = "test-faults")]
@@ -364,6 +381,9 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountFlushStart, String> {
+        if self.cancel_mounted_submission() {
+            return Err("composer submission cancellation is still settling".to_owned());
+        }
         self.clear_pending_presentation(cx)?;
         let expected = self.service.disposal_preflight()?;
         self.suspend_autosave()?;
@@ -492,41 +512,48 @@ impl MainWindowConversationComposerMount {
         self.contribution_subscription = Some(cx.subscribe_in(
             &contribution,
             window,
-            |this, _, event: &super::MainWindowConversationComposerEvent, window, cx| match *event {
-                super::MainWindowConversationComposerEvent::SelectionAdvanced {
-                    previous,
-                    current,
-                } => {
-                    if let Err(error) =
-                        this.autosave_selection_advanced(previous, current, window, cx)
-                    {
-                        this.autosave.record_error(error);
+            |this, _, event: &super::MainWindowConversationComposerEvent, window, cx| {
+                match *event {
+                    super::MainWindowConversationComposerEvent::SelectionAdvanced {
+                        previous,
+                        current,
+                    } => {
+                        if let Err(error) =
+                            this.autosave_selection_advanced(previous, current, window, cx)
+                        {
+                            this.autosave.record_error(error);
+                        }
                     }
-                }
-                super::MainWindowConversationComposerEvent::RichPastePropagated { selection }
-                    if this.service.selected_identity() == Some(selection) =>
-                {
-                    cx.emit(
-                        MainWindowConversationComposerMountEvent::RichPastePropagated { selection },
-                    );
-                }
-                super::MainWindowConversationComposerEvent::ClipboardLimitExceeded {
-                    selection,
-                } if this.service.selected_identity() == Some(selection) => {
-                    cx.emit(
-                        MainWindowConversationComposerMountEvent::ClipboardLimitExceeded {
-                            selection,
-                        },
-                    );
-                }
-                super::MainWindowConversationComposerEvent::SubmitPropagated { selection }
-                    if this.service.selected_identity() == Some(selection) =>
-                {
-                    cx.emit(MainWindowConversationComposerMountEvent::SubmitPropagated {
+                    super::MainWindowConversationComposerEvent::RichPastePropagated {
                         selection,
-                    });
+                    } if this.service.selected_identity() == Some(selection) => {
+                        cx.emit(
+                            MainWindowConversationComposerMountEvent::RichPastePropagated {
+                                selection,
+                            },
+                        );
+                    }
+                    super::MainWindowConversationComposerEvent::ClipboardLimitExceeded {
+                        selection,
+                    } if this.service.selected_identity() == Some(selection) => {
+                        cx.emit(
+                            MainWindowConversationComposerMountEvent::ClipboardLimitExceeded {
+                                selection,
+                            },
+                        );
+                    }
+                    super::MainWindowConversationComposerEvent::SubmitPropagated { selection }
+                        if this.service.selected_identity() == Some(selection) =>
+                    {
+                        if this
+                            .begin_mounted_submission(selection, window, cx)
+                            .is_err()
+                        {
+                            this.finish_submission_failure(window, cx);
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             },
         ));
         Ok(())

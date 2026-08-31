@@ -391,11 +391,23 @@ impl SyndicComposerHost {
                 self.storage.revision(store)?,
                 prepared.clone(),
             ))?;
+            #[cfg(not(feature = "test-faults"))]
             let _ = self.execute_mutation_command(store, command);
-            match self
+            #[cfg(feature = "test-faults")]
+            let outcome = self.execute_mutation_command(store, command);
+            #[cfg(not(feature = "test-faults"))]
+            let reconciliation = self
                 .storage
-                .reconcile_draft_mutation_staging_page_batch(store, prepared)?
-            {
+                .reconcile_draft_mutation_staging_page_batch(store, prepared)?;
+            #[cfg(feature = "test-faults")]
+            let reconciliation = if prepared.target_head().begin().writer_admission().is_some() {
+                self.storage
+                    .reconcile_draft_mutation_staging_page_batch_outcome(store, prepared, outcome)?
+            } else {
+                self.storage
+                    .reconcile_draft_mutation_staging_page_batch(store, prepared)?
+            };
+            match reconciliation {
                 DraftMutationStagingReconcileV1::SourceSelected => continue,
                 DraftMutationStagingReconcileV1::TargetSelected => {
                     return Ok(StagingCommandResult::Target);
@@ -425,11 +437,23 @@ impl SyndicComposerHost {
                     prepared.clone(),
                 ),
             )?;
+            #[cfg(not(feature = "test-faults"))]
             let _ = self.execute_mutation_command(store, command);
-            match self
+            #[cfg(feature = "test-faults")]
+            let outcome = self.execute_mutation_command(store, command);
+            #[cfg(not(feature = "test-faults"))]
+            let reconciliation = self
                 .storage
-                .reconcile_draft_mutation_staging_command(store, prepared)?
-            {
+                .reconcile_draft_mutation_staging_command(store, prepared)?;
+            #[cfg(feature = "test-faults")]
+            let reconciliation = if prepared.target_head().begin().writer_admission().is_some() {
+                self.storage
+                    .reconcile_draft_mutation_staging_command_outcome(store, prepared, outcome)?
+            } else {
+                self.storage
+                    .reconcile_draft_mutation_staging_command(store, prepared)?
+            };
+            match reconciliation {
                 DraftMutationStagingReconcileV1::SourceSelected => continue,
                 DraftMutationStagingReconcileV1::TargetSelected => {
                     return Ok(StagingCommandResult::Target);

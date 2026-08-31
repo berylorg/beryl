@@ -2,7 +2,7 @@ use super::*;
 
 use beryl_home_store::HomeCommand;
 use syndic_storage::{
-    AcceptedRouteLeafRecord,
+    AcceptedRouteLeafRecord, DraftImageLabelProtectionHeadV1, ImageLabelFrontier,
     test_faults::{
         FixtureBatch, FixtureRecord, accepted_route_generation, reset_syndic_point_read_count,
         syndic_point_read_count,
@@ -15,8 +15,8 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
         base::fault_fixture("phase175-promoted-descendant-restart", 211);
     let state = BerylState::register(&mut store).unwrap();
     let assets = state.assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut first_host, empty) = activated(storage, &store, thread, 212, 213);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut first_host, empty) = activated(storage.clone(), &store, thread, 212, 213);
     let first = commit_text(&mut first_host, &store, empty, 1, 0, 0, "first", 5, 1);
     let parent = first.candidate().draft_id().submitted_turn_id();
     let parent_item = SyndicItemId::from_bytes([214; 16]);
@@ -34,7 +34,7 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
         drive_submission(
             &mut first_host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             first_ticket,
             operation_id(219),
@@ -42,10 +42,36 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
         ComposerHostSubmissionAdvance::ExactSuccess(FirstAcceptanceKind::Idle { .. })
     ));
 
-    let (mut queued_host, empty) = activated(storage, &store, thread, 220, 221);
-    let image = publication::publish_image_asset(&store, assets, b"phase175 accepted image");
-    let (binding, _, _) =
-        publication::insert_published_marker(&mut queued_host, &store, empty, 1, image);
+    let (mut queued_host, empty) = activated(storage.clone(), &store, thread, 220, 221);
+    let protection = storage
+        .draft_image_label_protection_head(&store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let mut protection_batch = FixtureBatch::new();
+    protection_batch
+        .put(FixtureRecord::DraftImageLabelProtectionHead(
+            DraftImageLabelProtectionHeadV1::new(
+                thread,
+                protection.revision() + 1,
+                ImageLabelFrontier::from_raw(1),
+            )
+            .unwrap(),
+        ))
+        .unwrap();
+    base::committed(base::execute(
+        &store,
+        storage.fixture_contribution(storage.revision(&store).unwrap(), protection_batch),
+    ));
+    let image =
+        publication::publish_image_asset(&store, assets.clone(), b"phase175 accepted image");
+    let (binding, _, _) = publication::insert_published_marker_with_readiness(
+        &mut queued_host,
+        &store,
+        &storage,
+        empty,
+        1,
+        image,
+    );
     let queued =
         publication::insert_text_after_published_marker(&mut queued_host, &store, binding, 2);
     let accepted_input = queued.candidate().draft_id().accepted_input_id();
@@ -54,7 +80,7 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
     advance_until_stage(
         &mut queued_host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         queued_ticket,
         ComposerHostSubmissionStage::Accepting,
@@ -69,7 +95,7 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
         advance_with_authority(
             &mut queued_host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             queued_ticket,
             224,
@@ -81,19 +107,19 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
     assert!(queued_host.submission_diagnostics().command_attempted());
     promotion_support::terminalize_parent_fixture(
         &store,
-        storage,
+        storage.clone(),
         thread,
         parent,
         parent_item,
         SyndicTimestamp::from_unix_millis(1_230),
     );
-    let (mut current_host, empty) = activated(storage, &store, thread, 228, 229);
+    let (mut current_host, empty) = activated(storage.clone(), &store, thread, 228, 229);
     commit_text(&mut current_host, &store, empty, 1, 0, 0, "retained", 8, 1);
     promotion_support::publish_current_draft(
         &mut current_host,
         &store,
-        storage,
-        assets,
+        storage.clone(),
+        assets.clone(),
         230,
         None,
         SyndicTimestamp::from_unix_millis(1_250),
@@ -121,7 +147,7 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
         .unwrap()
         .unwrap()
         .set();
-    let command = accepted_input_promotion_command(&store, storage, assets, promotion).unwrap();
+    let command = accepted_input_promotion_command(&store, &storage, &assets, promotion).unwrap();
     assert!(matches!(
         store.execute(command),
         CommandOutcome::Committed {
@@ -151,7 +177,7 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
     let recovered_storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
     let store = candidate.publish();
     let assets = recovered_state.assets();
-    let seals = service(&store, recovered_storage, assets, 1, 1);
+    let seals = service(&store, recovered_storage.clone(), assets.clone(), 1, 1);
     let revision_before_restart_reconciliation = store.home_revision().unwrap();
     assert_eq!(
         advance(&mut queued_host, &store, assets, &seals, queued_ticket, 224,).unwrap(),
@@ -172,8 +198,8 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
         base::fault_fixture("phase175-corrupt-promoted-leaf", 231);
     let state = BerylState::register(&mut store).unwrap();
     let assets = state.assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut first_host, empty) = activated(storage, &store, thread, 232, 233);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut first_host, empty) = activated(storage.clone(), &store, thread, 232, 233);
     let first = commit_text(&mut first_host, &store, empty, 1, 0, 0, "first", 5, 1);
     let parent = first.candidate().draft_id().submitted_turn_id();
     let parent_item = SyndicItemId::from_bytes([234; 16]);
@@ -191,7 +217,7 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
         drive_submission(
             &mut first_host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             first_ticket,
             operation_id(239),
@@ -199,25 +225,20 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
         ComposerHostSubmissionAdvance::ExactSuccess(FirstAcceptanceKind::Idle { .. })
     ));
 
-    let (mut queued_host, empty) = activated(storage, &store, thread, 240, 241);
-    let image = publication::publish_image_asset(&store, assets, b"phase175 corrupted route image");
-    let (binding, _, _) =
-        publication::insert_published_marker(&mut queued_host, &store, empty, 1, image);
-    let queued =
-        publication::insert_text_after_published_marker(&mut queued_host, &store, binding, 2);
+    let (mut queued_host, empty) = activated(storage.clone(), &store, thread, 240, 241);
+    let queued = commit_text(&mut queued_host, &store, empty, 1, 0, 0, "queued", 6, 1);
     let accepted_input = queued.candidate().draft_id().accepted_input_id();
     let queued_request = request(242);
     let queued_ticket = queued_host.begin_submission(queued_request).unwrap();
-    let authority = Some(publication::authority(243));
     advance_until_stage(
         &mut queued_host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         queued_ticket,
         ComposerHostSubmissionStage::Accepting,
         244,
-        authority,
+        None,
     );
     let queued_at_attempt = queued_host.binding().unwrap();
     let injected = faults.clone();
@@ -228,11 +249,11 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
         advance_with_authority(
             &mut queued_host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             queued_ticket,
             244,
-            authority,
+            None,
         )
         .unwrap(),
         ComposerHostSubmissionAdvance::ReconciliationPending
@@ -241,19 +262,19 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
 
     promotion_support::terminalize_parent_fixture(
         &store,
-        storage,
+        storage.clone(),
         thread,
         parent,
         parent_item,
         SyndicTimestamp::from_unix_millis(1_330),
     );
-    let (mut current_host, empty) = activated(storage, &store, thread, 245, 246);
+    let (mut current_host, empty) = activated(storage.clone(), &store, thread, 245, 246);
     commit_text(&mut current_host, &store, empty, 1, 0, 0, "retained", 8, 1);
     promotion_support::publish_current_draft(
         &mut current_host,
         &store,
-        storage,
-        assets,
+        storage.clone(),
+        assets.clone(),
         247,
         None,
         SyndicTimestamp::from_unix_millis(1_350),
@@ -275,7 +296,7 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
         successor_item,
         SyndicTimestamp::from_unix_millis(1_400),
     );
-    let command = accepted_input_promotion_command(&store, storage, assets, promotion).unwrap();
+    let command = accepted_input_promotion_command(&store, &storage, &assets, promotion).unwrap();
     assert!(matches!(
         store.execute(command),
         CommandOutcome::Committed {
@@ -284,7 +305,8 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
         }
     ));
 
-    let route = accepted_route_generation(&store, storage, thread, source.generation()).unwrap();
+    let route =
+        accepted_route_generation(&store, storage.clone(), thread, source.generation()).unwrap();
     let promoted = storage
         .accepted_route_page(&store, thread, source.generation(), route.revision(), None)
         .unwrap()
@@ -323,7 +345,15 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
     let revision_before_reconciliation = store.home_revision().unwrap();
     reset_syndic_point_read_count();
     assert_eq!(
-        advance(&mut queued_host, &store, assets, &seals, queued_ticket, 244,).unwrap(),
+        advance(
+            &mut queued_host,
+            &store,
+            assets.clone(),
+            &seals,
+            queued_ticket,
+            244,
+        )
+        .unwrap(),
         ComposerHostSubmissionAdvance::Collision
     );
     assert_eq!(syndic_point_read_count(), 0);
