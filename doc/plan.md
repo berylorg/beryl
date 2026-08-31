@@ -28,6 +28,10 @@ independent semantic review without a whole-value or compatibility path.
 
 # Phase 229: Mount Native-Lineage Compact Restoration (pending)
 
+New-thread handoff: Phase 228 is sealed and pushed at commit `890b139`; no Phase 229 source or
+test work has begun. Resume by rereading this plan and the active rework tracker, then mark this
+phase `wip` only when implementation starts.
+
 Mount native-lineage loading, unavailable, failure, and ready states, and carry unmount or true
 rebind through the existing payload-free compact restoration seed. Preserve exact draft identity,
 caret, directed selection, scroll continuation, history availability, bounded realization custody,
