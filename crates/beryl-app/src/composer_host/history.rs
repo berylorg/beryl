@@ -381,8 +381,7 @@ impl SyndicComposerHost {
                 return Ok(RangeHistoryOutcome::Error);
             }
         };
-        let settlement = proof.settlement();
-        let successor = settlement
+        let successor = proof
             .successor_candidate()
             .ok_or_else(|| history_unavailable(&pending))?;
         let candidate =
@@ -412,9 +411,8 @@ impl SyndicComposerHost {
         if let Some(fault) = self.history_after_commit_fault.take() {
             fault(store, self.storage.clone());
         }
-        let request = settlement.request();
-        let caret_request = request.caret();
-        let selection_request = request.selection();
+        let caret_request = proof.caret();
+        let selection_request = proof.selection();
         let caret = self
             .history_position(store, binding, caret_request)
             .map_err(|_| history_unavailable_after_commit(&pending))?;

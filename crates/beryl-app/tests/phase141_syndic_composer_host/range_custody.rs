@@ -3,9 +3,9 @@ use super::*;
 #[test]
 fn activation_and_bounded_range_custody_are_exact() {
     let (_home, store, storage, thread) = fixture("range-custody", 1);
-    let (left, right) = populate(storage, &store, thread, 10);
+    let (left, right) = populate(storage.clone(), &store, thread, 10);
     let first_marker_demand = marker_demand(None, 1, 65_536);
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let activation = host
         .test_activate(
             &store,

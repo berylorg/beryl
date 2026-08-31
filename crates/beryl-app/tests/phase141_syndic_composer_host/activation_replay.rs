@@ -3,8 +3,8 @@ use super::*;
 #[test]
 fn activation_replay_collision_and_failure_preserve_the_prior_host() {
     let (_home, store, storage, thread) = fixture("atomic-activation", 60);
-    populate(storage, &store, thread, 61);
-    let mut host = SyndicComposerHost::new(storage);
+    populate(storage.clone(), &store, thread, 61);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let initial = activation(thread, 70, 71, Vec::new());
     let first = host
         .test_activate(&store, initial.clone(), &CommandCancellation::new())
@@ -19,7 +19,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
 
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
-    let mut cancelled_host = SyndicComposerHost::new(storage);
+    let mut cancelled_host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         cancelled_host.test_activate(&store, activation(thread, 72, 73, Vec::new()), &cancelled,),
         Ok(ComposerHostActivationOutcome::Cancelled)
@@ -34,7 +34,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
             max_bytes: 4,
         })
         .collect();
-    let mut invalid_host = SyndicComposerHost::new(storage);
+    let mut invalid_host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         invalid_host.test_activate(
             &store,
@@ -56,7 +56,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
             max_bytes: 3,
         }],
     );
-    let mut failing_host = SyndicComposerHost::new(storage);
+    let mut failing_host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         failing_host.test_activate(&store, failing, &CommandCancellation::new()),
         Err(ComposerHostError::Range(
@@ -65,7 +65,7 @@ fn activation_replay_collision_and_failure_preserve_the_prior_host() {
     ));
     assert_eq!(host.binding(), Some(first_binding));
 
-    let mut collision_host = SyndicComposerHost::new(storage);
+    let mut collision_host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         collision_host.test_activate(
             &store,

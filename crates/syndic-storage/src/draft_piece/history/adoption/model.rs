@@ -1,3 +1,5 @@
+use std::fmt;
+
 use beryl_model::SyndicDraftId;
 
 use super::super::super::{
@@ -89,7 +91,7 @@ impl DraftHistoricalRootDirectionV1 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DraftHistoricalRootAdoptionRequestV1 {
+pub(crate) struct DraftHistoricalRootAdoptionRequestV1 {
     key: DraftHistoricalRootAdoptionKeyV1,
     source_history: DraftEditHistoryFrontierReferenceV1,
     selected_transition: DraftEditHistoryTransitionReferenceV1,
@@ -101,7 +103,7 @@ pub struct DraftHistoricalRootAdoptionRequestV1 {
 
 impl DraftHistoricalRootAdoptionRequestV1 {
     #[allow(clippy::too_many_arguments)]
-    pub const fn new(
+    pub(crate) const fn new(
         draft_id: SyndicDraftId,
         session_id: DraftEditorCandidateSessionIdV1,
         operation_id: DraftPieceOperationIdV1,
@@ -123,25 +125,25 @@ impl DraftHistoricalRootAdoptionRequestV1 {
         }
     }
 
-    pub const fn key(self) -> DraftHistoricalRootAdoptionKeyV1 {
+    pub(crate) const fn key(self) -> DraftHistoricalRootAdoptionKeyV1 {
         self.key
     }
-    pub const fn source_history(self) -> DraftEditHistoryFrontierReferenceV1 {
+    pub(crate) const fn source_history(self) -> DraftEditHistoryFrontierReferenceV1 {
         self.source_history
     }
-    pub const fn selected_transition(self) -> DraftEditHistoryTransitionReferenceV1 {
+    pub(crate) const fn selected_transition(self) -> DraftEditHistoryTransitionReferenceV1 {
         self.selected_transition
     }
-    pub const fn direction(self) -> DraftHistoricalRootDirectionV1 {
+    pub(crate) const fn direction(self) -> DraftHistoricalRootDirectionV1 {
         self.direction
     }
-    pub const fn target_root(self) -> DraftPieceRootReferenceV1 {
+    pub(crate) const fn target_root(self) -> DraftPieceRootReferenceV1 {
         self.target_root
     }
-    pub const fn caret(self) -> DraftCompositePositionV1 {
+    pub(crate) const fn caret(self) -> DraftCompositePositionV1 {
         self.caret
     }
-    pub const fn selection(self) -> DraftCompositePositionV1 {
+    pub(crate) const fn selection(self) -> DraftCompositePositionV1 {
         self.selection
     }
 }
@@ -154,7 +156,7 @@ pub enum DraftHistoricalRootAdoptionErrorReasonV1 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DraftHistoricalRootAdoptionSettlementOutcomeV1 {
+pub(crate) enum DraftHistoricalRootAdoptionSettlementOutcomeV1 {
     Committed,
     Rejected,
     Conflict,
@@ -201,34 +203,34 @@ impl DraftHistoricalRootAdoptionV1 {
         }
     }
 
-    pub const fn key(&self) -> DraftHistoricalRootAdoptionKeyV1 {
+    pub(crate) const fn key(&self) -> DraftHistoricalRootAdoptionKeyV1 {
         self.request.key()
     }
-    pub const fn request(&self) -> DraftHistoricalRootAdoptionRequestV1 {
+    pub(crate) const fn request(&self) -> DraftHistoricalRootAdoptionRequestV1 {
         self.request
     }
-    pub fn request_bytes(&self) -> &[u8] {
+    pub(crate) fn request_bytes(&self) -> &[u8] {
         &self.request_bytes
     }
-    pub const fn source_history(&self) -> &DraftEditHistoryFrontierV1 {
+    pub(crate) const fn source_history(&self) -> &DraftEditHistoryFrontierV1 {
         &self.source_history
     }
-    pub const fn selected_transition(&self) -> &DraftEditHistoryTransitionV1 {
+    pub(crate) const fn selected_transition(&self) -> &DraftEditHistoryTransitionV1 {
         &self.selected_transition
     }
-    pub const fn target_root(&self) -> &DraftPieceRootRecordV1 {
+    pub(crate) const fn target_root(&self) -> &DraftPieceRootRecordV1 {
         &self.target_root
     }
-    pub const fn outcome(&self) -> DraftHistoricalRootAdoptionSettlementOutcomeV1 {
+    pub(crate) const fn outcome(&self) -> DraftHistoricalRootAdoptionSettlementOutcomeV1 {
         self.outcome
     }
-    pub fn successor_transition(&self) -> Option<&DraftEditHistoryTransitionV1> {
+    pub(crate) fn successor_transition(&self) -> Option<&DraftEditHistoryTransitionV1> {
         self.successor_transition.as_deref()
     }
-    pub fn successor_history(&self) -> Option<&DraftEditHistoryFrontierV1> {
+    pub(crate) fn successor_history(&self) -> Option<&DraftEditHistoryFrontierV1> {
         self.successor_history.as_deref()
     }
-    pub fn successor_candidate(&self) -> Option<&DraftEditorCandidateSessionV1> {
+    pub(crate) fn successor_candidate(&self) -> Option<&DraftEditorCandidateSessionV1> {
         self.successor_candidate.as_deref()
     }
 
@@ -288,17 +290,34 @@ impl DraftHistoricalRootAdoptionV1 {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct DraftHistoricalRootAdoptionProofV1 {
     settlement: DraftHistoricalRootAdoptionV1,
+}
+
+impl fmt::Debug for DraftHistoricalRootAdoptionProofV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DraftHistoricalRootAdoptionProofV1")
+            .finish_non_exhaustive()
+    }
 }
 
 impl DraftHistoricalRootAdoptionProofV1 {
     pub(crate) const fn new(settlement: DraftHistoricalRootAdoptionV1) -> Self {
         Self { settlement }
     }
-    pub const fn settlement(&self) -> &DraftHistoricalRootAdoptionV1 {
-        &self.settlement
+
+    pub fn successor_candidate(&self) -> Option<&DraftEditorCandidateSessionV1> {
+        self.settlement.successor_candidate()
+    }
+
+    pub const fn caret(&self) -> DraftCompositePositionV1 {
+        self.settlement.request.caret
+    }
+
+    pub const fn selection(&self) -> DraftCompositePositionV1 {
+        self.settlement.request.selection
     }
 }
 
@@ -326,7 +345,7 @@ impl DraftHistoricalRootAdoptionOutcomeV1 {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DraftHistoricalRootAdoptionStatusV1 {
+pub(crate) enum DraftHistoricalRootAdoptionStatusV1 {
     Absent,
     Settled(DraftHistoricalRootAdoptionOutcomeV1),
     Collision,

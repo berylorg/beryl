@@ -6,7 +6,7 @@ fn current_marker_reads_stay_stable_while_exact_candidate_reads_reject_drift() {
     for proof in [false, true] {
         let (_home, store, storage, thread) =
             fixture("current-marker-drift", 110 + u8::from(proof));
-        let mut host = SyndicComposerHost::new(storage);
+        let mut host = SyndicComposerHost::new(storage.clone());
         let ComposerHostActivationOutcome::Activated { binding, .. } = host
             .test_activate(
                 &store,
@@ -94,8 +94,8 @@ fn current_marker_reads_stay_stable_while_exact_candidate_reads_reject_drift() {
 
         let (_home, store, storage, thread) =
             fixture("candidate-marker-drift", 124 + u8::from(proof));
-        let (left, _) = populate(storage, &store, thread, 126 + u8::from(proof));
-        let mut host = SyndicComposerHost::new(storage);
+        let (left, _) = populate(storage.clone(), &store, thread, 126 + u8::from(proof));
+        let mut host = SyndicComposerHost::new(storage.clone());
         let ComposerHostActivationOutcome::Activated { binding, .. } = host
             .test_activate(
                 &store,

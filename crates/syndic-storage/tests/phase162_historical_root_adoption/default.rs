@@ -1,9 +1,7 @@
 use syndic_storage::{
-    DraftEditHistoryTransitionV1, DraftEditorCandidateSessionReadOutcomeV1,
-    DraftHistoricalRootAdoptionErrorReasonV1, DraftHistoricalRootAdoptionOutcomeV1,
-    DraftHistoricalRootAdoptionReconciliationV1, DraftHistoricalRootAdoptionRequestV1,
-    DraftHistoricalRootAdoptionStatusV1, DraftHistoricalRootDirectionV1,
-    DraftPieceSettlementClosureV1,
+    DraftEditorCandidateSessionReadOutcomeV1, DraftHistoricalRootAdoptionErrorReasonV1,
+    DraftHistoricalRootAdoptionOutcomeV1, DraftHistoricalRootAdoptionReconciliationV1,
+    DraftHistoricalRootDirectionV1, DraftPieceSettlementClosureV1,
 };
 
 use super::support::*;
@@ -39,24 +37,6 @@ fn committed_adoption(
         ) => (proof, prepared),
         value => panic!("historical adoption did not commit: {value:?}"),
     }
-}
-
-fn undo_request(
-    session: &syndic_storage::DraftEditorCandidateSessionV1,
-    transition: &DraftEditHistoryTransitionV1,
-    operation: u8,
-) -> DraftHistoricalRootAdoptionRequestV1 {
-    DraftHistoricalRootAdoptionRequestV1::new(
-        session.draft_id(),
-        session.session_id(),
-        operation_id(operation),
-        session.newest_history(),
-        transition.reference(),
-        DraftHistoricalRootDirectionV1::Undo,
-        transition.predecessor_root(),
-        transition.before_caret(),
-        transition.before_selection(),
-    )
 }
 
 fn committed_edit(
@@ -168,20 +148,13 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
         DraftHistoricalRootDirectionV1::Undo,
         7,
     );
-    let undo_settlement = undo.settlement();
-    #[cfg(feature = "test-faults")]
-    assert_eq!(
-        syndic_storage::test_faults::roundtrip_draft_historical_root_adoption(undo_settlement),
-        Some(undo_settlement.clone())
-    );
-    let undo_session = undo_settlement.successor_candidate().unwrap();
-    let undo_history = undo_settlement.successor_history().unwrap();
+    let undo_session = undo.successor_candidate().unwrap();
     assert_eq!(
         undo_session.newest_root(),
         first_adoption.adopted_root().reference()
     );
-    assert!(undo_history.undo_head().is_some());
-    assert!(undo_history.redo_head().is_some());
+    assert_eq!(undo.caret(), point(3));
+    assert_eq!(undo.selection(), point(3));
 
     let (redo, _) = committed_adoption(
         &storage,
@@ -190,15 +163,10 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
         DraftHistoricalRootDirectionV1::Redo,
         8,
     );
-    let redo_settlement = redo.settlement();
-    let redo_session = redo_settlement.successor_candidate().unwrap();
+    let redo_session = redo.successor_candidate().unwrap();
     assert_eq!(
         redo_session.newest_root(),
         second_adoption.adopted_root().reference()
-    );
-    assert_eq!(
-        redo_session.newest_history(),
-        redo_settlement.successor_history().unwrap().reference()
     );
 
     let (second_undo, _) = committed_adoption(
@@ -208,7 +176,7 @@ fn undo_redo_and_branch_adopt_existing_roots_without_current_publication() {
         DraftHistoricalRootDirectionV1::Undo,
         9,
     );
-    let branch_session = second_undo.settlement().successor_candidate().unwrap();
+    let branch_session = second_undo.successor_candidate().unwrap();
     let branch = transaction(
         &storage,
         &store,
@@ -279,11 +247,10 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
         )
     ));
 
-    let undo_settlement = undo.settlement();
     let (redo, redo_prepared) = committed_adoption(
         &storage,
         &store,
-        undo_settlement.successor_candidate().unwrap(),
+        undo.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Redo,
         45,
     );
@@ -301,11 +268,10 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
         )
     ));
 
-    let redo_settlement = redo.settlement();
     let (second_undo, second_undo_prepared) = committed_adoption(
         &storage,
         &store,
-        redo_settlement.successor_candidate().unwrap(),
+        redo.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
         46,
     );
@@ -331,7 +297,7 @@ fn every_successful_undo_redo_and_branch_is_exact_after_reopen() {
     let branch = committed_edit(
         &storage,
         &store,
-        second_undo.settlement().successor_candidate().unwrap(),
+        second_undo.successor_candidate().unwrap(),
         47,
         "branch",
         3,
@@ -371,7 +337,6 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
         24,
         DraftHistoricalRootDirectionV1::Undo,
     );
-    let stale_request = stale.request();
     let third = committed_edit(
         &storage,
         &store,
@@ -422,15 +387,6 @@ fn stale_conflict_exact_replay_and_byte_disagreeing_identity_survive_reopen() {
         storage.adopt_draft_historical_root(revision(&storage, &store), stale.clone()),
     ));
     let (store, storage) = reopen(&home, store);
-    assert!(matches!(
-        storage
-            .draft_historical_root_adoption_status(&store, stale_request)
-            .unwrap(),
-        DraftHistoricalRootAdoptionStatusV1::Settled(
-            DraftHistoricalRootAdoptionOutcomeV1::Conflict(_)
-        )
-    ));
-
     let replay = execute(
         &store,
         storage.adopt_draft_historical_root(revision(&storage, &store), stale.clone()),
@@ -486,7 +442,6 @@ fn settlement_only_outcomes_preserve_candidate_and_history_across_reopen() {
             operation,
             DraftHistoricalRootDirectionV1::Undo,
         );
-        let request = prepared.request();
         let outcome = match terminal {
             0 => execute(
                 &store,
@@ -513,11 +468,35 @@ fn settlement_only_outcomes_preserve_candidate_and_history_across_reopen() {
         };
         committed(outcome);
         (store, storage) = reopen(&home, store);
+        let replay = match terminal {
+            0 => execute(
+                &store,
+                storage.reject_draft_historical_root_adoption(
+                    revision(&storage, &store),
+                    prepared.clone(),
+                ),
+            ),
+            1 => execute(
+                &store,
+                storage.cancel_draft_historical_root_adoption(
+                    revision(&storage, &store),
+                    prepared.clone(),
+                ),
+            ),
+            _ => execute(
+                &store,
+                storage.error_draft_historical_root_adoption(
+                    revision(&storage, &store),
+                    prepared.clone(),
+                    DraftHistoricalRootAdoptionErrorReasonV1::InvalidAuthority,
+                ),
+            ),
+        };
         assert!(matches!(
             storage
-                .draft_historical_root_adoption_status(&store, request)
+                .reconcile_draft_historical_root_adoption(&store, &prepared, replay)
                 .unwrap(),
-            DraftHistoricalRootAdoptionStatusV1::Settled(
+            DraftHistoricalRootAdoptionReconciliationV1::ExactNew(
                 DraftHistoricalRootAdoptionOutcomeV1::Rejected(_)
                     | DraftHistoricalRootAdoptionOutcomeV1::Cancelled(_)
                     | DraftHistoricalRootAdoptionOutcomeV1::Error(_)
@@ -531,144 +510,6 @@ fn settlement_only_outcomes_preserve_candidate_and_history_across_reopen() {
         );
         assert_eq!(current(&storage, &store, thread), durable);
     }
-}
-
-#[test]
-fn wrong_draft_session_transition_direction_target_and_detached_sibling_fail_closed() {
-    let (_home, store, storage, thread) = fixture("wrong-routes", 166);
-    let durable = current(&storage, &store, thread);
-    let session = open_session(&storage, &store, &durable, 50, 51);
-    let first = committed_edit(&storage, &store, &session, 52, "one", 0, 3);
-    let second = committed_edit(&storage, &store, first.adopted_session(), 53, "two", 3, 6);
-    let valid = undo_request(second.adopted_session(), second.transition(), 54);
-    assert!(
-        storage
-            .prepare_draft_historical_root_adoption(&store, valid)
-            .is_ok()
-    );
-
-    let wrong_draft = DraftHistoricalRootAdoptionRequestV1::new(
-        beryl_model::SyndicDraftId::from_bytes([251; 16]),
-        valid.key().session_id(),
-        valid.key().operation_id(),
-        valid.source_history(),
-        valid.selected_transition(),
-        valid.direction(),
-        valid.target_root(),
-        valid.caret(),
-        valid.selection(),
-    );
-    let wrong_session = DraftHistoricalRootAdoptionRequestV1::new(
-        valid.key().draft_id(),
-        syndic_storage::DraftEditorCandidateSessionIdV1::from_bytes([252; 16]),
-        valid.key().operation_id(),
-        valid.source_history(),
-        valid.selected_transition(),
-        valid.direction(),
-        valid.target_root(),
-        valid.caret(),
-        valid.selection(),
-    );
-    let wrong_transition = DraftHistoricalRootAdoptionRequestV1::new(
-        valid.key().draft_id(),
-        valid.key().session_id(),
-        valid.key().operation_id(),
-        valid.source_history(),
-        first.transition().reference(),
-        valid.direction(),
-        first.transition().predecessor_root(),
-        first.transition().before_caret(),
-        first.transition().before_selection(),
-    );
-    let wrong_direction = DraftHistoricalRootAdoptionRequestV1::new(
-        valid.key().draft_id(),
-        valid.key().session_id(),
-        valid.key().operation_id(),
-        valid.source_history(),
-        valid.selected_transition(),
-        DraftHistoricalRootDirectionV1::Redo,
-        valid.target_root(),
-        valid.caret(),
-        valid.selection(),
-    );
-    let wrong_target = DraftHistoricalRootAdoptionRequestV1::new(
-        valid.key().draft_id(),
-        valid.key().session_id(),
-        valid.key().operation_id(),
-        valid.source_history(),
-        valid.selected_transition(),
-        valid.direction(),
-        second.transition().successor_root(),
-        valid.caret(),
-        valid.selection(),
-    );
-    let wrong_caret = DraftHistoricalRootAdoptionRequestV1::new(
-        valid.key().draft_id(),
-        valid.key().session_id(),
-        valid.key().operation_id(),
-        valid.source_history(),
-        valid.selected_transition(),
-        valid.direction(),
-        valid.target_root(),
-        point(1),
-        valid.selection(),
-    );
-    let wrong_selection = DraftHistoricalRootAdoptionRequestV1::new(
-        valid.key().draft_id(),
-        valid.key().session_id(),
-        valid.key().operation_id(),
-        valid.source_history(),
-        valid.selected_transition(),
-        valid.direction(),
-        valid.target_root(),
-        valid.caret(),
-        point(1),
-    );
-    for request in [
-        wrong_draft,
-        wrong_session,
-        wrong_transition,
-        wrong_direction,
-        wrong_target,
-        wrong_caret,
-        wrong_selection,
-    ] {
-        assert!(
-            storage
-                .prepare_draft_historical_root_adoption(&store, request)
-                .is_err()
-        );
-    }
-
-    let sibling = open_session(&storage, &store, &durable, 55, 56);
-    let sibling_edit = committed_edit(&storage, &store, &sibling, 57, "sibling", 0, 7);
-    let detached = DraftHistoricalRootAdoptionRequestV1::new(
-        valid.key().draft_id(),
-        valid.key().session_id(),
-        operation_id(58),
-        valid.source_history(),
-        sibling_edit.transition().reference(),
-        DraftHistoricalRootDirectionV1::Undo,
-        sibling_edit.transition().predecessor_root(),
-        sibling_edit.transition().before_caret(),
-        sibling_edit.transition().before_selection(),
-    );
-    assert!(
-        storage
-            .prepare_draft_historical_root_adoption(&store, detached)
-            .is_err()
-    );
-    assert_eq!(
-        storage
-            .draft_editor_candidate_session(
-                &store,
-                second.adopted_session().draft_id(),
-                second.adopted_session().session_id(),
-            )
-            .unwrap(),
-        DraftEditorCandidateSessionReadOutcomeV1::Active(second.adopted_session().clone())
-    );
-    assert_eq!(current(&storage, &store, thread), durable);
 }
 
 #[test]
@@ -715,10 +556,9 @@ fn sixty_four_slot_witness_remains_bounded_and_authenticates_deep_undo() {
         200,
     );
     assert_eq!(
-        undo.settlement()
-            .successor_transition()
+        undo.successor_candidate()
             .unwrap()
-            .journal_depth(),
+            .newest_candidate_generation(),
         66
     );
     let (store, storage) = reopen(&home, store);
@@ -726,15 +566,12 @@ fn sixty_four_slot_witness_remains_bounded_and_authenticates_deep_undo() {
         storage
             .draft_editor_candidate_session(
                 &store,
-                undo.settlement().successor_candidate().unwrap().draft_id(),
-                undo.settlement()
-                    .successor_candidate()
-                    .unwrap()
-                    .session_id(),
+                undo.successor_candidate().unwrap().draft_id(),
+                undo.successor_candidate().unwrap().session_id(),
             )
             .unwrap(),
         DraftEditorCandidateSessionReadOutcomeV1::Active(
-            undo.settlement().successor_candidate().unwrap().clone()
+            undo.successor_candidate().unwrap().clone()
         )
     );
     assert_eq!(current(&storage, &store, thread), durable);

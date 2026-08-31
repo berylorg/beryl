@@ -3,8 +3,17 @@ use super::*;
 #[test]
 fn stale_same_id_completion_and_cancellation_are_inert_across_rebind_and_release() {
     let (_home, store, storage, thread) = fixture("same-id-aba", 75);
-    populate(storage, &store, thread, 76);
-    assert_stale_request_after_service_replacement(storage, &store, thread, 77, 78, 79, 80, 1);
+    populate(storage.clone(), &store, thread, 76);
+    assert_stale_request_after_service_replacement(
+        storage.clone(),
+        &store,
+        thread,
+        77,
+        78,
+        79,
+        80,
+        1,
+    );
     assert_stale_request_after_service_replacement(storage, &store, thread, 81, 82, 83, 84, 2);
 }
 
@@ -19,7 +28,7 @@ fn assert_stale_request_after_service_replacement(
     new_operation: u8,
     request_id: u64,
 ) {
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let ComposerHostActivationOutcome::Activated {
         binding: old_binding,
         ..

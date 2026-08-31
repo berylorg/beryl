@@ -28,8 +28,9 @@ use crate::{
         DraftMarkerAdmissionTargetDispositionV1, DraftMarkerAdmissionTreeV1,
         DraftMarkerLabelReadinessDispositionV1, DraftMarkerLabelReadinessRequestAuthorityV1,
         canonical_empty_draft_marker_admission_root_v1,
-        checked_draft_marker_admission_command_charge_v1, encoded_capacity_record_charge,
-        encoded_head_record_charge, encoded_node_record_charge, encoded_receipt_record_charge,
+        checked_draft_marker_admission_command_charge_v1, encoded_capacity_key_charge,
+        encoded_capacity_record_charge, encoded_head_record_charge, encoded_node_record_charge,
+        encoded_receipt_record_charge,
     },
     mutation::{point, required},
 };
@@ -426,15 +427,36 @@ impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
                 ),
             )?
             .is_some()
-            || point::<DraftMarkerAdmissionCapacityFamily>(
-                reader,
-                &DraftMarkerAdmissionCapacityKeyV1,
-            )?
-            .is_some()
         {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        let capacity = DraftMarkerAdmissionCapacityV1::new(NonZeroU64::MIN, self.head.charge())
+        let prior_capacity = point::<DraftMarkerAdmissionCapacityFamily>(
+            reader,
+            &DraftMarkerAdmissionCapacityKeyV1,
+        )?;
+        let capacity_source_bytes = match prior_capacity.as_ref() {
+            Some(capacity) => {
+                encoded_capacity_record_charge(&DraftMarkerAdmissionCapacityKeyV1, capacity)
+            }
+            None => encoded_capacity_key_charge(&DraftMarkerAdmissionCapacityKeyV1),
+        }
+        .map_err(|_| SyndicMutationError::IdentityCollision)?;
+        let (capacity_revision, aggregate_charge) = match prior_capacity {
+            Some(capacity) => (
+                capacity
+                    .revision()
+                    .get()
+                    .checked_add(1)
+                    .and_then(NonZeroU64::new)
+                    .ok_or(SyndicMutationError::IdentityCollision)?,
+                capacity
+                    .charge()
+                    .checked_add(self.head.charge())
+                    .ok_or(SyndicMutationError::IdentityCollision)?,
+            ),
+            None => (NonZeroU64::MIN, self.head.charge()),
+        };
+        let capacity = DraftMarkerAdmissionCapacityV1::new(capacity_revision, aggregate_charge)
             .map_err(|_| SyndicMutationError::IdentityCollision)?;
         let write_bytes = encoded_node_record_charge(&self.node.key(), &self.node)
             .and_then(|bytes| {
@@ -462,7 +484,7 @@ impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
                     .ok_or(super::DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)
             })
             .map_err(|_| SyndicMutationError::IdentityCollision)?;
-        checked_draft_marker_admission_command_charge_v1([0, write_bytes, 0])
+        checked_draft_marker_admission_command_charge_v1([capacity_source_bytes, write_bytes, 0])
             .map_err(|_| SyndicMutationError::IdentityCollision)?;
         Ok(PreparedReadyTargetFixtureMutation {
             node: self.node,

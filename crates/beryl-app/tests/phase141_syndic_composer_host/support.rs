@@ -141,7 +141,13 @@ pub fn transaction(
     replacements: Vec<DraftPieceReplacementV1>,
     caret: DraftCompositePositionV1,
 ) -> Transaction {
-    let session = open_session(storage, store, current, session_seed, operation_seed);
+    let session = open_session(
+        storage.clone(),
+        store,
+        current,
+        session_seed,
+        operation_seed,
+    );
     transaction_for_session(
         storage,
         store,
@@ -364,7 +370,7 @@ pub fn committed(outcome: CommandOutcome) {
     );
 }
 
-fn marker(seed: u8, order: u64) -> DraftPieceMarkerV1 {
+fn marker(seed: u8, order: u64, label: u64) -> DraftPieceMarkerV1 {
     let mut id = [seed; 16];
     id[1..9].copy_from_slice(&order.to_be_bytes());
     let mut asset_digest = [0; 32];
@@ -373,7 +379,7 @@ fn marker(seed: u8, order: u64) -> DraftPieceMarkerV1 {
     DraftPieceMarkerV1::new(
         SyndicDraftMarkerId::from_bytes(id),
         order,
-        ImageLabelOrdinal::new(order + 1).unwrap(),
+        ImageLabelOrdinal::new(label).unwrap(),
         AssetId::sha256_v1(asset_digest, NonZeroU64::MIN),
     )
 }

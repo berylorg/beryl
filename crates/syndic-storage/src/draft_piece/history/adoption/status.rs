@@ -9,7 +9,11 @@ use super::super::{
     DraftEditHistoryFrontiersFamily, DraftEditHistoryTransitionsFamily,
     draft_edit_history_frontier_is_authenticated_v1,
 };
-use super::{codec::*, model::*, mutation::PreparedDraftHistoricalRootAdoptionV1};
+use super::{
+    codec::*,
+    model::*,
+    mutation::{PreparedDraftHistoricalRootAdoptionV1, historical_marker_root_is_exact_in_store},
+};
 
 #[derive(Debug)]
 pub enum DraftHistoricalRootAdoptionReconciliationErrorV1 {
@@ -40,7 +44,7 @@ impl From<SyndicReadError> for DraftHistoricalRootAdoptionReconciliationErrorV1 
 }
 
 impl SyndicStorage {
-    pub fn draft_historical_root_adoption_status(
+    pub(crate) fn draft_historical_root_adoption_status(
         &self,
         store: &HomeStore,
         request: DraftHistoricalRootAdoptionRequestV1,
@@ -77,6 +81,11 @@ impl SyndicStorage {
                 )?
                 .as_ref()
                 != Some(settlement.target_root())
+            || !historical_marker_root_is_exact_in_store(
+                self,
+                store,
+                settlement.target_root().reference(),
+            )?
         {
             return Ok(DraftHistoricalRootAdoptionStatusV1::Collision);
         }

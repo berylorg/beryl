@@ -6,16 +6,19 @@ use beryl_home_store::{
 };
 use beryl_model::DomainRevision;
 
+use crate::codec::DraftImageLabelProtectionHeadsFamily;
 use crate::domain::SyndicDomain;
 use crate::mutation::{point, required};
-use crate::{SyndicMutationError, SyndicReadError, SyndicStorage};
+use crate::{DraftImageLabelProtectionHeadV1, SyndicMutationError, SyndicReadError, SyndicStorage};
 
 use super::super::super::{
     DraftEditorCandidateSessionLifecycleV1, DraftEditorCandidateSessionReadOutcomeV1,
     DraftEditorCandidateSessionRecordKeyV1, DraftEditorCandidateSessionRecordV1,
     DraftEditorCandidateSessionsCodec, DraftEditorCandidateSessionsFamily,
-    DraftPiecePrepareErrorV1, DraftPieceRootsFamily,
-    draft_piece_root_reference_is_locally_exact_v1, point_limit, validate_position,
+    DraftMarkerOrderCommitmentsFamily, DraftMarkerOrderRecordKeyV1, DraftMarkerOrderRecordKindV1,
+    DraftPieceBuildRootsV1, DraftPiecePrepareErrorV1, DraftPieceRootReferenceV1,
+    DraftPieceRootsFamily, draft_piece_root_reference_is_locally_exact_v1, point_limit,
+    validate_marker_order_root_record, validate_position,
 };
 use super::super::{
     DraftEditHistoryFrontierKeyV1, DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
@@ -42,11 +45,8 @@ pub enum DraftHistoricalRootSelectionV1 {
 }
 
 impl PreparedDraftHistoricalRootAdoptionV1 {
-    pub const fn request(&self) -> DraftHistoricalRootAdoptionRequestV1 {
+    pub(crate) const fn request(&self) -> DraftHistoricalRootAdoptionRequestV1 {
         self.request
-    }
-    pub fn request_bytes(&self) -> &[u8] {
-        &self.request_bytes
     }
 }
 
@@ -168,7 +168,7 @@ impl SyndicStorage {
             .map(DraftHistoricalRootSelectionV1::Prepared)
     }
 
-    pub fn prepare_draft_historical_root_adoption(
+    pub(crate) fn prepare_draft_historical_root_adoption(
         &self,
         store: &HomeStore,
         request: DraftHistoricalRootAdoptionRequestV1,
@@ -207,6 +207,13 @@ impl SyndicStorage {
             .point::<DraftPieceRootsFamily>(store, request.target_root().key(), point_limit())?
             .filter(|value| value.reference() == request.target_root())
             .ok_or(DraftHistoricalRootAdoptionPrepareErrorV1::InvalidRequest)?;
+        let protection = self
+            .point::<DraftImageLabelProtectionHeadsFamily>(
+                store,
+                source_session.thread_id(),
+                point_limit(),
+            )?
+            .ok_or(DraftHistoricalRootAdoptionPrepareErrorV1::InvalidRequest)?;
         if source_session.active_operation().is_some()
             || source_session.lifecycle() != DraftEditorCandidateSessionLifecycleV1::Active
             || source_history.reference().root() != selected_transition.successor_root()
@@ -222,7 +229,12 @@ impl SyndicStorage {
                 store,
                 &source_history,
             )?
-            || !draft_piece_root_reference_is_locally_exact_v1(target_root.reference())
+            || !historical_marker_root_is_exact_in_store(self, store, target_root.reference())?
+            || !historical_protection_contains_target(
+                protection,
+                source_session.thread_id(),
+                target_root.reference(),
+            )
         {
             return Err(DraftHistoricalRootAdoptionPrepareErrorV1::InvalidRequest);
         }
@@ -533,6 +545,10 @@ fn prepared_closure_is_exact(
     reader: &DomainReader<'_, SyndicDomain>,
     prepared: &PreparedDraftHistoricalRootAdoptionV1,
 ) -> Result<bool, SyndicMutationError> {
+    let protection = required::<DraftImageLabelProtectionHeadsFamily>(
+        reader,
+        &prepared.source_session.thread_id(),
+    )?;
     Ok(point::<DraftEditHistoryFrontiersFamily>(
         reader,
         &prepared.source_history.reference().key(),
@@ -546,7 +562,72 @@ fn prepared_closure_is_exact(
         && point::<DraftPieceRootsFamily>(reader, &prepared.target_root.reference().key())?
             .as_ref()
             == Some(&prepared.target_root)
-        && draft_piece_root_reference_is_locally_exact_v1(prepared.target_root.reference()))
+        && historical_marker_root_is_exact_in_reader(reader, prepared.target_root.reference())?
+        && historical_protection_contains_target(
+            protection,
+            prepared.source_session.thread_id(),
+            prepared.target_root.reference(),
+        ))
+}
+
+pub(super) fn historical_marker_root_is_exact_in_store(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    root: DraftPieceRootReferenceV1,
+) -> Result<bool, SyndicReadError> {
+    if !draft_piece_root_reference_is_locally_exact_v1(root) {
+        return Ok(false);
+    }
+    let Some(root_id) = root.marker_order_root() else {
+        return Ok(root.marker_commitment().marker_count() == 0);
+    };
+    let key = DraftMarkerOrderRecordKeyV1::new(
+        root.key().draft_id(),
+        DraftMarkerOrderRecordKindV1::Internal,
+        root_id,
+    );
+    let record = storage.point::<DraftMarkerOrderCommitmentsFamily>(store, key, point_limit())?;
+    Ok(record.is_some_and(|record| {
+        record.key() == key
+            && validate_marker_order_root_record(record, DraftPieceBuildRootsV1::from_root(root))
+                .is_ok()
+    }))
+}
+
+fn historical_marker_root_is_exact_in_reader(
+    reader: &DomainReader<'_, SyndicDomain>,
+    root: DraftPieceRootReferenceV1,
+) -> Result<bool, SyndicMutationError> {
+    if !draft_piece_root_reference_is_locally_exact_v1(root) {
+        return Ok(false);
+    }
+    let Some(root_id) = root.marker_order_root() else {
+        return Ok(root.marker_commitment().marker_count() == 0);
+    };
+    let key = DraftMarkerOrderRecordKeyV1::new(
+        root.key().draft_id(),
+        DraftMarkerOrderRecordKindV1::Internal,
+        root_id,
+    );
+    let record = point::<DraftMarkerOrderCommitmentsFamily>(reader, &key)?;
+    Ok(record.is_some_and(|record| {
+        record.key() == key
+            && validate_marker_order_root_record(record, DraftPieceBuildRootsV1::from_root(root))
+                .is_ok()
+    }))
+}
+
+fn historical_protection_contains_target(
+    protection: DraftImageLabelProtectionHeadV1,
+    thread_id: beryl_model::SyndicThreadId,
+    root: DraftPieceRootReferenceV1,
+) -> bool {
+    protection.is_exact()
+        && protection.thread_id() == thread_id
+        && root
+            .marker_commitment()
+            .maximum_image_label()
+            .is_none_or(|maximum| protection.protected_maximum().contains(maximum))
 }
 
 fn current_session(
@@ -585,6 +666,7 @@ fn settlement_is_exact(
         || point::<DraftPieceRootsFamily>(reader, &settlement.target_root().reference().key())?
             .as_ref()
             != Some(settlement.target_root())
+        || !historical_marker_root_is_exact_in_reader(reader, settlement.target_root().reference())?
     {
         return Ok(false);
     }

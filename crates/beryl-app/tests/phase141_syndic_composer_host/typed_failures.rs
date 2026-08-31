@@ -4,8 +4,8 @@ use super::*;
 #[test]
 fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
     let (_home, store, storage, thread) = fixture("typed-failures", 80);
-    populate(storage, &store, thread, 81);
-    let mut host = SyndicComposerHost::new(storage);
+    populate(storage.clone(), &store, thread, 81);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let request = activation(thread, 82, 83, Vec::new());
     let ComposerHostActivationOutcome::Activated { binding, .. } = host
         .test_activate(&store, request.clone(), &CommandCancellation::new())
@@ -31,8 +31,8 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
     assert_eq!(replacement.binding(), None);
 
     let (_home, store, storage, thread) = fixture("missing-root", 84);
-    populate(storage, &store, thread, 85);
-    let mut host = SyndicComposerHost::new(storage);
+    populate(storage.clone(), &store, thread, 85);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let ComposerHostActivationOutcome::Activated { binding, .. } = host
         .test_activate(
             &store,
@@ -47,7 +47,7 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
         &store,
         delete_draft_piece_immutable_record(
             &store,
-            storage,
+            &storage,
             binding.root(),
             DraftPieceImmutableDeletion::Root,
         ),
@@ -77,12 +77,12 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
     .enumerate()
     {
         let (_home, store, storage, thread) = fixture("corrupt-summary", 88 + case as u8);
-        let before = current(storage, &store, thread);
+        let before = current(storage.clone(), &store, thread);
         let pieces = (0..130)
             .map(|_| DraftPieceV1::Text("x\n".to_owned()))
             .collect();
         let build = transaction(
-            storage,
+            storage.clone(),
             &store,
             &before,
             91 + case as u8,
@@ -90,8 +90,8 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
             vec![DraftPieceReplacementV1::new(point(0), point(0), pieces)],
             point(260),
         );
-        run_transaction(storage, &store, &build, 2);
-        let mut host = SyndicComposerHost::new(storage);
+        run_transaction(storage.clone(), &store, &build, 2);
+        let mut host = SyndicComposerHost::new(storage.clone());
         let ComposerHostActivationOutcome::Activated { binding, .. } = host
             .test_activate(
                 &store,
@@ -106,7 +106,7 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
             &store,
             inject_draft_piece_descendant_corruption(
                 &store,
-                storage,
+                &storage,
                 binding.root(),
                 DraftPieceDescendantTarget::Sequence,
                 corruption,
@@ -131,7 +131,7 @@ fn disposed_absent_corrupt_and_selector_drift_are_typed_and_atomic() {
     }
 
     let (_home, store, storage, thread) = fixture("selector-conflict", 101);
-    let before = current(storage, &store, thread);
+    let before = current(storage.clone(), &store, thread);
     let next_thread_revision = before.thread().revision().checked_next().unwrap();
     let advanced_thread = ThreadRecord::new(
         before.thread().id(),

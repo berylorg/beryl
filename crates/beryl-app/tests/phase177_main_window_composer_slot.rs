@@ -36,7 +36,7 @@ fn prior_remains_authoritative_until_exact_target_publication() {
         fixture.window_id,
         selected_claim,
         selected,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -124,7 +124,7 @@ fn retirement_abandons_only_the_exact_pristine_pending_target() {
         fixture.window_id,
         selected_claim,
         selected,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -205,7 +205,7 @@ fn post_open_cancellation_abandons_the_exact_target_before_returning() {
         fixture.window_id,
         selected_claim,
         selected,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -247,7 +247,7 @@ fn indeterminate_abandonment_retains_one_prepared_custody_then_reconciles() {
         fixture.window_id,
         selected_claim,
         selected,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -276,7 +276,7 @@ fn indeterminate_abandonment_retains_one_prepared_custody_then_reconciles() {
         slot.pending_status(),
         Some(beryl_app::main_window::MainWindowComposerPendingStatus::ReconciliationPending)
     );
-    let stale_storage = fixture.storage;
+    let stale_storage = fixture.storage.clone();
     let (_directory, store, recovered_storage) = fixture.recover_same_home();
     assert!(matches!(
         slot.reconcile_pending_after_recovery(&store, stale_storage, receipt),
@@ -299,7 +299,7 @@ fn target_departing_fresh_state_after_prepare_fails_closed() {
         fixture.window_id,
         selected_claim,
         selected,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -328,7 +328,7 @@ fn target_departing_fresh_state_after_prepare_fails_closed() {
             panic!("pending target was not active")
         };
         let transaction = composer_base::transaction_for_session(
-            storage,
+            storage.clone(),
             store,
             head,
             107,
@@ -362,7 +362,7 @@ fn abandonment_winning_serial_order_rejects_late_publication() {
         fixture.window_id,
         selected_claim,
         selected,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -400,7 +400,7 @@ fn slot_disposal_retires_pending_then_exactly_releases_selected() {
         fixture.window_id,
         selected_claim,
         selected,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();

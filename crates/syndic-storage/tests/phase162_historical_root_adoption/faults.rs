@@ -5,18 +5,24 @@ use syndic_storage::test_faults::{
     alternative_ordinary_draft_edit_history, delete_draft_edit_history_record,
     delete_draft_piece_immutable_record, draft_edit_history_stored_charge_components,
     draft_piece_immutable_snapshot, inject_draft_edit_history_frontier_digest_corruption,
-    replace_draft_edit_history_transition, roundtrip_draft_historical_root_adoption,
-    syndic_v7_family_names,
+    replace_draft_edit_history_transition, syndic_v7_family_names,
 };
 use syndic_storage::{
     DraftEditorCandidateSessionReadOutcomeV1, DraftHistoricalRootAdoptionOutcomeV1,
-    DraftHistoricalRootAdoptionReconciliationV1, DraftHistoricalRootAdoptionRequestV1,
-    DraftHistoricalRootAdoptionSettlementOutcomeV1, DraftHistoricalRootAdoptionStatusV1,
-    DraftHistoricalRootDirectionV1, DraftPieceCommittedAdoptionV1, DraftPieceSettlementClosureV1,
-    SyndicStorage,
+    DraftHistoricalRootAdoptionReconciliationV1, DraftHistoricalRootDirectionV1,
+    DraftPieceCommittedAdoptionV1, DraftPieceSettlementClosureV1, SyndicStorage,
 };
 
 use super::support::*;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HistoricalCommand {
+    Adopt,
+    Conflict,
+    Reject,
+    Cancel,
+    Error(syndic_storage::DraftHistoricalRootAdoptionErrorReasonV1),
+}
 
 fn edit(
     storage: &SyndicStorage,
@@ -43,21 +49,18 @@ fn edit(
     adoption.clone()
 }
 
-fn undo_request(
+fn undo_prepared(
+    storage: &SyndicStorage,
+    store: &beryl_home_store::HomeStore,
     session: &syndic_storage::DraftEditorCandidateSessionV1,
-    transition: &syndic_storage::DraftEditHistoryTransitionV1,
     operation: u8,
-) -> DraftHistoricalRootAdoptionRequestV1 {
-    DraftHistoricalRootAdoptionRequestV1::new(
-        session.draft_id(),
-        session.session_id(),
-        operation_id(operation),
-        session.newest_history(),
-        transition.reference(),
+) -> syndic_storage::PreparedDraftHistoricalRootAdoptionV1 {
+    prepare_historical_selection(
+        storage,
+        store,
+        session,
+        operation,
         DraftHistoricalRootDirectionV1::Undo,
-        transition.predecessor_root(),
-        transition.before_caret(),
-        transition.before_selection(),
     )
 }
 
@@ -145,7 +148,6 @@ fn every_four_record_commit_cut_recovers_only_exact_old_or_exact_new_after_reope
             seed.wrapping_add(6),
             DraftHistoricalRootDirectionV1::Undo,
         );
-        let request = prepared.request();
         let old_session = second.adopted_session().clone();
         faults.fail_next(cut);
         let outcome = execute(
@@ -176,18 +178,7 @@ fn every_four_record_commit_cut_recovers_only_exact_old_or_exact_new_after_reope
             );
         }
         let (store, storage) = reopen(&home, store);
-        let status = storage
-            .draft_historical_root_adoption_status(&store, request)
-            .unwrap();
-        if committed_at_cut {
-            assert!(matches!(
-                status,
-                DraftHistoricalRootAdoptionStatusV1::Settled(
-                    DraftHistoricalRootAdoptionOutcomeV1::Committed(_)
-                )
-            ));
-        } else {
-            assert_eq!(status, DraftHistoricalRootAdoptionStatusV1::Absent);
+        if !committed_at_cut {
             assert_eq!(
                 storage
                     .draft_editor_candidate_session(
@@ -214,10 +205,7 @@ fn adoption_reuses_immutable_roots_and_preserves_canonical_records_and_current_p
     let target = second.transition().predecessor_root();
     let source_snapshot = draft_piece_immutable_snapshot(&store, storage.clone(), source).unwrap();
     let target_snapshot = draft_piece_immutable_snapshot(&store, storage.clone(), target).unwrap();
-    let request = undo_request(second.adopted_session(), second.transition(), 216);
-    let prepared = storage
-        .prepare_draft_historical_root_adoption(&store, request)
-        .unwrap();
+    let prepared = undo_prepared(&storage, &store, second.adopted_session(), 216);
     let outcome = execute(
         &store,
         storage.adopt_draft_historical_root(revision(&storage, &store), prepared.clone()),
@@ -230,11 +218,7 @@ fn adoption_reuses_immutable_roots_and_preserves_canonical_records_and_current_p
     else {
         panic!("adoption did not commit")
     };
-    assert_eq!(proof.settlement().target_root().reference(), target);
-    assert_eq!(
-        roundtrip_draft_historical_root_adoption(proof.settlement()),
-        Some(proof.settlement().clone())
-    );
+    assert_eq!(proof.successor_candidate().unwrap().newest_root(), target);
     let (store, storage) = reopen(&home, store);
     assert_eq!(
         draft_piece_immutable_snapshot(&store, storage.clone(), source).unwrap(),
@@ -291,21 +275,23 @@ fn missing_or_corrupt_root_transition_and_frontier_fail_without_successor_public
             3,
             6,
         );
-        let prepared = prepare_historical_selection(
+        let _prepared = prepare_historical_selection(
             &storage,
             &store,
             second.adopted_session(),
             seed.wrapping_add(6),
             DraftHistoricalRootDirectionV1::Undo,
         );
-        let request = prepared.request();
+        let target_root = second.transition().predecessor_root();
+        let selected_transition = second.transition().reference();
+        let source_history = second.adopted_session().newest_history();
         match corruption {
             0 => committed(execute(
                 &store,
                 delete_draft_piece_immutable_record(
                     &store,
                     &storage,
-                    request.target_root(),
+                    target_root,
                     DraftPieceImmutableDeletion::Root,
                 ),
             )),
@@ -314,7 +300,7 @@ fn missing_or_corrupt_root_transition_and_frontier_fail_without_successor_public
                 delete_draft_edit_history_record(
                     &store,
                     storage.clone(),
-                    DraftEditHistoryRecordDeletion::Transition(request.selected_transition().key()),
+                    DraftEditHistoryRecordDeletion::Transition(selected_transition.key()),
                 ),
             )),
             2 => committed(execute(
@@ -322,13 +308,13 @@ fn missing_or_corrupt_root_transition_and_frontier_fail_without_successor_public
                 delete_draft_edit_history_record(
                     &store,
                     storage.clone(),
-                    DraftEditHistoryRecordDeletion::Frontier(request.source_history().key()),
+                    DraftEditHistoryRecordDeletion::Frontier(source_history.key()),
                 ),
             )),
             3 => inject_draft_edit_history_frontier_digest_corruption(
                 &store,
                 storage.clone(),
-                request.source_history().key(),
+                source_history.key(),
             )
             .unwrap(),
             _ => {
@@ -347,7 +333,7 @@ fn missing_or_corrupt_root_transition_and_frontier_fail_without_successor_public
                     replace_draft_edit_history_transition(
                         &store,
                         storage.clone(),
-                        request.selected_transition().key(),
+                        selected_transition.key(),
                         replacement,
                     ),
                 ));
@@ -366,24 +352,43 @@ fn missing_or_corrupt_root_transition_and_frontier_fail_without_successor_public
                 .is_err()
         );
         let (store, storage) = reopen(&home, store);
-        assert!(!matches!(
-            storage.draft_historical_root_adoption_status(&store, request),
-            Ok(DraftHistoricalRootAdoptionStatusV1::Settled(
-                DraftHistoricalRootAdoptionOutcomeV1::Committed(_)
-            ))
-        ));
-        assert_eq!(current(&storage, &store, thread), durable);
+        assert!(
+            storage
+                .prepare_draft_historical_root_selection(
+                    &store,
+                    historical_selection_intent(
+                        second.adopted_session(),
+                        seed.wrapping_add(7),
+                        DraftHistoricalRootDirectionV1::Undo,
+                    ),
+                )
+                .is_err()
+        );
+        if store.health().state() == HomeHealthState::Failed {
+            assert!(
+                storage
+                    .current_draft(
+                        &store,
+                        thread,
+                        syndic_storage::SyndicPointReadLimit::new(65_536).unwrap(),
+                    )
+                    .is_err(),
+                "corrupt historical authority must remain behind the failed read gate"
+            );
+        } else {
+            assert_eq!(current(&storage, &store, thread), durable);
+        }
     }
 }
 
 #[test]
-fn codec_roundtrips_exact_settlement_outcome_order_for_all_five_outcomes() {
+fn every_historical_outcome_reconciles_with_its_public_terminal_family_after_reopen() {
     let expected = [
-        DraftHistoricalRootAdoptionSettlementOutcomeV1::Committed,
-        DraftHistoricalRootAdoptionSettlementOutcomeV1::Rejected,
-        DraftHistoricalRootAdoptionSettlementOutcomeV1::Conflict,
-        DraftHistoricalRootAdoptionSettlementOutcomeV1::Cancelled,
-        DraftHistoricalRootAdoptionSettlementOutcomeV1::Error(
+        HistoricalCommand::Adopt,
+        HistoricalCommand::Reject,
+        HistoricalCommand::Conflict,
+        HistoricalCommand::Cancel,
+        HistoricalCommand::Error(
             syndic_storage::DraftHistoricalRootAdoptionErrorReasonV1::InvalidAuthority,
         ),
     ];
@@ -407,15 +412,13 @@ fn codec_roundtrips_exact_settlement_outcome_order_for_all_five_outcomes() {
             0,
             3,
         );
-        let request = undo_request(
+        let prepared = undo_prepared(
+            &storage,
+            &store,
             first.adopted_session(),
-            first.transition(),
             seed.wrapping_add(4),
         );
-        let prepared = storage
-            .prepare_draft_historical_root_adoption(&store, request)
-            .unwrap();
-        if expected_outcome == DraftHistoricalRootAdoptionSettlementOutcomeV1::Conflict {
+        if expected_outcome == HistoricalCommand::Conflict {
             let _ = edit(
                 &storage,
                 &store,
@@ -427,47 +430,68 @@ fn codec_roundtrips_exact_settlement_outcome_order_for_all_five_outcomes() {
             );
         }
         let contribution = match expected_outcome {
-            DraftHistoricalRootAdoptionSettlementOutcomeV1::Committed
-            | DraftHistoricalRootAdoptionSettlementOutcomeV1::Conflict => {
+            HistoricalCommand::Adopt | HistoricalCommand::Conflict => {
                 storage.adopt_draft_historical_root(revision(&storage, &store), prepared.clone())
             }
-            DraftHistoricalRootAdoptionSettlementOutcomeV1::Rejected => storage
-                .reject_draft_historical_root_adoption(
-                    revision(&storage, &store),
-                    prepared.clone(),
-                ),
-            DraftHistoricalRootAdoptionSettlementOutcomeV1::Cancelled => storage
-                .cancel_draft_historical_root_adoption(
-                    revision(&storage, &store),
-                    prepared.clone(),
-                ),
-            DraftHistoricalRootAdoptionSettlementOutcomeV1::Error(reason) => storage
-                .error_draft_historical_root_adoption(
-                    revision(&storage, &store),
-                    prepared.clone(),
-                    reason,
-                ),
+            HistoricalCommand::Reject => storage.reject_draft_historical_root_adoption(
+                revision(&storage, &store),
+                prepared.clone(),
+            ),
+            HistoricalCommand::Cancel => storage.cancel_draft_historical_root_adoption(
+                revision(&storage, &store),
+                prepared.clone(),
+            ),
+            HistoricalCommand::Error(reason) => storage.error_draft_historical_root_adoption(
+                revision(&storage, &store),
+                prepared.clone(),
+                reason,
+            ),
         };
         committed(execute(&store, contribution));
         let (store, storage) = reopen(&home, store);
-        let DraftHistoricalRootAdoptionStatusV1::Settled(outcome) = storage
-            .draft_historical_root_adoption_status(&store, request)
+        let replay = match expected_outcome {
+            HistoricalCommand::Adopt | HistoricalCommand::Conflict => {
+                storage.adopt_draft_historical_root(revision(&storage, &store), prepared.clone())
+            }
+            HistoricalCommand::Reject => storage.reject_draft_historical_root_adoption(
+                revision(&storage, &store),
+                prepared.clone(),
+            ),
+            HistoricalCommand::Cancel => storage.cancel_draft_historical_root_adoption(
+                revision(&storage, &store),
+                prepared.clone(),
+            ),
+            HistoricalCommand::Error(reason) => storage.error_draft_historical_root_adoption(
+                revision(&storage, &store),
+                prepared.clone(),
+                reason,
+            ),
+        };
+        let DraftHistoricalRootAdoptionReconciliationV1::ExactNew(outcome) = storage
+            .reconcile_draft_historical_root_adoption(&store, &prepared, execute(&store, replay))
             .unwrap()
         else {
             panic!("outcome {index} was not durably settled")
         };
-        let settlement = match outcome {
-            DraftHistoricalRootAdoptionOutcomeV1::Committed(proof)
-            | DraftHistoricalRootAdoptionOutcomeV1::Rejected(proof)
-            | DraftHistoricalRootAdoptionOutcomeV1::Conflict(proof)
-            | DraftHistoricalRootAdoptionOutcomeV1::Cancelled(proof)
-            | DraftHistoricalRootAdoptionOutcomeV1::Error(proof) => proof.settlement().clone(),
-        };
-        assert_eq!(settlement.outcome(), expected_outcome);
-        assert_eq!(
-            roundtrip_draft_historical_root_adoption(&settlement),
-            Some(settlement)
-        );
+        assert!(matches!(
+            (expected_outcome, outcome),
+            (
+                HistoricalCommand::Adopt,
+                DraftHistoricalRootAdoptionOutcomeV1::Committed(_)
+            ) | (
+                HistoricalCommand::Reject,
+                DraftHistoricalRootAdoptionOutcomeV1::Rejected(_)
+            ) | (
+                HistoricalCommand::Conflict,
+                DraftHistoricalRootAdoptionOutcomeV1::Conflict(_)
+            ) | (
+                HistoricalCommand::Cancel,
+                DraftHistoricalRootAdoptionOutcomeV1::Cancelled(_)
+            ) | (
+                HistoricalCommand::Error(_),
+                DraftHistoricalRootAdoptionOutcomeV1::Error(_)
+            )
+        ));
     }
 }
 
@@ -507,10 +531,7 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
         third.adopted_history().undo_head(),
         Some(third.transition().reference())
     );
-    let request = undo_request(third.adopted_session(), third.transition(), 29);
-    let prepared = storage
-        .prepare_draft_historical_root_adoption(&store, request)
-        .unwrap();
+    let prepared = undo_prepared(&storage, &store, third.adopted_session(), 29);
     let outcome = execute(
         &store,
         storage.adopt_draft_historical_root(revision(&storage, &store), prepared.clone()),
@@ -524,24 +545,8 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
     else {
         panic!("bounded adoption did not commit: {reconciled:?}")
     };
-    let successor = proof.settlement().successor_history().unwrap();
-    assert_eq!(
-        successor.journal_head(),
-        proof
-            .settlement()
-            .successor_transition()
-            .map(|transition| transition.reference())
-    );
-    assert_eq!(
-        successor.redo_head(),
-        proof
-            .settlement()
-            .successor_transition()
-            .map(|transition| transition.reference())
-    );
     assert!(third.transition().prior_undo().is_some());
-    assert!(successor.undo_head().is_none());
-    let unavailable_source = proof.settlement().successor_candidate().unwrap().clone();
+    let unavailable_source = proof.successor_candidate().unwrap().clone();
     assert!(matches!(
         storage.prepare_draft_historical_root_selection(
             &store,
@@ -563,23 +568,27 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
             .unwrap(),
         DraftEditorCandidateSessionReadOutcomeV1::Active(unavailable_source)
     );
-    if let (Some(floor), Some(undo)) = (successor.oldest_eligible(), successor.undo_head()) {
-        assert!(undo.cumulative_encoded_bytes() >= floor.cumulative_encoded_bytes());
-    }
-    assert!(successor.retained_encoded_bytes() <= successor.byte_budget());
     let (store, storage) = reopen(&home, store);
     assert!(matches!(
         storage
-            .draft_historical_root_adoption_status(&store, request)
+            .reconcile_draft_historical_root_adoption(
+                &store,
+                &prepared,
+                execute(
+                    &store,
+                    storage
+                        .adopt_draft_historical_root(revision(&storage, &store), prepared.clone(),),
+                ),
+            )
             .unwrap(),
-        DraftHistoricalRootAdoptionStatusV1::Settled(
+        DraftHistoricalRootAdoptionReconciliationV1::ExactNew(
             DraftHistoricalRootAdoptionOutcomeV1::Committed(_)
         )
     ));
     let redo = historical(
         &storage,
         &store,
-        proof.settlement().successor_candidate().unwrap(),
+        proof.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Redo,
         30,
     )
@@ -588,7 +597,7 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
     let undo = historical(
         &storage,
         &store,
-        redo.settlement().successor_candidate().unwrap(),
+        redo.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
         31,
     )
@@ -597,7 +606,7 @@ fn retention_floor_evicts_only_crossed_heads_and_keeps_the_adoption_head() {
     let branch = edit(
         &storage,
         &store,
-        undo.settlement().successor_candidate().unwrap(),
+        undo.successor_candidate().unwrap(),
         32,
         "branch",
         2,
@@ -638,49 +647,32 @@ fn redo_prior_floor_filter_survives_reopen_historical_continuation_and_branch() 
         49,
     )
     .expect("first bounded undo commits");
-    assert_eq!(
-        undo_one
-            .settlement()
-            .successor_history()
-            .unwrap()
-            .undo_head(),
-        Some(second.transition().reference())
-    );
     let (store, storage) = reopen(&home, store);
 
     let undo_two = historical(
         &storage,
         &store,
-        undo_one.settlement().successor_candidate().unwrap(),
+        undo_one.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
         50,
     )
     .expect("second bounded undo commits after reopen");
-    let selected_redo = undo_two.settlement().successor_transition().unwrap();
-    assert!(selected_redo.prior_redo().is_some());
     let (store, storage) = reopen(&home, store);
 
     let redo = historical(
         &storage,
         &store,
-        undo_two.settlement().successor_candidate().unwrap(),
+        undo_two.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Redo,
         51,
     )
     .expect("redo with a floor-crossing prior redo link commits");
-    let redo_history = redo.settlement().successor_history().unwrap();
-    assert!(redo_history.redo_head().is_none());
-    let prior_redo = selected_redo.prior_redo().unwrap();
-    assert!(redo_history.oldest_eligible().is_some_and(|floor| {
-        prior_redo.cumulative_encoded_bytes() < floor.cumulative_encoded_bytes()
-    }));
-    assert!(redo_history.retained_encoded_bytes() <= redo_history.byte_budget());
     let (store, storage) = reopen(&home, store);
 
     let undo = historical(
         &storage,
         &store,
-        redo.settlement().successor_candidate().unwrap(),
+        redo.successor_candidate().unwrap(),
         DraftHistoricalRootDirectionV1::Undo,
         52,
     )
@@ -689,7 +681,7 @@ fn redo_prior_floor_filter_survives_reopen_historical_continuation_and_branch() 
     let branch = edit(
         &storage,
         &store,
-        undo.settlement().successor_candidate().unwrap(),
+        undo.successor_candidate().unwrap(),
         53,
         "branch",
         1,

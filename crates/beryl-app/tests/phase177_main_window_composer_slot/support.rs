@@ -142,7 +142,7 @@ impl Fixture {
         operation: u8,
         presentation: u64,
     ) -> SyndicComposerHost {
-        let mut host = SyndicComposerHost::new(self.storage);
+        let mut host = SyndicComposerHost::new(self.storage.clone());
         assert!(matches!(
             host.test_activate(
                 &self.store,
@@ -170,7 +170,7 @@ impl Fixture {
         DraftMarkerSealService::new(
             &self.store,
             self.store.health().generation().unwrap(),
-            self.storage,
+            self.storage.clone(),
             self.state.assets(),
             DraftMarkerSealServiceLimits::new(
                 NonZeroUsize::new(1).unwrap(),

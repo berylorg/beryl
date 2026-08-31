@@ -127,17 +127,6 @@ pub fn syndic_v7_family_names() -> Vec<&'static str> {
     crate::domain::v7_family_names().collect()
 }
 
-pub fn roundtrip_draft_historical_root_adoption(
-    value: &DraftHistoricalRootAdoptionV1,
-) -> Option<DraftHistoricalRootAdoptionV1> {
-    use beryl_home_store::RecordCodec;
-
-    let bytes =
-        <DraftHistoricalRootAdoptionsCodec as RecordCodec<SyndicDomain>>::encode_value(value)
-            .ok()?;
-    <DraftHistoricalRootAdoptionsCodec as RecordCodec<SyndicDomain>>::decode_value(&bytes).ok()
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftPieceImmutableSnapshot {
     pub root_records: u64,
